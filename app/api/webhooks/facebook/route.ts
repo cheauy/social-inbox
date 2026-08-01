@@ -1,30 +1,22 @@
-import {
-  NextRequest,
-  NextResponse,
-} from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(
-  request: NextRequest,
-) {
-  const mode =
-    request.nextUrl.searchParams.get("hub.mode");
+export const dynamic = "force-dynamic";
 
-  const verifyToken =
-    request.nextUrl.searchParams.get(
-      "hub.verify_token",
-    );
-
-  const challenge =
-    request.nextUrl.searchParams.get(
-      "hub.challenge",
-    );
+export async function GET(request: NextRequest) {
+  const mode = request.nextUrl.searchParams.get("hub.mode");
+  const token = request.nextUrl.searchParams.get(
+    "hub.verify_token",
+  );
+  const challenge = request.nextUrl.searchParams.get(
+    "hub.challenge",
+  );
 
   const expectedToken =
     process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN;
 
   if (
     mode === "subscribe" &&
-    verifyToken === expectedToken &&
+    token === expectedToken &&
     challenge
   ) {
     return new NextResponse(challenge, {
@@ -35,17 +27,18 @@ export async function GET(
     });
   }
 
- return NextResponse.json(
-  {
-    error: "Facebook webhook verification failed.",
-    receivedMode: mode,
-    receivedToken: verifyToken,
-    tokenConfigured: Boolean(expectedToken),
-    tokenMatches: verifyToken === expectedToken,
-    challenge,
-  },
-  {
-    status: 403,
-  },
-);
+  return NextResponse.json(
+    {
+      error: "Facebook webhook verification failed.",
+    },
+    {
+      status: 403,
+    },
+  );
+}
+
+export async function POST() {
+  return NextResponse.json({
+    received: true,
+  });
 }
