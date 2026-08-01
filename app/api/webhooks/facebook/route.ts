@@ -49,41 +49,11 @@ export async function GET(
   );
 }
 
-export async function POST(
-  request: NextRequest,
-) {
-  const payload: unknown = await request.json();
+export async function POST(request: NextRequest) {
+  const rawBody = await request.text();
 
-  console.log(
-    "Facebook webhook received:",
-    JSON.stringify(payload),
-  );
-
-  const { error } = await supabaseAdmin
-    .from("webhook_events")
-    .insert({
-      platform: "facebook",
-      event_type: "page",
-      payload,
-      processing_status: "pending",
-    });
-
-  if (error) {
-    console.error(
-      "Unable to save webhook:",
-      error,
-    );
-
-    return NextResponse.json(
-      {
-        received: false,
-        error: error.message,
-      },
-      {
-        status: 500,
-      },
-    );
-  }
+  console.log("FACEBOOK_WEBHOOK_POST");
+  console.log(rawBody);
 
   return NextResponse.json({
     received: true,
