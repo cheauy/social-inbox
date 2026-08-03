@@ -52,7 +52,7 @@ export default function PrivacyPage() {
           Contact
         </h2>
 
-        <p>Email: YOUR_SUPPORT_EMAIL</p>
+        <p>Email: support@tenhchat.com</p>
       </div>
     </main>
   );

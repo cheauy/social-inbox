@@ -8,7 +8,7 @@ export default function DataDeletionPage() {
       <div className="mt-8 space-y-5 text-slate-700">
         <p>
           To request deletion of data stored by Social Inbox, email
-          YOUR_SUPPORT_EMAIL using the subject “Data Deletion
+          support@tenhchat.com using the subject “Data Deletion
           Request.”
         </p>
 

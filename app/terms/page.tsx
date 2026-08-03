@@ -52,7 +52,7 @@ export default function TermsPage() {
           Contact
         </h2>
 
-        <p>Email: waynehe7@hotmail.com</p>
+        <p>Email: support@tenhchat.com</p>
       </div>
     </main>
   );
