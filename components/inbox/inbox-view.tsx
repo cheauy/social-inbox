@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import type {
   InboxConversation,
@@ -40,6 +42,76 @@ export function InboxView({
       (conversation) =>
         conversation.id === activeConversationId,
     ) ?? null;
+async function handleSendMessage(
+  event: FormEvent<HTMLFormElement>,
+) {
+  event.preventDefault();
+
+  const message = reply.trim();
+
+  if (
+    !message ||
+    !activeConversation ||
+    !activeConversation.contact
+  ) {
+    return;
+  }
+
+  setSending(true);
+  setSendError(null);
+
+  try {
+    const response = await fetch(
+      "/api/facebook/send",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          conversationId: activeConversation.id,
+          recipientId:
+            activeConversation.contact.platform_user_id,
+          message,
+        }),
+      },
+    );
+
+    const result = (await response.json()) as {
+      success?: boolean;
+      error?: string;
+    };
+
+    if (!response.ok || !result.success) {
+      throw new Error(
+        result.error ?? "Unable to send the message.",
+      );
+    }
+
+    setReply("");
+
+    /*
+     * Reload the server component data so the newly saved
+     * outgoing message appears in the conversation.
+     */
+    router.refresh();
+  } catch (error) {
+    setSendError(
+      error instanceof Error
+        ? error.message
+        : "Unable to send the message.",
+    );
+  } finally {
+    setSending(false);
+  }
+}
+    const router = useRouter();
+
+const [reply, setReply] = useState("");
+const [sending, setSending] = useState(false);
+const [sendError, setSendError] = useState<string | null>(
+  null,
+);
 
   return (
     <div className="grid min-h-[650px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:grid-cols-[360px_1fr]">
@@ -197,28 +269,42 @@ export function InboxView({
             </div>
 
             <div className="border-t border-slate-200 bg-white p-4">
-              <form className="flex gap-3">
-                <input
-                  type="text"
-                  name="message"
-                  placeholder="Write a reply..."
-                  disabled
-                  className="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none disabled:bg-slate-50"
-                />
+             <form
+  onSubmit={handleSendMessage}
+  className="flex gap-3"
+>
+  <input
+    type="text"
+    name="message"
+    value={reply}
+    onChange={(event) =>
+      setReply(event.target.value)
+    }
+    placeholder="Write a reply..."
+    disabled={sending}
+    autoComplete="off"
+    className="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+  />
 
-                <button
-                  type="submit"
-                  disabled
-                  className="rounded-xl bg-slate-300 px-5 py-3 font-medium text-slate-500"
-                >
-                  Send
-                </button>
-              </form>
+  <button
+    type="submit"
+    disabled={sending || !reply.trim()}
+    className="rounded-xl bg-blue-600 px-5 py-3 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+  >
+    {sending ? "Sending..." : "Send"}
+  </button>
+</form>
 
-              <p className="mt-2 text-xs text-slate-400">
-                Sending will be enabled after the Facebook
-                connection is added.
-              </p>
+{sendError ? (
+  <p className="mt-2 text-sm text-red-600">
+    {sendError}
+  </p>
+) : (
+  <p className="mt-2 text-xs text-slate-400">
+    Replies are sent through the Apex Clothing
+    Facebook Page.
+  </p>
+)}
             </div>
           </>
         )}
@@ -226,3 +312,4 @@ export function InboxView({
     </div>
   );
 }
+
