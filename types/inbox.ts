@@ -34,6 +34,16 @@ export type InboxContact = {
   last_contact_at: string | null;
 };
 
+export type ContactNote = {
+  id: string;
+  contact_id: string;
+  author_id: string;
+  note_text: string;
+  created_at: string;
+  updated_at: string;
+  author: TeamMember | null;
+};
+
 export type InboxConversation = {
   id: string;
   status: ConversationStatus;

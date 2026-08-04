@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { CustomerNotes } from "@/components/inbox/customer-notes";
 import {
   getInitial,
   getStatusClasses,
@@ -373,6 +374,17 @@ export function CustomerProfile({
                   "No customer note has been added."}
               </p>
             </ProfileSection>
+
+            <CustomerNotes
+              contactId={contact.id}
+              currentMemberId={
+                activeConversation.assigned_to
+              }
+              currentMemberName={
+                activeConversation.assigned_member
+                  ?.full_name ?? null
+              }
+            />
           </div>
         )}
       </div>
