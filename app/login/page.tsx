@@ -1,6 +1,19 @@
 import Image from "next/image";
+import { Suspense } from "react";
 
 import { LoginForm } from "@/components/auth/login-form";
+
+function LoginFormLoading() {
+  return (
+    <div className="mt-8 flex min-h-[420px] items-center justify-center">
+      <div className="flex items-center gap-3 text-sm font-medium text-slate-500">
+        <span className="h-5 w-5 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
+
+        Loading sign-in form...
+      </div>
+    </div>
+  );
+}
 
 export default function LoginPage() {
   return (
@@ -14,16 +27,16 @@ export default function LoginPage() {
         backgroundRepeat: "no-repeat",
       }}
     >
-      {/* Dark overlay for readability */}
+      {/* Dark overlay */}
       <div className="absolute inset-0 bg-slate-950/30" />
 
       <div className="relative z-10 grid w-full max-w-[1080px] overflow-hidden rounded-[30px] border border-white/20 bg-white shadow-[0_30px_100px_rgba(0,0,0,0.45)] lg:grid-cols-[1fr_1fr]">
         {/* Left branding */}
-        <section className="relative hidden min-h-[760px] overflow-hidden bg-[#08132F]/95 p-12 text-white backdrop-blur-sm lg:flex lg:flex-col">
+        <section className="relative hidden min-h-[680px] overflow-hidden bg-[#08132F]/95 p-12 text-white backdrop-blur-sm lg:flex lg:flex-col">
           <div className="pointer-events-none absolute inset-0">
-              <div className="absolute -bottom-28 -left-36 h-[420px] w-[560px] rounded-full border border-blue-400/40 bg-blue-500/10 blur-xl" />
+            <div className="absolute -bottom-28 -left-36 h-[420px] w-[560px] rounded-full border border-blue-400/40 bg-blue-500/10 blur-xl" />
 
-           <div className="absolute -right-40 top-32 h-[520px] w-[520px] rounded-full border border-blue-500/30" />
+            <div className="absolute -right-40 top-32 h-[520px] w-[520px] rounded-full border border-blue-500/30" />
 
             <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.03),transparent_45%)]" />
           </div>
@@ -43,7 +56,9 @@ export default function LoginPage() {
             </h1>
 
             <p className="mt-6 max-w-lg text-lg leading-8 text-slate-300">
-              Bring your Facebook Messenger conversations, customer profiles, notes, tags, and team collaboration together in one powerful platform.
+              Bring your Facebook Messenger conversations,
+              customer profiles, notes, tags, and team
+              collaboration together in one powerful platform.
             </p>
           </div>
 
@@ -51,7 +66,7 @@ export default function LoginPage() {
             <div className="flex items-start gap-4">
               <Image
                 src="/images/tenh_logo.png"
-                alt=""
+                alt="Tenh Chat"
                 width={50}
                 height={50}
                 className="h-12 w-12 shrink-0 object-contain"
@@ -63,7 +78,8 @@ export default function LoginPage() {
                 </p>
 
                 <p className="mt-1 text-sm leading-6 text-slate-300">
-                  Handle customer messages, assign teammates, and grow your business from a single platform
+                  Handle customer messages, assign teammates,
+                  and grow your business from a single platform.
                 </p>
               </div>
             </div>
@@ -71,12 +87,11 @@ export default function LoginPage() {
         </section>
 
         {/* Right login form */}
-        {/* Right form */}
         <section className="flex min-h-[680px] items-center bg-white px-7 py-9 sm:px-10 lg:px-14">
           <div className="mx-auto w-full max-w-[420px]">
             <div className="lg:hidden">
               <Image
-                src="/tenh-logo.png"
+                src="/images/tenh_logo.png"
                 alt="Tenh Chat"
                 width={78}
                 height={78}
@@ -86,15 +101,16 @@ export default function LoginPage() {
             </div>
 
             <h2 className="mt-6 text-4xl font-bold tracking-tight text-slate-950 lg:mt-0">
-              Welcome 
+              Welcome
             </h2>
 
             <p className="mt-2 text-base text-slate-500">
-              Sign in to manage your customer
-              conversations.
+              Sign in to manage your customer conversations.
             </p>
 
-            <LoginForm />
+            <Suspense fallback={<LoginFormLoading />}>
+              <LoginForm />
+            </Suspense>
           </div>
         </section>
       </div>
