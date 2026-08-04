@@ -1,0 +1,74 @@
+import Image from "next/image";
+import Link from "next/link";
+
+import { CurrentUserProfileMenu } from "@/components/dashboard/current-user-profile-menu";
+
+const navigation = [
+  {
+    label: "Inbox",
+    href: "/dashboard/inbox",
+  },
+  {
+    label: "Customers",
+    href: "/dashboard/customers",
+  },
+  {
+    label: "Integrations",
+    href: "/dashboard/integrations",
+  },
+  {
+    label: "Settings",
+    href: "/dashboard/settings",
+  },
+];
+
+export function DashboardHeader() {
+  return (
+    <header className="flex h-[72px] shrink-0 items-center border-b border-slate-200 bg-white px-5">
+      <div className="flex w-full min-w-0 items-center">
+        {/* Logo */}
+        <Link
+          href="/dashboard/inbox"
+          className="flex shrink-0 items-center gap-3"
+          aria-label="Go to inbox"
+        >
+          <Image
+            src="/images/tenh_logo.png"
+            alt="Tenh Chat"
+            width={46}
+            height={46}
+            priority
+            className="h-11 w-11 object-contain"
+          />
+
+          <div className="hidden sm:block">
+            <p className="text-lg font-bold leading-tight text-slate-950">
+              Tenh Chat
+            </p>
+
+            <p className="text-xs text-slate-500">
+              Customer messaging
+            </p>
+          </div>
+        </Link>
+
+        {/* Main navigation */}
+        <nav className="ml-8 hidden items-center gap-1 md:flex">
+          {navigation.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="ml-auto">
+          <CurrentUserProfileMenu />
+        </div>
+      </div>
+    </header>
+  );
+}

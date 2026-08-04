@@ -1,6 +1,12 @@
 "use client";
 
 import type { FormEvent } from "react";
+import { ConversationHeader } from "@/components/inbox/conversation-header";
+import {
+  formatMessageTime,
+} from "@/components/inbox/inbox-utils";
+
+import { ReplyBox } from "@/components/inbox/reply-box";
 
 import type {
   ConversationStatus,
@@ -8,13 +14,6 @@ import type {
   InboxMessage,
   TeamMember,
 } from "@/types/inbox";
-import {
-  formatMessageTime,
-  getStatusClasses,
-  getStatusLabel,
-  statusOptions,
-} from "@/components/inbox/inbox-utils";
-import { ReplyBox } from "@/components/inbox/reply-box";
 
 type MessagePanelProps = {
   activeConversation: InboxConversation | null;
@@ -27,6 +26,12 @@ type MessagePanelProps = {
   statusError: string | null;
   assigning: boolean;
   assignmentError: string | null;
+  markingUnread: boolean;
+  customerPanelVisible: boolean;
+
+  onMarkUnread: () => void;
+  onOpenHistory: () => void;
+  onToggleCustomerPanel: () => void;
   onReplyChange: (value: string) => void;
   onSendMessage: (
     event: FormEvent<HTMLFormElement>,
@@ -34,7 +39,9 @@ type MessagePanelProps = {
   onStatusChange: (
     status: ConversationStatus,
   ) => void;
-  onAssignmentChange: (assignedTo: string) => void;
+  onAssignmentChange: (
+    assignedTo: string,
+  ) => void;
 };
 
 export function MessagePanel({
@@ -48,6 +55,11 @@ export function MessagePanel({
   statusError,
   assigning,
   assignmentError,
+  markingUnread,
+  customerPanelVisible,
+  onMarkUnread,
+  onOpenHistory,
+  onToggleCustomerPanel,
   onReplyChange,
   onSendMessage,
   onStatusChange,
@@ -55,7 +67,7 @@ export function MessagePanel({
 }: MessagePanelProps) {
   if (!activeConversation) {
     return (
-      <section className="flex flex-col">
+      <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
         <div className="flex flex-1 items-center justify-center bg-slate-50 p-8">
           <div className="text-center">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-100 text-2xl">
@@ -75,98 +87,41 @@ export function MessagePanel({
     );
   }
 
-  return (
-    <section className="flex min-w-0 flex-col">
-      <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="font-semibold text-slate-900">
-            {activeConversation.contact?.full_name ??
-              "Facebook customer"}
-          </p>
+ return (
+  <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white">
+   <ConversationHeader
+  conversation={activeConversation}
+  teamMembers={teamMembers}
+  updatingStatus={updatingStatus}
+  assigning={assigning}
+  markingUnread={markingUnread}
+  customerPanelVisible={
+    customerPanelVisible
+  }
+  onStatusChange={onStatusChange}
+  onAssignmentChange={
+    onAssignmentChange
+  }
+  onMarkUnread={onMarkUnread}
+  onOpenHistory={onOpenHistory}
+  onToggleCustomerPanel={
+    onToggleCustomerPanel
+  }
+/>
+    <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-3">
+      {/* Customer name, status and assignment */}
+    </div>
 
-          <p className="text-sm text-slate-500">
-            Facebook Messenger ·{" "}
-            {activeConversation.social_account
-              ?.account_name ?? "Facebook Page"}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`rounded-full px-2.5 py-1 text-xs font-medium ${getStatusClasses(
-              activeConversation.status,
-            )}`}
-          >
-            {getStatusLabel(activeConversation.status)}
-          </span>
-
-          <select
-            value={activeConversation.status}
-            onChange={(event) =>
-              onStatusChange(
-                event.target.value as ConversationStatus,
-              )
-            }
-            disabled={updatingStatus}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-wait disabled:bg-slate-100"
-          >
-            {statusOptions.map((status) => (
-              <option
-                key={status.value}
-                value={status.value}
-              >
-                {status.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={
-              activeConversation.assigned_to ??
-              "unassigned"
-            }
-            onChange={(event) =>
-              onAssignmentChange(event.target.value)
-            }
-            disabled={assigning}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-wait disabled:bg-slate-100"
-            aria-label="Assign conversation"
-          >
-            <option value="unassigned">
-              Unassigned
-            </option>
-
-            {teamMembers.map((member) => (
-              <option
-                key={member.id}
-                value={member.id}
-              >
-                {member.full_name} — {member.role}
-              </option>
-            ))}
-          </select>
-
-          {assigning ? (
-            <span className="text-xs text-slate-500">
-              Saving assignment...
-            </span>
-          ) : null}
-        </div>
-
-        {statusError ? (
-          <p className="text-sm text-red-600 sm:basis-full">
-            {statusError}
-          </p>
-        ) : null}
-
-        {assignmentError ? (
-          <p className="text-sm text-red-600 sm:basis-full">
-            {assignmentError}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50 p-6">
+    <div
+  className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6"
+  style={{
+    backgroundColor: "#EEF2F6",
+    backgroundImage: "url('/images/chat-bg.png')",
+    backgroundRepeat: "repeat",
+    backgroundSize: "320px",
+  }}
+>
+      <div className="space-y-4">
         {messages.map((message) => {
           const isOutgoing =
             message.direction === "outgoing";
@@ -181,24 +136,18 @@ export function MessagePanel({
               }`}
             >
               <div
-                className={`max-w-md rounded-2xl px-4 py-3 text-sm shadow-sm ${
+                className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
                   isOutgoing
-                    ? "rounded-br-md bg-blue-600 text-white"
-                    : "rounded-bl-md bg-white text-slate-800"
+                    ? "rounded-br-md bg-green-100 text-slate-900"
+                    : "rounded-bl-md bg-white text-slate-900"
                 }`}
               >
-                <p>
+                <p className="whitespace-pre-wrap">
                   {message.message_text ??
                     "Unsupported message"}
                 </p>
 
-                <p
-                  className={`mt-1 text-xs ${
-                    isOutgoing
-                      ? "text-blue-100"
-                      : "text-slate-400"
-                  }`}
-                >
+                <p className="mt-1 text-xs text-slate-500">
                   {formatMessageTime(
                     message.platform_created_at ??
                       message.created_at,
@@ -209,14 +158,31 @@ export function MessagePanel({
           );
         })}
       </div>
+    </div>
 
-      <ReplyBox
-        reply={reply}
-        sending={sending}
-        error={sendError}
-        onReplyChange={onReplyChange}
-        onSubmit={onSendMessage}
-      />
-    </section>
-  );
+
+    {activeConversation.contact ? (
+  <div className="shrink-0">
+    <ReplyBox
+      reply={reply}
+      sending={sending}
+      error={sendError}
+      contactId={
+        activeConversation.contact.id
+      }
+      businessId={
+        activeConversation.contact
+          .business_id
+      }
+      initialTags={
+        activeConversation.contact.tags ??
+        []
+      }
+      onReplyChange={onReplyChange}
+      onSubmit={onSendMessage}
+    />
+  </div>
+) : null}
+  </section>
+);
 }

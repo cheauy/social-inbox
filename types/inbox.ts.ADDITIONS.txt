@@ -1,0 +1,14 @@
+Add this to types/inbox.ts:
+
+export type SavedReply = {
+  id: string;
+  business_id: string;
+  title: string;
+  shortcut: string | null;
+  message_text: string;
+  category: string | null;
+  sort_index: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};

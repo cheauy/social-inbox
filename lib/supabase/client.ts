@@ -1,11 +1,13 @@
+"use client";
+
 import { createBrowserClient } from "@supabase/ssr";
 
 export function createClient() {
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
 
-  const publishableKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl) {
     throw new Error(
@@ -13,14 +15,14 @@ export function createClient() {
     );
   }
 
-  if (!publishableKey) {
+  if (!supabaseAnonKey) {
     throw new Error(
-      "Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.",
+      "Missing NEXT_PUBLIC_SUPABASE_ANON_KEY.",
     );
   }
 
   return createBrowserClient(
     supabaseUrl,
-    publishableKey,
+    supabaseAnonKey,
   );
 }

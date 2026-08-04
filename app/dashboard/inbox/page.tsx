@@ -82,27 +82,21 @@ export default async function InboxPage({
   };
 
   return (
-    <main className="p-6">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-slate-900">
-            Inbox
-          </h1>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
+     
 
-          <p className="mt-1 text-sm text-slate-500">
-            Manage Facebook Messenger conversations.
-          </p>
-        </div>
-
-       <InboxView
-  conversations={conversations}
-  activeConversationId={activeConversationId}
-  messages={messages}
-  activeStatus={activeStatus}
-  statusCounts={statusCounts}
-  teamMembers={teamMembers}
-/>
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <InboxView
+          conversations={conversations}
+          activeConversationId={
+            activeConversationId
+          }
+          messages={messages}
+          activeStatus={activeStatus}
+          statusCounts={statusCounts}
+          teamMembers={teamMembers}
+        />
       </div>
-    </main>
+    </div>
   );
 }

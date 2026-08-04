@@ -8,7 +8,11 @@ import { ConversationList } from "@/components/inbox/conversation-list";
 import { CustomerProfile } from "@/components/inbox/customer-profile";
 import type { InboxViewProps } from "@/components/inbox/inbox-view-types";
 import { MessagePanel } from "@/components/inbox/message-panel";
+
 import type { ConversationStatus } from "@/types/inbox";
+
+
+
 
 export function InboxView({
   conversations,
@@ -25,6 +29,19 @@ export function InboxView({
   const [sendError, setSendError] =
     useState<string | null>(null);
 
+
+  const [
+  customerPanelVisible,
+  setCustomerPanelVisible,
+] = useState(true);
+
+const [markingUnread, setMarkingUnread] =
+  useState(false);
+
+const [historyOpen, setHistoryOpen] =
+  useState(false);
+
+
   const [updatingStatus, setUpdatingStatus] =
     useState(false);
   const [statusError, setStatusError] =
@@ -40,6 +57,47 @@ export function InboxView({
       (conversation) =>
         conversation.id === activeConversationId,
     ) ?? null;
+
+  async function handleMarkUnread() {
+  if (!activeConversation) {
+    return;
+  }
+
+  setMarkingUnread(true);
+
+  try {
+    const response = await fetch(
+      `/api/conversations/${activeConversation.id}/unread`,
+      {
+        method: "PATCH",
+      },
+    );
+
+    const result =
+      (await response.json()) as {
+        success?: boolean;
+        error?: string;
+      };
+
+    if (!response.ok || !result.success) {
+      throw new Error(
+        result.error ??
+          "Unable to mark conversation as unread.",
+      );
+    }
+
+    router.refresh();
+  } catch (markError) {
+    window.alert(
+      markError instanceof Error
+        ? markError.message
+        : "Unable to mark conversation as unread.",
+    );
+  } finally {
+    setMarkingUnread(false);
+  }
+}
+
 
   async function handleSendMessage(
     event: FormEvent<HTMLFormElement>,
@@ -68,9 +126,13 @@ export function InboxView({
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            conversationId: activeConversation.id,
+            conversationId:
+              activeConversation.id,
+
             recipientId:
-              activeConversation.contact.platform_user_id,
+              activeConversation.contact
+                .platform_user_id,
+
             message,
           }),
         },
@@ -203,45 +265,104 @@ export function InboxView({
     }
   }
 
-  return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="grid min-h-[650px] xl:grid-cols-[340px_minmax(0,1fr)_320px]">
-        <ConversationList
-          conversations={conversations}
-          activeConversationId={
-            activeConversationId
-          }
-          activeStatus={activeStatus}
-          statusCounts={statusCounts}
-        />
+return (
+ <div className="h-[calc(100vh-72px)] w-full overflow-hidden rounded-none border-0 bg-white">
+    <div
+      className={`grid h-full min-h-0 overflow-hidden ${
+        customerPanelVisible
+          ? "grid-cols-[340px_minmax(0,1fr)_340px]"
+          : "grid-cols-[340px_minmax(0,1fr)]"
+      }`}
+    >
+      <ConversationList
+        conversations={conversations}
+        activeConversationId={
+          activeConversationId
+        }
+        activeStatus={activeStatus}
+        statusCounts={statusCounts}
+      />
 
-        <MessagePanel
-          activeConversation={activeConversation}
-          messages={messages}
-          teamMembers={teamMembers}
-          reply={reply}
-          sending={sending}
-          sendError={sendError}
-          updatingStatus={updatingStatus}
-          statusError={statusError}
-          assigning={assigning}
-          assignmentError={assignmentError}
-          onReplyChange={setReply}
-          onSendMessage={handleSendMessage}
-          onStatusChange={(status) =>
-            void handleStatusChange(status)
-          }
-          onAssignmentChange={(assignedTo) =>
-            void handleAssignmentChange(
-              assignedTo,
-            )
-          }
-        />
+      <MessagePanel
+        activeConversation={
+          activeConversation
+        }
+        messages={messages}
+        teamMembers={teamMembers}
+        reply={reply}
+        sending={sending}
+        sendError={sendError}
+        updatingStatus={
+          updatingStatus
+        }
+        statusError={statusError}
+        assigning={assigning}
+        assignmentError={
+          assignmentError
+        }
+        markingUnread={
+          markingUnread
+        }
+        customerPanelVisible={
+          customerPanelVisible
+        }
+        onReplyChange={setReply}
+        onSendMessage={
+          handleSendMessage
+        }
+        onStatusChange={(status) =>
+          void handleStatusChange(
+            status,
+          )
+        }
+        onAssignmentChange={(
+          memberId,
+        ) =>
+          void handleAssignmentChange(
+            memberId,
+          )
+        }
+        onMarkUnread={() =>
+          void handleMarkUnread()
+        }
+        onOpenHistory={() =>
+          setHistoryOpen(true)
+        }
+        onToggleCustomerPanel={() =>
+          setCustomerPanelVisible(
+            (current) => !current,
+          )
+        }
+      />
 
+      {customerPanelVisible ? (
         <CustomerProfile
-          activeConversation={activeConversation}
+          activeConversation={
+            activeConversation
+          }
         />
-      </div>
+      ) : null}
     </div>
-  );
+
+    {!customerPanelVisible ? (
+      <button
+        type="button"
+        onClick={() =>
+          setCustomerPanelVisible(true)
+        }
+        className="absolute right-0 top-1/2 z-30 flex -translate-y-1/2 items-center gap-2 rounded-l-xl border border-r-0 border-slate-300 bg-white px-2 py-4 text-xs font-medium text-slate-600 shadow-lg hover:bg-slate-50"
+        title="Show customer information"
+        aria-label="Show customer information"
+      >
+        <span className="text-lg">
+          ‹
+        </span>
+
+        <span className="[writing-mode:vertical-rl]">
+          Customer
+        </span>
+      </button>
+    ) : null}
+  </div>
+);
 }
