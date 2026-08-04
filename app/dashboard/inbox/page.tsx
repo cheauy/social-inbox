@@ -2,6 +2,8 @@ import { InboxView } from "@/components/inbox/inbox-view";
 import { getConversations } from "@/lib/inbox/get-conversations";
 import { getMessages } from "@/lib/inbox/get-messages";
 import type { ConversationStatus } from "@/types/inbox";
+import { getTeamMembers } from "@/lib/inbox/get-team-members";
+
 
 const validStatuses = new Set<ConversationStatus>([
   "open",
@@ -22,7 +24,11 @@ export default async function InboxPage({
   searchParams,
 }: InboxPageProps) {
   const params = await searchParams;
-  const allConversations = await getConversations();
+  const [allConversations, teamMembers] =
+  await Promise.all([
+    getConversations(),
+    getTeamMembers(),
+  ]);;
 
   const requestedStatus = params.status;
   const activeStatus =
@@ -88,13 +94,14 @@ export default async function InboxPage({
           </p>
         </div>
 
-        <InboxView
-          conversations={conversations}
-          activeConversationId={activeConversationId}
-          messages={messages}
-          activeStatus={activeStatus}
-          statusCounts={statusCounts}
-        />
+       <InboxView
+  conversations={conversations}
+  activeConversationId={activeConversationId}
+  messages={messages}
+  activeStatus={activeStatus}
+  statusCounts={statusCounts}
+  teamMembers={teamMembers}
+/>
       </div>
     </main>
   );

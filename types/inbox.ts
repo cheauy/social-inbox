@@ -5,6 +5,13 @@ export type ConversationStatus =
   | "closed"
   | "spam";
 
+export type TeamMember = {
+  id: string;
+  full_name: string;
+  email: string | null;
+  role: "owner" | "admin" | "agent";
+};
+
 export type MessageDirection =
   | "incoming"
   | "outgoing";
@@ -15,6 +22,10 @@ export type InboxConversation = {
   unread_count: number;
   last_message_text: string | null;
   last_message_at: string | null;
+
+   assigned_to: string | null;
+  assigned_at: string | null;
+  assigned_member: TeamMember | null;
 
   contact: {
     id: string;

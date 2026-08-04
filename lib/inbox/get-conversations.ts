@@ -8,24 +8,32 @@ export async function getConversations(): Promise<
 > {
   const { data, error } = await supabaseAdmin
     .from("conversations")
-    .select(`
-      id,
-      status,
-      unread_count,
-      last_message_text,
-      last_message_at,
-      contact:contacts (
-        id,
-        full_name,
-        profile_picture_url,
-        platform_user_id
-      ),
-      social_account:social_accounts (
-        id,
-        account_name,
-        platform_account_id
-      )
-    `)
+   .select(`
+  id,
+  status,
+  unread_count,
+  last_message_text,
+  last_message_at,
+  assigned_to,
+  assigned_at,
+  assigned_member:team_members (
+    id,
+    full_name,
+    email,
+    role
+  ),
+  contact:contacts (
+    id,
+    full_name,
+    profile_picture_url,
+    platform_user_id
+  ),
+  social_account:social_accounts (
+    id,
+    account_name,
+    platform_account_id
+  )
+`)
     .order("last_message_at", {
       ascending: false,
       nullsFirst: false,
