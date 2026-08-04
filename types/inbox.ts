@@ -2,6 +2,7 @@ export type ConversationStatus =
   | "open"
   | "pending"
   | "resolved"
+  | "closed"
   | "spam";
 
 export type MessageDirection =
