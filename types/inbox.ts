@@ -5,16 +5,34 @@ export type ConversationStatus =
   | "closed"
   | "spam";
 
+export type MessageDirection =
+  | "incoming"
+  | "outgoing";
+
+export type TeamMemberRole =
+  | "owner"
+  | "admin"
+  | "agent";
+
 export type TeamMember = {
   id: string;
   full_name: string;
   email: string | null;
-  role: "owner" | "admin" | "agent";
+  role: TeamMemberRole;
 };
 
-export type MessageDirection =
-  | "incoming"
-  | "outgoing";
+export type InboxContact = {
+  id: string;
+  full_name: string | null;
+  profile_picture_url: string | null;
+  platform_user_id: string;
+  phone: string | null;
+  email: string | null;
+  company_name: string | null;
+  customer_note: string | null;
+  created_at: string;
+  last_contact_at: string | null;
+};
 
 export type InboxConversation = {
   id: string;
@@ -23,16 +41,11 @@ export type InboxConversation = {
   last_message_text: string | null;
   last_message_at: string | null;
 
-   assigned_to: string | null;
+  assigned_to: string | null;
   assigned_at: string | null;
   assigned_member: TeamMember | null;
 
-  contact: {
-    id: string;
-    full_name: string | null;
-    profile_picture_url: string | null;
-    platform_user_id: string;
-  } | null;
+  contact: InboxContact | null;
 
   social_account: {
     id: string;

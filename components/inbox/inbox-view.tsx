@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 
 import { ConversationList } from "@/components/inbox/conversation-list";
+import { CustomerProfile } from "@/components/inbox/customer-profile";
 import type { InboxViewProps } from "@/components/inbox/inbox-view-types";
 import { MessagePanel } from "@/components/inbox/message-panel";
 import type { ConversationStatus } from "@/types/inbox";
@@ -204,7 +205,7 @@ export function InboxView({
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="grid min-h-[650px] lg:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="grid min-h-[650px] xl:grid-cols-[340px_minmax(0,1fr)_320px]">
         <ConversationList
           conversations={conversations}
           activeConversationId={
@@ -235,6 +236,10 @@ export function InboxView({
               assignedTo,
             )
           }
+        />
+
+        <CustomerProfile
+          activeConversation={activeConversation}
         />
       </div>
     </div>

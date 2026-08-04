@@ -49,15 +49,16 @@ export async function PATCH(
     );
   }
 
-  const fullName = cleanOptionalValue(body.fullName);
-  const phone = cleanOptionalValue(body.phone);
-  const email = cleanOptionalValue(body.email);
-  const companyName = cleanOptionalValue(
-    body.companyName,
-  );
-  const customerNote = cleanOptionalValue(
-    body.customerNote,
-  );
+  const fullName =
+    cleanOptionalValue(body.fullName);
+  const phone =
+    cleanOptionalValue(body.phone);
+  const email =
+    cleanOptionalValue(body.email);
+  const companyName =
+    cleanOptionalValue(body.companyName);
+  const customerNote =
+    cleanOptionalValue(body.customerNote);
 
   if (
     email &&
