@@ -141,169 +141,195 @@ export async function processFacebookComment({
    *
    * Fetch the complete comment from Graph API.
    */
-  if (
-    !message ||
-    !authorId
-  ) {
-    console.log(
-      "STEP 0.1 - fetching full Facebook comment",
-      {
-        commentId,
-        missingMessage:
-          !message,
-        missingAuthor:
-          !authorId,
-      },
-    );
+/*
+ * Facebook feed webhook events may not include
+ * the comment message.
+ *
+ * Try to enrich the event from Graph API,
+ * but DO NOT block conversation creation
+ * if the Graph lookup fails.
+ */
+if (
+  !message ||
+  !authorId
+) {
+  console.log(
+    "STEP 0.1 - fetching full Facebook comment",
+    {
+      commentId,
+      missingMessage:
+        !message,
+      missingAuthor:
+        !authorId,
+    },
+  );
 
-    if (!commentId) {
-      console.warn(
-        "COMMENT STOP - no commentId available for Graph lookup",
-      );
+  if (commentId) {
+    try {
+      const graphVersion =
+        process.env
+          .FACEBOOK_GRAPH_API_VERSION ??
+        "v26.0";
 
-      return;
-    }
+      const fields = [
+        "id",
+        "message",
+        "from",
+        "created_time",
+        "parent",
+      ].join(",");
 
-    const graphVersion =
-      process.env
-        .FACEBOOK_GRAPH_API_VERSION ??
-      "v26.0";
+      const url =
+        `https://graph.facebook.com/${graphVersion}/${commentId}` +
+        `?fields=${encodeURIComponent(
+          fields,
+        )}` +
+        `&access_token=${encodeURIComponent(
+          pageAccessToken,
+        )}`;
 
-    const fields = [
-      "id",
-      "message",
-      "from",
-      "created_time",
-      "parent",
-    ].join(",");
+      const graphResponse =
+        await fetch(url, {
+          method: "GET",
+          cache: "no-store",
+        });
 
-    const url =
-      `https://graph.facebook.com/${graphVersion}/${commentId}` +
-      `?fields=${encodeURIComponent(
-        fields,
-      )}` +
-      `&access_token=${encodeURIComponent(
-        pageAccessToken,
-      )}`;
+      const graphText =
+        await graphResponse.text();
 
-    const graphResponse =
-      await fetch(url, {
-        method: "GET",
-        cache: "no-store",
-      });
+      console.log(
+        "STEP 0.2 - Graph API response",
+        {
+          status:
+            graphResponse.status,
 
-    const graphText =
-      await graphResponse.text();
+          ok:
+            graphResponse.ok,
 
-    console.log(
-      "STEP 0.2 - Graph API response",
-      {
-        status:
-          graphResponse.status,
-        ok:
-          graphResponse.ok,
-        body:
-          graphText,
-      },
-    );
-
-    let graphResult: {
-      id?: string;
-
-      message?: string;
-
-      created_time?: string;
-
-      from?: {
-        id?: string;
-        name?: string;
-      };
-
-      parent?: {
-        id?: string;
-      };
-
-      error?: {
-        message?: string;
-        code?: number;
-      };
-    } = {};
-
-    if (graphText.trim()) {
-      try {
-        graphResult =
-          JSON.parse(
+          body:
             graphText,
-          ) as typeof graphResult;
-      } catch {
-        console.error(
-          "COMMENT ERROR - invalid Graph JSON",
-          graphText,
-        );
-
-        throw new Error(
-          "Facebook comment lookup returned invalid JSON.",
-        );
-      }
-    }
-
-    if (!graphResponse.ok) {
-      console.error(
-        "COMMENT ERROR - Graph lookup failed",
-        graphResult,
+        },
       );
 
-      throw new Error(
-        graphResult.error
-          ?.message ??
-          "Unable to load Facebook comment details.",
-      );
-    }
+      let graphResult: {
+        id?: string;
 
-    message =
-      graphResult.message?.trim() ??
-      message;
+        message?: string;
 
-    authorId =
-      graphResult.from?.id?.trim() ??
-      authorId;
+        created_time?: string;
 
-    authorName =
-      graphResult.from?.name?.trim() ??
-      authorName;
+        from?: {
+          id?: string;
+          name?: string;
+        };
 
-    if (
-      graphResult.created_time
-    ) {
-      const parsed =
-        new Date(
-          graphResult.created_time,
-        );
+        parent?: {
+          id?: string;
+        };
 
-      if (
-        !Number.isNaN(
-          parsed.getTime(),
-        )
-      ) {
-        createdTime =
-          Math.floor(
-            parsed.getTime() /
-              1000,
+        error?: {
+          message?: string;
+          code?: number;
+        };
+      } = {};
+
+      if (graphText.trim()) {
+        try {
+          graphResult =
+            JSON.parse(
+              graphText,
+            ) as typeof graphResult;
+        } catch {
+          console.warn(
+            "Facebook comment lookup returned invalid JSON.",
           );
+        }
       }
-    }
 
-    console.log(
-      "STEP 0.3 - enriched comment",
-      {
-        commentId,
-        message,
-        authorId,
-        authorName,
-        createdTime,
-      },
-    );
+      /*
+       * IMPORTANT:
+       * Don't throw if Facebook lookup fails.
+       *
+       * We already have enough webhook information
+       * to create the comment conversation.
+       */
+      if (!graphResponse.ok) {
+        console.warn(
+          "Facebook comment enrichment failed.",
+          {
+            status:
+              graphResponse.status,
+
+            error:
+              graphResult.error,
+          },
+        );
+      } else {
+        message =
+          graphResult.message
+            ?.trim() ??
+          message;
+
+        authorId =
+          graphResult.from?.id
+            ?.trim() ??
+          authorId;
+
+        authorName =
+          graphResult.from?.name
+            ?.trim() ??
+          authorName;
+
+        if (
+          graphResult.created_time
+        ) {
+          const parsed =
+            new Date(
+              graphResult.created_time,
+            );
+
+          if (
+            !Number.isNaN(
+              parsed.getTime(),
+            )
+          ) {
+            createdTime =
+              Math.floor(
+                parsed.getTime() /
+                  1000,
+              );
+          }
+        }
+
+        console.log(
+          "STEP 0.3 - enriched comment",
+          {
+            commentId,
+            message,
+            authorId,
+            authorName,
+            createdTime,
+          },
+        );
+      }
+    } catch (error) {
+      /*
+       * Do NOT stop processing.
+       *
+       * Continue using webhook data.
+       */
+      console.warn(
+        "Facebook comment enrichment request failed:",
+        error,
+      );
+    }
   }
+}
+
+if (!message) {
+  message =
+    "Facebook comment";
+}
 
   console.log(
     "FACEBOOK COMMENT DEBUG",
