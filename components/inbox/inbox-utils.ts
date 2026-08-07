@@ -19,15 +19,97 @@ export function getInitial(name: string | null) {
   return name.trim().charAt(0).toUpperCase();
 }
 
-export function formatMessageTime(value: string | null) {
+export function formatMessageTime(
+  value: string | null,
+) {
   if (!value) {
     return "";
   }
 
-  return new Intl.DateTimeFormat("en", {
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const now = new Date();
+
+  const differenceMs =
+    now.getTime() - date.getTime();
+
+  const differenceSeconds =
+    Math.max(
+      0,
+      Math.floor(
+        differenceMs / 1000,
+      ),
+    );
+
+  if (differenceSeconds < 60) {
+    return "Now";
+  }
+
+  const differenceMinutes =
+    Math.floor(
+      differenceSeconds / 60,
+    );
+
+  if (differenceMinutes < 60) {
+    return `${differenceMinutes}m`;
+  }
+
+  const differenceHours =
+    Math.floor(
+      differenceMinutes / 60,
+    );
+
+  if (differenceHours < 24) {
+    return `${differenceHours}h`;
+  }
+
+  const startOfToday =
+    new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+
+  const startOfMessageDay =
+    new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+    );
+
+  const dayDifference =
+    Math.round(
+      (
+        startOfToday.getTime() -
+        startOfMessageDay.getTime()
+      ) /
+        86_400_000,
+    );
+
+  if (dayDifference === 1) {
+    return "Yesterday";
+  }
+
+  if (dayDifference < 7) {
+    return date.toLocaleDateString(
+      undefined,
+      {
+        weekday: "short",
+      },
+    );
+  }
+
+  return date.toLocaleDateString(
+    undefined,
+    {
+      month: "short",
+      day: "numeric",
+    },
+  );
 }
 
 export function getStatusClasses(

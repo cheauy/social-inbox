@@ -5,58 +5,93 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import type {
   CustomerTag,
   InboxConversation,
+  MessageDirection,
 } from "@/types/inbox";
 
 type ContactTagRow = {
   contact_id: string;
-  tag: CustomerTag | CustomerTag[] | null;
+  tag:
+    | CustomerTag
+    | CustomerTag[]
+    | null;
+};
+
+type LatestMessageRow = {
+  conversation_id: string;
+  direction: MessageDirection;
+  message_type:
+    | "text"
+    | "image"
+    | "video"
+    | "audio"
+    | "file"
+    | "sticker"
+    | "unknown";
+  created_at: string;
 };
 
 export async function getConversations(): Promise<
   InboxConversation[]
 > {
-  const { data, error } = await supabaseAdmin
-    .from("conversations")
-    .select(`
-      id,
-      status,
-      unread_count,
-      last_message_text,
-      last_message_at,
-      assigned_to,
-      assigned_at,
-
-      assigned_member:team_members (
+  const { data, error } =
+    await supabaseAdmin
+      .from("conversations")
+      .select(`
         id,
-        full_name,
-        email,
-        role
-      ),
+        status,
+        unread_count,
+        last_message_text,
+        last_message_at,
+        is_pinned,
+        pinned_at,
+        pinned_by,
+        source_type,
+        facebook_post_id,
+        facebook_comment_id,
+        parent_comment_id,
+        assigned_to,
+        assigned_at,
 
-      contact:contacts (
-        id,
-        business_id,
-        full_name,
-        profile_picture_url,
-        platform_user_id,
-        phone,
-        email,
-        company_name,
-        customer_note,
-        created_at,
-        last_contact_at
-      ),
+        assigned_member:team_members (
+          id,
+          full_name,
+          email,
+          role,
+          profile_picture_url
+        ),
 
-      social_account:social_accounts (
-        id,
-        account_name,
-        platform_account_id
-      )
-    `)
-    .order("last_message_at", {
+        contact:contacts (
+          id,
+          business_id,
+          full_name,
+          profile_picture_url,
+          platform_user_id,
+          phone,
+          email,
+          address,
+          company_name,
+          customer_note,
+          created_at,
+          last_contact_at
+        ),
+
+        social_account:social_accounts (
+          id,
+          account_name,
+          platform_account_id
+        )
+      `)
+       .order("is_pinned", {
+      ascending: false,
+    })
+    .order("pinned_at", {
       ascending: false,
       nullsFirst: false,
-    });
+    })
+      .order("last_message_at", {
+        ascending: false,
+        nullsFirst: false,
+      });
 
   if (error) {
     console.error(
@@ -70,20 +105,111 @@ export async function getConversations(): Promise<
   }
 
   const conversations =
-    (data ?? []) as unknown as InboxConversation[];
+    (data ??
+      []) as unknown as InboxConversation[];
 
-  const contactIds = conversations
-    .map(
+  const conversationIds =
+    conversations.map(
       (conversation) =>
-        conversation.contact?.id,
-    )
-    .filter(
-      (contactId): contactId is string =>
-        Boolean(contactId),
+        conversation.id,
     );
 
+  const latestMessagesByConversation =
+    new Map<
+      string,
+      LatestMessageRow
+    >();
+
+  if (
+    conversationIds.length > 0
+  ) {
+    const {
+      data: messageRows,
+      error: messageError,
+    } = await supabaseAdmin
+      .from("messages")
+      .select(`
+        conversation_id,
+        direction,
+        message_type,
+        created_at
+      `)
+      .in(
+        "conversation_id",
+        conversationIds,
+      )
+      .order("created_at", {
+        ascending: false,
+      });
+
+    if (messageError) {
+      console.error(
+        "Unable to load latest conversation messages:",
+        messageError,
+      );
+
+      throw new Error(
+        "Unable to load latest conversation messages.",
+      );
+    }
+
+    for (
+      const row of
+        (messageRows ??
+          []) as LatestMessageRow[]
+    ) {
+      if (
+        latestMessagesByConversation.has(
+          row.conversation_id,
+        )
+      ) {
+        continue;
+      }
+
+      latestMessagesByConversation.set(
+        row.conversation_id,
+        row,
+      );
+    }
+  }
+
+  const conversationsWithLatestMessage =
+    conversations.map(
+      (conversation) => {
+        const latestMessage =
+          latestMessagesByConversation.get(
+            conversation.id,
+          );
+
+        return {
+          ...conversation,
+
+          latest_message_type:
+            latestMessage?.message_type ??
+            null,
+
+          latest_message_direction:
+            latestMessage?.direction ??
+            null,
+        };
+      },
+    );
+
+  const contactIds =
+    conversationsWithLatestMessage
+      .map(
+        (conversation) =>
+          conversation.contact?.id,
+      )
+      .filter(
+        (
+          contactId,
+        ): contactId is string =>
+          Boolean(contactId),
+      );
+
   if (contactIds.length === 0) {
-    return conversations.map(
+    return conversationsWithLatestMessage.map(
       (conversation) => {
         if (!conversation.contact) {
           return conversation;
@@ -91,6 +217,7 @@ export async function getConversations(): Promise<
 
         return {
           ...conversation,
+
           contact: {
             ...conversation.contact,
             tags: [],
@@ -133,26 +260,30 @@ export async function getConversations(): Promise<
     );
   }
 
-  const tagsByContact = new Map<
-    string,
-    CustomerTag[]
-  >();
+  const tagsByContact =
+    new Map<
+      string,
+      CustomerTag[]
+    >();
 
   for (
     const row of
       (contactTagRows ??
         []) as unknown as ContactTagRow[]
   ) {
-    const tag = Array.isArray(row.tag)
-      ? row.tag[0]
-      : row.tag;
+    const tag =
+      Array.isArray(row.tag)
+        ? row.tag[0]
+        : row.tag;
 
     if (!tag) {
       continue;
     }
 
     const existingTags =
-      tagsByContact.get(row.contact_id) ?? [];
+      tagsByContact.get(
+        row.contact_id,
+      ) ?? [];
 
     existingTags.push(tag);
 
@@ -162,7 +293,7 @@ export async function getConversations(): Promise<
     );
   }
 
-  return conversations.map(
+  return conversationsWithLatestMessage.map(
     (conversation) => {
       if (!conversation.contact) {
         return conversation;
@@ -184,6 +315,7 @@ export async function getConversations(): Promise<
 
       return {
         ...conversation,
+
         contact: {
           ...conversation.contact,
           tags,

@@ -10,12 +10,15 @@ export default function SettingsLayout({
   children,
 }: SettingsLayoutProps) {
   return (
-    <div className="grid min-h-[calc(100vh-64px)] bg-slate-50 lg:grid-cols-[320px_minmax(0,1fr)]">
-      <SettingsSidebar />
+    <div className="grid h-full min-h-0 grid-cols-[270px_minmax(0,1fr)] overflow-hidden">
+      <aside className="min-h-0 overflow-y-auto border-r border-slate-200 bg-white">
+        <SettingsSidebar />
+      </aside>
 
-      <section className="min-w-0 p-6 lg:p-8">
+     <main className="min-h-0 overflow-y-auto bg-slate-100">
+
         {children}
-      </section>
+      </main>
     </div>
   );
 }

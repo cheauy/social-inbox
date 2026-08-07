@@ -16,18 +16,12 @@ type CustomerProfileProps = {
 };
 
 type CustomerForm = {
-  fullName: string;
   phone: string;
-  email: string;
-  companyName: string;
   customerNote: string;
 };
 
 const emptyForm: CustomerForm = {
-  fullName: "",
   phone: "",
-  email: "",
-  companyName: "",
   customerNote: "",
 };
 
@@ -52,13 +46,6 @@ export function CustomerProfile({
 }: CustomerProfileProps) {
   const router = useRouter();
 
-
-  type ProfileForm = {
-  phone: string;
-  customerNote: string;
-};
-
-
   const [editing, setEditing] =
     useState(false);
   const [saving, setSaving] =
@@ -76,68 +63,99 @@ export function CustomerProfile({
     setForm(emptyForm);
   }, [activeConversation?.id]);
 
-  function startEditing() {
-    if (!contact) {
-      return;
-    }
-
-    setForm({
-      fullName: contact.full_name ?? "",
-      phone: contact.phone ?? "",
-      email: contact.email ?? "",
-      companyName: contact.company_name ?? "",
-      customerNote: contact.customer_note ?? "",
-    });
-
-    setError(null);
-    setEditing(true);
+function startEditing() {
+  if (!contact) {
+    return;
   }
 
-  async function saveProfile() {
-    if (!contact) {
-      return;
-    }
+  setForm({
+    phone: contact.phone ?? "",
+    customerNote:
+      contact.customer_note ?? "",
+  });
 
-    setSaving(true);
-    setError(null);
+  setError(null);
+  setEditing(true);
+}
 
-    try {
-      const response = await fetch(
-        `/api/contacts/${contact.id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(form),
+async function saveProfile() {
+  if (!contact || !activeConversation) {
+    return;
+  }
+
+  setSaving(true);
+  setError(null);
+
+  try {
+    const response = await fetch(
+      `/api/contacts/${contact.id}`,
+      {
+        method: "PATCH",
+
+        headers: {
+          "Content-Type":
+            "application/json",
         },
-      );
 
-      const result = (await response.json()) as {
+        body: JSON.stringify({
+          conversationId:
+            activeConversation.id,
+
+          phone: form.phone,
+
+          customerNote:
+            form.customerNote,
+        }),
+      },
+    );
+
+    const result =
+      (await response.json()) as {
         success?: boolean;
         error?: string;
+
+        contact?: {
+          id: string;
+          phone: string | null;
+          customer_note:
+            | string
+            | null;
+        };
+
+        changedFields?: Array<{
+          field: string;
+          label: string;
+          oldValue: string | null;
+          newValue: string | null;
+        }>;
+
+        activityRecorded?: boolean;
       };
 
-      if (!response.ok || !result.success) {
-        throw new Error(
-          result.error ??
-            "Unable to update customer.",
-        );
-      }
-
-      setEditing(false);
-      router.refresh();
-    } catch (saveError) {
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "Unable to update customer.",
+    if (
+      !response.ok ||
+      !result.success
+    ) {
+      throw new Error(
+        result.error ??
+          "Unable to update customer profile.",
       );
-    } finally {
-      setSaving(false);
     }
-  }
 
+    setEditing(false);
+    setError(null);
+
+    router.refresh();
+  } catch (saveError) {
+    setError(
+      saveError instanceof Error
+        ? saveError.message
+        : "Unable to update customer profile.",
+    );
+  } finally {
+    setSaving(false);
+  }
+}
   if (!contact || !activeConversation) {
     return (
       <aside className="border-l border-slate-200 bg-white">
@@ -217,7 +235,7 @@ export function CustomerProfile({
         
           <div>
             <label className="text-sm font-medium text-slate-700">
-              Notes
+              Customer Notes
             </label>
 
             <textarea
@@ -230,7 +248,7 @@ export function CustomerProfile({
                 }))
               }
               rows={5}
-              placeholder="Add internal customer information..."
+              placeholder="Add  customer information..."
               className="mt-1 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>
@@ -292,16 +310,19 @@ export function CustomerProfile({
   />
 </ProfileSection>
 
- <CustomerNotes
-            contactId={contact.id}
-            currentMemberId={
-              activeConversation.assigned_to
-            }
-            currentMemberName={
-              activeConversation.assigned_member
-                ?.full_name ?? null
-            }
-          />
+<CustomerNotes
+  contactId={contact.id}
+  conversationId={
+    activeConversation.id
+  }
+  currentMemberId={
+    activeConversation.assigned_to
+  }
+  currentMemberName={
+    activeConversation.assigned_member
+      ?.full_name ?? null
+  }
+/>
           <ProfileSection title="Facebook information">
             <ProfileValue
               label="Customer ID"

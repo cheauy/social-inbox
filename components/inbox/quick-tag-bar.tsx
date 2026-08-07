@@ -174,6 +174,7 @@ export function QuickTagBar({
           },
           body: JSON.stringify({
             tagId: tag.id,
+            
           }),
         },
       );

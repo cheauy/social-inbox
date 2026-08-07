@@ -7,6 +7,7 @@ import type { ContactNote } from "@/types/inbox";
 
 type CustomerNotesProps = {
   contactId: string;
+  conversationId: string;
   currentMemberId: string | null;
   currentMemberName: string | null;
 };
@@ -17,9 +18,25 @@ type NotesResponse = {
   notes?: ContactNote[];
   note?: ContactNote;
 };
+async function readJsonResponse<T>(
+  response: Response,
+): Promise<T | null> {
+  const text =
+    await response.text();
 
+  if (!text.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
 export function CustomerNotes({
-  contactId,
+   contactId,
+  conversationId,
   currentMemberId,
   currentMemberName,
 }: CustomerNotesProps) {
@@ -102,10 +119,10 @@ export function CustomerNotes({
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            authorId: currentMemberId,
-            noteText,
-          }),
+         body: JSON.stringify({
+  noteText,
+  conversationId,
+}),
         },
       );
 
@@ -158,10 +175,10 @@ export function CustomerNotes({
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            authorId: currentMemberId,
-            noteText,
-          }),
+         body: JSON.stringify({
+  noteText,
+  conversationId,
+}),
         },
       );
 
@@ -221,9 +238,9 @@ export function CustomerNotes({
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            authorId: currentMemberId,
-          }),
+         body: JSON.stringify({
+  conversationId,
+}),
         },
       );
 

@@ -103,14 +103,37 @@ export async function processFacebookMessage(
     await supabaseAdmin
       .from("conversations")
       .upsert(
-        {
-          business_id: socialAccount.business_id,
-          social_account_id: socialAccount.id,
-          contact_id: contact.id,
-          platform: "facebook",
-          status: "open",
-          updated_at: new Date().toISOString(),
-        },
+      {
+  business_id:
+    socialAccount.business_id,
+
+  social_account_id:
+    socialAccount.id,
+
+  contact_id:
+    contact.id,
+
+  platform:
+    "facebook",
+
+  source_type:
+    "messenger",
+
+  facebook_post_id:
+    null,
+
+  facebook_comment_id:
+    null,
+
+  parent_comment_id:
+    null,
+
+  status:
+    "open",
+
+  updated_at:
+    new Date().toISOString(),
+},
         {
           onConflict:
             "social_account_id,contact_id",
@@ -157,11 +180,30 @@ export async function processFacebookMessage(
     await supabaseAdmin
       .from("conversations")
       .update({
-        last_message_text: content.messageText,
-        last_message_at: messageTime,
-        unread_count: unreadCount,
-        updated_at: new Date().toISOString(),
-      })
+  source_type:
+    "messenger",
+
+  facebook_post_id:
+    null,
+
+  facebook_comment_id:
+    null,
+
+  parent_comment_id:
+    null,
+
+  last_message_text:
+    content.messageText,
+
+  last_message_at:
+    messageTime,
+
+  unread_count:
+    unreadCount,
+
+  updated_at:
+    new Date().toISOString(),
+})
       .eq("id", conversation.id);
 
   if (updateError) {

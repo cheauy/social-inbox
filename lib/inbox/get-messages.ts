@@ -1,26 +1,36 @@
 import "server-only";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import type { InboxMessage } from "@/types/inbox";
+
+import type {
+  InboxMessage,
+} from "@/types/inbox";
 
 export async function getMessages(
   conversationId: string,
 ): Promise<InboxMessage[]> {
-  const { data, error } = await supabaseAdmin
+  const normalizedConversationId =
+    conversationId.trim();
+
+  if (!normalizedConversationId) {
+    return [];
+  }
+
+  console.log(
+  "Loading messages for:",
+  conversationId,
+);
+
+  const {
+    data,
+    error,
+  } = await supabaseAdmin
     .from("messages")
-    .select(`
-      id,
-      platform_message_id,
-      sender_platform_id,
-      recipient_platform_id,
-      direction,
-      message_type,
-      message_text,
-      attachment_url,
-      platform_created_at,
-      created_at
-    `)
-    .eq("conversation_id", conversationId)
+    .select("*")
+    .eq(
+      "conversation_id",
+      normalizedConversationId,
+    )
     .order("created_at", {
       ascending: true,
     });
@@ -28,13 +38,25 @@ export async function getMessages(
   if (error) {
     console.error(
       "Unable to load messages:",
-      error,
+      {
+        conversationId:
+          normalizedConversationId,
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      },
     );
 
     throw new Error(
-      "Unable to load messages.",
+      `Unable to load messages: ${error.message}`,
     );
   }
 
-  return (data ?? []) as InboxMessage[];
+  
+
+  return (
+    data ?? []
+  ) as unknown as InboxMessage[];
 }
+

@@ -1,7 +1,16 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import {
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
+
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { FormEvent } from "react";
 
 import { ConversationList } from "@/components/inbox/conversation-list";
@@ -22,8 +31,13 @@ export function InboxView({
   statusCounts,
   teamMembers,
 }: InboxViewProps) {
-  const router = useRouter();
 
+  const router = useRouter();
+  const searchParams =
+  useSearchParams();
+
+const requestedConversationId =
+  searchParams.get("conversationId");
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] =
@@ -33,7 +47,7 @@ export function InboxView({
   const [
   customerPanelVisible,
   setCustomerPanelVisible,
-] = useState(true);
+] = useState(false);
 
 const [markingUnread, setMarkingUnread] =
   useState(false);
@@ -41,6 +55,14 @@ const [markingUnread, setMarkingUnread] =
 const [historyOpen, setHistoryOpen] =
   useState(false);
 
+const [pinning, setPinning] =
+  useState(false);
+
+const [pinError, setPinError] =
+  useState<string | null>(null);
+
+const skipAutomaticReadRef =
+  useRef<string | null>(null);
 
   const [updatingStatus, setUpdatingStatus] =
     useState(false);
@@ -52,17 +74,163 @@ const [historyOpen, setHistoryOpen] =
   const [assignmentError, setAssignmentError] =
     useState<string | null>(null);
 
+  
+
+ const resolvedActiveConversationId =
+  useMemo(() => {
+    if (
+      requestedConversationId &&
+      conversations.some(
+        (conversation) =>
+          conversation.id ===
+          requestedConversationId,
+      )
+    ) {
+      return requestedConversationId;
+    }
+
+    if (
+      activeConversationId &&
+      conversations.some(
+        (conversation) =>
+          conversation.id ===
+          activeConversationId,
+      )
+    ) {
+      return activeConversationId;
+    }
+
+    return (
+      conversations[0]?.id ??
+      null
+    );
+  }, [
+    conversations,
+    requestedConversationId,
+    activeConversationId,
+  ]);
+
+const activeConversation =
+  useMemo(
+    () =>
+      conversations.find(
+        (conversation) =>
+          conversation.id ===
+          resolvedActiveConversationId,
+      ) ?? null,
+    [
+      conversations,
+      resolvedActiveConversationId,
+    ],
+  );
+  
+
+useEffect(() => {
+  if (
+    requestedConversationId &&
+    !conversations.some(
+      (conversation) =>
+        conversation.id ===
+        requestedConversationId,
+    )
+  ) {
+    router.replace(
+      "/dashboard/inbox",
+    );
+  }
+}, [
+  conversations,
+  requestedConversationId,
+  router,
+]);
+
+useEffect(() => {
+  if (!resolvedActiveConversationId) {
+    return;
+  }
+
   const activeConversation =
     conversations.find(
       (conversation) =>
-        conversation.id === activeConversationId,
-    ) ?? null;
+        conversation.id ===
+        resolvedActiveConversationId,
+    );
+
+  if (
+    !activeConversation ||
+    activeConversation.unread_count === 0
+  ) {
+    return;
+  }
+
+  if (
+  skipAutomaticReadRef.current ===
+  resolvedActiveConversationId
+) {
+  skipAutomaticReadRef.current =
+    null;
+
+  return;
+}
+
+  let cancelled = false;
+
+  
+
+async function markConversationRead() {
+    try {
+      const response = await fetch(
+        `/api/conversations/${resolvedActiveConversationId}/read`,
+        {
+          method: "PATCH",
+        },
+      );
+
+      const responseText =
+        await response.text();
+
+      const result = responseText
+        ? (JSON.parse(responseText) as {
+            success: boolean;
+            error?: string;
+          })
+        : {
+            success: response.ok,
+          };
+
+      if (
+        cancelled ||
+        !response.ok ||
+        !result.success
+      ) {
+        return;
+      }
+
+      router.refresh();
+    } catch (error) {
+      if (!cancelled) {
+        console.error(error);
+      }
+    }
+  }
+
+  void markConversationRead();
+
+  return () => {
+    cancelled = true;
+  };
+}, [
+  conversations,
+  resolvedActiveConversationId,
+  router,
+]);
 
   async function handleMarkUnread() {
   if (!activeConversation) {
     return;
   }
-
+skipAutomaticReadRef.current =
+  activeConversation.id;
   setMarkingUnread(true);
 
   try {
@@ -73,31 +241,148 @@ const [historyOpen, setHistoryOpen] =
       },
     );
 
-    const result =
-      (await response.json()) as {
-        success?: boolean;
-        error?: string;
-      };
+   const responseText =
+      await response.text();
 
-    if (!response.ok || !result.success) {
+    const result = responseText
+      ? (JSON.parse(responseText) as {
+          success: boolean;
+          error?: string;
+        })
+      : {
+          success: response.ok,
+        };
+
+   if (
+      !response.ok ||
+      !result.success
+    ) {
+      skipAutomaticReadRef.current =
+        null;
+
       throw new Error(
         result.error ??
-          "Unable to mark conversation as unread.",
+          "Unable to mark conversation unread.",
       );
     }
 
     router.refresh();
-  } catch (markError) {
-    window.alert(
-      markError instanceof Error
-        ? markError.message
-        : "Unable to mark conversation as unread.",
-    );
+  } catch (error) {
+    skipAutomaticReadRef.current =
+      null;
+
+    console.error(error);
   } finally {
     setMarkingUnread(false);
   }
 }
 
+async function handleTogglePin() {
+  if (
+    !activeConversation ||
+    pinning
+  ) {
+    return;
+  }
+
+  const nextPinned =
+    !activeConversation.is_pinned;
+
+  setPinning(true);
+  setPinError(null);
+
+  try {
+    const response = await fetch(
+      `/api/conversations/${activeConversation.id}/pin`,
+      {
+        method: "PATCH",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          isPinned: nextPinned,
+        }),
+      },
+    );
+
+    const responseText =
+      await response.text();
+
+    let result: {
+      success: boolean;
+      error?: string;
+
+      conversation?: {
+        id: string;
+        is_pinned: boolean;
+        pinned_at: string | null;
+        pinned_by: string | null;
+      };
+    };
+
+    if (responseText.trim()) {
+      try {
+        result = JSON.parse(
+          responseText,
+        ) as {
+          success: boolean;
+          error?: string;
+
+          conversation?: {
+            id: string;
+            is_pinned: boolean;
+            pinned_at:
+              | string
+              | null;
+            pinned_by:
+              | string
+              | null;
+          };
+        };
+      } catch {
+        throw new Error(
+          "Pin API returned invalid JSON.",
+        );
+      }
+    } else {
+      result = {
+        success: response.ok,
+        error: response.ok
+          ? undefined
+          : `Pin API returned an empty response (${response.status}).`,
+      };
+    }
+
+    if (
+      !response.ok ||
+      !result.success
+    ) {
+      throw new Error(
+        result.error ??
+          "Unable to update conversation pin.",
+      );
+    }
+
+    router.refresh();
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to update conversation pin.";
+
+    setPinError(message);
+
+    console.error(
+      "Unable to update conversation pin:",
+      error,
+    );
+  } finally {
+    setPinning(false);
+  }
+}
 
   async function handleSendMessage(
     event: FormEvent<HTMLFormElement>,
@@ -117,31 +402,86 @@ const [historyOpen, setHistoryOpen] =
     setSending(true);
     setSendError(null);
 
-    try {
-      const response = await fetch(
-        "/api/facebook/send",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            conversationId:
-              activeConversation.id,
+try {
+  const isCommentConversation =
+    activeConversation.source_type ===
+    "comment";
 
-            recipientId:
-              activeConversation.contact
-                .platform_user_id,
+  const endpoint =
+    isCommentConversation
+      ? "/api/facebook/comments/reply"
+      : "/api/facebook/send";
 
-            message,
-          }),
-        },
-      );
+  const requestBody =
+    isCommentConversation
+      ? {
+          conversationId:
+            activeConversation.id,
 
-      const result = (await response.json()) as {
-        success?: boolean;
-        error?: string;
-      };
+          commentId:
+            activeConversation
+              .facebook_comment_id,
+
+          message,
+        }
+      : {
+          conversationId:
+            activeConversation.id,
+
+          recipientId:
+            activeConversation.contact
+              .platform_user_id,
+
+          message,
+        };
+
+  const response = await fetch(
+    endpoint,
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type":
+          "application/json",
+      },
+
+      body: JSON.stringify(
+        requestBody,
+      ),
+    },
+  );
+
+  const responseText =
+    await response.text();
+
+let result: {
+  success: boolean;
+  error?: string;
+};
+
+if (responseText.trim()) {
+  try {
+    result = JSON.parse(
+      responseText,
+    ) as {
+      success: boolean;
+      error?: string;
+    };
+  } catch {
+    result = {
+      success: false,
+      error:
+        "The read API returned invalid JSON.",
+    };
+  }
+} else {
+  result = {
+    success: response.ok,
+    error: response.ok
+      ? undefined
+      : `The read API returned an empty response (${response.status}).`,
+  };
+}
 
       if (!response.ok || !result.success) {
         throw new Error(
@@ -190,9 +530,15 @@ const [historyOpen, setHistoryOpen] =
         },
       );
 
-      const result = (await response.json()) as {
+      const result =
+      (await response.json()) as {
         success?: boolean;
         error?: string;
+        conversation?: {
+          id: string;
+          status: ConversationStatus;
+        };
+        activityRecorded?: boolean;
       };
 
       if (!response.ok || !result.success) {
@@ -201,6 +547,8 @@ const [historyOpen, setHistoryOpen] =
             "Unable to update status.",
         );
       }
+
+      
 
       router.refresh();
     } catch (error) {
@@ -214,127 +562,161 @@ const [historyOpen, setHistoryOpen] =
     }
   }
 
-  async function handleAssignmentChange(
-    assignedTo: string,
-  ) {
-    if (!activeConversation) {
-      return;
-    }
-
-    setAssigning(true);
-    setAssignmentError(null);
-
-    try {
-      const response = await fetch(
-        `/api/conversations/${activeConversation.id}/assignment`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            assignedTo:
-              assignedTo === "unassigned"
-                ? null
-                : assignedTo,
-          }),
-        },
-      );
-
-      const result = (await response.json()) as {
-        success?: boolean;
-        error?: string;
-      };
-
-      if (!response.ok || !result.success) {
-        throw new Error(
-          result.error ??
-            "Unable to assign the conversation.",
-        );
-      }
-
-      router.refresh();
-    } catch (error) {
-      setAssignmentError(
-        error instanceof Error
-          ? error.message
-          : "Unable to assign the conversation.",
-      );
-    } finally {
-      setAssigning(false);
-    }
+async function handleAssignmentChange(
+  assignedTo: string,
+) {
+  if (!activeConversation) {
+    return;
   }
 
+  const nextAssignedTo =
+    assignedTo === "unassigned"
+      ? null
+      : assignedTo;
+
+  if (
+    nextAssignedTo ===
+    activeConversation.assigned_to
+  ) {
+    return;
+  }
+
+  setAssigning(true);
+  setAssignmentError(null);
+
+  try {
+    const response = await fetch(
+      `/api/conversations/${activeConversation.id}/assignment`,
+      {
+        method: "PATCH",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          assignedTo: nextAssignedTo,
+        }),
+      },
+    );
+
+    const result =
+      (await response.json()) as {
+        success?: boolean;
+        error?: string;
+
+        conversation?: {
+          id: string;
+          assigned_to:
+            | string
+            | null;
+          assigned_at:
+            | string
+            | null;
+        };
+
+        activityRecorded?: boolean;
+      };
+
+    if (
+      !response.ok ||
+      !result.success
+    ) {
+      throw new Error(
+        result.error ??
+          "Unable to assign the conversation.",
+      );
+    }
+
+    router.refresh();
+  } catch (assignmentError) {
+    setAssignmentError(
+      assignmentError instanceof Error
+        ? assignmentError.message
+        : "Unable to assign the conversation.",
+    );
+  } finally {
+    setAssigning(false);
+  }
+}
 return (
- <div className="h-[calc(100vh-72px)] w-full overflow-hidden rounded-none border-0 bg-white">
-    <div
+<div className="relative h-[calc(100vh-72px)] w-full overflow-hidden bg-white">    <div
       className={`grid h-full min-h-0 overflow-hidden ${
-        customerPanelVisible
-          ? "grid-cols-[340px_minmax(0,1fr)_340px]"
-          : "grid-cols-[340px_minmax(0,1fr)]"
+       customerPanelVisible
+  ? "grid-cols-[500px_minmax(0,1fr)_340px]"
+  : "grid-cols-[500px_minmax(0,1fr)]"
       }`}
     >
-      <ConversationList
-        conversations={conversations}
-        activeConversationId={
-          activeConversationId
-        }
+     <ConversationList
+  conversations={conversations}
+  activeConversationId={
+    resolvedActiveConversationId
+  }
         activeStatus={activeStatus}
         statusCounts={statusCounts}
       />
 
-      <MessagePanel
-        activeConversation={
-          activeConversation
-        }
-        messages={messages}
-        teamMembers={teamMembers}
-        reply={reply}
-        sending={sending}
-        sendError={sendError}
-        updatingStatus={
-          updatingStatus
-        }
-        statusError={statusError}
-        assigning={assigning}
-        assignmentError={
-          assignmentError
-        }
-        markingUnread={
-          markingUnread
-        }
-        customerPanelVisible={
-          customerPanelVisible
-        }
-        onReplyChange={setReply}
-        onSendMessage={
-          handleSendMessage
-        }
-        onStatusChange={(status) =>
-          void handleStatusChange(
-            status,
-          )
-        }
-        onAssignmentChange={(
-          memberId,
-        ) =>
-          void handleAssignmentChange(
-            memberId,
-          )
-        }
-        onMarkUnread={() =>
-          void handleMarkUnread()
-        }
-        onOpenHistory={() =>
-          setHistoryOpen(true)
-        }
-        onToggleCustomerPanel={() =>
-          setCustomerPanelVisible(
-            (current) => !current,
-          )
-        }
-      />
+   <MessagePanel
+  key={
+    activeConversation?.id ??
+    "no-conversation"
+  }
+  activeConversation={
+    activeConversation
+  }
+  messages={messages}
+  teamMembers={teamMembers}
+  reply={reply}
+  sending={sending}
+  sendError={sendError}
+  updatingStatus={updatingStatus}
+  statusError={statusError}
+  assigning={assigning}
+  assignmentError={assignmentError}
+  markingUnread={markingUnread}
+  customerPanelVisible={
+    customerPanelVisible
+  }
 
+  onReplyChange={setReply}
+
+  onSendMessage={
+    handleSendMessage
+  }
+
+  onStatusChange={(status) =>
+    void handleStatusChange(
+      status,
+    )
+  }
+
+  onAssignmentChange={(
+    memberId,
+  ) =>
+    void handleAssignmentChange(
+      memberId,
+    )
+  }
+
+  onMarkUnread={() =>
+    void handleMarkUnread()
+  }
+
+  onTogglePin={() =>
+    void handleTogglePin()
+  }
+
+  onOpenHistory={() =>
+    setHistoryOpen(true)
+  }
+
+  onToggleCustomerPanel={() =>
+    setCustomerPanelVisible(
+      (current) => !current,
+    )
+  }
+/>
       {customerPanelVisible ? (
         <CustomerProfile
           activeConversation={
@@ -344,25 +726,30 @@ return (
       ) : null}
     </div>
 
-    {!customerPanelVisible ? (
-      <button
-        type="button"
-        onClick={() =>
-          setCustomerPanelVisible(true)
-        }
-        className="absolute right-0 top-1/2 z-30 flex -translate-y-1/2 items-center gap-2 rounded-l-xl border border-r-0 border-slate-300 bg-white px-2 py-4 text-xs font-medium text-slate-600 shadow-lg hover:bg-slate-50"
-        title="Show customer information"
-        aria-label="Show customer information"
-      >
-        <span className="text-lg">
-          ‹
-        </span>
-
-        <span className="[writing-mode:vertical-rl]">
-          Customer
-        </span>
-      </button>
-    ) : null}
+   {!customerPanelVisible && (
+  <button
+    type="button"
+    onClick={() =>
+      setCustomerPanelVisible(true)
+    }
+    className="absolute right-0 top-1/2 z-50 flex h-14 w-7 -translate-y-1/2 items-center justify-center rounded-l-xl border border-r-0 border-slate-300 bg-white text-slate-500 shadow-lg transition hover:bg-blue-50 hover:text-blue-700"
+    title="Show customer information"
+  >
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      className="h-4 w-4"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  </button>
+)}
   </div>
 );
 }

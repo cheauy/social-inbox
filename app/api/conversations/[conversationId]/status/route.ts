@@ -3,6 +3,7 @@ import {
   NextResponse,
 } from "next/server";
 
+import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { createConversationActivity } from "@/lib/inbox/create-conversation-activity";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -30,14 +31,6 @@ type RouteContext = {
 
 type UpdateStatusBody = {
   status?: string;
-
-  /*
-   * Temporary actor ID.
-   *
-   * Later, replace this with the authenticated
-   * team member from your login/session.
-   */
-  actorMemberId?: string | null;
 };
 
 type ContactResult = {
@@ -50,38 +43,67 @@ type ConversationResult = {
   business_id: string;
   contact_id: string | null;
   status: ConversationStatus;
+
   contact:
     | ContactResult
     | ContactResult[]
     | null;
 };
 
-type TeamMemberResult = {
-  id: string;
-  full_name: string;
-  profile_picture_url: string | null;
-};
-
-function getSingleContact(
-  contact:
-    | ContactResult
-    | ContactResult[]
-    | null,
-): ContactResult | null {
-  if (Array.isArray(contact)) {
-    return contact[0] ?? null;
+function getSingleResult<T>(
+  value: T | T[] | null,
+): T | null {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
   }
 
-  return contact;
+  return value;
 }
 
 export async function PATCH(
   request: NextRequest,
   context: RouteContext,
 ) {
+  /*
+   * 1. Authenticate the user and resolve
+   * the matching team member on the server.
+   */
+  const authResult =
+    await getCurrentMember();
+
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
+    );
+  }
+
+  const currentMember =
+    authResult.member;
+
   const { conversationId } =
     await context.params;
 
+  if (!conversationId?.trim()) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Conversation ID is required.",
+      },
+      {
+        status: 400,
+      },
+    );
+  }
+
+  /*
+   * 2. Parse request body.
+   */
   let body: UpdateStatusBody;
 
   try {
@@ -121,12 +143,10 @@ export async function PATCH(
   }
 
   /*
-   * Load the conversation before updating it.
-   * This gives us:
-   * - old status
-   * - business ID
-   * - contact ID
-   * - customer name
+   * 3. Load the conversation.
+   *
+   * business_id is also filtered so a member
+   * cannot update another business's conversation.
    */
   const {
     data: conversationData,
@@ -145,6 +165,10 @@ export async function PATCH(
       )
     `)
     .eq("id", conversationId)
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    )
     .maybeSingle();
 
   if (conversationError) {
@@ -172,7 +196,7 @@ export async function PATCH(
       {
         success: false,
         error:
-          "Conversation was not found.",
+          "Conversation was not found or you do not have access.",
       },
       {
         status: 404,
@@ -186,70 +210,42 @@ export async function PATCH(
   const oldStatus =
     conversation.status;
 
-  const contact = getSingleContact(
-    conversation.contact,
-  );
+  const contact =
+    getSingleResult(
+      conversation.contact,
+    );
 
   const customerName =
-    contact?.full_name ??
+    contact?.full_name?.trim() ||
     "Facebook customer";
 
   /*
-   * Do not create duplicate timeline entries
-   * when the selected status is unchanged.
+   * 4. Avoid duplicate timeline activity.
    */
   if (oldStatus === nextStatus) {
     return NextResponse.json({
       success: true,
+
       conversation: {
         id: conversation.id,
         status: oldStatus,
       },
+
       activityRecorded: false,
+      message:
+        "Conversation status was unchanged.",
     });
-  }
-
-  /*
-   * Load the user/team member taking the action.
-   *
-   * For now, actorMemberId comes from the request.
-   * Later this should come from authenticated session.
-   */
-  let currentMember:
-    | TeamMemberResult
-    | null = null;
-
-  if (body.actorMemberId) {
-    const {
-      data: memberData,
-      error: memberError,
-    } = await supabaseAdmin
-      .from("team_members")
-      .select(`
-        id,
-        full_name,
-        profile_picture_url
-      `)
-      .eq(
-        "id",
-        body.actorMemberId,
-      )
-      .maybeSingle();
-
-    if (memberError) {
-      console.error(
-        "Unable to load activity actor:",
-        memberError,
-      );
-    } else {
-      currentMember =
-        memberData as TeamMemberResult | null;
-    }
   }
 
   const now =
     new Date().toISOString();
 
+  /*
+   * 5. Update status.
+   *
+   * Filter by business_id again to protect
+   * the write operation.
+   */
   const {
     data: updatedConversation,
     error: updateError,
@@ -260,7 +256,11 @@ export async function PATCH(
       status_updated_at: now,
       updated_at: now,
     })
-    .eq("id", conversationId)
+    .eq("id", conversation.id)
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    )
     .select(`
       id,
       status,
@@ -280,7 +280,8 @@ export async function PATCH(
         success: false,
         error:
           "Unable to update conversation status.",
-        details: updateError.message,
+        details:
+          updateError.message,
       },
       {
         status: 500,
@@ -293,7 +294,7 @@ export async function PATCH(
       {
         success: false,
         error:
-          "Conversation was not found.",
+          "Conversation was not found or could not be updated.",
       },
       {
         status: 404,
@@ -302,11 +303,7 @@ export async function PATCH(
   }
 
   /*
-   * Record the activity only after the status
-   * update has succeeded.
-   *
-   * Timeline failure will not undo the status
-   * update, but it will be logged.
+   * 6. Record the activity after a successful update.
    */
   let activityRecorded = false;
 
@@ -322,7 +319,7 @@ export async function PATCH(
         conversation.contact_id,
 
       actorMemberId:
-        currentMember?.id ?? null,
+        currentMember.id,
 
       activityType:
         "status_changed",
@@ -331,22 +328,28 @@ export async function PATCH(
         `changed status from ${oldStatus} to ${nextStatus}`,
 
       description:
-        `${customerName}'s conversation status was changed.`,
+        `${currentMember.full_name} changed ${customerName}'s conversation status from ${oldStatus} to ${nextStatus}.`,
 
       customerName,
 
       actorName:
-        currentMember?.full_name ??
-        "System",
+        currentMember.full_name,
 
       actorProfilePictureUrl:
-        currentMember
-          ?.profile_picture_url ??
-        null,
+        currentMember.profile_picture_url,
 
       metadata: {
         oldStatus,
         newStatus: nextStatus,
+
+        actor: {
+          memberId:
+            currentMember.id,
+          name:
+            currentMember.full_name,
+          role:
+            currentMember.role,
+        },
       },
     });
 

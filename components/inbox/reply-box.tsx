@@ -16,6 +16,7 @@ import type { CustomerTag } from "@/types/inbox";
 
 type ReplyBoxProps = {
   reply: string;
+  conversationId: string;
   sending: boolean;
   error: string | null;
 
@@ -175,6 +176,7 @@ export function ReplyBox({
   contactId,
   businessId,
   initialTags,
+  conversationId,
   onReplyChange,
   onSubmit,
 }: ReplyBoxProps) {
@@ -419,110 +421,99 @@ async function sendAttachments() {
     setSendingContent(false);
   }
 }
-  return (
-    <div className="border-t border-slate-200 bg-white">
-      {/* Multiple image/video preview */}
-      {attachments.length > 0 ? (
-        <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
-          <div className="flex gap-3 overflow-x-auto pb-1">
-            {attachments.map(
-              (attachment) => (
-                <div
-                  key={attachment.id}
-                  className="relative shrink-0"
-                >
-                  {attachment.kind ===
-                  "image" ? (
-                    <img
-                      src={
-                        attachment.previewUrl
-                      }
-                      alt={
-                        attachment.file.name
-                      }
-                      className="h-24 w-24 rounded-xl border border-slate-200 object-cover shadow-sm"
-                    />
-                  ) : (
-                    <video
-                      src={
-                        attachment.previewUrl
-                      }
-                      className="h-24 w-32 rounded-xl border border-slate-200 bg-black object-cover shadow-sm"
-                      muted
-                    />
-                  )}
+return (
+  <div className="shrink-0 border-t border-slate-200 bg-white">
+    {attachments.length > 0 ? (
+      <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
+        <div className="flex gap-3 overflow-x-auto pb-1">
+          {attachments.map((attachment) => (
+            <div
+              key={attachment.id}
+              className="relative shrink-0"
+            >
+              {attachment.kind === "image" ? (
+                <img
+                  src={attachment.previewUrl}
+                  alt={attachment.file.name}
+                  className="h-24 w-24 rounded-xl border border-slate-200 object-cover shadow-sm"
+                />
+              ) : (
+                <video
+                  src={attachment.previewUrl}
+                  className="h-24 w-32 rounded-xl border border-slate-200 bg-black object-cover shadow-sm"
+                  muted
+                />
+              )}
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      removeAttachment(
-                        attachment.id,
-                      )
-                    }
-                    className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-sm font-semibold text-white shadow"
-                    aria-label={`Remove ${attachment.file.name}`}
-                  >
-                    ×
-                  </button>
+              <button
+                type="button"
+                onClick={() =>
+                  removeAttachment(
+                    attachment.id,
+                  )
+                }
+                className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-sm font-semibold text-white shadow"
+                aria-label={`Remove ${attachment.file.name}`}
+              >
+                ×
+              </button>
 
-                  <span className="absolute bottom-1 left-1 rounded bg-slate-950/70 px-1.5 py-0.5 text-[10px] text-white">
-                    {attachment.kind ===
-                    "image"
-                      ? "Image"
-                      : "Video"}
-                  </span>
-                </div>
-              ),
-            )}
-          </div>
-
-          <p className="mt-2 text-xs text-slate-500">
-            {attachments.length} attachment
-            {attachments.length === 1
-              ? ""
-              : "s"}{" "}
-            selected
-          </p>
+              <span className="absolute bottom-1 left-1 rounded bg-slate-950/70 px-1.5 py-0.5 text-[10px] text-white">
+                {attachment.kind === "image"
+                  ? "Image"
+                  : "Video"}
+              </span>
+            </div>
+          ))}
         </div>
-      ) : null}
 
-      {/* Toolbar */}
-      <div className="relative flex items-center gap-2 border-b border-slate-100 px-4 py-2">
-        <div
-  className={
-    isSending
-      ? "pointer-events-none opacity-50"
-      : ""
-  }
->
-  <CustomerTagSelector
-    contactId={contactId}
-    businessId={businessId}
-    initialTags={initialTags}
-  />
-</div>
+        <p className="mt-2 text-xs text-slate-500">
+          {attachments.length} attachment
+          {attachments.length === 1
+            ? ""
+            : "s"}{" "}
+          selected
+        </p>
+      </div>
+    ) : null}
+
+    {/* Toolbar */}
+    <div className="relative flex items-center gap-2 px-4 py-2">
+      <div
+        className={
+          isSending
+            ? "pointer-events-none opacity-50"
+            : ""
+        }
+      >
+        <CustomerTagSelector
+          contactId={contactId}
+          businessId={businessId}
+          conversationId={conversationId}
+          initialTags={initialTags}
+        />
+      </div>
 
       <div
-  className={
-    isSending
-      ? "pointer-events-none opacity-50"
-      : ""
-  }
->
+        className={
+          isSending
+            ? "pointer-events-none opacity-50"
+            : ""
+        }
+      >
         <SavedReplySelector
           businessId={businessId}
           onSelect={onReplyChange}
         />
-</div>
-        {/* Emoji */}
-        <div
-  className={
-    isSending
-      ? "pointer-events-none opacity-50"
-      : ""
-  }
->
-       
+      </div>
+
+      <div
+        className={
+          isSending
+            ? "pointer-events-none opacity-50"
+            : ""
+        }
+      >
         <button
           type="button"
           onClick={() => {
@@ -543,18 +534,16 @@ async function sendAttachments() {
         >
           <EmojiIcon />
         </button>
-</div>
-        {/* Add content */}
-        
-          <div
-  className={
-    isSending
-      ? "pointer-events-none opacity-50"
-      : ""
-  }
->
-        <button
+      </div>
 
+      <div
+        className={
+          isSending
+            ? "pointer-events-none opacity-50"
+            : ""
+        }
+      >
+        <button
           type="button"
           onClick={() => {
             setMoreOpen(
@@ -580,176 +569,157 @@ async function sendAttachments() {
             </span>
           ) : null}
         </button>
-</div>
-        <input
-          ref={imageInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={handleImageChange}
-          className="hidden"
-        />
-
-        <input
-          ref={videoInputRef}
-          type="file"
-          accept="video/*"
-          multiple
-          onChange={handleVideoChange}
-          className="hidden"
-        />
-
-        {emojiOpen ? (
-          <>
-            <button
-              type="button"
-              onClick={() =>
-                setEmojiOpen(false)
-              }
-              className="fixed inset-0 z-40 cursor-default bg-slate-950/5"
-              aria-label="Close emoji picker"
-            />
-
-            <div className="fixed bottom-28 left-1/2 z-50 -translate-x-1/2 overflow-hidden rounded-xl shadow-2xl">
-              <EmojiPicker
-                width={350}
-                height={420}
-                lazyLoadEmojis
-                searchDisabled={false}
-                skinTonesDisabled={false}
-                onEmojiClick={(
-                  emojiData,
-                ) =>
-                  insertEmoji(
-                    emojiData.emoji,
-                  )
-                }
-              />
-            </div>
-          </>
-        ) : null}
-
-        {moreOpen ? (
-          <>
-            <button
-              type="button"
-              onClick={() =>
-                setMoreOpen(false)
-              }
-              className="fixed inset-0 z-40 cursor-default bg-slate-950/5"
-              aria-label="Close content menu"
-            />
-
-            <div className="fixed bottom-28 left-1/2 z-50 w-64 -translate-x-1/2 overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-2xl">
-              <button
-                type="button"
-                onClick={() => {
-                  setMoreOpen(false);
-
-                  imageInputRef.current?.click();
-                }}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
-              >
-                <ImageIcon />
-
-                <span>Add images</span>
-
-                <span className="ml-auto text-xs text-slate-400">
-                  Multiple
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setMoreOpen(false);
-
-                  videoInputRef.current?.click();
-                }}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
-              >
-                <VideoIcon />
-
-                <span>Add media</span>
-
-                <span className="ml-auto text-xs text-slate-400">
-                  Videos
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={addLocation}
-                disabled={
-                  gettingLocation
-                }
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:text-slate-400"
-              >
-                <LocationIcon />
-
-                <span>
-                  {gettingLocation
-                    ? "Getting location..."
-                    : "Send location"}
-                </span>
-              </button>
-            </div>
-          </>
-        ) : null}
       </div>
 
-      {/* Message input */}
-      <div className="p-4">
-        <form
-          onSubmit={handleSubmit}
-          className="flex items-end gap-3"
-        >
-          <textarea
-            name="message"
-            value={reply}
-            onChange={(event) =>
-              onReplyChange(
-                event.target.value,
-              )
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={handleImageChange}
+        className="hidden"
+      />
+
+      <input
+        ref={videoInputRef}
+        type="file"
+        accept="video/*"
+        multiple
+        onChange={handleVideoChange}
+        className="hidden"
+      />
+
+      {emojiOpen ? (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              setEmojiOpen(false)
             }
-            placeholder="Write a reply..."
-            disabled={isSending}
-            rows={1}
-            className="max-h-32 min-h-11 min-w-0 flex-1 resize-y rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+            className="fixed inset-0 z-40 cursor-default bg-slate-950/5"
+            aria-label="Close emoji picker"
           />
 
-        <button
-  type="submit"
-  disabled={
-    isSending ||
-    (!reply.trim() &&
-      attachments.length === 0)
-  }
-  className="flex min-w-24 items-center justify-center rounded-xl bg-blue-600 px-5 py-3 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
->
-  {isSending ? (
-    <span className="flex items-center gap-2">
-      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+          <div className="fixed bottom-28 left-1/2 z-50 -translate-x-1/2 overflow-hidden rounded-xl shadow-2xl">
+            <EmojiPicker
+              width={350}
+              height={420}
+              lazyLoadEmojis
+              searchDisabled={false}
+              skinTonesDisabled={false}
+              onEmojiClick={(emojiData) =>
+                insertEmoji(
+                  emojiData.emoji,
+                )
+              }
+            />
+          </div>
+        </>
+      ) : null}
 
-      Sending...
-    </span>
-  ) : (
-    "Send"
-  )}
-</button>
-        </form>
+      {moreOpen ? (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              setMoreOpen(false)
+            }
+            className="fixed inset-0 z-40 cursor-default bg-slate-950/5"
+            aria-label="Close content menu"
+          />
 
-        {error ? (
-          <p className="mt-2 text-sm text-red-600">
-            {error}
-          </p>
-        ) : (
-          <p className="mt-2 text-xs text-slate-400">
-            Replies are sent through the
-            connected Facebook Page.
-          </p>
-        )}
-      </div>
+          <div className="fixed bottom-28 left-1/2 z-50 w-64 -translate-x-1/2 overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-2xl">
+            <button
+              type="button"
+              onClick={() => {
+                setMoreOpen(false);
+                imageInputRef.current?.click();
+              }}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <ImageIcon />
+              <span>Add images</span>
+              <span className="ml-auto text-xs text-slate-400">
+                Multiple
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMoreOpen(false);
+                videoInputRef.current?.click();
+              }}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <VideoIcon />
+              <span>Add media</span>
+              <span className="ml-auto text-xs text-slate-400">
+                Videos
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={addLocation}
+              disabled={
+                gettingLocation
+              }
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:text-slate-400"
+            >
+              <LocationIcon />
+
+              <span>
+                {gettingLocation
+                  ? "Getting location..."
+                  : "Send location"}
+              </span>
+            </button>
+          </div>
+        </>
+      ) : null}
     </div>
-  );
+
+    {/* Message input */}
+    <div className="px-4 pb-3">
+      <form
+        onSubmit={handleSubmit}
+        className="flex items-end gap-3"
+      >
+        <textarea
+          name="message"
+          value={reply}
+          onChange={(event) =>
+            onReplyChange(
+              event.target.value,
+            )
+          }
+          placeholder="Write a reply..."
+          disabled={isSending}
+          rows={1}
+          className="max-h-32 min-h-11 min-w-0 flex-1 resize-y rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+        />
+
+        <button
+          type="submit"
+          disabled={
+            isSending ||
+            (!reply.trim() &&
+              attachments.length === 0)
+          }
+          className="flex h-11 min-w-24 items-center justify-center rounded-xl bg-blue-600 px-5 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          {isSending ? (
+            <span className="flex items-center gap-2">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              Sending...
+            </span>
+          ) : (
+            "Send"
+          )}
+        </button>
+      </form>
+    </div>
+  </div>
+);
 }

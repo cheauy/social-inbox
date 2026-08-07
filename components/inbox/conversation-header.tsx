@@ -33,6 +33,7 @@ type ConversationHeaderProps = {
     memberId: string,
   ) => void;
 
+  onTogglePin: () => void;
   onMarkUnread: () => void;
   onOpenHistory: () => void;
   onToggleCustomerPanel: () => void;
@@ -62,6 +63,29 @@ function UsersIcon() {
       <path
         d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"
         strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function PinIcon({
+  filled = false,
+}: {
+  filled?: boolean;
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+      aria-hidden="true"
+    >
+      <path
+        d="M14 3l7 7-3 1-4 4-1 5-3-3-5 3 3-5 4-4 1-3 1-5z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
@@ -180,11 +204,13 @@ export function ConversationHeader({
   assigning,
   markingUnread,
   customerPanelVisible,
+  onTogglePin,
   onStatusChange,
   onAssignmentChange,
   onMarkUnread,
   onOpenHistory,
   onToggleCustomerPanel,
+  
 }: ConversationHeaderProps) {
   const [assignmentOpen, setAssignmentOpen] =
     useState(false);
@@ -245,7 +271,7 @@ const validTeamMembers = Array.from(
             </p>
           </div>
         </div>
-
+                
         {/* Actions */}
         <div className="flex shrink-0 items-center gap-2">
           {/* Assign user */}
@@ -404,6 +430,30 @@ const validTeamMembers = Array.from(
             ) : null}
           </div>
 
+   <button
+  type="button"
+  onClick={onTogglePin}
+  className={`flex h-9 w-9 items-center justify-center rounded-lg border transition ${
+    conversation.is_pinned
+      ? "border-amber-300 bg-amber-50 text-amber-600"
+      : "border-slate-300 text-slate-600 hover:bg-slate-50"
+  }`}
+  title={
+    conversation.is_pinned
+      ? "Unpin conversation"
+      : "Pin conversation"
+  }
+  aria-label={
+    conversation.is_pinned
+      ? "Unpin conversation"
+      : "Pin conversation"
+  }
+>
+  <PinIcon
+    filled={conversation.is_pinned}
+  />
+</button>
+          
           {/* Mark unread */}
           <button
             type="button"
@@ -483,6 +533,8 @@ const validTeamMembers = Array.from(
             />
           </button>
         </div>
+            
+     
       </div>
     </header>
   );

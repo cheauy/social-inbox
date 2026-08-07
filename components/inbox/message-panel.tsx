@@ -42,6 +42,7 @@ type MessagePanelProps = {
   onAssignmentChange: (
     assignedTo: string,
   ) => void;
+  onTogglePin: () => void;
 };
 
 export function MessagePanel({
@@ -60,6 +61,7 @@ export function MessagePanel({
   onMarkUnread,
   onOpenHistory,
   onToggleCustomerPanel,
+  onTogglePin,
   onReplyChange,
   onSendMessage,
   onStatusChange,
@@ -89,28 +91,25 @@ export function MessagePanel({
 
  return (
   <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white">
-   <ConversationHeader
+<ConversationHeader
   conversation={activeConversation}
   teamMembers={teamMembers}
   updatingStatus={updatingStatus}
   assigning={assigning}
   markingUnread={markingUnread}
-  customerPanelVisible={
-    customerPanelVisible
-  }
+  customerPanelVisible={customerPanelVisible}
   onStatusChange={onStatusChange}
-  onAssignmentChange={
-    onAssignmentChange
-  }
+  onAssignmentChange={onAssignmentChange}
   onMarkUnread={onMarkUnread}
   onOpenHistory={onOpenHistory}
   onToggleCustomerPanel={
     onToggleCustomerPanel
   }
+  onTogglePin={
+    onTogglePin
+  }
 />
-    <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-3">
-      {/* Customer name, status and assignment */}
-    </div>
+  
 
     <div
   className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6"
@@ -167,17 +166,18 @@ export function MessagePanel({
       reply={reply}
       sending={sending}
       error={sendError}
-      contactId={
-        activeConversation.contact.id
-      }
-      businessId={
-        activeConversation.contact
-          .business_id
-      }
-      initialTags={
-        activeConversation.contact.tags ??
-        []
-      }
+     conversationId={
+    activeConversation.id
+  }
+  contactId={
+    activeConversation.contact.id
+  }
+  businessId={
+    activeConversation.contact.business_id
+  }
+  initialTags={
+    activeConversation.contact.tags
+  }
       onReplyChange={onReplyChange}
       onSubmit={onSendMessage}
     />

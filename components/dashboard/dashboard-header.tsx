@@ -13,6 +13,11 @@ const navigation = [
     href: "/dashboard/customers",
   },
   {
+    label: "Subscription",
+    href: "/dashboard/subscription",
+    color: "from-emerald-500 to-green-400",
+  },
+  {
     label: "Integrations",
     href: "/dashboard/integrations",
   },

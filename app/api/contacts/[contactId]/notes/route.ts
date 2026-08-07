@@ -3,7 +3,12 @@ import {
   NextResponse,
 } from "next/server";
 
+import { getCurrentMember } from "@/lib/auth/get-current-member";
+import { createConversationActivity } from "@/lib/inbox/create-conversation-activity";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type RouteContext = {
   params: Promise<{
@@ -12,17 +17,77 @@ type RouteContext = {
 };
 
 type CreateNoteBody = {
-  authorId?: string;
   noteText?: string;
+  conversationId?: string;
 };
 
 export async function GET(
   _request: NextRequest,
   context: RouteContext,
 ) {
-  const { contactId } = await context.params;
+  const authResult =
+    await getCurrentMember();
 
-  const { data, error } = await supabaseAdmin
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
+    );
+  }
+
+  const { contactId } =
+    await context.params;
+
+  const {
+    data: contact,
+    error: contactError,
+  } = await supabaseAdmin
+    .from("contacts")
+    .select("id")
+    .eq("id", contactId)
+    .eq(
+      "business_id",
+      authResult.member.business_id,
+    )
+    .maybeSingle();
+
+  if (contactError) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Unable to verify customer access.",
+        details:
+          contactError.message,
+      },
+      {
+        status: 500,
+      },
+    );
+  }
+
+  if (!contact) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Customer was not found or you do not have access.",
+      },
+      {
+        status: 404,
+      },
+    );
+  }
+
+  const {
+    data: notes,
+    error: notesError,
+  } = await supabaseAdmin
     .from("contact_notes")
     .select(`
       id,
@@ -31,11 +96,13 @@ export async function GET(
       note_text,
       created_at,
       updated_at,
+
       author:team_members (
         id,
         full_name,
         email,
-        role
+        role,
+        profile_picture_url
       )
     `)
     .eq("contact_id", contactId)
@@ -43,17 +110,19 @@ export async function GET(
       ascending: false,
     });
 
-  if (error) {
+  if (notesError) {
     console.error(
-      "Unable to load contact notes:",
-      error,
+      "Unable to load internal notes:",
+      notesError,
     );
 
     return NextResponse.json(
       {
         success: false,
-        error: "Unable to load internal notes.",
-        details: error.message,
+        error:
+          "Unable to load internal notes.",
+        details:
+          notesError.message,
       },
       {
         status: 500,
@@ -63,7 +132,9 @@ export async function GET(
 
   return NextResponse.json({
     success: true,
-    notes: data ?? [],
+    notes: notes ?? [],
+    currentMemberId:
+      authResult.member.id,
   });
 }
 
@@ -71,12 +142,32 @@ export async function POST(
   request: NextRequest,
   context: RouteContext,
 ) {
-  const { contactId } = await context.params;
+  const authResult =
+    await getCurrentMember();
+
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
+    );
+  }
+
+  const currentMember =
+    authResult.member;
+
+  const { contactId } =
+    await context.params;
 
   let body: CreateNoteBody;
 
   try {
-    body = (await request.json()) as CreateNoteBody;
+    body =
+      (await request.json()) as CreateNoteBody;
   } catch {
     return NextResponse.json(
       {
@@ -89,15 +180,18 @@ export async function POST(
     );
   }
 
-  const authorId = body.authorId?.trim();
-  const noteText = body.noteText?.trim();
+  const noteText =
+    body.noteText?.trim();
 
-  if (!authorId) {
+  const conversationId =
+    body.conversationId?.trim();
+
+  if (!conversationId) {
     return NextResponse.json(
       {
         success: false,
         error:
-          "Assign this conversation to a staff member before adding a note.",
+          "Conversation ID is required.",
       },
       {
         status: 400,
@@ -109,7 +203,8 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-        error: "Note cannot be empty.",
+        error:
+          "Internal note cannot be empty.",
       },
       {
         status: 400,
@@ -121,7 +216,8 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-        error: "Note is too long.",
+        error:
+          "Internal note cannot contain more than 5,000 characters.",
       },
       {
         status: 400,
@@ -129,20 +225,31 @@ export async function POST(
     );
   }
 
-  const { data: author, error: authorError } =
-    await supabaseAdmin
-      .from("team_members")
-      .select("id")
-      .eq("id", authorId)
-      .eq("is_active", true)
-      .maybeSingle();
+  const {
+    data: contact,
+    error: contactError,
+  } = await supabaseAdmin
+    .from("contacts")
+    .select(`
+      id,
+      business_id,
+      full_name
+    `)
+    .eq("id", contactId)
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    )
+    .maybeSingle();
 
-  if (authorError) {
+  if (contactError) {
     return NextResponse.json(
       {
         success: false,
-        error: "Unable to verify note author.",
-        details: authorError.message,
+        error:
+          "Unable to load the customer.",
+        details:
+          contactError.message,
       },
       {
         status: 500,
@@ -150,11 +257,12 @@ export async function POST(
     );
   }
 
-  if (!author) {
+  if (!contact) {
     return NextResponse.json(
       {
         success: false,
-        error: "The selected staff member was not found.",
+        error:
+          "Customer was not found or you do not have access.",
       },
       {
         status: 404,
@@ -162,11 +270,60 @@ export async function POST(
     );
   }
 
-  const { data, error } = await supabaseAdmin
+  const {
+    data: conversation,
+    error: conversationError,
+  } = await supabaseAdmin
+    .from("conversations")
+    .select(`
+      id,
+      business_id,
+      contact_id
+    `)
+    .eq("id", conversationId)
+    .eq("contact_id", contactId)
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    )
+    .maybeSingle();
+
+  if (conversationError) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Unable to verify the conversation.",
+        details:
+          conversationError.message,
+      },
+      {
+        status: 500,
+      },
+    );
+  }
+
+  if (!conversation) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "A matching conversation was not found.",
+      },
+      {
+        status: 404,
+      },
+    );
+  }
+
+  const {
+    data: note,
+    error: insertError,
+  } = await supabaseAdmin
     .from("contact_notes")
     .insert({
-      contact_id: contactId,
-      author_id: authorId,
+      contact_id: contact.id,
+      author_id: currentMember.id,
       note_text: noteText,
     })
     .select(`
@@ -176,26 +333,30 @@ export async function POST(
       note_text,
       created_at,
       updated_at,
+
       author:team_members (
         id,
         full_name,
         email,
-        role
+        role,
+        profile_picture_url
       )
     `)
     .single();
 
-  if (error) {
+  if (insertError) {
     console.error(
-      "Unable to create contact note:",
-      error,
+      "Unable to create internal note:",
+      insertError,
     );
 
     return NextResponse.json(
       {
         success: false,
-        error: "Unable to create internal note.",
-        details: error.message,
+        error:
+          "Unable to create internal note.",
+        details:
+          insertError.message,
       },
       {
         status: 500,
@@ -203,8 +364,69 @@ export async function POST(
     );
   }
 
+  const customerName =
+    contact.full_name?.trim() ||
+    "Facebook customer";
+
+  let activityRecorded = false;
+
+  try {
+    await createConversationActivity({
+      businessId:
+        currentMember.business_id,
+
+      conversationId:
+        conversation.id,
+
+      contactId:
+        contact.id,
+
+      actorMemberId:
+        currentMember.id,
+
+      activityType:
+        "note_added",
+
+      title:
+        "added an internal note",
+
+      description:
+        `${currentMember.full_name} added an internal note for ${customerName}.`,
+
+      customerName,
+
+      actorName:
+        currentMember.full_name,
+
+      actorProfilePictureUrl:
+        currentMember.profile_picture_url,
+
+      metadata: {
+        noteId: note.id,
+        noteText: note.note_text,
+
+        actor: {
+          memberId:
+            currentMember.id,
+          name:
+            currentMember.full_name,
+          role:
+            currentMember.role,
+        },
+      },
+    });
+
+    activityRecorded = true;
+  } catch (activityError) {
+    console.error(
+      "Note created, but activity recording failed:",
+      activityError,
+    );
+  }
+
   return NextResponse.json({
     success: true,
-    note: data,
+    note,
+    activityRecorded,
   });
 }

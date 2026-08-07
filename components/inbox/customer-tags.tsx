@@ -11,6 +11,7 @@ import type {
 type CustomerTagsProps = {
   contactId: string;
   businessId: string;
+  conversationId: string;
   initialTags: CustomerTag[];
 };
 
@@ -38,6 +39,7 @@ export function CustomerTags({
   contactId,
   businessId,
   initialTags,
+   conversationId,
 }: CustomerTagsProps) {
   const [allTags, setAllTags] =
     useState<CustomerTag[]>([]);
@@ -140,6 +142,7 @@ export function CustomerTags({
           },
           body: JSON.stringify({
             tagId: tag.id,
+             conversationId,
           }),
         },
       );
@@ -185,6 +188,7 @@ export function CustomerTags({
           },
           body: JSON.stringify({
             tagId: tag.id,
+             conversationId,
           }),
         },
       );

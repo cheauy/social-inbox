@@ -3,23 +3,21 @@ import {
   NextResponse,
 } from "next/server";
 
+import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { createConversationActivity } from "@/lib/inbox/create-conversation-activity";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-type AssignmentBody = {
-  assignedTo?: string | null;
-
-  /*
-   * Temporary: send the logged-in team member ID.
-   * Later, read this from the authenticated session.
-   */
-  actorMemberId?: string | null;
-};
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type RouteContext = {
   params: Promise<{
     conversationId: string;
   }>;
+};
+
+type AssignmentBody = {
+  assignedTo?: string | null;
 };
 
 type ContactResult = {
@@ -29,9 +27,12 @@ type ContactResult = {
 
 type TeamMemberResult = {
   id: string;
+  business_id: string;
   full_name: string;
-  profile_picture_url: string | null;
+  email: string;
   role: string;
+  profile_picture_url: string | null;
+  is_active: boolean;
 };
 
 type ConversationResult = {
@@ -65,9 +66,49 @@ export async function PATCH(
   request: NextRequest,
   context: RouteContext,
 ) {
+  /*
+   * 1. Authenticate the logged-in user and
+   * resolve their active team member account.
+   */
+  const authResult =
+    await getCurrentMember();
+
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
+    );
+  }
+
+  const currentMember =
+    authResult.member;
+
   const { conversationId } =
     await context.params;
 
+  if (!conversationId?.trim()) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Conversation ID is required.",
+      },
+      {
+        status: 400,
+      },
+    );
+  }
+
+  /*
+   * 2. Read the selected assignee.
+   *
+   * null means unassigned.
+   */
   let body: AssignmentBody;
 
   try {
@@ -86,14 +127,13 @@ export async function PATCH(
   }
 
   const assignedTo =
-    body.assignedTo?.trim() || null;
-
-  const actorMemberId =
-    body.actorMemberId?.trim() || null;
+    typeof body.assignedTo === "string"
+      ? body.assignedTo.trim() || null
+      : null;
 
   /*
-   * Load the current conversation before updating.
-   * This provides the previous assignment and customer.
+   * 3. Load the conversation and its current
+   * assignee before making the change.
    */
   const {
     data: conversationData,
@@ -111,14 +151,21 @@ export async function PATCH(
         full_name
       ),
 
-      assigned_member:team_members (
+      assigned_member:team_members!conversations_assigned_to_fkey (
         id,
+        business_id,
         full_name,
+        email,
+        role,
         profile_picture_url,
-        role
+        is_active
       )
     `)
     .eq("id", conversationId)
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    )
     .maybeSingle();
 
   if (conversationError) {
@@ -146,7 +193,7 @@ export async function PATCH(
       {
         success: false,
         error:
-          "Conversation was not found.",
+          "Conversation was not found or you do not have access.",
       },
       {
         status: 404,
@@ -154,46 +201,51 @@ export async function PATCH(
     );
   }
 
-  const currentConversation =
+  const conversation =
     conversationData as unknown as ConversationResult;
 
   const previousAssignedTo =
-    currentConversation.assigned_to;
+    conversation.assigned_to;
 
   const contact =
     getSingleResult(
-      currentConversation.contact,
+      conversation.contact,
     );
 
   const previousMember =
     getSingleResult(
-      currentConversation.assigned_member,
+      conversation.assigned_member,
     );
 
   const customerName =
-    contact?.full_name ??
+    contact?.full_name?.trim() ||
     "Facebook customer";
 
   /*
-   * Do not create duplicate activity when the
-   * selected assignment has not changed.
+   * 4. Do not record duplicate activity when
+   * the assignment has not changed.
    */
   if (previousAssignedTo === assignedTo) {
     return NextResponse.json({
       success: true,
 
       conversation: {
-        id: currentConversation.id,
+        id: conversation.id,
         assigned_to:
           previousAssignedTo,
       },
 
       activityRecorded: false,
+      message:
+        "Conversation assignment was unchanged.",
     });
   }
 
   /*
-   * Verify and load the new assignee.
+   * 5. Verify the selected team member.
+   *
+   * The assignee must belong to the same
+   * business and must be active.
    */
   let selectedMember:
     | TeamMemberResult
@@ -207,17 +259,24 @@ export async function PATCH(
       .from("team_members")
       .select(`
         id,
+        business_id,
         full_name,
+        email,
+        role,
         profile_picture_url,
-        role
+        is_active
       `)
       .eq("id", assignedTo)
+      .eq(
+        "business_id",
+        currentMember.business_id,
+      )
       .eq("is_active", true)
       .maybeSingle();
 
     if (teamMemberError) {
       console.error(
-        "Unable to verify team member:",
+        "Unable to verify selected team member:",
         teamMemberError,
       );
 
@@ -225,7 +284,7 @@ export async function PATCH(
         {
           success: false,
           error:
-            "Unable to verify the team member.",
+            "Unable to verify the selected team member.",
           details:
             teamMemberError.message,
         },
@@ -240,7 +299,7 @@ export async function PATCH(
         {
           success: false,
           error:
-            "The selected team member was not found.",
+            "The selected team member was not found or does not belong to this business.",
         },
         {
           status: 404,
@@ -253,38 +312,8 @@ export async function PATCH(
   }
 
   /*
-   * Load the person who performed the action.
+   * 6. Update the conversation assignment.
    */
-  let actorMember:
-    | TeamMemberResult
-    | null = null;
-
-  if (actorMemberId) {
-    const {
-      data: actorData,
-      error: actorError,
-    } = await supabaseAdmin
-      .from("team_members")
-      .select(`
-        id,
-        full_name,
-        profile_picture_url,
-        role
-      `)
-      .eq("id", actorMemberId)
-      .maybeSingle();
-
-    if (actorError) {
-      console.error(
-        "Unable to load assignment actor:",
-        actorError,
-      );
-    } else {
-      actorMember =
-        actorData as TeamMemberResult | null;
-    }
-  }
-
   const now =
     new Date().toISOString();
 
@@ -302,7 +331,11 @@ export async function PATCH(
 
       updated_at: now,
     })
-    .eq("id", conversationId)
+    .eq("id", conversation.id)
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    )
     .select(`
       id,
       assigned_to,
@@ -313,7 +346,7 @@ export async function PATCH(
 
   if (updateError) {
     console.error(
-      "Unable to assign conversation:",
+      "Unable to update conversation assignment:",
       updateError,
     );
 
@@ -322,7 +355,8 @@ export async function PATCH(
         success: false,
         error:
           "Unable to update the conversation assignment.",
-        details: updateError.message,
+        details:
+          updateError.message,
       },
       {
         status: 500,
@@ -335,7 +369,7 @@ export async function PATCH(
       {
         success: false,
         error:
-          "Conversation was not found.",
+          "Conversation was not found or could not be updated.",
       },
       {
         status: 404,
@@ -343,100 +377,140 @@ export async function PATCH(
     );
   }
 
+  /*
+   * 7. Record the assignment activity.
+   */
   let activityRecorded = false;
 
   try {
     if (selectedMember) {
+      const activityTitle =
+        previousMember
+          ? `reassigned the conversation from ${previousMember.full_name} to ${selectedMember.full_name}`
+          : `assigned the conversation to ${selectedMember.full_name}`;
+
+      const activityDescription =
+        previousMember
+          ? `${currentMember.full_name} reassigned ${customerName}'s conversation from ${previousMember.full_name} to ${selectedMember.full_name}.`
+          : `${currentMember.full_name} assigned ${customerName}'s conversation to ${selectedMember.full_name}.`;
+
       await createConversationActivity({
         businessId:
-          currentConversation.business_id,
+          conversation.business_id,
 
         conversationId:
-          currentConversation.id,
+          conversation.id,
 
         contactId:
-          currentConversation.contact_id,
+          conversation.contact_id,
 
         actorMemberId:
-          actorMember?.id ?? null,
+          currentMember.id,
 
         activityType: "assigned",
 
-        title:
-          `assigned the conversation to ${selectedMember.full_name}`,
+        title: activityTitle,
 
         description:
-          `${customerName} was assigned to ${selectedMember.full_name}.`,
+          activityDescription,
 
         customerName,
 
         actorName:
-          actorMember?.full_name ??
-          "System",
+          currentMember.full_name,
 
         actorProfilePictureUrl:
-          actorMember
-            ?.profile_picture_url ??
-          null,
+          currentMember.profile_picture_url,
 
         metadata: {
-          previousAssignedToId:
-            previousMember?.id ?? null,
+          previousAssignee: {
+            memberId:
+              previousMember?.id ?? null,
 
-          previousAssignedToName:
-            previousMember?.full_name ??
-            null,
+            name:
+              previousMember?.full_name ??
+              null,
+          },
 
-          assignedToId:
-            selectedMember.id,
+          newAssignee: {
+            memberId:
+              selectedMember.id,
 
-          assignedToName:
-            selectedMember.full_name,
+            name:
+              selectedMember.full_name,
+
+            role:
+              selectedMember.role,
+          },
+
+          actor: {
+            memberId:
+              currentMember.id,
+
+            name:
+              currentMember.full_name,
+
+            role:
+              currentMember.role,
+          },
         },
       });
     } else {
       await createConversationActivity({
         businessId:
-          currentConversation.business_id,
+          conversation.business_id,
 
         conversationId:
-          currentConversation.id,
+          conversation.id,
 
         contactId:
-          currentConversation.contact_id,
+          conversation.contact_id,
 
         actorMemberId:
-          actorMember?.id ?? null,
+          currentMember.id,
 
         activityType: "unassigned",
 
         title:
-          "removed the conversation assignment",
+          previousMember
+            ? `removed ${previousMember.full_name} from the conversation`
+            : "removed the conversation assignment",
 
         description:
-          `${customerName} is now unassigned.`,
+          previousMember
+            ? `${currentMember.full_name} removed ${previousMember.full_name} from ${customerName}'s conversation.`
+            : `${currentMember.full_name} marked ${customerName}'s conversation as unassigned.`,
 
         customerName,
 
         actorName:
-          actorMember?.full_name ??
-          "System",
+          currentMember.full_name,
 
         actorProfilePictureUrl:
-          actorMember
-            ?.profile_picture_url ??
-          null,
+          currentMember.profile_picture_url,
 
         metadata: {
-          previousAssignedToId:
-            previousMember?.id ?? null,
+          previousAssignee: {
+            memberId:
+              previousMember?.id ?? null,
 
-          previousAssignedToName:
-            previousMember?.full_name ??
-            null,
+            name:
+              previousMember?.full_name ??
+              null,
+          },
 
-          assignedToId: null,
-          assignedToName: null,
+          newAssignee: null,
+
+          actor: {
+            memberId:
+              currentMember.id,
+
+            name:
+              currentMember.full_name,
+
+            role:
+              currentMember.role,
+          },
         },
       });
     }

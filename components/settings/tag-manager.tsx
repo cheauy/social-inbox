@@ -379,14 +379,17 @@ export function TagManager({
                     </td>
 
                     <td className="px-5 py-4">
-                    <span
-  className="inline-flex min-w-28 justify-center rounded-full px-3 py-1.5 text-sm font-semibold text-white"
-  style={{
-    backgroundColor: tag.color,
-  }}
->
-  {tag.name}
-</span>
+                      <span
+                        className="inline-flex max-w-48 items-center truncate rounded-md border px-3 py-1.5 text-sm font-semibold shadow-sm"
+                        style={{
+                          color: tag.color,
+                          borderColor: `${tag.color}33`,
+                          backgroundColor: `${tag.color}14`,
+                        }}
+                        title={tag.name}
+                      >
+                        {tag.name}
+                      </span>
                     </td>
 
                     <td className="max-w-md px-5 py-4 text-sm text-slate-600">

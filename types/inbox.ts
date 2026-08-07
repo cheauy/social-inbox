@@ -54,16 +54,19 @@ export type CustomerTag = {
 };
 
 export type ConversationActivityType =
+  | "status_changed"
   | "assigned"
   | "unassigned"
-  | "status_changed"
   | "tag_added"
   | "tag_removed"
-  | "customer_updated"
   | "note_added"
   | "note_updated"
   | "note_deleted"
-  | "reminder_created";
+  | "internal_note_added"
+  | "internal_note_updated"
+  | "internal_note_deleted"
+  | "customer_profile_updated"
+  | "customer_updated";
 
 export type ConversationActivity = {
   id: string;
@@ -101,6 +104,7 @@ export type InboxContact = {
   customer_note: string | null;
   created_at: string;
   last_contact_at: string | null;
+  address: string | null;
   tags: CustomerTag[];
 };
 
@@ -135,12 +139,47 @@ export type InboxConversation = {
   unread_count: number;
   last_message_text: string | null;
   last_message_at: string | null;
+  is_pinned: boolean;
+  pinned_at: string | null;
+  pinned_by: string | null;
+
+  latest_message_type:
+    | "text"
+    | "image"
+    | "video"
+    | "audio"
+    | "file"
+    | "sticker"
+    | "unknown"
+    | null;
+
+  latest_message_direction:
+    | MessageDirection
+    | null;
+
   assigned_to: string | null;
   assigned_at: string | null;
   assigned_member: TeamMember | null;
   contact: InboxContact | null;
   seen_by_member?: TeamMember | null;
   seen_at?: string | null;
+  
+  source_type:
+  | "messenger"
+  | "comment";
+
+facebook_post_id:
+  | string
+  | null;
+
+facebook_comment_id:
+  | string
+  | null;
+
+parent_comment_id:
+  | string
+  | null;
+
   social_account: {
     id: string;
     account_name: string;
@@ -151,6 +190,8 @@ export type InboxConversation = {
 export type InboxMessage = {
   id: string;
   platform_message_id: string;
+  conversation_id: string;
+  sender_type: string;
   sender_platform_id: string;
   recipient_platform_id: string;
   direction: MessageDirection;

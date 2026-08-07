@@ -8,6 +8,7 @@ import type { CustomerTag } from "@/types/inbox";
 type CustomerTagSelectorProps = {
   contactId: string;
   businessId: string;
+  conversationId: string;
   initialTags: CustomerTag[];
 };
 
@@ -78,6 +79,7 @@ function TagIcon() {
 export function CustomerTagSelector({
   contactId,
   businessId,
+  conversationId,
   initialTags,
 }: CustomerTagSelectorProps) {
   const [open, setOpen] =
@@ -202,6 +204,7 @@ export function CustomerTagSelector({
 
           body: JSON.stringify({
             tagId: tag.id,
+            
           }),
         },
       );
