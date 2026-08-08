@@ -183,13 +183,21 @@ async function markDelivered({
     );
 
   /*
-   * Best case:
-   * Meta gives us exact message IDs.
+   * =====================================================
+   * 1. BEST CASE — META GIVES EXACT MESSAGE IDs
+   * =====================================================
    *
-   * Updating by MID avoids touching Facebook comment replies.
+   * Do NOT require conversation_id here.
+   *
+   * platform_message_id is Meta's unique MID and is the
+   * safest way to identify the outgoing Messenger message.
+   *
+   * This also prevents a conversation lookup mismatch from
+   * blocking Delivered status.
    */
   if (mids.length > 0) {
     const {
+      data: updatedMessages,
       error,
     } = await supabaseAdmin
       .from("messages")
@@ -200,58 +208,6 @@ async function markDelivered({
         delivered_at:
           deliveredAt,
       })
-      .eq(
-        "conversation_id",
-        conversationId,
-      )
-      .eq(
-        "direction",
-        "outgoing",
-      )
-      .is(
-        "seen_at",
-        null,
-      )
-      .in(
-        "platform_message_id",
-        mids,
-      );
-
-    if (error) {
-      throw new Error(
-        error.message,
-      );
-    }
-  }
-
-  /*
-   * Some delivery notifications can also contain a watermark.
-   *
-   * Only rows that already have delivery_status are eligible.
-   * Tenh Chat sets delivery_status='sent' only for Messenger sends,
-   * so Facebook comment replies remain excluded.
-   */
-  if (watermark) {
-    const watermarkIso =
-      toIsoFromMilliseconds(
-        watermark,
-      );
-
-    const {
-      error,
-    } = await supabaseAdmin
-      .from("messages")
-      .update({
-        delivery_status:
-          "delivered",
-
-        delivered_at:
-          deliveredAt,
-      })
-      .eq(
-        "conversation_id",
-        conversationId,
-      )
       .eq(
         "direction",
         "outgoing",
@@ -265,17 +221,130 @@ async function markDelivered({
         "seen_at",
         null,
       )
-      .lte(
-        "platform_created_at",
-        watermarkIso,
-      );
+      .in(
+        "platform_message_id",
+        mids,
+      )
+      .select(`
+        id,
+        conversation_id,
+        platform_message_id,
+        delivery_status,
+        delivered_at
+      `);
 
     if (error) {
       throw new Error(
         error.message,
       );
     }
+
+    console.log(
+      "[Facebook status] MID delivery update",
+      {
+        mids,
+        updatedCount:
+          updatedMessages?.length ??
+          0,
+        updatedMessages,
+      },
+    );
+
+    /*
+     * Exact MID matched.
+     * No need for the watermark fallback.
+     */
+    if (
+      updatedMessages &&
+      updatedMessages.length > 0
+    ) {
+      return;
+    }
+
+    console.warn(
+      "[Facebook status] Delivery MID matched 0 rows.",
+      {
+        mids,
+        conversationId,
+      },
+    );
   }
+
+  /*
+   * =====================================================
+   * 2. FALLBACK — DELIVERY WATERMARK
+   * =====================================================
+   *
+   * Some Meta delivery events may contain only a watermark.
+   */
+  if (!watermark) {
+    return;
+  }
+
+  const watermarkIso =
+    toIsoFromMilliseconds(
+      watermark,
+    );
+
+  const {
+    data: updatedMessages,
+    error,
+  } = await supabaseAdmin
+    .from("messages")
+    .update({
+      delivery_status:
+        "delivered",
+
+      delivered_at:
+        deliveredAt,
+    })
+    .eq(
+      "conversation_id",
+      conversationId,
+    )
+    .eq(
+      "direction",
+      "outgoing",
+    )
+    .not(
+      "delivery_status",
+      "is",
+      null,
+    )
+    .is(
+      "seen_at",
+      null,
+    )
+    .lte(
+      "platform_created_at",
+      watermarkIso,
+    )
+    .select(`
+      id,
+      conversation_id,
+      platform_message_id,
+      delivery_status,
+      delivered_at
+    `);
+
+  if (error) {
+    throw new Error(
+      error.message,
+    );
+  }
+
+  console.log(
+    "[Facebook status] Watermark delivery update",
+    {
+      conversationId,
+      watermark,
+      watermarkIso,
+      updatedCount:
+        updatedMessages?.length ??
+        0,
+      updatedMessages,
+    },
+  );
 }
 
 async function markSeen({
