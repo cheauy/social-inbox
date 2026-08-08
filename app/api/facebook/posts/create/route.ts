@@ -2,6 +2,11 @@ import {
   NextRequest,
   NextResponse,
 } from "next/server";
+import {
+  getFacebookPageAccessToken,
+} from "@/lib/facebook/get-facebook-page-access-token";
+
+
 
 export const runtime = "nodejs";
 
@@ -13,8 +18,9 @@ export async function POST(
       process.env.FACEBOOK_PAGE_ID;
 
     const pageAccessToken =
-      process.env
-        .FACEBOOK_PAGE_ACCESS_TOKEN;
+  await getFacebookPageAccessToken(
+    pageId,
+  );
 
     const graphVersion =
       process.env

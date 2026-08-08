@@ -1,5 +1,7 @@
 import "server-only";
-
+import {
+  getFacebookPageAccessToken,
+} from "@/lib/facebook/get-facebook-page-access-token";
 export type FacebookPostPreview = {
   id: string;
   message: string | null;
@@ -30,18 +32,9 @@ export async function getFacebookPostPreview(
     return null;
   }
 
-  const pageAccessToken =
-    process.env
-      .FACEBOOK_PAGE_ACCESS_TOKEN;
-
-  if (!pageAccessToken) {
-    console.warn(
-      "FACEBOOK_PAGE_ACCESS_TOKEN is missing; skipping Facebook post preview.",
-    );
-
-    return null;
-  }
-
+ const pageAccessToken =
+  await getFacebookPageAccessToken(
+  );
   const graphVersion =
     process.env
       .FACEBOOK_GRAPH_API_VERSION ??

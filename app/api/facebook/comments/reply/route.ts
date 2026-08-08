@@ -7,6 +7,10 @@ import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 
+import {
+  getFacebookPageAccessToken,
+} from "@/lib/facebook/get-facebook-page-access-token";
+
 type ReplyBody = {
   conversationId?: string;
   commentId?: string;
@@ -46,9 +50,7 @@ export async function POST(
       );
     }
 
-    const pageAccessToken =
-      process.env
-        .FACEBOOK_PAGE_ACCESS_TOKEN;
+   
 
     const pageId =
       process.env.FACEBOOK_PAGE_ID;
@@ -57,22 +59,11 @@ export async function POST(
       process.env
         .FACEBOOK_GRAPH_API_VERSION ??
       "v26.0";
+const pageAccessToken =
+  await getFacebookPageAccessToken(
+    pageId,
+  );
 
-    if (
-      !pageAccessToken ||
-      !pageId
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Facebook Page configuration is missing.",
-        },
-        {
-          status: 500,
-        },
-      );
-    }
 
     const response =
       await fetch(

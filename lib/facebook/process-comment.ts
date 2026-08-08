@@ -1,4 +1,7 @@
 import "server-only";
+import {
+  getFacebookPageAccessToken,
+} from "@/lib/facebook/get-facebook-page-access-token";
 
 import {
   supabaseAdmin,
@@ -297,34 +300,12 @@ if (
     },
   );
 
-  const pageAccessToken =
-    process.env
-      .FACEBOOK_PAGE_ACCESS_TOKEN;
+ const pageAccessToken: string =
+  await getFacebookPageAccessToken(
+    pageId,
+  );
 
-  if (!pageAccessToken) {
-    console.error(
-      "COMMENT ERROR - FACEBOOK_PAGE_ACCESS_TOKEN missing",
-    );
-
-    throw new Error(
-      "FACEBOOK_PAGE_ACCESS_TOKEN is missing.",
-    );
-  }
-
-  /*
-   * Facebook feed events sometimes do not contain
-   * the comment message.
-   *
-   * Fetch the complete comment from Graph API.
-   */
-/*
- * Facebook feed webhook events may not include
- * the comment message.
- *
- * Try to enrich the event from Graph API,
- * but DO NOT block conversation creation
- * if the Graph lookup fails.
- */
+   
 if (
   !message ||
   !authorId

@@ -3,6 +3,10 @@ import {
   NextResponse,
 } from "next/server";
 
+
+import {
+  getFacebookPageAccessToken,
+} from "@/lib/facebook/get-facebook-page-access-token";
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
@@ -34,27 +38,13 @@ export async function POST(
       );
     }
 
-    const pageAccessToken =
-      process.env
-        .FACEBOOK_PAGE_ACCESS_TOKEN;
-
-    const graphVersion =
+     const graphVersion =
       process.env
         .FACEBOOK_GRAPH_API_VERSION ??
       "v26.0";
 
-    if (!pageAccessToken) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "FACEBOOK_PAGE_ACCESS_TOKEN is missing.",
-        },
-        {
-          status: 500,
-        },
-      );
-    }
+    const pageAccessToken =
+  await getFacebookPageAccessToken();
 
     const url =
       `https://graph.facebook.com/${graphVersion}/${commentId}` +

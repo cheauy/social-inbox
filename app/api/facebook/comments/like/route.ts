@@ -2,6 +2,9 @@ import {
   NextRequest,
   NextResponse,
 } from "next/server";
+import {
+  getFacebookPageAccessToken,
+} from "@/lib/facebook/get-facebook-page-access-token";
 
 import {
   supabaseAdmin,
@@ -37,28 +40,15 @@ export async function POST(
       );
     }
 
-    const pageAccessToken =
-      process.env
-        .FACEBOOK_PAGE_ACCESS_TOKEN;
-
-    const graphVersion =
+     const graphVersion =
       process.env
         .FACEBOOK_GRAPH_API_VERSION ??
       "v26.0";
 
-    if (!pageAccessToken) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "FACEBOOK_PAGE_ACCESS_TOKEN is missing.",
-        },
-        {
-          status: 500,
-        },
-      );
-    }
-
+    const pageAccessToken =
+  await getFacebookPageAccessToken(
+    
+  );
     const endpoint =
       `https://graph.facebook.com/${graphVersion}/${commentId}/likes`;
 

@@ -18,6 +18,10 @@ import { CustomerProfile } from "@/components/inbox/customer-profile";
 import type { InboxViewProps } from "@/components/inbox/inbox-view-types";
 import { MessagePanel } from "@/components/inbox/message-panel";
 
+import {
+  useInboxRealtime,
+} from "@/lib/inbox/use-inbox-realtime";
+
 import type { ConversationStatus } from "@/types/inbox";
 
 
@@ -129,6 +133,36 @@ const activeConversation =
       resolvedActiveConversationId,
     ],
   );
+
+const realtimeBusinessId =
+  useMemo(
+    () =>
+      activeConversation
+        ?.contact
+        ?.business_id ??
+      conversations.find(
+        (conversation) =>
+          Boolean(
+            conversation.contact
+              ?.business_id,
+          ),
+      )?.contact
+        ?.business_id ??
+      null,
+    [
+      activeConversation,
+      conversations,
+    ],
+  );
+
+useInboxRealtime({
+  businessId:
+    realtimeBusinessId,
+
+  onDatabaseChange: () => {
+    router.refresh();
+  },
+});
   
 
 useEffect(() => {
