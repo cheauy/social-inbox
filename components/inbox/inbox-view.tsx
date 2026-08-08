@@ -22,10 +22,41 @@ import {
   useInboxRealtime,
 } from "@/lib/inbox/use-inbox-realtime";
 
-import type { ConversationStatus } from "@/types/inbox";
+import type {
+  ConversationStatus,
+  InboxMessage,
+} from "@/types/inbox";
 
 
 
+
+
+type OptimisticSendStatus =
+  | "sending"
+  | "sent"
+  | "failed";
+
+type OptimisticInboxMessage =
+  InboxMessage & {
+    __optimistic_status?:
+      OptimisticSendStatus;
+    __optimistic_created_at?:
+      number;
+  };
+
+type PendingOptimisticSend = {
+  tempId: string;
+  conversationId: string;
+  message: string;
+  endpoint: string;
+  requestBody:
+    Record<string, unknown>;
+  isCommentConversation:
+    boolean;
+  commentId:
+    | string
+    | null;
+};
 
 export function InboxView({
   conversations,
@@ -84,13 +115,38 @@ const skipAutomaticReadRef =
   const [assignmentError, setAssignmentError] =
     useState<string | null>(null);
 
+  /*
+   * Realtime V2 local state.
+   *
+   * Server props remain the initial/enriched source of truth.
+   * Realtime updates these arrays directly so incoming messages
+   * do not require router.refresh().
+   */
+  const [
+    liveConversations,
+    setLiveConversations,
+  ] = useState(conversations);
+
+  const [
+    liveMessages,
+    setLiveMessages,
+  ] = useState(messages);
+
+  const pendingSendsRef =
+    useRef<
+      Record<
+        string,
+        PendingOptimisticSend
+      >
+    >({});
+
   
 
  const resolvedActiveConversationId =
   useMemo(() => {
     if (
       requestedConversationId &&
-      conversations.some(
+      liveConversations.some(
         (conversation) =>
           conversation.id ===
           requestedConversationId,
@@ -101,7 +157,7 @@ const skipAutomaticReadRef =
 
     if (
       activeConversationId &&
-      conversations.some(
+      liveConversations.some(
         (conversation) =>
           conversation.id ===
           activeConversationId,
@@ -111,11 +167,11 @@ const skipAutomaticReadRef =
     }
 
     return (
-      conversations[0]?.id ??
+      liveConversations[0]?.id ??
       null
     );
   }, [
-    conversations,
+    liveConversations,
     requestedConversationId,
     activeConversationId,
   ]);
@@ -123,13 +179,13 @@ const skipAutomaticReadRef =
 const activeConversation =
   useMemo(
     () =>
-      conversations.find(
+      liveConversations.find(
         (conversation) =>
           conversation.id ===
           resolvedActiveConversationId,
       ) ?? null,
     [
-      conversations,
+      liveConversations,
       resolvedActiveConversationId,
     ],
   );
@@ -140,7 +196,7 @@ const realtimeBusinessId =
       activeConversation
         ?.contact
         ?.business_id ??
-      conversations.find(
+      liveConversations.find(
         (conversation) =>
           Boolean(
             conversation.contact
@@ -151,7 +207,7 @@ const realtimeBusinessId =
       null,
     [
       activeConversation,
-      conversations,
+      liveConversations,
     ],
   );
 
@@ -159,16 +215,337 @@ useInboxRealtime({
   businessId:
     realtimeBusinessId,
 
-  onDatabaseChange: () => {
+  onRealtimeEvent: (
+    event,
+  ) => {
+    if (
+      event.table ===
+      "messages"
+    ) {
+      const row =
+        event.eventType ===
+        "DELETE"
+          ? event.oldRow
+          : event.newRow;
+
+      const messageId =
+        typeof row.id ===
+        "string"
+          ? row.id
+          : null;
+
+      const conversationId =
+        typeof row.conversation_id ===
+        "string"
+          ? row.conversation_id
+          : null;
+
+      if (
+        !messageId ||
+        !conversationId ||
+        conversationId !==
+          resolvedActiveConversationId
+      ) {
+        return;
+      }
+
+      if (
+        event.eventType ===
+        "DELETE"
+      ) {
+        setLiveMessages(
+          (current) =>
+            current.filter(
+              (message) =>
+                message.id !==
+                messageId,
+            ),
+        );
+
+        return;
+      }
+
+      setLiveMessages(
+        (current) => {
+          const existingIndex =
+            current.findIndex(
+              (message) =>
+                message.id ===
+                messageId,
+            );
+
+          if (
+            existingIndex === -1
+          ) {
+            const realDirection =
+              typeof row.direction ===
+              "string"
+                ? row.direction
+                : null;
+
+            const realMessageText =
+              typeof row.message_text ===
+              "string"
+                ? row.message_text
+                : null;
+
+            const realCreatedAt =
+              typeof row.created_at ===
+              "string"
+                ? new Date(
+                    row.created_at,
+                  ).getTime()
+                : Date.now();
+
+            const optimisticIndex =
+              realDirection ===
+                "outgoing" &&
+              realMessageText
+                ? current.findIndex(
+                    (message) => {
+                      const optimistic =
+                        message as OptimisticInboxMessage;
+
+                      if (
+                        !optimistic.__optimistic_status ||
+                        message.conversation_id !==
+                          conversationId ||
+                        message.message_text !==
+                          realMessageText
+                      ) {
+                        return false;
+                      }
+
+                      const optimisticTime =
+                        optimistic.__optimistic_created_at ??
+                        new Date(
+                          message.created_at,
+                        ).getTime();
+
+                      return (
+                        Math.abs(
+                          realCreatedAt -
+                            optimisticTime,
+                        ) <
+                        120_000
+                      );
+                    },
+                  )
+                : -1;
+
+            if (
+              optimisticIndex >= 0
+            ) {
+              const optimisticId =
+                current[
+                  optimisticIndex
+                ].id;
+
+              delete pendingSendsRef
+                .current[
+                  optimisticId
+                ];
+
+              return [
+                ...current.filter(
+                  (
+                    _message,
+                    index,
+                  ) =>
+                    index !==
+                    optimisticIndex,
+                ),
+                row as unknown as typeof current[number],
+              ].sort(
+                (
+                  first,
+                  second,
+                ) =>
+                  new Date(
+                    first.created_at,
+                  ).getTime() -
+                  new Date(
+                    second.created_at,
+                  ).getTime(),
+              );
+            }
+
+            return [
+              ...current,
+              row as unknown as typeof current[number],
+            ].sort(
+              (first, second) =>
+                new Date(
+                  first.created_at,
+                ).getTime() -
+                new Date(
+                  second.created_at,
+                ).getTime(),
+            );
+          }
+
+          return current.map(
+            (message) =>
+              message.id ===
+              messageId
+                ? ({
+                    ...message,
+                    ...row,
+                  } as unknown as typeof message)
+                : message,
+          );
+        },
+      );
+
+      return;
+    }
+
+    if (
+      event.table ===
+      "conversations"
+    ) {
+      const row =
+        event.eventType ===
+        "DELETE"
+          ? event.oldRow
+          : event.newRow;
+
+      const conversationId =
+        typeof row.id ===
+        "string"
+          ? row.id
+          : null;
+
+      if (!conversationId) {
+        return;
+      }
+
+      if (
+        event.eventType ===
+        "DELETE"
+      ) {
+        setLiveConversations(
+          (current) =>
+            current.filter(
+              (conversation) =>
+                conversation.id !==
+                conversationId,
+            ),
+        );
+
+        return;
+      }
+
+      setLiveConversations(
+        (current) => {
+          const exists =
+            current.some(
+              (conversation) =>
+                conversation.id ===
+                conversationId,
+            );
+
+          /*
+           * INSERT is enriched by the fallback router refresh.
+           * Do not add the raw row because it has no contact join.
+           */
+          if (!exists) {
+            return current;
+          }
+
+          const next =
+            current.map(
+              (conversation) =>
+                conversation.id ===
+                conversationId
+                  ? ({
+                      ...conversation,
+                      ...row,
+                    } as unknown as typeof conversation)
+                  : conversation,
+            );
+
+          /*
+           * Keep pinned items stable and otherwise move the
+           * most recently active conversations toward the top.
+           */
+          return [...next].sort(
+            (first, second) => {
+              const firstPinned =
+                Boolean(
+                  (
+                    first as {
+                      is_pinned?:
+                        boolean;
+                    }
+                  ).is_pinned,
+                );
+
+              const secondPinned =
+                Boolean(
+                  (
+                    second as {
+                      is_pinned?:
+                        boolean;
+                    }
+                  ).is_pinned,
+                );
+
+              if (
+                firstPinned !==
+                secondPinned
+              ) {
+                return firstPinned
+                  ? -1
+                  : 1;
+              }
+
+              return (
+                new Date(
+                  second.last_message_at ??
+                    0,
+                ).getTime() -
+                new Date(
+                  first.last_message_at ??
+                    0,
+                ).getTime()
+              );
+            },
+          );
+        },
+      );
+    }
+  },
+
+  /*
+   * Only brand-new conversations need joined server data.
+   * Normal messages/updates stay completely local.
+   */
+  onFallbackRefresh: () => {
     router.refresh();
   },
 });
   
 
 useEffect(() => {
+  setLiveConversations(
+    conversations,
+  );
+}, [conversations]);
+
+useEffect(() => {
+  setLiveMessages(
+    messages,
+  );
+}, [
+  messages,
+  resolvedActiveConversationId,
+]);
+
+useEffect(() => {
   if (
     requestedConversationId &&
-    !conversations.some(
+    !liveConversations.some(
       (conversation) =>
         conversation.id ===
         requestedConversationId,
@@ -179,7 +556,7 @@ useEffect(() => {
     );
   }
 }, [
-  conversations,
+  liveConversations,
   requestedConversationId,
   router,
 ]);
@@ -190,7 +567,7 @@ useEffect(() => {
   }
 
   const activeConversation =
-    conversations.find(
+    liveConversations.find(
       (conversation) =>
         conversation.id ===
         resolvedActiveConversationId,
@@ -248,7 +625,19 @@ async function markConversationRead() {
         return;
       }
 
-      router.refresh();
+      setLiveConversations(
+        (current) =>
+          current.map(
+            (conversation) =>
+              conversation.id ===
+              resolvedActiveConversationId
+                ? {
+                    ...conversation,
+                    unread_count: 0,
+                  }
+                : conversation,
+          ),
+      );
     } catch (error) {
       if (!cancelled) {
         console.error(error);
@@ -262,9 +651,8 @@ async function markConversationRead() {
     cancelled = true;
   };
 }, [
-  conversations,
+  liveConversations,
   resolvedActiveConversationId,
-  router,
 ]);
 
   async function handleMarkUnread() {
@@ -825,6 +1213,297 @@ async function handleHideComment(
   }
 }
 
+function setOptimisticSendStatus(
+  tempId: string,
+  status: OptimisticSendStatus,
+) {
+  setLiveMessages(
+    (current) =>
+      current.map(
+        (message) =>
+          message.id ===
+          tempId
+            ? ({
+                ...message,
+                __optimistic_status:
+                  status,
+              } as unknown as typeof message)
+            : message,
+      ),
+  );
+}
+
+function createOptimisticMessage({
+  tempId,
+  conversationId,
+  message,
+  recipientPlatformId,
+}: {
+  tempId: string;
+  conversationId: string;
+  message: string;
+  recipientPlatformId: string;
+}): InboxMessage {
+  const now =
+    new Date().toISOString();
+
+  return {
+    id: tempId,
+    business_id:
+      realtimeBusinessId ??
+      "",
+    platform_message_id:
+      tempId,
+    conversation_id:
+      conversationId,
+    sender_type:
+      "page",
+    sender_platform_id:
+      activeConversation
+        ?.social_account
+        ?.platform_account_id ??
+      "",
+    recipient_platform_id:
+      recipientPlatformId,
+    direction:
+      "outgoing",
+    message_type:
+      "text",
+    message_text:
+      message,
+    attachment_url:
+      null,
+    is_echo:
+      false,
+    raw_payload:
+      null,
+    platform_created_at:
+      now,
+    created_at:
+      now,
+    comment_is_liked:
+      false,
+    comment_is_hidden:
+      false,
+    comment_is_deleted:
+      false,
+    comment_deleted_by:
+      null,
+    __optimistic_status:
+      "sending",
+    __optimistic_created_at:
+      Date.now(),
+  } as unknown as InboxMessage;
+}
+
+function updateConversationPreviewOptimistically({
+  conversationId,
+  message,
+  createdAt,
+}: {
+  conversationId: string;
+  message: string;
+  createdAt: string;
+}) {
+  setLiveConversations(
+    (current) => {
+      const next =
+        current.map(
+          (conversation) =>
+            conversation.id ===
+            conversationId
+              ? {
+                  ...conversation,
+                  last_message_text:
+                    message,
+                  last_message_at:
+                    createdAt,
+                }
+              : conversation,
+        );
+
+      return [...next].sort(
+        (first, second) => {
+          const firstPinned =
+            Boolean(
+              (
+                first as {
+                  is_pinned?:
+                    boolean;
+                }
+              ).is_pinned,
+            );
+
+          const secondPinned =
+            Boolean(
+              (
+                second as {
+                  is_pinned?:
+                    boolean;
+                }
+              ).is_pinned,
+            );
+
+          if (
+            firstPinned !==
+            secondPinned
+          ) {
+            return firstPinned
+              ? -1
+              : 1;
+          }
+
+          return (
+            new Date(
+              second.last_message_at ??
+                0,
+            ).getTime() -
+            new Date(
+              first.last_message_at ??
+                0,
+            ).getTime()
+          );
+        },
+      );
+    },
+  );
+}
+
+async function performOptimisticSend(
+  pending:
+    PendingOptimisticSend,
+) {
+  setOptimisticSendStatus(
+    pending.tempId,
+    "sending",
+  );
+
+  setSending(true);
+  setSendError(null);
+
+  try {
+    const response =
+      await fetch(
+        pending.endpoint,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify(
+            pending.requestBody,
+          ),
+        },
+      );
+
+    const responseText =
+      await response.text();
+
+    let result: {
+      success: boolean;
+      error?: string;
+    };
+
+    if (
+      responseText.trim()
+    ) {
+      try {
+        result =
+          JSON.parse(
+            responseText,
+          ) as {
+            success: boolean;
+            error?: string;
+          };
+      } catch {
+        result = {
+          success: false,
+          error:
+            "The send API returned invalid JSON.",
+        };
+      }
+    } else {
+      result = {
+        success:
+          response.ok,
+        error:
+          response.ok
+            ? undefined
+            : `The send API returned an empty response (${response.status}).`,
+      };
+    }
+
+    if (
+      !response.ok ||
+      !result.success
+    ) {
+      throw new Error(
+        result.error ??
+          "Unable to send the message.",
+      );
+    }
+
+    setOptimisticSendStatus(
+      pending.tempId,
+      "sent",
+    );
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : "Unable to send the message.";
+
+    setOptimisticSendStatus(
+      pending.tempId,
+      "failed",
+    );
+
+    if (
+      pending
+        .isCommentConversation &&
+      pending.commentId &&
+      isDeletedCommentError(
+        errorMessage,
+      )
+    ) {
+      await markCommentDeletedLocally(
+        pending.commentId,
+      );
+
+      setSendError(
+        "Comment is deleted by commenter.",
+      );
+
+      return;
+    }
+
+    setSendError(
+      errorMessage,
+    );
+  } finally {
+    setSending(false);
+  }
+}
+
+async function handleRetryOptimisticMessage(
+  tempId: string,
+) {
+  const pending =
+    pendingSendsRef
+      .current[
+        tempId
+      ];
+
+  if (!pending) {
+    return;
+  }
+
+  await performOptimisticSend(
+    pending,
+  );
+}
+
 async function handleSendMessage(
   event: FormEvent,
 ) {
@@ -841,12 +1520,6 @@ async function handleSendMessage(
     return;
   }
 
-  /*
-   * For Facebook Comment conversations we no longer
-   * fall back to activeConversation.facebook_comment_id.
-   *
-   * Staff MUST click Reply on one exact comment first.
-   */
   const isCommentConversation =
     activeConversation.source_type ===
     "comment";
@@ -867,143 +1540,94 @@ async function handleSendMessage(
     return;
   }
 
-  setSending(true);
-  setSendError(null);
+  const randomId =
+    typeof crypto !==
+      "undefined" &&
+    typeof crypto.randomUUID ===
+      "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random()}`;
 
-  try {
+  const tempId =
+    `optimistic:${randomId}`;
 
-    const endpoint =
-      isCommentConversation
-        ? "/api/facebook/comments/reply"
-        : "/api/facebook/send";
+  const endpoint =
+    isCommentConversation
+      ? "/api/facebook/comments/reply"
+      : "/api/facebook/send";
 
-    const requestBody =
-      isCommentConversation
-        ? {
-            conversationId:
-              activeConversation.id,
+  const requestBody:
+    Record<string, unknown> =
+    isCommentConversation
+      ? {
+          conversationId:
+            activeConversation.id,
+          commentId,
+          message,
+        }
+      : {
+          conversationId:
+            activeConversation.id,
+          recipientId:
+            activeConversation
+              .contact
+              .platform_user_id,
+          message,
+        };
 
-            commentId,
-
-            message,
-          }
-        : {
-            conversationId:
-              activeConversation.id,
-
-            recipientId:
-              activeConversation.contact
-                .platform_user_id,
-
-            message,
-          };
-
-    const response =
-      await fetch(
-        endpoint,
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body: JSON.stringify(
-            requestBody,
-          ),
-        },
-      );
-
-    const responseText =
-      await response.text();
-
-    let result: {
-      success: boolean;
-      error?: string;
+  const pending:
+    PendingOptimisticSend = {
+      tempId,
+      conversationId:
+        activeConversation.id,
+      message,
+      endpoint,
+      requestBody,
+      isCommentConversation,
+      commentId,
     };
 
-    if (responseText.trim()) {
-      try {
-        result =
-          JSON.parse(
-            responseText,
-          ) as {
-            success: boolean;
-            error?: string;
-          };
-      } catch {
-        result = {
-          success: false,
-          error:
-            "The send API returned invalid JSON.",
-        };
-      }
-    } else {
-      result = {
-        success:
-          response.ok,
+  pendingSendsRef.current[
+    tempId
+  ] = pending;
 
-        error:
-          response.ok
-            ? undefined
-            : `The send API returned an empty response (${response.status}).`,
-      };
-    }
+  const optimisticMessage =
+    createOptimisticMessage({
+      tempId,
+      conversationId:
+        activeConversation.id,
+      message,
+      recipientPlatformId:
+        activeConversation
+          .contact
+          .platform_user_id,
+    });
 
-    if (
-      !response.ok ||
-      !result.success
-    ) {
-      throw new Error(
-        result.error ??
-          "Unable to send the message.",
-      );
-    }
+  setLiveMessages(
+    (current) => [
+      ...current,
+      optimisticMessage,
+    ],
+  );
 
-    setReply("");
+  updateConversationPreviewOptimistically({
+    conversationId:
+      activeConversation.id,
+    message,
+    createdAt:
+      optimisticMessage
+        .created_at,
+  });
 
-setReplyingToCommentId(
-  null,
-);
+  setReply("");
+  setReplyingToCommentId(
+    null,
+  );
+  setSendError(null);
 
-router.refresh();
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error
-        ? error.message
-        : "Unable to send the message.";
-
-    if (
-      isCommentConversation &&
-      commentId &&
-      isDeletedCommentError(
-        errorMessage,
-      )
-    ) {
-      await markCommentDeletedLocally(
-        commentId,
-      );
-
-      setReplyingToCommentId(
-        null,
-      );
-
-      setSendError(
-        "Comment is deleted by commenter.",
-      );
-
-      router.refresh();
-
-      return;
-    }
-
-    setSendError(
-      errorMessage,
-    );
-  } finally {
-    setSending(false);
-  }
+  await performOptimisticSend(
+    pending,
+  );
 }
 
   async function handleStatusChange(
@@ -1152,7 +1776,7 @@ return (
       }`}
     >
      <ConversationList
-  conversations={conversations}
+  conversations={liveConversations}
   activeConversationId={
     resolvedActiveConversationId
   }
@@ -1168,7 +1792,7 @@ return (
   activeConversation={
     activeConversation
   }
-  messages={messages}
+  messages={liveMessages}
   teamMembers={teamMembers}
   reply={reply}
   sending={sending}
@@ -1242,6 +1866,10 @@ return (
 
   onDeleteComment={
     handleDeleteComment
+  }
+
+  onRetryMessage={
+    handleRetryOptimisticMessage
   }
 />
       {customerPanelVisible ? (

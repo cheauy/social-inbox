@@ -120,6 +120,10 @@ type MessagePanelProps = {
     success: boolean;
     deleted?: boolean;
   }>;
+
+  onRetryMessage?: (
+    messageId: string,
+  ) => void;
 };
 
 function LikeIcon() {
@@ -242,6 +246,7 @@ export function MessagePanel({
   replyingToCommentId,
   onCancelCommentReply,
   onDeleteComment,
+  onRetryMessage,
 }: MessagePanelProps) {
   const [
     optimisticCommentState,
@@ -445,6 +450,38 @@ export function MessagePanel({
               const isOutgoing =
                 message.direction ===
                 "outgoing";
+
+              const messageStatus =
+                message as InboxMessage & {
+                  __optimistic_status?:
+                    | "sending"
+                    | "sent"
+                    | "failed";
+
+                  delivery_status?:
+                    | "sent"
+                    | "delivered"
+                    | "seen"
+                    | null;
+
+                  delivered_at?:
+                    | string
+                    | null;
+
+                  seen_at?:
+                    | string
+                    | null;
+                };
+
+              const optimisticStatus =
+                messageStatus
+                  .__optimistic_status ??
+                null;
+
+              const persistedDeliveryStatus =
+                messageStatus
+                  .delivery_status ??
+                "sent";
 
               const rawPayload =
                 message.raw_payload as {
@@ -768,7 +805,7 @@ export function MessagePanel({
                             <span>
                               {commentState.deletedBy ===
                               "customer"
-                                ? "Comment deleted by user"
+                                ? "Comment is deleted by commenter"
                                 : "Comment deleted by Page"}
                             </span>
                           </div>
@@ -857,12 +894,83 @@ export function MessagePanel({
                           </p>
                         )}
 
-                        <p className="mt-1 text-xs text-slate-500">
-                          {formatMessageTime(
-                            message.platform_created_at ??
-                              message.created_at,
-                          )}
-                        </p>
+                        <div
+                          className={`mt-1 flex items-center gap-2 text-xs ${
+                            isOutgoing
+                              ? "justify-end"
+                              : "justify-start"
+                          }`}
+                        >
+                          <span className="text-slate-500">
+                            {formatMessageTime(
+                              message.platform_created_at ??
+                                message.created_at,
+                            )}
+                          </span>
+
+                          {isOutgoing ? (
+                            optimisticStatus ===
+                            "sending" ? (
+                              <span className="inline-flex items-center gap-1 text-slate-500">
+                                <span className="h-2.5 w-2.5 animate-spin rounded-full border border-slate-400 border-t-transparent" />
+                                Sending...
+                              </span>
+                            ) : optimisticStatus ===
+                              "failed" ? (
+                              <>
+                                <span className="font-medium text-red-600">
+                                  Failed to send
+                                </span>
+
+                                {onRetryMessage ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      onRetryMessage(
+                                        message.id,
+                                      )
+                                    }
+                                    className="font-semibold text-blue-600 hover:underline"
+                                  >
+                                    Retry
+                                  </button>
+                                ) : null}
+                              </>
+                            ) : persistedDeliveryStatus ===
+                              "seen" ? (
+                              <span
+                                className="font-semibold text-blue-600"
+                                title={
+                                  messageStatus.seen_at
+                                    ? `Seen ${formatMessageTime(
+                                        messageStatus.seen_at,
+                                      )}`
+                                    : "Seen"
+                                }
+                              >
+                                ✓✓ Seen
+                              </span>
+                            ) : persistedDeliveryStatus ===
+                              "delivered" ? (
+                              <span
+                                className="font-medium text-emerald-600"
+                                title={
+                                  messageStatus.delivered_at
+                                    ? `Delivered ${formatMessageTime(
+                                        messageStatus.delivered_at,
+                                      )}`
+                                    : "Delivered"
+                                }
+                              >
+                                ✓✓ Delivered
+                              </span>
+                            ) : (
+                              <span className="font-medium text-emerald-600">
+                                ✓ Sent
+                              </span>
+                            )
+                          ) : null}
+                        </div>
                       </div>
 
                       {/* Facebook Comment Actions */}

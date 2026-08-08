@@ -207,9 +207,21 @@ export type InboxMessage = {
   comment_is_liked: boolean;
 comment_is_hidden: boolean;
 comment_is_deleted: boolean;
-
 comment_deleted_by:
   | "customer"
   | "page"
+  | null;
+delivery_status:
+  | "sent"
+  | "delivered"
+  | "seen"
+  | null;
+
+delivered_at:
+  | string
+  | null;
+
+seen_at:
+  | string
   | null;
 };

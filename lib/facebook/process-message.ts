@@ -162,6 +162,13 @@ export async function processFacebookMessage(
       direction: isEcho ? "outgoing" : "incoming",
       message_type: content.messageType,
       message_text: content.messageText,
+      delivery_status:
+  isEcho
+    ? "sent"
+    : null,
+
+delivered_at: null,
+seen_at: null,
       attachment_url: content.attachmentUrl,
       is_echo: isEcho,
       raw_payload: event,

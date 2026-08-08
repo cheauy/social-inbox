@@ -310,6 +310,10 @@ if (
         direction: "outgoing",
         message_type: "text",
         message_text: message,
+
+        delivery_status: "sent",
+    delivered_at: null,
+    seen_at: null,
         attachment_url: null,
         is_echo: false,
         raw_payload: facebookResult,

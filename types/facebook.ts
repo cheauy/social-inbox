@@ -42,9 +42,34 @@ export type FacebookMessagingEvent = {
 export type FacebookWebhookPayload = {
   object?: string;
 
-  entry?: Array<{
+  entry?: {
     id?: string;
-    time?: number;
+
     messaging?: FacebookMessagingEvent[];
-  }>;
+
+    changes?: FacebookWebhookChange[];
+  }[];
+};
+
+export type FacebookFeedCommentValue = {
+  item?: string;
+  verb?: "add" | "remove" | string;
+
+  comment_id?: string;
+  post_id?: string;
+  parent_id?: string;
+
+  created_time?: number;
+
+  message?: string;
+
+  from?: {
+    id?: string;
+    name?: string;
+  };
+};
+
+export type FacebookWebhookChange = {
+  field?: string;
+  value?: FacebookFeedCommentValue;
 };
