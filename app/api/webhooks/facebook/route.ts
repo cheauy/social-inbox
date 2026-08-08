@@ -142,17 +142,23 @@ export async function POST(request: NextRequest) {
 
     // Ignore post/status events.
     // Process comments only.
-    if (
-      value.item !== "comment" ||
-      value.verb !== "add"
-    ) {
-      continue;
-    }
+ if (
+  value.item !== "comment"
+) {
+  continue;
+}
 
-    await processFacebookComment({
-      pageId,
-      value,
-    });
+if (
+  value.verb !== "add" &&
+  value.verb !== "remove"
+) {
+  continue;
+}
+
+await processFacebookComment({
+  pageId,
+  value,
+});
   }
 }
 

@@ -43,6 +43,12 @@ const requestedConversationId =
   const [sendError, setSendError] =
     useState<string | null>(null);
 
+  const [
+  replyingToCommentId,
+  setReplyingToCommentId,
+] = useState<string | null>(
+  null,
+);
 
   const [
   customerPanelVisible,
@@ -176,6 +182,8 @@ useEffect(() => {
   let cancelled = false;
 
   
+
+
 
 async function markConversationRead() {
     try {
@@ -384,124 +392,585 @@ async function handleTogglePin() {
   }
 }
 
-  async function handleSendMessage(
-    event: FormEvent<HTMLFormElement>,
-  ) {
-    event.preventDefault();
+function handleReplyToComment(
+  commentId: string,
+) {
+  setReplyingToCommentId(
+    commentId,
+  );
 
-    const message = reply.trim();
+  window.requestAnimationFrame(
+    () => {
+      const input =
+        document.querySelector<
+          HTMLTextAreaElement
+        >(
+          'textarea[placeholder="Write a reply..."]',
+        );
 
-    if (
-      !message ||
-      !activeConversation ||
-      !activeConversation.contact
-    ) {
-      return;
+      input?.focus();
+    },
+  );
+}
+
+function handleCancelCommentReply() {
+  setReplyingToCommentId(
+    null,
+  );
+
+  window.requestAnimationFrame(
+    () => {
+      const input =
+        document.querySelector<
+          HTMLTextAreaElement
+        >(
+          'textarea[placeholder="Write a reply..."]',
+        );
+
+      input?.focus();
+    },
+  );
+}
+
+
+async function markCommentDeletedLocally(
+  commentId: string,
+) {
+  try {
+    const response =
+      await fetch(
+        "/api/facebook/comments/mark-deleted",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            commentId,
+            deletedBy:
+              "customer",
+          }),
+        },
+      );
+
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+function isDeletedCommentError(
+  errorMessage?: string,
+) {
+  if (!errorMessage) {
+    return false;
+  }
+
+  const normalized =
+    errorMessage.toLowerCase();
+
+  return (
+    normalized.includes(
+      "comment not found",
+    ) ||
+    normalized.includes(
+      "(#100)",
+    ) ||
+    normalized.includes(
+      "error during posting",
+    ) ||
+    normalized.includes(
+      "(#1705)",
+    )
+  );
+}
+
+async function handleLikeComment(
+  commentId: string,
+  liked: boolean,
+): Promise<{
+  success: boolean;
+  deleted?: boolean;
+}> {
+  try {
+    const response =
+      await fetch(
+        "/api/facebook/comments/like",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            commentId,
+            liked,
+          }),
+        },
+      );
+
+    const responseText =
+      await response.text();
+
+    let result: {
+      success?: boolean;
+      error?: string;
+    } = {};
+
+    if (responseText.trim()) {
+      try {
+        result =
+          JSON.parse(
+            responseText,
+          );
+      } catch {
+        result = {
+          success: false,
+          error:
+            "Like API returned invalid JSON.",
+        };
+      }
     }
 
-    setSending(true);
-    setSendError(null);
+    if (
+      !response.ok ||
+      !result.success
+    ) {
+      if (
+        isDeletedCommentError(
+          result.error,
+        )
+      ) {
+        await markCommentDeletedLocally(
+          commentId,
+        );
 
-try {
+        router.refresh();
+
+        return {
+          success: false,
+          deleted: true,
+        };
+      }
+
+      window.alert(
+        result.error ??
+          "Unable to update Like.",
+      );
+
+      return {
+        success: false,
+      };
+    }
+
+    router.refresh();
+
+    return {
+      success: true,
+    };
+  } catch (error) {
+    window.alert(
+      error instanceof Error
+        ? error.message
+        : "Unable to update Like.",
+    );
+
+    return {
+      success: false,
+    };
+  }
+}
+
+async function handleDeleteComment(
+  commentId: string,
+): Promise<{
+  success: boolean;
+  deleted?: boolean;
+}> {
+  const confirmed =
+    window.confirm(
+      "Delete this Facebook comment?",
+    );
+
+  if (!confirmed) {
+    return {
+      success: false,
+    };
+  }
+
+  try {
+    const response =
+      await fetch(
+        "/api/facebook/comments/delete",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            commentId,
+          }),
+        },
+      );
+
+    const responseText =
+      await response.text();
+
+    let result: {
+      success?: boolean;
+      error?: string;
+    } = {};
+
+    if (responseText.trim()) {
+      try {
+        result =
+          JSON.parse(
+            responseText,
+          );
+      } catch {
+        result = {
+          success: false,
+          error:
+            "Delete API returned invalid JSON.",
+        };
+      }
+    }
+
+    if (
+      !response.ok ||
+      !result.success
+    ) {
+      if (
+        isDeletedCommentError(
+          result.error,
+        )
+      ) {
+        await markCommentDeletedLocally(
+          commentId,
+        );
+
+        router.refresh();
+
+        return {
+          success: false,
+          deleted: true,
+        };
+      }
+
+      window.alert(
+        result.error ??
+          "Unable to delete comment.",
+      );
+
+      return {
+        success: false,
+      };
+    }
+
+    router.refresh();
+
+    return {
+      success: true,
+    };
+  } catch (error) {
+    window.alert(
+      error instanceof Error
+        ? error.message
+        : "Unable to delete comment.",
+    );
+
+    return {
+      success: false,
+    };
+  }
+}
+
+async function handleHideComment(
+  commentId: string,
+  hidden: boolean,
+): Promise<{
+  success: boolean;
+  deleted?: boolean;
+}> {
+  try {
+    const response =
+      await fetch(
+        "/api/facebook/comments/hide",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            commentId,
+            hidden,
+          }),
+        },
+      );
+
+    const responseText =
+      await response.text();
+
+    let result: {
+      success?: boolean;
+      error?: string;
+    } = {};
+
+    if (responseText.trim()) {
+      try {
+        result =
+          JSON.parse(
+            responseText,
+          );
+      } catch {
+        result = {
+          success: false,
+          error:
+            "Hide API returned invalid JSON.",
+        };
+      }
+    }
+
+    if (
+      !response.ok ||
+      !result.success
+    ) {
+      if (
+        isDeletedCommentError(
+          result.error,
+        )
+      ) {
+        await markCommentDeletedLocally(
+          commentId,
+        );
+
+        router.refresh();
+
+        return {
+          success: false,
+          deleted: true,
+        };
+      }
+
+      window.alert(
+        result.error ??
+          "Unable to update comment visibility.",
+      );
+
+      return {
+        success: false,
+      };
+    }
+
+    router.refresh();
+
+    return {
+      success: true,
+    };
+  } catch (error) {
+    window.alert(
+      error instanceof Error
+        ? error.message
+        : "Unable to update comment visibility.",
+    );
+
+    return {
+      success: false,
+    };
+  }
+}
+
+async function handleSendMessage(
+  event: FormEvent,
+) {
+  event.preventDefault();
+
+  const message =
+    reply.trim();
+
+  if (
+    !message ||
+    !activeConversation ||
+    !activeConversation.contact
+  ) {
+    return;
+  }
+
+  /*
+   * For Facebook Comment conversations we no longer
+   * fall back to activeConversation.facebook_comment_id.
+   *
+   * Staff MUST click Reply on one exact comment first.
+   */
   const isCommentConversation =
     activeConversation.source_type ===
     "comment";
 
-  const endpoint =
+  const commentId =
     isCommentConversation
-      ? "/api/facebook/comments/reply"
-      : "/api/facebook/send";
+      ? replyingToCommentId
+      : null;
 
-  const requestBody =
-    isCommentConversation
-      ? {
-          conversationId:
-            activeConversation.id,
+  if (
+    isCommentConversation &&
+    !commentId
+  ) {
+    setSendError(
+      "Select a Facebook comment and click Reply first.",
+    );
 
-          commentId:
-            activeConversation
-              .facebook_comment_id,
+    return;
+  }
 
-          message,
-        }
-      : {
-          conversationId:
-            activeConversation.id,
+  setSending(true);
+  setSendError(null);
 
-          recipientId:
-            activeConversation.contact
-              .platform_user_id,
-
-          message,
-        };
-
-  const response = await fetch(
-    endpoint,
-    {
-      method: "POST",
-
-      headers: {
-        "Content-Type":
-          "application/json",
-      },
-
-      body: JSON.stringify(
-        requestBody,
-      ),
-    },
-  );
-
-  const responseText =
-    await response.text();
-
-let result: {
-  success: boolean;
-  error?: string;
-};
-
-if (responseText.trim()) {
   try {
-    result = JSON.parse(
-      responseText,
-    ) as {
+
+    const endpoint =
+      isCommentConversation
+        ? "/api/facebook/comments/reply"
+        : "/api/facebook/send";
+
+    const requestBody =
+      isCommentConversation
+        ? {
+            conversationId:
+              activeConversation.id,
+
+            commentId,
+
+            message,
+          }
+        : {
+            conversationId:
+              activeConversation.id,
+
+            recipientId:
+              activeConversation.contact
+                .platform_user_id,
+
+            message,
+          };
+
+    const response =
+      await fetch(
+        endpoint,
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify(
+            requestBody,
+          ),
+        },
+      );
+
+    const responseText =
+      await response.text();
+
+    let result: {
       success: boolean;
       error?: string;
     };
-  } catch {
-    result = {
-      success: false,
-      error:
-        "The read API returned invalid JSON.",
-    };
-  }
-} else {
-  result = {
-    success: response.ok,
-    error: response.ok
-      ? undefined
-      : `The read API returned an empty response (${response.status}).`,
-  };
-}
 
-      if (!response.ok || !result.success) {
-        throw new Error(
-          result.error ??
-            "Unable to send the message.",
-        );
+    if (responseText.trim()) {
+      try {
+        result =
+          JSON.parse(
+            responseText,
+          ) as {
+            success: boolean;
+            error?: string;
+          };
+      } catch {
+        result = {
+          success: false,
+          error:
+            "The send API returned invalid JSON.",
+        };
       }
+    } else {
+      result = {
+        success:
+          response.ok,
 
-      setReply("");
-      router.refresh();
-    } catch (error) {
-      setSendError(
-        error instanceof Error
-          ? error.message
-          : "Unable to send the message.",
-      );
-    } finally {
-      setSending(false);
+        error:
+          response.ok
+            ? undefined
+            : `The send API returned an empty response (${response.status}).`,
+      };
     }
+
+    if (
+      !response.ok ||
+      !result.success
+    ) {
+      throw new Error(
+        result.error ??
+          "Unable to send the message.",
+      );
+    }
+
+    setReply("");
+
+setReplyingToCommentId(
+  null,
+);
+
+router.refresh();
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : "Unable to send the message.";
+
+    if (
+      isCommentConversation &&
+      commentId &&
+      isDeletedCommentError(
+        errorMessage,
+      )
+    ) {
+      await markCommentDeletedLocally(
+        commentId,
+      );
+
+      setReplyingToCommentId(
+        null,
+      );
+
+      setSendError(
+        "Comment is deleted by commenter.",
+      );
+
+      router.refresh();
+
+      return;
+    }
+
+    setSendError(
+      errorMessage,
+    );
+  } finally {
+    setSending(false);
   }
+}
 
   async function handleStatusChange(
     nextStatus: ConversationStatus,
@@ -716,6 +1185,30 @@ return (
       (current) => !current,
     )
   }
+
+  onLikeComment={
+    handleLikeComment
+  }
+
+  onHideComment={
+    handleHideComment
+  }
+
+  onReplyToComment={
+    handleReplyToComment
+  }
+
+  replyingToCommentId={
+    replyingToCommentId
+  }
+
+  onCancelCommentReply={
+    handleCancelCommentReply
+  }
+
+  onDeleteComment={
+    handleDeleteComment
+  }
 />
       {customerPanelVisible ? (
         <CustomerProfile
@@ -750,6 +1243,8 @@ return (
     </svg>
   </button>
 )}
+
+
   </div>
 );
 }

@@ -198,6 +198,18 @@ export type InboxMessage = {
   message_type: string;
   message_text: string | null;
   attachment_url: string | null;
+  raw_payload: Record<
+  string,
+  unknown
+> | null;
   platform_created_at: string | null;
   created_at: string;
+  comment_is_liked: boolean;
+comment_is_hidden: boolean;
+comment_is_deleted: boolean;
+
+comment_deleted_by:
+  | "customer"
+  | "page"
+  | null;
 };

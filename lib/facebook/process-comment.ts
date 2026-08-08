@@ -4,6 +4,10 @@ import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 
+import {
+  getFacebookPostPreview,
+} from "@/lib/facebook/get-post-preview";
+
 type FacebookCommentAuthor = {
   id?: string;
   name?: string;
@@ -74,26 +78,198 @@ export async function processFacebookComment({
     },
   );
 
-  if (
-    value.item !== "comment" ||
-    value.verb !== "add"
-  ) {
-    console.log(
-      "COMMENT STOP - not comment/add",
+ if (
+  value.item !== "comment"
+) {
+  return;
+}
+
+const commentId =
+  value.comment_id?.trim();
+
+if (!commentId) {
+  return;
+}
+
+/*
+ * Customer/Page deleted a comment.
+ *
+ * Keep the local message row so Tenh Chat
+ * can preserve the conversation history.
+ */
+if (
+  value.verb === "remove"
+) {
+  const actorId =
+    value.from?.id?.trim() ??
+    null;
+
+  const {
+    data: existingMessage,
+    error: existingMessageError,
+  } = await supabaseAdmin
+    .from("messages")
+    .select(`
+      id,
+      conversation_id,
+      comment_deleted_by
+    `)
+    .eq(
+      "platform_message_id",
+      commentId,
+    )
+    .maybeSingle();
+
+  if (existingMessageError) {
+    throw new Error(
+      existingMessageError.message,
+    );
+  }
+
+  if (!existingMessage) {
+    console.warn(
+      "Deleted Facebook comment was not found locally.",
       {
-        item: value.item,
-        verb: value.verb,
+        commentId,
+        actorId,
       },
     );
 
     return;
   }
 
-  const commentId =
-    value.comment_id?.trim();
+  /*
+   * If Tenh Chat already marked this comment
+   * as deleted by the Page, preserve that value.
+   *
+   * Otherwise:
+   * - actorId === pageId -> Page deleted it
+   * - anything else      -> customer deleted it
+   */
+  const deletedBy:
+    | "customer"
+    | "page" =
+    existingMessage.comment_deleted_by ===
+    "page"
+      ? "page"
+      : actorId === pageId
+        ? "page"
+        : "customer";
+
+  const deletedText =
+    deletedBy === "customer"
+      ? "Comment deleted by user"
+      : "Comment deleted by Page";
+
+  const {
+    error: updateMessageError,
+  } = await supabaseAdmin
+    .from("messages")
+    .update({
+      comment_is_deleted:
+        true,
+
+      comment_deleted_by:
+        deletedBy,
+
+      message_text:
+        deletedText,
+    })
+    .eq(
+      "id",
+      existingMessage.id,
+    );
+
+  if (updateMessageError) {
+    throw new Error(
+      updateMessageError.message,
+    );
+  }
+
+  /*
+   * Update the conversation preview too,
+   * otherwise the left conversation list can
+   * continue showing the old deleted comment text.
+   */
+  if (
+    existingMessage.conversation_id
+  ) {
+    const {
+      error: conversationUpdateError,
+    } = await supabaseAdmin
+      .from("conversations")
+      .update({
+        last_message_text:
+          deletedText,
+
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq(
+        "id",
+        existingMessage.conversation_id,
+      );
+
+    if (conversationUpdateError) {
+      console.warn(
+        "Unable to update deleted comment conversation preview:",
+        conversationUpdateError,
+      );
+    }
+  }
+
+  console.log(
+    "FACEBOOK COMMENT DELETED",
+    {
+      commentId,
+      actorId,
+      deletedBy,
+    },
+  );
+
+  return;
+}
+
+if (
+  value.verb !== "add"
+) {
+  return;
+}
+
+  
 
   const postId =
     value.post_id?.trim();
+
+  /*
+   * Load the Facebook post that owns this comment.
+   * This gives Tenh Chat the post caption, photo,
+   * permalink, and created time.
+   */
+  const postPreview =
+    postId
+      ? await getFacebookPostPreview(
+          postId,
+        )
+      : null;
+
+  console.log(
+    "STEP 0.POST - Facebook post preview",
+    {
+      postId,
+      hasPreview:
+        Boolean(postPreview),
+      caption:
+        postPreview?.message ??
+        null,
+      picture:
+        postPreview?.full_picture ??
+        null,
+      permalink:
+        postPreview?.permalink_url ??
+        null,
+    },
+  );
 
   let message =
     value.message?.trim() ?? "";
@@ -740,8 +916,12 @@ if (!message) {
       is_echo:
         false,
 
-      raw_payload:
-        value,
+      raw_payload: {
+        ...value,
+
+        post_preview:
+          postPreview,
+      },
 
       platform_created_at:
         commentTime,

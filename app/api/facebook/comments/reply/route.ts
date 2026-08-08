@@ -3,9 +3,11 @@ import {
   NextResponse,
 } from "next/server";
 
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+  supabaseAdmin,
+} from "@/lib/supabase/admin";
 
-type ReplyCommentBody = {
+type ReplyBody = {
   conversationId?: string;
   commentId?: string;
   message?: string;
@@ -14,69 +16,67 @@ type ReplyCommentBody = {
 export async function POST(
   request: NextRequest,
 ) {
-  let body: ReplyCommentBody;
-
   try {
-    body =
-      (await request.json()) as ReplyCommentBody;
-  } catch {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Invalid JSON request.",
-      },
-      {
-        status: 400,
-      },
-    );
-  }
+    const body =
+      (await request.json()) as ReplyBody;
 
-  const conversationId =
-    body.conversationId?.trim();
+    const conversationId =
+      body.conversationId?.trim();
 
-  const commentId =
-    body.commentId?.trim();
+    const commentId =
+      body.commentId?.trim();
 
-  const message =
-    body.message?.trim();
+    const message =
+      body.message?.trim();
 
-  if (
-    !conversationId ||
-    !commentId ||
-    !message
-  ) {
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Conversation, comment and message are required.",
-      },
-      {
-        status: 400,
-      },
-    );
-  }
+    if (
+      !conversationId ||
+      !commentId ||
+      !message
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "conversationId, commentId and message are required.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
 
-  const pageAccessToken =
-    process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
+    const pageAccessToken =
+      process.env
+        .FACEBOOK_PAGE_ACCESS_TOKEN;
 
-  if (!pageAccessToken) {
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "FACEBOOK_PAGE_ACCESS_TOKEN is missing.",
-      },
-      {
-        status: 500,
-      },
-    );
-  }
+    const pageId =
+      process.env.FACEBOOK_PAGE_ID;
 
-  try {
-    const graphResponse =
+    const graphVersion =
+      process.env
+        .FACEBOOK_GRAPH_API_VERSION ??
+      "v26.0";
+
+    if (
+      !pageAccessToken ||
+      !pageId
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Facebook Page configuration is missing.",
+        },
+        {
+          status: 500,
+        },
+      );
+    }
+
+    const response =
       await fetch(
-        `https://graph.facebook.com/v23.0/${commentId}/comments`,
+        `https://graph.facebook.com/${graphVersion}/${commentId}/comments`,
         {
           method: "POST",
 
@@ -93,48 +93,67 @@ export async function POST(
         },
       );
 
-    const graphText =
-      await graphResponse.text();
+    const responseText =
+      await response.text();
 
-    let graphResult: {
+    let result: {
       id?: string;
+
       error?: {
         message?: string;
+        code?: number;
       };
     } = {};
 
-    if (graphText.trim()) {
-      graphResult =
-        JSON.parse(graphText) as {
-          id?: string;
-          error?: {
-            message?: string;
-          };
-        };
+    if (responseText.trim()) {
+      try {
+        result =
+          JSON.parse(
+            responseText,
+          ) as typeof result;
+      } catch {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Facebook returned invalid JSON.",
+          },
+          {
+            status: 500,
+          },
+        );
+      }
     }
 
     if (
-      !graphResponse.ok ||
-      !graphResult.id
+      !response.ok ||
+      !result.id
     ) {
-      throw new Error(
-        graphResult.error?.message ??
-          "Unable to reply to Facebook comment.",
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            result.error
+              ?.message ??
+            "Unable to reply to Facebook comment.",
+        },
+        {
+          status:
+            response.status ||
+            500,
+        },
       );
     }
 
-    const now =
-      new Date().toISOString();
-
     const {
       data: conversation,
-      error: conversationError,
+      error:
+        conversationError,
     } = await supabaseAdmin
       .from("conversations")
       .select(`
         id,
-        business_id,
-        facebook_post_id
+        business_id
       `)
       .eq(
         "id",
@@ -146,11 +165,22 @@ export async function POST(
       conversationError ||
       !conversation
     ) {
-      throw new Error(
-        conversationError?.message ??
-          "Conversation not found.",
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            conversationError
+              ?.message ??
+            "Conversation not found.",
+        },
+        {
+          status: 404,
+        },
       );
     }
+
+    const now =
+      new Date().toISOString();
 
     const {
       error: messageError,
@@ -161,14 +191,13 @@ export async function POST(
           conversation.business_id,
 
         conversation_id:
-          conversationId,
+          conversation.id,
 
         platform_message_id:
-          graphResult.id,
+          result.id,
 
         sender_platform_id:
-          process.env.FACEBOOK_PAGE_ID ??
-          "",
+          pageId,
 
         recipient_platform_id:
           commentId,
@@ -189,11 +218,14 @@ export async function POST(
           true,
 
         raw_payload: {
-          source: "facebook_comment_reply",
+          source:
+            "facebook_comment_reply",
+
           parent_comment_id:
             commentId,
+
           reply_comment_id:
-            graphResult.id,
+            result.id,
         },
 
         platform_created_at:
@@ -222,7 +254,7 @@ export async function POST(
       })
       .eq(
         "id",
-        conversationId,
+        conversation.id,
       );
 
     if (updateError) {
@@ -234,9 +266,14 @@ export async function POST(
     return NextResponse.json({
       success: true,
       commentId:
-        graphResult.id,
+        result.id,
     });
   } catch (error) {
+    console.error(
+      "Facebook comment reply failed:",
+      error,
+    );
+
     return NextResponse.json(
       {
         success: false,
