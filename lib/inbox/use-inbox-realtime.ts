@@ -67,7 +67,7 @@ export function useInboxRealtime({
   useEffect(() => {
     if (!businessId) {
       console.warn(
-        "[Tenh Realtime V2] No businessId.",
+        "[Tenh Realtime V2.5.1] No businessId.",
       );
 
       return;
@@ -102,7 +102,7 @@ export function useInboxRealtime({
         !sessionData.session
       ) {
         console.error(
-          "[Tenh Realtime V2] No authenticated session.",
+          "[Tenh Realtime V2.5.1] No authenticated session.",
           sessionError?.message ??
             "",
         );
@@ -122,7 +122,7 @@ export function useInboxRealtime({
       }
 
       console.log(
-        "[Tenh Realtime V2] JWT applied.",
+        "[Tenh Realtime V2.5.1] JWT applied.",
       );
 
       channel =
@@ -137,6 +137,8 @@ export function useInboxRealtime({
               event: "*",
               schema: "public",
               table: "messages",
+              filter:
+                `business_id=eq.${businessId}`,
             },
             (payload) => {
               const eventType =
@@ -144,7 +146,7 @@ export function useInboxRealtime({
                   InboxRealtimeEventType;
 
               console.log(
-                "[Tenh Realtime V2] messages",
+                "[Tenh Realtime V2.5.1] messages",
                 eventType,
               );
 
@@ -174,6 +176,8 @@ export function useInboxRealtime({
               schema: "public",
               table:
                 "conversations",
+              filter:
+                `business_id=eq.${businessId}`,
             },
             (payload) => {
               const eventType =
@@ -181,7 +185,7 @@ export function useInboxRealtime({
                   InboxRealtimeEventType;
 
               console.log(
-                "[Tenh Realtime V2] conversations",
+                "[Tenh Realtime V2.5.1] conversations",
                 eventType,
               );
 
@@ -224,13 +228,13 @@ export function useInboxRealtime({
               error,
             ) => {
               console.log(
-                "[Tenh Realtime V2] Channel status:",
+                "[Tenh Realtime V2.5.1] Channel status:",
                 status,
               );
 
               if (error) {
                 console.error(
-                  "[Tenh Realtime V2] Channel error:",
+                  "[Tenh Realtime V2.5.1] Channel error:",
                   error,
                 );
               }
@@ -240,7 +244,7 @@ export function useInboxRealtime({
                 "SUBSCRIBED"
               ) {
                 console.log(
-                  "[Tenh Realtime V2] ✅ LIVE STATE READY",
+                  "[Tenh Realtime V2.5.1] ✅ UNREAD REALTIME READY",
                 );
               }
             },

@@ -17,13 +17,26 @@ import { ConversationList } from "@/components/inbox/conversation-list";
 import { CustomerProfile } from "@/components/inbox/customer-profile";
 import type { InboxViewProps } from "@/components/inbox/inbox-view-types";
 import { MessagePanel } from "@/components/inbox/message-panel";
+import type {
+  ReplyAttachment,
+  ReplyAttachmentKind,
+} from "@/components/inbox/reply-box";
 
 import {
   useInboxRealtime,
 } from "@/lib/inbox/use-inbox-realtime";
 
+import {
+  useBrowserNotifications,
+} from "@/lib/inbox/use-browser-notifications";
+
+import {
+  useAgentPresence,
+} from "@/lib/inbox/use-agent-presence";
+
 import type {
   ConversationStatus,
+  InboxConversation,
   InboxMessage,
 } from "@/types/inbox";
 
@@ -58,6 +71,97 @@ type PendingOptimisticSend = {
     | null;
 };
 
+type PendingOptimisticAttachmentSend = {
+  tempId: string;
+  conversationId: string;
+  recipientId: string;
+  file: File;
+  kind: ReplyAttachmentKind;
+  previewUrl: string;
+  messageText: string;
+};
+
+function sortLiveConversations(
+  conversations: InboxConversation[],
+) {
+  return [...conversations].sort(
+    (first, second) => {
+      const firstPinned =
+        Boolean(
+          (first as {
+            is_pinned?: boolean;
+          }).is_pinned,
+        );
+
+      const secondPinned =
+        Boolean(
+          (second as {
+            is_pinned?: boolean;
+          }).is_pinned,
+        );
+
+      if (
+        firstPinned !==
+        secondPinned
+      ) {
+        return firstPinned
+          ? -1
+          : 1;
+      }
+
+      return (
+        new Date(
+          second.last_message_at ??
+            0,
+        ).getTime() -
+        new Date(
+          first.last_message_at ??
+            0,
+        ).getTime()
+      );
+    },
+  );
+}
+
+function getRealtimeMessagePreview(
+  row: Record<string, unknown>,
+) {
+  if (
+    typeof row.message_text ===
+      "string" &&
+    row.message_text.trim()
+  ) {
+    return row.message_text.trim();
+  }
+
+  const messageType =
+    typeof row.message_type ===
+    "string"
+      ? row.message_type
+      : "message";
+
+  if (messageType === "image") {
+    return "Sent a photo";
+  }
+
+  if (messageType === "video") {
+    return "Sent a video";
+  }
+
+  if (messageType === "audio") {
+    return "Sent a voice message";
+  }
+
+  if (
+    messageType === "file" ||
+    messageType === "document"
+  ) {
+    return "Sent a file";
+  }
+
+  return "New message";
+}
+
 export function InboxView({
   conversations,
   activeConversationId,
@@ -72,7 +176,7 @@ export function InboxView({
   useSearchParams();
 
 const requestedConversationId =
-  searchParams.get("conversationId");
+  searchParams.get("conversation");
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] =
@@ -132,6 +236,16 @@ const skipAutomaticReadRef =
     setLiveMessages,
   ] = useState(messages);
 
+  /*
+   * V2.5.2 — browser/desktop notifications.
+   *
+   * Permission is only requested from the bell button in
+   * ConversationList, so browsers receive a real user gesture.
+   */
+  const {
+    notifyIncomingMessage,
+  } = useBrowserNotifications();
+
   const pendingSendsRef =
     useRef<
       Record<
@@ -139,6 +253,33 @@ const skipAutomaticReadRef =
         PendingOptimisticSend
       >
     >({});
+
+  const pendingAttachmentSendsRef =
+    useRef<
+      Record<
+        string,
+        PendingOptimisticAttachmentSend
+      >
+    >({});
+
+  /*
+   * V2.5.1
+   * Prevent a duplicated realtime INSERT from incrementing
+   * the unread count more than once.
+   */
+  const handledIncomingMessageIdsRef =
+    useRef<Set<string>>(
+      new Set(),
+    );
+
+  /*
+   * Prevent multiple read PATCH requests for the same
+   * active conversation while realtime events arrive.
+   */
+  const readInFlightRef =
+    useRef<Set<string>>(
+      new Set(),
+    );
 
   
 
@@ -211,6 +352,112 @@ const realtimeBusinessId =
     ],
   );
 
+
+/*
+ * V2.6 — agent presence + typing indicator.
+ *
+ * Presence is scoped to the current business. Each signed-in
+ * teammate publishes which conversation they are viewing.
+ * Typing uses the existing reply state and is debounced inside
+ * the hook so we do not send a Presence update on every keypress.
+ */
+const {
+  viewingAgents,
+  typingAgents,
+  status: agentPresenceStatus,
+} = useAgentPresence({
+  businessId:
+    realtimeBusinessId,
+  conversationId:
+    resolvedActiveConversationId,
+  teamMembers,
+  typingText: reply,
+});
+
+async function markConversationReadRealtime(
+  conversationId: string,
+) {
+  if (
+    readInFlightRef.current.has(
+      conversationId,
+    )
+  ) {
+    return;
+  }
+
+  readInFlightRef.current.add(
+    conversationId,
+  );
+
+  /*
+   * Keep the active conversation visually at zero unread
+   * while the server PATCH is completing.
+   */
+  setLiveConversations(
+    (current) =>
+      current.map(
+        (conversation) =>
+          conversation.id ===
+          conversationId
+            ? {
+                ...conversation,
+                unread_count: 0,
+              }
+            : conversation,
+      ),
+  );
+
+  try {
+    const response =
+      await fetch(
+        `/api/conversations/${conversationId}/read`,
+        {
+          method: "PATCH",
+        },
+      );
+
+    const responseText =
+      await response.text();
+
+    const result =
+      responseText.trim()
+        ? (JSON.parse(
+            responseText,
+          ) as {
+            success?: boolean;
+            error?: string;
+          })
+        : {
+            success:
+              response.ok,
+          };
+
+    if (
+      !response.ok ||
+      !result.success
+    ) {
+      throw new Error(
+        result.error ??
+          "Unable to mark conversation read.",
+      );
+    }
+  } catch (error) {
+    console.error(
+      "Unable to mark realtime conversation read:",
+      error,
+    );
+
+    /*
+     * Re-sync if the optimistic zero could not be saved.
+     */
+    router.refresh();
+  } finally {
+    readInFlightRef.current.delete(
+      conversationId,
+    );
+  }
+}
+
 useInboxRealtime({
   businessId:
     realtimeBusinessId,
@@ -242,9 +489,133 @@ useInboxRealtime({
 
       if (
         !messageId ||
-        !conversationId ||
+        !conversationId
+      ) {
+        return;
+      }
+
+      const messageDirection =
+        typeof row.direction ===
+        "string"
+          ? row.direction
+          : null;
+
+      const isIncomingInsert =
+        event.eventType ===
+          "INSERT" &&
+        messageDirection ===
+          "incoming";
+
+      /*
+       * V2.5.1 — update the conversation list immediately
+       * from the incoming message INSERT. The later
+       * conversations UPDATE remains the authoritative
+       * database value and will reconcile the count.
+       */
+      if (
+        isIncomingInsert &&
+        !handledIncomingMessageIdsRef.current.has(
+          messageId,
+        )
+      ) {
+        handledIncomingMessageIdsRef.current.add(
+          messageId,
+        );
+
+        if (
+          handledIncomingMessageIdsRef.current.size >
+          1000
+        ) {
+          handledIncomingMessageIdsRef.current.clear();
+          handledIncomingMessageIdsRef.current.add(
+            messageId,
+          );
+        }
+
+        const isActiveIncoming =
+          conversationId ===
+          resolvedActiveConversationId;
+
+        const preview =
+          getRealtimeMessagePreview(
+            row,
+          );
+
+        /*
+         * V2.5.2 — show a native browser notification only
+         * when Tenh Chat is hidden/unfocused. The hook also
+         * guarantees this only runs after the agent explicitly
+         * enables notifications.
+         */
+        const notificationConversation =
+          liveConversations.find(
+            (conversation) =>
+              conversation.id ===
+              conversationId,
+          );
+
+        notifyIncomingMessage({
+          messageId,
+          conversationId,
+          customerName:
+            notificationConversation
+              ?.contact
+              ?.full_name
+              ?.trim() ||
+            "Facebook customer",
+          body: preview,
+        });
+
+        const lastMessageAt =
+          typeof row.platform_created_at ===
+          "string"
+            ? row.platform_created_at
+            : typeof row.created_at ===
+                "string"
+              ? row.created_at
+              : new Date().toISOString();
+
+        setLiveConversations(
+          (current) =>
+            sortLiveConversations(
+              current.map(
+                (conversation) => {
+                  if (
+                    conversation.id !==
+                    conversationId
+                  ) {
+                    return conversation;
+                  }
+
+                  return {
+                    ...conversation,
+                    last_message_text:
+                      preview,
+                    last_message_at:
+                      lastMessageAt,
+                    unread_count:
+                      isActiveIncoming
+                        ? 0
+                        : Math.max(
+                            0,
+                            (conversation.unread_count ??
+                              0) + 1,
+                          ),
+                  };
+                },
+              ),
+            ),
+        );
+      }
+
+      /*
+       * Only the active thread needs its message array updated.
+       * Inactive threads are represented by the conversation
+       * preview + unread badge until the user opens them.
+       */
+      if (
         conversationId !==
-          resolvedActiveConversationId
+        resolvedActiveConversationId
       ) {
         return;
       }
@@ -336,15 +707,36 @@ useInboxRealtime({
             if (
               optimisticIndex >= 0
             ) {
-              const optimisticId =
+              const optimisticMessage =
                 current[
                   optimisticIndex
-                ].id;
+                ];
+
+              const optimisticId =
+                optimisticMessage.id;
 
               delete pendingSendsRef
                 .current[
                   optimisticId
                 ];
+
+              delete pendingAttachmentSendsRef
+                .current[
+                  optimisticId
+                ];
+
+              const localAttachmentUrl =
+                optimisticMessage.attachment_url
+                  ?.startsWith("blob:")
+                  ? optimisticMessage.attachment_url
+                  : null;
+
+              const replacement = {
+                ...row,
+                attachment_url:
+                  row.attachment_url ??
+                  localAttachmentUrl,
+              } as unknown as typeof current[number];
 
               return [
                 ...current.filter(
@@ -355,7 +747,7 @@ useInboxRealtime({
                     index !==
                     optimisticIndex,
                 ),
-                row as unknown as typeof current[number],
+                replacement,
               ].sort(
                 (
                   first,
@@ -385,14 +777,28 @@ useInboxRealtime({
           }
 
           return current.map(
-            (message) =>
-              message.id ===
-              messageId
-                ? ({
-                    ...message,
-                    ...row,
-                  } as unknown as typeof message)
-                : message,
+            (message) => {
+              if (
+                message.id !==
+                messageId
+              ) {
+                return message;
+              }
+
+              const localAttachmentUrl =
+                message.attachment_url
+                  ?.startsWith("blob:")
+                  ? message.attachment_url
+                  : null;
+
+              return {
+                ...message,
+                ...row,
+                attachment_url:
+                  row.attachment_url ??
+                  localAttachmentUrl,
+              } as unknown as typeof message;
+            },
           );
         },
       );
@@ -453,6 +859,36 @@ useInboxRealtime({
             return current;
           }
 
+          const rowUnreadCount =
+            typeof row.unread_count ===
+            "number"
+              ? row.unread_count
+              : null;
+
+          const isActiveConversation =
+            conversationId ===
+            resolvedActiveConversationId;
+
+          /*
+           * The webhook correctly increments unread_count first.
+           * If the agent is already viewing this conversation,
+           * never flash that unread badge locally. We immediately
+           * acknowledge it as read after the authoritative
+           * conversation UPDATE arrives.
+           */
+          const shouldAcknowledgeRead =
+            isActiveConversation &&
+            rowUnreadCount !== null &&
+            rowUnreadCount > 0;
+
+          const normalizedRow =
+            shouldAcknowledgeRead
+              ? {
+                  ...row,
+                  unread_count: 0,
+                }
+              : row;
+
           const next =
             current.map(
               (conversation) =>
@@ -460,60 +896,33 @@ useInboxRealtime({
                 conversationId
                   ? ({
                       ...conversation,
-                      ...row,
+                      ...normalizedRow,
                     } as unknown as typeof conversation)
                   : conversation,
             );
 
-          /*
-           * Keep pinned items stable and otherwise move the
-           * most recently active conversations toward the top.
-           */
-          return [...next].sort(
-            (first, second) => {
-              const firstPinned =
-                Boolean(
-                  (
-                    first as {
-                      is_pinned?:
-                        boolean;
-                    }
-                  ).is_pinned,
-                );
-
-              const secondPinned =
-                Boolean(
-                  (
-                    second as {
-                      is_pinned?:
-                        boolean;
-                    }
-                  ).is_pinned,
-                );
-
-              if (
-                firstPinned !==
-                secondPinned
-              ) {
-                return firstPinned
-                  ? -1
-                  : 1;
-              }
-
-              return (
-                new Date(
-                  second.last_message_at ??
-                    0,
-                ).getTime() -
-                new Date(
-                  first.last_message_at ??
-                    0,
-                ).getTime()
-              );
-            },
+          return sortLiveConversations(
+            next,
           );
         },
       );
+
+      const rowUnreadCount =
+        typeof row.unread_count ===
+        "number"
+          ? row.unread_count
+          : null;
+
+      if (
+        conversationId ===
+          resolvedActiveConversationId &&
+        rowUnreadCount !== null &&
+        rowUnreadCount > 0
+      ) {
+        void markConversationReadRealtime(
+          conversationId,
+        );
+      }
     }
   },
 
@@ -1296,6 +1705,106 @@ function createOptimisticMessage({
   } as unknown as InboxMessage;
 }
 
+function getAttachmentMessageText(
+  kind: ReplyAttachmentKind,
+  fileName: string,
+) {
+  if (kind === "image") {
+    return "Sent a photo";
+  }
+
+  if (kind === "video") {
+    return "Sent a video";
+  }
+
+  return fileName.trim()
+    ? `Sent a file: ${fileName}`
+    : "Sent a file";
+}
+
+function createOptimisticAttachmentMessage({
+  tempId,
+  conversationId,
+  recipientPlatformId,
+  kind,
+  file,
+  previewUrl,
+  messageText,
+}: {
+  tempId: string;
+  conversationId: string;
+  recipientPlatformId: string;
+  kind: ReplyAttachmentKind;
+  file: File;
+  previewUrl: string;
+  messageText: string;
+}): InboxMessage {
+  const now =
+    new Date().toISOString();
+
+  return {
+    id: tempId,
+    business_id:
+      realtimeBusinessId ??
+      "",
+    platform_message_id:
+      tempId,
+    conversation_id:
+      conversationId,
+    sender_type:
+      "page",
+    sender_platform_id:
+      activeConversation
+        ?.social_account
+        ?.platform_account_id ??
+      "",
+    recipient_platform_id:
+      recipientPlatformId,
+    direction:
+      "outgoing",
+    message_type:
+      kind,
+    message_text:
+      messageText,
+    attachment_url:
+      previewUrl,
+    is_echo:
+      false,
+    raw_payload: {
+      tenh_attachment: {
+        type: kind,
+        name: file.name,
+        mime_type:
+          file.type || null,
+        size: file.size,
+        optimistic: true,
+      },
+    },
+    platform_created_at:
+      now,
+    created_at:
+      now,
+    comment_is_liked:
+      false,
+    comment_is_hidden:
+      false,
+    comment_is_deleted:
+      false,
+    comment_deleted_by:
+      null,
+    delivery_status:
+      "sent",
+    delivered_at:
+      null,
+    seen_at:
+      null,
+    __optimistic_status:
+      "sending",
+    __optimistic_created_at:
+      Date.now(),
+  } as unknown as InboxMessage;
+}
+
 function updateConversationPreviewOptimistically({
   conversationId,
   message,
@@ -1486,9 +1995,263 @@ async function performOptimisticSend(
   }
 }
 
+async function performOptimisticAttachmentSend(
+  pending:
+    PendingOptimisticAttachmentSend,
+): Promise<boolean> {
+  setOptimisticSendStatus(
+    pending.tempId,
+    "sending",
+  );
+
+  setSending(true);
+  setSendError(null);
+
+  try {
+    const formData =
+      new FormData();
+
+    formData.set(
+      "conversationId",
+      pending.conversationId,
+    );
+    formData.set(
+      "recipientId",
+      pending.recipientId,
+    );
+    formData.set(
+      "kind",
+      pending.kind,
+    );
+    formData.set(
+      "file",
+      pending.file,
+      pending.file.name,
+    );
+
+    const response =
+      await fetch(
+        "/api/facebook/send-attachment",
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+
+    const responseText =
+      await response.text();
+
+    let result: {
+      success: boolean;
+      error?: string;
+      message?: InboxMessage;
+    };
+
+    if (responseText.trim()) {
+      try {
+        result =
+          JSON.parse(
+            responseText,
+          ) as {
+            success: boolean;
+            error?: string;
+            message?: InboxMessage;
+          };
+      } catch {
+        result = {
+          success: false,
+          error:
+            "The attachment API returned invalid JSON.",
+        };
+      }
+    } else {
+      result = {
+        success: response.ok,
+        error:
+          response.ok
+            ? undefined
+            : `The attachment API returned an empty response (${response.status}).`,
+      };
+    }
+
+    if (
+      !response.ok ||
+      !result.success
+    ) {
+      throw new Error(
+        result.error ??
+          "Unable to send the attachment.",
+      );
+    }
+
+    if (result.message) {
+      setLiveMessages(
+        (current) =>
+          current.map(
+            (message) =>
+              message.id ===
+              pending.tempId
+                ? ({
+                    ...result.message,
+                    attachment_url:
+                      pending.previewUrl,
+                    __optimistic_status:
+                      "sent",
+                    __optimistic_created_at:
+                      Date.now(),
+                  } as unknown as typeof message)
+                : message,
+          ),
+      );
+    } else {
+      setOptimisticSendStatus(
+        pending.tempId,
+        "sent",
+      );
+    }
+
+    delete pendingAttachmentSendsRef
+      .current[pending.tempId];
+
+    return true;
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : "Unable to send the attachment.";
+
+    setOptimisticSendStatus(
+      pending.tempId,
+      "failed",
+    );
+    setSendError(errorMessage);
+
+    return false;
+  } finally {
+    setSending(false);
+  }
+}
+
+async function handleSendAttachments(
+  attachments: ReplyAttachment[],
+): Promise<boolean> {
+  if (
+    !activeConversation ||
+    !activeConversation.contact
+  ) {
+    return false;
+  }
+
+  if (
+    activeConversation.source_type ===
+    "comment"
+  ) {
+    setSendError(
+      "Attachments are currently available for Messenger conversations only.",
+    );
+    return false;
+  }
+
+  let allSucceeded = true;
+
+  for (const attachment of attachments) {
+    const randomId =
+      typeof crypto !==
+        "undefined" &&
+      typeof crypto.randomUUID ===
+        "function"
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random()}`;
+
+    const tempId =
+      `optimistic:attachment:${randomId}`;
+
+    const previewUrl =
+      URL.createObjectURL(
+        attachment.file,
+      );
+
+    const messageText =
+      getAttachmentMessageText(
+        attachment.kind,
+        attachment.file.name,
+      );
+
+    const pending:
+      PendingOptimisticAttachmentSend = {
+        tempId,
+        conversationId:
+          activeConversation.id,
+        recipientId:
+          activeConversation.contact
+            .platform_user_id,
+        file: attachment.file,
+        kind: attachment.kind,
+        previewUrl,
+        messageText,
+      };
+
+    pendingAttachmentSendsRef
+      .current[tempId] =
+      pending;
+
+    const optimisticMessage =
+      createOptimisticAttachmentMessage({
+        tempId,
+        conversationId:
+          activeConversation.id,
+        recipientPlatformId:
+          activeConversation.contact
+            .platform_user_id,
+        kind: attachment.kind,
+        file: attachment.file,
+        previewUrl,
+        messageText,
+      });
+
+    setLiveMessages(
+      (current) => [
+        ...current,
+        optimisticMessage,
+      ],
+    );
+
+    updateConversationPreviewOptimistically({
+      conversationId:
+        activeConversation.id,
+      message:
+        messageText,
+      createdAt:
+        optimisticMessage.created_at,
+    });
+
+    const succeeded =
+      await performOptimisticAttachmentSend(
+        pending,
+      );
+
+    if (!succeeded) {
+      allSucceeded = false;
+    }
+  }
+
+  return allSucceeded;
+}
+
 async function handleRetryOptimisticMessage(
   tempId: string,
 ) {
+  const attachmentPending =
+    pendingAttachmentSendsRef
+      .current[tempId];
+
+  if (attachmentPending) {
+    await performOptimisticAttachmentSend(
+      attachmentPending,
+    );
+    return;
+  }
+
   const pending =
     pendingSendsRef
       .current[
@@ -1794,6 +2557,9 @@ return (
   }
   messages={liveMessages}
   teamMembers={teamMembers}
+  viewingAgents={viewingAgents}
+  typingAgents={typingAgents}
+  agentPresenceStatus={agentPresenceStatus}
   reply={reply}
   sending={sending}
   sendError={sendError}
@@ -1810,6 +2576,10 @@ return (
 
   onSendMessage={
     handleSendMessage
+  }
+
+  onSendAttachments={
+    handleSendAttachments
   }
 
   onStatusChange={(status) =>

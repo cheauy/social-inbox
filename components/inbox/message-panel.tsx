@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -16,6 +18,7 @@ import {
 
 import {
   ReplyBox,
+  type ReplyAttachment,
 } from "@/components/inbox/reply-box";
 
 import type {
@@ -25,6 +28,11 @@ import type {
   TeamMember,
 } from "@/types/inbox";
 
+import type {
+  AgentPresence,
+  AgentPresenceStatus,
+} from "@/lib/inbox/use-agent-presence";
+
 type MessagePanelProps = {
   activeConversation:
     | InboxConversation
@@ -33,6 +41,13 @@ type MessagePanelProps = {
   messages: InboxMessage[];
 
   teamMembers: TeamMember[];
+
+  viewingAgents: AgentPresence[];
+
+  typingAgents: AgentPresence[];
+
+  agentPresenceStatus:
+    AgentPresenceStatus;
 
   reply: string;
 
@@ -72,6 +87,10 @@ type MessagePanelProps = {
   onSendMessage: (
     event: FormEvent,
   ) => void;
+
+  onSendAttachments: (
+    attachments: ReplyAttachment[],
+  ) => Promise<boolean>;
 
   onStatusChange: (
     status: ConversationStatus,
@@ -216,10 +235,102 @@ function ActionTooltip({
   );
 }
 
+
+function getAgentPresenceText(
+  viewingAgents: AgentPresence[],
+  typingAgents: AgentPresence[],
+) {
+  if (typingAgents.length === 1) {
+    return `${typingAgents[0].name} is typing…`;
+  }
+
+  if (typingAgents.length === 2) {
+    return `${typingAgents[0].name} and ${typingAgents[1].name} are typing…`;
+  }
+
+  if (typingAgents.length > 2) {
+    return `${typingAgents.length} teammates are typing…`;
+  }
+
+  if (viewingAgents.length === 1) {
+    return `${viewingAgents[0].name} is viewing this conversation`;
+  }
+
+  if (viewingAgents.length > 1) {
+    return `${viewingAgents.length} teammates are viewing this conversation`;
+  }
+
+  return null;
+}
+
+function AgentPresenceStrip({
+  viewingAgents,
+  typingAgents,
+  status,
+}: {
+  viewingAgents: AgentPresence[];
+  typingAgents: AgentPresence[];
+  status: AgentPresenceStatus;
+}) {
+  const text =
+    getAgentPresenceText(
+      viewingAgents,
+      typingAgents,
+    );
+
+  if (!text) {
+    return null;
+  }
+
+  const isTyping =
+    typingAgents.length > 0;
+
+  return (
+    <div
+      className={`flex shrink-0 items-center gap-2 border-b px-4 py-2 text-xs ${
+        isTyping
+          ? "border-blue-100 bg-blue-50 text-blue-700"
+          : "border-emerald-100 bg-emerald-50 text-emerald-700"
+      }`}
+      title={
+        status === "connected"
+          ? "Live team presence"
+          : "Team presence is reconnecting"
+      }
+    >
+      <span
+        className={`h-2 w-2 shrink-0 rounded-full ${
+          isTyping
+            ? "animate-pulse bg-blue-500"
+            : "bg-emerald-500"
+        }`}
+      />
+
+      <span className="min-w-0 truncate font-medium">
+        {text}
+      </span>
+
+      {isTyping ? (
+        <span
+          className="ml-0.5 inline-flex items-center gap-0.5"
+          aria-hidden="true"
+        >
+          <span className="h-1 w-1 animate-bounce rounded-full bg-blue-500 [animation-delay:-0.2s]" />
+          <span className="h-1 w-1 animate-bounce rounded-full bg-blue-500 [animation-delay:-0.1s]" />
+          <span className="h-1 w-1 animate-bounce rounded-full bg-blue-500" />
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function MessagePanel({
   activeConversation,
   messages,
   teamMembers,
+  viewingAgents,
+  typingAgents,
+  agentPresenceStatus,
   reply,
   sending,
   sendError,
@@ -237,6 +348,7 @@ export function MessagePanel({
 
   onReplyChange,
   onSendMessage,
+  onSendAttachments,
   onStatusChange,
   onAssignmentChange,
 
@@ -269,6 +381,96 @@ export function MessagePanel({
   const [actionNotice, setActionNotice] =
     useState<string | null>(null);
 
+  /*
+   * =========================================================
+   * V2.3 — AUTO SCROLL + NEW MESSAGE INDICATOR
+   * =========================================================
+   *
+   * Rules:
+   * - Opening a conversation starts at the newest message.
+   * - If staff is already near the bottom, new messages scroll
+   *   into view automatically.
+   * - If staff has scrolled up to read older messages, incoming
+   *   messages do NOT pull the screen away. Instead we show a
+   *   "New message(s)" button.
+   * - Outgoing/optimistic messages always keep the sender at the
+   *   bottom of the conversation.
+   */
+  const [
+    newMessageCount,
+    setNewMessageCount,
+  ] = useState(0);
+
+  const messagesContainerRef =
+    useRef<HTMLDivElement | null>(
+      null,
+    );
+
+  const lastMessageIdRef =
+    useRef<string | null>(null);
+
+  const previousMessageCountRef =
+    useRef(0);
+
+  const initialScrollDoneRef =
+    useRef(false);
+
+  const userNearBottomRef =
+    useRef(true);
+
+  const scrollToNewest =
+    useCallback(
+      (
+        behavior: ScrollBehavior =
+          "smooth",
+      ) => {
+        const container =
+          messagesContainerRef.current;
+
+        if (!container) {
+          return;
+        }
+
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior,
+        });
+
+        userNearBottomRef.current =
+          true;
+
+        setNewMessageCount(0);
+      },
+      [],
+    );
+
+  function handleMessagesScroll() {
+    const container =
+      messagesContainerRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    const distanceFromBottom =
+      container.scrollHeight -
+      container.scrollTop -
+      container.clientHeight;
+
+    const isNearBottom =
+      distanceFromBottom <= 120;
+
+    userNearBottomRef.current =
+      isNearBottom;
+
+    if (
+      isNearBottom &&
+      newMessageCount > 0
+    ) {
+      setNewMessageCount(0);
+    }
+  }
+
   function showActionNotice(message: string) {
     setActionNotice(message);
 
@@ -276,6 +478,22 @@ export function MessagePanel({
       setActionNotice(null);
     }, 1800);
   }
+
+  useEffect(() => {
+    initialScrollDoneRef.current =
+      false;
+
+    lastMessageIdRef.current =
+      null;
+
+    previousMessageCountRef.current =
+      0;
+
+    userNearBottomRef.current =
+      true;
+
+    setNewMessageCount(0);
+  }, [activeConversation?.id]);
 
   useEffect(() => {
     const nextState: Record<
@@ -315,6 +533,100 @@ export function MessagePanel({
       nextState,
     );
   }, [messages]);
+
+  useEffect(() => {
+    const latestMessage =
+      messages[
+        messages.length - 1
+      ] ?? null;
+
+    const latestMessageId =
+      latestMessage?.id ?? null;
+
+    /*
+     * First render for this conversation:
+     * jump directly to the newest message.
+     */
+    if (
+      !initialScrollDoneRef.current
+    ) {
+      initialScrollDoneRef.current =
+        true;
+
+      lastMessageIdRef.current =
+        latestMessageId;
+
+      previousMessageCountRef.current =
+        messages.length;
+
+      window.requestAnimationFrame(
+        () => {
+          scrollToNewest("auto");
+        },
+      );
+
+      return;
+    }
+
+    const previousMessageId =
+      lastMessageIdRef.current;
+
+    const previousMessageCount =
+      previousMessageCountRef.current;
+
+    lastMessageIdRef.current =
+      latestMessageId;
+
+    previousMessageCountRef.current =
+      messages.length;
+
+    /*
+     * Delivery/Seen updates can replace message objects without
+     * adding a new message. Do not show the indicator for those.
+     */
+    if (
+      !latestMessage ||
+      !latestMessageId ||
+      latestMessageId ===
+        previousMessageId
+    ) {
+      return;
+    }
+
+    const addedCount =
+      messages.length >
+      previousMessageCount
+        ? messages.length -
+          previousMessageCount
+        : 1;
+
+    const isOutgoing =
+      latestMessage.direction ===
+      "outgoing";
+
+    /*
+     * Keep outgoing/optimistic sends visible.
+     * Incoming messages auto-scroll only when the agent has not
+     * intentionally scrolled away from the bottom.
+     */
+    if (
+      isOutgoing ||
+      userNearBottomRef.current
+    ) {
+      window.requestAnimationFrame(
+        () => {
+          scrollToNewest("smooth");
+        },
+      );
+
+      return;
+    }
+
+    setNewMessageCount(
+      (current) =>
+        current + addedCount,
+    );
+  }, [messages, scrollToNewest]);
 
   if (!activeConversation) {
     return (
@@ -415,6 +727,18 @@ export function MessagePanel({
         }
       />
 
+      <AgentPresenceStrip
+        viewingAgents={
+          viewingAgents
+        }
+        typingAgents={
+          typingAgents
+        }
+        status={
+          agentPresenceStatus
+        }
+      />
+
       {statusError ? (
         <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">
           {statusError}
@@ -428,23 +752,28 @@ export function MessagePanel({
       ) : null}
 
       {/* Messages */}
-      <div
-        className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6"
-        style={{
-          backgroundColor:
-            "#EEF2F6",
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={messagesContainerRef}
+          onScroll={
+            handleMessagesScroll
+          }
+          className="h-full space-y-4 overflow-y-auto p-6"
+          style={{
+            backgroundColor:
+              "#EEF2F6",
 
-          backgroundImage:
-            "url('/images/chat-bg.png')",
+            backgroundImage:
+              "url('/images/chat-bg.png')",
 
-          backgroundRepeat:
-            "repeat",
+            backgroundRepeat:
+              "repeat",
 
-          backgroundSize:
-            "320px",
-        }}
-      >
-        <div className="space-y-4">
+            backgroundSize:
+              "320px",
+          }}
+        >
+          <div className="space-y-4">
           {messages.map(
             (message) => {
               const isOutgoing =
@@ -489,6 +818,17 @@ export function MessagePanel({
                   comment_id?: string;
                   parent_id?: string;
 
+                  tenh_attachment?: {
+                    type?:
+                      | "image"
+                      | "video"
+                      | "file";
+                    name?: string | null;
+                    mime_type?: string | null;
+                    size?: number | null;
+                    attachment_id?: string | null;
+                  } | null;
+
                   post_preview?: {
                     id?: string;
                     message?: string | null;
@@ -504,6 +844,34 @@ export function MessagePanel({
               const postPreview =
                 rawPayload?.post_preview ??
                 null;
+
+              const attachmentMeta =
+                rawPayload?.tenh_attachment ??
+                null;
+
+              const attachmentUrl =
+                message.attachment_url;
+
+              const isImageMessage =
+                message.message_type ===
+                "image";
+
+              const isVideoMessage =
+                message.message_type ===
+                "video";
+
+              const isFileMessage =
+                message.message_type ===
+                "file";
+
+              const attachmentName =
+                attachmentMeta?.name?.trim() ||
+                message.message_text ||
+                (isImageMessage
+                  ? "Photo"
+                  : isVideoMessage
+                    ? "Video"
+                    : "File");
 
               const postUrl =
                 postPreview
@@ -881,6 +1249,86 @@ export function MessagePanel({
                               ) : null}
                             </div>
                           </div>
+                        ) : isImageMessage ? (
+                          <div className="min-w-[220px]">
+                            {attachmentUrl ? (
+                              <a
+                                href={attachmentUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block overflow-hidden rounded-xl bg-slate-100"
+                              >
+                                <img
+                                  src={attachmentUrl}
+                                  alt={attachmentName}
+                                  className="max-h-80 w-full object-cover"
+                                  loading="lazy"
+                                />
+                              </a>
+                            ) : (
+                              <div className="flex h-40 min-w-[240px] items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium text-slate-500">
+                                Photo sent
+                              </div>
+                            )}
+
+                            <p className="mt-2 truncate text-xs text-slate-500">
+                              {attachmentName}
+                            </p>
+                          </div>
+                        ) : isVideoMessage ? (
+                          <div className="min-w-[240px]">
+                            {attachmentUrl ? (
+                              <video
+                                src={attachmentUrl}
+                                controls
+                                preload="metadata"
+                                className="max-h-80 w-full rounded-xl bg-black"
+                              />
+                            ) : (
+                              <div className="flex h-40 min-w-[240px] items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium text-slate-500">
+                                Video sent
+                              </div>
+                            )}
+
+                            <p className="mt-2 truncate text-xs text-slate-500">
+                              {attachmentName}
+                            </p>
+                          </div>
+                        ) : isFileMessage ? (
+                          attachmentUrl ? (
+                            <a
+                              href={attachmentUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex min-w-[240px] items-center gap-3 rounded-xl border border-slate-200 bg-white/80 p-3 transition hover:bg-white"
+                            >
+                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-lg">
+                                📎
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-medium text-slate-800">
+                                  {attachmentName}
+                                </span>
+                                <span className="text-xs text-blue-600">
+                                  Open file
+                                </span>
+                              </span>
+                            </a>
+                          ) : (
+                            <div className="flex min-w-[240px] items-center gap-3 rounded-xl border border-slate-200 bg-white/80 p-3">
+                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-lg">
+                                📎
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-medium text-slate-800">
+                                  {attachmentName}
+                                </span>
+                                <span className="text-xs text-slate-400">
+                                  File sent
+                                </span>
+                              </span>
+                            </div>
+                          )
                         ) : (
                           /*
                            * Important:
@@ -1137,7 +1585,48 @@ export function MessagePanel({
               );
             },
           )}
+          </div>
         </div>
+
+        {newMessageCount > 0 ? (
+          <div className="pointer-events-none absolute bottom-4 left-1/2 z-40 -translate-x-1/2">
+            <button
+              type="button"
+              onClick={() =>
+                scrollToNewest(
+                  "smooth",
+                )
+              }
+              className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-lg transition hover:bg-blue-50 active:scale-[0.98]"
+              aria-label="Scroll to newest messages"
+            >
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[11px] font-bold text-white">
+                {newMessageCount}
+              </span>
+
+              <span>
+                {newMessageCount === 1
+                  ? "New message"
+                  : "New messages"}
+              </span>
+
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="h-4 w-4"
+                aria-hidden="true"
+              >
+                <path
+                  d="m6 9 6 6 6-6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {/* Facebook comment reply target */}
@@ -1277,6 +1766,12 @@ export function MessagePanel({
             }
             onSubmit={
               onSendMessage
+            }
+            onSendAttachments={
+              onSendAttachments
+            }
+            allowAttachments={
+              !isCommentConversation
             }
           />
         )
