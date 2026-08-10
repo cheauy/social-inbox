@@ -1,6 +1,10 @@
 import Link from "next/link";
 
 import {
+  FacebookDisconnectButton,
+} from "@/components/integrations/facebook-disconnect-button";
+
+import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import {
@@ -151,6 +155,14 @@ export default async function IntegrationsPage({
         "connected" ? (
           <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
             Facebook Page connected successfully.
+          </div>
+        ) : null}
+
+        {facebookResult ===
+        "disconnected" ? (
+          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+            {resultMessage ||
+              "Facebook Page disconnected. Conversation history was preserved."}
           </div>
         ) : null}
 
@@ -319,6 +331,15 @@ export default async function IntegrationsPage({
                           >
                             Reconnect
                           </a>
+
+                          <FacebookDisconnectButton
+                            socialAccountId={
+                              account.id
+                            }
+                            pageName={
+                              pageName
+                            }
+                          />
                         </div>
                       </div>
                     </div>
