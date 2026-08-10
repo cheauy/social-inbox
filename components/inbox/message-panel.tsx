@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type FormEvent,
@@ -20,6 +21,10 @@ import {
   ReplyBox,
   type ReplyAttachment,
 } from "@/components/inbox/reply-box";
+
+import {
+  VoiceMessagePlayer,
+} from "@/components/inbox/voice-message-player";
 
 import type {
   ConversationStatus,
@@ -41,6 +46,17 @@ type MessagePanelProps = {
   messages: InboxMessage[];
 
   teamMembers: TeamMember[];
+
+  hasMoreOlderMessages: boolean;
+
+  loadingOlderMessages: boolean;
+
+  olderMessagesError:
+    | string
+    | null;
+
+  onLoadOlderMessages:
+    () => Promise<boolean>;
 
   viewingAgents: AgentPresence[];
 
@@ -328,6 +344,10 @@ export function MessagePanel({
   activeConversation,
   messages,
   teamMembers,
+  hasMoreOlderMessages,
+  loadingOlderMessages,
+  olderMessagesError,
+  onLoadOlderMessages,
   viewingAgents,
   typingAgents,
   agentPresenceStatus,
@@ -418,6 +438,19 @@ export function MessagePanel({
   const userNearBottomRef =
     useRef(true);
 
+  /*
+   * V2.7 — preserve the visible viewport while older messages
+   * are prepended above the current scroll position.
+   */
+  const prependScrollSnapshotRef =
+    useRef<{
+      scrollHeight: number;
+      scrollTop: number;
+    } | null>(null);
+
+  const olderLoadRequestedRef =
+    useRef(false);
+
   const scrollToNewest =
     useCallback(
       (
@@ -444,6 +477,46 @@ export function MessagePanel({
       [],
     );
 
+  async function loadOlderMessages() {
+    if (
+      !hasMoreOlderMessages ||
+      loadingOlderMessages ||
+      olderLoadRequestedRef.current
+    ) {
+      return;
+    }
+
+    const container =
+      messagesContainerRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    olderLoadRequestedRef.current =
+      true;
+
+    prependScrollSnapshotRef.current = {
+      scrollHeight:
+        container.scrollHeight,
+      scrollTop:
+        container.scrollTop,
+    };
+
+    try {
+      const loaded =
+        await onLoadOlderMessages();
+
+      if (!loaded) {
+        prependScrollSnapshotRef.current =
+          null;
+      }
+    } finally {
+      olderLoadRequestedRef.current =
+        false;
+    }
+  }
+
   function handleMessagesScroll() {
     const container =
       messagesContainerRef.current;
@@ -469,6 +542,18 @@ export function MessagePanel({
     ) {
       setNewMessageCount(0);
     }
+
+    /*
+     * V2.7 — when the agent reaches the top area, request the
+     * next older page. The parent prevents duplicate network calls.
+     */
+    if (
+      container.scrollTop <= 140 &&
+      hasMoreOlderMessages &&
+      !loadingOlderMessages
+    ) {
+      void loadOlderMessages();
+    }
   }
 
   function showActionNotice(message: string) {
@@ -492,8 +577,48 @@ export function MessagePanel({
     userNearBottomRef.current =
       true;
 
+    prependScrollSnapshotRef.current =
+      null;
+
+    olderLoadRequestedRef.current =
+      false;
+
     setNewMessageCount(0);
   }, [activeConversation?.id]);
+
+  /*
+   * Older pages are inserted before the currently visible messages.
+   * Restore the viewport by adding the new content height so the
+   * agent does not jump to a different message.
+   */
+  useLayoutEffect(() => {
+    const snapshot =
+      prependScrollSnapshotRef.current;
+
+    const container =
+      messagesContainerRef.current;
+
+    if (
+      !snapshot ||
+      !container
+    ) {
+      return;
+    }
+
+    const heightAdded =
+      container.scrollHeight -
+      snapshot.scrollHeight;
+
+    container.scrollTop =
+      snapshot.scrollTop +
+      Math.max(
+        0,
+        heightAdded,
+      );
+
+    prependScrollSnapshotRef.current =
+      null;
+  }, [messages]);
 
   useEffect(() => {
     const nextState: Record<
@@ -773,6 +898,33 @@ export function MessagePanel({
               "320px",
           }}
         >
+          <div className="mb-3 flex min-h-8 items-center justify-center">
+            {loadingOlderMessages ? (
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-xs font-medium text-slate-500 shadow-sm">
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
+                Loading older messages...
+              </div>
+            ) : olderMessagesError ? (
+              <button
+                type="button"
+                onClick={() =>
+                  void loadOlderMessages()
+                }
+                className="rounded-full border border-red-200 bg-white/95 px-3 py-1.5 text-xs font-medium text-red-600 shadow-sm transition hover:bg-red-50"
+              >
+                Couldn&apos;t load older messages. Retry
+              </button>
+            ) : hasMoreOlderMessages ? (
+              <span className="rounded-full bg-white/75 px-3 py-1 text-[11px] font-medium text-slate-400">
+                Scroll up for earlier messages
+              </span>
+            ) : messages.length > 0 ? (
+              <span className="rounded-full bg-white/75 px-3 py-1 text-[11px] font-medium text-slate-400">
+                Beginning of conversation
+              </span>
+            ) : null}
+          </div>
+
           <div className="space-y-4">
           {messages.map(
             (message) => {
@@ -822,6 +974,7 @@ export function MessagePanel({
                     type?:
                       | "image"
                       | "video"
+                      | "audio"
                       | "file";
                     name?: string | null;
                     mime_type?: string | null;
@@ -860,6 +1013,10 @@ export function MessagePanel({
                 message.message_type ===
                 "video";
 
+              const isAudioMessage =
+                message.message_type ===
+                "audio";
+
               const isFileMessage =
                 message.message_type ===
                 "file";
@@ -871,7 +1028,9 @@ export function MessagePanel({
                   ? "Photo"
                   : isVideoMessage
                     ? "Video"
-                    : "File");
+                    : isAudioMessage
+                      ? "Voice message"
+                      : "File");
 
               const postUrl =
                 postPreview
@@ -1293,6 +1452,29 @@ export function MessagePanel({
                             <p className="mt-2 truncate text-xs text-slate-500">
                               {attachmentName}
                             </p>
+                          </div>
+                        ) : isAudioMessage ? (
+                          <div className="max-w-[360px]">
+                            {attachmentUrl ? (
+                              <VoiceMessagePlayer
+                                src={attachmentUrl}
+                                isOutgoing={isOutgoing}
+                              />
+                            ) : (
+                              <div className="flex min-h-16 min-w-[260px] items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm">
+                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-lg">
+                                  🎤
+                                </span>
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-800">
+                                    Voice message
+                                  </p>
+                                  <p className="text-xs text-slate-400">
+                                    This older audio message has no saved media URL.
+                                  </p>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ) : isFileMessage ? (
                           attachmentUrl ? (

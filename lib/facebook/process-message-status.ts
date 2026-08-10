@@ -183,21 +183,13 @@ async function markDelivered({
     );
 
   /*
-   * =====================================================
-   * 1. BEST CASE — META GIVES EXACT MESSAGE IDs
-   * =====================================================
+   * Best case:
+   * Meta gives us exact message IDs.
    *
-   * Do NOT require conversation_id here.
-   *
-   * platform_message_id is Meta's unique MID and is the
-   * safest way to identify the outgoing Messenger message.
-   *
-   * This also prevents a conversation lookup mismatch from
-   * blocking Delivered status.
+   * Updating by MID avoids touching Facebook comment replies.
    */
   if (mids.length > 0) {
     const {
-      data: updatedMessages,
       error,
     } = await supabaseAdmin
       .from("messages")
@@ -208,6 +200,58 @@ async function markDelivered({
         delivered_at:
           deliveredAt,
       })
+      .eq(
+        "conversation_id",
+        conversationId,
+      )
+      .eq(
+        "direction",
+        "outgoing",
+      )
+      .is(
+        "seen_at",
+        null,
+      )
+      .in(
+        "platform_message_id",
+        mids,
+      );
+
+    if (error) {
+      throw new Error(
+        error.message,
+      );
+    }
+  }
+
+  /*
+   * Some delivery notifications can also contain a watermark.
+   *
+   * Only rows that already have delivery_status are eligible.
+   * Tenh Chat sets delivery_status='sent' only for Messenger sends,
+   * so Facebook comment replies remain excluded.
+   */
+  if (watermark) {
+    const watermarkIso =
+      toIsoFromMilliseconds(
+        watermark,
+      );
+
+    const {
+      error,
+    } = await supabaseAdmin
+      .from("messages")
+      .update({
+        delivery_status:
+          "delivered",
+
+        delivered_at:
+          deliveredAt,
+      })
+      .eq(
+        "conversation_id",
+        conversationId,
+      )
       .eq(
         "direction",
         "outgoing",
@@ -221,130 +265,17 @@ async function markDelivered({
         "seen_at",
         null,
       )
-      .in(
-        "platform_message_id",
-        mids,
-      )
-      .select(`
-        id,
-        conversation_id,
-        platform_message_id,
-        delivery_status,
-        delivered_at
-      `);
+      .lte(
+        "platform_created_at",
+        watermarkIso,
+      );
 
     if (error) {
       throw new Error(
         error.message,
       );
     }
-
-    console.log(
-      "[Facebook status] MID delivery update",
-      {
-        mids,
-        updatedCount:
-          updatedMessages?.length ??
-          0,
-        updatedMessages,
-      },
-    );
-
-    /*
-     * Exact MID matched.
-     * No need for the watermark fallback.
-     */
-    if (
-      updatedMessages &&
-      updatedMessages.length > 0
-    ) {
-      return;
-    }
-
-    console.warn(
-      "[Facebook status] Delivery MID matched 0 rows.",
-      {
-        mids,
-        conversationId,
-      },
-    );
   }
-
-  /*
-   * =====================================================
-   * 2. FALLBACK — DELIVERY WATERMARK
-   * =====================================================
-   *
-   * Some Meta delivery events may contain only a watermark.
-   */
-  if (!watermark) {
-    return;
-  }
-
-  const watermarkIso =
-    toIsoFromMilliseconds(
-      watermark,
-    );
-
-  const {
-    data: updatedMessages,
-    error,
-  } = await supabaseAdmin
-    .from("messages")
-    .update({
-      delivery_status:
-        "delivered",
-
-      delivered_at:
-        deliveredAt,
-    })
-    .eq(
-      "conversation_id",
-      conversationId,
-    )
-    .eq(
-      "direction",
-      "outgoing",
-    )
-    .not(
-      "delivery_status",
-      "is",
-      null,
-    )
-    .is(
-      "seen_at",
-      null,
-    )
-    .lte(
-      "platform_created_at",
-      watermarkIso,
-    )
-    .select(`
-      id,
-      conversation_id,
-      platform_message_id,
-      delivery_status,
-      delivered_at
-    `);
-
-  if (error) {
-    throw new Error(
-      error.message,
-    );
-  }
-
-  console.log(
-    "[Facebook status] Watermark delivery update",
-    {
-      conversationId,
-      watermark,
-      watermarkIso,
-      updatedCount:
-        updatedMessages?.length ??
-        0,
-      updatedMessages,
-    },
-  );
 }
 
 async function markSeen({
@@ -414,17 +345,6 @@ export async function processFacebookMessageStatus(
   event:
     FacebookMessageStatusEvent,
 ) {
-  const configuredPageId =
-    process.env
-      .FACEBOOK_PAGE_ID
-      ?.trim();
-
-  if (!configuredPageId) {
-    throw new Error(
-      "FACEBOOK_PAGE_ID is missing.",
-    );
-  }
-
   const senderId =
     event.sender?.id?.trim() ??
     "";
@@ -433,38 +353,100 @@ export async function processFacebookMessageStatus(
     event.recipient?.id?.trim() ??
     "";
 
-  /*
-   * For delivery/read notifications the customer normally
-   * appears as sender and the Page as recipient.
-   *
-   * Support either orientation so the handler stays robust.
-   */
-  let customerId = "";
+  const candidatePageIds =
+    Array.from(
+      new Set(
+        [
+          senderId,
+          recipientId,
+        ].filter(Boolean),
+      ),
+    );
 
   if (
-    recipientId ===
-    configuredPageId
+    candidatePageIds.length ===
+    0
   ) {
-    customerId =
-      senderId;
-  } else if (
-    senderId ===
-    configuredPageId
-  ) {
-    customerId =
-      recipientId;
-  } else {
+    return;
+  }
+
+  /*
+   * V3.1.17 — multi-Page delivery/read routing.
+   * Resolve which side of the status event is one of this TENH workspace's
+   * active Facebook Pages instead of comparing against FACEBOOK_PAGE_ID.
+   */
+  const {
+    data: connectedPages,
+    error: connectedPagesError,
+  } =
+    await supabaseAdmin
+      .from(
+        "social_accounts",
+      )
+      .select(
+        "platform_account_id",
+      )
+      .eq(
+        "platform",
+        "facebook",
+      )
+      .eq(
+        "is_active",
+        true,
+      )
+      .in(
+        "platform_account_id",
+        candidatePageIds,
+      );
+
+  if (connectedPagesError) {
+    throw new Error(
+      connectedPagesError.message,
+    );
+  }
+
+  const connectedPageIds =
+    new Set(
+      (connectedPages ?? [])
+        .map(
+          (account) =>
+            account
+              .platform_account_id
+              ?.trim(),
+        )
+        .filter(
+          (pageId): pageId is string =>
+            Boolean(pageId),
+        ),
+    );
+
+  const pageId =
+    connectedPageIds.has(
+      recipientId,
+    )
+      ? recipientId
+      : connectedPageIds.has(
+            senderId,
+          )
+        ? senderId
+        : "";
+
+  if (!pageId) {
     console.warn(
-      "[Facebook status] Event is not for the configured Page.",
+      "[Facebook status] Event is not for a connected Facebook Page.",
       {
         senderId,
         recipientId,
-        configuredPageId,
       },
     );
 
     return;
   }
+
+  const customerId =
+    pageId === recipientId
+      ? senderId
+      : recipientId;
 
   if (!customerId) {
     return;
@@ -474,8 +456,7 @@ export async function processFacebookMessageStatus(
     await getConversationForStatusEvent(
       {
         customerId,
-        pageId:
-          configuredPageId,
+        pageId,
       },
     );
 

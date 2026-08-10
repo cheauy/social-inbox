@@ -1,15 +1,25 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-import type { CustomerTag } from "@/types/inbox";
+import type {
+  CustomerTag,
+} from "@/types/inbox";
 
 type CustomerTagSelectorProps = {
   contactId: string;
   businessId: string;
-  conversationId: string;
-  initialTags: CustomerTag[];
+  conversationId?: string;
+  initialTags:
+    CustomerTag[];
+  onTagsChange?: (
+    tags:
+      CustomerTag[],
+  ) => void;
 };
 
 type TagsResponse = {
@@ -18,37 +28,30 @@ type TagsResponse = {
   tags?: CustomerTag[];
 };
 
-function getTextColor(background: string) {
-  const hex = background.replace("#", "");
+type TagMutationResponse = {
+  success?: boolean;
+  error?: string;
+  tag?: CustomerTag;
+  tags?: CustomerTag[];
+};
 
-  if (!/^[0-9A-F]{6}$/i.test(hex)) {
-    return "#FFFFFF";
+async function readJsonResponse<T>(
+  response: Response,
+): Promise<T | null> {
+  const text =
+    await response.text();
+
+  if (!text.trim()) {
+    return null;
   }
 
-  const red = Number.parseInt(
-    hex.slice(0, 2),
-    16,
-  );
-
-  const green = Number.parseInt(
-    hex.slice(2, 4),
-    16,
-  );
-
-  const blue = Number.parseInt(
-    hex.slice(4, 6),
-    16,
-  );
-
-  const brightness =
-    (red * 299 +
-      green * 587 +
-      blue * 114) /
-    1000;
-
-  return brightness > 165
-    ? "#0F172A"
-    : "#FFFFFF";
+  try {
+    return JSON.parse(
+      text,
+    ) as T;
+  } catch {
+    return null;
+  }
 }
 
 function TagIcon() {
@@ -66,11 +69,29 @@ function TagIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-
       <circle
         cx="9"
         cy="9"
-        r="1.3"
+        r="1.5"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3"
+      className="h-5 w-5"
+      aria-hidden="true"
+    >
+      <path
+        d="M5 13l4 4L19 7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
@@ -81,77 +102,146 @@ export function CustomerTagSelector({
   businessId,
   conversationId,
   initialTags,
+  onTagsChange,
 }: CustomerTagSelectorProps) {
-  const [open, setOpen] =
+  const [
+    open,
+    setOpen,
+  ] =
     useState(false);
 
-  const [allTags, setAllTags] =
-    useState<CustomerTag[]>([]);
+  const [
+    search,
+    setSearch,
+  ] =
+    useState("");
 
-  const [assignedIds, setAssignedIds] =
-    useState<Set<string>>(
-      new Set(
-        (initialTags ?? []).map(
-          (tag) => tag.id,
-        ),
-      ),
+  const [
+    availableTags,
+    setAvailableTags,
+  ] =
+    useState<
+      CustomerTag[]
+    >([]);
+
+  const [
+    selectedTags,
+    setSelectedTags,
+  ] =
+    useState<
+      CustomerTag[]
+    >(
+      Array.isArray(
+        initialTags,
+      )
+        ? initialTags
+        : [],
     );
 
-  const [busyTagId, setBusyTagId] =
-    useState<string | null>(null);
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(false);
 
-  const [error, setError] =
-    useState<string | null>(null);
+  const [
+    updatingTagId,
+    setUpdatingTagId,
+  ] =
+    useState<
+      string | null
+    >(null);
+
+  const [
+    error,
+    setError,
+  ] =
+    useState<
+      string | null
+    >(null);
 
   useEffect(() => {
-    setAssignedIds(
-      new Set(
-        (initialTags ?? []).map(
-          (tag) => tag.id,
-        ),
-      ),
+    setSelectedTags(
+      Array.isArray(
+        initialTags,
+      )
+        ? initialTags
+        : [],
     );
-  }, [contactId, initialTags]);
+  }, [
+    initialTags,
+    contactId,
+  ]);
 
   useEffect(() => {
     if (!open) {
       return;
     }
 
-    let cancelled = false;
+    let cancelled =
+      false;
 
     async function loadTags() {
+      setLoading(
+        true,
+      );
       setError(null);
 
       try {
-        const response = await fetch(
-          `/api/tags?businessId=${encodeURIComponent(
+        const params =
+          new URLSearchParams({
             businessId,
-          )}&activeOnly=true`,
-          {
-            cache: "no-store",
-          },
-        );
+            activeOnly:
+              "true",
+          });
+
+        const response =
+          await fetch(
+            `/api/tags?${params.toString()}`,
+            {
+              cache:
+                "no-store",
+            },
+          );
 
         const result =
-          (await response.json()) as TagsResponse;
+          await readJsonResponse<
+            TagsResponse
+          >(
+            response,
+          );
 
-        if (!response.ok || !result.success) {
+        if (
+          !response.ok ||
+          !result?.success
+        ) {
           throw new Error(
-            result.error ??
+            result?.error ??
               "Unable to load tags.",
           );
         }
 
         if (!cancelled) {
-          setAllTags(result.tags ?? []);
+          setAvailableTags(
+            result.tags ??
+              [],
+          );
         }
-      } catch (loadError) {
+      } catch (
+        loadError
+      ) {
         if (!cancelled) {
           setError(
-            loadError instanceof Error
+            loadError instanceof
+              Error
               ? loadError.message
               : "Unable to load tags.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(
+            false,
           );
         }
       }
@@ -160,222 +250,502 @@ export function CustomerTagSelector({
     void loadTags();
 
     return () => {
-      cancelled = true;
+      cancelled =
+        true;
     };
-  }, [open, businessId]);
+  }, [
+    open,
+    businessId,
+  ]);
+
+  const selectedTagIds =
+    useMemo(
+      () =>
+        new Set(
+          selectedTags.map(
+            (tag) =>
+              tag.id,
+          ),
+        ),
+      [selectedTags],
+    );
+
+  const filteredTags =
+    useMemo(() => {
+      const keyword =
+        search
+          .trim()
+          .toLowerCase();
+
+      if (!keyword) {
+        return availableTags;
+      }
+
+      return availableTags.filter(
+        (tag) =>
+          tag.name
+            .toLowerCase()
+            .includes(
+              keyword,
+            ) ||
+          (
+            tag.description ??
+            ""
+          )
+            .toLowerCase()
+            .includes(
+              keyword,
+            ),
+      );
+    }, [
+      availableTags,
+      search,
+    ]);
+
+  function publishTags(
+    nextTags:
+      CustomerTag[],
+  ) {
+    setSelectedTags(
+      nextTags,
+    );
+
+    onTagsChange?.(
+      nextTags,
+    );
+
+    /*
+     * Optional lightweight sync point for other Inbox UI.
+     * Existing components can ignore this safely.
+     */
+    window.dispatchEvent(
+      new CustomEvent(
+        "tenh-contact-tags-changed",
+        {
+          detail: {
+            contactId,
+            tags:
+              nextTags,
+          },
+        },
+      ),
+    );
+  }
+
+  async function addTag(
+    tag: CustomerTag,
+  ) {
+    if (
+      updatingTagId ||
+      selectedTagIds.has(
+        tag.id,
+      )
+    ) {
+      return;
+    }
+
+    setUpdatingTagId(
+      tag.id,
+    );
+    setError(null);
+
+    try {
+      const response =
+        await fetch(
+          `/api/contacts/${encodeURIComponent(
+            contactId,
+          )}/tags`,
+          {
+            method:
+              "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body:
+              JSON.stringify(
+                {
+                  tagId:
+                    tag.id,
+                  conversationId:
+                    conversationId ??
+                    undefined,
+                },
+              ),
+          },
+        );
+
+      const result =
+        await readJsonResponse<
+          TagMutationResponse
+        >(
+          response,
+        );
+
+      if (
+        !response.ok ||
+        !result?.success
+      ) {
+        throw new Error(
+          result?.error ??
+            "Unable to add tag.",
+        );
+      }
+
+      const returnedTag =
+        result.tag ??
+        tag;
+
+      const nextTags =
+        selectedTagIds.has(
+          returnedTag.id,
+        )
+          ? selectedTags
+          : [
+              ...selectedTags,
+              returnedTag,
+            ];
+
+      publishTags(
+        nextTags,
+      );
+    } catch (
+      addError
+    ) {
+      setError(
+        addError instanceof
+          Error
+          ? addError.message
+          : "Unable to add tag.",
+      );
+    } finally {
+      setUpdatingTagId(
+        null,
+      );
+    }
+  }
+
+  async function removeTag(
+    tag: CustomerTag,
+  ) {
+    if (
+      updatingTagId
+    ) {
+      return;
+    }
+
+    setUpdatingTagId(
+      tag.id,
+    );
+    setError(null);
+
+    try {
+      /*
+       * IMPORTANT V3.1.1 FIX:
+       *
+       * Your existing TENH route is:
+       *   DELETE /api/contacts/[contactId]/tags
+       *
+       * and it expects tagId + conversationId in a JSON body.
+       * Do NOT call /tags/[tagId].
+       */
+      const params =
+        new URLSearchParams();
+
+      if (conversationId) {
+        params.set(
+          "conversationId",
+          conversationId,
+        );
+      }
+
+      const suffix =
+        params.toString()
+          ? `?${params.toString()}`
+          : "";
+
+      const response =
+        await fetch(
+          `/api/contacts/${encodeURIComponent(
+            contactId,
+          )}/tags/${encodeURIComponent(
+            tag.id,
+          )}${suffix}`,
+          {
+            method:
+              "DELETE",
+          },
+        );
+
+      const result =
+        await readJsonResponse<
+          TagMutationResponse
+        >(
+          response,
+        );
+
+      if (
+        !response.ok ||
+        !result?.success
+      ) {
+        throw new Error(
+          result?.error ??
+            "Unable to remove tag.",
+        );
+      }
+
+      publishTags(
+        selectedTags.filter(
+          (
+            selectedTag,
+          ) =>
+            selectedTag.id !==
+            tag.id,
+        ),
+      );
+    } catch (
+      removeError
+    ) {
+      setError(
+        removeError instanceof
+          Error
+          ? removeError.message
+          : "Unable to remove tag.",
+      );
+    } finally {
+      setUpdatingTagId(
+        null,
+      );
+    }
+  }
 
   async function toggleTag(
     tag: CustomerTag,
   ) {
-    if (busyTagId) {
+    if (
+      selectedTagIds.has(
+        tag.id,
+      )
+    ) {
+      await removeTag(
+        tag,
+      );
       return;
     }
 
-    const assigned =
-      assignedIds.has(tag.id);
-
-    setBusyTagId(tag.id);
-    setError(null);
-
-    setAssignedIds((current) => {
-      const next = new Set(current);
-
-      if (assigned) {
-        next.delete(tag.id);
-      } else {
-        next.add(tag.id);
-      }
-
-      return next;
-    });
-
-    try {
-      const response = await fetch(
-        `/api/contacts/${contactId}/tags`,
-        {
-          method: assigned
-            ? "DELETE"
-            : "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body: JSON.stringify({
-            tagId: tag.id,
-            
-          }),
-        },
-      );
-
-      const result =
-        (await response.json()) as TagsResponse;
-
-      if (!response.ok || !result.success) {
-        throw new Error(
-          result.error ??
-            "Unable to update tag.",
-        );
-      }
-    } catch (toggleError) {
-      setAssignedIds((current) => {
-        const next = new Set(current);
-
-        if (assigned) {
-          next.add(tag.id);
-        } else {
-          next.delete(tag.id);
-        }
-
-        return next;
-      });
-
-      setError(
-        toggleError instanceof Error
-          ? toggleError.message
-          : "Unable to update tag.",
-      );
-    } finally {
-      setBusyTagId(null);
-    }
+    await addTag(
+      tag,
+    );
   }
 
   return (
     <div className="relative">
       <button
         type="button"
-        onClick={() =>
-          setOpen((current) => !current)
-        }
-        className={`flex h-9 w-9 items-center justify-center rounded-lg border transition ${
+        onClick={() => {
+          setOpen(
+            (
+              current,
+            ) =>
+              !current,
+          );
+          setSearch("");
+          setError(null);
+        }}
+        className={`relative flex h-9 w-9 items-center justify-center rounded-lg border transition ${
           open
-            ? "border-blue-500 bg-blue-50 text-blue-700"
-            : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+            ? "border-blue-300 bg-blue-50 text-blue-700"
+            : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700"
         }`}
-        aria-label="Select customer tags"
-        aria-expanded={open}
+        aria-label="Quick tags"
+        title="Quick tags"
+        aria-expanded={
+          open
+        }
       >
         <TagIcon />
 
-        {assignedIds.size > 0 ? (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-semibold text-white">
-            {assignedIds.size}
+        {selectedTags.length >
+        0 ? (
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold leading-none text-white">
+            {selectedTags.length >
+            9
+              ? "9+"
+              : selectedTags.length}
           </span>
         ) : null}
       </button>
 
       {open ? (
         <>
-         <button
-  type="button"
-  onClick={() => setOpen(false)}
-  className="fixed inset-0 z-40 cursor-default bg-slate-950/10"
-  aria-label="Close tags"
-/>
-          <div className="fixed bottom-28 left-[55%] z-50 w-[340px] -translate-x-1/2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-              <div>
-                <p className="font-semibold text-slate-900">
-                  Quick tags
-                </p>
+          <button
+            type="button"
+            className="fixed inset-0 z-40 cursor-default"
+            onClick={() =>
+              setOpen(
+                false,
+              )
+            }
+            aria-label="Close quick tags"
+          />
 
-                <p className="text-xs text-slate-500">
-                  Select tags for this customer
-                </p>
+          <div className="absolute bottom-12 left-0 z-50 w-80 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="border-b border-slate-200 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-slate-900">
+                    Quick tags
+                  </p>
+
+                  <p className="mt-0.5 text-[11px] text-slate-500">
+                    Click a tag to add or remove it.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setOpen(
+                      false,
+                    )
+                  }
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  aria-label="Close"
+                >
+                  ×
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() =>
-                  setOpen(false)
-                }
-                className="rounded-lg px-2 py-1 text-lg text-slate-500 hover:bg-slate-100"
-              >
-                ×
-              </button>
+              <div className="relative mt-3">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                  aria-hidden="true"
+                >
+                  <circle
+                    cx="11"
+                    cy="11"
+                    r="7"
+                  />
+                  <path
+                    d="m20 20-3.5-3.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+
+                <input
+                  value={
+                    search
+                  }
+                  onChange={(
+                    event,
+                  ) =>
+                    setSearch(
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Search tags..."
+                  className="w-full rounded-xl border border-slate-300 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
             </div>
 
-            <div className="max-h-72 overflow-y-auto p-3">
-              {allTags.length === 0 ? (
-                <p className="py-6 text-center text-sm text-slate-500">
-                  No active tags found.
-                </p>
+            <div className="max-h-72 overflow-y-auto p-2">
+              {loading ? (
+                <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-slate-500">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
+                  Loading tags...
+                </div>
+              ) : filteredTags.length ===
+                0 ? (
+                <div className="px-4 py-8 text-center text-sm text-slate-500">
+                  No tags found.
+                </div>
               ) : (
-                <div className="space-y-2">
-                  {allTags.map((tag) => {
-                    const assigned =
-                      assignedIds.has(tag.id);
+                filteredTags.map(
+                  (
+                    tag,
+                  ) => {
+                    const selected =
+                      selectedTagIds.has(
+                        tag.id,
+                      );
 
-                    const busy =
-                      busyTagId === tag.id;
+                    const updating =
+                      updatingTagId ===
+                      tag.id;
 
                     return (
                       <button
-                        key={tag.id}
+                        key={
+                          tag.id
+                        }
                         type="button"
                         onClick={() =>
-                          void toggleTag(tag)
+                          void toggleTag(
+                            tag,
+                          )
                         }
-                        disabled={Boolean(
-                          busyTagId,
-                        )}
-                        className={`flex w-full items-center justify-between rounded-xl border px-3 py-3 transition ${
-  assigned
-    ? "border-blue-300 bg-blue-50"
-    : "border-slate-200 bg-white hover:bg-slate-50"
-}`}
+                        disabled={
+                          Boolean(
+                            updatingTagId,
+                          )
+                        }
+                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+                          selected
+                            ? "bg-emerald-50"
+                            : "hover:bg-slate-50"
+                        } disabled:cursor-wait disabled:opacity-60`}
                       >
-                        <div className="flex min-w-0 items-center gap-3">
-                         <span
-  className="h-3.5 w-3.5 rounded-full ring-2 ring-white shadow"
-  style={{
-    backgroundColor: tag.color,
-  }}
-/>
+                        <span
+                          className="h-3 w-3 shrink-0 rounded-full"
+                          style={{
+                            backgroundColor:
+                              tag.color,
+                          }}
+                        />
 
-                          <span className="truncate text-sm font-medium text-slate-800">
-                            {tag.name}
-                          </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-slate-800">
+                            {
+                              tag.name
+                            }
+                          </p>
+
+                          {tag.description ? (
+                            <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                              {
+                                tag.description
+                              }
+                            </p>
+                          ) : null}
                         </div>
 
-                       {assigned ? (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="3"
-    className="h-5 w-5 text-emerald-600"
-  >
-    <path
-      d="M5 13l4 4L19 7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-) : (
-  <div className="h-5 w-5" />
-)}
+                        {updating ? (
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
+                        ) : selected ? (
+                          <span className="text-emerald-600">
+                            <CheckIcon />
+                          </span>
+                        ) : null}
                       </button>
                     );
-                  })}
-                </div>
+                  },
+                )
               )}
-
-              {error ? (
-                <p className="mt-3 rounded-lg bg-red-50 p-2 text-xs text-red-600">
-                  {error}
-                </p>
-              ) : null}
             </div>
 
-            <div className="border-t border-slate-200 bg-slate-50 p-3">
-              <Link
-                href="/dashboard/settings/tags"
-                className="flex w-full items-center justify-center rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
-              >
-                Go to add new tag
-              </Link>
+            {error ? (
+              <div className="border-t border-red-100 bg-red-50 px-4 py-3 text-xs text-red-700">
+                {error}
+              </div>
+            ) : null}
+
+            <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-500">
+              Manage tag names and colors in Settings → Conversation Tags.
             </div>
           </div>
         </>

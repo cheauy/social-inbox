@@ -1,13 +1,23 @@
 import "server-only";
+
 import {
   getFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
+
 export type FacebookPostPreview = {
   id: string;
-  message: string | null;
-  full_picture: string | null;
-  permalink_url: string | null;
-  created_time: string | null;
+  message:
+    | string
+    | null;
+  full_picture:
+    | string
+    | null;
+  permalink_url:
+    | string
+    | null;
+  created_time:
+    | string
+    | null;
 };
 
 type GraphPostResult = {
@@ -24,6 +34,7 @@ type GraphPostResult = {
 
 export async function getFacebookPostPreview(
   postId: string,
+  pageId?: string,
 ): Promise<FacebookPostPreview | null> {
   const normalizedPostId =
     postId.trim();
@@ -32,30 +43,47 @@ export async function getFacebookPostPreview(
     return null;
   }
 
- const pageAccessToken =
-  await getFacebookPageAccessToken(
-  );
+  let pageAccessToken:
+    string;
+
+  try {
+    pageAccessToken =
+      await getFacebookPageAccessToken(
+        pageId,
+      );
+  } catch (error) {
+    console.warn(
+      "[Tenh Facebook Post Preview] No Page token; skipping preview.",
+      error,
+    );
+    return null;
+  }
+
   const graphVersion =
     process.env
       .FACEBOOK_GRAPH_API_VERSION ??
     "v26.0";
 
-  const fields = [
-    "id",
-    "message",
-    "full_picture",
-    "permalink_url",
-    "created_time",
-  ].join(",");
-
   const url =
-    `https://graph.facebook.com/${graphVersion}/${normalizedPostId}` +
-    `?fields=${encodeURIComponent(
-      fields,
-    )}` +
-    `&access_token=${encodeURIComponent(
-      pageAccessToken,
-    )}`;
+    new URL(
+      `https://graph.facebook.com/${graphVersion}/${normalizedPostId}`,
+    );
+
+  url.searchParams.set(
+    "fields",
+    [
+      "id",
+      "message",
+      "full_picture",
+      "permalink_url",
+      "created_time",
+    ].join(","),
+  );
+
+  url.searchParams.set(
+    "access_token",
+    pageAccessToken,
+  );
 
   try {
     const response =
@@ -70,10 +98,12 @@ export async function getFacebookPostPreview(
     const responseText =
       await response.text();
 
-    let result: GraphPostResult =
-      {};
+    let result:
+      GraphPostResult = {};
 
-    if (responseText.trim()) {
+    if (
+      responseText.trim()
+    ) {
       try {
         result =
           JSON.parse(
@@ -81,16 +111,18 @@ export async function getFacebookPostPreview(
           ) as GraphPostResult;
       } catch {
         console.warn(
-          "Facebook post preview returned invalid JSON.",
+          "[Tenh Facebook Post Preview] Invalid JSON.",
         );
-
         return null;
       }
     }
 
-    if (!response.ok) {
+    if (
+      !response.ok ||
+      result.error
+    ) {
       console.warn(
-        "Unable to load Facebook post preview.",
+        "[Tenh Facebook Post Preview] Unable to load preview.",
         {
           postId:
             normalizedPostId,
@@ -100,11 +132,6 @@ export async function getFacebookPostPreview(
             result.error,
         },
       );
-
-      /*
-       * Do not block comment ingestion just because
-       * the post preview cannot be loaded.
-       */
       return null;
     }
 
@@ -112,29 +139,31 @@ export async function getFacebookPostPreview(
       id:
         result.id ??
         normalizedPostId,
-
       message:
-        result.message?.trim() ??
+        result.message
+          ?.trim() ??
         null,
-
       full_picture:
-        result.full_picture?.trim() ??
+        result
+          .full_picture
+          ?.trim() ??
         null,
-
       permalink_url:
-        result.permalink_url?.trim() ??
+        result
+          .permalink_url
+          ?.trim() ??
         null,
-
       created_time:
-        result.created_time?.trim() ??
+        result
+          .created_time
+          ?.trim() ??
         null,
     };
   } catch (error) {
     console.warn(
-      "Facebook post preview request failed:",
+      "[Tenh Facebook Post Preview] Request failed.",
       error,
     );
-
     return null;
   }
 }

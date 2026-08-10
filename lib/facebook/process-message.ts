@@ -1,6 +1,9 @@
 import "server-only";
 
 import { getFacebookMessageContent } from "@/lib/facebook/get-message-content";
+import {
+  getFacebookCustomerProfile,
+} from "@/lib/facebook/get-facebook-customer-profile";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { FacebookMessagingEvent } from "@/types/facebook";
 
@@ -26,29 +29,38 @@ export async function processFacebookMessage(
   const pageId = isEcho ? senderId : recipientId;
   const customerId = isEcho ? recipientId : senderId;
 
-  const configuredPageId =
-    process.env.FACEBOOK_PAGE_ID;
+  /*
+   * V3.1.17 — multi-Page routing.
+   * The incoming webhook Page ID is the source of truth. TENH validates it
+   * against an active social_accounts row below instead of one env Page ID.
+   */
 
-  if (!configuredPageId) {
-    throw new Error("FACEBOOK_PAGE_ID is missing.");
-  }
-
-  if (pageId !== configuredPageId) {
-    console.warn(
-      `Ignoring event for Page ${pageId}.`,
-    );
-
-    return;
-  }
+  const content =
+    getFacebookMessageContent(event);
 
   const { data: existingMessage } =
     await supabaseAdmin
       .from("messages")
-      .select("id")
+      .select("id,attachment_url")
       .eq("platform_message_id", messageId)
       .maybeSingle();
 
   if (existingMessage) {
+    if (
+      isEcho &&
+      content.attachmentUrl &&
+      !existingMessage.attachment_url
+    ) {
+      await supabaseAdmin
+        .from("messages")
+        .update({
+          message_type: content.messageType,
+          message_text: content.messageText,
+          attachment_url: content.attachmentUrl,
+        })
+        .eq("id", existingMessage.id);
+    }
+
     return;
   }
 
@@ -73,17 +85,74 @@ export async function processFacebookMessage(
 
   const messageTime = toIso(event.timestamp);
 
+  const customerProfile =
+    isEcho
+      ? null
+      : await getFacebookCustomerProfile({
+          pageId,
+          customerId,
+          latestMessageId:
+            messageId,
+        });
+
+  if (
+    !isEcho &&
+    !customerProfile?.fullName &&
+    !customerProfile
+      ?.profilePictureUrl &&
+    customerProfile
+      ?.permissionHint
+  ) {
+    console.warn(
+      "[Tenh Facebook Profile] Profile not available from permitted APIs.",
+      {
+        customerId,
+        pageId,
+        errors:
+          customerProfile
+            .errors,
+        permissionHint:
+          customerProfile
+            .permissionHint,
+      },
+    );
+  }
+
+  const contactPayload = {
+    business_id:
+      socialAccount.business_id,
+    platform:
+      "facebook",
+    platform_user_id:
+      customerId,
+    last_contact_at:
+      messageTime,
+    updated_at:
+      new Date().toISOString(),
+
+    ...(customerProfile
+      ?.fullName
+      ? {
+          full_name:
+            customerProfile.fullName,
+        }
+      : {}),
+
+    ...(customerProfile
+      ?.profilePictureUrl
+      ? {
+          profile_picture_url:
+            customerProfile.profilePictureUrl,
+        }
+      : {}),
+  };
+
   const { data: contact, error: contactError } =
     await supabaseAdmin
       .from("contacts")
       .upsert(
-        {
-          business_id: socialAccount.business_id,
-          platform: "facebook",
-          platform_user_id: customerId,
-          last_contact_at: messageTime,
-          updated_at: new Date().toISOString(),
-        },
+        contactPayload,
+
         {
           onConflict:
             "business_id,platform,platform_user_id",
@@ -103,37 +172,14 @@ export async function processFacebookMessage(
     await supabaseAdmin
       .from("conversations")
       .upsert(
-      {
-  business_id:
-    socialAccount.business_id,
-
-  social_account_id:
-    socialAccount.id,
-
-  contact_id:
-    contact.id,
-
-  platform:
-    "facebook",
-
-  source_type:
-    "messenger",
-
-  facebook_post_id:
-    null,
-
-  facebook_comment_id:
-    null,
-
-  parent_comment_id:
-    null,
-
-  status:
-    "open",
-
-  updated_at:
-    new Date().toISOString(),
-},
+        {
+          business_id: socialAccount.business_id,
+          social_account_id: socialAccount.id,
+          contact_id: contact.id,
+          platform: "facebook",
+          status: "open",
+          updated_at: new Date().toISOString(),
+        },
         {
           onConflict:
             "social_account_id,contact_id",
@@ -149,9 +195,6 @@ export async function processFacebookMessage(
     );
   }
 
-  const content =
-    getFacebookMessageContent(event);
-
   const { error: messageError } =
     await supabaseAdmin.from("messages").insert({
       business_id: socialAccount.business_id,
@@ -162,13 +205,6 @@ export async function processFacebookMessage(
       direction: isEcho ? "outgoing" : "incoming",
       message_type: content.messageType,
       message_text: content.messageText,
-      delivery_status:
-  isEcho
-    ? "sent"
-    : null,
-
-delivered_at: null,
-seen_at: null,
       attachment_url: content.attachmentUrl,
       is_echo: isEcho,
       raw_payload: event,
@@ -187,30 +223,11 @@ seen_at: null,
     await supabaseAdmin
       .from("conversations")
       .update({
-  source_type:
-    "messenger",
-
-  facebook_post_id:
-    null,
-
-  facebook_comment_id:
-    null,
-
-  parent_comment_id:
-    null,
-
-  last_message_text:
-    content.messageText,
-
-  last_message_at:
-    messageTime,
-
-  unread_count:
-    unreadCount,
-
-  updated_at:
-    new Date().toISOString(),
-})
+        last_message_text: content.messageText,
+        last_message_at: messageTime,
+        unread_count: unreadCount,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", conversation.id);
 
   if (updateError) {

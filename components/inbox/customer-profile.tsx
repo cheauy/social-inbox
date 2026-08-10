@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CustomerTagSelector } from "@/components/inbox/customer-tag-selector";
 import { CustomerNotes } from "@/components/inbox/customer-notes";
+import { CustomerFilesModal } from "@/components/inbox/customer-files-modal";
+import { ReminderModal } from "@/components/inbox/reminder-modal";
 import {
   getInitial,
   getStatusClasses,
@@ -20,10 +22,51 @@ type CustomerForm = {
   customerNote: string;
 };
 
+type CustomerBaseline = {
+  phone: string | null;
+  customerNote: string | null;
+};
+
+type ConflictContact = {
+  id: string;
+  phone: string | null;
+  address: string | null;
+  customer_note: string | null;
+  updated_at: string | null;
+};
+
+type CustomerConflict = {
+  message: string;
+  conflictingFields: string[];
+  currentContact: ConflictContact | null;
+};
+
 const emptyForm: CustomerForm = {
   phone: "",
   customerNote: "",
 };
+
+function comparableText(
+  value: string | null | undefined,
+): string {
+  return (value ?? "").trim();
+}
+
+function baselineMatchesContact(
+  baseline: CustomerBaseline | null,
+  contact: InboxConversation["contact"] | null,
+): boolean {
+  if (!baseline || !contact) {
+    return true;
+  }
+
+  return (
+    comparableText(baseline.phone) ===
+      comparableText(contact.phone) &&
+    comparableText(baseline.customerNote) ===
+      comparableText(contact.customer_note)
+  );
+}
 
 function formatProfileDate(
   value: string | null | undefined,
@@ -54,13 +97,32 @@ export function CustomerProfile({
     useState<string | null>(null);
   const [form, setForm] =
     useState<CustomerForm>(emptyForm);
+  const [baseline, setBaseline] =
+    useState<CustomerBaseline | null>(null);
+  const [conflict, setConflict] =
+    useState<CustomerConflict | null>(null);
+  const [reminderOpen, setReminderOpen] =
+    useState(false);
+  const [filesOpen, setFilesOpen] =
+    useState(false);
 
   const contact = activeConversation?.contact ?? null;
+
+  const liveConflictDetected =
+    editing &&
+    !baselineMatchesContact(
+      baseline,
+      contact,
+    );
 
   useEffect(() => {
     setEditing(false);
     setError(null);
+    setConflict(null);
+    setBaseline(null);
     setForm(emptyForm);
+    setReminderOpen(false);
+    setFilesOpen(false);
   }, [activeConversation?.id]);
 
 function startEditing() {
@@ -74,8 +136,54 @@ function startEditing() {
       contact.customer_note ?? "",
   });
 
+  setBaseline({
+    phone: contact.phone,
+    customerNote:
+      contact.customer_note,
+  });
+
+  setConflict(null);
   setError(null);
   setEditing(true);
+}
+
+function loadLatestValues() {
+  if (!contact) {
+    return;
+  }
+
+  const latest =
+    conflict?.currentContact ?? null;
+
+  const latestPhone = latest
+    ? latest.phone
+    : contact.phone;
+
+  const latestCustomerNote = latest
+    ? latest.customer_note
+    : contact.customer_note;
+
+  setForm({
+    phone: latestPhone ?? "",
+    customerNote:
+      latestCustomerNote ?? "",
+  });
+
+  setBaseline({
+    phone: latestPhone,
+    customerNote:
+      latestCustomerNote,
+  });
+
+  setConflict(null);
+  setError(null);
+
+  /*
+   * Ask the server for the newest enriched inbox data too.
+   * The form above is updated immediately from the 409 payload,
+   * so this refresh does not block the agent.
+   */
+  router.refresh();
 }
 
 async function saveProfile() {
@@ -105,6 +213,20 @@ async function saveProfile() {
 
           customerNote:
             form.customerNote,
+
+          /*
+           * V2.9B optimistic concurrency token.
+           * These are the values that were on screen when editing began.
+           * The API refuses to overwrite a newer agent change.
+           */
+          expected: {
+            phone: baseline
+              ? baseline.phone
+              : contact.phone,
+            customerNote: baseline
+              ? baseline.customerNote
+              : contact.customer_note,
+          },
         }),
       },
     );
@@ -130,7 +252,31 @@ async function saveProfile() {
         }>;
 
         activityRecorded?: boolean;
+
+        conflict?: boolean;
+        conflictingFields?: string[];
+        currentContact?:
+          | ConflictContact
+          | null;
       };
+
+    if (
+      response.status === 409 &&
+      result.conflict
+    ) {
+      setConflict({
+        message:
+          result.error ??
+          "Customer information changed by another agent.",
+        conflictingFields:
+          result.conflictingFields ?? [],
+        currentContact:
+          result.currentContact ?? null,
+      });
+
+      setError(null);
+      return;
+    }
 
     if (
       !response.ok ||
@@ -144,6 +290,8 @@ async function saveProfile() {
 
     setEditing(false);
     setError(null);
+    setConflict(null);
+    setBaseline(null);
 
     router.refresh();
   } catch (saveError) {
@@ -217,7 +365,41 @@ async function saveProfile() {
     <div className="min-h-0 flex-1 overflow-y-auto">
       {editing ? (
         <div className="space-y-4 p-5">
-      
+          {(liveConflictDetected || conflict) ? (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 text-sm font-bold text-amber-700">
+                  !
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-amber-900">
+                    Customer information changed
+                  </p>
+
+                  <p className="mt-1 text-sm leading-5 text-amber-800">
+                    {conflict?.message ??
+                      "Another agent changed this customer while you were editing. Load the latest values before saving so their changes are not overwritten."}
+                  </p>
+
+                  {conflict?.conflictingFields
+                    .length ? (
+                    <p className="mt-2 text-xs font-medium text-amber-700">
+                      Changed: {conflict.conflictingFields.join(", ")}
+                    </p>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    onClick={loadLatestValues}
+                    className="mt-3 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
+                  >
+                    Load latest values
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <ProfileInput
             label="Phone"
@@ -263,8 +445,12 @@ async function saveProfile() {
             <button
               type="button"
               onClick={() => void saveProfile()}
-              disabled={saving}
-              className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:bg-slate-300"
+              disabled={
+                saving ||
+                liveConflictDetected ||
+                Boolean(conflict)
+              }
+              className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {saving
                 ? "Saving..."
@@ -276,6 +462,8 @@ async function saveProfile() {
               onClick={() => {
                 setEditing(false);
                 setError(null);
+                setConflict(null);
+                setBaseline(null);
               }}
               disabled={saving}
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
@@ -388,6 +576,7 @@ async function saveProfile() {
             <div className="mt-3 space-y-2">
               <button
                 type="button"
+                onClick={() => setReminderOpen(true)}
                 className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
               >
                 Create reminder
@@ -395,6 +584,7 @@ async function saveProfile() {
 
               <button
                 type="button"
+                onClick={() => setFilesOpen(true)}
                 className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
               >
                 Files, documents & links
@@ -411,6 +601,37 @@ async function saveProfile() {
         </div>
       )}
     </div>
+
+    {reminderOpen ? (
+      <ReminderModal
+        conversationId={activeConversation.id}
+        contactId={contact.id}
+        customerName={
+          contact.full_name ?? "Facebook customer"
+        }
+        defaultAssignedTo={
+          activeConversation.assigned_to
+        }
+        onClose={() => setReminderOpen(false)}
+        onCreated={() => {
+          setReminderOpen(false);
+          window.dispatchEvent(
+            new CustomEvent("tenh-reminder-changed"),
+          );
+        }}
+      />
+    ) : null}
+
+    {filesOpen ? (
+      <CustomerFilesModal
+        contactId={contact.id}
+        conversationId={activeConversation.id}
+        customerName={
+          contact.full_name ?? "Facebook customer"
+        }
+        onClose={() => setFilesOpen(false)}
+      />
+    ) : null}
   </aside>
 );
 }

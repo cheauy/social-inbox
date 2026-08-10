@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -17,6 +18,7 @@ import type { CustomerTag } from "@/types/inbox";
 export type ReplyAttachmentKind =
   | "image"
   | "video"
+  | "audio"
   | "file";
 
 export type ReplyAttachment = {
@@ -52,6 +54,7 @@ type ReplyBoxProps = {
 const TENH_ATTACHMENT_LIMITS = {
   image: 10 * 1024 * 1024,
   video: 50 * 1024 * 1024,
+  audio: 25 * 1024 * 1024,
   file: 25 * 1024 * 1024,
 } satisfies Record<
   ReplyAttachmentKind,
@@ -121,6 +124,29 @@ function VideoIcon() {
         d="m17 10 4-2v8l-4-2"
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function AudioIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5.5 11.5v.5a6.5 6.5 0 0 0 13 0v-.5M12 18.5V22M9 22h6"
+        strokeLinecap="round"
       />
     </svg>
   );
@@ -252,6 +278,7 @@ export function ReplyBox({
   const videoInputRef =
     useRef<HTMLInputElement | null>(null);
 
+
   const fileInputRef =
     useRef<HTMLInputElement | null>(null);
 
@@ -266,6 +293,358 @@ export function ReplyBox({
 
   const [gettingLocation, setGettingLocation] =
     useState(false);
+
+  const [
+    recordingVoice,
+    setRecordingVoice,
+  ] = useState(false);
+
+  const [
+    recordingSeconds,
+    setRecordingSeconds,
+  ] = useState(0);
+
+  const [
+    recordingError,
+    setRecordingError,
+  ] = useState<string | null>(null);
+
+  const mediaRecorderRef =
+    useRef<MediaRecorder | null>(null);
+
+  const mediaStreamRef =
+    useRef<MediaStream | null>(null);
+
+  const recordedChunksRef =
+    useRef<BlobPart[]>([]);
+
+  const recordingTimerRef =
+    useRef<ReturnType<typeof setInterval> | null>(
+      null,
+    );
+
+  const discardRecordingRef =
+    useRef(false);
+
+  function clearRecordingTimer() {
+    if (recordingTimerRef.current) {
+      clearInterval(
+        recordingTimerRef.current,
+      );
+      recordingTimerRef.current = null;
+    }
+  }
+
+  function stopRecordingTracks() {
+    for (
+      const track of
+      mediaStreamRef.current?.getTracks() ??
+      []
+    ) {
+      track.stop();
+    }
+
+    mediaStreamRef.current = null;
+  }
+
+  function supportedRecordingMimeType() {
+    if (
+      typeof MediaRecorder ===
+      "undefined"
+    ) {
+      return "";
+    }
+
+    const candidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/ogg",
+    ];
+
+    return (
+      candidates.find(
+        (candidate) =>
+          MediaRecorder.isTypeSupported(
+            candidate,
+          ),
+      ) ?? ""
+    );
+  }
+
+  async function startVoiceRecording() {
+    if (!allowAttachments) {
+      setRecordingError(
+        "Voice messages are available for Messenger conversations only.",
+      );
+      return;
+    }
+
+    if (
+      typeof navigator ===
+        "undefined" ||
+      !navigator.mediaDevices
+        ?.getUserMedia ||
+      typeof MediaRecorder ===
+        "undefined"
+    ) {
+      setRecordingError(
+        "Voice recording is not supported by this browser.",
+      );
+      return;
+    }
+
+    if (
+      recordingVoice ||
+      isSending
+    ) {
+      return;
+    }
+
+    setEmojiOpen(false);
+    setMoreOpen(false);
+    setRecordingError(null);
+
+    try {
+      const stream =
+        await navigator.mediaDevices.getUserMedia(
+          {
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          },
+        );
+
+      const mimeType =
+        supportedRecordingMimeType();
+
+      const recorder =
+        mimeType
+          ? new MediaRecorder(
+              stream,
+              {
+                mimeType,
+                audioBitsPerSecond:
+                  128000,
+              },
+            )
+          : new MediaRecorder(
+              stream,
+            );
+
+      mediaStreamRef.current =
+        stream;
+      mediaRecorderRef.current =
+        recorder;
+      recordedChunksRef.current =
+        [];
+      discardRecordingRef.current =
+        false;
+
+      recorder.ondataavailable = (
+        event,
+      ) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(
+            event.data,
+          );
+        }
+      };
+
+      recorder.onstop = () => {
+        clearRecordingTimer();
+        stopRecordingTracks();
+        setRecordingVoice(false);
+
+        if (
+          discardRecordingRef.current
+        ) {
+          recordedChunksRef.current =
+            [];
+          discardRecordingRef.current =
+            false;
+          return;
+        }
+
+        const actualType =
+          recorder.mimeType ||
+          mimeType ||
+          "audio/webm";
+
+        const blob = new Blob(
+          recordedChunksRef.current,
+          {
+            type: actualType,
+          },
+        );
+
+        recordedChunksRef.current =
+          [];
+
+        if (blob.size <= 0) {
+          setRecordingError(
+            "No audio was recorded. Please try again.",
+          );
+          return;
+        }
+
+        if (
+          blob.size >
+          TENH_ATTACHMENT_LIMITS.audio
+        ) {
+          setRecordingError(
+            "Voice message is larger than 25 MB.",
+          );
+          return;
+        }
+
+        const extension =
+          actualType.includes("ogg")
+            ? "ogg"
+            : "webm";
+
+        const file = new File(
+          [blob],
+          `voice-message-${Date.now()}.${extension}`,
+          {
+            type: actualType,
+          },
+        );
+
+        const attachment:
+          ReplyAttachment = {
+          id: createId(),
+          file,
+          previewUrl:
+            URL.createObjectURL(blob),
+          kind: "audio",
+        };
+
+        setAttachments(
+          (current) => [
+            ...current,
+            attachment,
+          ],
+        );
+      };
+
+      recorder.onerror = () => {
+        clearRecordingTimer();
+        stopRecordingTracks();
+        setRecordingVoice(false);
+        setRecordingError(
+          "Voice recording stopped because the browser reported an audio error.",
+        );
+      };
+
+      recorder.start(250);
+      setRecordingSeconds(0);
+      setRecordingVoice(true);
+
+      recordingTimerRef.current =
+        setInterval(() => {
+          setRecordingSeconds(
+            (current) => {
+              const next =
+                current + 1;
+
+              /*
+               * Prevent accidental extremely long recordings.
+               */
+              if (
+                next >= 300 &&
+                mediaRecorderRef
+                  .current
+                  ?.state ===
+                  "recording"
+              ) {
+                mediaRecorderRef
+                  .current.stop();
+              }
+
+              return next;
+            },
+          );
+        }, 1000);
+    } catch (recordError) {
+      stopRecordingTracks();
+
+      const errorName =
+        recordError instanceof
+        DOMException
+          ? recordError.name
+          : "";
+
+      setRecordingError(
+        errorName ===
+          "NotAllowedError"
+          ? "Microphone permission was denied. Allow microphone access in the browser and try again."
+          : "Unable to start the microphone.",
+      );
+    }
+  }
+
+  function finishVoiceRecording() {
+    const recorder =
+      mediaRecorderRef.current;
+
+    if (
+      !recorder ||
+      recorder.state ===
+        "inactive"
+    ) {
+      return;
+    }
+
+    discardRecordingRef.current =
+      false;
+    recorder.stop();
+  }
+
+  function cancelVoiceRecording() {
+    discardRecordingRef.current =
+      true;
+
+    const recorder =
+      mediaRecorderRef.current;
+
+    if (
+      recorder &&
+      recorder.state !==
+        "inactive"
+    ) {
+      recorder.stop();
+    } else {
+      clearRecordingTimer();
+      stopRecordingTracks();
+      setRecordingVoice(false);
+    }
+
+    setRecordingSeconds(0);
+  }
+
+  useEffect(() => {
+    return () => {
+      discardRecordingRef.current =
+        true;
+
+      const recorder =
+        mediaRecorderRef.current;
+
+      if (
+        recorder &&
+        recorder.state !==
+          "inactive"
+      ) {
+        recorder.stop();
+      }
+
+      clearRecordingTimer();
+      stopRecordingTracks();
+    };
+  }, []);
 
   function addAttachments(
     files: FileList | null,
@@ -299,12 +678,22 @@ export function ReplyBox({
               ? file.type.startsWith(
                   "video/",
                 )
-              : !file.type.startsWith(
-                    "image/",
+              : kind === "audio"
+                ? file.type.startsWith(
+                    "audio/",
+                  ) ||
+                  /\.(mp3|m4a|aac|wav|ogg|opus)$/i.test(
+                    file.name,
+                  )
+                : !file.type.startsWith(
+                      "image/",
+                    ) &&
+                  !file.type.startsWith(
+                    "video/",
                   ) &&
-                !file.type.startsWith(
-                  "video/",
-                );
+                  !file.type.startsWith(
+                    "audio/",
+                  );
 
         return (
           validType &&
@@ -558,6 +947,22 @@ export function ReplyBox({
                       className="h-24 w-32 rounded-xl border border-slate-200 bg-black object-cover shadow-sm"
                       muted
                     />
+                  ) : attachment.kind ===
+                    "audio" ? (
+                    <div className="flex h-24 w-64 flex-col justify-between rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                      <div className="flex items-center gap-2 text-slate-600">
+                        <AudioIcon />
+                        <span className="text-xs font-semibold uppercase tracking-wide">
+                          Audio
+                        </span>
+                      </div>
+                      <audio
+                        src={attachment.previewUrl}
+                        controls
+                        preload="metadata"
+                        className="h-8 w-full"
+                      />
+                    </div>
                   ) : (
                     <div className="flex h-24 w-44 flex-col justify-between rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                       <div className="flex items-center gap-2 text-slate-600">
@@ -603,7 +1008,10 @@ export function ReplyBox({
                       {attachment.kind ===
                       "image"
                         ? "Image"
-                        : "Video"}
+                        : attachment.kind ===
+                            "video"
+                          ? "Video"
+                          : "Audio"}
                     </span>
                   ) : null}
                 </div>
@@ -691,6 +1099,35 @@ export function ReplyBox({
           <button
             type="button"
             disabled={!allowAttachments}
+            onClick={() =>
+              void startVoiceRecording()
+            }
+            className={`flex h-9 w-9 items-center justify-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-35 ${
+              recordingVoice
+                ? "bg-red-50 text-red-600"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            }`}
+            aria-label="Record voice message"
+            title={
+              allowAttachments
+                ? "Record voice message"
+                : "Voice messages are available for Messenger conversations"
+            }
+          >
+            <AudioIcon />
+          </button>
+        </div>
+
+        <div
+          className={
+            isSending
+              ? "pointer-events-none opacity-50"
+              : ""
+          }
+        >
+          <button
+            type="button"
+            disabled={!allowAttachments}
             onClick={() => {
               setMoreOpen(
                 (current) => !current,
@@ -737,6 +1174,7 @@ export function ReplyBox({
           onChange={handleVideoChange}
           className="hidden"
         />
+
 
         <input
           ref={fileInputRef}
@@ -815,6 +1253,7 @@ export function ReplyBox({
                 <span>Add videos</span>
               </button>
 
+
               <button
                 type="button"
                 onClick={() => {
@@ -844,6 +1283,58 @@ export function ReplyBox({
           </>
         ) : null}
       </div>
+
+      {recordingVoice ? (
+        <div className="mx-4 mb-2 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5">
+          <span className="relative flex h-3 w-3 shrink-0">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+            <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+          </span>
+
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-red-700">
+              Recording voice
+            </p>
+            <p className="text-xs text-red-600">
+              {Math.floor(
+                recordingSeconds / 60,
+              )}
+              :
+              {String(
+                recordingSeconds % 60,
+              ).padStart(2, "0")}
+              {" · "}
+              max 5 minutes
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={
+              cancelVoiceRecording
+            }
+            className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-white"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={
+              finishVoiceRecording
+            }
+            className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700"
+          >
+            Stop
+          </button>
+        </div>
+      ) : null}
+
+      {recordingError ? (
+        <div className="mx-4 mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+          {recordingError}
+        </div>
+      ) : null}
 
       <div className="px-4 pb-3">
         <form

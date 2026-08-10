@@ -5,48 +5,72 @@ import {
 
 import {
   processFacebookComment,
+  type FacebookFeedCommentValue,
 } from "@/lib/facebook/process-comment";
-
 import {
   processFacebookMessage,
 } from "@/lib/facebook/process-message";
-
 import {
   processFacebookMessageStatus,
   type FacebookMessageStatusEvent,
 } from "@/lib/facebook/process-message-status";
-
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
-
 import type {
-  FacebookWebhookPayload,
+  FacebookMessagingEvent,
 } from "@/types/facebook";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+export const runtime =
+  "nodejs";
+export const dynamic =
+  "force-dynamic";
+
+type FacebookFeedChange = {
+  field?: string;
+  value?:
+    FacebookFeedCommentValue;
+};
+
+type FacebookWebhookEntry = {
+  id?: string;
+  time?: number;
+  messaging?:
+    FacebookMessagingEvent[];
+  changes?:
+    FacebookFeedChange[];
+};
+
+type FacebookWebhookPayloadV3110 = {
+  object?: string;
+  entry?:
+    FacebookWebhookEntry[];
+};
 
 export async function GET(
   request: NextRequest,
 ) {
   const mode =
-    request.nextUrl.searchParams.get(
-      "hub.mode",
-    );
+    request.nextUrl
+      .searchParams.get(
+        "hub.mode",
+      );
 
   const token =
-    request.nextUrl.searchParams.get(
-      "hub.verify_token",
-    );
+    request.nextUrl
+      .searchParams.get(
+        "hub.verify_token",
+      );
 
   const challenge =
-    request.nextUrl.searchParams.get(
-      "hub.challenge",
-    );
+    request.nextUrl
+      .searchParams.get(
+        "hub.challenge",
+      );
 
   if (
-    mode === "subscribe" &&
+    mode ===
+      "subscribe" &&
     token ===
       process.env
         .FACEBOOK_WEBHOOK_VERIFY_TOKEN &&
@@ -79,11 +103,12 @@ export async function POST(
   request: NextRequest,
 ) {
   let payload:
-    FacebookWebhookPayload;
+    FacebookWebhookPayloadV3110;
 
   try {
     payload =
-      (await request.json()) as FacebookWebhookPayload;
+      (await request.json()) as
+        FacebookWebhookPayloadV3110;
   } catch {
     return NextResponse.json(
       {
@@ -96,40 +121,39 @@ export async function POST(
     );
   }
 
-  console.log(
-    "Facebook webhook:",
-    JSON.stringify(payload),
-  );
-
   const {
-    data: webhookEvent,
-    error: webhookError,
-  } = await supabaseAdmin
-    .from("webhook_events")
-    .insert({
-      platform: "facebook",
-
-      event_type:
-        payload.object ??
-        "unknown",
-
-      payload,
-
-      processing_status:
-        "pending",
-    })
-    .select("id")
-    .single();
+    data:
+      webhookEvent,
+    error:
+      webhookError,
+  } =
+    await supabaseAdmin
+      .from(
+        "webhook_events",
+      )
+      .insert({
+        platform:
+          "facebook",
+        event_type:
+          payload.object ??
+          "unknown",
+        payload,
+        processing_status:
+          "pending",
+      })
+      .select("id")
+      .single();
 
   if (webhookError) {
     console.error(
-      "Unable to save webhook event:",
+      "[Tenh Facebook Webhook] Unable to save webhook event:",
       webhookError,
     );
   }
 
   if (
-    payload.object !== "page"
+    payload.object !==
+    "page"
   ) {
     if (webhookEvent) {
       await supabaseAdmin
@@ -139,9 +163,9 @@ export async function POST(
         .update({
           processing_status:
             "ignored",
-
           processed_at:
-            new Date().toISOString(),
+            new Date()
+              .toISOString(),
         })
         .eq(
           "id",
@@ -161,30 +185,24 @@ export async function POST(
       payload.entry ?? []
     ) {
       /*
-       * =========================================================
-       * 1. MESSENGER EVENTS
-       * =========================================================
-       *
-       * IMPORTANT:
-       * delivery/read webhook events do NOT have message.mid.
-       * Therefore status events must be checked before the normal
-       * message guard.
+       * Messenger message, delivery and read events.
        */
       for (
         const event of
         entry.messaging ?? []
       ) {
         const statusEvent =
-          event as FacebookMessageStatusEvent;
+          event as
+            FacebookMessageStatusEvent;
 
         if (
-          statusEvent.delivery ||
+          statusEvent
+            .delivery ||
           statusEvent.read
         ) {
           await processFacebookMessageStatus(
             statusEvent,
           );
-
           continue;
         }
 
@@ -198,66 +216,96 @@ export async function POST(
       }
 
       /*
-       * =========================================================
-       * 2. FACEBOOK PAGE FEED / COMMENT EVENTS
-       * =========================================================
-       *
-       * KEEP THIS LOOP.
-       * Tenh Chat needs it for:
-       * - new comments
-       * - deleted comments
+       * Page feed comments.
+       * This loop was present when TENH comments worked and must not be
+       * removed when Messenger webhook/status code is changed.
        */
-   for (
-  const change of
-  entry.changes ?? []
-) {
-  if (
-    change.field !==
-    "feed"
-  ) {
-    continue;
-  }
+      for (
+        const change of
+        entry.changes ?? []
+      ) {
+        console.log(
+          "[Tenh Facebook Webhook] Page change received.",
+          {
+            pageId:
+              entry.id ?? null,
+            field:
+              change.field ?? null,
+            item:
+              change.value?.item ?? null,
+            verb:
+              change.value?.verb ?? null,
+            commentId:
+              change.value?.comment_id ?? null,
+          },
+        );
 
-  const value =
-    change.value;
+        if (
+          change.field !==
+          "feed"
+        ) {
+          continue;
+        }
 
-  if (
-    !value ||
-    value.item !==
-      "comment"
-  ) {
-    continue;
-  }
+        const value =
+          change.value;
 
-  if (
-    value.verb !== "add" &&
-    value.verb !== "remove"
-  ) {
-    continue;
-  }
+        if (
+          !value ||
+          value.item !==
+            "comment"
+        ) {
+          console.log(
+            "[Tenh Facebook Comment] Feed event ignored because it is not a comment.",
+            {
+              item:
+                value?.item ?? null,
+              verb:
+                value?.verb ?? null,
+            },
+          );
+          continue;
+        }
 
-  /*
-   * Facebook Page webhook entries
-   * should contain the Page ID.
-   *
-   * Guard it anyway so TypeScript
-   * and runtime are both safe.
-   */
-  if (!entry.id) {
-    console.error(
-      "Facebook feed webhook missing entry.id:",
-      entry,
-    );
+        if (
+          value.verb !==
+            "add" &&
+          value.verb !==
+            "remove"
+        ) {
+          continue;
+        }
 
-    continue;
-  }
+        const pageId =
+          entry.id?.trim();
 
-  await processFacebookComment({
-    pageId:
-      entry.id,
+        if (!pageId) {
+          console.warn(
+            "[Tenh Facebook Comment] Feed event has no Page ID.",
+          );
+          continue;
+        }
 
-    value,
-  });
+        console.log(
+          "[Tenh Facebook Comment] Feed event received.",
+          {
+            pageId,
+            verb:
+              value.verb,
+            commentId:
+              value.comment_id,
+            authorName:
+              value.from
+                ?.name,
+          },
+        );
+
+        await processFacebookComment(
+          {
+            pageId,
+            value,
+          },
+        );
       }
     }
 
@@ -269,9 +317,9 @@ export async function POST(
         .update({
           processing_status:
             "processed",
-
           processed_at:
-            new Date().toISOString(),
+            new Date()
+              .toISOString(),
         })
         .eq(
           "id",
@@ -289,7 +337,7 @@ export async function POST(
         : "Unknown processing error.";
 
     console.error(
-      "Facebook webhook processing failed:",
+      "[Tenh Facebook Webhook] Processing failed:",
       error,
     );
 
@@ -301,12 +349,11 @@ export async function POST(
         .update({
           processing_status:
             "failed",
-
           processing_error:
             message,
-
           processed_at:
-            new Date().toISOString(),
+            new Date()
+              .toISOString(),
         })
         .eq(
           "id",

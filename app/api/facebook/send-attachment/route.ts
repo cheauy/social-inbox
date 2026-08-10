@@ -21,6 +21,7 @@ export const dynamic = "force-dynamic";
 type AttachmentKind =
   | "image"
   | "video"
+  | "audio"
   | "file";
 
 type GraphError = {
@@ -46,6 +47,7 @@ type SendMessageResponse =
 const TENH_ATTACHMENT_LIMITS = {
   image: 10 * 1024 * 1024,
   video: 50 * 1024 * 1024,
+  audio: 25 * 1024 * 1024,
   file: 25 * 1024 * 1024,
 } satisfies Record<AttachmentKind, number>;
 
@@ -55,6 +57,7 @@ function isAttachmentKind(
   return (
     value === "image" ||
     value === "video" ||
+    value === "audio" ||
     value === "file"
   );
 }
@@ -78,6 +81,17 @@ function getExpectedKind(
     return "video";
   }
 
+  if (
+    file.type.startsWith(
+      "audio/",
+    ) ||
+    /\.(mp3|m4a|aac|wav|ogg|opus)$/i.test(
+      file.name,
+    )
+  ) {
+    return "audio";
+  }
+
   return "file";
 }
 
@@ -91,6 +105,10 @@ function getMessageText(
 
   if (kind === "video") {
     return "Sent a video";
+  }
+
+  if (kind === "audio") {
+    return "Sent a voice message";
   }
 
   return fileName.trim()
@@ -766,6 +784,9 @@ export async function POST(
     } = await supabaseAdmin
       .from("messages")
       .update({
+        // V2.14.1 — verified Tenh Chat sender attribution.
+        sent_by_member_id:
+          currentMember.id,
         delivery_status:
           "sent",
         delivered_at: null,
@@ -841,6 +862,9 @@ export async function POST(
         },
         platform_created_at:
           now,
+        // V2.14.1 — verified Tenh Chat sender attribution.
+        sent_by_member_id:
+          currentMember.id,
         delivery_status:
           "sent",
         delivered_at:

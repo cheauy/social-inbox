@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { NoteItem } from "@/components/inbox/note-item";
+import { MentionComposer } from "@/components/team/mention-composer";
 import type { ContactNote } from "@/types/inbox";
 
 type CustomerNotesProps = {
@@ -12,17 +13,34 @@ type CustomerNotesProps = {
   currentMemberName: string | null;
 };
 
+type MentionMember = {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  profile_picture_url: string | null;
+};
+
 type NotesResponse = {
   success?: boolean;
   error?: string;
   notes?: ContactNote[];
   note?: ContactNote;
+  currentMemberId?: string;
 };
+
+type TeamResponse = {
+  success?: boolean;
+  members?: MentionMember[];
+  currentMember?: {
+    id: string;
+  };
+};
+
 async function readJsonResponse<T>(
   response: Response,
 ): Promise<T | null> {
-  const text =
-    await response.text();
+  const text = await response.text();
 
   if (!text.trim()) {
     return null;
@@ -34,22 +52,26 @@ async function readJsonResponse<T>(
     return null;
   }
 }
+
 export function CustomerNotes({
-   contactId,
+  contactId,
   conversationId,
   currentMemberId,
   currentMemberName,
 }: CustomerNotesProps) {
-  const [notes, setNotes] =
-    useState<ContactNote[]>([]);
-  const [newNote, setNewNote] =
-    useState("");
-  const [loading, setLoading] =
-    useState(true);
-  const [busy, setBusy] =
-    useState(false);
-  const [error, setError] =
+  const [notes, setNotes] = useState<ContactNote[]>([]);
+  const [newNote, setNewNote] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [teamMembers, setTeamMembers] =
+    useState<MentionMember[]>([]);
+  const [loggedInMemberId, setLoggedInMemberId] =
     useState<string | null>(null);
+  const [mentionedMemberIds, setMentionedMemberIds] =
+    useState<string[]>([]);
+  const [mentionEveryone, setMentionEveryone] =
+    useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,25 +81,50 @@ export function CustomerNotes({
       setError(null);
 
       try {
-        const response = await fetch(
-          `/api/contacts/${contactId}/notes`,
-          {
-            cache: "no-store",
-          },
-        );
+        const [notesResponse, teamResponse] =
+          await Promise.all([
+            fetch(
+              `/api/contacts/${contactId}/notes`,
+              { cache: "no-store" },
+            ),
+            fetch("/api/team/members", {
+              cache: "no-store",
+            }),
+          ]);
 
-        const result =
-          (await response.json()) as NotesResponse;
+        const notesResult =
+          await readJsonResponse<NotesResponse>(
+            notesResponse,
+          );
+        const teamResult =
+          await readJsonResponse<TeamResponse>(
+            teamResponse,
+          );
 
-        if (!response.ok || !result.success) {
+        if (
+          !notesResponse.ok ||
+          !notesResult?.success
+        ) {
           throw new Error(
-            result.error ??
+            notesResult?.error ??
               "Unable to load internal notes.",
           );
         }
 
         if (!cancelled) {
-          setNotes(result.notes ?? []);
+          setNotes(notesResult.notes ?? []);
+          setLoggedInMemberId(
+            notesResult.currentMemberId ??
+              teamResult?.currentMember?.id ??
+              null,
+          );
+
+          if (
+            teamResponse.ok &&
+            teamResult?.success
+          ) {
+            setTeamMembers(teamResult.members ?? []);
+          }
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -119,23 +166,25 @@ export function CustomerNotes({
           headers: {
             "Content-Type": "application/json",
           },
-         body: JSON.stringify({
-  noteText,
-  conversationId,
-}),
+          body: JSON.stringify({
+            noteText,
+            conversationId,
+            mentionedMemberIds,
+            mentionEveryone,
+          }),
         },
       );
 
       const result =
-        (await response.json()) as NotesResponse;
+        await readJsonResponse<NotesResponse>(response);
 
       if (
         !response.ok ||
-        !result.success ||
+        !result?.success ||
         !result.note
       ) {
         throw new Error(
-          result.error ??
+          result?.error ??
             "Unable to create internal note.",
         );
       }
@@ -145,6 +194,8 @@ export function CustomerNotes({
         ...current,
       ]);
       setNewNote("");
+      setMentionedMemberIds([]);
+      setMentionEveryone(false);
     } catch (createError) {
       setError(
         createError instanceof Error
@@ -175,23 +226,23 @@ export function CustomerNotes({
           headers: {
             "Content-Type": "application/json",
           },
-         body: JSON.stringify({
-  noteText,
-  conversationId,
-}),
+          body: JSON.stringify({
+            noteText,
+            conversationId,
+          }),
         },
       );
 
       const result =
-        (await response.json()) as NotesResponse;
+        await readJsonResponse<NotesResponse>(response);
 
       if (
         !response.ok ||
-        !result.success ||
+        !result?.success ||
         !result.note
       ) {
         throw new Error(
-          result.error ??
+          result?.error ??
             "Unable to update internal note.",
         );
       }
@@ -238,18 +289,18 @@ export function CustomerNotes({
           headers: {
             "Content-Type": "application/json",
           },
-         body: JSON.stringify({
-  conversationId,
-}),
+          body: JSON.stringify({
+            conversationId,
+          }),
         },
       );
 
       const result =
-        (await response.json()) as NotesResponse;
+        await readJsonResponse<NotesResponse>(response);
 
-      if (!response.ok || !result.success) {
+      if (!response.ok || !result?.success) {
         throw new Error(
-          result.error ??
+          result?.error ??
             "Unable to delete internal note.",
         );
       }
@@ -280,6 +331,7 @@ export function CustomerNotes({
 
           <p className="mt-1 text-xs text-slate-500">
             Private. Customers cannot see these notes.
+            Use @ to notify a teammate.
           </p>
         </div>
 
@@ -295,10 +347,20 @@ export function CustomerNotes({
         </div>
       ) : (
         <div className="mt-3">
-          <textarea
+          <MentionComposer
             value={newNote}
-            onChange={(event) =>
-              setNewNote(event.target.value)
+            onChange={setNewNote}
+            members={teamMembers.filter(
+              (member) =>
+                member.id !== loggedInMemberId,
+            )}
+            mentionedMemberIds={mentionedMemberIds}
+            onMentionedMemberIdsChange={
+              setMentionedMemberIds
+            }
+            mentionEveryone={mentionEveryone}
+            onMentionEveryoneChange={
+              setMentionEveryone
             }
             rows={4}
             maxLength={5000}
@@ -306,7 +368,7 @@ export function CustomerNotes({
               currentMemberName ?? "assigned staff"
             }...`}
             disabled={busy}
-            className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+            tone="note"
           />
 
           <button
@@ -340,9 +402,7 @@ export function CustomerNotes({
             <NoteItem
               key={note.id}
               note={note}
-              currentMemberId={
-                currentMemberId
-              }
+              currentMemberId={currentMemberId}
               busy={busy}
               onUpdate={updateNote}
               onDelete={deleteNote}

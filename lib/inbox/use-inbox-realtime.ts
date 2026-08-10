@@ -11,7 +11,8 @@ import {
 
 export type InboxRealtimeTable =
   | "messages"
-  | "conversations";
+  | "conversations"
+  | "conversation_activity";
 
 export type InboxRealtimeEventType =
   | "INSERT"
@@ -67,7 +68,7 @@ export function useInboxRealtime({
   useEffect(() => {
     if (!businessId) {
       console.warn(
-        "[Tenh Realtime V2.5.1] No businessId.",
+        "[Tenh Realtime V2.8] No businessId.",
       );
 
       return;
@@ -102,7 +103,7 @@ export function useInboxRealtime({
         !sessionData.session
       ) {
         console.error(
-          "[Tenh Realtime V2.5.1] No authenticated session.",
+          "[Tenh Realtime V2.8] No authenticated session.",
           sessionError?.message ??
             "",
         );
@@ -122,7 +123,7 @@ export function useInboxRealtime({
       }
 
       console.log(
-        "[Tenh Realtime V2.5.1] JWT applied.",
+        "[Tenh Realtime V2.8] JWT applied.",
       );
 
       channel =
@@ -146,7 +147,7 @@ export function useInboxRealtime({
                   InboxRealtimeEventType;
 
               console.log(
-                "[Tenh Realtime V2.5.1] messages",
+                "[Tenh Realtime V2.8] messages",
                 eventType,
               );
 
@@ -185,7 +186,7 @@ export function useInboxRealtime({
                   InboxRealtimeEventType;
 
               console.log(
-                "[Tenh Realtime V2.5.1] conversations",
+                "[Tenh Realtime V2.8] conversations",
                 eventType,
               );
 
@@ -222,19 +223,57 @@ export function useInboxRealtime({
             },
           )
 
+          /*
+           * V2.8 — activity is our enriched-data synchronization signal.
+           *
+           * Existing customer/tag/note APIs already write an activity row.
+           * Watching this business-scoped table lets other agents refresh
+           * nested customer/tag data without polling.
+           */
+          .on(
+            "postgres_changes",
+            {
+              event: "INSERT",
+              schema: "public",
+              table:
+                "conversation_activity",
+              filter:
+                `business_id=eq.${businessId}`,
+            },
+            (payload) => {
+              console.log(
+                "[Tenh Realtime V2.8] conversation_activity INSERT",
+              );
+
+              eventCallbackRef.current({
+                table:
+                  "conversation_activity",
+                eventType:
+                  "INSERT",
+                newRow:
+                  (payload.new ??
+                    {}) as Record<
+                    string,
+                    unknown
+                  >,
+                oldRow: {},
+              });
+            },
+          )
+
           .subscribe(
             (
               status,
               error,
             ) => {
               console.log(
-                "[Tenh Realtime V2.5.1] Channel status:",
+                "[Tenh Realtime V2.8] Channel status:",
                 status,
               );
 
               if (error) {
                 console.error(
-                  "[Tenh Realtime V2.5.1] Channel error:",
+                  "[Tenh Realtime V2.8] Channel error:",
                   error,
                 );
               }
@@ -244,7 +283,7 @@ export function useInboxRealtime({
                 "SUBSCRIBED"
               ) {
                 console.log(
-                  "[Tenh Realtime V2.5.1] ✅ UNREAD REALTIME READY",
+                  "[Tenh Realtime V2.8] ✅ MULTI-AGENT REALTIME READY",
                 );
               }
             },

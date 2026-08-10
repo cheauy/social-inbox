@@ -6,6 +6,7 @@ import {
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { createConversationActivity } from "@/lib/inbox/create-conversation-activity";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { createTeamMentions } from "@/lib/team/create-team-mentions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,8 @@ type RouteContext = {
 type CreateNoteBody = {
   noteText?: string;
   conversationId?: string;
+  mentionedMemberIds?: string[];
+  mentionEveryone?: boolean;
 };
 
 export async function GET(
@@ -424,9 +427,42 @@ export async function POST(
     );
   }
 
+  let mentionNotificationsCreated = 0;
+
+  try {
+    const mentionResult = await createTeamMentions({
+      businessId: currentMember.business_id,
+      actorMemberId: currentMember.id,
+      actorName: currentMember.full_name,
+      sourceType: "contact_note",
+      sourceId: note.id,
+      mentionedMemberIds:
+        body.mentionedMemberIds ?? [],
+      mentionEveryone:
+        body.mentionEveryone === true,
+      contactId: contact.id,
+      conversationId: conversation.id,
+      notificationType: "internal_note_mention",
+      title: `${currentMember.full_name} mentioned you in an internal note`,
+      body: `${customerName}: ${note.note_text}`.slice(0, 500),
+      link: `/dashboard/inbox?conversation=${encodeURIComponent(
+        conversation.id,
+      )}`,
+    });
+
+    mentionNotificationsCreated =
+      mentionResult.notificationsCreated;
+  } catch (mentionError) {
+    console.error(
+      "Internal note saved, but mention notifications failed:",
+      mentionError,
+    );
+  }
+
   return NextResponse.json({
     success: true,
     note,
     activityRecorded,
+    mentionNotificationsCreated,
   });
 }

@@ -44,6 +44,8 @@ import type {
 
 
 
+const MESSAGE_PAGE_SIZE = 50;
+
 type OptimisticSendStatus =
   | "sending"
   | "sent"
@@ -80,6 +82,155 @@ type PendingOptimisticAttachmentSend = {
   previewUrl: string;
   messageText: string;
 };
+
+
+/*
+ * V2.9 — multi-agent action toast.
+ *
+ * conversation_activity already contains the actor, action type,
+ * description and metadata. We convert those rows into compact,
+ * human-readable team updates without adding another realtime channel.
+ */
+type MultiAgentToast = {
+  id: string;
+  activityType: string;
+  message: string;
+  actorName: string | null;
+};
+
+function isRecord(
+  value: unknown,
+): value is Record<string, unknown> {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  );
+}
+
+function capitalizeFirst(
+  value: string,
+) {
+  if (!value) {
+    return value;
+  }
+
+  return (
+    value.charAt(0).toUpperCase() +
+    value.slice(1)
+  );
+}
+
+function buildMultiAgentToast(
+  row: Record<string, unknown>,
+): MultiAgentToast | null {
+  const activityType =
+    typeof row.activity_type === "string"
+      ? row.activity_type
+      : "";
+
+  const actorName =
+    typeof row.actor_name === "string" &&
+    row.actor_name.trim()
+      ? row.actor_name.trim()
+      : "A teammate";
+
+  const description =
+    typeof row.description === "string"
+      ? row.description.trim()
+      : "";
+
+  const title =
+    typeof row.title === "string"
+      ? row.title.trim()
+      : "";
+
+  const metadata = isRecord(row.metadata)
+    ? row.metadata
+    : {};
+
+  let message = description;
+
+  if (
+    activityType === "status_changed" &&
+    typeof metadata.newStatus === "string"
+  ) {
+    message = `${actorName} changed status to ${capitalizeFirst(
+      metadata.newStatus,
+    )}`;
+  } else if (
+    activityType === "tag_added" ||
+    activityType === "tag_removed"
+  ) {
+    const tag = isRecord(metadata.tag)
+      ? metadata.tag
+      : null;
+
+    const tagName =
+      tag &&
+      typeof tag.name === "string" &&
+      tag.name.trim()
+        ? tag.name.trim()
+        : null;
+
+    if (tagName) {
+      message =
+        activityType === "tag_added"
+          ? `${actorName} added ${tagName} tag`
+          : `${actorName} removed ${tagName} tag`;
+    }
+  } else if (
+    activityType === "customer_updated" ||
+    activityType === "customer_profile_updated"
+  ) {
+    message =
+      `${actorName} updated customer information`;
+  } else if (
+    activityType === "note_added" ||
+    activityType === "internal_note_added"
+  ) {
+    message =
+      `${actorName} added a customer note`;
+  } else if (
+    activityType === "note_updated" ||
+    activityType === "internal_note_updated"
+  ) {
+    message =
+      `${actorName} updated a customer note`;
+  } else if (
+    activityType === "note_deleted" ||
+    activityType === "internal_note_deleted"
+  ) {
+    message =
+      `${actorName} deleted a customer note`;
+  }
+
+  if (!message && title) {
+    const normalizedTitle =
+      title.toLowerCase().startsWith(
+        actorName.toLowerCase(),
+      )
+        ? title
+        : `${actorName} ${title}`;
+
+    message = normalizedTitle;
+  }
+
+  if (!message) {
+    return null;
+  }
+
+  return {
+    id:
+      typeof row.id === "string" &&
+      row.id
+        ? row.id
+        : `${activityType}-${Date.now()}`,
+    activityType,
+    message,
+    actorName,
+  };
+}
 
 function sortLiveConversations(
   conversations: InboxConversation[],
@@ -177,6 +328,11 @@ export function InboxView({
 
 const requestedConversationId =
   searchParams.get("conversation");
+
+const selectedPageId =
+  searchParams.get("page")?.trim() ||
+  null;
+
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] =
@@ -237,6 +393,35 @@ const skipAutomaticReadRef =
   ] = useState(messages);
 
   /*
+   * V2.7 — older-message pagination.
+   *
+   * The server now sends only the newest page. Older pages are
+   * prepended on demand as the agent scrolls upward.
+   */
+  const [
+    hasMoreOlderMessages,
+    setHasMoreOlderMessages,
+  ] = useState(
+    messages.length >=
+      MESSAGE_PAGE_SIZE,
+  );
+
+  const [
+    loadingOlderMessages,
+    setLoadingOlderMessages,
+  ] = useState(false);
+
+  const [
+    olderMessagesError,
+    setOlderMessagesError,
+  ] = useState<string | null>(
+    null,
+  );
+
+  const loadOlderInFlightRef =
+    useRef(false);
+
+  /*
    * V2.5.2 — browser/desktop notifications.
    *
    * Permission is only requested from the bell button in
@@ -281,13 +466,64 @@ const skipAutomaticReadRef =
       new Set(),
     );
 
-  
+  /*
+   * V2.8 — multi-agent enriched-data refresh.
+   *
+   * Messages and conversation rows are already applied directly from
+   * Realtime. Customer profile/tag changes need the server-enriched
+   * conversation payload, so we debounce one router.refresh() when a
+   * matching conversation_activity row arrives.
+   */
+  const multiAgentRefreshTimerRef =
+    useRef<
+      ReturnType<typeof setTimeout>
+      | null
+    >(null);
+
+
+  /*
+   * V2.9 — live team action toast.
+   */
+  const [
+    multiAgentToast,
+    setMultiAgentToast,
+  ] = useState<MultiAgentToast | null>(
+    null,
+  );
+
+  const multiAgentToastTimerRef =
+    useRef<
+      ReturnType<typeof setTimeout>
+      | null
+    >(null);
+
+  const seenActivityToastIdsRef =
+    useRef<Set<string>>(
+      new Set(),
+    );
+
+ const pageConversations =
+  useMemo(
+    () =>
+      selectedPageId
+        ? liveConversations.filter(
+            (conversation) =>
+              conversation.social_account
+                ?.id ===
+              selectedPageId,
+          )
+        : liveConversations,
+    [
+      liveConversations,
+      selectedPageId,
+    ],
+  );
 
  const resolvedActiveConversationId =
   useMemo(() => {
     if (
       requestedConversationId &&
-      liveConversations.some(
+      pageConversations.some(
         (conversation) =>
           conversation.id ===
           requestedConversationId,
@@ -298,7 +534,7 @@ const skipAutomaticReadRef =
 
     if (
       activeConversationId &&
-      liveConversations.some(
+      pageConversations.some(
         (conversation) =>
           conversation.id ===
           activeConversationId,
@@ -308,11 +544,11 @@ const skipAutomaticReadRef =
     }
 
     return (
-      liveConversations[0]?.id ??
+      pageConversations[0]?.id ??
       null
     );
   }, [
-    liveConversations,
+    pageConversations,
     requestedConversationId,
     activeConversationId,
   ]);
@@ -320,13 +556,13 @@ const skipAutomaticReadRef =
 const activeConversation =
   useMemo(
     () =>
-      liveConversations.find(
+      pageConversations.find(
         (conversation) =>
           conversation.id ===
           resolvedActiveConversationId,
       ) ?? null,
     [
-      liveConversations,
+      pageConversations,
       resolvedActiveConversationId,
     ],
   );
@@ -458,6 +694,113 @@ async function markConversationReadRealtime(
   }
 }
 
+useEffect(() => {
+  return () => {
+    if (
+      multiAgentRefreshTimerRef
+        .current
+    ) {
+      clearTimeout(
+        multiAgentRefreshTimerRef
+          .current,
+      );
+
+      multiAgentRefreshTimerRef.current =
+        null;
+    }
+
+    if (
+      multiAgentToastTimerRef
+        .current
+    ) {
+      clearTimeout(
+        multiAgentToastTimerRef
+          .current,
+      );
+
+      multiAgentToastTimerRef.current =
+        null;
+    }
+  };
+}, []);
+
+function scheduleMultiAgentRefresh() {
+  if (
+    multiAgentRefreshTimerRef
+      .current
+  ) {
+    clearTimeout(
+      multiAgentRefreshTimerRef
+        .current,
+    );
+  }
+
+  multiAgentRefreshTimerRef.current =
+    setTimeout(
+      () => {
+        multiAgentRefreshTimerRef.current =
+          null;
+
+        router.refresh();
+      },
+      120,
+    );
+}
+
+
+function showMultiAgentToast(
+  row: Record<string, unknown>,
+) {
+  const toast =
+    buildMultiAgentToast(row);
+
+  if (!toast) {
+    return;
+  }
+
+  if (
+    seenActivityToastIdsRef.current.has(
+      toast.id,
+    )
+  ) {
+    return;
+  }
+
+  seenActivityToastIdsRef.current.add(
+    toast.id,
+  );
+
+  if (
+    seenActivityToastIdsRef.current.size >
+    500
+  ) {
+    seenActivityToastIdsRef.current.clear();
+    seenActivityToastIdsRef.current.add(
+      toast.id,
+    );
+  }
+
+  setMultiAgentToast(toast);
+
+  if (
+    multiAgentToastTimerRef.current
+  ) {
+    clearTimeout(
+      multiAgentToastTimerRef.current,
+    );
+  }
+
+  multiAgentToastTimerRef.current =
+    setTimeout(
+      () => {
+        setMultiAgentToast(null);
+        multiAgentToastTimerRef.current =
+          null;
+      },
+      4500,
+    );
+}
+
 useInboxRealtime({
   businessId:
     realtimeBusinessId,
@@ -465,6 +808,79 @@ useInboxRealtime({
   onRealtimeEvent: (
     event,
   ) => {
+    /*
+     * V2.8 — customer/tag/note changes are stored in
+     * conversation_activity by the existing APIs.
+     *
+     * These changes affect nested server-enriched data, so another
+     * agent's browser refreshes the server props automatically.
+     * V2.7 merges the refreshed newest-message page into local state,
+     * therefore already-loaded older pages are preserved.
+     */
+    if (
+      event.table ===
+      "conversation_activity"
+    ) {
+      if (
+        event.eventType !==
+        "INSERT"
+      ) {
+        return;
+      }
+
+      const activityType =
+        typeof event.newRow
+          .activity_type ===
+          "string"
+          ? event.newRow
+              .activity_type
+          : "";
+
+      const activityConversationId =
+        typeof event.newRow
+          .conversation_id ===
+          "string"
+          ? event.newRow
+              .conversation_id
+          : null;
+
+      /*
+       * V2.9 — show an action toast only when the activity belongs
+       * to the conversation currently open in this browser.
+       */
+      if (
+        activityConversationId &&
+        activityConversationId ===
+          resolvedActiveConversationId
+      ) {
+        showMultiAgentToast(
+          event.newRow,
+        );
+      }
+
+      const needsEnrichedRefresh =
+        activityType ===
+          "tag_added" ||
+        activityType ===
+          "tag_removed" ||
+        activityType ===
+          "customer_updated" ||
+        activityType ===
+          "note_added" ||
+        activityType ===
+          "note_updated" ||
+        activityType ===
+          "note_deleted";
+
+      if (
+        needsEnrichedRefresh
+      ) {
+        scheduleMultiAgentRefresh();
+      }
+
+      return;
+    }
+
     if (
       event.table ===
       "messages"
@@ -943,13 +1359,340 @@ useEffect(() => {
 }, [conversations]);
 
 useEffect(() => {
+  /*
+   * Merge the newest server page into local state instead of
+   * replacing it. This preserves older pages that V2.7 already
+   * loaded when another action triggers router.refresh().
+   */
   setLiveMessages(
-    messages,
+    (current) => {
+      if (
+        !resolvedActiveConversationId
+      ) {
+        return [];
+      }
+
+      const merged =
+        new Map<
+          string,
+          InboxMessage
+        >();
+
+      for (
+        const message of current
+      ) {
+        if (
+          message.conversation_id ===
+          resolvedActiveConversationId
+        ) {
+          merged.set(
+            message.id,
+            message,
+          );
+        }
+      }
+
+      for (
+        const message of messages
+      ) {
+        if (
+          message.conversation_id !==
+          resolvedActiveConversationId
+        ) {
+          continue;
+        }
+
+        const existing =
+          merged.get(
+            message.id,
+          );
+
+        const localAttachmentUrl =
+          existing
+            ?.attachment_url
+            ?.startsWith(
+              "blob:",
+            )
+            ? existing
+                .attachment_url
+            : null;
+
+        merged.set(
+          message.id,
+          {
+            ...existing,
+            ...message,
+            attachment_url:
+              message.attachment_url ??
+              localAttachmentUrl,
+          } as InboxMessage,
+        );
+      }
+
+      return Array.from(
+        merged.values(),
+      ).sort(
+        (first, second) => {
+          const timeDifference =
+            new Date(
+              first.created_at,
+            ).getTime() -
+            new Date(
+              second.created_at,
+            ).getTime();
+
+          if (
+            timeDifference !== 0
+          ) {
+            return timeDifference;
+          }
+
+          return first.id.localeCompare(
+            second.id,
+          );
+        },
+      );
+    },
   );
 }, [
   messages,
   resolvedActiveConversationId,
 ]);
+
+useEffect(() => {
+  const currentServerMessageCount =
+    resolvedActiveConversationId
+      ? messages.filter(
+          (message) =>
+            message.conversation_id ===
+            resolvedActiveConversationId,
+        ).length
+      : 0;
+
+  setHasMoreOlderMessages(
+    currentServerMessageCount >=
+      MESSAGE_PAGE_SIZE,
+  );
+
+  setOlderMessagesError(null);
+}, [
+  messages,
+  resolvedActiveConversationId,
+]);
+
+async function handleLoadOlderMessages(): Promise<boolean> {
+  const conversationId =
+    resolvedActiveConversationId;
+
+  if (
+    !conversationId ||
+    !hasMoreOlderMessages ||
+    loadingOlderMessages ||
+    loadOlderInFlightRef.current
+  ) {
+    return false;
+  }
+
+  /*
+   * The array is kept oldest → newest. Optimistic messages are
+   * always recent, but skip them defensively when building the
+   * database cursor.
+   */
+  const oldestPersistedMessage =
+    liveMessages.find(
+      (message) =>
+        !message.id.startsWith(
+          "optimistic:",
+        ) &&
+        Boolean(
+          message.created_at,
+        ),
+    ) ?? null;
+
+  if (!oldestPersistedMessage) {
+    setHasMoreOlderMessages(
+      false,
+    );
+    return false;
+  }
+
+  loadOlderInFlightRef.current =
+    true;
+  setLoadingOlderMessages(true);
+  setOlderMessagesError(null);
+
+  try {
+    const searchParams =
+      new URLSearchParams({
+        beforeCreatedAt:
+          oldestPersistedMessage
+            .created_at,
+        beforeId:
+          oldestPersistedMessage.id,
+        limit:
+          String(
+            MESSAGE_PAGE_SIZE,
+          ),
+      });
+
+    const response =
+      await fetch(
+        `/api/conversations/${conversationId}/messages?${searchParams.toString()}`,
+        {
+          method: "GET",
+          cache: "no-store",
+        },
+      );
+
+    const responseText =
+      await response.text();
+
+    const result =
+      responseText.trim()
+        ? (JSON.parse(
+            responseText,
+          ) as {
+            success?: boolean;
+            error?: string;
+            messages?: InboxMessage[];
+            hasMore?: boolean;
+          })
+        : {
+            success:
+              response.ok,
+          };
+
+    if (
+      !response.ok ||
+      !result.success
+    ) {
+      throw new Error(
+        result.error ??
+          "Unable to load older messages.",
+      );
+    }
+
+    const olderMessages =
+      Array.isArray(
+        result.messages,
+      )
+        ? result.messages
+        : [];
+
+    setHasMoreOlderMessages(
+      Boolean(
+        result.hasMore,
+      ),
+    );
+
+    if (
+      olderMessages.length === 0
+    ) {
+      return false;
+    }
+
+    setLiveMessages(
+      (current) => {
+        const merged =
+          new Map<
+            string,
+            InboxMessage
+          >();
+
+        for (
+          const message of [
+            ...olderMessages,
+            ...current,
+          ]
+        ) {
+          const existing =
+            merged.get(
+              message.id,
+            );
+
+          const localAttachmentUrl =
+            existing
+              ?.attachment_url
+              ?.startsWith(
+                "blob:",
+              )
+              ? existing
+                  .attachment_url
+              : message
+                  .attachment_url
+                    ?.startsWith(
+                      "blob:",
+                    )
+                ? message
+                    .attachment_url
+                : null;
+
+          merged.set(
+            message.id,
+            {
+              ...existing,
+              ...message,
+              attachment_url:
+                message
+                  .attachment_url ??
+                existing
+                  ?.attachment_url ??
+                localAttachmentUrl,
+            } as InboxMessage,
+          );
+        }
+
+        return Array.from(
+          merged.values(),
+        ).sort(
+          (first, second) => {
+            const timeDifference =
+              new Date(
+                first.created_at,
+              ).getTime() -
+              new Date(
+                second.created_at,
+              ).getTime();
+
+            if (
+              timeDifference !== 0
+            ) {
+              return timeDifference;
+            }
+
+            return first.id.localeCompare(
+              second.id,
+            );
+          },
+        );
+      },
+    );
+
+    return true;
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to load older messages.";
+
+    setOlderMessagesError(
+      message,
+    );
+
+    console.error(
+      "Unable to load older messages:",
+      error,
+    );
+
+    return false;
+  } finally {
+    loadOlderInFlightRef.current =
+      false;
+    setLoadingOlderMessages(
+      false,
+    );
+  }
+}
 
 useEffect(() => {
   if (
@@ -960,14 +1703,82 @@ useEffect(() => {
         requestedConversationId,
     )
   ) {
+    const query =
+      new URLSearchParams(
+        searchParams.toString(),
+      );
+
+    query.delete(
+      "conversation",
+    );
+
     router.replace(
-      "/dashboard/inbox",
+      query.toString()
+        ? `/dashboard/inbox?${query.toString()}`
+        : "/dashboard/inbox",
     );
   }
 }, [
   liveConversations,
   requestedConversationId,
   router,
+  searchParams,
+]);
+
+/*
+ * V3.1.17 — Facebook Page switcher.
+ *
+ * The Page selector owns the `page` query parameter. When the agent changes
+ * Page, move the server route to the first conversation belonging to that Page
+ * so the existing server-side message loader receives the correct conversation.
+ */
+useEffect(() => {
+  if (!selectedPageId) {
+    return;
+  }
+
+  const query =
+    new URLSearchParams(
+      searchParams.toString(),
+    );
+
+  if (!resolvedActiveConversationId) {
+    if (
+      query.has(
+        "conversation",
+      )
+    ) {
+      query.delete(
+        "conversation",
+      );
+
+      router.replace(
+        `/dashboard/inbox?${query.toString()}`,
+      );
+    }
+
+    return;
+  }
+
+  if (
+    requestedConversationId !==
+    resolvedActiveConversationId
+  ) {
+    query.set(
+      "conversation",
+      resolvedActiveConversationId,
+    );
+
+    router.replace(
+      `/dashboard/inbox?${query.toString()}`,
+    );
+  }
+}, [
+  selectedPageId,
+  resolvedActiveConversationId,
+  requestedConversationId,
+  router,
+  searchParams,
 ]);
 
 useEffect(() => {
@@ -1205,7 +2016,25 @@ async function handleTogglePin() {
       );
     }
 
-    router.refresh();
+    if (
+      result.conversation
+    ) {
+      setLiveConversations(
+        (current) =>
+          sortLiveConversations(
+            current.map(
+              (conversation) =>
+                conversation.id ===
+                result.conversation?.id
+                  ? {
+                      ...conversation,
+                      ...result.conversation,
+                    }
+                  : conversation,
+            ),
+          ),
+      );
+    }
   } catch (error) {
     const message =
       error instanceof Error
@@ -2440,7 +3269,25 @@ async function handleSendMessage(
 
       
 
-      router.refresh();
+      if (
+        result.conversation
+      ) {
+        setLiveConversations(
+          (current) =>
+            sortLiveConversations(
+              current.map(
+                (conversation) =>
+                  conversation.id ===
+                  result.conversation?.id
+                    ? {
+                        ...conversation,
+                        ...result.conversation,
+                      }
+                    : conversation,
+              ),
+            ),
+        );
+      }
     } catch (error) {
       setStatusError(
         error instanceof Error
@@ -2519,7 +3366,25 @@ async function handleAssignmentChange(
       );
     }
 
-    router.refresh();
+    if (
+      result.conversation
+    ) {
+      setLiveConversations(
+        (current) =>
+          sortLiveConversations(
+            current.map(
+              (conversation) =>
+                conversation.id ===
+                result.conversation?.id
+                  ? {
+                      ...conversation,
+                      ...result.conversation,
+                    }
+                  : conversation,
+            ),
+          ),
+      );
+    }
   } catch (assignmentError) {
     setAssignmentError(
       assignmentError instanceof Error
@@ -2531,7 +3396,55 @@ async function handleAssignmentChange(
   }
 }
 return (
-<div className="relative h-[calc(100vh-72px)] w-full overflow-hidden bg-white">    <div
+<div className="relative h-[calc(100vh-72px)] w-full overflow-hidden bg-white">
+  {multiAgentToast ? (
+    <div className="pointer-events-none absolute right-5 top-5 z-[90] w-[min(390px,calc(100%-2.5rem))]">
+      <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
+            {multiAgentToast.actorName
+              ?.trim()
+              .charAt(0)
+              .toUpperCase() || "T"}
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold uppercase tracking-wide text-blue-600">
+              Team update
+            </p>
+
+            <p className="mt-1 text-sm font-medium leading-5 text-slate-800">
+              {multiAgentToast.message}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setMultiAgentToast(null);
+
+              if (
+                multiAgentToastTimerRef.current
+              ) {
+                clearTimeout(
+                  multiAgentToastTimerRef.current,
+                );
+
+                multiAgentToastTimerRef.current =
+                  null;
+              }
+            }}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Dismiss team update"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null}
+
+    <div
       className={`grid h-full min-h-0 overflow-hidden ${
        customerPanelVisible
   ? "grid-cols-[500px_minmax(0,1fr)_340px]"
@@ -2539,7 +3452,7 @@ return (
       }`}
     >
      <ConversationList
-  conversations={liveConversations}
+  conversations={pageConversations}
   activeConversationId={
     resolvedActiveConversationId
   }
@@ -2557,6 +3470,18 @@ return (
   }
   messages={liveMessages}
   teamMembers={teamMembers}
+  hasMoreOlderMessages={
+    hasMoreOlderMessages
+  }
+  loadingOlderMessages={
+    loadingOlderMessages
+  }
+  olderMessagesError={
+    olderMessagesError
+  }
+  onLoadOlderMessages={
+    handleLoadOlderMessages
+  }
   viewingAgents={viewingAgents}
   typingAgents={typingAgents}
   agentPresenceStatus={agentPresenceStatus}

@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { CurrentUserProfileMenu } from "@/components/dashboard/current-user-profile-menu";
+import { TeamNotificationCenter } from "@/components/dashboard/team-notification-center";
 
 const navigation = [
   {
@@ -11,6 +12,14 @@ const navigation = [
   {
     label: "Customers",
     href: "/dashboard/customers",
+  },
+  {
+    label: "Group Chat",
+    href: "/dashboard/group-chat",
+  },
+  {
+    label: "Analytics",
+    href: "/dashboard/analytics",
   },
   {
     label: "Subscription",
@@ -31,7 +40,6 @@ export function DashboardHeader() {
   return (
     <header className="flex h-[72px] shrink-0 items-center border-b border-slate-200 bg-white px-5">
       <div className="flex w-full min-w-0 items-center">
-        {/* Logo */}
         <Link
           href="/dashboard/inbox"
           className="flex shrink-0 items-center gap-3"
@@ -57,7 +65,6 @@ export function DashboardHeader() {
           </div>
         </Link>
 
-        {/* Main navigation */}
         <nav className="ml-8 hidden items-center gap-1 md:flex">
           {navigation.map((item) => (
             <Link
@@ -70,7 +77,8 @@ export function DashboardHeader() {
           ))}
         </nav>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center">
+          <TeamNotificationCenter />
           <CurrentUserProfileMenu />
         </div>
       </div>

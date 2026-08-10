@@ -16,11 +16,23 @@ type RouteContext = {
   }>;
 };
 
+type ExpectedContactValues = {
+  phone?: string | null;
+  address?: string | null;
+  customerNote?: string | null;
+};
+
 type UpdateContactBody = {
   conversationId?: string;
   phone?: string | null;
   address?: string | null;
   customerNote?: string | null;
+
+  /*
+   * V2.9B optimistic concurrency values.
+   * Optional for backward compatibility with older callers.
+   */
+  expected?: ExpectedContactValues;
 };
 
 type ContactResult = {
@@ -68,6 +80,92 @@ function valuesAreEqual(
   return (
     (first ?? "").trim() ===
     (second ?? "").trim()
+  );
+}
+
+function hasOwn(
+  value: object,
+  key: string,
+): boolean {
+  return Object.prototype.hasOwnProperty.call(
+    value,
+    key,
+  );
+}
+
+function getConflictingFields(
+  expected: ExpectedContactValues | undefined,
+  contact: ContactResult,
+): string[] {
+  if (!expected) {
+    return [];
+  }
+
+  const conflicts: string[] = [];
+
+  if (
+    hasOwn(expected, "phone") &&
+    !valuesAreEqual(
+      contact.phone,
+      normalizeOptionalText(
+        expected.phone,
+      ),
+    )
+  ) {
+    conflicts.push("phone");
+  }
+
+  if (
+    hasOwn(expected, "address") &&
+    !valuesAreEqual(
+      contact.address,
+      normalizeOptionalText(
+        expected.address,
+      ),
+    )
+  ) {
+    conflicts.push("address");
+  }
+
+  if (
+    hasOwn(expected, "customerNote") &&
+    !valuesAreEqual(
+      contact.customer_note,
+      normalizeOptionalText(
+        expected.customerNote,
+      ),
+    )
+  ) {
+    conflicts.push("customer note");
+  }
+
+  return conflicts;
+}
+
+function conflictResponse(
+  contact: ContactResult,
+  conflictingFields: string[],
+) {
+  return NextResponse.json(
+    {
+      success: false,
+      conflict: true,
+      error:
+        "Customer information changed by another agent. Load the latest values and review your changes before saving.",
+      conflictingFields,
+      currentContact: {
+        id: contact.id,
+        phone: contact.phone,
+        address: contact.address,
+        customer_note:
+          contact.customer_note,
+        updated_at:
+          contact.updated_at,
+      },
+    },
+    {
+      status: 409,
+    },
   );
 }
 
@@ -345,6 +443,24 @@ export async function PATCH(
     conversationData as ConversationResult;
 
   /*
+   * V2.9B — reject a stale editor only after the customer/conversation
+   * relationship has been verified. The client sends the values that
+   * were visible when editing began.
+   */
+  const conflictingFields =
+    getConflictingFields(
+      body.expected,
+      contact,
+    );
+
+  if (conflictingFields.length > 0) {
+    return conflictResponse(
+      contact,
+      conflictingFields,
+    );
+  }
+
+  /*
    * 6. Determine which fields changed.
    */
   const changedFields: ChangedField[] =
@@ -411,10 +527,7 @@ export async function PATCH(
   const now =
     new Date().toISOString();
 
-  const {
-    data: updatedContact,
-    error: updateError,
-  } = await supabaseAdmin
+  let updateQuery = supabaseAdmin
     .from("contacts")
     .update({
       phone: nextPhone,
@@ -427,7 +540,64 @@ export async function PATCH(
     .eq(
       "business_id",
       currentMember.business_id,
-    )
+    );
+
+  /*
+   * Atomic optimistic-lock guard.
+   * Even if another agent updates the customer after the first conflict
+   * check but before this UPDATE reaches Postgres, these predicates make
+   * the stale UPDATE affect zero rows instead of overwriting their work.
+   */
+  if (body.expected) {
+    if (hasOwn(body.expected, "phone")) {
+      updateQuery =
+        body.expected.phone == null
+          ? updateQuery.is(
+              "phone",
+              null,
+            )
+          : updateQuery.eq(
+              "phone",
+              body.expected.phone,
+            );
+    }
+
+    if (hasOwn(body.expected, "address")) {
+      updateQuery =
+        body.expected.address == null
+          ? updateQuery.is(
+              "address",
+              null,
+            )
+          : updateQuery.eq(
+              "address",
+              body.expected.address,
+            );
+    }
+
+    if (
+      hasOwn(
+        body.expected,
+        "customerNote",
+      )
+    ) {
+      updateQuery =
+        body.expected.customerNote == null
+          ? updateQuery.is(
+              "customer_note",
+              null,
+            )
+          : updateQuery.eq(
+              "customer_note",
+              body.expected.customerNote,
+            );
+    }
+  }
+
+  const {
+    data: updatedContact,
+    error: updateError,
+  } = await updateQuery
     .select(`
       id,
       business_id,
@@ -464,6 +634,59 @@ export async function PATCH(
   }
 
   if (!updatedContact) {
+    /*
+     * With an optimistic-lock token, a zero-row update usually means
+     * another agent changed one of the guarded fields during the race
+     * window. Reload the latest row and return a proper 409.
+     */
+    if (body.expected) {
+      const {
+        data: latestContactData,
+        error: latestContactError,
+      } = await supabaseAdmin
+        .from("contacts")
+        .select(`
+          id,
+          business_id,
+          full_name,
+          phone,
+          address,
+          customer_note,
+          updated_at
+        `)
+        .eq("id", contact.id)
+        .eq(
+          "business_id",
+          currentMember.business_id,
+        )
+        .maybeSingle();
+
+      if (latestContactError) {
+        console.error(
+          "Unable to reload customer after optimistic-lock miss:",
+          latestContactError,
+        );
+      }
+
+      if (latestContactData) {
+        const latestContact =
+          latestContactData as ContactResult;
+
+        const latestConflicts =
+          getConflictingFields(
+            body.expected,
+            latestContact,
+          );
+
+        return conflictResponse(
+          latestContact,
+          latestConflicts.length > 0
+            ? latestConflicts
+            : ["customer information"],
+        );
+      }
+    }
+
     return NextResponse.json(
       {
         success: false,

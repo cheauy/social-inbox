@@ -1,10 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
+import {
+  NextRequest,
+  NextResponse,
+} from "next/server";
 
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+  getCurrentMember,
+} from "@/lib/auth/get-current-member";
 import {
   getFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
-
+import {
+  supabaseAdmin,
+} from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,11 +34,38 @@ type FacebookSendResult = {
   };
 };
 
-export async function POST(request: NextRequest) {
+export async function POST(
+  request: NextRequest,
+) {
+  /*
+   * V2.14.1:
+   * Authenticate the Tenh team member who is actually
+   * sending this customer reply.
+   */
+  const authResult =
+    await getCurrentMember();
+
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
+    );
+  }
+
+  const currentMember =
+    authResult.member;
+
   let body: SendMessageBody;
 
   try {
-    body = (await request.json()) as SendMessageBody;
+    body =
+      (await request.json()) as
+        SendMessageBody;
   } catch {
     return NextResponse.json(
       {
@@ -44,15 +78,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const conversationId = body.conversationId?.trim();
-  const recipientId = body.recipientId?.trim();
-  const message = body.message?.trim();
+  const conversationId =
+    body.conversationId?.trim();
+  const recipientId =
+    body.recipientId?.trim();
+  const message =
+    body.message?.trim();
 
   if (!conversationId) {
     return NextResponse.json(
       {
         success: false,
-        error: "conversationId is required.",
+        error:
+          "conversationId is required.",
       },
       {
         status: 400,
@@ -64,7 +102,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: "recipientId is required.",
+        error:
+          "recipientId is required.",
       },
       {
         status: 400,
@@ -76,7 +115,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: "Message cannot be empty.",
+        error:
+          "Message cannot be empty.",
       },
       {
         status: 400,
@@ -96,43 +136,33 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const pageId = process.env.FACEBOOK_PAGE_ID;
-const pageAccessToken =
-  await getFacebookPageAccessToken(
-    pageId,
-  );
   const graphVersion =
-    process.env.FACEBOOK_GRAPH_API_VERSION;
-
-  if (!pageId || !pageAccessToken || !graphVersion) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Missing Facebook environment variables.",
-      },
-      {
-        status: 500,
-      },
-    );
-  }
+    process.env
+      .FACEBOOK_GRAPH_API_VERSION
+      ?.trim() ||
+    "v26.0";
 
   /*
-   * Confirm that the conversation exists and retrieve its
-   * business and social-account information.
+   * Confirm that the conversation belongs to the
+   * logged-in member's business.
    */
   const {
-  data: conversation,
-  error: conversationError,
-} = await supabaseAdmin
-  .from("conversations")
-  .select(`
-    id,
-    business_id,
-    contact_id,
-    social_account_id
-  `)
-  .eq("id", conversationId)
-  .maybeSingle();
+    data: conversation,
+    error: conversationError,
+  } = await supabaseAdmin
+    .from("conversations")
+    .select(`
+      id,
+      business_id,
+      contact_id,
+      social_account_id
+    `)
+    .eq("id", conversationId)
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    )
+    .maybeSingle();
 
   if (conversationError) {
     console.error(
@@ -143,7 +173,8 @@ const pageAccessToken =
     return NextResponse.json(
       {
         success: false,
-        error: "Unable to load the conversation.",
+        error:
+          "Unable to load the conversation.",
       },
       {
         status: 500,
@@ -155,7 +186,8 @@ const pageAccessToken =
     return NextResponse.json(
       {
         success: false,
-        error: "Conversation was not found.",
+        error:
+          "Conversation was not found or you do not have access.",
       },
       {
         status: 404,
@@ -164,98 +196,176 @@ const pageAccessToken =
   }
 
   const {
-  data: socialAccount,
-  error: socialAccountError,
-} = await supabaseAdmin
-  .from("social_accounts")
-  .select(`
-    id,
-    platform,
-    platform_account_id
-  `)
-  .eq("id", conversation.social_account_id)
-  .maybeSingle();
+    data: socialAccount,
+    error: socialAccountError,
+  } = await supabaseAdmin
+    .from("social_accounts")
+    .select(`
+      id,
+      platform,
+      platform_account_id,
+      is_active
+    `)
+    .eq(
+      "id",
+      conversation.social_account_id,
+    )
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    )
+    .maybeSingle();
 
-if (socialAccountError) {
-  console.error(
-    "Unable to load social account:",
-    socialAccountError,
-  );
+  if (socialAccountError) {
+    console.error(
+      "Unable to load social account:",
+      socialAccountError,
+    );
 
-  return NextResponse.json(
-    {
-      success: false,
-      error: "Unable to load the Facebook Page.",
-      details: socialAccountError.message,
-    },
-    {
-      status: 500,
-    },
-  );
-}
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Unable to load the Facebook Page.",
+        details:
+          socialAccountError.message,
+      },
+      {
+        status: 500,
+      },
+    );
+  }
 
-if (!socialAccount) {
-  return NextResponse.json(
-    {
-      success: false,
-      error: "Connected Facebook Page was not found.",
-    },
-    {
-      status: 404,
-    },
-  );
-}
+  if (!socialAccount) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Connected Facebook Page was not found.",
+      },
+      {
+        status: 404,
+      },
+    );
+  }
 
-if (
-  socialAccount.platform !== "facebook" ||
-  socialAccount.platform_account_id !== pageId
-) {
-  return NextResponse.json(
-    {
-      success: false,
-      error:
-        "The conversation does not belong to the configured Facebook Page.",
-    },
-    {
-      status: 400,
-    },
-  );
-}
+  if (
+    socialAccount.platform !==
+      "facebook" ||
+    !socialAccount.is_active ||
+    !socialAccount
+      .platform_account_id
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "The Facebook Page connection for this conversation is not active.",
+      },
+      {
+        status: 400,
+      },
+    );
+  }
 
   /*
-   * Current Meta Send API endpoint:
-   * POST /{PAGE_ID}/messages
+   * V3.1.17 — route the reply through the exact Page that owns this
+   * conversation. This allows several connected Facebook Pages in one TENH
+   * workspace without relying on FACEBOOK_PAGE_ID.
    */
- const graphUrl = new URL(
-  `https://graph.facebook.com/${graphVersion}/me/messages`,
-);
+  const pageId =
+    socialAccount
+      .platform_account_id;
+
+  let pageAccessToken: string;
+
+  try {
+    pageAccessToken =
+      await getFacebookPageAccessToken(
+        pageId,
+      );
+  } catch (tokenError) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          tokenError instanceof Error
+            ? tokenError.message
+            : "Unable to load the Facebook Page access token.",
+      },
+      {
+        status: 500,
+      },
+    );
+  }
+
+  /*
+   * Meta Send API.
+   */
+  const graphUrl = new URL(
+    `https://graph.facebook.com/${graphVersion}/me/messages`,
+  );
 
   graphUrl.searchParams.set(
     "access_token",
     pageAccessToken,
   );
 
-  const facebookResponse = await fetch(graphUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      recipient: {
-        id: recipientId,
-      },
-      messaging_type: "RESPONSE",
-      message: {
-        text: message,
-      },
-    }),
-    cache: "no-store",
-  });
+  let facebookResponse: Response;
 
-  const facebookResult =
-    (await facebookResponse.json()) as FacebookSendResult;
+  try {
+    facebookResponse =
+      await fetch(graphUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify({
+          recipient: {
+            id: recipientId,
+          },
+          messaging_type:
+            "RESPONSE",
+          message: {
+            text: message,
+          },
+        }),
+        cache: "no-store",
+      });
+  } catch (sendError) {
+    console.error(
+      "Facebook message send request failed:",
+      sendError,
+    );
 
-  if (!facebookResponse.ok || facebookResult.error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Unable to send the message to Facebook.",
+      },
+      {
+        status: 502,
+      },
+    );
+  }
+
+  let facebookResult:
+    FacebookSendResult = {};
+
+  try {
+    facebookResult =
+      (await facebookResponse.json()) as
+        FacebookSendResult;
+  } catch {
+    // handled by response checks below
+  }
+
+  if (
+    !facebookResponse.ok ||
+    facebookResult.error
+  ) {
     console.error(
       "Facebook message send failed:",
       facebookResult,
@@ -265,17 +375,24 @@ if (
       {
         success: false,
         error:
-          facebookResult.error?.message ??
+          facebookResult.error
+            ?.message ??
           "Facebook rejected the message.",
-        details: facebookResult.error ?? facebookResult,
+        details:
+          facebookResult.error ??
+          facebookResult,
       },
       {
-        status: facebookResponse.status,
+        status:
+          facebookResponse.status,
       },
     );
   }
 
-  if (!facebookResult.message_id) {
+  const facebookMessageId =
+    facebookResult.message_id?.trim();
+
+  if (!facebookMessageId) {
     return NextResponse.json(
       {
         success: false,
@@ -288,73 +405,198 @@ if (
     );
   }
 
+  const now =
+    new Date().toISOString();
+
   /*
-   * Save the outgoing message immediately.
+   * V2.14.1 VERIFIED AGENT ATTRIBUTION
+   * ---------------------------------
+   * Facebook's message echo can race this API route.
    *
-   * Your webhook may later receive an echo for the same
-   * message. Because platform_message_id is unique, your
-   * webhook processor should ignore that duplicate.
+   * If the echo row already exists, update ONLY the
+   * verified Tenh sender. This avoids overwriting a
+   * Delivered/Seen status that may already have arrived.
+   *
+   * If no row exists yet, insert the outgoing message
+   * with sent_by_member_id immediately.
    */
-  const now = new Date().toISOString();
-
-  const { error: insertError } = await supabaseAdmin
+  const {
+    data: existingMessage,
+    error: existingMessageError,
+  } = await supabaseAdmin
     .from("messages")
-    .upsert(
-      {
-        business_id: conversation.business_id,
-        conversation_id: conversation.id,
-        platform_message_id:
-          facebookResult.message_id,
-        sender_platform_id: pageId,
-        recipient_platform_id: recipientId,
-        direction: "outgoing",
-        message_type: "text",
-        message_text: message,
+    .select(`
+      id,
+      delivery_status,
+      delivered_at,
+      seen_at
+    `)
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    )
+    .eq(
+      "platform_message_id",
+      facebookMessageId,
+    )
+    .maybeSingle();
 
-        delivery_status: "sent",
-    delivered_at: null,
-    seen_at: null,
-        attachment_url: null,
-        is_echo: false,
-        raw_payload: facebookResult,
-        platform_created_at: now,
-      },
-      {
-        onConflict:
-          "business_id,platform_message_id",
-        ignoreDuplicates: true,
-      },
-    );
+  let saveWarning:
+    string | null = null;
 
-  if (insertError) {
+  if (existingMessageError) {
     console.error(
-      "Message sent but unable to save it:",
-      insertError,
+      "Message sent but unable to check existing local message:",
+      existingMessageError,
     );
 
-    return NextResponse.json(
-      {
-        success: true,
-        warning:
-          "Facebook delivered the message, but it could not be saved locally.",
-        recipientId:
-          facebookResult.recipient_id ?? recipientId,
-        messageId: facebookResult.message_id,
-      },
-      {
-        status: 200,
-      },
-    );
+    saveWarning =
+      "Facebook delivered the message, but Tenh Chat could not verify the local message row.";
+  } else if (existingMessage) {
+    const {
+      error: attributionError,
+    } = await supabaseAdmin
+      .from("messages")
+      .update({
+        sent_by_member_id:
+          currentMember.id,
+      })
+      .eq(
+        "id",
+        existingMessage.id,
+      )
+      .eq(
+        "business_id",
+        currentMember.business_id,
+      );
+
+    if (attributionError) {
+      console.error(
+        "Message sent but unable to save verified agent attribution:",
+        attributionError,
+      );
+
+      saveWarning =
+        "Facebook delivered the message, but Tenh Chat could not save the sending agent.";
+    }
+  } else {
+    const {
+      error: insertError,
+    } = await supabaseAdmin
+      .from("messages")
+      .insert({
+        business_id:
+          currentMember.business_id,
+        conversation_id:
+          conversation.id,
+        platform_message_id:
+          facebookMessageId,
+        sender_platform_id:
+          pageId,
+        recipient_platform_id:
+          recipientId,
+        direction:
+          "outgoing",
+        message_type:
+          "text",
+        message_text:
+          message,
+
+        /*
+         * V2.14.1 — this is the key field.
+         */
+        sent_by_member_id:
+          currentMember.id,
+
+        /*
+         * Keep V2.2 Messenger status fields.
+         */
+        delivery_status:
+          "sent",
+        delivered_at:
+          null,
+        seen_at:
+          null,
+
+        attachment_url:
+          null,
+        is_echo:
+          false,
+        raw_payload:
+          facebookResult,
+        platform_created_at:
+          now,
+      });
+
+    if (insertError) {
+      /*
+       * The echo may have been inserted after our
+       * existing-message check but before this insert.
+       * If so, attach the verified sender to that row.
+       */
+      if (
+        insertError.code ===
+        "23505"
+      ) {
+        const {
+          error:
+            raceAttributionError,
+        } = await supabaseAdmin
+          .from("messages")
+          .update({
+            sent_by_member_id:
+              currentMember.id,
+          })
+          .eq(
+            "business_id",
+            currentMember.business_id,
+          )
+          .eq(
+            "platform_message_id",
+            facebookMessageId,
+          );
+
+        if (raceAttributionError) {
+          console.error(
+            "Echo race occurred and agent attribution update failed:",
+            raceAttributionError,
+          );
+
+          saveWarning =
+            "Facebook delivered the message, but Tenh Chat could not save the sending agent.";
+        }
+      } else {
+        console.error(
+          "Message sent but unable to save it:",
+          insertError,
+        );
+
+        saveWarning =
+          "Facebook delivered the message, but it could not be saved locally.";
+      }
+    }
   }
 
-  const { error: updateError } = await supabaseAdmin
+  const {
+    error: updateError,
+  } = await supabaseAdmin
     .from("conversations")
     .update({
-      last_message_text: message,
-      last_message_at: now,
-      updated_at: now,
+      last_message_text:
+        message,
+      last_message_at:
+        now,
+      updated_at:
+        now,
     })
-    .eq("id", conversation.id);
+    .eq(
+      "id",
+      conversation.id,
+    )
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    );
 
   if (updateError) {
     console.error(
@@ -365,8 +607,25 @@ if (
 
   return NextResponse.json({
     success: true,
+    ...(saveWarning
+      ? {
+          warning:
+            saveWarning,
+        }
+      : {}),
     recipientId:
-      facebookResult.recipient_id ?? recipientId,
-    messageId: facebookResult.message_id,
+      facebookResult.recipient_id ??
+      recipientId,
+    messageId:
+      facebookMessageId,
+
+    /*
+     * Helpful while testing V2.14.1.
+     * This is an internal API response only.
+     */
+    sentByMemberId:
+      currentMember.id,
+    sentByMemberName:
+      currentMember.full_name,
   });
 }
