@@ -15,6 +15,7 @@ import type { FormEvent } from "react";
 
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { CustomerProfile } from "@/components/inbox/customer-profile";
+import { CustomerTimelineModal } from "@/components/inbox/customer-timeline-modal";
 import type { InboxViewProps } from "@/components/inbox/inbox-view-types";
 import { MessagePanel } from "@/components/inbox/message-panel";
 import type {
@@ -328,11 +329,6 @@ export function InboxView({
 
 const requestedConversationId =
   searchParams.get("conversation");
-
-const selectedPageId =
-  searchParams.get("page")?.trim() ||
-  null;
-
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] =
@@ -502,28 +498,11 @@ const skipAutomaticReadRef =
       new Set(),
     );
 
- const pageConversations =
-  useMemo(
-    () =>
-      selectedPageId
-        ? liveConversations.filter(
-            (conversation) =>
-              conversation.social_account
-                ?.id ===
-              selectedPageId,
-          )
-        : liveConversations,
-    [
-      liveConversations,
-      selectedPageId,
-    ],
-  );
-
  const resolvedActiveConversationId =
   useMemo(() => {
     if (
       requestedConversationId &&
-      pageConversations.some(
+      liveConversations.some(
         (conversation) =>
           conversation.id ===
           requestedConversationId,
@@ -534,7 +513,7 @@ const skipAutomaticReadRef =
 
     if (
       activeConversationId &&
-      pageConversations.some(
+      liveConversations.some(
         (conversation) =>
           conversation.id ===
           activeConversationId,
@@ -544,11 +523,11 @@ const skipAutomaticReadRef =
     }
 
     return (
-      pageConversations[0]?.id ??
+      liveConversations[0]?.id ??
       null
     );
   }, [
-    pageConversations,
+    liveConversations,
     requestedConversationId,
     activeConversationId,
   ]);
@@ -556,13 +535,13 @@ const skipAutomaticReadRef =
 const activeConversation =
   useMemo(
     () =>
-      pageConversations.find(
+      liveConversations.find(
         (conversation) =>
           conversation.id ===
           resolvedActiveConversationId,
       ) ?? null,
     [
-      pageConversations,
+      liveConversations,
       resolvedActiveConversationId,
     ],
   );
@@ -1395,13 +1374,6 @@ useEffect(() => {
       for (
         const message of messages
       ) {
-        if (
-          message.conversation_id !==
-          resolvedActiveConversationId
-        ) {
-          continue;
-        }
-
         const existing =
           merged.get(
             message.id,
@@ -1454,27 +1426,6 @@ useEffect(() => {
       );
     },
   );
-}, [
-  messages,
-  resolvedActiveConversationId,
-]);
-
-useEffect(() => {
-  const currentServerMessageCount =
-    resolvedActiveConversationId
-      ? messages.filter(
-          (message) =>
-            message.conversation_id ===
-            resolvedActiveConversationId,
-        ).length
-      : 0;
-
-  setHasMoreOlderMessages(
-    currentServerMessageCount >=
-      MESSAGE_PAGE_SIZE,
-  );
-
-  setOlderMessagesError(null);
 }, [
   messages,
   resolvedActiveConversationId,
@@ -1703,82 +1654,14 @@ useEffect(() => {
         requestedConversationId,
     )
   ) {
-    const query =
-      new URLSearchParams(
-        searchParams.toString(),
-      );
-
-    query.delete(
-      "conversation",
-    );
-
     router.replace(
-      query.toString()
-        ? `/dashboard/inbox?${query.toString()}`
-        : "/dashboard/inbox",
+      "/dashboard/inbox",
     );
   }
 }, [
   liveConversations,
   requestedConversationId,
   router,
-  searchParams,
-]);
-
-/*
- * V3.1.17 — Facebook Page switcher.
- *
- * The Page selector owns the `page` query parameter. When the agent changes
- * Page, move the server route to the first conversation belonging to that Page
- * so the existing server-side message loader receives the correct conversation.
- */
-useEffect(() => {
-  if (!selectedPageId) {
-    return;
-  }
-
-  const query =
-    new URLSearchParams(
-      searchParams.toString(),
-    );
-
-  if (!resolvedActiveConversationId) {
-    if (
-      query.has(
-        "conversation",
-      )
-    ) {
-      query.delete(
-        "conversation",
-      );
-
-      router.replace(
-        `/dashboard/inbox?${query.toString()}`,
-      );
-    }
-
-    return;
-  }
-
-  if (
-    requestedConversationId !==
-    resolvedActiveConversationId
-  ) {
-    query.set(
-      "conversation",
-      resolvedActiveConversationId,
-    );
-
-    router.replace(
-      `/dashboard/inbox?${query.toString()}`,
-    );
-  }
-}, [
-  selectedPageId,
-  resolvedActiveConversationId,
-  requestedConversationId,
-  router,
-  searchParams,
 ]);
 
 useEffect(() => {
@@ -3452,7 +3335,7 @@ return (
       }`}
     >
      <ConversationList
-  conversations={pageConversations}
+  conversations={liveConversations}
   activeConversationId={
     resolvedActiveConversationId
   }
@@ -3575,6 +3458,22 @@ return (
         />
       ) : null}
     </div>
+
+   {historyOpen &&
+   activeConversation?.contact?.id ? (
+     <CustomerTimelineModal
+       contactId={
+         activeConversation.contact.id
+       }
+       customerName={
+         activeConversation.contact.full_name ??
+         "Facebook customer"
+       }
+       onClose={() =>
+         setHistoryOpen(false)
+       }
+     />
+   ) : null}
 
    {!customerPanelVisible && (
   <button
