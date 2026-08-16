@@ -1,42 +1,24 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { AdminNavLink } from "@/components/admin/admin-nav-link";
 import { CurrentUserProfileMenu } from "@/components/dashboard/current-user-profile-menu";
 import { TeamNotificationCenter } from "@/components/dashboard/team-notification-center";
+import { isCurrentUserTenhAdminIdentity } from "@/lib/admin/tenh-admin-auth";
 
-const navigation = [
-  {
-    label: "Inbox",
-    href: "/dashboard/inbox",
-  },
-  {
-    label: "Customers",
-    href: "/dashboard/customers",
-  },
-  {
-    label: "Group Chat",
-    href: "/dashboard/group-chat",
-  },
-  {
-    label: "Analytics",
-    href: "/dashboard/analytics",
-  },
-  {
-    label: "Subscription",
-    href: "/dashboard/subscription",
-    color: "from-emerald-500 to-green-400",
-  },
-  {
-    label: "Integrations",
-    href: "/dashboard/integrations",
-  },
-  {
-    label: "Settings",
-    href: "/dashboard/settings",
-  },
+const normalNavigation = [
+  { label: "Inbox", href: "/dashboard/inbox" },
+  { label: "Customers", href: "/dashboard/customers" },
+  { label: "Group Chat", href: "/dashboard/group-chat" },
+  { label: "Analytics", href: "/dashboard/analytics" },
+  { label: "Subscription", href: "/dashboard/subscription" },
+  { label: "Integrations", href: "/dashboard/integrations" },
+  { label: "Settings", href: "/dashboard/settings" },
 ];
 
-export function DashboardHeader() {
+export async function DashboardHeader() {
+  const isAdmin = await isCurrentUserTenhAdminIdentity();
+
   return (
     <header className="flex h-[72px] shrink-0 items-center border-b border-slate-200 bg-white px-5">
       <div className="flex w-full min-w-0 items-center">
@@ -58,7 +40,6 @@ export function DashboardHeader() {
             <p className="text-lg font-bold leading-tight text-slate-950">
               Tenh Chat
             </p>
-
             <p className="text-xs text-slate-500">
               Customer messaging
             </p>
@@ -66,7 +47,7 @@ export function DashboardHeader() {
         </Link>
 
         <nav className="ml-8 hidden items-center gap-1 md:flex">
-          {navigation.map((item) => (
+          {normalNavigation.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -75,9 +56,11 @@ export function DashboardHeader() {
               {item.label}
             </Link>
           ))}
+
+          {isAdmin ? <AdminNavLink /> : null}
         </nav>
 
-        <div className="ml-auto flex items-center">
+        <div className="ml-auto flex items-center gap-1">
           <TeamNotificationCenter />
           <CurrentUserProfileMenu />
         </div>

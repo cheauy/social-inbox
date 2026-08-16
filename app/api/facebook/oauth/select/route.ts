@@ -19,6 +19,9 @@ import {
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
+import {
+  canActivateAnotherChannel,
+} from "@/lib/subscription/get-business-entitlements";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -267,7 +270,8 @@ export async function POST(
       .select(`
         id,
         business_id,
-        platform_account_id
+        platform_account_id,
+        is_active
       `)
       .eq("platform", "facebook")
       .eq(
@@ -288,6 +292,25 @@ export async function POST(
       throw new Error(
         "This Facebook Page is already connected to another TENH workspace.",
       );
+    }
+
+    // V3.8.2 — a new active Page consumes one channel slot.
+    // Reconnecting an already-active Page does not consume another slot.
+    const consumesNewChannelSlot =
+      !existingPage || existingPage.is_active !== true;
+
+    if (consumesNewChannelSlot) {
+      const entitlement =
+        await canActivateAnotherChannel(
+          currentMember.business_id,
+        );
+
+      if (!entitlement.allowed) {
+        throw new Error(
+          entitlement.message ??
+            "Your TENH plan does not allow another Facebook Page connection.",
+        );
+      }
     }
 
     const now = new Date().toISOString();

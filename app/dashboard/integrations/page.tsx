@@ -1,3 +1,4 @@
+import { IntegrationWorkspace } from "@/components/integrations/integration-workspace";
 import Link from "next/link";
 
 import {
@@ -131,6 +132,8 @@ export default async function IntegrationsPage({
 
   return (
     <main className="p-6">
+      <IntegrationWorkspace>
+
       <div className="mx-auto max-w-5xl">
         <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
@@ -350,6 +353,8 @@ export default async function IntegrationsPage({
           )}
         </section>
       </div>
-    </main>
+    
+      </IntegrationWorkspace>
+</main>
   );
 }

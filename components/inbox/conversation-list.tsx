@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import {
@@ -719,6 +719,15 @@ export function ConversationList({
 
   const [search, setSearch] =
     useState("");
+  // Hydration-safe localized timestamps.
+  // The server and browser can resolve locale/timezone differently,
+  // so render timestamps only after the client has mounted.
+  const [hydrated, setHydrated] =
+    useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   const [
     filterOpen,
@@ -1750,7 +1759,7 @@ export function ConversationList({
                     "unread" &&
                   totalUnreadCount >
                     0
-                    ? ` · ${totalUnreadCount} message${
+                    ? ` Â· ${totalUnreadCount} message${
                         totalUnreadCount ===
                         1
                           ? ""
@@ -1761,7 +1770,7 @@ export function ConversationList({
                           ? ""
                           : "s"
                       }`
-                    : ` · ${view.count}`}
+                    : ` Â· ${view.count}`}
 
                   <span className="absolute right-full top-1/2 -translate-y-1/2 border-y-4 border-r-4 border-y-transparent border-r-slate-950" />
                 </span>
@@ -2799,7 +2808,7 @@ export function ConversationList({
                 {
                   activeViewLabel
                 }{" "}
-                ·{" "}
+                Â·{" "}
                 {
                   baseViewConversations.length
                 }
@@ -2915,9 +2924,11 @@ export function ConversationList({
                         </p>
 
                         <span className="shrink-0 text-xs text-slate-400">
-                          {formatMessageTime(
-                            conversation.last_message_at,
-                          )}
+                          {hydrated
+                            ? formatMessageTime(
+                                conversation.last_message_at,
+                              )
+                            : ""}
                         </span>
                       </div>
 
@@ -3009,3 +3020,4 @@ export function ConversationList({
     </section>
   );
 }
+

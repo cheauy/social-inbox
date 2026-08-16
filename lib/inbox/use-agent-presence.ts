@@ -207,39 +207,65 @@ export function useAgentPresence({
     setStatus("connecting");
 
     async function startPresence() {
-      const {
-        data: sessionData,
-        error: sessionError,
-      } =
-        await supabase.auth
-          .getSession();
+     const {
+  data: userData,
+  error: userError,
+} = await supabase.auth.getUser();
 
-      if (
-        cancelled
-      ) {
-        return;
-      }
+if (cancelled) {
+  return;
+}
 
-      if (
-        sessionError ||
-        !sessionData.session
-      ) {
-        console.error(
-          "[Tenh Presence] No authenticated session.",
-          sessionError?.message ??
-            "",
-        );
+if (
+  userError ||
+  !userData.user
+) {
+  console.error(
+    "[Tenh Presence] Unable to verify authenticated user.",
+    userError?.message ?? "",
+  );
 
-        setStatus("error");
-        return;
-      }
+  setStatus("error");
+  return;
+}
 
-      const session =
-        sessionData.session;
+const user = userData.user;
 
-      await supabase.realtime.setAuth(
-        session.access_token,
-      );
+/*
+ * We still need the session access token for Realtime.
+ * But we DO NOT trust session.user for identity.
+ */
+const {
+  data: sessionData,
+  error: sessionError,
+} = await supabase.auth.getSession();
+
+if (cancelled) {
+  return;
+}
+
+if (
+  sessionError ||
+  !sessionData.session
+) {
+  console.error(
+    "[Tenh Presence] No authenticated session.",
+    sessionError?.message ?? "",
+  );
+
+  setStatus("error");
+  return;
+}
+
+const session = sessionData.session;
+
+await supabase.realtime.setAuth(
+  session.access_token,
+);
+
+if (cancelled) {
+  return;
+}
 
       if (cancelled) {
         return;
@@ -251,13 +277,13 @@ export function useAgentPresence({
             member.email
               ?.trim()
               .toLowerCase() ===
-            session.user.email
+            user.email
               ?.trim()
               .toLowerCase(),
         ) ?? null;
 
       const fallbackName =
-        session.user.user_metadata
+        user.user_metadata
           ?.full_name;
 
       const displayName =
@@ -268,7 +294,7 @@ export function useAgentPresence({
           "string"
           ? fallbackName.trim()
           : "") ||
-        session.user.email
+        user.email
           ?.split("@")[0]
           ?.trim() ||
         "Team member";
@@ -277,9 +303,9 @@ export function useAgentPresence({
         "[Tenh Presence] session",
         {
           userId:
-            session.user.id,
+            user.id,
           email:
-            session.user.email ??
+            user.email ??
             null,
           businessId,
           memberMatched:
@@ -297,14 +323,14 @@ export function useAgentPresence({
 
       selfPresenceRef.current = {
         user_id:
-          session.user.id,
+          user.id,
         member_id:
           currentMember?.id ??
           null,
         name:
           displayName,
         email:
-          session.user.email ??
+          user.email ??
           currentMember?.email ??
           null,
         profile_picture_url:
@@ -325,7 +351,7 @@ export function useAgentPresence({
         !presenceClientKeyRef.current
       ) {
         presenceClientKeyRef.current =
-          `${session.user.id}:${crypto.randomUUID()}`;
+          `${user.id}:${crypto.randomUUID()}`;
       }
 
       console.info(
@@ -398,7 +424,7 @@ export function useAgentPresence({
                */
               if (
                 presence.user_id ===
-                session.user.id
+                user.id
               ) {
                 continue;
               }

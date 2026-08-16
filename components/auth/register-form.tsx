@@ -67,6 +67,9 @@ export function RegisterForm() {
   const [fullName, setFullName] =
     useState("");
 
+  const [workspaceName, setWorkspaceName] =
+    useState("");
+
   const [email, setEmail] =
     useState("");
 
@@ -104,6 +107,7 @@ export function RegisterForm() {
 
     if (
       !fullName.trim() ||
+      !workspaceName.trim() ||
       !normalizedEmail ||
       !password ||
       !confirmPassword
@@ -149,6 +153,8 @@ export function RegisterForm() {
           data: {
             full_name:
               fullName.trim(),
+            business_name:
+              workspaceName.trim(),
           },
         },
       });
@@ -214,6 +220,34 @@ export function RegisterForm() {
           required
           className={fieldClass}
         />
+      </div>
+
+      <div>
+        <label
+          htmlFor="register-workspace"
+          className="text-sm font-bold text-slate-900"
+        >
+          Business / workspace name
+        </label>
+
+        <input
+          id="register-workspace"
+          value={workspaceName}
+          onChange={(event) =>
+            setWorkspaceName(
+              event.target.value,
+            )
+          }
+          disabled={loading}
+          autoComplete="organization"
+          placeholder="Example: Apex Clothing"
+          required
+          className={fieldClass}
+        />
+
+        <p className="mt-2 text-xs leading-5 text-slate-500">
+          Your 14-day free trial workspace will be created with this name after email verification and first sign-in.
+        </p>
       </div>
 
       <div>
@@ -358,6 +392,7 @@ export function RegisterForm() {
         disabled={
           loading ||
           !fullName.trim() ||
+          !workspaceName.trim() ||
           !email.trim() ||
           !password ||
           !confirmPassword

@@ -4,6 +4,7 @@ import type { User } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { ensureUserWorkspace } from "@/lib/onboarding/ensure-user-workspace";
 
 export type AuthenticatedMember = {
   id: string;
@@ -257,7 +258,8 @@ export async function getCurrentMember(): Promise<
     };
   }
 
-  // App-review-only fallback. Normal users are NOT auto-provisioned here.
+  // Keep the dedicated Meta App Review bridge FIRST so the configured reviewer
+  // stays attached to the existing review workspace instead of receiving a new trial workspace.
   const reviewerMember = await provisionMetaReviewer(user);
 
   if (reviewerMember) {
@@ -268,10 +270,22 @@ export async function getCurrentMember(): Promise<
     };
   }
 
+  // V3.8.1 production onboarding. The helper delegates to one atomic PostgreSQL
+  // function and does not embed subscription/business creation logic in this auth file.
+  const onboardedMember = await ensureUserWorkspace(user);
+
+  if (onboardedMember) {
+    return {
+      success: true,
+      user,
+      member: onboardedMember,
+    };
+  }
+
   return {
     success: false,
     status: 403,
     error:
-      "Your login is not connected to an active team member.",
+      "Your TENH workspace is unavailable or your team access is inactive.",
   };
 }
