@@ -143,7 +143,7 @@ async function fetchPagedInvoices(minPaidAt: Date | null) {
     const { data, error } = await query;
     if (error) throw new Error(error.message);
 
-    const page = (data ?? []) as InvoiceRow[];
+    const page = (data ?? []) as unknown as InvoiceRow[];
     rows.push(...page);
 
     if (page.length < PAGE_SIZE) break;
@@ -165,7 +165,7 @@ async function fetchFirstInvoiceRows() {
 
     if (error) throw new Error(error.message);
 
-    const page = (data ?? []) as FirstInvoiceRow[];
+    const page = (data ?? []) as unknown as FirstInvoiceRow[];
     rows.push(...page);
 
     if (page.length < PAGE_SIZE) break;
@@ -188,7 +188,7 @@ async function fetchSubscriptions() {
 
     if (error) throw new Error(error.message);
 
-    const page = (data ?? []) as SubscriptionRow[];
+    const page = (data ?? []) as unknown as SubscriptionRow[];
     rows.push(...page);
 
     if (page.length < PAGE_SIZE) break;
@@ -215,7 +215,7 @@ async function fetchRenewals(minEffectiveAt: Date | null) {
     const { data, error } = await query;
     if (error) throw new Error(error.message);
 
-    const page = (data ?? []) as RenewalRow[];
+    const page = (data ?? []) as unknown as RenewalRow[];
     rows.push(...page);
 
     if (page.length < PAGE_SIZE) break;

@@ -59,6 +59,45 @@ type CountTable =
   | "manual_payment_requests"
   | "tenh_billing_invoices";
 
+type WorkspaceListSubscriptionRow = {
+  business_id: string;
+  plan_code: string | null;
+  status: string | null;
+  trial_ends_at: string | null;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  member_limit: number | string | null;
+  channel_limit: number | string | null;
+  payment_provider: string | null;
+  pending_plan_code: string | null;
+  pending_billing_cycle: string | null;
+  pending_plan_effective_at: string | null;
+};
+
+type WorkspaceDetailSubscriptionRow = {
+  id: string;
+  business_id: string;
+  plan_code: string | null;
+  status: string | null;
+  trial_started_at: string | null;
+  trial_ends_at: string | null;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  member_limit: number | string | null;
+  channel_limit: number | string | null;
+  storage_limit_bytes: number | string | null;
+  monthly_message_limit: number | string | null;
+  payment_provider: string | null;
+  pending_plan_code: string | null;
+  pending_billing_cycle: string | null;
+  pending_plan_change_type: string | null;
+  pending_plan_requested_at: string | null;
+  pending_plan_effective_at: string | null;
+  pending_plan_requested_by_member_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 async function safeCount(
   table: CountTable,
   apply?: (query: any) => any,
@@ -331,8 +370,14 @@ async function loadWorkspaceList(
   const failure = results.find((result) => result.error);
   if (failure?.error) throw new Error(failure.error.message);
 
-  const subscriptionMap = new Map<string, any>();
-  for (const row of subscriptionsResult.data ?? []) {
+  const subscriptionRows =
+    (subscriptionsResult.data ?? []) as unknown as
+      WorkspaceListSubscriptionRow[];
+
+  const subscriptionMap =
+    new Map<string, WorkspaceListSubscriptionRow>();
+
+  for (const row of subscriptionRows) {
     subscriptionMap.set(row.business_id, row);
   }
 
@@ -607,6 +652,12 @@ async function loadWorkspaceDetail(businessId: string) {
 
   const members = membersResult.data ?? [];
   const channels = channelsResult.data ?? [];
+
+  const subscriptionData =
+    subscriptionResult.data as unknown as
+      | WorkspaceDetailSubscriptionRow
+      | null;
+
   const owners = members.filter(
     (member) => member.role === "owner" && member.is_active,
   );
@@ -621,11 +672,15 @@ async function loadWorkspaceDetail(businessId: string) {
         owners[0]?.full_name?.trim() || owners[0]?.email?.trim() || null,
       ownerEmail: owners[0]?.email ?? null,
     },
-    subscription: subscriptionResult.data
+    subscription: subscriptionData
       ? {
-          ...subscriptionResult.data,
-          member_limit: normalizeNumber(subscriptionResult.data.member_limit),
-          channel_limit: normalizeNumber(subscriptionResult.data.channel_limit),
+          ...subscriptionData,
+          member_limit: normalizeNumber(
+            subscriptionData.member_limit,
+          ),
+          channel_limit: normalizeNumber(
+            subscriptionData.channel_limit,
+          ),
         }
       : null,
     usage: {

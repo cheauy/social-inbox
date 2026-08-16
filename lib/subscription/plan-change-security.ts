@@ -140,50 +140,82 @@ export async function loadPlanChangeState(
     throw new Error(channels.error.message);
   }
 
-  const currentPlan = subscription?.plan_code ?? null;
-  const currentRank =
-    currentPlan && isPaidPlan(currentPlan) ? paidPlanRanks[currentPlan] : 0;
+  /*
+   * The business_subscriptions select string above is built with
+   * array.join(","), so Supabase's generated TypeScript types can
+   * infer GenericStringError even though maybeSingle() returns the
+   * selected subscription row correctly at runtime.
+   *
+   * Normalize the result once here and keep the existing prepaid
+   * plan-change behavior unchanged.
+   */
+  const subscriptionData =
+    subscription as unknown as
+      PlanChangeState["subscription"];
 
-  const currentPeriodEnd = subscription?.current_period_end
-    ? new Date(subscription.current_period_end).getTime()
+  const currentPlanValue =
+    subscriptionData?.plan_code ?? null;
+
+  const currentPlan: PaidPlanCode | null =
+    currentPlanValue &&
+    isPaidPlan(currentPlanValue)
+      ? currentPlanValue
+      : null;
+
+  const currentRank =
+    currentPlan
+      ? paidPlanRanks[currentPlan]
+      : 0;
+
+  const currentPeriodEnd = subscriptionData?.current_period_end
+    ? new Date(subscriptionData.current_period_end).getTime()
     : null;
 
   const periodStillActive =
     currentPeriodEnd === null ||
     (Number.isFinite(currentPeriodEnd) && currentPeriodEnd > Date.now());
 
-  const mode: PlanChangeMode = !subscription
+  const mode: PlanChangeMode = !subscriptionData
     ? "unmanaged"
-    : subscription.status === "suspended"
+    : subscriptionData.status === "suspended"
       ? "suspended"
-      : subscription.status === "active" && currentRank > 0 && periodStillActive
+      : subscriptionData.status === "active" && currentRank > 0 && periodStillActive
         ? "active-paid"
         : "subscribe";
 
-  const pendingPlan = subscription?.pending_plan_code ?? null;
-  const pendingCycle = subscription?.pending_billing_cycle ?? null;
+  const pendingPlanValue =
+    subscriptionData?.pending_plan_code ?? null;
+
+  const pendingPlan: PaidPlanCode | null =
+    pendingPlanValue &&
+    isPaidPlan(pendingPlanValue)
+      ? pendingPlanValue
+      : null;
+
+  const pendingCycle =
+    subscriptionData?.pending_billing_cycle ?? null;
 
   return {
-    subscription: subscription ?? null,
+    subscription: subscriptionData ?? null,
     mode,
     canManage: memberRole === "owner",
-    currentPlan: isPaidPlan(currentPlan ?? "") ? currentPlan : null,
+    currentPlan,
     currentRank,
     usage: {
       members: members.count ?? 0,
       channels: channels.count ?? 0,
     },
     pendingChange:
-      isPaidPlan(pendingPlan ?? "") &&
-      subscription?.pending_plan_change_type === "downgrade"
+      pendingPlan &&
+      subscriptionData?.pending_plan_change_type === "downgrade"
         ? {
             type: "downgrade",
-            planCode: pendingPlan as PaidPlanCode,
+            planCode: pendingPlan,
             billingCycle: isBillingCycle(pendingCycle ?? "")
               ? (pendingCycle as BillingCycle)
               : null,
-            requestedAt: subscription.pending_plan_requested_at,
-            effectiveAt: subscription.pending_plan_effective_at,
+            requestedAt: subscriptionData.pending_plan_requested_at,
+            effectiveAt: subscriptionData.pending_plan_effective_at,
           }
         : null,
   };

@@ -46,6 +46,33 @@ type InvoiceLinkRow = {
   source_payment_id: string;
 };
 
+type PayWayRow = {
+  id: string;
+  provider_transaction_id: string;
+  plan_code: string;
+  billing_cycle: string;
+  amount: string | number;
+  currency: string;
+  status: string;
+  provider_status: string | null;
+  provider_approval_code: string | null;
+  verified_at: string | null;
+  created_at: string;
+};
+
+type ManualPaymentRow = {
+  id: string;
+  plan_code: string;
+  billing_cycle: string;
+  amount: string | number;
+  currency: string;
+  status: string;
+  review_note: string | null;
+  reviewed_at: string | null;
+  approved_at: string | null;
+  created_at: string;
+};
+
 function normalizeNumber(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
@@ -178,15 +205,22 @@ export async function GET() {
 
     const invoicesBySource = new Map<string, InvoiceLinkRow>();
 
-    for (const invoice of (invoiceResult.data ?? []) as InvoiceLinkRow[]) {
+    const invoiceRows =
+      (invoiceResult.data ?? []) as unknown as InvoiceLinkRow[];
+    const payWayRows =
+      (payWayResult.data ?? []) as unknown as PayWayRow[];
+    const manualRows =
+      (manualResult.data ?? []) as unknown as ManualPaymentRow[];
+
+    for (const invoice of invoiceRows) {
       invoicesBySource.set(
         `${invoice.source_type}:${invoice.source_payment_id}`,
         invoice,
       );
     }
 
-    const payWayItems: BillingHistoryItem[] = (payWayResult.data ?? []).map(
-      (row: any) => {
+    const payWayItems: BillingHistoryItem[] = payWayRows.map(
+      (row) => {
         const paidAt =
           row.status === "approved"
             ? row.verified_at ?? row.created_at
@@ -218,8 +252,8 @@ export async function GET() {
       },
     );
 
-    const manualItems: BillingHistoryItem[] = (manualResult.data ?? []).map(
-      (row: any) => {
+    const manualItems: BillingHistoryItem[] = manualRows.map(
+      (row) => {
         const paidAt =
           row.status === "approved"
             ? row.approved_at ?? row.reviewed_at ?? row.created_at
