@@ -355,11 +355,20 @@ export function ReplyBox({
       return "";
     }
 
+    /*
+     * Prefer formats Telegram can display as a native voice message.
+     *
+     * Telegram sendVoice accepts OGG/OPUS, MP3, and M4A.
+     * Modern browsers differ in what MediaRecorder can produce, so TENH
+     * asks the browser at runtime and only falls back to WebM last.
+     */
     const candidates = [
-      "audio/webm;codecs=opus",
-      "audio/webm",
       "audio/ogg;codecs=opus",
       "audio/ogg",
+      "audio/mp4;codecs=mp4a.40.2",
+      "audio/mp4",
+      "audio/webm;codecs=opus",
+      "audio/webm",
     ];
 
     return (
@@ -375,7 +384,7 @@ export function ReplyBox({
   async function startVoiceRecording() {
     if (!allowAttachments) {
       setRecordingError(
-        "Voice messages are available for Messenger conversations only.",
+        "Voice messages are not available for this conversation.",
       );
       return;
     }
@@ -426,8 +435,12 @@ export function ReplyBox({
               stream,
               {
                 mimeType,
+                /*
+                 * 96 kbps keeps a five-minute voice note comfortably below
+                 * TENH's current 4 MB browser -> Vercel Telegram upload cap.
+                 */
                 audioBitsPerSecond:
-                  128000,
+                  96000,
               },
             )
           : new MediaRecorder(
@@ -500,10 +513,23 @@ export function ReplyBox({
           return;
         }
 
+        const normalizedActualType =
+          actualType.toLowerCase();
+
         const extension =
-          actualType.includes("ogg")
+          normalizedActualType.includes(
+            "ogg",
+          )
             ? "ogg"
-            : "webm";
+            : normalizedActualType.includes(
+                  "mp4",
+                )
+              ? "m4a"
+              : normalizedActualType.includes(
+                    "mpeg",
+                  )
+                ? "mp3"
+                : "webm";
 
         const file = new File(
           [blob],
@@ -1111,7 +1137,7 @@ export function ReplyBox({
             title={
               allowAttachments
                 ? "Record voice message"
-                : "Voice messages are available for Messenger conversations"
+                : "Voice messages are not available for this conversation"
             }
           >
             <AudioIcon />
@@ -1143,7 +1169,7 @@ export function ReplyBox({
             title={
               allowAttachments
                 ? "Add content"
-                : "Attachments are available for Messenger conversations"
+                : "Attachments are not available for this conversation"
             }
             aria-expanded={moreOpen}
           >

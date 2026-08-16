@@ -1,19 +1,66 @@
 import "server-only";
 
 import {
+  randomUUID,
+} from "crypto";
+
+import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
-import type {
-  TelegramUpdate,
-} from "@/lib/telegram/types";
+import {
+  downloadTelegramFile,
+  getTelegramFile,
+} from "@/lib/telegram/telegram-api";
+import {
+  inferTelegramMediaContentType,
+  inferTelegramPhotoContentType,
+  saveTelegramMessageMedia,
+  deleteTelegramMessageMedia,
+  TELEGRAM_INCOMING_MEDIA_MAX_BYTES,
+  type TelegramStoredMediaKind,
+} from "@/lib/telegram/telegram-message-media";
 import {
   syncTelegramContactProfilePhoto,
 } from "@/lib/telegram/telegram-profile-photo";
+import type {
+  TelegramAudio,
+  TelegramDocument,
+  TelegramPhotoSize,
+  TelegramUpdate,
+  TelegramVoice,
+} from "@/lib/telegram/types";
 
 type TelegramSocialAccount = {
   id: string;
   business_id: string;
   platform_account_id: string | null;
+};
+
+type IncomingTelegramMedia = {
+  messageType:
+    | "image"
+    | "file"
+    | "audio"
+    | "voice";
+  storageKind:
+    TelegramStoredMediaKind;
+  fileId: string;
+  fileUniqueId:
+    | string
+    | null;
+  fileName:
+    | string
+    | null;
+  mimeType:
+    | string
+    | null;
+  declaredSize:
+    | number
+    | null;
+  duration:
+    | number
+    | null;
+  fallbackText: string;
 };
 
 function telegramMessageKey({
@@ -67,6 +114,211 @@ function telegramDisplayName(
   return "Telegram customer";
 }
 
+function largestTelegramPhoto(
+  photos: TelegramPhotoSize[],
+) {
+  return [...photos].sort(
+    (first, second) => {
+      const firstScore =
+        first.file_size ??
+        first.width * first.height;
+      const secondScore =
+        second.file_size ??
+        second.width * second.height;
+
+      return (
+        secondScore - firstScore
+      );
+    },
+  )[0] ?? null;
+}
+
+function fileFallbackText(
+  fileName:
+    | string
+    | undefined,
+) {
+  const clean =
+    fileName?.trim();
+
+  return clean
+    ? `Sent a file: ${clean}`
+    : "Sent a file";
+}
+
+function audioFallbackText(
+  audio: TelegramAudio,
+) {
+  const display =
+    audio.title?.trim() ||
+    audio.file_name?.trim();
+
+  return display
+    ? `Sent audio: ${display}`
+    : "Sent an audio file";
+}
+
+function getIncomingTelegramMedia(
+  update: TelegramUpdate,
+): IncomingTelegramMedia | null {
+  const message =
+    update.message;
+
+  if (!message) {
+    return null;
+  }
+
+  const photos =
+    message.photo ?? [];
+
+  if (photos.length > 0) {
+    const photo =
+      largestTelegramPhoto(
+        photos,
+      );
+
+    if (photo) {
+      return {
+        messageType:
+          "image",
+        storageKind:
+          "photo",
+        fileId:
+          photo.file_id,
+        fileUniqueId:
+          photo.file_unique_id ??
+          null,
+        fileName:
+          "Telegram photo",
+        mimeType:
+          null,
+        declaredSize:
+          photo.file_size ??
+          null,
+        duration:
+          null,
+        fallbackText:
+          "Sent a photo",
+      };
+    }
+  }
+
+  const voice:
+    | TelegramVoice
+    | undefined =
+    message.voice;
+
+  if (voice) {
+    return {
+      messageType:
+        "voice",
+      storageKind:
+        "voice",
+      fileId:
+        voice.file_id,
+      fileUniqueId:
+        voice.file_unique_id ??
+        null,
+      fileName:
+        "Telegram voice message",
+      mimeType:
+        voice.mime_type ??
+        "audio/ogg",
+      declaredSize:
+        voice.file_size ??
+        null,
+      duration:
+        voice.duration ??
+        null,
+      fallbackText:
+        "Sent a voice message",
+    };
+  }
+
+  const audio:
+    | TelegramAudio
+    | undefined =
+    message.audio;
+
+  if (audio) {
+    return {
+      messageType:
+        "audio",
+      storageKind:
+        "audio",
+      fileId:
+        audio.file_id,
+      fileUniqueId:
+        audio.file_unique_id ??
+        null,
+      fileName:
+        audio.file_name ??
+        audio.title ??
+        "Telegram audio",
+      mimeType:
+        audio.mime_type ??
+        null,
+      declaredSize:
+        audio.file_size ??
+        null,
+      duration:
+        audio.duration ??
+        null,
+      fallbackText:
+        audioFallbackText(
+          audio,
+        ),
+    };
+  }
+
+  const document:
+    | TelegramDocument
+    | undefined =
+    message.document;
+
+  if (document) {
+    return {
+      messageType:
+        "file",
+      storageKind:
+        "file",
+      fileId:
+        document.file_id,
+      fileUniqueId:
+        document.file_unique_id ??
+        null,
+      fileName:
+        document.file_name ??
+        "Telegram file",
+      mimeType:
+        document.mime_type ??
+        null,
+      declaredSize:
+        document.file_size ??
+        null,
+      duration:
+        null,
+      fallbackText:
+        fileFallbackText(
+          document.file_name,
+        ),
+    };
+  }
+
+  return null;
+}
+
+/*
+ * Historical export name is kept so the existing Telegram webhook route does
+ * not need to change.
+ *
+ * V3.11.7 accepts:
+ * - text
+ * - photo
+ * - document/general file
+ * - Telegram audio
+ * - Telegram voice note
+ */
 export async function processTelegramIncomingText({
   update,
   socialAccount,
@@ -78,11 +330,20 @@ export async function processTelegramIncomingText({
 }) {
   const message = update.message;
 
+  const incomingText =
+    message?.text?.trim() ??
+    "";
+
+  const media =
+    getIncomingTelegramMedia(
+      update,
+    );
+
   if (
     !message ||
     message.chat.type !== "private" ||
     message.from?.is_bot === true ||
-    !message.text
+    (!incomingText && !media)
   ) {
     return {
       saved: false,
@@ -104,6 +365,24 @@ export async function processTelegramIncomingText({
       chatId: message.chat.id,
       messageId: message.message_id,
     });
+
+  if (
+    media?.messageType ===
+    "voice"
+  ) {
+    console.info(
+      "[Tenh Telegram] Incoming voice note detected.",
+      {
+        platformMessageId,
+        declaredSize:
+          media.declaredSize,
+        duration:
+          media.duration,
+        mimeType:
+          media.mimeType,
+      },
+    );
+  }
 
   const {
     data: existingMessage,
@@ -168,16 +447,6 @@ export async function processTelegramIncomingText({
     );
   }
 
-  /*
-   * V3.11.4.1 — best-effort Telegram real avatar sync.
-   *
-   * Profile photos are NOT part of the normal incoming Message payload.
-   * Keep message delivery independent from avatar availability: if Telegram
-   * profile-photo lookup/storage fails, the incoming text must still save.
-   *
-   * We only fetch when TENH does not already have an avatar URL. This avoids
-   * adding multiple Telegram API/file calls to every customer message.
-   */
   if (
     botToken &&
     !contact.profile_picture_url &&
@@ -254,11 +523,182 @@ export async function processTelegramIncomingText({
     );
   }
 
+  const localMessageId =
+    randomUUID();
+
+  let attachmentUrl:
+    | string
+    | null = null;
+  let attachmentMimeType:
+    | string
+    | null =
+    media?.mimeType ??
+    null;
+  let attachmentSize:
+    | number
+    | null =
+    media?.declaredSize ??
+    null;
+  let mediaSaved = false;
+
+  if (
+    media &&
+    botToken
+  ) {
+    const tooLargeByMetadata =
+      typeof media.declaredSize ===
+        "number" &&
+      media.declaredSize >
+        TELEGRAM_INCOMING_MEDIA_MAX_BYTES;
+
+    if (tooLargeByMetadata) {
+      console.warn(
+        "[Tenh Telegram] Incoming media exceeds Telegram getFile download limit; saving message without local media copy.",
+        {
+          platformMessageId,
+          messageType:
+            media.messageType,
+          declaredSize:
+            media.declaredSize,
+        },
+      );
+    } else {
+      try {
+        const telegramFile =
+          await getTelegramFile({
+            token: botToken,
+            fileId:
+              media.fileId,
+          });
+
+        if (
+          !telegramFile.file_path
+        ) {
+          throw new Error(
+            "Telegram returned no file path for the incoming media.",
+          );
+        }
+
+        const downloadResponse =
+          await downloadTelegramFile({
+            token: botToken,
+            filePath:
+              telegramFile.file_path,
+          });
+
+        const arrayBuffer =
+          await downloadResponse.arrayBuffer();
+
+        if (
+          arrayBuffer.byteLength ===
+          0
+        ) {
+          throw new Error(
+            "Incoming Telegram media download was empty.",
+          );
+        }
+
+        if (
+          arrayBuffer.byteLength >
+          TELEGRAM_INCOMING_MEDIA_MAX_BYTES
+        ) {
+          throw new Error(
+            "Incoming Telegram media is larger than TENH's 20 MB Telegram download limit.",
+          );
+        }
+
+        attachmentMimeType =
+          media.messageType ===
+          "image"
+            ? inferTelegramPhotoContentType({
+                providedContentType:
+                  media.mimeType,
+                responseContentType:
+                  downloadResponse.headers.get(
+                    "content-type",
+                  ),
+                filePath:
+                  telegramFile.file_path,
+              })
+            : inferTelegramMediaContentType({
+                providedContentType:
+                  media.mimeType,
+                responseContentType:
+                  downloadResponse.headers.get(
+                    "content-type",
+                  ),
+                filePath:
+                  telegramFile.file_path,
+              });
+
+        attachmentSize =
+          arrayBuffer.byteLength;
+
+        const savedMedia =
+          await saveTelegramMessageMedia({
+            businessId:
+              socialAccount.business_id,
+            messageId:
+              localMessageId,
+            bytes:
+              new Uint8Array(
+                arrayBuffer,
+              ),
+            contentType:
+              attachmentMimeType,
+            mediaKind:
+              media.storageKind,
+          });
+
+        attachmentUrl =
+          savedMedia.attachmentUrl;
+        mediaSaved = true;
+      } catch (mediaError) {
+        console.warn(
+          "[Tenh Telegram] Incoming media sync failed; the message will still be saved.",
+          mediaError instanceof Error
+            ? mediaError.message
+            : "Unknown Telegram media error",
+        );
+      }
+    }
+  }
+
+  const messageText =
+    media
+      ? message.caption?.trim() ||
+        media.fallbackText
+      : incomingText;
+
+  const rawPayload =
+    media
+      ? {
+          ...update,
+          tenh_attachment: {
+            type:
+              media.messageType,
+            name:
+              media.fileName,
+            mime_type:
+              attachmentMimeType,
+            size:
+              attachmentSize,
+            telegram_file_id:
+              media.fileId,
+            telegram_file_unique_id:
+              media.fileUniqueId,
+            duration:
+              media.duration,
+          },
+        }
+      : update;
+
   const {
     error: messageError,
   } = await supabaseAdmin
     .from("messages")
     .insert({
+      id: localMessageId,
       business_id:
         socialAccount.business_id,
       conversation_id:
@@ -270,18 +710,35 @@ export async function processTelegramIncomingText({
       recipient_platform_id:
         botId,
       direction: "incoming",
-      message_type: "text",
-      message_text: message.text,
-      attachment_url: null,
+      message_type:
+        media?.messageType ??
+        "text",
+      message_text:
+        messageText,
+      attachment_url:
+        attachmentUrl,
       is_echo: false,
-      raw_payload: update,
+      raw_payload:
+        rawPayload,
       platform_created_at:
         messageTime,
     });
 
   if (messageError) {
-    // A retry can race the duplicate pre-check. Treat the unique constraint as
-    // an idempotent duplicate instead of failing Telegram's webhook delivery.
+    if (
+      mediaSaved &&
+      media
+    ) {
+      await deleteTelegramMessageMedia({
+        businessId:
+          socialAccount.business_id,
+        messageId:
+          localMessageId,
+        mediaKind:
+          media.storageKind,
+      });
+    }
+
     if (messageError.code === "23505") {
       return {
         saved: false,
@@ -303,7 +760,7 @@ export async function processTelegramIncomingText({
     .from("conversations")
     .update({
       last_message_text:
-        message.text,
+        messageText,
       last_message_at:
         messageTime,
       unread_count:
@@ -325,5 +782,10 @@ export async function processTelegramIncomingText({
     conversationId:
       conversation.id,
     platformMessageId,
+    messageType:
+      media?.messageType ??
+      "text",
+    attachmentSaved:
+      attachmentUrl !== null,
   };
 }

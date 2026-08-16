@@ -3,6 +3,7 @@ import "server-only";
 import type {
   TelegramApiEnvelope,
   TelegramFile,
+  TelegramMessage,
   TelegramUserProfilePhotos,
   TelegramWebhookInfo,
 } from "@/lib/telegram/types";
@@ -173,3 +174,227 @@ export async function downloadTelegramFile({
 
   return response;
 }
+
+
+export async function sendTelegramMessage({
+  token,
+  chatId,
+  text,
+}: {
+  token: string;
+  chatId: string | number;
+  text: string;
+}) {
+  return telegramRequest<TelegramMessage>(
+    token,
+    "sendMessage",
+    {
+      body: {
+        chat_id: chatId,
+        text,
+      },
+    },
+  );
+}
+
+export async function sendTelegramPhoto({
+  token,
+  chatId,
+  photo,
+  fileName,
+}: {
+  token: string;
+  chatId: string | number;
+  photo: Blob;
+  fileName: string;
+}) {
+  const formData =
+    new FormData();
+
+  formData.set(
+    "chat_id",
+    String(chatId),
+  );
+
+  formData.set(
+    "photo",
+    photo,
+    fileName ||
+      "tenh-telegram-photo.jpg",
+  );
+
+  const response = await fetch(
+    `${TELEGRAM_API_BASE}/bot${token}/sendPhoto`,
+    {
+      method: "POST",
+      body: formData,
+      cache: "no-store",
+    },
+  );
+
+  let payload:
+    TelegramApiEnvelope<TelegramMessage>;
+
+  try {
+    payload =
+      (await response.json()) as
+        TelegramApiEnvelope<TelegramMessage>;
+  } catch {
+    throw new Error(
+      "Telegram sendPhoto returned an invalid response.",
+    );
+  }
+
+  if (
+    !response.ok ||
+    payload.ok !== true ||
+    !payload.result
+  ) {
+    throw new Error(
+      payload.description ??
+        "Telegram sendPhoto failed.",
+    );
+  }
+
+  return payload.result;
+}
+
+type TelegramBinaryMethod =
+  | "sendDocument"
+  | "sendAudio"
+  | "sendVoice";
+
+type TelegramBinaryField =
+  | "document"
+  | "audio"
+  | "voice";
+
+async function sendTelegramBinaryMedia({
+  token,
+  chatId,
+  method,
+  field,
+  file,
+  fileName,
+}: {
+  token: string;
+  chatId: string | number;
+  method: TelegramBinaryMethod;
+  field: TelegramBinaryField;
+  file: Blob;
+  fileName: string;
+}) {
+  const formData =
+    new FormData();
+
+  formData.set(
+    "chat_id",
+    String(chatId),
+  );
+
+  formData.set(
+    field,
+    file,
+    fileName ||
+      `tenh-${field}`,
+  );
+
+  const response = await fetch(
+    `${TELEGRAM_API_BASE}/bot${token}/${method}`,
+    {
+      method: "POST",
+      body: formData,
+      cache: "no-store",
+    },
+  );
+
+  let payload:
+    TelegramApiEnvelope<TelegramMessage>;
+
+  try {
+    payload =
+      (await response.json()) as
+        TelegramApiEnvelope<TelegramMessage>;
+  } catch {
+    throw new Error(
+      `Telegram ${method} returned an invalid response.`,
+    );
+  }
+
+  if (
+    !response.ok ||
+    payload.ok !== true ||
+    !payload.result
+  ) {
+    throw new Error(
+      payload.description ??
+        `Telegram ${method} failed.`,
+    );
+  }
+
+  return payload.result;
+}
+
+export async function sendTelegramDocument({
+  token,
+  chatId,
+  document,
+  fileName,
+}: {
+  token: string;
+  chatId: string | number;
+  document: Blob;
+  fileName: string;
+}) {
+  return sendTelegramBinaryMedia({
+    token,
+    chatId,
+    method: "sendDocument",
+    field: "document",
+    file: document,
+    fileName,
+  });
+}
+
+export async function sendTelegramAudio({
+  token,
+  chatId,
+  audio,
+  fileName,
+}: {
+  token: string;
+  chatId: string | number;
+  audio: Blob;
+  fileName: string;
+}) {
+  return sendTelegramBinaryMedia({
+    token,
+    chatId,
+    method: "sendAudio",
+    field: "audio",
+    file: audio,
+    fileName,
+  });
+}
+
+export async function sendTelegramVoice({
+  token,
+  chatId,
+  voice,
+  fileName,
+}: {
+  token: string;
+  chatId: string | number;
+  voice: Blob;
+  fileName: string;
+}) {
+  return sendTelegramBinaryMedia({
+    token,
+    chatId,
+    method: "sendVoice",
+    field: "voice",
+    file: voice,
+    fileName,
+  });
+}
+

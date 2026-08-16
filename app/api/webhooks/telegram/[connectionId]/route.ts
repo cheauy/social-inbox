@@ -188,7 +188,7 @@ export async function POST(
 
   /*
    * Decrypt the Bot token only on the server. It is passed to the Telegram
-   * message processor only for a best-effort customer avatar lookup and is
+   * message processor for avatar sync plus supported Telegram media download and is
    * never returned to the browser or saved inside profile_picture_url.
    */
   let botToken:
@@ -205,7 +205,7 @@ export async function POST(
         );
     } catch {
       console.warn(
-        "[Tenh Telegram Webhook] Unable to decrypt Bot token for avatar sync. Incoming message processing will continue.",
+        "[Tenh Telegram Webhook] Unable to decrypt Bot token for avatar/media sync. Incoming message processing will continue without downloadable media.",
       );
     }
   }
@@ -247,14 +247,35 @@ export async function POST(
     });
   }
 
-  if (!message.text) {
-    return NextResponse.json({
-      received: true,
-      ignored: true,
-      reason:
-        "unsupported_message_type",
-    });
-  }
+  console.info(
+    "[Tenh Telegram Webhook] Private message received.",
+    {
+      connectionId:
+        connection.id,
+      messageId:
+        message.message_id,
+      hasText:
+        Boolean(
+          message.text?.trim(),
+        ),
+      hasPhoto:
+        Boolean(
+          message.photo?.length,
+        ),
+      hasDocument:
+        Boolean(
+          message.document,
+        ),
+      hasAudio:
+        Boolean(
+          message.audio,
+        ),
+      hasVoice:
+        Boolean(
+          message.voice,
+        ),
+    },
+  );
 
   try {
     const result =
@@ -276,7 +297,7 @@ export async function POST(
     });
   } catch (error) {
     console.error(
-      "[Tenh Telegram Webhook] Incoming text processing failed:",
+      "[Tenh Telegram Webhook] Incoming message processing failed:",
       error instanceof Error
         ? error.message
         : "Unknown processing error",

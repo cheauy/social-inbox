@@ -14,12 +14,53 @@ export type TelegramChat = {
   username?: string;
 };
 
+export type TelegramPhotoSize = {
+  file_id: string;
+  file_unique_id: string;
+  width: number;
+  height: number;
+  file_size?: number;
+};
+
+
+export type TelegramDocument = {
+  file_id: string;
+  file_unique_id: string;
+  file_name?: string;
+  mime_type?: string;
+  file_size?: number;
+};
+
+export type TelegramAudio = {
+  file_id: string;
+  file_unique_id: string;
+  duration: number;
+  performer?: string;
+  title?: string;
+  file_name?: string;
+  mime_type?: string;
+  file_size?: number;
+};
+
+export type TelegramVoice = {
+  file_id: string;
+  file_unique_id: string;
+  duration: number;
+  mime_type?: string;
+  file_size?: number;
+};
+
 export type TelegramMessage = {
   message_id: number;
   date: number;
   from?: TelegramUser;
   chat: TelegramChat;
   text?: string;
+  caption?: string;
+  photo?: TelegramPhotoSize[];
+  document?: TelegramDocument;
+  audio?: TelegramAudio;
+  voice?: TelegramVoice;
 };
 
 export type TelegramUpdate = {
@@ -43,14 +84,6 @@ export type TelegramWebhookInfo = {
   last_error_message?: string;
   max_connections?: number;
   allowed_updates?: string[];
-};
-
-export type TelegramPhotoSize = {
-  file_id: string;
-  file_unique_id: string;
-  width: number;
-  height: number;
-  file_size?: number;
 };
 
 export type TelegramUserProfilePhotos = {

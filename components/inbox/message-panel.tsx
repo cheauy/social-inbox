@@ -22,10 +22,6 @@ import {
   type ReplyAttachment,
 } from "@/components/inbox/reply-box";
 
-import {
-  VoiceMessagePlayer,
-} from "@/components/inbox/voice-message-player";
-
 import type {
   ConversationStatus,
   InboxConversation,
@@ -337,6 +333,71 @@ function AgentPresenceStrip({
         </span>
       ) : null}
     </div>
+  );
+}
+
+
+function HydrationSafeMessageTime({
+  value,
+}: {
+  value: string | null | undefined;
+}) {
+  const [hydrated, setHydrated] =
+    useState(false);
+
+  const [
+    relativeTimeTick,
+    setRelativeTimeTick,
+  ] = useState(0);
+
+  useEffect(() => {
+    setHydrated(true);
+
+    /*
+     * Keep relative labels such as 11m / 12m fresh after hydration.
+     * The server and the browser's FIRST render both use the same
+     * deterministic placeholder, preventing SSR hydration mismatch
+     * when a minute boundary is crossed during page load.
+     */
+    const timer =
+      window.setInterval(() => {
+        setRelativeTimeTick(
+          (current) =>
+            current + 1,
+        );
+      }, 30_000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  if (!value) {
+    return null;
+  }
+
+  if (!hydrated) {
+    return (
+      <span
+        className="inline-block min-w-[2rem]"
+        aria-label="Message time loading"
+      >
+        &nbsp;
+      </span>
+    );
+  }
+
+  /*
+   * Reading the tick is intentional: it re-renders this component
+   * periodically so formatMessageTime() can advance from e.g. 11m
+   * to 12m while the Inbox stays open.
+   */
+  void relativeTimeTick;
+
+  return (
+    <>
+      {formatMessageTime(value)}
+    </>
   );
 }
 
@@ -974,8 +1035,9 @@ export function MessagePanel({
                     type?:
                       | "image"
                       | "video"
+                      | "file"
                       | "audio"
-                      | "file";
+                      | "voice";
                     name?: string | null;
                     mime_type?: string | null;
                     size?: number | null;
@@ -1013,13 +1075,17 @@ export function MessagePanel({
                 message.message_type ===
                 "video";
 
+              const isFileMessage =
+                message.message_type ===
+                "file";
+
               const isAudioMessage =
                 message.message_type ===
                 "audio";
 
-              const isFileMessage =
+              const isVoiceMessage =
                 message.message_type ===
-                "file";
+                "voice";
 
               const attachmentName =
                 attachmentMeta?.name?.trim() ||
@@ -1028,9 +1094,11 @@ export function MessagePanel({
                   ? "Photo"
                   : isVideoMessage
                     ? "Video"
-                    : isAudioMessage
+                    : isVoiceMessage
                       ? "Voice message"
-                      : "File");
+                      : isAudioMessage
+                        ? "Audio"
+                        : "File");
 
               const postUrl =
                 postPreview
@@ -1453,26 +1521,33 @@ export function MessagePanel({
                               {attachmentName}
                             </p>
                           </div>
-                        ) : isAudioMessage ? (
-                          <div className="max-w-[360px]">
+                        ) : isAudioMessage ||
+                          isVoiceMessage ? (
+                          <div className="min-w-[260px]">
+                            <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                              <span aria-hidden="true">
+                                {isVoiceMessage
+                                  ? "🎙️"
+                                  : "🎵"}
+                              </span>
+
+                              <span className="truncate">
+                                {attachmentName}
+                              </span>
+                            </div>
+
                             {attachmentUrl ? (
-                              <VoiceMessagePlayer
+                              <audio
                                 src={attachmentUrl}
-                                isOutgoing={isOutgoing}
+                                controls
+                                preload="metadata"
+                                className="mt-2 w-full max-w-[360px]"
                               />
                             ) : (
-                              <div className="flex min-h-16 min-w-[260px] items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm">
-                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-lg">
-                                  🎤
-                                </span>
-                                <div>
-                                  <p className="text-sm font-semibold text-slate-800">
-                                    Voice message
-                                  </p>
-                                  <p className="text-xs text-slate-400">
-                                    This older audio message has no saved media URL.
-                                  </p>
-                                </div>
+                              <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                                {isVoiceMessage
+                                  ? "Voice message received, but the audio file is not available locally."
+                                  : "Audio received, but the audio file is not available locally."}
                               </div>
                             )}
                           </div>
@@ -1506,7 +1581,7 @@ export function MessagePanel({
                                   {attachmentName}
                                 </span>
                                 <span className="text-xs text-slate-400">
-                                  File sent
+                                  File received, but the local download is unavailable.
                                 </span>
                               </span>
                             </div>
@@ -1532,10 +1607,12 @@ export function MessagePanel({
                           }`}
                         >
                           <span className="text-slate-500">
-                            {formatMessageTime(
-                              message.platform_created_at ??
-                                message.created_at,
-                            )}
+                            <HydrationSafeMessageTime
+                              value={
+                                message.platform_created_at ??
+                                message.created_at
+                              }
+                            />
                           </span>
 
                           {isOutgoing ? (
@@ -1570,13 +1647,7 @@ export function MessagePanel({
                               "seen" ? (
                               <span
                                 className="font-semibold text-blue-600"
-                                title={
-                                  messageStatus.seen_at
-                                    ? `Seen ${formatMessageTime(
-                                        messageStatus.seen_at,
-                                      )}`
-                                    : "Seen"
-                                }
+                                title="Seen"
                               >
                                 ✓✓ Seen
                               </span>
@@ -1584,13 +1655,7 @@ export function MessagePanel({
                               "delivered" ? (
                               <span
                                 className="font-medium text-emerald-600"
-                                title={
-                                  messageStatus.delivered_at
-                                    ? `Delivered ${formatMessageTime(
-                                        messageStatus.delivered_at,
-                                      )}`
-                                    : "Delivered"
-                                }
+                                title="Delivered"
                               >
                                 ✓✓ Delivered
                               </span>

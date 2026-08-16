@@ -15,7 +15,6 @@ import type { FormEvent } from "react";
 
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { CustomerProfile } from "@/components/inbox/customer-profile";
-import { CustomerTimelineModal } from "@/components/inbox/customer-timeline-modal";
 import type { InboxViewProps } from "@/components/inbox/inbox-view-types";
 import { MessagePanel } from "@/components/inbox/message-panel";
 import type {
@@ -82,7 +81,47 @@ type PendingOptimisticAttachmentSend = {
   kind: ReplyAttachmentKind;
   previewUrl: string;
   messageText: string;
+  endpoint: string;
 };
+
+
+type InboxConversationPlatform =
+  | "facebook"
+  | "telegram";
+
+type PlatformAwareConversation =
+  InboxConversation & {
+    platform?: string | null;
+    social_account:
+      | (InboxConversation["social_account"] & {
+          platform?: string | null;
+        })
+      | null;
+  };
+
+function getLoadedConversationPlatform(
+  conversation: InboxConversation,
+): InboxConversationPlatform | null {
+  const platformAware =
+    conversation as
+      PlatformAwareConversation;
+
+  const platform =
+    platformAware.platform ??
+    platformAware.social_account
+      ?.platform ??
+    null;
+
+  if (platform === "telegram") {
+    return "telegram";
+  }
+
+  if (platform === "facebook") {
+    return "facebook";
+  }
+
+  return null;
+}
 
 
 /*
@@ -440,6 +479,24 @@ const skipAutomaticReadRef =
       Record<
         string,
         PendingOptimisticAttachmentSend
+      >
+    >({});
+
+
+  /*
+   * V3.11.5 — conversation platform cache.
+   *
+   * Newer Inbox payloads may already contain conversation.platform or
+   * social_account.platform. Older enriched payloads do not, so TENH resolves
+   * it once from a small authenticated route and caches the result per thread.
+   * This avoids replacing the existing conversation loader just to add
+   * Telegram text sending.
+   */
+  const conversationPlatformCacheRef =
+    useRef<
+      Record<
+        string,
+        InboxConversationPlatform
       >
     >({});
 
@@ -2590,6 +2647,88 @@ function updateConversationPreviewOptimistically({
   );
 }
 
+async function resolveConversationPlatform(
+  conversation: InboxConversation,
+): Promise<InboxConversationPlatform> {
+  const loadedPlatform =
+    getLoadedConversationPlatform(
+      conversation,
+    );
+
+  if (loadedPlatform) {
+    conversationPlatformCacheRef
+      .current[conversation.id] =
+      loadedPlatform;
+
+    return loadedPlatform;
+  }
+
+  const cached =
+    conversationPlatformCacheRef
+      .current[conversation.id];
+
+  if (cached) {
+    return cached;
+  }
+
+  const response =
+    await fetch(
+      `/api/inbox/conversations/${encodeURIComponent(
+        conversation.id,
+      )}/channel`,
+      {
+        method: "GET",
+        cache: "no-store",
+      },
+    );
+
+  const responseText =
+    await response.text();
+
+  let result: {
+    success?: boolean;
+    error?: string;
+    platform?:
+      | "facebook"
+      | "telegram";
+  } = {};
+
+  if (responseText.trim()) {
+    try {
+      result =
+        JSON.parse(
+          responseText,
+        ) as typeof result;
+    } catch {
+      result = {
+        success: false,
+        error:
+          "The channel API returned invalid JSON.",
+      };
+    }
+  }
+
+  if (
+    !response.ok ||
+    !result.success ||
+    (result.platform !==
+      "facebook" &&
+      result.platform !==
+        "telegram")
+  ) {
+    throw new Error(
+      result.error ??
+        "Unable to resolve this conversation channel.",
+    );
+  }
+
+  conversationPlatformCacheRef
+    .current[conversation.id] =
+    result.platform;
+
+  return result.platform;
+}
+
 async function performOptimisticSend(
   pending:
     PendingOptimisticSend,
@@ -2727,10 +2866,16 @@ async function performOptimisticAttachmentSend(
       "conversationId",
       pending.conversationId,
     );
-    formData.set(
-      "recipientId",
-      pending.recipientId,
-    );
+    if (
+      pending.endpoint ===
+      "/api/facebook/send-attachment"
+    ) {
+      formData.set(
+        "recipientId",
+        pending.recipientId,
+      );
+    }
+
     formData.set(
       "kind",
       pending.kind,
@@ -2743,7 +2888,7 @@ async function performOptimisticAttachmentSend(
 
     const response =
       await fetch(
-        "/api/facebook/send-attachment",
+        pending.endpoint,
         {
           method: "POST",
           body: formData,
@@ -2864,6 +3009,56 @@ async function handleSendAttachments(
     return false;
   }
 
+  let conversationPlatform:
+    InboxConversationPlatform;
+
+  try {
+    conversationPlatform =
+      await resolveConversationPlatform(
+        activeConversation,
+      );
+  } catch (error) {
+    setSendError(
+      error instanceof Error
+        ? error.message
+        : "Unable to resolve this conversation channel.",
+    );
+    return false;
+  }
+
+  if (
+    conversationPlatform ===
+    "telegram"
+  ) {
+    const unsupported =
+      attachments.find(
+        (attachment) =>
+          attachment.kind ===
+          "video",
+      );
+
+    if (unsupported) {
+      setSendError(
+        "Telegram V3.11.7 supports photos, documents/files, MP3/M4A audio, and OGG/OPUS voice. Video will be added separately.",
+      );
+      return false;
+    }
+
+    const tooLarge =
+      attachments.find(
+        (attachment) =>
+          attachment.file.size >
+          4 * 1024 * 1024,
+      );
+
+    if (tooLarge) {
+      setSendError(
+        "For reliable Vercel delivery, TENH Telegram media uploads are currently limited to 4 MB each.",
+      );
+      return false;
+    }
+  }
+
   let allSucceeded = true;
 
   for (const attachment of attachments) {
@@ -2889,6 +3084,15 @@ async function handleSendAttachments(
         attachment.file.name,
       );
 
+    const attachmentEndpoint =
+      conversationPlatform ===
+        "telegram"
+        ? attachment.kind ===
+            "image"
+          ? "/api/telegram/send-photo"
+          : "/api/telegram/send-media"
+        : "/api/facebook/send-attachment";
+
     const pending:
       PendingOptimisticAttachmentSend = {
         tempId,
@@ -2901,6 +3105,8 @@ async function handleSendAttachments(
         kind: attachment.kind,
         previewUrl,
         messageText,
+        endpoint:
+          attachmentEndpoint,
       };
 
     pendingAttachmentSendsRef
@@ -3015,6 +3221,26 @@ async function handleSendMessage(
     return;
   }
 
+  let conversationPlatform:
+    InboxConversationPlatform =
+      "facebook";
+
+  if (!isCommentConversation) {
+    try {
+      conversationPlatform =
+        await resolveConversationPlatform(
+          activeConversation,
+        );
+    } catch (error) {
+      setSendError(
+        error instanceof Error
+          ? error.message
+          : "Unable to resolve this conversation channel.",
+      );
+      return;
+    }
+  }
+
   const randomId =
     typeof crypto !==
       "undefined" &&
@@ -3029,7 +3255,10 @@ async function handleSendMessage(
   const endpoint =
     isCommentConversation
       ? "/api/facebook/comments/reply"
-      : "/api/facebook/send";
+      : conversationPlatform ===
+          "telegram"
+        ? "/api/telegram/send"
+        : "/api/facebook/send";
 
   const requestBody:
     Record<string, unknown> =
@@ -3040,15 +3269,22 @@ async function handleSendMessage(
           commentId,
           message,
         }
-      : {
-          conversationId:
-            activeConversation.id,
-          recipientId:
-            activeConversation
-              .contact
-              .platform_user_id,
-          message,
-        };
+      : conversationPlatform ===
+          "telegram"
+        ? {
+            conversationId:
+              activeConversation.id,
+            message,
+          }
+        : {
+            conversationId:
+              activeConversation.id,
+            recipientId:
+              activeConversation
+                .contact
+                .platform_user_id,
+            message,
+          };
 
   const pending:
     PendingOptimisticSend = {
@@ -3458,22 +3694,6 @@ return (
         />
       ) : null}
     </div>
-
-   {historyOpen &&
-   activeConversation?.contact?.id ? (
-     <CustomerTimelineModal
-       contactId={
-         activeConversation.contact.id
-       }
-       customerName={
-         activeConversation.contact.full_name ??
-         "Facebook customer"
-       }
-       onClose={() =>
-         setHistoryOpen(false)
-       }
-     />
-   ) : null}
 
    {!customerPanelVisible && (
   <button
