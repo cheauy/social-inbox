@@ -609,6 +609,21 @@ export async function POST(
     });
 
   /*
+   * Telegram can still use the native sendVoice API externally, while TENH
+   * stores voice content with the existing canonical message_type = "audio".
+   */
+  const tenhMediaKind:
+    TelegramStoredMediaKind =
+    mediaKind === "voice"
+      ? "audio"
+      : mediaKind;
+
+  const tenhMessageType =
+    mediaKind === "voice"
+      ? "audio"
+      : mediaKind;
+
+  /*
    * Do not silently turn a microphone recording into a Telegram document.
    * If the browser could only record WebM, return a clear error instead.
    * ReplyBox V3.11.7.3 prefers OGG/OPUS or M4A before WebM.
@@ -760,7 +775,7 @@ export async function POST(
           fileBytes,
         contentType,
         mediaKind:
-          mediaKind as TelegramStoredMediaKind,
+          tenhMediaKind,
       });
 
     attachmentUrl =
@@ -781,6 +796,8 @@ export async function POST(
     tenh_attachment: {
       type:
         mediaKind,
+      tenh_message_type:
+        tenhMessageType,
       name:
         file.name ||
         (mediaKind ===
@@ -814,7 +831,7 @@ export async function POST(
           chatId,
         direction: "outgoing",
         message_type:
-          mediaKind,
+          tenhMessageType,
         message_text:
           messageText,
         sent_by_member_id:
@@ -846,7 +863,7 @@ export async function POST(
         messageId:
           localMessageId,
         mediaKind:
-          mediaKind as TelegramStoredMediaKind,
+          tenhMediaKind,
       });
     }
 
@@ -904,6 +921,7 @@ export async function POST(
     success: true,
     platform: "telegram",
     mediaKind,
+    tenhMessageType,
     messageId:
       platformMessageId,
     message:

@@ -60,6 +60,11 @@ type IncomingTelegramMedia = {
   duration:
     | number
     | null;
+  telegramMediaKind?:
+    | "photo"
+    | "file"
+    | "audio"
+    | "voice";
   fallbackText: string;
 };
 
@@ -209,10 +214,17 @@ function getIncomingTelegramMedia(
     message.voice;
 
   if (voice) {
+    /*
+     * TENH already uses "audio" as the canonical Inbox/database type for
+     * voice messages. Keep Telegram's native voice subtype in raw_payload,
+     * but store/render through the existing audio path.
+     */
     return {
       messageType:
-        "voice",
+        "audio",
       storageKind:
+        "audio",
+      telegramMediaKind:
         "voice",
       fileId:
         voice.file_id,
@@ -367,8 +379,8 @@ export async function processTelegramIncomingText({
     });
 
   if (
-    media?.messageType ===
-    "voice"
+    message.voice &&
+    media
   ) {
     console.info(
       "[Tenh Telegram] Incoming voice note detected.",
@@ -676,6 +688,9 @@ export async function processTelegramIncomingText({
           ...update,
           tenh_attachment: {
             type:
+              media.telegramMediaKind ??
+              media.messageType,
+            tenh_message_type:
               media.messageType,
             name:
               media.fileName,
