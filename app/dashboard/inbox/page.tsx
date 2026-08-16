@@ -18,101 +18,58 @@ const validStatuses =
 
 type InboxPageProps = {
   searchParams: Promise<{
-    conversation?:
-      | string
-      | string[];
-    status?:
-      | string
-      | string[];
-    view?:
-      | string
-      | string[];
+    conversation?: string | string[];
+    status?: string | string[];
+    channel?: string | string[];
+    page?: string | string[];
   }>;
 };
 
 function getSingleSearchParam(
-  value:
-    | string
-    | string[]
-    | undefined,
+  value: string | string[] | undefined,
 ): string | null {
-  if (
-    Array.isArray(
-      value,
-    )
-  ) {
-    return (
-      value[0]?.trim() ||
-      null
-    );
+  if (Array.isArray(value)) {
+    return value[0]?.trim() || null;
   }
 
-  return (
-    value?.trim() ||
-    null
-  );
+  return value?.trim() || null;
 }
 
 export default async function InboxPage({
   searchParams,
 }: InboxPageProps) {
-  const params =
-    await searchParams;
+  const params = await searchParams;
 
-  const requestedConversationId =
+  const [
+    allConversations,
+    teamMembers,
+  ] = await Promise.all([
+    getConversations(),
+    getTeamMembers(),
+  ]);
+
+  /*
+   * V3.11.4 generic channel selector.
+   *
+   * `page` is the legacy V3.1.17 Facebook Page key.
+   * Keep accepting it so old Inbox/Page links continue to work.
+   */
+  const selectedChannelId =
     getSingleSearchParam(
-      params.conversation,
+      params.channel,
+    ) ??
+    getSingleSearchParam(
+      params.page,
     );
 
-  /*
-   * V3.1.1 performance:
-   * On a normal conversation click we already know the requested ID
-   * from the URL, so load its messages in parallel with the Inbox
-   * conversation/team data instead of waiting for getConversations()
-   * to finish first.
-   */
-  const [
-    allConversationsResult,
-    teamMembersResult,
-    requestedMessagesResult,
-  ] =
-    await Promise.all([
-      getConversations(),
-      getTeamMembers(),
-      requestedConversationId
-        ? getMessages(
-            requestedConversationId,
-          )
-        : Promise.resolve(
-            null,
-          ),
-    ]);
-
-  /*
-   * V3.1.5 defensive normalization.
-   * Older helper versions / partial dev hot reloads must never
-   * make the Inbox crash by calling .length/.filter on undefined.
-   */
-  const allConversations =
-    Array.isArray(
-      allConversationsResult,
-    )
-      ? allConversationsResult
-      : [];
-
-  const teamMembers =
-    Array.isArray(
-      teamMembersResult,
-    )
-      ? teamMembersResult
-      : [];
-
-  const requestedMessages =
-    Array.isArray(
-      requestedMessagesResult,
-    )
-      ? requestedMessagesResult
-      : null;
+  const channelConversations =
+    selectedChannelId
+      ? allConversations.filter(
+          (conversation) =>
+            conversation.social_account?.id ===
+            selectedChannelId,
+        )
+      : allConversations;
 
   const requestedStatus =
     getSingleSearchParam(
@@ -124,52 +81,46 @@ export default async function InboxPage({
     | "all" =
     requestedStatus &&
     validStatuses.has(
-      requestedStatus as
-        ConversationStatus,
+      requestedStatus as ConversationStatus,
     )
-      ? (
-          requestedStatus as
-            ConversationStatus
-        )
+      ? (requestedStatus as ConversationStatus)
       : "all";
 
   const filteredConversations =
     activeStatus === "all"
-      ? allConversations
-      : allConversations.filter(
-          (
-            conversation,
-          ) =>
+      ? channelConversations
+      : channelConversations.filter(
+          (conversation) =>
             conversation.status ===
             activeStatus,
         );
 
+  const requestedConversationId =
+    getSingleSearchParam(
+      params.conversation,
+    );
+
   /*
-   * Find the URL-requested conversation from the complete list.
-   * The preloaded requestedMessages are only rendered when this
-   * conversation belongs to the authenticated business list.
+   * Find the URL-requested conversation from the
+   * complete list—not only from the filtered list.
    */
   const requestedConversation =
     requestedConversationId
-      ? allConversations.find(
-          (
-            conversation,
-          ) =>
+      ? channelConversations.find(
+          (conversation) =>
             conversation.id ===
             requestedConversationId,
         ) ?? null
       : null;
 
   /*
-   * If a status filter hides the requested conversation,
-   * include it temporarily so the active chat is stable.
+   * If a status filter hides the requested
+   * conversation, include it temporarily.
    */
   const visibleConversations =
     requestedConversation &&
     !filteredConversations.some(
-      (
-        conversation,
-      ) =>
+      (conversation) =>
         conversation.id ===
         requestedConversation.id,
     )
@@ -179,69 +130,56 @@ export default async function InboxPage({
         ]
       : filteredConversations;
 
+  /*
+   * This exact ID controls both the header
+   * and the loaded messages.
+   */
   const activeConversationId =
     requestedConversation?.id ??
-    visibleConversations[0]
-      ?.id ??
+    visibleConversations[0]?.id ??
     null;
 
   const messages =
-    requestedConversation
-      ? (
-          requestedMessages ??
-          []
+    activeConversationId
+      ? await getMessages(
+          activeConversationId,
         )
-      : activeConversationId
-        ? await getMessages(
-            activeConversationId,
-          )
-        : [];
+      : [];
 
   const statusCounts = {
-    all:
-      allConversations.length,
+    all: channelConversations.length,
 
     open:
-      allConversations.filter(
-        (
-          conversation,
-        ) =>
+      channelConversations.filter(
+        (conversation) =>
           conversation.status ===
           "open",
       ).length,
 
     pending:
-      allConversations.filter(
-        (
-          conversation,
-        ) =>
+      channelConversations.filter(
+        (conversation) =>
           conversation.status ===
           "pending",
       ).length,
 
     resolved:
-      allConversations.filter(
-        (
-          conversation,
-        ) =>
+      channelConversations.filter(
+        (conversation) =>
           conversation.status ===
           "resolved",
       ).length,
 
     closed:
-      allConversations.filter(
-        (
-          conversation,
-        ) =>
+      channelConversations.filter(
+        (conversation) =>
           conversation.status ===
           "closed",
       ).length,
 
     spam:
       allConversations.filter(
-        (
-          conversation,
-        ) =>
+        (conversation) =>
           conversation.status ===
           "spam",
       ).length,
@@ -251,24 +189,20 @@ export default async function InboxPage({
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
       <div className="min-h-0 flex-1 overflow-hidden">
         <InboxView
+          key={
+            activeConversationId ??
+            "empty-inbox"
+          }
           conversations={
             visibleConversations
           }
           activeConversationId={
             activeConversationId
           }
-          messages={
-            messages
-          }
-          activeStatus={
-            activeStatus
-          }
-          statusCounts={
-            statusCounts
-          }
-          teamMembers={
-            teamMembers
-          }
+          messages={messages}
+          activeStatus={activeStatus}
+          statusCounts={statusCounts}
+          teamMembers={teamMembers}
         />
       </div>
     </div>

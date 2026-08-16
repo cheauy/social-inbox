@@ -35,6 +35,9 @@ type TelegramWebhookConnectionRow = {
   platform_account_id: string | null;
   is_active: boolean | null;
   telegram_token_status: string | null;
+  telegram_bot_token_encrypted:
+    | string
+    | null;
   telegram_webhook_secret_encrypted:
     | string
     | null;
@@ -93,6 +96,7 @@ export async function POST(
       platform_account_id,
       is_active,
       telegram_token_status,
+      telegram_bot_token_encrypted,
       telegram_webhook_secret_encrypted,
       telegram_webhook_status
     `)
@@ -182,6 +186,30 @@ export async function POST(
     );
   }
 
+  /*
+   * Decrypt the Bot token only on the server. It is passed to the Telegram
+   * message processor only for a best-effort customer avatar lookup and is
+   * never returned to the browser or saved inside profile_picture_url.
+   */
+  let botToken:
+    | string
+    | null = null;
+
+  if (
+    connection.telegram_bot_token_encrypted
+  ) {
+    try {
+      botToken =
+        decryptChannelCredential(
+          connection.telegram_bot_token_encrypted,
+        );
+    } catch {
+      console.warn(
+        "[Tenh Telegram Webhook] Unable to decrypt Bot token for avatar sync. Incoming message processing will continue.",
+      );
+    }
+  }
+
   let update: TelegramUpdate;
 
   try {
@@ -239,6 +267,7 @@ export async function POST(
           platform_account_id:
             connection.platform_account_id,
         },
+        botToken,
       });
 
     return NextResponse.json({

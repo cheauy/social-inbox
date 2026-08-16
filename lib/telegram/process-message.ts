@@ -6,6 +6,9 @@ import {
 import type {
   TelegramUpdate,
 } from "@/lib/telegram/types";
+import {
+  syncTelegramContactProfilePhoto,
+} from "@/lib/telegram/telegram-profile-photo";
 
 type TelegramSocialAccount = {
   id: string;
@@ -67,9 +70,11 @@ function telegramDisplayName(
 export async function processTelegramIncomingText({
   update,
   socialAccount,
+  botToken,
 }: {
   update: TelegramUpdate;
   socialAccount: TelegramSocialAccount;
+  botToken?: string | null;
 }) {
   const message = update.message;
 
@@ -151,7 +156,9 @@ export async function processTelegramIncomingText({
           "business_id,platform,platform_user_id",
       },
     )
-    .select("id")
+    .select(
+      "id,profile_picture_url",
+    )
     .single();
 
   if (contactError || !contact) {
@@ -159,6 +166,57 @@ export async function processTelegramIncomingText({
       contactError?.message ??
         "Unable to create Telegram contact.",
     );
+  }
+
+  /*
+   * V3.11.4.1 — best-effort Telegram real avatar sync.
+   *
+   * Profile photos are NOT part of the normal incoming Message payload.
+   * Keep message delivery independent from avatar availability: if Telegram
+   * profile-photo lookup/storage fails, the incoming text must still save.
+   *
+   * We only fetch when TENH does not already have an avatar URL. This avoids
+   * adding multiple Telegram API/file calls to every customer message.
+   */
+  if (
+    botToken &&
+    !contact.profile_picture_url &&
+    message.from?.id
+  ) {
+    try {
+      const avatarResult =
+        await syncTelegramContactProfilePhoto({
+          token: botToken,
+          userId:
+            message.from.id,
+          businessId:
+            socialAccount.business_id,
+          contactId:
+            contact.id,
+        });
+
+      console.info(
+        "[Tenh Telegram] Customer avatar sync result:",
+        {
+          contactId:
+            contact.id,
+          synced:
+            avatarResult.synced,
+          reason:
+            avatarResult.reason,
+          totalCount:
+            avatarResult.totalCount ??
+            null,
+        },
+      );
+    } catch (avatarError) {
+      console.warn(
+        "[Tenh Telegram] Customer avatar sync failed; message processing will continue.",
+        avatarError instanceof Error
+          ? avatarError.message
+          : "Unknown Telegram avatar error",
+      );
+    }
   }
 
   const {

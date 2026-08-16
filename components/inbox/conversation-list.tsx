@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import {
@@ -25,6 +25,9 @@ import {
   getStatusLabel,
   statusOptions,
 } from "@/components/inbox/inbox-utils";
+import {
+  InboxChannelSelector,
+} from "@/components/inbox/inbox-channel-selector";
 
 type ConversationListProps = {
   conversations:
@@ -83,19 +86,6 @@ type ViewsResponse = {
   error?: string;
   memberId?: string;
   views?: SavedView[];
-};
-
-type FacebookPageOption = {
-  id: string;
-  pageId: string | null;
-  name: string;
-  tokenStatus: string | null;
-};
-
-type FacebookPagesResponse = {
-  success?: boolean;
-  error?: string;
-  pages?: FacebookPageOption[];
 };
 
 type ViewEditorState = {
@@ -684,6 +674,7 @@ export function ConversationList({
   conversations,
   activeConversationId,
   activeStatus,
+  statusCounts,
 }: ConversationListProps) {
   const router =
     useRouter();
@@ -691,34 +682,18 @@ export function ConversationList({
   const searchParams =
     useSearchParams();
 
-  const selectedPageId =
-    searchParams.get("page")?.trim() ||
-    "all";
-
-  const [
-    facebookPages,
-    setFacebookPages,
-  ] =
-    useState<
-      FacebookPageOption[]
-    >([]);
-
-  const [
-    facebookPagesLoading,
-    setFacebookPagesLoading,
-  ] =
-    useState(true);
-
-  const [
-    facebookPagesError,
-    setFacebookPagesError,
-  ] =
-    useState<
-      string | null
-    >(null);
+  /*
+   * Generic V3.11.4 channel key.
+   * `page` remains a read-only compatibility alias
+   * for older Facebook Page Inbox links.
+   */
+  const selectedChannelId =
+    searchParams.get("channel") ??
+    searchParams.get("page");
 
   const [search, setSearch] =
     useState("");
+
   // Hydration-safe localized timestamps.
   // The server and browser can resolve locale/timezone differently,
   // so render timestamps only after the client has mounted.
@@ -826,73 +801,6 @@ export function ConversationList({
   }, [
     searchParams,
   ]);
-
-  useEffect(() => {
-    let cancelled =
-      false;
-
-    async function loadFacebookPages() {
-      setFacebookPagesLoading(
-        true,
-      );
-      setFacebookPagesError(
-        null,
-      );
-
-      try {
-        const response =
-          await fetch(
-            "/api/inbox/facebook-pages",
-            {
-              cache:
-                "no-store",
-            },
-          );
-
-        const result =
-          (await response.json()) as
-            FacebookPagesResponse;
-
-        if (
-          !response.ok ||
-          !result.success
-        ) {
-          throw new Error(
-            result.error ??
-              "Unable to load Facebook Pages.",
-          );
-        }
-
-        if (!cancelled) {
-          setFacebookPages(
-            result.pages ??
-              [],
-          );
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setFacebookPagesError(
-            error instanceof Error
-              ? error.message
-              : "Unable to load Facebook Pages.",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setFacebookPagesLoading(
-            false,
-          );
-        }
-      }
-    }
-
-    void loadFacebookPages();
-
-    return () => {
-      cancelled =
-        true;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled =
@@ -1033,32 +941,6 @@ export function ConversationList({
       },
       [conversations],
     );
-
-  const effectiveStatusCounts =
-    useMemo(() => {
-      const counts: StatusCounts = {
-        all:
-          conversations.length,
-        open: 0,
-        pending: 0,
-        resolved: 0,
-        closed: 0,
-        spam: 0,
-      };
-
-      for (
-        const conversation of
-        conversations
-      ) {
-        counts[
-          conversation.status
-        ] += 1;
-      }
-
-      return counts;
-    }, [
-      conversations,
-    ]);
 
   const totalUnreadCount =
     useMemo(
@@ -1318,13 +1200,10 @@ export function ConversationList({
     const query =
       new URLSearchParams();
 
-    if (
-      selectedPageId !==
-      "all"
-    ) {
+    if (selectedChannelId) {
       query.set(
-        "page",
-        selectedPageId,
+        "channel",
+        selectedChannelId,
       );
     }
 
@@ -1350,39 +1229,6 @@ export function ConversationList({
     router.push(
       queryString
         ? `/dashboard/inbox?${queryString}`
-        : "/dashboard/inbox",
-    );
-  }
-
-  function changeFacebookPage(
-    nextPageId: string,
-  ) {
-    const query =
-      new URLSearchParams(
-        searchParams.toString(),
-      );
-
-    query.delete(
-      "conversation",
-    );
-
-    if (
-      nextPageId ===
-      "all"
-    ) {
-      query.delete(
-        "page",
-      );
-    } else {
-      query.set(
-        "page",
-        nextPageId,
-      );
-    }
-
-    router.push(
-      query.toString()
-        ? `/dashboard/inbox?${query.toString()}`
         : "/dashboard/inbox",
     );
   }
@@ -1759,7 +1605,7 @@ export function ConversationList({
                     "unread" &&
                   totalUnreadCount >
                     0
-                    ? ` Â· ${totalUnreadCount} message${
+                    ? ` · ${totalUnreadCount} message${
                         totalUnreadCount ===
                         1
                           ? ""
@@ -1770,7 +1616,7 @@ export function ConversationList({
                           ? ""
                           : "s"
                       }`
-                    : ` Â· ${view.count}`}
+                    : ` · ${view.count}`}
 
                   <span className="absolute right-full top-1/2 -translate-y-1/2 border-y-4 border-r-4 border-y-transparent border-r-slate-950" />
                 </span>
@@ -2475,66 +2321,7 @@ export function ConversationList({
       ) : null}
 
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="shrink-0 border-b border-slate-200 bg-slate-50/70 px-3 py-2.5">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white">
-              f
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <select
-                value={
-                  selectedPageId
-                }
-                onChange={(
-                  event,
-                ) =>
-                  changeFacebookPage(
-                    event.target.value,
-                  )
-                }
-                disabled={
-                  facebookPagesLoading
-                }
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-wait disabled:bg-slate-50 disabled:text-slate-400"
-                aria-label="Select Facebook Page"
-              >
-                <option value="all">
-                  All Facebook Pages
-                </option>
-
-                {facebookPages.map(
-                  (page) => (
-                    <option
-                      key={
-                        page.id
-                      }
-                      value={
-                        page.id
-                      }
-                    >
-                      {page.name}
-                    </option>
-                  ),
-                )}
-              </select>
-
-              {facebookPagesError ? (
-                <p className="mt-1 truncate text-[11px] text-red-600">
-                  {facebookPagesError}
-                </p>
-              ) : null}
-            </div>
-
-            <Link
-              href="/dashboard/integrations"
-              className="shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-              title="Manage Facebook Pages"
-            >
-              Manage
-            </Link>
-          </div>
-        </div>
+        <InboxChannelSelector />
 
         <div className="relative shrink-0 border-b border-slate-200 p-3">
           <div className="flex items-center gap-2">
@@ -2670,12 +2457,11 @@ export function ConversationList({
                         new URLSearchParams();
 
                       if (
-                        selectedPageId !==
-                        "all"
+                        selectedChannelId
                       ) {
                         statusQuery.set(
-                          "page",
-                          selectedPageId,
+                          "channel",
+                          selectedChannelId,
                         );
                       }
 
@@ -2751,7 +2537,7 @@ export function ConversationList({
                             }`}
                           >
                             {
-                              effectiveStatusCounts[
+                              statusCounts[
                                 filter.value
                               ]
                             }
@@ -2787,10 +2573,9 @@ export function ConversationList({
 
                 <Link
                   href={
-                    selectedPageId !==
-                    "all"
-                      ? `/dashboard/inbox?page=${encodeURIComponent(
-                          selectedPageId,
+                    selectedChannelId
+                      ? `/dashboard/inbox?channel=${encodeURIComponent(
+                          selectedChannelId,
                         )}`
                       : "/dashboard/inbox"
                   }
@@ -2808,7 +2593,7 @@ export function ConversationList({
                 {
                   activeViewLabel
                 }{" "}
-                Â·{" "}
+                ·{" "}
                 {
                   baseViewConversations.length
                 }
@@ -2853,7 +2638,13 @@ export function ConversationList({
                 const customerName =
                   conversation.contact
                     ?.full_name ??
-                  "Facebook customer";
+                  "Customer";
+
+                const customerAvatarUrl =
+                  conversation.contact
+                    ?.profile_picture_url
+                    ?.trim() ||
+                  null;
 
                 const isActive =
                   conversation.id ===
@@ -2868,12 +2659,11 @@ export function ConversationList({
                 );
 
                 if (
-                  selectedPageId !==
-                  "all"
+                  selectedChannelId
                 ) {
                   query.set(
-                    "page",
-                    selectedPageId,
+                    "channel",
+                    selectedChannelId,
                   );
                 }
 
@@ -2909,11 +2699,22 @@ export function ConversationList({
                         : "hover:bg-slate-50"
                     }`}
                   >
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-100 font-semibold text-blue-700">
-                      {getInitial(
-                        customerName,
-                      )}
-                    </div>
+                    {customerAvatarUrl ? (
+                      <img
+                        src={
+                          customerAvatarUrl
+                        }
+                        alt=""
+                        referrerPolicy="no-referrer"
+                        className="h-12 w-12 shrink-0 rounded-full bg-slate-100 object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-100 font-semibold text-blue-700">
+                        {getInitial(
+                          customerName,
+                        )}
+                      </div>
+                    )}
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
@@ -3020,4 +2821,3 @@ export function ConversationList({
     </section>
   );
 }
-

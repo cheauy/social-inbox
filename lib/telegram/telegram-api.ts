@@ -2,6 +2,8 @@ import "server-only";
 
 import type {
   TelegramApiEnvelope,
+  TelegramFile,
+  TelegramUserProfilePhotos,
   TelegramWebhookInfo,
 } from "@/lib/telegram/types";
 
@@ -108,4 +110,66 @@ export async function getTelegramWebhookInfo(
     token,
     "getWebhookInfo",
   );
+}
+
+export async function getTelegramUserProfilePhotos({
+  token,
+  userId,
+}: {
+  token: string;
+  userId: number;
+}) {
+  return telegramRequest<TelegramUserProfilePhotos>(
+    token,
+    "getUserProfilePhotos",
+    {
+      body: {
+        user_id: userId,
+        offset: 0,
+        limit: 1,
+      },
+    },
+  );
+}
+
+export async function getTelegramFile({
+  token,
+  fileId,
+}: {
+  token: string;
+  fileId: string;
+}) {
+  return telegramRequest<TelegramFile>(
+    token,
+    "getFile",
+    {
+      body: {
+        file_id: fileId,
+      },
+    },
+  );
+}
+
+export async function downloadTelegramFile({
+  token,
+  filePath,
+}: {
+  token: string;
+  filePath: string;
+}) {
+  const response = await fetch(
+    `${TELEGRAM_API_BASE}/file/bot${token}/${filePath}`,
+    {
+      method: "GET",
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Telegram file download failed with HTTP ${response.status}.`,
+    );
+  }
+
+  return response;
 }
