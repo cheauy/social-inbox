@@ -274,6 +274,10 @@ export async function POST(
         Boolean(
           message.voice,
         ),
+      hasVideo:
+        Boolean(
+          message.video,
+        ),
     },
   );
 

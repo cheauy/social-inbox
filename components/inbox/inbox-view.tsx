@@ -3030,16 +3030,39 @@ async function handleSendAttachments(
     conversationPlatform ===
     "telegram"
   ) {
-    const unsupported =
+    const unsupportedVideo =
       attachments.find(
-        (attachment) =>
-          attachment.kind ===
-          "video",
+        (attachment) => {
+          if (
+            attachment.kind !==
+            "video"
+          ) {
+            return false;
+          }
+
+          const fileType =
+            attachment.file.type
+              ?.split(";")[0]
+              ?.trim()
+              .toLowerCase() ??
+            "";
+          const lowerName =
+            attachment.file.name
+              .toLowerCase();
+
+          return !(
+            fileType ===
+              "video/mp4" ||
+            lowerName.endsWith(
+              ".mp4",
+            )
+          );
+        },
       );
 
-    if (unsupported) {
+    if (unsupportedVideo) {
       setSendError(
-        "Telegram V3.11.7 supports photos, documents/files, MP3/M4A audio, and OGG/OPUS voice. Video will be added separately.",
+        "TENH Telegram video currently supports MP4 video only. Please choose an .mp4 file.",
       );
       return false;
     }

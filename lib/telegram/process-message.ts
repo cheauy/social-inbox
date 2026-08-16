@@ -14,6 +14,7 @@ import {
 import {
   inferTelegramMediaContentType,
   inferTelegramPhotoContentType,
+  inferTelegramVideoContentType,
   saveTelegramMessageMedia,
   deleteTelegramMessageMedia,
   TELEGRAM_INCOMING_MEDIA_MAX_BYTES,
@@ -27,6 +28,7 @@ import type {
   TelegramDocument,
   TelegramPhotoSize,
   TelegramUpdate,
+  TelegramVideo,
   TelegramVoice,
 } from "@/lib/telegram/types";
 
@@ -39,6 +41,7 @@ type TelegramSocialAccount = {
 type IncomingTelegramMedia = {
   messageType:
     | "image"
+    | "video"
     | "file"
     | "audio"
     | "voice";
@@ -62,6 +65,7 @@ type IncomingTelegramMedia = {
     | null;
   telegramMediaKind?:
     | "photo"
+    | "video"
     | "file"
     | "audio"
     | "voice";
@@ -208,6 +212,41 @@ function getIncomingTelegramMedia(
     }
   }
 
+  const video:
+    | TelegramVideo
+    | undefined =
+    message.video;
+
+  if (video) {
+    return {
+      messageType:
+        "video",
+      storageKind:
+        "video",
+      telegramMediaKind:
+        "video",
+      fileId:
+        video.file_id,
+      fileUniqueId:
+        video.file_unique_id ??
+        null,
+      fileName:
+        video.file_name ??
+        "Telegram video.mp4",
+      mimeType:
+        video.mime_type ??
+        "video/mp4",
+      declaredSize:
+        video.file_size ??
+        null,
+      duration:
+        video.duration ??
+        null,
+      fallbackText:
+        "Sent a video",
+    };
+  }
+
   const voice:
     | TelegramVoice
     | undefined =
@@ -324,9 +363,10 @@ function getIncomingTelegramMedia(
  * Historical export name is kept so the existing Telegram webhook route does
  * not need to change.
  *
- * V3.11.7 accepts:
+ * V3.11.8 accepts:
  * - text
  * - photo
+ * - video
  * - document/general file
  * - Telegram audio
  * - Telegram voice note
@@ -632,16 +672,28 @@ export async function processTelegramIncomingText({
                 filePath:
                   telegramFile.file_path,
               })
-            : inferTelegramMediaContentType({
-                providedContentType:
-                  media.mimeType,
-                responseContentType:
-                  downloadResponse.headers.get(
-                    "content-type",
-                  ),
-                filePath:
-                  telegramFile.file_path,
-              });
+            : media.messageType ===
+                "video"
+              ? inferTelegramVideoContentType({
+                  providedContentType:
+                    media.mimeType,
+                  responseContentType:
+                    downloadResponse.headers.get(
+                      "content-type",
+                    ),
+                  filePath:
+                    telegramFile.file_path,
+                })
+              : inferTelegramMediaContentType({
+                  providedContentType:
+                    media.mimeType,
+                  responseContentType:
+                    downloadResponse.headers.get(
+                      "content-type",
+                    ),
+                  filePath:
+                    telegramFile.file_path,
+                });
 
         attachmentSize =
           arrayBuffer.byteLength;

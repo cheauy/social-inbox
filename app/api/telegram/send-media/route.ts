@@ -19,11 +19,13 @@ import {
 import {
   sendTelegramAudio,
   sendTelegramDocument,
+  sendTelegramVideo,
   sendTelegramVoice,
 } from "@/lib/telegram/telegram-api";
 import {
   deleteTelegramMessageMedia,
   inferTelegramMediaContentType,
+  inferTelegramVideoContentType,
   saveTelegramMessageMedia,
   TENH_TELEGRAM_OUTGOING_MEDIA_MAX_BYTES,
   type TelegramStoredMediaKind,
@@ -60,6 +62,7 @@ type TelegramAccountRow = {
 };
 
 type OutgoingTelegramMediaKind =
+  | "video"
   | "file"
   | "audio"
   | "voice";
@@ -103,6 +106,24 @@ function lowerExtension(
       );
 
   return match?.[1] ?? "";
+}
+
+function telegramVideoCompatible(
+  file: File,
+) {
+  const mime =
+    normalizedMimeType(
+      file,
+    );
+  const extension =
+    lowerExtension(
+      file.name,
+    );
+
+  return (
+    mime === "video/mp4" ||
+    extension === "mp4"
+  );
 }
 
 type RequestedAttachmentKind =
@@ -191,6 +212,16 @@ function classifyTelegramMedia({
     return "voice";
   }
 
+  if (
+    requestedKind ===
+      "video" ||
+    mime.startsWith(
+      "video/",
+    )
+  ) {
+    return "video";
+  }
+
   /*
    * User-selected OGG/OPUS files are treated as Telegram voice notes.
    */
@@ -233,6 +264,10 @@ function messageTextForMedia({
 
   if (kind === "voice") {
     return "Sent a voice message";
+  }
+
+  if (kind === "video") {
+    return "Sent a video";
   }
 
   if (kind === "audio") {
@@ -346,7 +381,7 @@ export async function POST(
       {
         success: false,
         error:
-          "For reliable Vercel delivery, TENH Telegram file/audio uploads are currently limited to 4 MB each.",
+          "For reliable Vercel delivery, TENH Telegram media uploads are currently limited to 4 MB each.",
       },
       { status: 400 },
     );
@@ -360,22 +395,37 @@ export async function POST(
   if (
     fileMime.startsWith(
       "image/",
-    ) ||
-    fileMime.startsWith(
-      "video/",
     )
   ) {
     return NextResponse.json(
       {
         success: false,
         error:
-          fileMime.startsWith(
-            "image/",
-          )
-            ? "Use the Telegram photo endpoint for images."
-            : "Telegram video sending is not enabled in V3.11.7.",
+          "Use the Telegram photo endpoint for images.",
       },
       { status: 400 },
+    );
+  }
+
+  if (
+    (
+      requestedKind ===
+        "video" ||
+      fileMime.startsWith(
+        "video/",
+      )
+    ) &&
+    !telegramVideoCompatible(
+      file,
+    )
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "TENH Telegram video currently supports MP4 video only. Please choose an .mp4 file.",
+      },
+      { status: 415 },
     );
   }
 
@@ -647,7 +697,19 @@ export async function POST(
   let telegramMessage;
 
   try {
-    if (mediaKind === "voice") {
+    if (mediaKind === "video") {
+      telegramMessage =
+        await sendTelegramVideo({
+          token: botToken,
+          chatId,
+          video: file,
+          fileName:
+            file.name ||
+            "tenh-video.mp4",
+        });
+    } else if (
+      mediaKind === "voice"
+    ) {
       telegramMessage =
         await sendTelegramVoice({
           token: botToken,
@@ -682,7 +744,7 @@ export async function POST(
     }
   } catch (error) {
     console.error(
-      "[Tenh Telegram] Outgoing file/audio/voice send failed:",
+      "[Tenh Telegram] Outgoing video/file/audio/voice send failed:",
       error instanceof Error
         ? error.message
         : "Unknown Telegram send error",
@@ -744,12 +806,19 @@ export async function POST(
     });
 
   const contentType =
-    inferTelegramMediaContentType({
-      providedContentType:
-        fileMime,
-      filePath:
-        file.name,
-    });
+    mediaKind === "video"
+      ? inferTelegramVideoContentType({
+          providedContentType:
+            fileMime,
+          filePath:
+            file.name,
+        })
+      : inferTelegramMediaContentType({
+          providedContentType:
+            fileMime,
+          filePath:
+            file.name,
+        });
 
   let attachmentUrl:
     | string

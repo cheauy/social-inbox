@@ -101,6 +101,7 @@ export async function GET(
     !message ||
     ![
       "image",
+      "video",
       "file",
       "audio",
       "voice",
@@ -121,12 +122,15 @@ export async function GET(
       "image"
       ? "photo"
       : message.message_type ===
-          "audio"
-        ? "audio"
+          "video"
+        ? "video"
         : message.message_type ===
-            "voice"
-          ? "voice"
-          : "file";
+            "audio"
+          ? "audio"
+          : message.message_type ===
+              "voice"
+            ? "voice"
+            : "file";
 
   const storagePath =
     telegramMessageMediaStoragePath({

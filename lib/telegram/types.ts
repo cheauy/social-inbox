@@ -50,6 +50,18 @@ export type TelegramVoice = {
   file_size?: number;
 };
 
+
+export type TelegramVideo = {
+  file_id: string;
+  file_unique_id: string;
+  width: number;
+  height: number;
+  duration: number;
+  file_name?: string;
+  mime_type?: string;
+  file_size?: number;
+};
+
 export type TelegramMessage = {
   message_id: number;
   date: number;
@@ -61,6 +73,7 @@ export type TelegramMessage = {
   document?: TelegramDocument;
   audio?: TelegramAudio;
   voice?: TelegramVoice;
+  video?: TelegramVideo;
 };
 
 export type TelegramUpdate = {

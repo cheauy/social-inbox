@@ -30,6 +30,7 @@ export const TENH_TELEGRAM_OUTGOING_PHOTO_MAX_BYTES =
 
 export type TelegramStoredMediaKind =
   | "photo"
+  | "video"
   | "file"
   | "audio"
   | "voice";
@@ -120,6 +121,61 @@ export function inferTelegramPhotoContentType({
   }
 
   return "image/jpeg";
+}
+
+
+export function inferTelegramVideoContentType({
+  providedContentType,
+  responseContentType,
+  filePath,
+}: {
+  providedContentType?:
+    | string
+    | null;
+  responseContentType?:
+    | string
+    | null;
+  filePath?: string | null;
+}) {
+  const provided =
+    cleanMimeType(
+      providedContentType,
+    );
+
+  if (
+    provided.startsWith(
+      "video/",
+    )
+  ) {
+    return provided;
+  }
+
+  const responseType =
+    cleanMimeType(
+      responseContentType,
+    );
+
+  if (
+    responseType.startsWith(
+      "video/",
+    )
+  ) {
+    return responseType;
+  }
+
+  const path =
+    filePath?.toLowerCase() ??
+    "";
+
+  if (path.endsWith(".mp4")) {
+    return "video/mp4";
+  }
+
+  /*
+   * Telegram's sendVideo/client video path is MPEG-4. getFile may not
+   * preserve MIME type, so use video/mp4 as the safe video fallback.
+   */
+  return "video/mp4";
 }
 
 export function inferTelegramMediaContentType({

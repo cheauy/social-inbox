@@ -262,12 +262,14 @@ export async function sendTelegramPhoto({
 type TelegramBinaryMethod =
   | "sendDocument"
   | "sendAudio"
-  | "sendVoice";
+  | "sendVoice"
+  | "sendVideo";
 
 type TelegramBinaryField =
   | "document"
   | "audio"
-  | "voice";
+  | "voice"
+  | "video";
 
 async function sendTelegramBinaryMedia({
   token,
@@ -395,6 +397,29 @@ export async function sendTelegramVoice({
     field: "voice",
     file: voice,
     fileName,
+  });
+}
+
+export async function sendTelegramVideo({
+  token,
+  chatId,
+  video,
+  fileName,
+}: {
+  token: string;
+  chatId: string | number;
+  video: Blob;
+  fileName: string;
+}) {
+  return sendTelegramBinaryMedia({
+    token,
+    chatId,
+    method: "sendVideo",
+    field: "video",
+    file: video,
+    fileName:
+      fileName ||
+      "tenh-video.mp4",
   });
 }
 
