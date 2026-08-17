@@ -38,28 +38,39 @@ function ChannelIcon({
     | "telegram"
     | "all";
 }) {
-  const label =
+  if (platform === "all") {
+    return (
+      <span
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-700"
+        aria-hidden="true"
+      >
+        A
+      </span>
+    );
+  }
+
+  const src =
     platform === "facebook"
-      ? "M"
-      : platform === "telegram"
-        ? "T"
-        : "A";
+      ? "/images/channels/messenger.png"
+      : "/images/channels/telegram.png";
+
+  const alt =
+    platform === "facebook"
+      ? "Messenger"
+      : "Telegram";
 
   return (
-    <span
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
-        platform === "facebook"
-          ? "bg-blue-600 text-white"
-          : platform === "telegram"
-            ? "bg-sky-500 text-white"
-            : "bg-slate-100 text-slate-700"
-      }`}
-      aria-hidden="true"
-    >
-      {label}
+    <span className="h-8 w-8 shrink-0 overflow-hidden rounded-lg">
+      <img
+        src={src}
+        alt={alt}
+        className="h-full w-full object-cover"
+        draggable={false}
+      />
     </span>
   );
 }
+
 
 export function InboxChannelSelector() {
   const router =

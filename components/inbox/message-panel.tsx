@@ -41,6 +41,15 @@ type MessagePanelProps = {
 
   messages: InboxMessage[];
 
+  loadingConversationMessages: boolean;
+
+  conversationMessagesError:
+    | string
+    | null;
+
+  onRetryConversationMessages:
+    () => void;
+
   teamMembers: TeamMember[];
 
   hasMoreOlderMessages: boolean;
@@ -141,6 +150,37 @@ type MessagePanelProps = {
   replyingToCommentId:
     | string
     | null;
+
+  replyingToTelegramMessageId:
+    | string
+    | null;
+
+  editingTelegramMessageId:
+    | string
+    | null;
+
+  telegramActionNotice:
+    | string
+    | null;
+
+  onReplyToTelegramMessage: (
+    messageId: string,
+  ) => void;
+
+  onEditTelegramMessage: (
+    messageId: string,
+    currentText: string,
+  ) => Promise<void>;
+
+  onDeleteTelegramMessage: (
+    messageId: string,
+  ) => Promise<void>;
+
+  onCancelTelegramEdit:
+    () => void;
+
+  onCancelTelegramReply:
+    () => void;
 
   onCancelCommentReply:
     () => void;
@@ -337,6 +377,348 @@ function AgentPresenceStrip({
 }
 
 
+type TelegramReplyPreview = {
+  text: string;
+  kind: string;
+};
+
+function telegramReplyPreviewFromMessage(
+  source:
+    | Record<string, unknown>
+    | null
+    | undefined,
+): TelegramReplyPreview | null {
+  if (!source) return null;
+
+  const text =
+    typeof source.text === "string"
+      ? source.text.trim()
+      : "";
+  if (text) return { text, kind: "Text" };
+
+  const caption =
+    typeof source.caption === "string"
+      ? source.caption.trim()
+      : "";
+  if (caption) return { text: caption, kind: "Caption" };
+
+  if (Array.isArray(source.photo))
+    return { text: "Photo", kind: "Photo" };
+  if (source.video)
+    return { text: "Video", kind: "Video" };
+  if (source.animation)
+    return { text: "Animation", kind: "GIF" };
+  if (source.voice)
+    return { text: "Voice message", kind: "Voice" };
+  if (source.audio)
+    return { text: "Audio", kind: "Audio" };
+
+  if (source.document) {
+    const doc =
+      source.document as Record<string, unknown>;
+    return {
+      text:
+        typeof doc.file_name === "string"
+          ? doc.file_name
+          : "File",
+      kind: "File",
+    };
+  }
+
+  if (source.sticker) {
+    const sticker =
+      source.sticker as Record<string, unknown>;
+    const emoji =
+      typeof sticker.emoji === "string"
+        ? sticker.emoji
+        : "";
+    return {
+      text:
+        emoji
+          ? `Sticker ${emoji}`
+          : "Sticker",
+      kind: "Sticker",
+    };
+  }
+
+  if (source.location)
+    return {
+      text: "Shared location",
+      kind: "Location",
+    };
+
+  return {
+    text: "Telegram message",
+    kind: "Message",
+  };
+}
+
+
+function EditIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-3.5 w-3.5"
+      aria-hidden="true"
+    >
+      <path
+        d="M4 20h4l10.5-10.5a2.12 2.12 0 0 0-3-3L5 17v3Z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="m14 8 3 3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-3.5 w-3.5"
+      aria-hidden="true"
+    >
+      <path
+        d="M4 7h16"
+        strokeLinecap="round"
+      />
+      <path
+        d="M9 7V4h6v3"
+        strokeLinecap="round"
+      />
+      <path
+        d="m6.5 7 .8 13h9.4l.8-13"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10 11v5M14 11v5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      className="h-5 w-5"
+      aria-hidden="true"
+    >
+      <path
+        d="M7 3h7l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 3v5h5M9 13h6M9 17h4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function VoiceIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+      aria-hidden="true"
+    >
+      <rect
+        x="9"
+        y="3"
+        width="6"
+        height="11"
+        rx="3"
+      />
+      <path
+        d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function PlayIcon({
+  paused,
+}: {
+  paused: boolean;
+}) {
+  return paused ? (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path d="M8 5v14l11-7L8 5Z" />
+    </svg>
+  ) : (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path d="M7 5h4v14H7V5Zm6 0h4v14h-4V5Z" />
+    </svg>
+  );
+}
+
+function formatAttachmentSize(
+  value: number | null | undefined,
+) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value <= 0
+  ) {
+    return null;
+  }
+
+  if (value < 1024) {
+    return `${value} B`;
+  }
+
+  if (value < 1024 * 1024) {
+    return `${Math.max(1, Math.round(value / 1024))} KB`;
+  }
+
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatAudioTime(value: number) {
+  if (!Number.isFinite(value) || value < 0) {
+    return "0:00";
+  }
+
+  const seconds = Math.floor(value);
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+
+  return `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
+function CompactAudioPlayer({
+  src,
+  label,
+  isVoice,
+}: {
+  src: string;
+  label: string;
+  isVoice: boolean;
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  function togglePlayback() {
+    const audio = audioRef.current;
+
+    if (!audio) {
+      return;
+    }
+
+    if (audio.paused) {
+      void audio.play();
+      return;
+    }
+
+    audio.pause();
+  }
+
+  function seek(value: number) {
+    const audio = audioRef.current;
+
+    if (!audio || !Number.isFinite(duration) || duration <= 0) {
+      return;
+    }
+
+    const next = Math.min(
+      duration,
+      Math.max(0, value),
+    );
+
+    audio.currentTime = next;
+    setCurrentTime(next);
+  }
+
+  return (
+    <div className="w-[300px] max-w-full rounded-[22px] border border-slate-200/80 bg-white/95 px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+      <audio
+        ref={audioRef}
+        src={src}
+        preload="none"
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+        onTimeUpdate={(event) =>
+          setCurrentTime(event.currentTarget.currentTime)
+        }
+        onLoadedMetadata={(event) =>
+          setDuration(event.currentTarget.duration || 0)
+        }
+        className="hidden"
+      />
+
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={togglePlayback}
+          suppressHydrationWarning
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky-600 text-white shadow-sm transition hover:bg-sky-700 active:scale-95"
+          aria-label={playing ? "Pause audio" : "Play audio"}
+        >
+          <PlayIcon paused={!playing} />
+        </button>
+
+        <div className="min-w-0 flex-1">
+          <div className="mb-1.5 text-sky-600">
+            <VoiceIcon />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              min={0}
+              max={duration > 0 ? duration : 1}
+              step={0.01}
+              value={Math.min(currentTime, duration > 0 ? duration : 1)}
+              onChange={(event) =>
+                seek(Number(event.target.value))
+              }
+              className="h-1.5 min-w-0 flex-1 cursor-pointer accent-sky-600"
+              aria-label={isVoice ? "Voice message progress" : label || "Audio progress"}
+            />
+
+            <span className="w-[74px] shrink-0 text-right text-[11px] tabular-nums text-slate-400">
+              {formatAudioTime(currentTime)} / {formatAudioTime(duration)}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HydrationSafeMessageTime({
   value,
 }: {
@@ -404,6 +786,9 @@ function HydrationSafeMessageTime({
 export function MessagePanel({
   activeConversation,
   messages,
+  loadingConversationMessages,
+  conversationMessagesError,
+  onRetryConversationMessages,
   teamMembers,
   hasMoreOlderMessages,
   loadingOlderMessages,
@@ -437,6 +822,14 @@ export function MessagePanel({
   onHideComment,
   onReplyToComment,
   replyingToCommentId,
+  replyingToTelegramMessageId,
+  editingTelegramMessageId,
+  telegramActionNotice,
+  onReplyToTelegramMessage,
+  onEditTelegramMessage,
+  onDeleteTelegramMessage,
+  onCancelTelegramEdit,
+  onCancelTelegramReply,
   onCancelCommentReply,
   onDeleteComment,
   onRetryMessage,
@@ -462,6 +855,47 @@ export function MessagePanel({
   const [actionNotice, setActionNotice] =
     useState<string | null>(null);
 
+  const [
+    telegramContextMenu,
+    setTelegramContextMenu,
+  ] = useState<
+    | {
+        messageId: string;
+        messageText: string;
+        x: number;
+        y: number;
+        canReply: boolean;
+        canEdit: boolean;
+        canDelete: boolean;
+      }
+    | null
+  >(null);
+
+
+  const [
+    jumpHighlightedMessageId,
+    setJumpHighlightedMessageId,
+  ] = useState<string | null>(
+    null,
+  );
+
+  const messageElementRefs =
+    useRef<
+      Map<string, HTMLDivElement>
+    >(new Map());
+
+  const latestMessagesRef =
+    useRef(messages);
+
+  const hasMoreOlderMessagesRef =
+    useRef(hasMoreOlderMessages);
+
+  latestMessagesRef.current =
+    messages;
+
+  hasMoreOlderMessagesRef.current =
+    hasMoreOlderMessages;
+
   /*
    * =========================================================
    * V2.3 — AUTO SCROLL + NEW MESSAGE INDICATOR
@@ -481,6 +915,11 @@ export function MessagePanel({
     newMessageCount,
     setNewMessageCount,
   ] = useState(0);
+
+  const [
+    showScrollToLatest,
+    setShowScrollToLatest,
+  ] = useState(false);
 
   const messagesContainerRef =
     useRef<HTMLDivElement | null>(
@@ -532,6 +971,10 @@ export function MessagePanel({
 
         userNearBottomRef.current =
           true;
+
+        setShowScrollToLatest(
+          false,
+        );
 
         setNewMessageCount(0);
       },
@@ -597,6 +1040,10 @@ export function MessagePanel({
     userNearBottomRef.current =
       isNearBottom;
 
+    setShowScrollToLatest(
+      !isNearBottom,
+    );
+
     if (
       isNearBottom &&
       newMessageCount > 0
@@ -638,6 +1085,10 @@ export function MessagePanel({
     userNearBottomRef.current =
       true;
 
+    setShowScrollToLatest(
+      false,
+    );
+
     prependScrollSnapshotRef.current =
       null;
 
@@ -652,6 +1103,128 @@ export function MessagePanel({
    * Restore the viewport by adding the new content height so the
    * agent does not jump to a different message.
    */
+  const jumpToTelegramReplyTarget =
+    useCallback(
+      async ({
+        localMessageId,
+        platformMessageId,
+      }: {
+        localMessageId:
+          | string
+          | null;
+        platformMessageId:
+          | string
+          | null;
+      }) => {
+        setTelegramContextMenu(
+          null,
+        );
+
+        const findTarget = () => {
+          const currentMessages =
+            latestMessagesRef.current;
+
+          if (localMessageId) {
+            const byLocalId =
+              currentMessages.find(
+                (item) =>
+                  item.id ===
+                  localMessageId,
+              );
+
+            if (byLocalId) {
+              return byLocalId;
+            }
+          }
+
+          if (platformMessageId) {
+            return (
+              currentMessages.find(
+                (item) =>
+                  item.platform_message_id ===
+                  platformMessageId,
+              ) ?? null
+            );
+          }
+
+          return null;
+        };
+
+        let targetMessage =
+          findTarget();
+
+        /*
+         * A reply can point to a message older than the newest page.
+         * Load older pages progressively before giving up.
+         */
+        let attempts = 0;
+
+        while (
+          !targetMessage &&
+          hasMoreOlderMessagesRef.current &&
+          attempts < 12
+        ) {
+          attempts += 1;
+
+          const loaded =
+            await onLoadOlderMessages();
+
+          if (!loaded) {
+            break;
+          }
+
+          await new Promise<void>(
+            (resolve) => {
+              window.requestAnimationFrame(
+                () => {
+                  window.requestAnimationFrame(
+                    () =>
+                      resolve(),
+                  );
+                },
+              );
+            },
+          );
+
+          targetMessage =
+            findTarget();
+        }
+
+        if (!targetMessage) {
+          return;
+        }
+
+        const targetElement =
+          messageElementRefs.current.get(
+            targetMessage.id,
+          );
+
+        if (!targetElement) {
+          return;
+        }
+
+        targetElement.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+
+        setJumpHighlightedMessageId(
+          targetMessage.id,
+        );
+
+        window.setTimeout(() => {
+          setJumpHighlightedMessageId(
+            (current) =>
+              current ===
+              targetMessage?.id
+                ? null
+                : current,
+          );
+        }, 1800);
+      },
+      [onLoadOlderMessages],
+    );
+
   useLayoutEffect(() => {
     const snapshot =
       prependScrollSnapshotRef.current;
@@ -814,6 +1387,42 @@ export function MessagePanel({
     );
   }, [messages, scrollToNewest]);
 
+  useEffect(() => {
+    setTelegramContextMenu(null);
+    setJumpHighlightedMessageId(
+      null,
+    );
+    messageElementRefs.current.clear();
+  }, [activeConversation?.id]);
+
+  useEffect(() => {
+    if (!telegramContextMenu) {
+      return;
+    }
+
+    const closeMenu = () => {
+      setTelegramContextMenu(null);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeMenu();
+      }
+    };
+
+    window.addEventListener("click", closeMenu);
+    window.addEventListener("resize", closeMenu);
+    window.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("click", closeMenu);
+      window.removeEventListener("resize", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [telegramContextMenu]);
+
   if (!activeConversation) {
     return (
       <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
@@ -864,16 +1473,145 @@ export function MessagePanel({
     isCommentConversation &&
     !replyingToCommentId;
 
+  const extendedConversation =
+    activeConversation as InboxConversation & {
+      platform?: string | null;
+      social_account?:
+        | (InboxConversation["social_account"] & {
+            platform?: string | null;
+          })
+        | null;
+    };
+
+  const explicitPlatform =
+    extendedConversation.platform
+      ?.trim()
+      .toLowerCase() ||
+    extendedConversation.social_account
+      ?.platform
+      ?.trim()
+      .toLowerCase() ||
+    "";
+
+  const hasTelegramMessage =
+    messages.some((message) =>
+      message.platform_message_id
+        ?.toLowerCase()
+        .startsWith("telegram:"),
+    );
+
+  const headerChannelPlatform:
+    | "messenger"
+    | "telegram" =
+    explicitPlatform === "telegram" ||
+    hasTelegramMessage
+      ? "telegram"
+      : "messenger";
+
+  const headerChannelAccountName =
+    activeConversation.social_account
+      ?.account_name
+      ?.trim() ||
+    (headerChannelPlatform === "telegram"
+      ? "Telegram Bot"
+      : "Facebook Page");
+
+
   return (
     <section className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
 
-      {actionNotice ? (
-        <div className="pointer-events-none absolute left-1/2 top-16 z-[100] -translate-x-1/2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white shadow-xl">
-          {actionNotice}
+      {telegramActionNotice ||
+      actionNotice ? (
+        <div className="pointer-events-none absolute left-1/2 top-16 z-[100] flex -translate-x-1/2 items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-xl">
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-[11px]">
+            ✓
+          </span>
+          {telegramActionNotice ??
+            actionNotice}
         </div>
       ) : null}
 
-      {/* Existing header */}
+      {telegramContextMenu ? (
+        <div
+          className="fixed z-[220] inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1.5 py-1 shadow-[0_10px_30px_rgba(15,23,42,0.18)]"
+          style={{
+            left: telegramContextMenu.x,
+            top: telegramContextMenu.y,
+          }}
+          onClick={(event) =>
+            event.stopPropagation()
+          }
+          onContextMenu={(event) =>
+            event.preventDefault()
+          }
+          role="menu"
+          aria-label="Telegram message actions"
+        >
+          {telegramContextMenu.canReply ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                if (
+                  replyingToTelegramMessageId ===
+                  telegramContextMenu.messageId
+                ) {
+                  onCancelTelegramReply();
+                } else {
+                  onReplyToTelegramMessage(
+                    telegramContextMenu.messageId,
+                  );
+                }
+
+                setTelegramContextMenu(null);
+              }}
+              className="inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 hover:text-sky-700"
+              title="Reply"
+            >
+              <ReplyIcon />
+              <span>Reply</span>
+            </button>
+          ) : null}
+
+          {telegramContextMenu.canEdit ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                void onEditTelegramMessage(
+                  telegramContextMenu.messageId,
+                  telegramContextMenu.messageText,
+                );
+                setTelegramContextMenu(null);
+              }}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-sky-700"
+              title="Edit message"
+              aria-label="Edit message"
+            >
+              <EditIcon />
+            </button>
+          ) : null}
+
+          {telegramContextMenu.canDelete ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                void onDeleteTelegramMessage(
+                  telegramContextMenu.messageId,
+                );
+                setTelegramContextMenu(null);
+              }}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+              title="Delete message"
+              aria-label="Delete message"
+            >
+              <TrashIcon />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       <ConversationHeader
         conversation={
           activeConversation
@@ -892,6 +1630,12 @@ export function MessagePanel({
         }
         customerPanelVisible={
           customerPanelVisible
+        }
+        channelPlatform={
+          headerChannelPlatform
+        }
+        channelAccountName={
+          headerChannelAccountName
         }
         onStatusChange={
           onStatusChange
@@ -939,6 +1683,33 @@ export function MessagePanel({
 
       {/* Messages */}
       <div className="relative min-h-0 flex-1">
+        {loadingConversationMessages ? (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-[#EEF2F6]/75 backdrop-blur-[1px]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/90 bg-white/95 px-4 py-2 text-xs font-semibold text-slate-600 shadow-sm">
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
+              Loading messages...
+            </div>
+          </div>
+        ) : conversationMessagesError ? (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#EEF2F6]/75 backdrop-blur-[1px]">
+            <div className="max-w-sm rounded-2xl border border-red-100 bg-white/95 p-4 text-center shadow-sm">
+              <p className="text-sm font-semibold text-slate-800">
+                Couldn&apos;t load this conversation
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {conversationMessagesError}
+              </p>
+              <button
+                type="button"
+                onClick={onRetryConversationMessages}
+                className="mt-3 rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-700"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <div
           ref={messagesContainerRef}
           onScroll={
@@ -1037,11 +1808,88 @@ export function MessagePanel({
                       | "video"
                       | "file"
                       | "audio"
-                      | "voice";
+                      | "voice"
+                      | "sticker";
                     name?: string | null;
                     mime_type?: string | null;
                     size?: number | null;
                     attachment_id?: string | null;
+                  } | null;
+
+                  tenh_sticker?: {
+                    format?:
+                      | "static"
+                      | "animated"
+                      | "video";
+                    preview_kind?:
+                      | "image"
+                      | "video"
+                      | "file";
+                    emoji?:
+                      | string
+                      | null;
+                    set_name?:
+                      | string
+                      | null;
+                  } | null;
+
+                  tenh_animation?: {
+                    format?:
+                      | "gif"
+                      | "mp4";
+                    source?:
+                      | string
+                      | null;
+                  } | null;
+
+                  tenh_location?: {
+                    latitude?: number;
+                    longitude?: number;
+                    horizontal_accuracy?:
+                      | number
+                      | null;
+                    live_period?:
+                      | number
+                      | null;
+                    source?:
+                      | string
+                      | null;
+                  } | null;
+
+                  message?: {
+                    reply_to_message?:
+                      | Record<string, unknown>
+                      | null;
+                  } | null;
+
+                  reply_to_message?:
+                    | Record<string, unknown>
+                    | null;
+
+                  tenh_reply?: {
+                    reply_to_local_message_id?:
+                      | string
+                      | null;
+                    reply_to_platform_message_id?:
+                      | string
+                      | null;
+                    preview_text?: string | null;
+                    preview_type?: string | null;
+                  } | null;
+
+                  tenh_edit?: {
+                    source?: string | null;
+                    edited_at?: string | null;
+                  } | null;
+
+                  tenh_deleted?: {
+                    source?: string | null;
+                    deleted_at?: string | null;
+                  } | null;
+
+                  tenh_delivery?: {
+                    status?: string | null;
+                    accepted_at?: string | null;
                   } | null;
 
                   post_preview?: {
@@ -1064,6 +1912,110 @@ export function MessagePanel({
                 rawPayload?.tenh_attachment ??
                 null;
 
+              const stickerMeta =
+                rawPayload?.tenh_sticker ??
+                null;
+
+              const animationMeta =
+                rawPayload?.tenh_animation ??
+                null;
+
+              const locationMeta =
+                rawPayload?.tenh_location ??
+                null;
+
+              const telegramNativeReply =
+                rawPayload?.message
+                  ?.reply_to_message ??
+                rawPayload?.reply_to_message ??
+                null;
+
+              const telegramReplyPreview =
+                telegramReplyPreviewFromMessage(
+                  telegramNativeReply,
+                ) ??
+                (
+                  rawPayload?.tenh_reply
+                    ?.preview_text
+                    ? {
+                        text:
+                          rawPayload.tenh_reply
+                            .preview_text,
+                        kind:
+                          rawPayload.tenh_reply
+                            .preview_type ??
+                          "Message",
+                      }
+                    : null
+                );
+
+
+              const telegramReplyLocalMessageId =
+                typeof rawPayload
+                  ?.tenh_reply
+                  ?.reply_to_local_message_id ===
+                  "string"
+                  ? rawPayload.tenh_reply
+                      .reply_to_local_message_id
+                  : null;
+
+              const savedReplyPlatformMessageId =
+                typeof rawPayload
+                  ?.tenh_reply
+                  ?.reply_to_platform_message_id ===
+                  "string"
+                  ? rawPayload.tenh_reply
+                      .reply_to_platform_message_id
+                  : null;
+
+              const nativeReplyMessageId =
+                telegramNativeReply &&
+                typeof telegramNativeReply[
+                  "message_id"
+                ] === "number"
+                  ? telegramNativeReply[
+                      "message_id"
+                    ]
+                  : null;
+
+              const currentTelegramMatch =
+                message.platform_message_id
+                  ?.match(
+                    /^telegram:([^:]+):\d+$/,
+                  ) ?? null;
+
+              const nativeReplyPlatformMessageId =
+                nativeReplyMessageId !==
+                  null &&
+                currentTelegramMatch
+                  ? `telegram:${currentTelegramMatch[1]}:${nativeReplyMessageId}`
+                  : null;
+
+              const telegramReplyTargetPlatformMessageId =
+                savedReplyPlatformMessageId ??
+                nativeReplyPlatformMessageId;
+
+              const canJumpToTelegramReply =
+                Boolean(
+                  telegramReplyPreview &&
+                    (
+                      telegramReplyLocalMessageId ||
+                      telegramReplyTargetPlatformMessageId
+                    ),
+                );
+
+              const telegramEdited =
+                Boolean(
+                  rawPayload
+                    ?.tenh_edit,
+                );
+
+              const telegramDeleted =
+                Boolean(
+                  rawPayload
+                    ?.tenh_deleted,
+                );
+
               const attachmentUrl =
                 message.attachment_url;
 
@@ -1074,6 +2026,12 @@ export function MessagePanel({
               const isVideoMessage =
                 message.message_type ===
                 "video";
+
+              const isAnimationMessage =
+                isVideoMessage &&
+                Boolean(
+                  animationMeta,
+                );
 
               const isFileMessage =
                 message.message_type ===
@@ -1087,18 +2045,53 @@ export function MessagePanel({
                 message.message_type ===
                 "voice";
 
+              const isStickerMessage =
+                message.message_type ===
+                "sticker";
+
+              const locationLatitude =
+                typeof locationMeta
+                  ?.latitude ===
+                  "number"
+                  ? locationMeta.latitude
+                  : null;
+
+              const locationLongitude =
+                typeof locationMeta
+                  ?.longitude ===
+                  "number"
+                  ? locationMeta.longitude
+                  : null;
+
+              const isLocationMessage =
+                locationLatitude !==
+                  null &&
+                locationLongitude !==
+                  null;
+
+              const locationUrl =
+                isLocationMessage
+                  ? `https://www.google.com/maps?q=${locationLatitude},${locationLongitude}`
+                  : null;
+
               const attachmentName =
                 attachmentMeta?.name?.trim() ||
                 message.message_text ||
                 (isImageMessage
                   ? "Photo"
-                  : isVideoMessage
-                    ? "Video"
-                    : isVoiceMessage
-                      ? "Voice message"
-                      : isAudioMessage
-                        ? "Audio"
-                        : "File");
+                  : isAnimationMessage
+                    ? "Animation"
+                    : isVideoMessage
+                      ? "Video"
+                    : isStickerMessage
+                      ? stickerMeta?.emoji
+                        ? `Sticker ${stickerMeta.emoji}`
+                        : "Sticker"
+                      : isVoiceMessage
+                        ? "Voice message"
+                        : isAudioMessage
+                          ? "Audio"
+                          : "File");
 
               const postUrl =
                 postPreview
@@ -1131,12 +2124,48 @@ export function MessagePanel({
                 ] ??
                 serverState;
 
+              const isTelegramMessage =
+                message.platform_message_id
+                  ?.startsWith(
+                    "telegram:",
+                  ) === true;
+
+              const canReplyToTelegram =
+                isTelegramMessage &&
+                !message.id.startsWith(
+                  "optimistic:",
+                ) &&
+                !telegramDeleted;
+
+              const canEditTelegram =
+                canReplyToTelegram &&
+                isOutgoing &&
+                message.message_type ===
+                  "text" &&
+                Boolean(
+                  message.message_text
+                    ?.trim(),
+                );
+
+              const canDeleteTelegram =
+                canReplyToTelegram &&
+                message.message_type ===
+                  "text";
+
+              const isTelegramReplyTarget =
+                replyingToTelegramMessageId ===
+                message.id;
+
               const showCommentActions =
                 isCommentConversation &&
                 !isOutgoing &&
                 Boolean(
                   message.platform_message_id,
                 );
+
+              const isJumpHighlighted =
+                jumpHighlightedMessageId ===
+                message.id;
 
               const isReplyTarget =
                 replyingToCommentId ===
@@ -1352,26 +2381,128 @@ export function MessagePanel({
               return (
                 <div
                   key={message.id}
+                  ref={(node) => {
+                    if (node) {
+                      messageElementRefs.current.set(
+                        message.id,
+                        node,
+                      );
+                    } else {
+                      messageElementRefs.current.delete(
+                        message.id,
+                      );
+                    }
+                  }}
                   className={`flex ${
                     isOutgoing
                       ? "justify-end"
                       : "justify-start"
                   }`}
+                  onContextMenu={(event) => {
+                    if (
+                      !isTelegramMessage ||
+                      (!canReplyToTelegram &&
+                        !canEditTelegram &&
+                        !canDeleteTelegram)
+                    ) {
+                      return;
+                    }
+
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    const menuWidth = 176;
+                    const menuHeight = 48;
+                    const edge = 10;
+
+                    const x = Math.min(
+                      event.clientX,
+                      window.innerWidth - menuWidth - edge,
+                    );
+
+                    const y = Math.min(
+                      event.clientY,
+                      window.innerHeight - menuHeight - edge,
+                    );
+
+                    setTelegramContextMenu({
+                      messageId: message.id,
+                      messageText:
+                        message.message_text ?? "",
+                      x: Math.max(edge, x),
+                      y: Math.max(edge, y),
+                      canReply: canReplyToTelegram,
+                      canEdit: canEditTelegram,
+                      canDelete: canDeleteTelegram,
+                    });
+                  }}
                 >
-                  <div className="group max-w-[75%]">
+                  <div className="group max-w-[84%] sm:max-w-[74%] xl:max-w-[62%]">
                     <div
-                      className={`overflow-hidden rounded-2xl text-sm shadow-sm transition ${
+                      className={`overflow-hidden border text-sm shadow-[0_2px_8px_rgba(15,23,42,0.06)] transition ${
                         isOutgoing
-                          ? "rounded-br-md bg-green-100 text-slate-900"
-                          : "rounded-bl-md bg-white text-slate-900"
+                          ? "rounded-[18px] rounded-br-[5px] border-emerald-200/70 bg-emerald-50/95 text-slate-900"
+                          : "rounded-[18px] rounded-bl-[5px] border-slate-200/90 bg-white text-slate-900"
                       } ${
-                        isReplyTarget
-                          ? "ring-2 ring-blue-400 ring-offset-2"
-                          : ""
+                        isJumpHighlighted
+                          ? "ring-2 ring-amber-400 ring-offset-2 shadow-[0_0_0_6px_rgba(251,191,36,0.12)]"
+                          : isReplyTarget ||
+                              isTelegramReplyTarget
+                            ? "ring-2 ring-blue-400 ring-offset-2"
+                            : ""
                       }`}
                     >
                       {/* Message content */}
                       <div className="px-4 pb-2 pt-3">
+                        {telegramReplyPreview ? (
+                          <button
+                            type="button"
+                            disabled={
+                              !canJumpToTelegramReply
+                            }
+                            onClick={(event) => {
+                              event.stopPropagation();
+
+                              if (
+                                !canJumpToTelegramReply
+                              ) {
+                                return;
+                              }
+
+                              void jumpToTelegramReplyTarget({
+                                localMessageId:
+                                  telegramReplyLocalMessageId,
+                                platformMessageId:
+                                  telegramReplyTargetPlatformMessageId,
+                              });
+                            }}
+                            className={`mb-2.5 block w-full border-l-[3px] pl-2.5 text-left text-xs transition ${
+                              isOutgoing
+                                ? "border-emerald-500"
+                                : "border-sky-500"
+                            } ${
+                              canJumpToTelegramReply
+                                ? "cursor-pointer rounded-r-lg py-1 pr-2 hover:bg-black/[0.035] active:bg-black/[0.06]"
+                                : "cursor-default"
+                            }`}
+                            title={
+                              canJumpToTelegramReply
+                                ? "Go to original message"
+                                : undefined
+                            }
+                          >
+                            <span className="flex items-center gap-1.5 font-semibold text-slate-600">
+                              <ReplyIcon />
+                              <span>
+                                Reply to {telegramReplyPreview.kind}
+                              </span>
+                            </span>
+                            <span className="mt-0.5 block max-w-[320px] truncate leading-4 text-slate-500">
+                              {telegramReplyPreview.text}
+                            </span>
+                          </button>
+                        ) : null}
+
                         {commentState.deleted ? (
                           <div className="flex items-center gap-2 py-1 text-sm italic text-slate-400">
                             <svg
@@ -1476,25 +2607,136 @@ export function MessagePanel({
                               ) : null}
                             </div>
                           </div>
+                        ) : isLocationMessage &&
+                          locationUrl ? (
+                          <a
+                            href={locationUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block min-w-[260px] rounded-xl border border-slate-200 bg-white/90 p-3 transition hover:bg-white"
+                          >
+                            <div className="flex items-start gap-3">
+                              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-xl">
+                                📍
+                              </span>
+
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-sm font-semibold text-slate-800">
+                                  Shared location
+                                </span>
+
+                                <span className="mt-1 block text-xs text-slate-500">
+                                  {locationLatitude?.toFixed(
+                                    6,
+                                  )}
+                                  {", "}
+                                  {locationLongitude?.toFixed(
+                                    6,
+                                  )}
+                                </span>
+
+                                <span className="mt-2 inline-flex text-xs font-medium text-blue-600">
+                                  Open in Maps ↗
+                                </span>
+                              </span>
+                            </div>
+                          </a>
+                        ) : isStickerMessage ? (
+                          <div className="min-w-[180px]">
+                            {attachmentUrl &&
+                            stickerMeta
+                              ?.preview_kind ===
+                              "video" ? (
+                              <video
+                                src={attachmentUrl}
+                                autoPlay
+                                loop
+                                muted
+                                playsInline
+                                className="max-h-56 max-w-[240px] rounded-xl bg-transparent object-contain"
+                              />
+                            ) : attachmentUrl &&
+                              stickerMeta
+                                ?.preview_kind ===
+                                "image" ? (
+                              <img
+                                src={attachmentUrl}
+                                alt={
+                                  stickerMeta?.emoji
+                                    ? `Telegram sticker ${stickerMeta.emoji}`
+                                    : "Telegram sticker"
+                                }
+                                className="max-h-56 max-w-[240px] rounded-xl object-contain"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="flex min-h-32 min-w-[180px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white/80 p-4">
+                                <span className="text-4xl">
+                                  {stickerMeta?.emoji ??
+                                    "✨"}
+                                </span>
+                                <span className="mt-2 text-xs font-medium text-slate-500">
+                                  {stickerMeta?.format ===
+                                  "animated"
+                                    ? "Animated sticker"
+                                    : "Telegram sticker"}
+                                </span>
+                              </div>
+                            )}
+
+                            {stickerMeta?.emoji ? (
+                              <p className="mt-1 text-center text-xs text-slate-500">
+                                {stickerMeta.emoji}
+                              </p>
+                            ) : null}
+                          </div>
                         ) : isImageMessage ? (
-                          <div className="min-w-[220px]">
+                          <div className="w-[300px] max-w-full overflow-hidden rounded-[22px] bg-slate-100 ring-1 ring-slate-200/70">
                             {attachmentUrl ? (
                               <a
                                 href={attachmentUrl}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="block overflow-hidden rounded-xl bg-slate-100"
+                                className="group/media block"
                               >
                                 <img
                                   src={attachmentUrl}
                                   alt={attachmentName}
-                                  className="max-h-80 w-full object-cover"
+                                  className="max-h-[360px] w-full object-cover transition duration-200 group-hover/media:scale-[1.01]"
                                   loading="lazy"
+                                  decoding="async"
                                 />
                               </a>
                             ) : (
+                              <div className="flex h-40 w-full items-center justify-center rounded-[22px] border border-dashed border-slate-300 bg-slate-50 text-sm font-medium text-slate-500">
+                                Photo unavailable
+                              </div>
+                            )}
+                          </div>
+                        ) : isAnimationMessage ? (
+                          <div className="min-w-[220px]">
+                            {attachmentUrl ? (
+                              animationMeta?.format ===
+                              "gif" ? (
+                                <img
+                                  src={attachmentUrl}
+                                  alt={attachmentName}
+                                  className="max-h-80 max-w-full rounded-xl object-contain"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <video
+                                  src={attachmentUrl}
+                                  autoPlay
+                                  loop
+                                  muted
+                                  playsInline
+                                  className="max-h-80 w-full rounded-xl bg-black object-contain"
+                                />
+                              )
+                            ) : (
                               <div className="flex h-40 min-w-[240px] items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium text-slate-500">
-                                Photo sent
+                                Animation sent
                               </div>
                             )}
 
@@ -1503,89 +2745,96 @@ export function MessagePanel({
                             </p>
                           </div>
                         ) : isVideoMessage ? (
-                          <div className="min-w-[240px]">
+                          <div className="w-[330px] max-w-full overflow-hidden rounded-[22px] border border-slate-200/80 bg-slate-950 shadow-sm">
                             {attachmentUrl ? (
                               <video
                                 src={attachmentUrl}
                                 controls
-                                preload="metadata"
-                                className="max-h-80 w-full rounded-xl bg-black"
+                                preload="none"
+                                playsInline
+                                className="max-h-[360px] w-full bg-black object-contain"
                               />
                             ) : (
-                              <div className="flex h-40 min-w-[240px] items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium text-slate-500">
-                                Video sent
+                              <div className="flex h-44 w-full items-center justify-center bg-slate-900 text-sm font-medium text-slate-300">
+                                Video unavailable
                               </div>
                             )}
-
-                            <p className="mt-2 truncate text-xs text-slate-500">
-                              {attachmentName}
-                            </p>
                           </div>
                         ) : isAudioMessage ||
                           isVoiceMessage ? (
-                          <div className="min-w-[260px]">
-                            <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                              <span aria-hidden="true">
-                                {isVoiceMessage
-                                  ? "🎙️"
-                                  : "🎵"}
+                          attachmentUrl ? (
+                            <CompactAudioPlayer
+                              src={attachmentUrl}
+                              label={attachmentName}
+                              isVoice={isVoiceMessage}
+                            />
+                          ) : (
+                            <div className="flex w-[290px] max-w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 p-3">
+                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sky-600">
+                                <VoiceIcon />
                               </span>
-
-                              <span className="truncate">
-                                {attachmentName}
-                              </span>
-                            </div>
-
-                            {attachmentUrl ? (
-                              <audio
-                                src={attachmentUrl}
-                                controls
-                                preload="metadata"
-                                className="mt-2 w-full max-w-[360px]"
-                              />
-                            ) : (
-                              <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                                {isVoiceMessage
-                                  ? "Voice message received, but the audio file is not available locally."
-                                  : "Audio received, but the audio file is not available locally."}
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-slate-700">
+                                  {isVoiceMessage
+                                    ? "Voice message"
+                                    : attachmentName}
+                                </p>
+                                <p className="mt-0.5 text-xs text-slate-400">
+                                  Audio unavailable
+                                </p>
                               </div>
-                            )}
-                          </div>
+                            </div>
+                          )
                         ) : isFileMessage ? (
                           attachmentUrl ? (
                             <a
                               href={attachmentUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="flex min-w-[240px] items-center gap-3 rounded-xl border border-slate-200 bg-white/80 p-3 transition hover:bg-white"
+                              className="block w-[320px] max-w-full rounded-[22px] border border-slate-200/90 bg-white/95 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition hover:border-sky-200 hover:bg-white"
                             >
-                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-lg">
-                                📎
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block truncate text-sm font-medium text-slate-800">
-                                  {attachmentName}
+                              <div className="flex items-center gap-3">
+                                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600 ring-1 ring-sky-100">
+                                  <FileIcon />
                                 </span>
-                                <span className="text-xs text-blue-600">
-                                  Open file
-                                </span>
-                              </span>
+
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-semibold text-slate-800">
+                                    {attachmentName}
+                                  </p>
+                                  <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                                    {[
+                                      attachmentMeta?.mime_type?.split("/").pop()?.toUpperCase(),
+                                      formatAttachmentSize(attachmentMeta?.size),
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" · ") || "Telegram file"}
+                                  </p>
+                                </div>
+                              </div>
                             </a>
                           ) : (
-                            <div className="flex min-w-[240px] items-center gap-3 rounded-xl border border-slate-200 bg-white/80 p-3">
-                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-lg">
-                                📎
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block truncate text-sm font-medium text-slate-800">
-                                  {attachmentName}
+                            <div className="w-[320px] max-w-full rounded-[22px] border border-slate-200/90 bg-white/95 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+                              <div className="flex items-center gap-3">
+                                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600 ring-1 ring-sky-100">
+                                  <FileIcon />
                                 </span>
-                                <span className="text-xs text-slate-400">
-                                  File received, but the local download is unavailable.
-                                </span>
-                              </span>
+
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-semibold text-slate-800">
+                                    {attachmentName}
+                                  </p>
+                                  <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                                    Unavailable
+                                  </p>
+                                </div>
+                              </div>
                             </div>
                           )
+                        ) : telegramDeleted ? (
+                          <p className="whitespace-pre-wrap italic text-slate-500">
+                            Message deleted
+                          </p>
                         ) : (
                           /*
                            * Important:
@@ -1615,7 +2864,15 @@ export function MessagePanel({
                             />
                           </span>
 
-                          {isOutgoing ? (
+                          {telegramEdited &&
+                          !telegramDeleted ? (
+                            <span className="text-slate-400">
+                              Edited
+                            </span>
+                          ) : null}
+
+                          {isOutgoing &&
+                          !telegramDeleted ? (
                             optimisticStatus ===
                             "sending" ? (
                               <span className="inline-flex items-center gap-1 text-slate-500">
@@ -1643,6 +2900,13 @@ export function MessagePanel({
                                   </button>
                                 ) : null}
                               </>
+                            ) : isTelegramMessage ? (
+                              <span
+                                className="font-medium text-emerald-600"
+                                title="Accepted by Telegram Bot API. Telegram does not provide delivery/read receipts for this private bot chat."
+                              >
+                                ✓ Sent
+                              </span>
                             ) : persistedDeliveryStatus ===
                               "seen" ? (
                               <span
@@ -1669,6 +2933,10 @@ export function MessagePanel({
                       </div>
 
                       {/* Facebook Comment Actions */}
+                    </div>
+
+                    <div>
+
                       {showCommentActions ? (
                         <div className="flex items-center gap-1 border-t border-slate-100 px-2 py-1.5">
 
@@ -1873,8 +3141,77 @@ export function MessagePanel({
               </svg>
             </button>
           </div>
+        ) : showScrollToLatest ? (
+          <div className="pointer-events-none absolute bottom-4 right-4 z-40">
+            <button
+              type="button"
+              onClick={() =>
+                scrollToNewest(
+                  "smooth",
+                )
+              }
+              className="pointer-events-auto inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_rgba(15,23,42,0.14)] transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 active:scale-[0.97]"
+              aria-label="Scroll to latest message"
+              title="Latest message"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="h-4 w-4"
+                aria-hidden="true"
+              >
+                <path
+                  d="m6 9 6 6 6-6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+
+              <span>Latest</span>
+            </button>
+          </div>
         ) : null}
       </div>
+
+      {editingTelegramMessageId ? (
+        <div className="shrink-0 border-t border-sky-100 bg-sky-50/60 px-4 py-2">
+          <div className="flex items-center gap-3 rounded-xl border border-sky-200/80 bg-white px-3 py-2 shadow-sm">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-700">
+              <EditIcon />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-sky-700">
+                Editing message
+              </p>
+              <p className="mt-0.5 truncate text-xs text-slate-500">
+                {messages.find(
+                  (message) =>
+                    message.id ===
+                    editingTelegramMessageId,
+                )?.message_text ??
+                  "Edit the message below"}
+              </p>
+            </div>
+
+            <span className="hidden text-[11px] font-medium text-slate-400 sm:inline">
+              Send to save
+            </span>
+
+            <button
+              type="button"
+              onClick={onCancelTelegramEdit}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              title="Cancel edit"
+              aria-label="Cancel edit"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {/* Facebook comment reply target */}
       {isCommentConversation &&

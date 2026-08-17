@@ -24,9 +24,11 @@ import {
   syncTelegramContactProfilePhoto,
 } from "@/lib/telegram/telegram-profile-photo";
 import type {
+  TelegramAnimation,
   TelegramAudio,
   TelegramDocument,
   TelegramPhotoSize,
+  TelegramSticker,
   TelegramUpdate,
   TelegramVideo,
   TelegramVoice,
@@ -44,7 +46,8 @@ type IncomingTelegramMedia = {
     | "video"
     | "file"
     | "audio"
-    | "voice";
+    | "voice"
+    | "sticker";
   storageKind:
     TelegramStoredMediaKind;
   fileId: string;
@@ -68,7 +71,25 @@ type IncomingTelegramMedia = {
     | "video"
     | "file"
     | "audio"
-    | "voice";
+    | "voice"
+    | "sticker";
+  stickerFormat?:
+    | "static"
+    | "animated"
+    | "video";
+  stickerPreviewKind?:
+    | "image"
+    | "video"
+    | "file";
+  stickerEmoji?:
+    | string
+    | null;
+  stickerSetName?:
+    | string
+    | null;
+  animationFormat?:
+    | "gif"
+    | "mp4";
   fallbackText: string;
 };
 
@@ -212,6 +233,77 @@ function getIncomingTelegramMedia(
     }
   }
 
+  const animation:
+    | TelegramAnimation
+    | undefined =
+    message.animation;
+
+  if (animation) {
+    const mimeType =
+      animation.mime_type
+        ?.split(";")[0]
+        ?.trim()
+        .toLowerCase() ??
+      "";
+
+    const fileName =
+      animation.file_name ??
+      (
+        mimeType ===
+          "image/gif"
+          ? "Telegram animation.gif"
+          : "Telegram animation.mp4"
+      );
+
+    const animationFormat:
+      | "gif"
+      | "mp4" =
+      mimeType ===
+        "image/gif" ||
+      fileName
+        .toLowerCase()
+        .endsWith(".gif")
+        ? "gif"
+        : "mp4";
+
+    /*
+     * Keep TENH's stable DB type as "video". raw_payload.tenh_animation
+     * preserves that this is a Telegram Animation/GIF, so the Inbox can
+     * choose <img> for GIF and looping <video> for MP4 animation.
+     */
+    return {
+      messageType:
+        "video",
+      storageKind:
+        "video",
+      telegramMediaKind:
+        "video",
+      fileId:
+        animation.file_id,
+      fileUniqueId:
+        animation.file_unique_id ??
+        null,
+      fileName,
+      mimeType:
+        animation.mime_type ??
+        (
+          animationFormat ===
+            "gif"
+            ? "image/gif"
+            : "video/mp4"
+        ),
+      declaredSize:
+        animation.file_size ??
+        null,
+      duration:
+        animation.duration ??
+        null,
+      animationFormat,
+      fallbackText:
+        "Sent an animation",
+    };
+  }
+
   const video:
     | TelegramVideo
     | undefined =
@@ -244,6 +336,106 @@ function getIncomingTelegramMedia(
         null,
       fallbackText:
         "Sent a video",
+    };
+  }
+
+  const sticker:
+    | TelegramSticker
+    | undefined =
+    message.sticker;
+
+  if (sticker) {
+    const stickerFormat:
+      | "static"
+      | "animated"
+      | "video" =
+      sticker.is_video
+        ? "video"
+        : sticker.is_animated
+          ? "animated"
+          : "static";
+
+    /*
+     * Browser support:
+     * - static Telegram stickers: WebP -> direct image preview
+     * - video Telegram stickers: WebM -> direct looping video preview
+     * - animated TGS: use Telegram's thumbnail when available because browsers
+     *   do not render TGS natively.
+     */
+    const useThumbnail =
+      stickerFormat ===
+        "animated" &&
+      Boolean(
+        sticker.thumbnail,
+      );
+
+    const selectedFile =
+      useThumbnail
+        ? sticker.thumbnail!
+        : sticker;
+
+    const previewKind:
+      | "image"
+      | "video"
+      | "file" =
+      stickerFormat ===
+        "video"
+        ? "video"
+        : stickerFormat ===
+              "static" ||
+            useThumbnail
+          ? "image"
+          : "file";
+
+    return {
+      messageType:
+        "sticker",
+      storageKind:
+        "file",
+      telegramMediaKind:
+        "sticker",
+      fileId:
+        selectedFile.file_id,
+      fileUniqueId:
+        selectedFile.file_unique_id ??
+        null,
+      fileName:
+        stickerFormat ===
+          "video"
+          ? "Telegram sticker.webm"
+          : stickerFormat ===
+              "animated"
+            ? useThumbnail
+              ? "Telegram animated sticker preview.webp"
+              : "Telegram animated sticker.tgs"
+            : "Telegram sticker.webp",
+      mimeType:
+        previewKind ===
+          "image"
+          ? "image/webp"
+          : previewKind ===
+              "video"
+            ? "video/webm"
+            : "application/x-tgsticker",
+      declaredSize:
+        selectedFile.file_size ??
+        sticker.file_size ??
+        null,
+      duration:
+        null,
+      stickerFormat,
+      stickerPreviewKind:
+        previewKind,
+      stickerEmoji:
+        sticker.emoji ??
+        null,
+      stickerSetName:
+        sticker.set_name ??
+        null,
+      fallbackText:
+        sticker.emoji
+          ? `Sent a sticker ${sticker.emoji}`
+          : "Sent a sticker",
     };
   }
 
@@ -363,10 +555,13 @@ function getIncomingTelegramMedia(
  * Historical export name is kept so the existing Telegram webhook route does
  * not need to change.
  *
- * V3.11.8 accepts:
+ * V3.11.10 accepts:
  * - text
  * - photo
  * - video
+ * - Telegram animation / GIF
+ * - sticker
+ * - location
  * - document/general file
  * - Telegram audio
  * - Telegram voice note
@@ -391,11 +586,17 @@ export async function processTelegramIncomingText({
       update,
     );
 
+  const location =
+    message?.location ??
+    null;
+
   if (
     !message ||
     message.chat.type !== "private" ||
     message.from?.is_bot === true ||
-    (!incomingText && !media)
+    (!incomingText &&
+      !media &&
+      !location)
   ) {
     return {
       saved: false,
@@ -661,7 +862,13 @@ export async function processTelegramIncomingText({
 
         attachmentMimeType =
           media.messageType ===
-          "image"
+          "image" ||
+          (
+            media.messageType ===
+              "sticker" &&
+            media.stickerPreviewKind ===
+              "image"
+          )
             ? inferTelegramPhotoContentType({
                 providedContentType:
                   media.mimeType,
@@ -672,9 +879,9 @@ export async function processTelegramIncomingText({
                 filePath:
                   telegramFile.file_path,
               })
-            : media.messageType ===
-                "video"
-              ? inferTelegramVideoContentType({
+            : media.animationFormat ===
+                "gif"
+              ? inferTelegramMediaContentType({
                   providedContentType:
                     media.mimeType,
                   responseContentType:
@@ -684,7 +891,19 @@ export async function processTelegramIncomingText({
                   filePath:
                     telegramFile.file_path,
                 })
-              : inferTelegramMediaContentType({
+              : media.messageType ===
+                  "video"
+                ? inferTelegramVideoContentType({
+                    providedContentType:
+                      media.mimeType,
+                    responseContentType:
+                      downloadResponse.headers.get(
+                        "content-type",
+                      ),
+                    filePath:
+                      telegramFile.file_path,
+                  })
+                : inferTelegramMediaContentType({
                   providedContentType:
                     media.mimeType,
                   responseContentType:
@@ -728,11 +947,18 @@ export async function processTelegramIncomingText({
     }
   }
 
+  const locationMessageText =
+    location
+      ? `📍 Location: https://www.google.com/maps?q=${location.latitude},${location.longitude}`
+      : "";
+
   const messageText =
     media
       ? message.caption?.trim() ||
         media.fallbackText
-      : incomingText;
+      : location
+        ? locationMessageText
+        : incomingText;
 
   const rawPayload =
     media
@@ -757,8 +983,61 @@ export async function processTelegramIncomingText({
             duration:
               media.duration,
           },
+          ...(media.messageType ===
+            "sticker"
+            ? {
+                tenh_sticker: {
+                  format:
+                    media.stickerFormat ??
+                    "static",
+                  preview_kind:
+                    media.stickerPreviewKind ??
+                    "file",
+                  emoji:
+                    media.stickerEmoji ??
+                    null,
+                  set_name:
+                    media.stickerSetName ??
+                    null,
+                },
+              }
+            : {}),
+          ...(media.animationFormat
+            ? {
+                tenh_animation: {
+                  format:
+                    media.animationFormat,
+                  source:
+                    "telegram",
+                },
+              }
+            : {}),
         }
-      : update;
+      : location
+        ? {
+            ...update,
+            tenh_location: {
+              latitude:
+                location.latitude,
+              longitude:
+                location.longitude,
+              horizontal_accuracy:
+                location.horizontal_accuracy ??
+                null,
+              live_period:
+                location.live_period ??
+                null,
+              heading:
+                location.heading ??
+                null,
+              proximity_alert_radius:
+                location.proximity_alert_radius ??
+                null,
+              source:
+                "telegram",
+            },
+          }
+        : update;
 
   const {
     error: messageError,

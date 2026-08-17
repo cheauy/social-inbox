@@ -68,6 +68,183 @@ function safeSecretEqual(
   );
 }
 
+async function processTelegramEditedText({
+  update,
+  businessId,
+}: {
+  update: TelegramUpdate;
+  businessId: string;
+}) {
+  const message =
+    update.edited_message;
+
+  if (
+    !message ||
+    message.chat.type !==
+      "private" ||
+    message.from?.is_bot ===
+      true ||
+    !message.text?.trim()
+  ) {
+    return {
+      edited: false,
+      ignored: true,
+    };
+  }
+
+  const platformMessageId =
+    `telegram:${String(
+      message.chat.id,
+    )}:${message.message_id}`;
+
+  const {
+    data: existingData,
+    error: existingError,
+  } =
+    await supabaseAdmin
+      .from("messages")
+      .select(
+        "id,conversation_id,message_type,raw_payload,platform_created_at",
+      )
+      .eq(
+        "business_id",
+        businessId,
+      )
+      .eq(
+        "platform_message_id",
+        platformMessageId,
+      )
+      .maybeSingle();
+
+  if (existingError) {
+    throw new Error(
+      existingError.message,
+    );
+  }
+
+  const existing =
+    existingData as unknown as
+      | {
+          id: string;
+          conversation_id: string;
+          message_type: string;
+          raw_payload:
+            | Record<string, unknown>
+            | null;
+          platform_created_at:
+            | string
+            | null;
+        }
+      | null;
+
+  if (!existing) {
+    return {
+      edited: false,
+      ignored: true,
+      reason:
+        "message_not_found",
+    };
+  }
+
+  if (
+    existing.message_type !==
+      "text"
+  ) {
+    return {
+      edited: false,
+      ignored: true,
+      reason:
+        "non_text_message",
+    };
+  }
+
+  const nextText =
+    message.text.trim();
+
+  const editedAt =
+    typeof message.edit_date ===
+      "number" &&
+    Number.isFinite(
+      message.edit_date,
+    )
+      ? new Date(
+          message.edit_date *
+            1000,
+        ).toISOString()
+      : new Date().toISOString();
+
+  const nextRawPayload = {
+    ...(existing.raw_payload ??
+      {}),
+    ...update,
+    tenh_edit: {
+      source:
+        "telegram",
+      edited_at:
+        editedAt,
+    },
+  };
+
+  const {
+    error: updateError,
+  } =
+    await supabaseAdmin
+      .from("messages")
+      .update({
+        message_text:
+          nextText,
+        raw_payload:
+          nextRawPayload,
+      })
+      .eq(
+        "id",
+        existing.id,
+      )
+      .eq(
+        "business_id",
+        businessId,
+      );
+
+  if (updateError) {
+    throw new Error(
+      updateError.message,
+    );
+  }
+
+  if (
+    existing.platform_created_at
+  ) {
+    await supabaseAdmin
+      .from("conversations")
+      .update({
+        last_message_text:
+          nextText,
+        updated_at:
+          editedAt,
+      })
+      .eq(
+        "id",
+        existing.conversation_id,
+      )
+      .eq(
+        "business_id",
+        businessId,
+      )
+      .eq(
+        "last_message_at",
+        existing.platform_created_at,
+      );
+  }
+
+  return {
+    edited: true,
+    messageId:
+      existing.id,
+    messageText:
+      nextText,
+  };
+}
+
 export async function POST(
   request: NextRequest,
   context: RouteContext,
@@ -226,13 +403,49 @@ export async function POST(
     );
   }
 
-  const message = update.message;
+  if (
+    update.edited_message
+  ) {
+    try {
+      const result =
+        await processTelegramEditedText({
+          update,
+          businessId:
+            connection.business_id,
+        });
+
+      return NextResponse.json({
+        received: true,
+        ...result,
+      });
+    } catch (error) {
+      console.error(
+        "[Tenh Telegram Webhook] Edited message processing failed:",
+        error instanceof Error
+          ? error.message
+          : "Unknown edit processing error",
+      );
+
+      return NextResponse.json(
+        {
+          received: false,
+          error:
+            "Unable to process Telegram message edit.",
+        },
+        { status: 500 },
+      );
+    }
+  }
+
+  const message =
+    update.message;
 
   if (!message) {
     return NextResponse.json({
       received: true,
       ignored: true,
-      reason: "unsupported_update",
+      reason:
+        "unsupported_update",
     });
   }
 
@@ -277,6 +490,18 @@ export async function POST(
       hasVideo:
         Boolean(
           message.video,
+        ),
+      hasAnimation:
+        Boolean(
+          message.animation,
+        ),
+      hasSticker:
+        Boolean(
+          message.sticker,
+        ),
+      hasLocation:
+        Boolean(
+          message.location,
         ),
     },
   );

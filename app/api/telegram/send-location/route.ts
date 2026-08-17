@@ -13,17 +13,17 @@ import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 import {
-  sendTelegramMessage,
-  TelegramApiError,
+  sendTelegramLocation,
 } from "@/lib/telegram/telegram-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type SendTelegramBody = {
+type SendTelegramLocationBody = {
   conversationId?: string;
+  latitude?: number;
+  longitude?: number;
   message?: string;
-  replyToMessageId?: string;
 };
 
 type ConversationRow = {
@@ -52,43 +52,6 @@ type TelegramAccountRow = {
     | string
     | null;
 };
-
-type ReplyTargetRow = {
-  id: string;
-  conversation_id: string;
-  platform_message_id: string;
-  message_text: string | null;
-  message_type: string | null;
-};
-
-function parseTelegramMessageNumber({
-  platformMessageId,
-  expectedChatId,
-}: {
-  platformMessageId: string;
-  expectedChatId: string;
-}) {
-  const match =
-    platformMessageId.match(
-      /^telegram:([^:]+):(\d+)$/,
-    );
-
-  if (!match) return null;
-
-  const [, chatId, messageId] =
-    match;
-
-  if (chatId !== expectedChatId) {
-    return null;
-  }
-
-  const parsed = Number(messageId);
-
-  return Number.isSafeInteger(parsed) &&
-    parsed > 0
-    ? parsed
-    : null;
-}
 
 function telegramMessageTime(
   timestamp: number | undefined,
@@ -127,12 +90,12 @@ export async function POST(
   const currentMember =
     authResult.member;
 
-  let body: SendTelegramBody;
+  let body: SendTelegramLocationBody;
 
   try {
     body =
       (await request.json()) as
-        SendTelegramBody;
+        SendTelegramLocationBody;
   } catch {
     return NextResponse.json(
       {
@@ -145,12 +108,29 @@ export async function POST(
 
   const conversationId =
     body.conversationId?.trim();
-  const message =
-    body.message?.trim();
+  const latitude =
+    typeof body.latitude ===
+      "number"
+      ? body.latitude
+      : Number.NaN;
+  const longitude =
+    typeof body.longitude ===
+      "number"
+      ? body.longitude
+      : Number.NaN;
 
-  const replyToMessageId =
-    body.replyToMessageId?.trim() ||
-    null;
+  const message =
+    body.message?.trim() ||
+    (
+      Number.isFinite(
+        latitude,
+      ) &&
+      Number.isFinite(
+        longitude,
+      )
+        ? `📍 Location: https://www.google.com/maps?q=${latitude},${longitude}`
+        : ""
+    );
 
   if (!conversationId) {
     return NextResponse.json(
@@ -162,22 +142,23 @@ export async function POST(
     );
   }
 
-  if (!message) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Message is required.",
-      },
-      { status: 400 },
-    );
-  }
-
-  if (message.length > 4096) {
+  if (
+    !Number.isFinite(
+      latitude,
+    ) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    !Number.isFinite(
+      longitude,
+    ) ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
     return NextResponse.json(
       {
         success: false,
         error:
-          "Telegram text messages cannot exceed 4,096 characters.",
+          "Valid latitude and longitude are required.",
       },
       { status: 400 },
     );
@@ -386,82 +367,6 @@ export async function POST(
     );
   }
 
-  let replyTarget:
-    | ReplyTargetRow
-    | null = null;
-
-  let replyToTelegramMessageId:
-    | number
-    | null = null;
-
-  if (replyToMessageId) {
-    const {
-      data: replyTargetData,
-      error: replyTargetError,
-    } =
-      await supabaseAdmin
-        .from("messages")
-        .select(
-          "id,conversation_id,platform_message_id,message_text,message_type",
-        )
-        .eq("id", replyToMessageId)
-        .eq(
-          "business_id",
-          currentMember.business_id,
-        )
-        .eq(
-          "conversation_id",
-          conversation.id,
-        )
-        .maybeSingle();
-
-    if (replyTargetError) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Unable to load the Telegram reply target.",
-          details:
-            replyTargetError.message,
-        },
-        { status: 500 },
-      );
-    }
-
-    replyTarget =
-      replyTargetData as unknown as
-        ReplyTargetRow | null;
-
-    if (!replyTarget) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "The selected Telegram reply target was not found.",
-        },
-        { status: 404 },
-      );
-    }
-
-    replyToTelegramMessageId =
-      parseTelegramMessageNumber({
-        platformMessageId:
-          replyTarget.platform_message_id,
-        expectedChatId: chatId,
-      });
-
-    if (!replyToTelegramMessageId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "The selected TENH message is not a valid Telegram reply target.",
-        },
-        { status: 400 },
-      );
-    }
-  }
-
   let botToken: string;
 
   try {
@@ -484,31 +389,19 @@ export async function POST(
 
   try {
     telegramMessage =
-      await sendTelegramMessage({
+      await sendTelegramLocation({
         token: botToken,
         chatId,
-        text: message,
-        replyToMessageId:
-          replyToTelegramMessageId,
+        latitude,
+        longitude,
       });
   } catch (error) {
     console.error(
-      "[Tenh Telegram] Outgoing text send failed:",
+      "[Tenh Telegram] Outgoing location send failed:",
       error instanceof Error
         ? error.message
         : "Unknown Telegram send error",
     );
-
-    const telegramError =
-      error instanceof TelegramApiError
-        ? {
-            method: error.method,
-            errorCode:
-              error.errorCode,
-            retryAfter:
-              error.retryAfter,
-          }
-        : null;
 
     return NextResponse.json(
       {
@@ -517,7 +410,6 @@ export async function POST(
           error instanceof Error
             ? error.message
             : "Telegram rejected the message.",
-        telegramError,
       },
       { status: 502 },
     );
@@ -588,25 +480,27 @@ export async function POST(
         is_echo: false,
         raw_payload: {
           ...telegramMessage,
-          ...(replyTarget
-            ? {
-                tenh_reply: {
-                  reply_to_local_message_id:
-                    replyTarget.id,
-                  reply_to_platform_message_id:
-                    replyTarget.platform_message_id,
-                  preview_text:
-                    replyTarget.message_text,
-                  preview_type:
-                    replyTarget.message_type,
-                },
-              }
-            : {}),
-          tenh_delivery: {
-            status:
-              "accepted_by_telegram",
-            accepted_at:
-              sentAt,
+          tenh_location: {
+            latitude,
+            longitude,
+            horizontal_accuracy:
+              telegramMessage.location
+                ?.horizontal_accuracy ??
+              null,
+            live_period:
+              telegramMessage.location
+                ?.live_period ??
+              null,
+            heading:
+              telegramMessage.location
+                ?.heading ??
+              null,
+            proximity_alert_radius:
+              telegramMessage.location
+                ?.proximity_alert_radius ??
+              null,
+            source:
+              "tenh",
           },
         },
         platform_created_at:
@@ -663,7 +557,7 @@ export async function POST(
   }
 
   console.info(
-    "[Tenh Telegram] Outgoing text sent.",
+    "[Tenh Telegram] Outgoing location sent.",
     {
       conversationId:
         conversation.id,

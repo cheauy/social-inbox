@@ -62,9 +62,47 @@ export type TelegramVideo = {
   file_size?: number;
 };
 
+
+export type TelegramAnimation = {
+  file_id: string;
+  file_unique_id: string;
+  width: number;
+  height: number;
+  duration: number;
+  thumbnail?: TelegramPhotoSize;
+  file_name?: string;
+  mime_type?: string;
+  file_size?: number;
+};
+
+
+export type TelegramSticker = {
+  file_id: string;
+  file_unique_id: string;
+  type: string;
+  width: number;
+  height: number;
+  is_animated: boolean;
+  is_video: boolean;
+  thumbnail?: TelegramPhotoSize;
+  emoji?: string;
+  set_name?: string;
+  file_size?: number;
+};
+
+export type TelegramLocation = {
+  latitude: number;
+  longitude: number;
+  horizontal_accuracy?: number;
+  live_period?: number;
+  heading?: number;
+  proximity_alert_radius?: number;
+};
+
 export type TelegramMessage = {
   message_id: number;
   date: number;
+  edit_date?: number;
   from?: TelegramUser;
   chat: TelegramChat;
   text?: string;
@@ -74,11 +112,16 @@ export type TelegramMessage = {
   audio?: TelegramAudio;
   voice?: TelegramVoice;
   video?: TelegramVideo;
+  animation?: TelegramAnimation;
+  sticker?: TelegramSticker;
+  location?: TelegramLocation;
+  reply_to_message?: TelegramMessage;
 };
 
 export type TelegramUpdate = {
   update_id: number;
   message?: TelegramMessage;
+  edited_message?: TelegramMessage;
 };
 
 export type TelegramApiEnvelope<T> = {
@@ -86,6 +129,10 @@ export type TelegramApiEnvelope<T> = {
   result?: T;
   description?: string;
   error_code?: number;
+  parameters?: {
+    migrate_to_chat_id?: number;
+    retry_after?: number;
+  };
 };
 
 export type TelegramWebhookInfo = {

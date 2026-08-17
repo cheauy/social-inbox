@@ -52,6 +52,34 @@ type TelegramWebhookResponse = {
   details?: string;
 };
 
+type TelegramDiagnostics = {
+  status:
+    | "healthy"
+    | "warning"
+    | "error";
+  checks: {
+    token: boolean;
+    webhook: boolean;
+    webhookUrlMatches: boolean;
+    editedMessages: boolean;
+  };
+  webhook: {
+    pendingUpdateCount: number;
+    lastErrorMessage:
+      | string
+      | null;
+  } | null;
+};
+
+type TelegramDiagnosticsResponse = {
+  success: boolean;
+  diagnostics?:
+    | TelegramDiagnostics
+    | null;
+  message?: string;
+  error?: string;
+};
+
 type TelegramChannelPanelProps = {
   onConnectionChanged?: (
     connected: boolean,
@@ -125,6 +153,140 @@ export function TelegramChannelPanel({
     useState<string | null>(null);
   const [notice, setNotice] =
     useState<string | null>(null);
+  const [
+    diagnostics,
+    setDiagnostics,
+  ] =
+    useState<TelegramDiagnostics | null>(
+      null,
+    );
+  const [
+    diagnosticsLoading,
+    setDiagnosticsLoading,
+  ] = useState(false);
+  const [
+    repairingWebhook,
+    setRepairingWebhook,
+  ] = useState(false);
+
+  const loadDiagnostics =
+    useCallback(
+      async () => {
+        setDiagnosticsLoading(
+          true,
+        );
+
+        try {
+          const response =
+            await fetch(
+              "/api/telegram/diagnostics",
+              {
+                method: "GET",
+                cache:
+                  "no-store",
+              },
+            );
+
+          const data =
+            await readJson<TelegramDiagnosticsResponse>(
+              response,
+            );
+
+          if (
+            !response.ok ||
+            !data.success
+          ) {
+            throw new Error(
+              data.error ??
+                "Unable to run Telegram diagnostics.",
+            );
+          }
+
+          setDiagnostics(
+            data.diagnostics ??
+              null,
+          );
+        } catch (diagnosticError) {
+          setError(
+            diagnosticError instanceof
+              Error
+              ? diagnosticError.message
+              : "Unable to run Telegram diagnostics.",
+          );
+        } finally {
+          setDiagnosticsLoading(
+            false,
+          );
+        }
+      },
+      [],
+    );
+
+  async function repairTelegramWebhook() {
+    if (
+      repairingWebhook
+    ) {
+      return;
+    }
+
+    setRepairingWebhook(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const response =
+        await fetch(
+          "/api/telegram/diagnostics",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                action:
+                  "repair_webhook",
+              }),
+          },
+        );
+
+      const data =
+        await readJson<TelegramDiagnosticsResponse>(
+          response,
+        );
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ??
+            "Unable to repair Telegram webhook.",
+        );
+      }
+
+      setDiagnostics(
+        data.diagnostics ??
+          null,
+      );
+
+      setNotice(
+        data.message ??
+          "Telegram webhook repaired.",
+      );
+
+      await loadWebhookStatus();
+    } catch (repairError) {
+      setError(
+        repairError instanceof Error
+          ? repairError.message
+          : "Unable to repair Telegram webhook.",
+      );
+    } finally {
+      setRepairingWebhook(false);
+    }
+  }
 
   const loadWebhookStatus = useCallback(
     async () => {
@@ -226,6 +388,14 @@ export function TelegramChannelPanel({
 
         if (isConnected) {
           await loadWebhookStatus();
+
+          if (
+            Boolean(
+              data.canManage,
+            )
+          ) {
+            void loadDiagnostics();
+          }
         } else {
           setWebhook(null);
           setRemoteWebhook(null);
@@ -243,6 +413,7 @@ export function TelegramChannelPanel({
     },
     [
       loadWebhookStatus,
+      loadDiagnostics,
       onConnectionChanged,
     ],
   );
@@ -483,6 +654,7 @@ export function TelegramChannelPanel({
       setWebhook(null);
       setRemoteWebhook(null);
       setRemoteWebhookError(null);
+      setDiagnostics(null);
       onConnectionChanged?.(false);
       setNotice(
         data.message ??
@@ -542,7 +714,7 @@ export function TelegramChannelPanel({
 
       <div className="p-6 sm:p-7">
         <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm leading-6 text-blue-900">
-          V3.11.3 receives new private Telegram text messages securely and saves them as TENH customers, conversations, and Inbox messages. Telegram replies and media support come in later phases.
+          Telegram is live in TENH with replies, media, stickers, location, text edit/delete tools, agent typing, and owner diagnostics.
         </div>
 
         {error ? (
@@ -617,10 +789,154 @@ export function TelegramChannelPanel({
 
             <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
               <span className="font-semibold text-slate-800">
-                Current V3.11.3 scope:
+                Current Telegram scope:
               </span>{" "}
-              new private text messages only. Group messages, photos, files, voice/audio, stickers, and replies from TENH are not enabled yet.
+              private customer chats. Customer text edits can sync after the webhook subscribes to edited_message. Telegram Bot API does not provide normal private-chat customer deletion events or delivery/read receipts.
             </div>
+
+            {canManage ? (
+              <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+                      Telegram diagnostics
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Bot API, webhook URL, message-edit subscription and queue health.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={
+                      diagnosticsLoading
+                    }
+                    onClick={() =>
+                      void loadDiagnostics()
+                    }
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    {diagnosticsLoading
+                      ? "Checking..."
+                      : "Run diagnostics"}
+                  </button>
+                </div>
+
+                {diagnostics ? (
+                  <div className="mt-4">
+                    <div
+                      className={`rounded-xl border px-3 py-2 text-sm font-semibold ${
+                        diagnostics.status ===
+                        "healthy"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : diagnostics.status ===
+                              "warning"
+                            ? "border-amber-200 bg-amber-50 text-amber-800"
+                            : "border-red-200 bg-red-50 text-red-700"
+                      }`}
+                    >
+                      {diagnostics.status ===
+                      "healthy"
+                        ? "Telegram connection healthy"
+                        : diagnostics.status ===
+                            "warning"
+                          ? "Telegram connection has warnings"
+                          : "Telegram connection needs attention"}
+                    </div>
+
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                        Bot API:{" "}
+                        <b className={
+                          diagnostics.checks.token
+                            ? "text-emerald-700"
+                            : "text-red-700"
+                        }>
+                          {diagnostics.checks.token
+                            ? "OK"
+                            : "Fix"}
+                        </b>
+                      </div>
+
+                      <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                        Webhook:{" "}
+                        <b className={
+                          diagnostics.checks.webhook
+                            ? "text-emerald-700"
+                            : "text-red-700"
+                        }>
+                          {diagnostics.checks.webhook
+                            ? "OK"
+                            : "Fix"}
+                        </b>
+                      </div>
+
+                      <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                        Webhook URL:{" "}
+                        <b className={
+                          diagnostics.checks.webhookUrlMatches
+                            ? "text-emerald-700"
+                            : "text-red-700"
+                        }>
+                          {diagnostics.checks.webhookUrlMatches
+                            ? "OK"
+                            : "Fix"}
+                        </b>
+                      </div>
+
+                      <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                        Message edits:{" "}
+                        <b className={
+                          diagnostics.checks.editedMessages
+                            ? "text-emerald-700"
+                            : "text-red-700"
+                        }>
+                          {diagnostics.checks.editedMessages
+                            ? "OK"
+                            : "Fix"}
+                        </b>
+                      </div>
+                    </div>
+
+                    {diagnostics.webhook ? (
+                      <p className="mt-3 text-xs leading-5 text-slate-500">
+                        Pending updates:{" "}
+                        <b>
+                          {
+                            diagnostics
+                              .webhook
+                              .pendingUpdateCount
+                          }
+                        </b>
+                        {diagnostics
+                          .webhook
+                          .lastErrorMessage
+                          ? ` · Last error: ${diagnostics.webhook.lastErrorMessage}`
+                          : ""}
+                      </p>
+                    ) : null}
+
+                    {diagnostics.status !==
+                    "healthy" ? (
+                      <button
+                        type="button"
+                        disabled={
+                          repairingWebhook
+                        }
+                        onClick={() =>
+                          void repairTelegramWebhook()
+                        }
+                        className="mt-4 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60"
+                      >
+                        {repairingWebhook
+                          ? "Repairing..."
+                          : "Repair webhook"}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {canManage ? (
               <div className="mt-6 flex flex-wrap gap-3">

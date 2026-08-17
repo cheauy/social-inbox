@@ -23,23 +23,40 @@ function ChannelMark({
 }: {
   platform: TenhChannelPlatform;
 }) {
-  const mark =
+  const src =
     platform === "facebook"
-      ? "M"
+      ? "/images/channels/messenger.png"
       : platform === "telegram"
-        ? "T"
+        ? "/images/channels/telegram.png"
         : platform === "instagram"
-          ? "I"
+          ? "/images/channels/instagram.png"
           : platform === "whatsapp"
-            ? "W"
-            : "T";
+            ? "/images/channels/whatsapp.png"
+            : "/images/channels/tiktok.png";
+
+  const alt =
+    platform === "facebook"
+      ? "Messenger"
+      : platform === "telegram"
+        ? "Telegram"
+        : platform === "instagram"
+          ? "Instagram"
+          : platform === "whatsapp"
+            ? "WhatsApp"
+            : "TikTok";
 
   return (
-    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-black text-slate-700 shadow-sm">
-      {mark}
+    <span className="h-10 w-10 shrink-0 overflow-hidden rounded-xl shadow-sm">
+      <img
+        src={src}
+        alt={alt}
+        className="h-full w-full object-cover"
+        draggable={false}
+      />
     </span>
   );
 }
+
 
 function StatusPill({
   channel,

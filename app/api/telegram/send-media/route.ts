@@ -17,6 +17,7 @@ import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 import {
+  sendTelegramAnimation,
   sendTelegramAudio,
   sendTelegramDocument,
   sendTelegramVideo,
@@ -62,6 +63,7 @@ type TelegramAccountRow = {
 };
 
 type OutgoingTelegramMediaKind =
+  | "animation"
   | "video"
   | "file"
   | "audio"
@@ -123,6 +125,25 @@ function telegramVideoCompatible(
   return (
     mime === "video/mp4" ||
     extension === "mp4"
+  );
+}
+
+
+function telegramAnimationCompatible(
+  file: File,
+) {
+  const mime =
+    normalizedMimeType(
+      file,
+    );
+  const extension =
+    lowerExtension(
+      file.name,
+    );
+
+  return (
+    mime === "image/gif" ||
+    extension === "gif"
   );
 }
 
@@ -200,6 +221,18 @@ function classifyTelegramMedia({
     );
 
   /*
+   * ReplyBox selects GIF through the existing image picker. Telegram GIFs
+   * should use sendAnimation rather than sendPhoto.
+   */
+  if (
+    telegramAnimationCompatible(
+      file,
+    )
+  ) {
+    return "animation";
+  }
+
+  /*
    * A microphone recording from TENH is a VOICE intent even though the
    * ReplyBox historically labels recorded blobs as kind="audio".
    */
@@ -261,6 +294,10 @@ function messageTextForMedia({
 }) {
   const cleanName =
     fileName.trim();
+
+  if (kind === "animation") {
+    return "Sent an animation";
+  }
 
   if (kind === "voice") {
     return "Sent a voice message";
@@ -395,6 +432,9 @@ export async function POST(
   if (
     fileMime.startsWith(
       "image/",
+    ) &&
+    !telegramAnimationCompatible(
+      file,
     )
   ) {
     return NextResponse.json(
@@ -666,12 +706,18 @@ export async function POST(
     TelegramStoredMediaKind =
     mediaKind === "voice"
       ? "audio"
-      : mediaKind;
+      : mediaKind ===
+          "animation"
+        ? "video"
+        : mediaKind;
 
   const tenhMessageType =
     mediaKind === "voice"
       ? "audio"
-      : mediaKind;
+      : mediaKind ===
+          "animation"
+        ? "video"
+        : mediaKind;
 
   /*
    * Do not silently turn a microphone recording into a Telegram document.
@@ -697,7 +743,22 @@ export async function POST(
   let telegramMessage;
 
   try {
-    if (mediaKind === "video") {
+    if (
+      mediaKind ===
+      "animation"
+    ) {
+      telegramMessage =
+        await sendTelegramAnimation({
+          token: botToken,
+          chatId,
+          animation: file,
+          fileName:
+            file.name ||
+            "tenh-animation.gif",
+        });
+    } else if (
+      mediaKind === "video"
+    ) {
       telegramMessage =
         await sendTelegramVideo({
           token: botToken,
@@ -744,7 +805,7 @@ export async function POST(
     }
   } catch (error) {
     console.error(
-      "[Tenh Telegram] Outgoing video/file/audio/voice send failed:",
+      "[Tenh Telegram] Outgoing animation/video/file/audio/voice send failed:",
       error instanceof Error
         ? error.message
         : "Unknown Telegram send error",
@@ -862,6 +923,16 @@ export async function POST(
 
   const rawPayload = {
     ...telegramMessage,
+    ...(mediaKind ===
+      "animation"
+      ? {
+          tenh_animation: {
+            format: "gif",
+            source:
+              "tenh",
+          },
+        }
+      : {}),
     tenh_attachment: {
       type:
         mediaKind,
@@ -974,7 +1045,7 @@ export async function POST(
   }
 
   console.info(
-    "[Tenh Telegram] Outgoing file/audio/voice media sent.",
+    "[Tenh Telegram] Outgoing Telegram media sent.",
     {
       conversationId:
         conversation.id,

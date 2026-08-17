@@ -6,6 +6,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 
 import EmojiPicker from "emoji-picker-react";
@@ -253,6 +254,283 @@ function formatFileSize(bytes: number) {
   ).toFixed(1)} MB`;
 }
 
+
+const LOCATION_MAP_TILE_SIZE = 256;
+const LOCATION_MAP_MIN_ZOOM = 3;
+const LOCATION_MAP_MAX_ZOOM = 18;
+
+type LocationPoint = {
+  latitude: number;
+  longitude: number;
+};
+
+type LocationMapSize = {
+  width: number;
+  height: number;
+};
+
+function clampLocationLatitude(
+  latitude: number,
+) {
+  return Math.max(
+    -85.05112878,
+    Math.min(
+      85.05112878,
+      latitude,
+    ),
+  );
+}
+
+function wrapLocationLongitude(
+  longitude: number,
+) {
+  return (
+    ((longitude + 180) % 360 + 360) %
+      360 -
+    180
+  );
+}
+
+function locationToWorldPixel({
+  latitude,
+  longitude,
+  zoom,
+}: LocationPoint & {
+  zoom: number;
+}) {
+  const scale =
+    LOCATION_MAP_TILE_SIZE *
+    2 ** zoom;
+
+  const clampedLatitude =
+    clampLocationLatitude(
+      latitude,
+    );
+
+  const latitudeRadians =
+    (clampedLatitude *
+      Math.PI) /
+    180;
+
+  const worldX =
+    ((wrapLocationLongitude(
+      longitude,
+    ) +
+      180) /
+      360) *
+    scale;
+
+  const worldY =
+    (
+      0.5 -
+      Math.log(
+        (
+          1 +
+          Math.sin(
+            latitudeRadians,
+          )
+        ) /
+          (
+            1 -
+            Math.sin(
+              latitudeRadians,
+            )
+          ),
+      ) /
+        (4 * Math.PI)
+    ) *
+    scale;
+
+  return {
+    x: worldX,
+    y: worldY,
+    scale,
+  };
+}
+
+function worldPixelToLocation({
+  x,
+  y,
+  zoom,
+}: {
+  x: number;
+  y: number;
+  zoom: number;
+}): LocationPoint {
+  const scale =
+    LOCATION_MAP_TILE_SIZE *
+    2 ** zoom;
+
+  const normalizedX =
+    ((x % scale) + scale) %
+    scale;
+
+  const clampedY =
+    Math.max(
+      0,
+      Math.min(
+        scale,
+        y,
+      ),
+    );
+
+  const longitude =
+    (normalizedX / scale) *
+      360 -
+    180;
+
+  const normalizedY =
+    0.5 -
+    clampedY / scale;
+
+  const latitude =
+    (
+      90 -
+      (360 *
+        Math.atan(
+          Math.exp(
+            -normalizedY *
+              2 *
+              Math.PI,
+          ),
+        )) /
+        Math.PI
+    );
+
+  return {
+    latitude:
+      clampLocationLatitude(
+        latitude,
+      ),
+    longitude:
+      wrapLocationLongitude(
+        longitude,
+      ),
+  };
+}
+
+function getLocationMapTiles({
+  center,
+  zoom,
+  size,
+}: {
+  center: LocationPoint;
+  zoom: number;
+  size: LocationMapSize;
+}) {
+  const centerWorld =
+    locationToWorldPixel({
+      ...center,
+      zoom,
+    });
+
+  const tilesPerAxis =
+    2 ** zoom;
+
+  const viewportLeft =
+    centerWorld.x -
+    size.width / 2;
+
+  const viewportTop =
+    centerWorld.y -
+    size.height / 2;
+
+  /*
+   * Keep only a half-tile preload buffer around the viewport.
+   * V3.11.9.2 loaded a full extra tile on every edge, which produced many
+   * more image requests and made the picker feel slow.
+   */
+  const preloadBuffer =
+    LOCATION_MAP_TILE_SIZE / 2;
+
+  const startTileX =
+    Math.floor(
+      (
+        viewportLeft -
+        preloadBuffer
+      ) /
+        LOCATION_MAP_TILE_SIZE,
+    );
+
+  const endTileX =
+    Math.floor(
+      (
+        viewportLeft +
+        size.width +
+        preloadBuffer
+      ) /
+        LOCATION_MAP_TILE_SIZE,
+    );
+
+  const startTileY =
+    Math.floor(
+      (
+        viewportTop -
+        preloadBuffer
+      ) /
+        LOCATION_MAP_TILE_SIZE,
+    );
+
+  const endTileY =
+    Math.floor(
+      (
+        viewportTop +
+        size.height +
+        preloadBuffer
+      ) /
+        LOCATION_MAP_TILE_SIZE,
+    );
+
+  const tiles: Array<{
+    key: string;
+    x: number;
+    y: number;
+    url: string;
+  }> = [];
+
+  for (
+    let tileY = startTileY;
+    tileY <= endTileY;
+    tileY += 1
+  ) {
+    if (
+      tileY < 0 ||
+      tileY >= tilesPerAxis
+    ) {
+      continue;
+    }
+
+    for (
+      let tileX = startTileX;
+      tileX <= endTileX;
+      tileX += 1
+    ) {
+      const wrappedTileX =
+        ((tileX %
+          tilesPerAxis) +
+          tilesPerAxis) %
+        tilesPerAxis;
+
+      tiles.push({
+        key:
+          `${zoom}:${tileX}:${tileY}`,
+        x:
+          tileX *
+            LOCATION_MAP_TILE_SIZE -
+          viewportLeft,
+        y:
+          tileY *
+            LOCATION_MAP_TILE_SIZE -
+          viewportTop,
+        url:
+          `https://tile.openstreetmap.org/${zoom}/${wrappedTileX}/${tileY}.png`,
+      });
+    }
+  }
+
+  return tiles;
+}
+
 export function ReplyBox({
   reply,
   sending,
@@ -293,6 +571,73 @@ export function ReplyBox({
 
   const [gettingLocation, setGettingLocation] =
     useState(false);
+
+  const [
+    locationPickerOpen,
+    setLocationPickerOpen,
+  ] = useState(false);
+
+  const [
+    locationPickerError,
+    setLocationPickerError,
+  ] = useState<string | null>(null);
+
+  const [
+    selectedLocation,
+    setSelectedLocation,
+  ] = useState<LocationPoint | null>(
+    null,
+  );
+
+  const locationMapRef =
+    useRef<HTMLDivElement | null>(
+      null,
+    );
+
+  const [
+    locationMapSize,
+    setLocationMapSize,
+  ] = useState<LocationMapSize>({
+    width: 420,
+    height: 290,
+  });
+
+  const [
+    locationMapZoom,
+    setLocationMapZoom,
+  ] = useState(17);
+
+  const [
+    locationMapDragging,
+    setLocationMapDragging,
+  ] = useState(false);
+
+  const locationTileLayerRef =
+    useRef<HTMLDivElement | null>(
+      null,
+    );
+
+  const locationDragRef =
+    useRef<{
+      pointerId: number;
+      startX: number;
+      startY: number;
+      lastX: number;
+      lastY: number;
+      moved: boolean;
+      startLocation: LocationPoint;
+    } | null>(null);
+
+  const locationDragFrameRef =
+    useRef<number | null>(
+      null,
+    );
+
+  const locationPendingDragRef =
+    useRef({
+      x: 0,
+      y: 0,
+    });
 
   const [
     recordingVoice,
@@ -355,20 +700,11 @@ export function ReplyBox({
       return "";
     }
 
-    /*
-     * Prefer formats Telegram can display as a native voice message.
-     *
-     * Telegram sendVoice accepts OGG/OPUS, MP3, and M4A.
-     * Modern browsers differ in what MediaRecorder can produce, so TENH
-     * asks the browser at runtime and only falls back to WebM last.
-     */
     const candidates = [
-      "audio/ogg;codecs=opus",
-      "audio/ogg",
-      "audio/mp4;codecs=mp4a.40.2",
-      "audio/mp4",
       "audio/webm;codecs=opus",
       "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/ogg",
     ];
 
     return (
@@ -384,7 +720,7 @@ export function ReplyBox({
   async function startVoiceRecording() {
     if (!allowAttachments) {
       setRecordingError(
-        "Voice messages are not available for this conversation.",
+        "Voice messages are available for Messenger conversations only.",
       );
       return;
     }
@@ -435,12 +771,8 @@ export function ReplyBox({
               stream,
               {
                 mimeType,
-                /*
-                 * 96 kbps keeps a five-minute voice note comfortably below
-                 * TENH's current 4 MB browser -> Vercel Telegram upload cap.
-                 */
                 audioBitsPerSecond:
-                  96000,
+                  128000,
               },
             )
           : new MediaRecorder(
@@ -513,23 +845,10 @@ export function ReplyBox({
           return;
         }
 
-        const normalizedActualType =
-          actualType.toLowerCase();
-
         const extension =
-          normalizedActualType.includes(
-            "ogg",
-          )
+          actualType.includes("ogg")
             ? "ogg"
-            : normalizedActualType.includes(
-                  "mp4",
-                )
-              ? "m4a"
-              : normalizedActualType.includes(
-                    "mpeg",
-                  )
-                ? "mp3"
-                : "webm";
+            : "webm";
 
         const file = new File(
           [blob],
@@ -669,6 +988,15 @@ export function ReplyBox({
 
       clearRecordingTimer();
       stopRecordingTracks();
+
+      if (
+        locationDragFrameRef.current !==
+        null
+      ) {
+        window.cancelAnimationFrame(
+          locationDragFrameRef.current,
+        );
+      }
     };
   }, []);
 
@@ -829,58 +1157,520 @@ export function ReplyBox({
     onReplyChange(`${reply}${emoji}`);
   }
 
-  function addLocation() {
-    if (!navigator.geolocation) {
-      window.alert(
-        "Location is not supported by this browser.",
-      );
+  function requestCurrentLocation({
+    openPicker,
+  }: {
+    openPicker: boolean;
+  }) {
+    if (
+      typeof navigator ===
+        "undefined" ||
+      !navigator.geolocation
+    ) {
+      const message =
+        "Location is not supported by this browser.";
+
+      if (openPicker) {
+        window.alert(message);
+      } else {
+        setLocationPickerError(
+          message,
+        );
+      }
+
       return;
     }
 
+    if (openPicker) {
+      setMoreOpen(false);
+      setEmojiOpen(false);
+      setLocationPickerOpen(
+        true,
+      );
+      setSelectedLocation(
+        null,
+      );
+    }
+
+    setLocationPickerError(
+      null,
+    );
     setGettingLocation(true);
-    setMoreOpen(false);
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const latitude =
-          position.coords.latitude;
+        setSelectedLocation({
+          latitude:
+            position.coords.latitude,
+          longitude:
+            position.coords.longitude,
+        });
 
-        const longitude =
-          position.coords.longitude;
-
-        const locationMessage =
-          `📍 Location: https://www.google.com/maps?q=${latitude},${longitude}`;
-
-        onReplyChange(
-          reply.trim()
-            ? `${reply}\n${locationMessage}`
-            : locationMessage,
+        setLocationMapZoom(17);
+        setGettingLocation(
+          false,
         );
-
-        setGettingLocation(false);
       },
       (locationError) => {
-        setGettingLocation(false);
+        setGettingLocation(
+          false,
+        );
 
         if (
           locationError.code ===
           locationError.PERMISSION_DENIED
         ) {
-          window.alert(
-            "Location permission was denied. Please allow location access in your browser.",
+          setLocationPickerError(
+            "Location permission was denied. Allow location access in your browser and try again.",
           );
           return;
         }
 
-        window.alert(
+        setLocationPickerError(
           "Unable to get your current location.",
         );
       },
       {
         enableHighAccuracy: true,
         timeout: 10000,
-        maximumAge: 30000,
+        maximumAge: 15000,
       },
+    );
+  }
+
+  function addLocation() {
+    requestCurrentLocation({
+      openPicker: true,
+    });
+  }
+
+  function useMyCurrentLocation() {
+    requestCurrentLocation({
+      openPicker: false,
+    });
+  }
+
+  function closeLocationPicker() {
+    setLocationPickerOpen(false);
+    setLocationPickerError(null);
+    setSelectedLocation(null);
+    setGettingLocation(false);
+  }
+
+  function confirmSelectedLocation() {
+    if (!selectedLocation) {
+      return;
+    }
+
+    const latitude =
+      selectedLocation.latitude;
+    const longitude =
+      selectedLocation.longitude;
+
+    const locationMessage =
+      `📍 Location: https://www.google.com/maps?q=${latitude},${longitude}`;
+
+    onReplyChange(
+      reply.trim()
+        ? `${reply}
+${locationMessage}`
+        : locationMessage,
+    );
+
+    closeLocationPicker();
+  }
+
+  useEffect(() => {
+    if (
+      !locationPickerOpen ||
+      !locationMapRef.current
+    ) {
+      return;
+    }
+
+    const mapElement =
+      locationMapRef.current;
+
+    function updateMapSize() {
+      const rect =
+        mapElement.getBoundingClientRect();
+
+      setLocationMapSize({
+        width:
+          Math.max(
+            1,
+            rect.width,
+          ),
+        height:
+          Math.max(
+            1,
+            rect.height,
+          ),
+      });
+    }
+
+    updateMapSize();
+
+    const observer =
+      typeof ResizeObserver !==
+      "undefined"
+        ? new ResizeObserver(
+            updateMapSize,
+          )
+        : null;
+
+    observer?.observe(
+      mapElement,
+    );
+
+    window.addEventListener(
+      "resize",
+      updateMapSize,
+    );
+
+    return () => {
+      observer?.disconnect();
+
+      window.removeEventListener(
+        "resize",
+        updateMapSize,
+      );
+    };
+  }, [locationPickerOpen]);
+
+  function applyLocationDragTransform(
+    x: number,
+    y: number,
+  ) {
+    const tileLayer =
+      locationTileLayerRef.current;
+
+    if (!tileLayer) {
+      return;
+    }
+
+    locationPendingDragRef.current =
+      {
+        x,
+        y,
+      };
+
+    if (
+      locationDragFrameRef.current !==
+      null
+    ) {
+      return;
+    }
+
+    locationDragFrameRef.current =
+      window.requestAnimationFrame(
+        () => {
+          locationDragFrameRef.current =
+            null;
+
+          const pending =
+            locationPendingDragRef.current;
+
+          tileLayer.style.transform =
+            `translate3d(${pending.x}px, ${pending.y}px, 0)`;
+        },
+      );
+  }
+
+  function resetLocationDragTransform() {
+    if (
+      locationDragFrameRef.current !==
+      null
+    ) {
+      window.cancelAnimationFrame(
+        locationDragFrameRef.current,
+      );
+
+      locationDragFrameRef.current =
+        null;
+    }
+
+    locationPendingDragRef.current =
+      {
+        x: 0,
+        y: 0,
+      };
+
+    if (
+      locationTileLayerRef.current
+    ) {
+      locationTileLayerRef.current.style.transform =
+        "translate3d(0, 0, 0)";
+    }
+  }
+
+  function locationFromMapOffset({
+    baseLocation,
+    offsetX,
+    offsetY,
+  }: {
+    baseLocation:
+      LocationPoint;
+    offsetX: number;
+    offsetY: number;
+  }) {
+    const centerWorld =
+      locationToWorldPixel({
+        ...baseLocation,
+        zoom:
+          locationMapZoom,
+      });
+
+    return worldPixelToLocation({
+      /*
+       * Moving map imagery right means the selected map center moves west,
+       * so subtract the pointer movement from world coordinates.
+       */
+      x:
+        centerWorld.x -
+        offsetX,
+      y:
+        centerWorld.y -
+        offsetY,
+      zoom:
+        locationMapZoom,
+    });
+  }
+
+  function handleLocationMapPointerDown(
+    event:
+      ReactPointerEvent<HTMLDivElement>,
+  ) {
+    if (
+      !selectedLocation ||
+      gettingLocation
+    ) {
+      return;
+    }
+
+    if (
+      event.button !== 0 &&
+      event.pointerType ===
+        "mouse"
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+
+    event.currentTarget.setPointerCapture(
+      event.pointerId,
+    );
+
+    locationDragRef.current =
+      {
+        pointerId:
+          event.pointerId,
+        startX:
+          event.clientX,
+        startY:
+          event.clientY,
+        lastX:
+          event.clientX,
+        lastY:
+          event.clientY,
+        moved: false,
+        startLocation:
+          selectedLocation,
+      };
+
+    setLocationMapDragging(
+      true,
+    );
+  }
+
+  function handleLocationMapPointerMove(
+    event:
+      ReactPointerEvent<HTMLDivElement>,
+  ) {
+    const drag =
+      locationDragRef.current;
+
+    if (
+      !drag ||
+      drag.pointerId !==
+        event.pointerId
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+
+    drag.lastX =
+      event.clientX;
+    drag.lastY =
+      event.clientY;
+
+    const offsetX =
+      drag.lastX -
+      drag.startX;
+
+    const offsetY =
+      drag.lastY -
+      drag.startY;
+
+    if (
+      Math.hypot(
+        offsetX,
+        offsetY,
+      ) > 4
+    ) {
+      drag.moved =
+        true;
+    }
+
+    applyLocationDragTransform(
+      offsetX,
+      offsetY,
+    );
+  }
+
+  function finishLocationMapPointer(
+    event:
+      ReactPointerEvent<HTMLDivElement>,
+  ) {
+    const drag =
+      locationDragRef.current;
+
+    if (
+      !drag ||
+      drag.pointerId !==
+        event.pointerId
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const offsetX =
+      event.clientX -
+      drag.startX;
+
+    const offsetY =
+      event.clientY -
+      drag.startY;
+
+    let nextLocation:
+      | LocationPoint
+      | null = null;
+
+    if (drag.moved) {
+      nextLocation =
+        locationFromMapOffset({
+          baseLocation:
+            drag.startLocation,
+          offsetX,
+          offsetY,
+        });
+    } else if (
+      locationMapRef.current
+    ) {
+      const rect =
+        locationMapRef.current.getBoundingClientRect();
+
+      /*
+       * A simple click/tap still selects the clicked point.
+       * Because the pin stays centered, this recenters that point under it.
+       */
+      nextLocation =
+        locationFromMapOffset({
+          baseLocation:
+            drag.startLocation,
+          offsetX:
+            rect.width / 2 -
+            (
+              event.clientX -
+              rect.left
+            ),
+          offsetY:
+            rect.height / 2 -
+            (
+              event.clientY -
+              rect.top
+            ),
+        });
+    }
+
+    try {
+      if (
+        event.currentTarget.hasPointerCapture(
+          event.pointerId,
+        )
+      ) {
+        event.currentTarget.releasePointerCapture(
+          event.pointerId,
+        );
+      }
+    } catch {
+      // Pointer may already be released by the browser.
+    }
+
+    locationDragRef.current =
+      null;
+    setLocationMapDragging(
+      false,
+    );
+
+    if (nextLocation) {
+      setSelectedLocation(
+        nextLocation,
+      );
+
+      setLocationPickerError(
+        null,
+      );
+    }
+
+    /*
+     * The next render receives tiles centered on nextLocation.
+     * Reset the temporary DOM transform without forcing React updates while
+     * the pointer is moving.
+     */
+    window.requestAnimationFrame(
+      resetLocationDragTransform,
+    );
+  }
+
+  function cancelLocationMapPointer(
+    event:
+      ReactPointerEvent<HTMLDivElement>,
+  ) {
+    const drag =
+      locationDragRef.current;
+
+    if (
+      !drag ||
+      drag.pointerId !==
+        event.pointerId
+    ) {
+      return;
+    }
+
+    locationDragRef.current =
+      null;
+    setLocationMapDragging(
+      false,
+    );
+    resetLocationDragTransform();
+  }
+
+  function changeLocationMapZoom(
+    delta: number,
+  ) {
+    setLocationMapZoom(
+      (current) =>
+        Math.max(
+          LOCATION_MAP_MIN_ZOOM,
+          Math.min(
+            LOCATION_MAP_MAX_ZOOM,
+            current + delta,
+          ),
+        ),
     );
   }
 
@@ -1137,7 +1927,7 @@ export function ReplyBox({
             title={
               allowAttachments
                 ? "Record voice message"
-                : "Voice messages are not available for this conversation"
+                : "Voice messages are available for Messenger conversations"
             }
           >
             <AudioIcon />
@@ -1169,7 +1959,7 @@ export function ReplyBox({
             title={
               allowAttachments
                 ? "Add content"
-                : "Attachments are not available for this conversation"
+                : "Attachments are available for Messenger conversations"
             }
             aria-expanded={moreOpen}
           >
@@ -1300,15 +2090,283 @@ export function ReplyBox({
               >
                 <LocationIcon />
                 <span>
-                  {gettingLocation
-                    ? "Getting location..."
-                    : "Send location"}
+                  Send location
                 </span>
               </button>
             </div>
           </>
         ) : null}
       </div>
+
+      {locationPickerOpen ? (
+        <>
+          <button
+            type="button"
+            onClick={closeLocationPicker}
+            className="fixed inset-0 z-[70] cursor-default bg-slate-950/35 backdrop-blur-[1px]"
+            aria-label="Close location picker"
+          />
+
+          <div
+            className="fixed left-1/2 top-1/2 z-[80] w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose location"
+          >
+            <div className="flex h-14 items-center justify-between border-b border-slate-200 px-5">
+              <h3 className="text-lg font-semibold text-slate-900">
+                Location
+              </h3>
+
+              <button
+                type="button"
+                onClick={closeLocationPicker}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close location picker"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="relative h-[290px] bg-slate-100">
+              {selectedLocation ? (
+                <div
+                  ref={locationMapRef}
+                  onPointerDown={
+                    handleLocationMapPointerDown
+                  }
+                  onPointerMove={
+                    handleLocationMapPointerMove
+                  }
+                  onPointerUp={
+                    finishLocationMapPointer
+                  }
+                  onPointerCancel={
+                    cancelLocationMapPointer
+                  }
+                  className={`relative h-full w-full overflow-hidden bg-slate-200 ${
+                    locationMapDragging
+                      ? "cursor-grabbing"
+                      : "cursor-grab"
+                  }`}
+                  style={{
+                    touchAction:
+                      "none",
+                  }}
+                  role="application"
+                  aria-label="Location map. Drag to move the map, click to select a point."
+                >
+                  <div
+                    ref={
+                      locationTileLayerRef
+                    }
+                    className="pointer-events-none absolute inset-0 will-change-transform"
+                  >
+                    {getLocationMapTiles({
+                      center:
+                        selectedLocation,
+                      zoom:
+                        locationMapZoom,
+                      size:
+                        locationMapSize,
+                    }).map(
+                      (tile) => (
+                        <img
+                          key={tile.key}
+                          src={tile.url}
+                          alt=""
+                          draggable={false}
+                          loading="eager"
+                          decoding="async"
+                          className="pointer-events-none absolute h-64 w-64 select-none"
+                          style={{
+                            left:
+                              tile.x,
+                            top:
+                              tile.y,
+                          }}
+                        />
+                      ),
+                    )}
+                  </div>
+
+                  <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
+                    <span className="rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow">
+                      Drag map or click to choose
+                    </span>
+                  </div>
+
+                  <div className="absolute right-3 top-3 z-10 overflow-hidden rounded-lg border border-slate-200 bg-white shadow">
+                    <button
+                      type="button"
+                      onPointerDown={(
+                        event,
+                      ) => {
+                        event.stopPropagation();
+                      }}
+                      onClick={(
+                        event,
+                      ) => {
+                        event.stopPropagation();
+                        changeLocationMapZoom(
+                          1,
+                        );
+                      }}
+                      disabled={
+                        locationMapZoom >=
+                        LOCATION_MAP_MAX_ZOOM
+                      }
+                      className="flex h-9 w-9 items-center justify-center border-b border-slate-200 text-xl font-semibold text-slate-700 transition hover:bg-slate-50 disabled:text-slate-300"
+                      aria-label="Zoom in"
+                    >
+                      +
+                    </button>
+
+                    <button
+                      type="button"
+                      onPointerDown={(
+                        event,
+                      ) => {
+                        event.stopPropagation();
+                      }}
+                      onClick={(
+                        event,
+                      ) => {
+                        event.stopPropagation();
+                        changeLocationMapZoom(
+                          -1,
+                        );
+                      }}
+                      disabled={
+                        locationMapZoom <=
+                        LOCATION_MAP_MIN_ZOOM
+                      }
+                      className="flex h-9 w-9 items-center justify-center text-xl font-semibold text-slate-700 transition hover:bg-slate-50 disabled:text-slate-300"
+                      aria-label="Zoom out"
+                    >
+                      −
+                    </button>
+                  </div>
+
+                  <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-full flex-col items-center">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full border-4 border-white bg-blue-500 text-white shadow-xl">
+                      <LocationIcon />
+                    </div>
+                    <div className="h-3 w-1 rounded-b-full bg-blue-500 shadow" />
+                  </div>
+
+                  <button
+                    type="button"
+                    onPointerDown={(
+                      event,
+                    ) => {
+                      event.stopPropagation();
+                    }}
+                    onClick={(
+                      event,
+                    ) => {
+                      event.stopPropagation();
+                      useMyCurrentLocation();
+                    }}
+                    disabled={
+                      gettingLocation
+                    }
+                    className="absolute bottom-7 right-3 z-20 flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 shadow-lg transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    <span className="flex h-5 w-5 items-center justify-center">
+                      <LocationIcon />
+                    </span>
+                    <span>
+                      {gettingLocation
+                        ? "Locating..."
+                        : "My Location"}
+                    </span>
+                  </button>
+
+                  {gettingLocation ? (
+                    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/15">
+                      <div className="rounded-full bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 shadow-lg">
+                        Finding your location...
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-white/90 px-1.5 py-0.5 text-[10px] text-slate-600 shadow-sm">
+                    © OpenStreetMap contributors
+                  </div>
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center px-8 text-center">
+                  <div>
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                      <LocationIcon />
+                    </div>
+
+                    <p className="mt-3 text-sm font-medium text-slate-700">
+                      {gettingLocation
+                        ? "Finding your location..."
+                        : "Location unavailable"}
+                    </p>
+
+                    {locationPickerError ? (
+                      <p className="mt-2 text-xs leading-5 text-red-600">
+                        {locationPickerError}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Allow browser location access to place the pin.
+                      </p>
+                    )}
+
+                    {locationPickerError ? (
+                      <button
+                        type="button"
+                        onClick={addLocation}
+                        className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-700"
+                      >
+                        Try again
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            <button
+              type="button"
+              onClick={confirmSelectedLocation}
+              disabled={
+                gettingLocation ||
+                !selectedLocation
+              }
+              className="flex w-full items-center gap-3 border-t border-slate-200 bg-white px-5 py-4 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white">
+                <LocationIcon />
+              </span>
+
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-slate-900">
+                  Send This Location
+                </span>
+
+                <span className="mt-0.5 block truncate text-xs text-slate-500">
+                  {gettingLocation
+                    ? "Loading..."
+                    : selectedLocation
+                      ? `${selectedLocation.latitude.toFixed(
+                          6,
+                        )}, ${selectedLocation.longitude.toFixed(
+                          6,
+                        )}`
+                      : "Location unavailable"}
+                </span>
+              </span>
+            </button>
+          </div>
+        </>
+      ) : null}
 
       {recordingVoice ? (
         <div className="mx-4 mb-2 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5">

@@ -5,6 +5,7 @@ import type {
   TelegramFile,
   TelegramMessage,
   TelegramUserProfilePhotos,
+  TelegramUser,
   TelegramWebhookInfo,
 } from "@/lib/telegram/types";
 
@@ -14,6 +15,45 @@ const TELEGRAM_API_BASE =
 type TelegramRequestOptions = {
   body?: Record<string, unknown>;
 };
+
+export class TelegramApiError extends Error {
+  readonly method: string;
+  readonly errorCode: number | null;
+  readonly retryAfter: number | null;
+
+  constructor({
+    method,
+    description,
+    errorCode,
+    retryAfter,
+  }: {
+    method: string;
+    description: string;
+    errorCode?: number;
+    retryAfter?: number;
+  }) {
+    const retrySuffix =
+      typeof retryAfter === "number" &&
+      retryAfter > 0
+        ? ` Try again in ${retryAfter} seconds.`
+        : "";
+
+    super(
+      `${description}${retrySuffix}`,
+    );
+
+    this.name = "TelegramApiError";
+    this.method = method;
+    this.errorCode =
+      typeof errorCode === "number"
+        ? errorCode
+        : null;
+    this.retryAfter =
+      typeof retryAfter === "number"
+        ? retryAfter
+        : null;
+  }
+}
 
 async function telegramRequest<T>(
   token: string,
@@ -50,10 +90,17 @@ async function telegramRequest<T>(
     payload.ok !== true ||
     payload.result === undefined
   ) {
-    throw new Error(
-      payload.description ??
+    throw new TelegramApiError({
+      method,
+      description:
+        payload.description ??
         `Telegram ${method} failed.`,
-    );
+      errorCode:
+        payload.error_code,
+      retryAfter:
+        payload.parameters
+          ?.retry_after,
+    });
   }
 
   return payload.result;
@@ -77,7 +124,10 @@ export async function setTelegramWebhook({
       body: {
         url,
         secret_token: secretToken,
-        allowed_updates: ["message"],
+        allowed_updates: [
+          "message",
+          "edited_message",
+        ],
         drop_pending_updates:
           dropPendingUpdates,
       },
@@ -110,6 +160,16 @@ export async function getTelegramWebhookInfo(
   return telegramRequest<TelegramWebhookInfo>(
     token,
     "getWebhookInfo",
+  );
+}
+
+
+export async function getTelegramMe(
+  token: string,
+) {
+  return telegramRequest<TelegramUser>(
+    token,
+    "getMe",
   );
 }
 
@@ -180,10 +240,12 @@ export async function sendTelegramMessage({
   token,
   chatId,
   text,
+  replyToMessageId,
 }: {
   token: string;
   chatId: string | number;
   text: string;
+  replyToMessageId?: number | null;
 }) {
   return telegramRequest<TelegramMessage>(
     token,
@@ -192,6 +254,83 @@ export async function sendTelegramMessage({
       body: {
         chat_id: chatId,
         text,
+        ...(typeof replyToMessageId === "number" &&
+        Number.isSafeInteger(replyToMessageId) &&
+        replyToMessageId > 0
+          ? {
+              reply_parameters: {
+                message_id: replyToMessageId,
+                allow_sending_without_reply:
+                  false,
+              },
+            }
+          : {}),
+      },
+    },
+  );
+}
+
+export async function editTelegramMessageText({
+  token,
+  chatId,
+  messageId,
+  text,
+}: {
+  token: string;
+  chatId: string | number;
+  messageId: number;
+  text: string;
+}) {
+  return telegramRequest<TelegramMessage>(
+    token,
+    "editMessageText",
+    {
+      body: {
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+      },
+    },
+  );
+}
+
+export async function deleteTelegramMessage({
+  token,
+  chatId,
+  messageId,
+}: {
+  token: string;
+  chatId: string | number;
+  messageId: number;
+}) {
+  return telegramRequest<boolean>(
+    token,
+    "deleteMessage",
+    {
+      body: {
+        chat_id: chatId,
+        message_id: messageId,
+      },
+    },
+  );
+}
+
+export async function sendTelegramChatAction({
+  token,
+  chatId,
+  action = "typing",
+}: {
+  token: string;
+  chatId: string | number;
+  action?: "typing";
+}) {
+  return telegramRequest<boolean>(
+    token,
+    "sendChatAction",
+    {
+      body: {
+        chat_id: chatId,
+        action,
       },
     },
   );
@@ -263,13 +402,15 @@ type TelegramBinaryMethod =
   | "sendDocument"
   | "sendAudio"
   | "sendVoice"
-  | "sendVideo";
+  | "sendVideo"
+  | "sendAnimation";
 
 type TelegramBinaryField =
   | "document"
   | "audio"
   | "voice"
-  | "video";
+  | "video"
+  | "animation";
 
 async function sendTelegramBinaryMedia({
   token,
@@ -421,5 +562,52 @@ export async function sendTelegramVideo({
       fileName ||
       "tenh-video.mp4",
   });
+}
+
+export async function sendTelegramAnimation({
+  token,
+  chatId,
+  animation,
+  fileName,
+}: {
+  token: string;
+  chatId: string | number;
+  animation: Blob;
+  fileName: string;
+}) {
+  return sendTelegramBinaryMedia({
+    token,
+    chatId,
+    method: "sendAnimation",
+    field: "animation",
+    file: animation,
+    fileName:
+      fileName ||
+      "tenh-animation.gif",
+  });
+}
+
+export async function sendTelegramLocation({
+  token,
+  chatId,
+  latitude,
+  longitude,
+}: {
+  token: string;
+  chatId: string | number;
+  latitude: number;
+  longitude: number;
+}) {
+  return telegramRequest<TelegramMessage>(
+    token,
+    "sendLocation",
+    {
+      body: {
+        chat_id: chatId,
+        latitude,
+        longitude,
+      },
+    },
+  );
 }
 

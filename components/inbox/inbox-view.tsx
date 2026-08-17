@@ -6,6 +6,7 @@ import {
 } from "next/navigation";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -368,10 +369,60 @@ export function InboxView({
 
 const requestedConversationId =
   searchParams.get("conversation");
+
+  /*
+   * V3.11.16.8 — smooth conversation selection.
+   * Keep the active thread in client state so selecting a row does not
+   * require a Next.js route navigation / server rerender.
+   */
+  const [
+    clientSelectedConversationId,
+    setClientSelectedConversationId,
+  ] = useState<string | null>(() =>
+    requestedConversationId ??
+    activeConversationId ??
+    conversations[0]?.id ??
+    null,
+  );
+
+  const desiredConversationIdRef =
+    useRef<string | null>(
+      clientSelectedConversationId,
+    );
+
+  const [
+    loadingConversationMessages,
+    setLoadingConversationMessages,
+  ] = useState(false);
+
+  const [
+    conversationMessagesError,
+    setConversationMessagesError,
+  ] = useState<string | null>(null);
+
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] =
     useState<string | null>(null);
+
+  const [
+    editingTelegramMessageId,
+    setEditingTelegramMessageId,
+  ] = useState<string | null>(
+    null,
+  );
+
+  const [
+    telegramActionNotice,
+    setTelegramActionNotice,
+  ] = useState<string | null>(
+    null,
+  );
+
+  const telegramActionNoticeTimerRef =
+    useRef<number | null>(
+      null,
+    );
 
   const [
   replyingToCommentId,
@@ -379,6 +430,13 @@ const requestedConversationId =
 ] = useState<string | null>(
   null,
 );
+
+  const [
+    replyingToTelegramMessageId,
+    setReplyingToTelegramMessageId,
+  ] = useState<string | null>(
+    null,
+  );
 
   const [
   customerPanelVisible,
@@ -426,6 +484,28 @@ const skipAutomaticReadRef =
     liveMessages,
     setLiveMessages,
   ] = useState(messages);
+
+  type ConversationMessagePage = {
+    messages: InboxMessage[];
+    hasMore: boolean;
+  };
+
+  const conversationMessageCacheRef =
+    useRef<
+      Record<
+        string,
+        ConversationMessagePage
+      >
+    >({});
+
+  const conversationMessageRequestRef =
+    useRef<
+      Record<
+        string,
+        Promise<ConversationMessagePage>
+          | undefined
+      >
+    >({});
 
   /*
    * V2.7 — older-message pagination.
@@ -480,6 +560,12 @@ const skipAutomaticReadRef =
         string,
         PendingOptimisticAttachmentSend
       >
+    >({});
+
+
+  const telegramTypingLastSentRef =
+    useRef<
+      Record<string, number>
     >({});
 
 
@@ -558,6 +644,17 @@ const skipAutomaticReadRef =
  const resolvedActiveConversationId =
   useMemo(() => {
     if (
+      clientSelectedConversationId &&
+      liveConversations.some(
+        (conversation) =>
+          conversation.id ===
+          clientSelectedConversationId,
+      )
+    ) {
+      return clientSelectedConversationId;
+    }
+
+    if (
       requestedConversationId &&
       liveConversations.some(
         (conversation) =>
@@ -584,6 +681,7 @@ const skipAutomaticReadRef =
       null
     );
   }, [
+    clientSelectedConversationId,
     liveConversations,
     requestedConversationId,
     activeConversationId,
@@ -602,6 +700,17 @@ const activeConversation =
       resolvedActiveConversationId,
     ],
   );
+
+useEffect(() => {
+  setEditingTelegramMessageId(
+    null,
+  );
+  setReplyingToTelegramMessageId(
+    null,
+  );
+  setReply("");
+  setSendError(null);
+}, [resolvedActiveConversationId]);
 
 const realtimeBusinessId =
   useMemo(
@@ -645,6 +754,104 @@ const {
   teamMembers,
   typingText: reply,
 });
+
+
+/*
+ * V3.11.15 — TENH agent typing -> Telegram customer.
+ * Telegram Bot API does not provide customer typing updates back to bots.
+ */
+useEffect(() => {
+  const conversation =
+    activeConversation;
+
+  if (
+    !conversation ||
+    conversation.source_type ===
+      "comment" ||
+    !reply.trim()
+  ) {
+    return;
+  }
+
+  let disposed = false;
+
+  const timer =
+    window.setTimeout(
+      async () => {
+        let platform:
+          InboxConversationPlatform;
+
+        try {
+          platform =
+            await resolveConversationPlatform(
+              conversation,
+            );
+        } catch {
+          return;
+        }
+
+        if (
+          disposed ||
+          platform !==
+            "telegram"
+        ) {
+          return;
+        }
+
+        const now =
+          Date.now();
+
+        const lastSent =
+          telegramTypingLastSentRef
+            .current[
+              conversation.id
+            ] ?? 0;
+
+        if (
+          now - lastSent <
+          3500
+        ) {
+          return;
+        }
+
+        telegramTypingLastSentRef
+          .current[
+            conversation.id
+          ] = now;
+
+        try {
+          await fetch(
+            "/api/telegram/typing",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body:
+                JSON.stringify({
+                  conversationId:
+                    conversation.id,
+                }),
+            },
+          );
+        } catch {
+          // Best effort only.
+        }
+      },
+      450,
+    );
+
+  return () => {
+    disposed = true;
+    window.clearTimeout(
+      timer,
+    );
+  };
+}, [
+  reply,
+  activeConversation?.id,
+]);
 
 async function markConversationReadRealtime(
   conversationId: string,
@@ -1069,6 +1276,10 @@ useInboxRealtime({
         conversationId !==
         resolvedActiveConversationId
       ) {
+        delete conversationMessageCacheRef
+          .current[
+            conversationId
+          ];
         return;
       }
 
@@ -1431,6 +1642,13 @@ useEffect(() => {
       for (
         const message of messages
       ) {
+        if (
+          message.conversation_id !==
+          resolvedActiveConversationId
+        ) {
+          continue;
+        }
+
         const existing =
           merged.get(
             message.id,
@@ -1486,6 +1704,507 @@ useEffect(() => {
 }, [
   messages,
   resolvedActiveConversationId,
+]);
+
+/*
+ * V3.11.16.8 — latest-page cache + prefetch.
+ * Conversation rows can warm the next thread on hover/focus, then selection
+ * swaps local state immediately while the URL is updated with History API.
+ */
+const loadConversationMessagePage =
+  useCallback(
+    async (
+      conversationId: string,
+    ): Promise<ConversationMessagePage> => {
+      const cached =
+        conversationMessageCacheRef
+          .current[conversationId];
+
+      if (cached) {
+        return cached;
+      }
+
+      const pending =
+        conversationMessageRequestRef
+          .current[conversationId];
+
+      if (pending) {
+        return pending;
+      }
+
+      const request = (async () => {
+        const params =
+          new URLSearchParams({
+            limit:
+              String(
+                MESSAGE_PAGE_SIZE,
+              ),
+          });
+
+        const response = await fetch(
+          `/api/conversations/${conversationId}/messages?${params.toString()}`,
+          {
+            method: "GET",
+            cache: "no-store",
+          },
+        );
+
+        const responseText =
+          await response.text();
+
+        const result =
+          responseText.trim()
+            ? (JSON.parse(
+                responseText,
+              ) as {
+                success?: boolean;
+                error?: string;
+                messages?: InboxMessage[];
+                hasMore?: boolean;
+              })
+            : {
+                success:
+                  response.ok,
+              };
+
+        if (
+          !response.ok ||
+          !result.success
+        ) {
+          throw new Error(
+            result.error ??
+              "Unable to load conversation messages.",
+          );
+        }
+
+        const nextMessages =
+          (Array.isArray(
+            result.messages,
+          )
+            ? result.messages
+            : []
+          )
+            .filter(
+              (message) =>
+                message.conversation_id ===
+                conversationId,
+            )
+            .sort(
+              (first, second) => {
+                const timeDifference =
+                  new Date(
+                    first.created_at,
+                  ).getTime() -
+                  new Date(
+                    second.created_at,
+                  ).getTime();
+
+                if (
+                  timeDifference !== 0
+                ) {
+                  return timeDifference;
+                }
+
+                return first.id.localeCompare(
+                  second.id,
+                );
+              },
+            );
+
+        const page = {
+          messages:
+            nextMessages,
+          hasMore:
+            typeof result.hasMore ===
+              "boolean"
+              ? result.hasMore
+              : nextMessages.length >=
+                MESSAGE_PAGE_SIZE,
+        };
+
+        conversationMessageCacheRef
+          .current[conversationId] =
+          page;
+
+        return page;
+      })();
+
+      conversationMessageRequestRef
+        .current[conversationId] =
+        request;
+
+      try {
+        return await request;
+      } finally {
+        delete conversationMessageRequestRef
+          .current[
+            conversationId
+          ];
+      }
+    },
+    [],
+  );
+
+const prefetchConversation =
+  useCallback(
+    (
+      conversationId: string,
+    ) => {
+      if (
+        conversationId ===
+          resolvedActiveConversationId ||
+        conversationMessageCacheRef
+          .current[conversationId]
+      ) {
+        return;
+      }
+
+      void loadConversationMessagePage(
+        conversationId,
+      ).catch(() => {
+        // Prefetch is best-effort. A click will retry and surface loading.
+      });
+    },
+    [
+      loadConversationMessagePage,
+      resolvedActiveConversationId,
+    ],
+  );
+
+const selectConversationSmoothly =
+  useCallback(
+    (
+      conversationId: string,
+      updateHistory = true,
+    ) => {
+      if (
+        !liveConversations.some(
+          (conversation) =>
+            conversation.id ===
+            conversationId,
+        )
+      ) {
+        return;
+      }
+
+      if (
+        conversationId ===
+          desiredConversationIdRef.current &&
+        conversationId ===
+          resolvedActiveConversationId
+      ) {
+        return;
+      }
+
+      const currentConversationId =
+        resolvedActiveConversationId;
+
+      if (
+        currentConversationId &&
+        !loadingConversationMessages
+      ) {
+        const scopedCurrentMessages =
+          liveMessages.filter(
+            (message) =>
+              message.conversation_id ===
+              currentConversationId,
+          );
+
+        if (
+          scopedCurrentMessages.length ===
+            liveMessages.length
+        ) {
+          conversationMessageCacheRef
+            .current[
+              currentConversationId
+            ] = {
+              messages:
+                scopedCurrentMessages,
+              hasMore:
+                hasMoreOlderMessages,
+            };
+        }
+      }
+
+      desiredConversationIdRef.current =
+        conversationId;
+      setClientSelectedConversationId(
+        conversationId,
+      );
+      setOlderMessagesError(null);
+      setConversationMessagesError(
+        null,
+      );
+      setLoadingOlderMessages(false);
+      loadOlderInFlightRef.current =
+        false;
+
+      const cached =
+        conversationMessageCacheRef
+          .current[conversationId];
+
+      if (cached) {
+        setLiveMessages(
+          cached.messages,
+        );
+        setHasMoreOlderMessages(
+          cached.hasMore,
+        );
+        setLoadingConversationMessages(
+          false,
+        );
+      } else {
+        setLiveMessages([]);
+        setHasMoreOlderMessages(
+          false,
+        );
+        setLoadingConversationMessages(
+          true,
+        );
+
+        void loadConversationMessagePage(
+          conversationId,
+        )
+          .then((page) => {
+            if (
+              desiredConversationIdRef
+                .current !==
+              conversationId
+            ) {
+              return;
+            }
+
+            setLiveMessages(
+              page.messages,
+            );
+            setHasMoreOlderMessages(
+              page.hasMore,
+            );
+          })
+          .catch((error) => {
+            if (
+              desiredConversationIdRef
+                .current !==
+              conversationId
+            ) {
+              return;
+            }
+
+            setConversationMessagesError(
+              error instanceof Error
+                ? error.message
+                : "Unable to load conversation messages.",
+            );
+          })
+          .finally(() => {
+            if (
+              desiredConversationIdRef
+                .current ===
+              conversationId
+            ) {
+              setLoadingConversationMessages(
+                false,
+              );
+            }
+          });
+      }
+
+      if (
+        updateHistory &&
+        typeof window !==
+          "undefined"
+      ) {
+        const params =
+          new URLSearchParams(
+            window.location.search,
+          );
+
+        params.set(
+          "conversation",
+          conversationId,
+        );
+
+        const query =
+          params.toString();
+
+        window.history.pushState(
+          null,
+          "",
+          query
+            ? `/dashboard/inbox?${query}`
+            : "/dashboard/inbox",
+        );
+      }
+    },
+    [
+      hasMoreOlderMessages,
+      liveConversations,
+      liveMessages,
+      loadConversationMessagePage,
+      loadingConversationMessages,
+      resolvedActiveConversationId,
+    ],
+  );
+
+const retryConversationMessages =
+  useCallback(() => {
+    const conversationId =
+      desiredConversationIdRef
+        .current ??
+      resolvedActiveConversationId;
+
+    if (!conversationId) {
+      return;
+    }
+
+    delete conversationMessageCacheRef
+      .current[conversationId];
+    setConversationMessagesError(
+      null,
+    );
+    setLoadingConversationMessages(
+      true,
+    );
+
+    void loadConversationMessagePage(
+      conversationId,
+    )
+      .then((page) => {
+        if (
+          desiredConversationIdRef
+            .current !==
+          conversationId
+        ) {
+          return;
+        }
+
+        setLiveMessages(
+          page.messages,
+        );
+        setHasMoreOlderMessages(
+          page.hasMore,
+        );
+      })
+      .catch((error) => {
+        if (
+          desiredConversationIdRef
+            .current !==
+          conversationId
+        ) {
+          return;
+        }
+
+        setConversationMessagesError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load conversation messages.",
+        );
+      })
+      .finally(() => {
+        if (
+          desiredConversationIdRef
+            .current ===
+          conversationId
+        ) {
+          setLoadingConversationMessages(
+            false,
+          );
+        }
+      });
+  }, [
+    loadConversationMessagePage,
+    resolvedActiveConversationId,
+  ]);
+
+/*
+ * Keep cache aligned with realtime/optimistic changes for the active thread.
+ */
+useEffect(() => {
+  if (
+    !resolvedActiveConversationId ||
+    loadingConversationMessages
+  ) {
+    return;
+  }
+
+  const scopedMessages =
+    liveMessages.filter(
+      (message) =>
+        message.conversation_id ===
+        resolvedActiveConversationId,
+    );
+
+  if (
+    scopedMessages.length !==
+      liveMessages.length
+  ) {
+    return;
+  }
+
+  conversationMessageCacheRef
+    .current[
+      resolvedActiveConversationId
+    ] = {
+      messages:
+        scopedMessages,
+      hasMore:
+        hasMoreOlderMessages,
+    };
+}, [
+  hasMoreOlderMessages,
+  liveMessages,
+  loadingConversationMessages,
+  resolvedActiveConversationId,
+]);
+
+/*
+ * Browser Back/Forward changes useSearchParams without a full route reload.
+ * Mirror that URL selection into the same smooth client switch path.
+ */
+useEffect(() => {
+  const fallbackId =
+    requestedConversationId &&
+    liveConversations.some(
+      (conversation) =>
+        conversation.id ===
+        requestedConversationId,
+    )
+      ? requestedConversationId
+      : activeConversationId &&
+          liveConversations.some(
+            (conversation) =>
+              conversation.id ===
+              activeConversationId,
+          )
+        ? activeConversationId
+        : liveConversations[0]
+            ?.id ??
+          null;
+
+  if (!fallbackId) {
+    desiredConversationIdRef.current =
+      null;
+    setClientSelectedConversationId(
+      null,
+    );
+    return;
+  }
+
+  if (
+    fallbackId !==
+    clientSelectedConversationId
+  ) {
+    selectConversationSmoothly(
+      fallbackId,
+      false,
+    );
+  }
+}, [
+  activeConversationId,
+  clientSelectedConversationId,
+  liveConversations,
+  requestedConversationId,
+  selectConversationSmoothly,
 ]);
 
 async function handleLoadOlderMessages(): Promise<boolean> {
@@ -1586,6 +2305,18 @@ async function handleLoadOlderMessages(): Promise<boolean> {
       )
         ? result.messages
         : [];
+
+    /*
+     * The agent may switch threads while this older-page request is in flight.
+     * Never prepend Conversation A messages into Conversation B.
+     */
+    if (
+      desiredConversationIdRef
+        .current !==
+      conversationId
+    ) {
+      return false;
+    }
 
     setHasMoreOlderMessages(
       Boolean(
@@ -1711,14 +2442,52 @@ useEffect(() => {
         requestedConversationId,
     )
   ) {
-    router.replace(
-      "/dashboard/inbox",
+    const fallbackId =
+      liveConversations[0]
+        ?.id ??
+      null;
+
+    desiredConversationIdRef.current =
+      fallbackId;
+    setClientSelectedConversationId(
+      fallbackId,
     );
+
+    if (
+      typeof window !==
+      "undefined"
+    ) {
+      const params =
+        new URLSearchParams(
+          window.location.search,
+        );
+
+      if (fallbackId) {
+        params.set(
+          "conversation",
+          fallbackId,
+        );
+      } else {
+        params.delete(
+          "conversation",
+        );
+      }
+
+      const query =
+        params.toString();
+
+      window.history.replaceState(
+        null,
+        "",
+        query
+          ? `/dashboard/inbox?${query}`
+          : "/dashboard/inbox",
+      );
+    }
   }
 }, [
   liveConversations,
   requestedConversationId,
-  router,
 ]);
 
 useEffect(() => {
@@ -1990,6 +2759,217 @@ async function handleTogglePin() {
   } finally {
     setPinning(false);
   }
+}
+
+function showTelegramActionNotice(
+  message: string,
+) {
+  if (
+    telegramActionNoticeTimerRef.current
+  ) {
+    window.clearTimeout(
+      telegramActionNoticeTimerRef.current,
+    );
+  }
+
+  setTelegramActionNotice(
+    message,
+  );
+
+  telegramActionNoticeTimerRef.current =
+    window.setTimeout(
+      () => {
+        setTelegramActionNotice(
+          null,
+        );
+        telegramActionNoticeTimerRef.current =
+          null;
+      },
+      2200,
+    );
+}
+
+function handleCancelTelegramEdit() {
+  setEditingTelegramMessageId(
+    null,
+  );
+  setReply("");
+  setSendError(null);
+}
+
+async function handleEditTelegramMessage(
+  messageId: string,
+  currentText: string,
+) {
+  const normalized =
+    currentText.trim();
+
+  if (!normalized) {
+    setSendError(
+      "This Telegram message has no editable text.",
+    );
+    return;
+  }
+
+  setEditingTelegramMessageId(
+    messageId,
+  );
+  setReplyingToTelegramMessageId(
+    null,
+  );
+  setReplyingToCommentId(null);
+  setReply(normalized);
+  setSendError(null);
+
+  window.requestAnimationFrame(
+    () => {
+      document
+        .querySelector<HTMLTextAreaElement>(
+          'textarea[placeholder="Write a reply..."]',
+        )
+        ?.focus();
+    },
+  );
+}
+
+async function handleDeleteTelegramMessage(
+  messageId: string,
+) {
+  const confirmed =
+    window.confirm(
+      "Delete this Telegram text message for both sides?",
+    );
+
+  if (!confirmed) {
+    return;
+  }
+
+  setSendError(null);
+
+  try {
+    const response =
+      await fetch(
+        `/api/telegram/messages/${encodeURIComponent(
+          messageId,
+        )}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+    const responseText =
+      await response.text();
+
+    const result =
+      responseText.trim()
+        ? (
+            JSON.parse(
+              responseText,
+            ) as {
+              success?: boolean;
+              error?: string;
+              deletedAt?: string;
+            }
+          )
+        : {};
+
+    if (
+      !response.ok ||
+      !result.success
+    ) {
+      throw new Error(
+        result.error ??
+          "Unable to delete Telegram message.",
+      );
+    }
+
+    setLiveMessages(
+      (current) =>
+        current.map(
+          (message) =>
+            message.id ===
+            messageId
+              ? {
+                  ...message,
+                  message_text:
+                    "Message deleted",
+                  raw_payload: {
+                    ...(
+                      message.raw_payload ??
+                      {}
+                    ),
+                    tenh_deleted: {
+                      source:
+                        "tenh",
+                      deleted_at:
+                        result.deletedAt ??
+                        new Date().toISOString(),
+                    },
+                  },
+                }
+              : message,
+        ),
+    );
+
+    if (
+      editingTelegramMessageId ===
+      messageId
+    ) {
+      setEditingTelegramMessageId(
+        null,
+      );
+      setReply("");
+    }
+
+    if (
+      replyingToTelegramMessageId ===
+      messageId
+    ) {
+      setReplyingToTelegramMessageId(
+        null,
+      );
+    }
+
+    showTelegramActionNotice(
+      "Telegram message deleted successfully",
+    );
+  } catch (error) {
+    setSendError(
+      error instanceof Error
+        ? error.message
+        : "Unable to delete Telegram message.",
+    );
+  }
+}
+
+function handleReplyToTelegramMessage(
+  messageId: string,
+) {
+  setEditingTelegramMessageId(
+    null,
+  );
+  setReply("");
+  setReplyingToTelegramMessageId(
+    messageId,
+  );
+  setReplyingToCommentId(null);
+  setSendError(null);
+
+  window.requestAnimationFrame(
+    () => {
+      document
+        .querySelector<HTMLTextAreaElement>(
+          'textarea[placeholder="Write a reply..."]',
+        )
+        ?.focus();
+    },
+  );
+}
+
+function handleCancelTelegramReply() {
+  setReplyingToTelegramMessageId(
+    null,
+  );
 }
 
 function handleReplyToComment(
@@ -2472,6 +3452,64 @@ function createOptimisticMessage({
     __optimistic_created_at:
       Date.now(),
   } as unknown as InboxMessage;
+}
+
+function parseTenhLocationMessage(
+  message: string,
+) {
+  const match =
+    message
+      .trim()
+      .match(
+        /^📍\s*Location:\s*https:\/\/www\.google\.com\/maps\?q=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/i,
+      );
+
+  if (!match) {
+    return null;
+  }
+
+  const latitude =
+    Number(match[1]);
+  const longitude =
+    Number(match[2]);
+
+  if (
+    !Number.isFinite(
+      latitude,
+    ) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    !Number.isFinite(
+      longitude,
+    ) ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return null;
+  }
+
+  return {
+    latitude,
+    longitude,
+  };
+}
+
+function isTelegramGifFile(
+  file: File,
+) {
+  const mime =
+    file.type
+      ?.split(";")[0]
+      ?.trim()
+      .toLowerCase() ??
+    "";
+
+  return (
+    mime === "image/gif" ||
+    file.name
+      .toLowerCase()
+      .endsWith(".gif")
+  );
 }
 
 function getAttachmentMessageText(
@@ -2992,6 +4030,42 @@ async function performOptimisticAttachmentSend(
 async function handleSendAttachments(
   attachments: ReplyAttachment[],
 ): Promise<boolean> {
+  if (editingTelegramMessageId) {
+    setSendError(
+      "Finish or cancel Telegram editing before sending an attachment.",
+    );
+    return false;
+  }
+
+  if (
+    replyingToTelegramMessageId &&
+    activeConversation
+  ) {
+    let replyPlatform:
+      InboxConversationPlatform;
+
+    try {
+      replyPlatform =
+        await resolveConversationPlatform(
+          activeConversation,
+        );
+    } catch (error) {
+      setSendError(
+        error instanceof Error
+          ? error.message
+          : "Unable to resolve this conversation channel.",
+      );
+      return false;
+    }
+
+    if (replyPlatform === "telegram") {
+      setSendError(
+        "Telegram Reply supports text only. Cancel Reply before sending media.",
+      );
+      return false;
+    }
+  }
+
   if (
     !activeConversation ||
     !activeConversation.contact
@@ -3102,16 +4176,25 @@ async function handleSendAttachments(
       );
 
     const messageText =
-      getAttachmentMessageText(
-        attachment.kind,
-        attachment.file.name,
-      );
+      conversationPlatform ===
+          "telegram" &&
+        isTelegramGifFile(
+          attachment.file,
+        )
+        ? "Sent an animation"
+        : getAttachmentMessageText(
+            attachment.kind,
+            attachment.file.name,
+          );
 
     const attachmentEndpoint =
       conversationPlatform ===
         "telegram"
         ? attachment.kind ===
-            "image"
+              "image" &&
+            !isTelegramGifFile(
+              attachment.file,
+            )
           ? "/api/telegram/send-photo"
           : "/api/telegram/send-media"
         : "/api/facebook/send-attachment";
@@ -3264,6 +4347,137 @@ async function handleSendMessage(
     }
   }
 
+  if (
+    conversationPlatform ===
+      "telegram" &&
+    editingTelegramMessageId
+  ) {
+    setSending(true);
+    setSendError(null);
+
+    try {
+      const response =
+        await fetch(
+          `/api/telegram/messages/${encodeURIComponent(
+            editingTelegramMessageId,
+          )}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              text: message,
+            }),
+          },
+        );
+
+      const responseText =
+        await response.text();
+
+      const result =
+        responseText.trim()
+          ? (
+              JSON.parse(
+                responseText,
+              ) as {
+                success?: boolean;
+                error?: string;
+                messageText?: string;
+                editedAt?: string;
+              }
+            )
+          : {};
+
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.error ??
+            "Unable to edit Telegram message.",
+        );
+      }
+
+      const editedMessageId =
+        editingTelegramMessageId;
+
+      setLiveMessages(
+        (current) =>
+          current.map(
+            (liveMessage) =>
+              liveMessage.id ===
+              editedMessageId
+                ? {
+                    ...liveMessage,
+                    message_text:
+                      result.messageText ??
+                      message,
+                    raw_payload: {
+                      ...(
+                        liveMessage.raw_payload ??
+                        {}
+                      ),
+                      tenh_edit: {
+                        source: "tenh",
+                        edited_at:
+                          result.editedAt ??
+                          new Date().toISOString(),
+                      },
+                    },
+                  }
+                : liveMessage,
+          ),
+      );
+
+      setLiveConversations(
+        (current) =>
+          current.map(
+            (conversation) =>
+              conversation.id ===
+              activeConversation.id
+                ? {
+                    ...conversation,
+                    ...(
+                      conversation.last_message_text ===
+                      liveMessages.find(
+                        (liveMessage) =>
+                          liveMessage.id ===
+                          editedMessageId,
+                      )?.message_text
+                        ? {
+                            last_message_text:
+                              result.messageText ??
+                              message,
+                          }
+                        : {}
+                    ),
+                  }
+                : conversation,
+          ),
+      );
+
+      setReply("");
+      setEditingTelegramMessageId(
+        null,
+      );
+      showTelegramActionNotice(
+        "Telegram message edited successfully",
+      );
+    } catch (error) {
+      setSendError(
+        error instanceof Error
+          ? error.message
+          : "Unable to edit Telegram message.",
+      );
+    } finally {
+      setSending(false);
+    }
+
+    return;
+  }
+
   const randomId =
     typeof crypto !==
       "undefined" &&
@@ -3275,12 +4489,34 @@ async function handleSendMessage(
   const tempId =
     `optimistic:${randomId}`;
 
+  const telegramLocation =
+    !isCommentConversation &&
+    conversationPlatform ===
+      "telegram"
+      ? parseTenhLocationMessage(
+          message,
+        )
+      : null;
+
+  if (
+    conversationPlatform === "telegram" &&
+    replyingToTelegramMessageId &&
+    telegramLocation
+  ) {
+    setSendError(
+      "Telegram Reply supports text only. Cancel Reply before sending a location.",
+    );
+    return;
+  }
+
   const endpoint =
     isCommentConversation
       ? "/api/facebook/comments/reply"
       : conversationPlatform ===
           "telegram"
-        ? "/api/telegram/send"
+        ? telegramLocation
+          ? "/api/telegram/send-location"
+          : "/api/telegram/send"
         : "/api/facebook/send";
 
   const requestBody:
@@ -3294,11 +4530,27 @@ async function handleSendMessage(
         }
       : conversationPlatform ===
           "telegram"
-        ? {
-            conversationId:
-              activeConversation.id,
-            message,
-          }
+        ? telegramLocation
+          ? {
+              conversationId:
+                activeConversation.id,
+              latitude:
+                telegramLocation.latitude,
+              longitude:
+                telegramLocation.longitude,
+              message,
+            }
+          : {
+              conversationId:
+                activeConversation.id,
+              message,
+              ...(replyingToTelegramMessageId
+                ? {
+                    replyToMessageId:
+                      replyingToTelegramMessageId,
+                  }
+                : {}),
+            }
         : {
             conversationId:
               activeConversation.id,
@@ -3355,6 +4607,12 @@ async function handleSendMessage(
 
   setReply("");
   setReplyingToCommentId(
+    null,
+  );
+  setReplyingToTelegramMessageId(
+    null,
+  );
+  setEditingTelegramMessageId(
     null,
   );
   setSendError(null);
@@ -3600,17 +4858,28 @@ return (
   }
         activeStatus={activeStatus}
         statusCounts={statusCounts}
+        onSelectConversation={
+          selectConversationSmoothly
+        }
+        onPrefetchConversation={
+          prefetchConversation
+        }
       />
 
    <MessagePanel
-  key={
-    activeConversation?.id ??
-    "no-conversation"
-  }
   activeConversation={
     activeConversation
   }
   messages={liveMessages}
+  loadingConversationMessages={
+    loadingConversationMessages
+  }
+  conversationMessagesError={
+    conversationMessagesError
+  }
+  onRetryConversationMessages={
+    retryConversationMessages
+  }
   teamMembers={teamMembers}
   hasMoreOlderMessages={
     hasMoreOlderMessages
@@ -3695,6 +4964,38 @@ return (
 
   replyingToCommentId={
     replyingToCommentId
+  }
+
+  replyingToTelegramMessageId={
+    replyingToTelegramMessageId
+  }
+
+  editingTelegramMessageId={
+    editingTelegramMessageId
+  }
+
+  telegramActionNotice={
+    telegramActionNotice
+  }
+
+  onReplyToTelegramMessage={
+    handleReplyToTelegramMessage
+  }
+
+  onEditTelegramMessage={
+    handleEditTelegramMessage
+  }
+
+  onDeleteTelegramMessage={
+    handleDeleteTelegramMessage
+  }
+
+  onCancelTelegramEdit={
+    handleCancelTelegramEdit
+  }
+
+  onCancelTelegramReply={
+    handleCancelTelegramReply
   }
 
   onCancelCommentReply={

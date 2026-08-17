@@ -105,6 +105,7 @@ export async function GET(
       "file",
       "audio",
       "voice",
+      "sticker",
     ].includes(
       message.message_type,
     ) ||

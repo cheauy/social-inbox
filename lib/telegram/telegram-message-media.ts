@@ -243,6 +243,22 @@ export function inferTelegramMediaContentType({
     return "audio/wav";
   }
 
+  if (path.endsWith(".gif")) {
+    return "image/gif";
+  }
+
+  if (path.endsWith(".webp")) {
+    return "image/webp";
+  }
+
+  if (path.endsWith(".webm")) {
+    return "video/webm";
+  }
+
+  if (path.endsWith(".tgs")) {
+    return "application/x-tgsticker";
+  }
+
   if (path.endsWith(".pdf")) {
     return "application/pdf";
   }

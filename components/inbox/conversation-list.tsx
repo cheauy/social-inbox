@@ -39,6 +39,12 @@ type ConversationListProps = {
     StatusFilter;
   statusCounts:
     StatusCounts;
+  onSelectConversation: (
+    conversationId: string,
+  ) => void;
+  onPrefetchConversation?: (
+    conversationId: string,
+  ) => void;
 };
 
 type BuiltInViewKey =
@@ -381,6 +387,224 @@ function MoreIcon() {
   );
 }
 
+type ConversationPlatform =
+  | "messenger"
+  | "telegram";
+
+type ChannelDirectoryEntry = {
+  platform:
+    | "facebook"
+    | "telegram";
+  name: string;
+};
+
+type ChannelDirectory =
+  Record<string, ChannelDirectoryEntry>;
+
+/*
+ * Keep resolved channel identities in module memory across client-side
+ * conversation route swaps. Next navigation can remount ConversationList,
+ * but the module stays alive, so Telegram/Messenger badges no longer vanish
+ * while /api/inbox/channels is being fetched again.
+ */
+let cachedChannelDirectory: ChannelDirectory = {};
+let cachedChannelDirectoryLoaded = false;
+
+type ChannelsApiResponse = {
+  success?: boolean;
+  channels?: Array<{
+    id: string;
+    platform:
+      | "facebook"
+      | "telegram";
+    name: string;
+  }>;
+};
+
+function MessengerSourceIcon({
+  className = "h-3.5 w-3.5",
+}: {
+  className?: string;
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="11"
+        fill="currentColor"
+      />
+      <path
+        d="m6.7 15.3 3.7-4 2.9 2.2 4-4.4-3.7 4-2.9-2.2-4 4.4Z"
+        fill="white"
+      />
+    </svg>
+  );
+}
+
+function TelegramSourceIcon({
+  className = "h-3.5 w-3.5",
+}: {
+  className?: string;
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="11"
+        fill="currentColor"
+      />
+      <path
+        d="M6.1 11.5 17.2 7c.5-.2.9.1.7.8l-1.9 9c-.1.6-.5.7-.9.4l-2.9-2.2-1.4 1.4c-.2.2-.3.3-.6.3l.2-3 5.4-4.9c.2-.2-.1-.3-.4-.1l-6.7 4.2-2.9-.9c-.6-.2-.6-.6.3-.9Z"
+        fill="white"
+      />
+    </svg>
+  );
+}
+
+function ChannelAvatarBadge({
+  platform,
+}: {
+  platform: ConversationPlatform;
+}) {
+  const [pngFailed, setPngFailed] =
+    useState(false);
+
+  const pngSrc =
+    platform === "telegram"
+      ? "/images/channels/telegram.png"
+      : "/images/channels/messenger.png";
+
+  return (
+    <span
+      className={`absolute -bottom-1 -right-1 flex h-5.5 w-5.5 items-center justify-center overflow-hidden rounded-full border-[3px] border-white shadow-[0_1px_4px_rgba(15,23,42,0.20)] ${
+        platform === "telegram"
+          ? "bg-sky-500 text-sky-500"
+          : "bg-blue-600 text-blue-600"
+      }`}
+      title={
+        platform === "telegram"
+          ? "Telegram"
+          : "Messenger"
+      }
+      aria-label={
+        platform === "telegram"
+          ? "Telegram conversation"
+          : "Messenger conversation"
+      }
+    >
+      {!pngFailed ? (
+        <img
+          src={pngSrc}
+          alt=""
+          className="h-full w-full scale-[1.24] rounded-full object-cover"
+          onError={() =>
+            setPngFailed(true)
+          }
+        />
+      ) : platform === "telegram" ? (
+        <TelegramSourceIcon className="h-full w-full" />
+      ) : (
+        <MessengerSourceIcon className="h-full w-full" />
+      )}
+    </span>
+  );
+}
+
+function getConversationPlatform(
+  conversation: InboxConversation,
+  channelDirectory: ChannelDirectory,
+  channelDirectoryLoaded: boolean,
+): ConversationPlatform | null {
+  const socialAccountId =
+    conversation.social_account
+      ?.id;
+
+  const registeredChannel =
+    socialAccountId
+      ? channelDirectory[
+          socialAccountId
+        ]
+      : null;
+
+  if (
+    registeredChannel?.platform ===
+    "telegram"
+  ) {
+    return "telegram";
+  }
+
+  if (
+    registeredChannel?.platform ===
+    "facebook"
+  ) {
+    return "messenger";
+  }
+
+  const extended =
+    conversation as InboxConversation & {
+      platform?: string | null;
+      source_type?: string | null;
+      social_account?:
+        | (InboxConversation["social_account"] & {
+            platform?: string | null;
+          })
+        | null;
+    };
+
+  const explicitPlatform =
+    extended.platform
+      ?.trim()
+      .toLowerCase() ||
+    extended.social_account
+      ?.platform
+      ?.trim()
+      .toLowerCase() ||
+    "";
+
+  if (
+    explicitPlatform ===
+    "telegram"
+  ) {
+    return "telegram";
+  }
+
+  if (
+    explicitPlatform ===
+      "facebook" ||
+    explicitPlatform ===
+      "messenger"
+  ) {
+    return "messenger";
+  }
+
+  /*
+   * Do not guess Messenger while /api/inbox/channels is still loading.
+   * Telegram rows whose server payload does not include platform metadata
+   * used to flash a Messenger badge during navigation/loading.
+   */
+  if (!channelDirectoryLoaded) {
+    return null;
+  }
+
+  /*
+   * Legacy TENH rows without platform metadata are historical Messenger
+   * conversations. Use that fallback only after channel lookup finishes.
+   */
+  return "messenger";
+}
+
 function getConversationChannel(
   conversation:
     InboxConversation,
@@ -675,6 +899,8 @@ export function ConversationList({
   activeConversationId,
   activeStatus,
   statusCounts,
+  onSelectConversation,
+  onPrefetchConversation,
 }: ConversationListProps) {
   const router =
     useRouter();
@@ -702,6 +928,87 @@ export function ConversationList({
 
   useEffect(() => {
     setHydrated(true);
+  }, []);
+
+  const [
+    channelDirectory,
+    setChannelDirectory,
+  ] = useState<ChannelDirectory>(
+    () => cachedChannelDirectory,
+  );
+  const [
+    channelDirectoryLoaded,
+    setChannelDirectoryLoaded,
+  ] = useState(
+    () => cachedChannelDirectoryLoaded,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadChannelDirectory() {
+      try {
+        const response =
+          await fetch(
+            "/api/inbox/channels",
+            {
+              method: "GET",
+              cache: "no-store",
+            },
+          );
+
+        const result =
+          (await response.json()) as
+            ChannelsApiResponse;
+
+        if (
+          !response.ok ||
+          !result.success ||
+          cancelled
+        ) {
+          return;
+        }
+
+        const next:
+          ChannelDirectory = {};
+
+        for (
+          const channel of
+          result.channels ?? []
+        ) {
+          next[channel.id] = {
+            platform:
+              channel.platform,
+            name:
+              channel.name,
+          };
+        }
+
+        cachedChannelDirectory = next;
+        cachedChannelDirectoryLoaded = true;
+
+        setChannelDirectory(
+          next,
+        );
+      } catch {
+        /*
+         * Channel identity is visual only. Existing Inbox behavior should
+         * continue even if this small lookup temporarily fails.
+         */
+      } finally {
+        if (!cancelled) {
+          setChannelDirectoryLoaded(
+            true,
+          );
+        }
+      }
+    }
+
+    void loadChannelDirectory();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const [
@@ -2650,71 +2957,66 @@ export function ConversationList({
                   conversation.id ===
                   activeConversationId;
 
-                const query =
-                  new URLSearchParams();
-
-                query.set(
-                  "conversation",
-                  conversation.id,
-                );
-
-                if (
-                  selectedChannelId
-                ) {
-                  query.set(
-                    "channel",
-                    selectedChannelId,
+                const conversationPlatform =
+                  getConversationPlatform(
+                    conversation,
+                    channelDirectory,
+                    channelDirectoryLoaded,
                   );
-                }
-
-                if (
-                  activeStatus !==
-                    "all" &&
-                  selectedViewKey ===
-                    "all"
-                ) {
-                  query.set(
-                    "status",
-                    activeStatus,
-                  );
-                } else if (
-                  selectedViewKey !==
-                  "all"
-                ) {
-                  query.set(
-                    "view",
-                    selectedViewKey,
-                  );
-                }
 
                 return (
-                  <Link
+                  <button
                     key={
                       conversation.id
                     }
-                    href={`/dashboard/inbox?${query.toString()}`}
-                    className={`flex min-h-[88px] items-center gap-3 border-b border-slate-100 px-3 py-2 transition ${
+                    type="button"
+                    onClick={() =>
+                      onSelectConversation(
+                        conversation.id,
+                      )
+                    }
+                    onMouseEnter={() =>
+                      onPrefetchConversation?.(
+                        conversation.id,
+                      )
+                    }
+                    onFocus={() =>
+                      onPrefetchConversation?.(
+                        conversation.id,
+                      )
+                    }
+                    className={`mx-2 my-1 flex min-h-[104px] w-[calc(100%-1rem)] items-center gap-3 rounded-xl border-2 border-white px-3 py-2.5 text-left shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition ${
                       isActive
-                        ? "bg-blue-100"
-                        : "hover:bg-slate-50"
+                        ? "bg-blue-100 ring-1 ring-blue-100"
+                        : "bg-white hover:bg-slate-50"
                     }`}
                   >
-                    {customerAvatarUrl ? (
-                      <img
-                        src={
-                          customerAvatarUrl
-                        }
-                        alt=""
-                        referrerPolicy="no-referrer"
-                        className="h-12 w-12 shrink-0 rounded-full bg-slate-100 object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-100 font-semibold text-blue-700">
-                        {getInitial(
-                          customerName,
-                        )}
-                      </div>
-                    )}
+                    <div className="relative h-12 w-12 shrink-0">
+                      {customerAvatarUrl ? (
+                        <img
+                          src={
+                            customerAvatarUrl
+                          }
+                          alt=""
+                          referrerPolicy="no-referrer"
+                          className="h-12 w-12 rounded-full bg-slate-100 object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 font-semibold text-blue-700">
+                          {getInitial(
+                            customerName,
+                          )}
+                        </div>
+                      )}
+
+                      {conversationPlatform ? (
+                        <ChannelAvatarBadge
+                          platform={
+                            conversationPlatform
+                          }
+                        />
+                      ) : null}
+                    </div>
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
@@ -2811,7 +3113,7 @@ export function ConversationList({
                         ) : null}
                       </div>
                     </div>
-                  </Link>
+                  </button>
                 );
               },
             )
