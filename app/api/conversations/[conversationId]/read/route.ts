@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 
+import {
+  getCurrentMember,
+} from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type RouteContext = {
   params: Promise<{
@@ -12,6 +18,24 @@ export async function PATCH(
   _request: Request,
   context: RouteContext,
 ) {
+  const authResult =
+    await getCurrentMember();
+
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
+    );
+  }
+
+  const currentMember =
+    authResult.member;
+
   const { conversationId } =
     await context.params;
 
@@ -30,6 +54,12 @@ export async function PATCH(
     );
   }
 
+  /*
+   * V3.11.30 stability/security:
+   * The admin client bypasses RLS, so always scope the write to the
+   * authenticated TENH workspace. A conversation UUID from another
+   * business must never be enough to change its unread state.
+   */
   const {
     data: conversation,
     error,
@@ -42,11 +72,15 @@ export async function PATCH(
       "id",
       normalizedConversationId,
     )
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    )
     .select(`
       id,
       unread_count
     `)
-    .single();
+    .maybeSingle();
 
   if (error) {
     return NextResponse.json(
@@ -54,10 +88,22 @@ export async function PATCH(
         success: false,
         error:
           "Unable to mark conversation as read.",
-        details: error.message,
       },
       {
         status: 500,
+      },
+    );
+  }
+
+  if (!conversation) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Conversation was not found or you do not have access.",
+      },
+      {
+        status: 404,
       },
     );
   }

@@ -3,17 +3,26 @@ import {
   NextResponse,
 } from "next/server";
 
+import {
+  getCurrentMember,
+} from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import type { TagColor } from "@/types/inbox";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-function isValidHexColor(value: string) {
-  return /^#[0-9A-F]{6}$/i.test(value);
+function isValidHexColor(
+  value: string,
+) {
+  return /^#[0-9A-F]{6}$/i.test(
+    value,
+  );
 }
 
 type CreateTagBody = {
+  /* Kept for backward-compatible client payloads. */
   businessId?: string;
   name?: string;
-  color?: TagColor;
+  color?: string;
   sortIndex?: number;
   description?: string | null;
   isActive?: boolean;
@@ -29,28 +38,30 @@ function cleanOptionalText(
 export async function GET(
   request: NextRequest,
 ) {
-  const businessId =
-    request.nextUrl.searchParams.get(
-      "businessId",
+  const authResult =
+    await getCurrentMember();
+
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
     );
+  }
+
+  const currentMember =
+    authResult.member;
 
   const activeOnly =
     request.nextUrl.searchParams.get(
       "activeOnly",
     ) === "true";
 
-  if (!businessId) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "businessId is required.",
-      },
-      {
-        status: 400,
-      },
-    );
-  }
-
+  /* Ignore browser-supplied businessId and use the authenticated workspace. */
   let query = supabaseAdmin
     .from("tags")
     .select(`
@@ -64,7 +75,10 @@ export async function GET(
       created_at,
       updated_at
     `)
-    .eq("business_id", businessId)
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    )
     .order("is_active", {
       ascending: false,
     })
@@ -76,17 +90,20 @@ export async function GET(
     });
 
   if (activeOnly) {
-    query = query.eq("is_active", true);
+    query = query.eq(
+      "is_active",
+      true,
+    );
   }
 
-  const { data, error } = await query;
+  const { data, error } =
+    await query;
 
   if (error) {
     return NextResponse.json(
       {
         success: false,
         error: "Unable to load tags.",
-        details: error.message,
       },
       {
         status: 500,
@@ -103,10 +120,29 @@ export async function GET(
 export async function POST(
   request: NextRequest,
 ) {
+  const authResult =
+    await getCurrentMember();
+
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
+    );
+  }
+
+  const currentMember =
+    authResult.member;
+
   let body: CreateTagBody;
 
   try {
-    body = (await request.json()) as CreateTagBody;
+    body =
+      (await request.json()) as CreateTagBody;
   } catch {
     return NextResponse.json(
       {
@@ -119,25 +155,32 @@ export async function POST(
     );
   }
 
-  const businessId = body.businessId?.trim();
   const name = body.name?.trim();
   const color = (
-  body.color ?? "#64748B"
-).toUpperCase();
-  const sortIndex = Number.isFinite(body.sortIndex)
-    ? Math.max(0, Math.trunc(body.sortIndex as number))
-    : 0;
-  const description = cleanOptionalText(
-    body.description,
-  );
-  const isActive = body.isActive ?? true;
+    body.color ?? "#64748B"
+  ).toUpperCase();
+  const sortIndex =
+    Number.isFinite(body.sortIndex)
+      ? Math.max(
+          0,
+          Math.trunc(
+            body.sortIndex as number,
+          ),
+        )
+      : 0;
+  const description =
+    cleanOptionalText(
+      body.description,
+    );
+  const isActive =
+    body.isActive ?? true;
 
-  if (!businessId || !name) {
+  if (!name) {
     return NextResponse.json(
       {
         success: false,
         error:
-          "Business and tag name are required.",
+          "Tag name is required.",
       },
       {
         status: 400,
@@ -175,24 +218,28 @@ export async function POST(
   }
 
   if (!isValidHexColor(color)) {
-  return NextResponse.json(
-    {
-      success: false,
-      error:
-        "Tag color must be a valid HEX color, for example #13C2C2.",
-    },
-    {
-      status: 400,
-    },
-  );
-}
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Tag color must be a valid HEX color, for example #13C2C2.",
+      },
+      {
+        status: 400,
+      },
+    );
+  }
 
-  const { data: existing } = await supabaseAdmin
-    .from("tags")
-    .select("id")
-    .eq("business_id", businessId)
-    .ilike("name", name)
-    .maybeSingle();
+  const { data: existing } =
+    await supabaseAdmin
+      .from("tags")
+      .select("id")
+      .eq(
+        "business_id",
+        currentMember.business_id,
+      )
+      .ilike("name", name)
+      .maybeSingle();
 
   if (existing) {
     return NextResponse.json(
@@ -207,38 +254,45 @@ export async function POST(
     );
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("tags")
-    .insert({
-      business_id: businessId,
-      name,
-      color,
-      sort_index: sortIndex,
-      description,
-      is_active: isActive,
-    })
-    .select(`
-      id,
-      business_id,
-      name,
-      color,
-      sort_index,
-      description,
-      is_active,
-      created_at,
-      updated_at
-    `)
-    .single();
+  const { data, error } =
+    await supabaseAdmin
+      .from("tags")
+      .insert({
+        business_id:
+          currentMember.business_id,
+        name,
+        color,
+        sort_index: sortIndex,
+        description,
+        is_active: isActive,
+      })
+      .select(`
+        id,
+        business_id,
+        name,
+        color,
+        sort_index,
+        description,
+        is_active,
+        created_at,
+        updated_at
+      `)
+      .single();
 
   if (error) {
     return NextResponse.json(
       {
         success: false,
-        error: "Unable to create tag.",
-        details: error.message,
+        error:
+          error.code === "23505"
+            ? "A tag with this name already exists."
+            : "Unable to create tag.",
       },
       {
-        status: 500,
+        status:
+          error.code === "23505"
+            ? 409
+            : 500,
       },
     );
   }

@@ -4,8 +4,17 @@ import {
 } from "next/server";
 
 import {
-  supabaseAdmin,
-} from "@/lib/supabase/admin";
+  getCurrentMember,
+} from "@/lib/auth/get-current-member";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+
+import {
+  FacebookCommentContextError,
+  loadLocalFacebookCommentContext,
+} from "../_shared";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type MarkDeletedBody = {
   commentId?: string;
@@ -17,9 +26,42 @@ type MarkDeletedBody = {
 export async function POST(
   request: NextRequest,
 ) {
+  const authResult =
+    await getCurrentMember();
+
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
+    );
+  }
+
+  const currentMember =
+    authResult.member;
+
   try {
-    const body =
-      (await request.json()) as MarkDeletedBody;
+    let body: MarkDeletedBody;
+
+    try {
+      body =
+        (await request.json()) as MarkDeletedBody;
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid JSON request.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
 
     const commentId =
       body.commentId?.trim();
@@ -47,96 +89,72 @@ export async function POST(
         ? "Comment deleted by Page"
         : "Comment is deleted by commenter";
 
-    const {
-      data: message,
-      error: messageLookupError,
-    } = await supabaseAdmin
-      .from("messages")
-      .select(`
-        id,
-        conversation_id
-      `)
-      .eq(
-        "platform_message_id",
+    const context =
+      await loadLocalFacebookCommentContext({
+        businessId:
+          currentMember.business_id,
         commentId,
-      )
-      .maybeSingle();
-
-    if (messageLookupError) {
-      throw new Error(
-        messageLookupError.message,
-      );
-    }
-
-    if (!message) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Comment message was not found locally.",
-        },
-        {
-          status: 404,
-        },
-      );
-    }
+      });
 
     const {
       error: messageUpdateError,
     } = await supabaseAdmin
       .from("messages")
       .update({
-        comment_is_deleted:
-          true,
-
+        comment_is_deleted: true,
         comment_deleted_by:
           deletedBy,
-
-        comment_is_liked:
-          false,
-
-        comment_is_hidden:
-          false,
-
+        comment_is_liked: false,
+        comment_is_hidden: false,
         message_text:
           deletedText,
       })
       .eq(
         "id",
-        message.id,
+        context.message.id,
+      )
+      .eq(
+        "business_id",
+        currentMember.business_id,
       );
 
     if (messageUpdateError) {
-      throw new Error(
-        messageUpdateError.message,
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Unable to mark the local comment deleted.",
+        },
+        {
+          status: 500,
+        },
       );
     }
 
-    if (message.conversation_id) {
-      const {
-        error: conversationUpdateError,
-      } = await supabaseAdmin
-        .from("conversations")
-        .update({
-          last_message_text:
-            deletedText,
+    const {
+      error: conversationUpdateError,
+    } = await supabaseAdmin
+      .from("conversations")
+      .update({
+        last_message_text:
+          deletedText,
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq(
+        "id",
+        context.conversation.id,
+      )
+      .eq(
+        "business_id",
+        currentMember.business_id,
+      );
 
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq(
-          "id",
-          message.conversation_id,
-        );
-
-      if (
-        conversationUpdateError
-      ) {
-        console.warn(
-          "Unable to update conversation preview:",
-          conversationUpdateError,
-        );
-      }
+    if (conversationUpdateError) {
+      console.warn(
+        "Unable to update conversation preview after marking comment deleted:",
+        conversationUpdateError,
+      );
     }
 
     return NextResponse.json({
@@ -144,10 +162,24 @@ export async function POST(
       deletedBy,
     });
   } catch (error) {
+    if (
+      error instanceof
+      FacebookCommentContextError
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+        },
+        {
+          status: error.status,
+        },
+      );
+    }
+
     return NextResponse.json(
       {
         success: false,
-
         error:
           error instanceof Error
             ? error.message

@@ -311,10 +311,12 @@ export async function POST(
     pageAccessToken,
   );
 
-  let facebookResponse: Response;
-
-  try {
-    facebookResponse =
+  async function sendToFacebook({
+    useHumanAgentTag,
+  }: {
+    useHumanAgentTag: boolean;
+  }) {
+    const response =
       await fetch(graphUrl, {
         method: "POST",
         headers: {
@@ -325,14 +327,94 @@ export async function POST(
           recipient: {
             id: recipientId,
           },
-          messaging_type:
-            "RESPONSE",
+          ...(useHumanAgentTag
+            ? {
+                messaging_type:
+                  "MESSAGE_TAG",
+                tag: "HUMAN_AGENT",
+              }
+            : {
+                messaging_type:
+                  "RESPONSE",
+              }),
           message: {
             text: message,
           },
         }),
         cache: "no-store",
       });
+
+    let result:
+      FacebookSendResult = {};
+
+    try {
+      result =
+        (await response.json()) as
+          FacebookSendResult;
+    } catch {
+      // Response validation below reports a useful error.
+    }
+
+    return {
+      response,
+      result,
+    };
+  }
+
+  let facebookResponse: Response | null = null;
+  let facebookResult:
+    FacebookSendResult = {};
+  let usedHumanAgentTag =
+    false;
+
+  try {
+    const standardAttempt =
+      await sendToFacebook({
+        useHumanAgentTag: false,
+      });
+
+    facebookResponse =
+      standardAttempt.response;
+    facebookResult =
+      standardAttempt.result;
+
+    const standardErrorMessage =
+      facebookResult.error?.message
+        ?.toLowerCase() ?? "";
+    const outsideStandardWindow =
+      facebookResult.error?.code === 10 &&
+      (standardErrorMessage.includes(
+        "outside the allowed window",
+      ) ||
+        standardErrorMessage.includes(
+          "allowed window",
+        ) ||
+        standardErrorMessage.includes(
+          "24",
+        ));
+
+    /*
+     * Meta allows the HUMAN_AGENT tag for a real support representative's
+     * manual reply beyond the 24-hour standard window, up to the policy's
+     * Human Agent period. TENH uses it only as a fallback on this authenticated
+     * manual-agent route—never for automated sends.
+     */
+    if (
+      (!facebookResponse.ok ||
+        facebookResult.error) &&
+      outsideStandardWindow
+    ) {
+      const humanAgentAttempt =
+        await sendToFacebook({
+          useHumanAgentTag: true,
+        });
+
+      facebookResponse =
+        humanAgentAttempt.response;
+      facebookResult =
+        humanAgentAttempt.result;
+      usedHumanAgentTag = true;
+    }
   } catch (sendError) {
     console.error(
       "Facebook message send request failed:",
@@ -351,15 +433,14 @@ export async function POST(
     );
   }
 
-  let facebookResult:
-    FacebookSendResult = {};
-
-  try {
-    facebookResult =
-      (await facebookResponse.json()) as
-        FacebookSendResult;
-  } catch {
-    // handled by response checks below
+  if (!facebookResponse) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Facebook did not return a response.",
+      },
+      { status: 502 },
+    );
   }
 
   if (
@@ -371,16 +452,22 @@ export async function POST(
       facebookResult,
     );
 
+    const metaMessage =
+      facebookResult.error
+        ?.message ??
+      "Facebook rejected the message.";
+
     return NextResponse.json(
       {
         success: false,
         error:
-          facebookResult.error
-            ?.message ??
-          "Facebook rejected the message.",
+          usedHumanAgentTag
+            ? `Meta would not allow this manual reply outside the standard messaging window. ${metaMessage}`
+            : metaMessage,
         details:
           facebookResult.error ??
           facebookResult,
+        usedHumanAgentTag,
       },
       {
         status:
@@ -627,5 +714,6 @@ export async function POST(
       currentMember.id,
     sentByMemberName:
       currentMember.full_name,
+    usedHumanAgentTag,
   });
 }

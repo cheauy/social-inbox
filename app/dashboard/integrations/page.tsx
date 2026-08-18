@@ -4,6 +4,9 @@ import Link from "next/link";
 import {
   FacebookDisconnectButton,
 } from "@/components/integrations/facebook-disconnect-button";
+import {
+  FacebookWebhookRepairButton,
+} from "@/components/integrations/facebook-webhook-repair-button";
 
 import {
   getCurrentMember,
@@ -230,6 +233,10 @@ export default async function IntegrationsPage({
               >
                 Webhook status
               </Link>
+
+              {currentMember.role === "owner" ? (
+                <FacebookWebhookRepairButton />
+              ) : null}
             </div>
           </div>
 

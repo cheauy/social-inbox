@@ -136,7 +136,6 @@ export default async function InboxPage({
    */
   const activeConversationId =
     requestedConversation?.id ??
-    visibleConversations[0]?.id ??
     null;
 
   const messages =

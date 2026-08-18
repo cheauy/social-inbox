@@ -4,12 +4,17 @@ import {
 } from "next/server";
 
 import {
-  supabaseAdmin,
-} from "@/lib/supabase/admin";
+  getCurrentMember,
+} from "@/lib/auth/get-current-member";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 import {
-  getFacebookPageAccessToken,
-} from "@/lib/facebook/get-facebook-page-access-token";
+  FacebookCommentContextError,
+  loadFacebookCommentActionContext,
+} from "../_shared";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type ReplyBody = {
   conversationId?: string;
@@ -17,19 +22,58 @@ type ReplyBody = {
   message?: string;
 };
 
+type GraphReplyResult = {
+  id?: string;
+  error?: {
+    message?: string;
+    code?: number;
+  };
+};
+
 export async function POST(
   request: NextRequest,
 ) {
+  const authResult =
+    await getCurrentMember();
+
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
+    );
+  }
+
+  const currentMember =
+    authResult.member;
+
   try {
-    const body =
-      (await request.json()) as ReplyBody;
+    let body: ReplyBody;
+
+    try {
+      body =
+        (await request.json()) as ReplyBody;
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid JSON request.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
 
     const conversationId =
       body.conversationId?.trim();
-
     const commentId =
       body.commentId?.trim();
-
     const message =
       body.message?.trim();
 
@@ -50,58 +94,64 @@ export async function POST(
       );
     }
 
-   
+    if (message.length > 8000) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Comment reply is too long.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
 
-    const pageId =
-      process.env.FACEBOOK_PAGE_ID;
+    /*
+     * Verify TENH access and resolve the exact Facebook Page BEFORE sending.
+     * The old route sent first using FACEBOOK_PAGE_ID, then checked the
+     * conversation. That was unsafe and could reply through the wrong Page.
+     */
+    const context =
+      await loadFacebookCommentActionContext({
+        businessId:
+          currentMember.business_id,
+        commentId,
+        conversationId,
+      });
 
     const graphVersion =
       process.env
-        .FACEBOOK_GRAPH_API_VERSION ??
-      "v26.0";
-const pageAccessToken =
-  await getFacebookPageAccessToken(
-    pageId,
-  );
+        .FACEBOOK_GRAPH_API_VERSION
+        ?.trim() || "v26.0";
 
-
-    const response =
-      await fetch(
-        `https://graph.facebook.com/${graphVersion}/${commentId}/comments`,
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body: JSON.stringify({
-            message,
-            access_token:
-              pageAccessToken,
-          }),
+    const response = await fetch(
+      `https://graph.facebook.com/${graphVersion}/${commentId}/comments`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
         },
-      );
+        body: JSON.stringify({
+          message,
+          access_token:
+            context.pageAccessToken,
+        }),
+        cache: "no-store",
+      },
+    );
 
     const responseText =
       await response.text();
 
-    let result: {
-      id?: string;
-
-      error?: {
-        message?: string;
-        code?: number;
-      };
-    } = {};
+    let result: GraphReplyResult = {};
 
     if (responseText.trim()) {
       try {
-        result =
-          JSON.parse(
-            responseText,
-          ) as typeof result;
+        result = JSON.parse(
+          responseText,
+        ) as GraphReplyResult;
       } catch {
         return NextResponse.json(
           {
@@ -110,7 +160,7 @@ const pageAccessToken =
               "Facebook returned invalid JSON.",
           },
           {
-            status: 500,
+            status: 502,
           },
         );
       }
@@ -124,48 +174,12 @@ const pageAccessToken =
         {
           success: false,
           error:
-            result.error
-              ?.message ??
+            result.error?.message ??
             "Unable to reply to Facebook comment.",
         },
         {
           status:
-            response.status ||
-            500,
-        },
-      );
-    }
-
-    const {
-      data: conversation,
-      error:
-        conversationError,
-    } = await supabaseAdmin
-      .from("conversations")
-      .select(`
-        id,
-        business_id
-      `)
-      .eq(
-        "id",
-        conversationId,
-      )
-      .single();
-
-    if (
-      conversationError ||
-      !conversation
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            conversationError
-              ?.message ??
-            "Conversation not found.",
-        },
-        {
-          status: 404,
+            response.status || 500,
         },
       );
     }
@@ -173,93 +187,97 @@ const pageAccessToken =
     const now =
       new Date().toISOString();
 
-    const {
-      error: messageError,
-    } = await supabaseAdmin
-      .from("messages")
-      .insert({
-        business_id:
-          conversation.business_id,
-
-        conversation_id:
-          conversation.id,
-
-        platform_message_id:
-          result.id,
-
-        sender_platform_id:
-          pageId,
-
-        recipient_platform_id:
-          commentId,
-
-        direction:
-          "outgoing",
-
-        message_type:
-          "text",
-
-        message_text:
-          message,
-
-        attachment_url:
-          null,
-
-        is_echo:
-          true,
-
-        raw_payload: {
-          source:
-            "facebook_comment_reply",
-
-          parent_comment_id:
-            commentId,
-
-          reply_comment_id:
+    const { error: messageError } =
+      await supabaseAdmin
+        .from("messages")
+        .insert({
+          business_id:
+            currentMember.business_id,
+          conversation_id:
+            context.conversation.id,
+          platform_message_id:
             result.id,
-        },
-
-        platform_created_at:
-          now,
-      });
+          sender_platform_id:
+            context.pageId,
+          recipient_platform_id:
+            commentId,
+          direction: "outgoing",
+          message_type: "text",
+          message_text: message,
+          attachment_url: null,
+          is_echo: true,
+          raw_payload: {
+            source:
+              "facebook_comment_reply",
+            parent_comment_id:
+              commentId,
+            reply_comment_id:
+              result.id,
+            social_account_id:
+              context.socialAccount.id,
+          },
+          platform_created_at:
+            now,
+        });
 
     if (messageError) {
-      throw new Error(
-        messageError.message,
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Facebook posted the reply, but TENH could not save the local message.",
+        },
+        {
+          status: 500,
+        },
       );
     }
 
-    const {
-      error: updateError,
-    } = await supabaseAdmin
-      .from("conversations")
-      .update({
-        last_message_text:
-          message,
-
-        last_message_at:
-          now,
-
-        updated_at:
-          now,
-      })
-      .eq(
-        "id",
-        conversation.id,
-      );
+    const { error: updateError } =
+      await supabaseAdmin
+        .from("conversations")
+        .update({
+          last_message_text:
+            message,
+          last_message_at: now,
+          updated_at: now,
+        })
+        .eq(
+          "id",
+          context.conversation.id,
+        )
+        .eq(
+          "business_id",
+          currentMember.business_id,
+        );
 
     if (updateError) {
-      throw new Error(
-        updateError.message,
+      console.warn(
+        "Facebook comment reply was saved, but TENH could not refresh the conversation preview:",
+        updateError,
       );
     }
 
     return NextResponse.json({
       success: true,
-      commentId:
-        result.id,
+      commentId: result.id,
     });
   } catch (error) {
+    if (
+      error instanceof
+      FacebookCommentContextError
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+        },
+        {
+          status: error.status,
+        },
+      );
+    }
+
     console.error(
       "Facebook comment reply failed:",
       error,

@@ -6,6 +6,7 @@ import {
   useSearchParams,
 } from "next/navigation";
 import {
+  useDeferredValue,
   useEffect,
   useMemo,
   useState,
@@ -28,6 +29,37 @@ import {
 import {
   InboxChannelSelector,
 } from "@/components/inbox/inbox-channel-selector";
+import { ReminderListPanel } from "@/components/inbox/reminder-list-panel";
+
+type SearchAwareContact =
+  NonNullable<InboxConversation["contact"]> & {
+    username?: string | null;
+    telegram_username?: string | null;
+    platform_username?: string | null;
+  };
+
+function getTelegramSearchIdentity(
+  conversation: InboxConversation,
+  platform: "messenger" | "telegram" | null,
+): string {
+  if (platform !== "telegram") {
+    return "";
+  }
+
+  const contact =
+    conversation.contact as SearchAwareContact | null;
+
+  return (
+    contact?.telegram_username ??
+    contact?.platform_username ??
+    contact?.username ??
+    contact?.platform_user_id ??
+    ""
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, "");
+}
 
 type ConversationListProps = {
   conversations:
@@ -45,6 +77,7 @@ type ConversationListProps = {
   onPrefetchConversation?: (
     conversationId: string,
   ) => void;
+  onClearConversationSelection?: () => void;
 };
 
 type BuiltInViewKey =
@@ -289,6 +322,29 @@ function UnassignedIcon() {
       />
       <path
         d="m16 16 5 5M21 16l-5 5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ReminderIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 3a7 7 0 0 0-7 7v4l-2 3h18l-2-3v-4a7 7 0 0 0-7-7Z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9.5 20h5"
         strokeLinecap="round"
       />
     </svg>
@@ -901,6 +957,7 @@ export function ConversationList({
   statusCounts,
   onSelectConversation,
   onPrefetchConversation,
+  onClearConversationSelection,
 }: ConversationListProps) {
   const router =
     useRouter();
@@ -920,6 +977,28 @@ export function ConversationList({
   const [search, setSearch] =
     useState("");
 
+  /*
+   * V3.11.24.4 — restore the existing left-rail Follow-up / Reminder
+   * workspace without touching the newer Smart Views/search implementation.
+   */
+  const [remindersOpen, setRemindersOpen] =
+    useState(false);
+  const [reminderCount, setReminderCount] =
+    useState(0);
+  const [reminderRefreshKey, setReminderRefreshKey] =
+    useState(0);
+
+
+  /*
+   * V3.11.19 — fast Inbox search.
+   * Keep typing responsive while filtering large conversation lists.
+   * Search intentionally includes ONLY customer name, phone, and
+   * Telegram username/identity. Email, message preview, and Messenger
+   * platform identity are excluded by product decision.
+   */
+  const deferredSearch =
+    useDeferredValue(search);
+
   // Hydration-safe localized timestamps.
   // The server and browser can resolve locale/timezone differently,
   // so render timestamps only after the client has mounted.
@@ -928,6 +1007,64 @@ export function ConversationList({
 
   useEffect(() => {
     setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadReminderSummary() {
+      try {
+        const response = await fetch(
+          "/api/reminders?summary=1",
+          { cache: "no-store" },
+        );
+        const text = await response.text();
+        const result = text.trim()
+          ? (JSON.parse(text) as {
+              success?: boolean;
+              count?: number;
+            })
+          : null;
+
+        if (
+          !cancelled &&
+          response.ok &&
+          result?.success
+        ) {
+          setReminderCount(
+            Math.max(0, result.count ?? 0),
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn(
+            "Unable to load reminder summary:",
+            error,
+          );
+        }
+      }
+    }
+
+    function refreshReminders() {
+      setReminderRefreshKey((current) =>
+        current + 1,
+      );
+      void loadReminderSummary();
+    }
+
+    void loadReminderSummary();
+    window.addEventListener(
+      "tenh-reminder-changed",
+      refreshReminders,
+    );
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(
+        "tenh-reminder-changed",
+        refreshReminders,
+      );
+    };
   }, []);
 
   const [
@@ -1186,6 +1323,38 @@ export function ConversationList({
     };
   }, []);
 
+  /*
+   * V3.11.25 — InboxView may keep one selected conversation locally so the
+   * center panel survives left-panel navigation. Scope list rows/counts back
+   * to the active server filters before applying Smart Views/search.
+   */
+  const scopedConversations =
+    useMemo(
+      () =>
+        conversations.filter((conversation) => {
+          if (
+            activeStatus !== "all" &&
+            conversation.status !== activeStatus
+          ) {
+            return false;
+          }
+
+          if (selectedChannelId) {
+            return (
+              conversation.social_account?.id ===
+              selectedChannelId
+            );
+          }
+
+          return true;
+        }),
+      [
+        activeStatus,
+        conversations,
+        selectedChannelId,
+      ],
+    );
+
   const allTags =
     useMemo(
       () => {
@@ -1202,7 +1371,7 @@ export function ConversationList({
 
         for (
           const conversation of
-          conversations
+          scopedConversations
         ) {
           for (
             const tag of
@@ -1246,13 +1415,13 @@ export function ConversationList({
             ),
         );
       },
-      [conversations],
+      [scopedConversations],
     );
 
   const totalUnreadCount =
     useMemo(
       () =>
-        conversations.reduce(
+        scopedConversations.reduce(
           (
             total,
             conversation,
@@ -1265,24 +1434,24 @@ export function ConversationList({
             ),
           0,
         ),
-      [conversations],
+      [scopedConversations],
     );
 
   const unreadConversationCount =
     useMemo(
       () =>
-        conversations.filter(
+        scopedConversations.filter(
           (conversation) =>
             conversation.unread_count >
             0,
         ).length,
-      [conversations],
+      [scopedConversations],
     );
 
   const baseViewConversations =
     useMemo(
       () =>
-        conversations.filter(
+        scopedConversations.filter(
           (conversation) =>
             matchesView({
               conversation,
@@ -1293,70 +1462,100 @@ export function ConversationList({
             }),
         ),
       [
-        conversations,
+        scopedConversations,
         memberId,
         savedViews,
         selectedViewKey,
       ],
     );
 
+  const conversationSearchIndex =
+    useMemo(() => {
+      const index = new Map<
+        string,
+        string
+      >();
+
+      for (
+        const conversation of
+          baseViewConversations
+      ) {
+        const name =
+          conversation.contact
+            ?.full_name
+            ?.trim()
+            .toLowerCase() ??
+          "";
+
+        const phone =
+          conversation.contact
+            ?.phone
+            ?.trim()
+            .toLowerCase() ??
+          "";
+
+        const platform =
+          getConversationPlatform(
+            conversation,
+            channelDirectory,
+            channelDirectoryLoaded,
+          );
+
+        const telegramIdentity =
+          getTelegramSearchIdentity(
+            conversation,
+            platform,
+          );
+
+        index.set(
+          conversation.id,
+          `${name} ${phone} ${telegramIdentity}`.trim(),
+        );
+      }
+
+      return index;
+    }, [
+      baseViewConversations,
+      channelDirectory,
+      channelDirectoryLoaded,
+    ]);
+
   const filteredConversations =
     useMemo(() => {
       const keyword =
-        search
+        deferredSearch
           .trim()
-          .toLowerCase();
+          .toLowerCase()
+          .replace(/^@/, "");
 
       if (!keyword) {
         return baseViewConversations;
       }
 
       return baseViewConversations.filter(
-        (conversation) => {
-          const name =
-            conversation.contact
-              ?.full_name
-              ?.toLowerCase() ??
-            "";
-
-          const phone =
-            conversation.contact
-              ?.phone
-              ?.toLowerCase() ??
-            "";
-
-          const email =
-            conversation.contact
-              ?.email
-              ?.toLowerCase() ??
-            "";
-
-          return (
-            name.includes(
-              keyword,
-            ) ||
-            phone.includes(
-              keyword,
-            ) ||
-            email.includes(
-              keyword,
+        (conversation) =>
+          conversationSearchIndex
+            .get(
+              conversation.id,
             )
-          );
-        },
+            ?.includes(
+              keyword,
+            ) ?? false,
       );
     }, [
       baseViewConversations,
-      search,
+      conversationSearchIndex,
+      deferredSearch,
     ]);
 
   const builtInCounts =
     useMemo(
       () => ({
         all:
-          conversations.length,
+          scopedConversations.length,
 
         unread:
-          conversations.filter(
+          scopedConversations.filter(
             (conversation) =>
               matchesView({
                 conversation,
@@ -1368,7 +1567,7 @@ export function ConversationList({
           ).length,
 
         my:
-          conversations.filter(
+          scopedConversations.filter(
             (conversation) =>
               matchesView({
                 conversation,
@@ -1380,7 +1579,7 @@ export function ConversationList({
           ).length,
 
         unassigned:
-          conversations.filter(
+          scopedConversations.filter(
             (conversation) =>
               matchesView({
                 conversation,
@@ -1392,7 +1591,7 @@ export function ConversationList({
           ).length,
 
         comment:
-          conversations.filter(
+          scopedConversations.filter(
             (conversation) =>
               matchesView({
                 conversation,
@@ -1404,7 +1603,7 @@ export function ConversationList({
           ).length,
 
         pinned:
-          conversations.filter(
+          scopedConversations.filter(
             (conversation) =>
               matchesView({
                 conversation,
@@ -1416,7 +1615,7 @@ export function ConversationList({
           ).length,
       }),
       [
-        conversations,
+        scopedConversations,
         memberId,
         savedViews,
       ],
@@ -1481,6 +1680,7 @@ export function ConversationList({
   function selectView(
     key: string,
   ) {
+    setRemindersOpen(false);
     setSearch("");
     setViewsOpen(
       false,
@@ -1492,17 +1692,6 @@ export function ConversationList({
     setSelectedViewKey(
       key,
     );
-
-    const firstMatch =
-      conversations.find(
-        (conversation) =>
-          matchesView({
-            conversation,
-            key,
-            savedViews,
-            memberId,
-          }),
-      ) ?? null;
 
     const query =
       new URLSearchParams();
@@ -1520,13 +1709,6 @@ export function ConversationList({
       query.set(
         "view",
         key,
-      );
-    }
-
-    if (firstMatch) {
-      query.set(
-        "conversation",
-        firstMatch.id,
       );
     }
 
@@ -1932,11 +2114,52 @@ export function ConversationList({
           },
         )}
 
+        <button
+          type="button"
+          onClick={() => {
+            setFilterOpen(false);
+            setViewsOpen(false);
+            setEditor(null);
+            setViewActionMenuId(null);
+            setRemindersOpen(true);
+            /*
+             * Keep the current center conversation while opening reminders.
+             * Only an explicit conversation click changes the active thread.
+             */
+          }}
+          className={`group relative mx-2 mb-1 flex h-12 shrink-0 items-center justify-center rounded-xl transition ${
+            remindersOpen
+              ? "bg-amber-100 text-amber-700"
+              : "text-slate-600 hover:bg-white hover:text-slate-900"
+          }`}
+          aria-label="Follow-up / Reminders"
+          title="Follow-up / Reminders"
+        >
+          <ReminderIcon />
+
+          {reminderCount > 0 ? (
+            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-slate-50 bg-amber-500 px-1 text-[10px] font-bold leading-none text-white">
+              {reminderCount > 99
+                ? "99+"
+                : reminderCount}
+            </span>
+          ) : null}
+
+          <span className="pointer-events-none absolute left-[58px] top-1/2 z-[100] hidden -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-950 px-3 py-2 text-xs font-medium text-white shadow-xl group-hover:block">
+            Follow-up / Reminders
+            {reminderCount > 0
+              ? ` · ${reminderCount}`
+              : ""}
+            <span className="absolute right-full top-1/2 -translate-y-1/2 border-y-4 border-r-4 border-y-transparent border-r-slate-950" />
+          </span>
+        </button>
+
         <div className="mx-2 my-2 h-px bg-slate-200" />
 
         <button
           type="button"
           onClick={() => {
+            setRemindersOpen(false);
             setFilterOpen(
               false,
             );
@@ -2628,6 +2851,19 @@ export function ConversationList({
       ) : null}
 
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        {remindersOpen ? (
+          <ReminderListPanel
+            refreshKey={reminderRefreshKey}
+            onChanged={() => {
+              window.dispatchEvent(
+                new CustomEvent(
+                  "tenh-reminder-changed",
+                ),
+              );
+            }}
+          />
+        ) : (
+          <>
         <InboxChannelSelector />
 
         <div className="relative shrink-0 border-b border-slate-200 p-3">
@@ -2656,7 +2892,7 @@ export function ConversationList({
 
               <input
                 type="search"
-                placeholder="Search name, phone or email..."
+                placeholder="Search name, phone or Telegram username..."
                 value={
                   search
                 }
@@ -2798,11 +3034,11 @@ export function ConversationList({
                           href={
                             href
                           }
-                          onClick={() =>
+                          onClick={() => {
                             setFilterOpen(
                               false,
-                            )
-                          }
+                            );
+                          }}
                           className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm transition ${
                             isActive
                               ? "bg-blue-50 font-semibold text-blue-700"
@@ -2921,6 +3157,7 @@ export function ConversationList({
           </div>
         ) : null}
 
+
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           {filteredConversations.length ===
           0 ? (
@@ -2970,11 +3207,11 @@ export function ConversationList({
                       conversation.id
                     }
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
                       onSelectConversation(
                         conversation.id,
-                      )
-                    }
+                      );
+                    }}
                     onMouseEnter={() =>
                       onPrefetchConversation?.(
                         conversation.id,
@@ -2991,6 +3228,7 @@ export function ConversationList({
                         : "bg-white hover:bg-slate-50"
                     }`}
                   >
+
                     <div className="relative h-12 w-12 shrink-0">
                       {customerAvatarUrl ? (
                         <img
@@ -3119,6 +3357,8 @@ export function ConversationList({
             )
           )}
         </div>
+          </>
+        )}
       </div>
     </section>
   );

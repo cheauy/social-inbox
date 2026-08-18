@@ -2,7 +2,13 @@ import {
   NextResponse,
 } from "next/server";
 
+import {
+  getCurrentMember,
+} from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type RouteContext = {
   params: Promise<{
@@ -14,6 +20,24 @@ export async function PATCH(
   _request: Request,
   context: RouteContext,
 ) {
+  const authResult =
+    await getCurrentMember();
+
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
+    );
+  }
+
+  const currentMember =
+    authResult.member;
+
   const { conversationId } =
     await context.params;
 
@@ -40,25 +64,38 @@ export async function PATCH(
     .from("conversations")
     .select(`
       id,
+      business_id,
       unread_count
     `)
     .eq(
       "id",
       normalizedConversationId,
     )
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    )
     .maybeSingle();
 
-  if (
-    conversationError ||
-    !conversation
-  ) {
+  if (conversationError) {
     return NextResponse.json(
       {
         success: false,
         error:
-          "Conversation not found.",
-        details:
-          conversationError?.message,
+          "Unable to load the conversation.",
+      },
+      {
+        status: 500,
+      },
+    );
+  }
+
+  if (!conversation) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Conversation was not found or you do not have access.",
       },
       {
         status: 404,
@@ -77,6 +114,10 @@ export async function PATCH(
       created_at
     `)
     .eq(
+      "business_id",
+      currentMember.business_id,
+    )
+    .eq(
       "conversation_id",
       normalizedConversationId,
     )
@@ -90,8 +131,6 @@ export async function PATCH(
         success: false,
         error:
           "Unable to load conversation messages.",
-        details:
-          messagesError.message,
       },
       {
         status: 500,
@@ -113,9 +152,8 @@ export async function PATCH(
   }
 
   /*
-   * If the latest message was outgoing,
-   * still mark the conversation unread
-   * with a count of 1.
+   * Manual Mark unread is also useful when the latest row is outgoing.
+   * Keep the existing TENH behavior of showing one unread badge in that case.
    */
   if (unreadCount === 0) {
     unreadCount = 1;
@@ -134,11 +172,15 @@ export async function PATCH(
       "id",
       normalizedConversationId,
     )
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    )
     .select(`
       id,
       unread_count
     `)
-    .single();
+    .maybeSingle();
 
   if (updateError) {
     return NextResponse.json(
@@ -146,11 +188,22 @@ export async function PATCH(
         success: false,
         error:
           "Unable to mark conversation as unread.",
-        details:
-          updateError.message,
       },
       {
         status: 500,
+      },
+    );
+  }
+
+  if (!updatedConversation) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Conversation was not found or you do not have access.",
+      },
+      {
+        status: 404,
       },
     );
   }

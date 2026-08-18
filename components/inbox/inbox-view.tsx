@@ -46,6 +46,9 @@ import type {
 
 
 const MESSAGE_PAGE_SIZE = 50;
+const MESSAGE_CACHE_MAX_CONVERSATIONS = 25;
+const MESSAGE_CACHE_STALE_MS = 15_000;
+const PROFILE_CACHE_MAX_CONVERSATIONS = 50;
 
 type OptimisticSendStatus =
   | "sending"
@@ -99,6 +102,15 @@ type PlatformAwareConversation =
         })
       | null;
   };
+
+function isAbortError(
+  error: unknown,
+): boolean {
+  return (
+    error instanceof Error &&
+    error.name === "AbortError"
+  );
+}
 
 function getLoadedConversationPlatform(
   conversation: InboxConversation,
@@ -318,19 +330,33 @@ function sortLiveConversations(
 function getRealtimeMessagePreview(
   row: Record<string, unknown>,
 ) {
+  const rawPayload = isRecord(row.raw_payload)
+    ? row.raw_payload
+    : null;
+
+  if (rawPayload?.tenh_location) {
+    return "Sent a location";
+  }
+
+  if (rawPayload?.tenh_animation) {
+    return "Sent a GIF";
+  }
+
+  const messageType =
+    typeof row.message_type === "string"
+      ? row.message_type
+      : "message";
+
+  if (messageType === "sticker") {
+    return "Sent a sticker";
+  }
+
   if (
-    typeof row.message_text ===
-      "string" &&
+    typeof row.message_text === "string" &&
     row.message_text.trim()
   ) {
     return row.message_text.trim();
   }
-
-  const messageType =
-    typeof row.message_type ===
-    "string"
-      ? row.message_type
-      : "message";
 
   if (messageType === "image") {
     return "Sent a photo";
@@ -380,8 +406,6 @@ const requestedConversationId =
     setClientSelectedConversationId,
   ] = useState<string | null>(() =>
     requestedConversationId ??
-    activeConversationId ??
-    conversations[0]?.id ??
     null,
   );
 
@@ -455,7 +479,34 @@ const [pinning, setPinning] =
 const [pinError, setPinError] =
   useState<string | null>(null);
 
-const skipAutomaticReadRef =
+/*
+ * V3.11.18 — a manually-unread conversation stays unread while the agent
+ * remains inside that same thread. Leaving the thread releases the hold, so
+ * opening it again can acknowledge it normally.
+ */
+const manualUnreadConversationIdsRef =
+  useRef<Set<string>>(new Set());
+
+/*
+ * V3.11.25 — remember a successful manual-unread count after leaving the
+ * thread. This prevents a stale router/server payload from visually resetting
+ * the badge to 0 before the agent intentionally reopens that conversation.
+ */
+const persistedManualUnreadCountsRef =
+  useRef<Map<string, number>>(new Map());
+
+/*
+ * V3.11.30.1 — read barrier per conversation.
+ *
+ * A successful/optimistic read records the newest message timestamp that was
+ * acknowledged. Later stale server props or out-of-order conversation realtime
+ * rows are not allowed to resurrect an unread badge or roll the preview time
+ * backwards. A genuinely newer incoming message clears the barrier.
+ */
+const readBarrierMessageTimeRef =
+  useRef<Map<string, number>>(new Map());
+
+const previousActiveConversationIdRef =
   useRef<string | null>(null);
 
   const [updatingStatus, setUpdatingStatus] =
@@ -488,6 +539,8 @@ const skipAutomaticReadRef =
   type ConversationMessagePage = {
     messages: InboxMessage[];
     hasMore: boolean;
+    fetchedAt: number;
+    lastAccessedAt: number;
   };
 
   const conversationMessageCacheRef =
@@ -506,6 +559,130 @@ const skipAutomaticReadRef =
           | undefined
       >
     >({});
+
+  const conversationMessageAbortRef =
+    useRef<
+      Record<
+        string,
+        AbortController | undefined
+      >
+    >({});
+
+  const getCachedConversationPage =
+    useCallback(
+      (conversationId: string) => {
+        const cached =
+          conversationMessageCacheRef
+            .current[conversationId];
+
+        if (!cached) {
+          return null;
+        }
+
+        cached.lastAccessedAt =
+          Date.now();
+
+        return cached;
+      },
+      [],
+    );
+
+  const setCachedConversationPage =
+    useCallback(
+      (
+        conversationId: string,
+        page: Omit<
+          ConversationMessagePage,
+          "lastAccessedAt"
+        > & {
+          lastAccessedAt?: number;
+        },
+      ) => {
+        const now = Date.now();
+
+        conversationMessageCacheRef
+          .current[conversationId] = {
+            ...page,
+            lastAccessedAt:
+              page.lastAccessedAt ??
+              now,
+          };
+
+        const entries =
+          Object.entries(
+            conversationMessageCacheRef
+              .current,
+          );
+
+        if (
+          entries.length <=
+          MESSAGE_CACHE_MAX_CONVERSATIONS
+        ) {
+          return;
+        }
+
+        entries
+          .sort(
+            (first, second) =>
+              first[1].lastAccessedAt -
+              second[1].lastAccessedAt,
+          )
+          .slice(
+            0,
+            entries.length -
+              MESSAGE_CACHE_MAX_CONVERSATIONS,
+          )
+          .forEach(([id]) => {
+            delete conversationMessageCacheRef
+              .current[id];
+          });
+      },
+      [],
+    );
+
+  const abortConversationRequestsExcept =
+    useCallback(
+      (conversationId: string | null) => {
+        for (
+          const [id, controller] of
+          Object.entries(
+            conversationMessageAbortRef
+              .current,
+          )
+        ) {
+          if (
+            id !== conversationId &&
+            controller
+          ) {
+            controller.abort();
+            delete conversationMessageAbortRef
+              .current[id];
+            delete conversationMessageRequestRef
+              .current[id];
+          }
+        }
+      },
+      [],
+    );
+
+  useEffect(() => {
+    return () => {
+      for (
+        const controller of
+        Object.values(
+          conversationMessageAbortRef
+            .current,
+        )
+      ) {
+        controller?.abort();
+      }
+
+      conversationMessageAbortRef.current =
+        {};
+      conversationMessageRequestRef.current =
+        {};
+    };
+  }, []);
 
   /*
    * V2.7 — older-message pagination.
@@ -665,26 +842,17 @@ const skipAutomaticReadRef =
       return requestedConversationId;
     }
 
-    if (
-      activeConversationId &&
-      liveConversations.some(
-        (conversation) =>
-          conversation.id ===
-          activeConversationId,
-      )
-    ) {
-      return activeConversationId;
-    }
-
-    return (
-      liveConversations[0]?.id ??
-      null
-    );
+    /*
+     * Do not auto-select the first conversation. The Inbox stays empty until
+     * an agent explicitly clicks a row or the URL explicitly contains a
+     * conversation id. This is important after channel/status/Smart View
+     * actions in the left panel.
+     */
+    return null;
   }, [
     clientSelectedConversationId,
     liveConversations,
     requestedConversationId,
-    activeConversationId,
   ]);
 
 const activeConversation =
@@ -700,6 +868,92 @@ const activeConversation =
       resolvedActiveConversationId,
     ],
   );
+
+useEffect(() => {
+  const previousId =
+    previousActiveConversationIdRef.current;
+
+  /*
+   * Do not release a manual-unread hold when the selected id is temporarily
+   * null during a client/server refresh. Release it only after TENH has
+   * actually switched to another conversation. This prevents the unread badge
+   * from appearing and then disappearing while the agent stays in the chat.
+   */
+  if (
+    previousId &&
+    resolvedActiveConversationId &&
+    previousId !== resolvedActiveConversationId
+  ) {
+    manualUnreadConversationIdsRef.current.delete(
+      previousId,
+    );
+  }
+
+  if (resolvedActiveConversationId) {
+    previousActiveConversationIdRef.current =
+      resolvedActiveConversationId;
+  }
+}, [resolvedActiveConversationId]);
+
+const customerProfileConversationCacheRef =
+  useRef<
+    Map<string, InboxConversation>
+  >(new Map());
+
+useEffect(() => {
+  for (
+    const conversation of
+      liveConversations
+  ) {
+    if (!conversation.contact) {
+      continue;
+    }
+
+    customerProfileConversationCacheRef
+      .current.delete(
+        conversation.id,
+      );
+    customerProfileConversationCacheRef
+      .current.set(
+        conversation.id,
+        conversation,
+      );
+  }
+
+  while (
+    customerProfileConversationCacheRef
+      .current.size >
+    PROFILE_CACHE_MAX_CONVERSATIONS
+  ) {
+    const oldestId =
+      customerProfileConversationCacheRef
+        .current.keys()
+        .next().value;
+
+    if (!oldestId) {
+      break;
+    }
+
+    customerProfileConversationCacheRef
+      .current.delete(oldestId);
+  }
+}, [liveConversations]);
+
+/*
+ * V3.11.20 — profile-switch hardening.
+ * The right panel follows the selected conversation immediately and can fall
+ * back to the last enriched snapshot for that exact conversation while a
+ * realtime/server refresh is replacing the conversation list. It never shows
+ * another customer's profile as a loading placeholder.
+ */
+const customerProfileConversation =
+  activeConversation ??
+  (resolvedActiveConversationId
+    ? customerProfileConversationCacheRef
+        .current.get(
+          resolvedActiveConversationId,
+        ) ?? null
+    : null);
 
 useEffect(() => {
   setEditingTelegramMessageId(
@@ -857,11 +1111,43 @@ async function markConversationReadRealtime(
   conversationId: string,
 ) {
   if (
+    manualUnreadConversationIdsRef.current.has(
+      conversationId,
+    ) ||
     readInFlightRef.current.has(
       conversationId,
     )
   ) {
     return;
+  }
+
+  const readConversation =
+    liveConversations.find(
+      (conversation) =>
+        conversation.id ===
+        conversationId,
+    );
+
+  const readMessageTime =
+    readConversation?.last_message_at
+      ? new Date(
+          readConversation.last_message_at,
+        ).getTime()
+      : 0;
+
+  if (
+    Number.isFinite(readMessageTime) &&
+    readMessageTime > 0
+  ) {
+    readBarrierMessageTimeRef.current.set(
+      conversationId,
+      Math.max(
+        readBarrierMessageTimeRef.current.get(
+          conversationId,
+        ) ?? 0,
+        readMessageTime,
+      ),
+    );
   }
 
   readInFlightRef.current.add(
@@ -921,6 +1207,10 @@ async function markConversationReadRealtime(
       );
     }
   } catch (error) {
+    readBarrierMessageTimeRef.current.delete(
+      conversationId,
+    );
+
     console.error(
       "Unable to mark realtime conversation read:",
       error,
@@ -1194,6 +1484,11 @@ useInboxRealtime({
         const isActiveIncoming =
           conversationId ===
           resolvedActiveConversationId;
+        const keepActiveUnread =
+          isActiveIncoming &&
+          manualUnreadConversationIdsRef.current.has(
+            conversationId,
+          );
 
         const preview =
           getRealtimeMessagePreview(
@@ -1234,6 +1529,24 @@ useInboxRealtime({
               ? row.created_at
               : new Date().toISOString();
 
+        const incomingMessageTime =
+          new Date(lastMessageAt).getTime();
+        const existingReadBarrier =
+          readBarrierMessageTimeRef.current.get(
+            conversationId,
+          ) ?? 0;
+
+        if (
+          existingReadBarrier > 0 &&
+          Number.isFinite(incomingMessageTime) &&
+          incomingMessageTime >
+            existingReadBarrier + 1000
+        ) {
+          readBarrierMessageTimeRef.current.delete(
+            conversationId,
+          );
+        }
+
         setLiveConversations(
           (current) =>
             sortLiveConversations(
@@ -1253,10 +1566,11 @@ useInboxRealtime({
                     last_message_at:
                       lastMessageAt,
                     unread_count:
-                      isActiveIncoming
+                      isActiveIncoming &&
+                      !keepActiveUnread
                         ? 0
                         : Math.max(
-                            0,
+                            keepActiveUnread ? 1 : 0,
                             (conversation.unread_count ??
                               0) + 1,
                           ),
@@ -1268,18 +1582,154 @@ useInboxRealtime({
       }
 
       /*
-       * Only the active thread needs its message array updated.
-       * Inactive threads are represented by the conversation
-       * preview + unread badge until the user opens them.
+       * V3.11.18 — keep the left list preview/time correct for both platforms.
+       * INSERT updates outgoing previews too; UPDATE covers Telegram edits;
+       * DELETE shows a deterministic deleted preview. Older realtime events
+       * are not allowed to overwrite a newer message preview.
+       */
+      {
+        const eventTimestampValue =
+          typeof row.platform_created_at === "string"
+            ? row.platform_created_at
+            : typeof row.created_at === "string"
+              ? row.created_at
+              : null;
+        const eventTimestamp = eventTimestampValue
+          ? new Date(eventTimestampValue).getTime()
+          : Date.now();
+        const eventPreview =
+          event.eventType === "DELETE"
+            ? "Message deleted"
+            : getRealtimeMessagePreview(row);
+
+        setLiveConversations((current) =>
+          sortLiveConversations(
+            current.map((conversation) => {
+              if (conversation.id !== conversationId) {
+                return conversation;
+              }
+
+              const currentTimestamp =
+                conversation.last_message_at
+                  ? new Date(conversation.last_message_at).getTime()
+                  : 0;
+
+              if (
+                Number.isFinite(currentTimestamp) &&
+                currentTimestamp > 0 &&
+                eventTimestamp + 1000 < currentTimestamp
+              ) {
+                return conversation;
+              }
+
+              return {
+                ...conversation,
+                last_message_text: eventPreview,
+                last_message_at:
+                  eventTimestampValue ??
+                  conversation.last_message_at ??
+                  new Date().toISOString(),
+              };
+            }),
+          ),
+        );
+      }
+
+      /*
+       * V3.11.17 — keep an already-cached inactive thread fresh.
+       * Realtime messages should not force us to throw away a warm cache.
+       * Merge INSERT/UPDATE/DELETE directly into that cached page, then the
+       * next conversation switch can render immediately with current data.
        */
       if (
         conversationId !==
         resolvedActiveConversationId
       ) {
-        delete conversationMessageCacheRef
-          .current[
-            conversationId
-          ];
+        const cached =
+          getCachedConversationPage(
+            conversationId,
+          );
+
+        if (cached) {
+          let nextMessages =
+            cached.messages;
+
+          if (
+            event.eventType ===
+            "DELETE"
+          ) {
+            nextMessages =
+              cached.messages.filter(
+                (message) =>
+                  message.id !==
+                  messageId,
+              );
+          } else {
+            const incoming =
+              row as unknown as InboxMessage;
+
+            const existingIndex =
+              cached.messages.findIndex(
+                (message) =>
+                  message.id ===
+                  messageId,
+              );
+
+            if (existingIndex >= 0) {
+              nextMessages =
+                cached.messages.map(
+                  (message) =>
+                    message.id ===
+                    messageId
+                      ? ({
+                          ...message,
+                          ...incoming,
+                          attachment_url:
+                            incoming.attachment_url ??
+                            message.attachment_url,
+                        } as InboxMessage)
+                      : message,
+                );
+            } else {
+              nextMessages = [
+                ...cached.messages,
+                incoming,
+              ];
+            }
+
+            nextMessages =
+              [...nextMessages].sort(
+                (first, second) => {
+                  const timeDifference =
+                    new Date(
+                      first.created_at,
+                    ).getTime() -
+                    new Date(
+                      second.created_at,
+                    ).getTime();
+
+                  return timeDifference !== 0
+                    ? timeDifference
+                    : first.id.localeCompare(
+                        second.id,
+                      );
+                },
+              );
+          }
+
+          setCachedConversationPage(
+            conversationId,
+            {
+              messages:
+                nextMessages,
+              hasMore:
+                cached.hasMore,
+              fetchedAt:
+                Date.now(),
+            },
+          );
+        }
+
         return;
       }
 
@@ -1541,6 +1991,9 @@ useInboxRealtime({
            */
           const shouldAcknowledgeRead =
             isActiveConversation &&
+            !manualUnreadConversationIdsRef.current.has(
+              conversationId,
+            ) &&
             rowUnreadCount !== null &&
             rowUnreadCount > 0;
 
@@ -1552,16 +2005,116 @@ useInboxRealtime({
                 }
               : row;
 
+          const persistedManualUnreadCount =
+            persistedManualUnreadCountsRef.current.get(
+              conversationId,
+            ) ?? 0;
+
+          const keepManuallyUnread =
+            manualUnreadConversationIdsRef.current.has(
+              conversationId,
+            ) ||
+            persistedManualUnreadCount > 0;
+
           const next =
             current.map(
-              (conversation) =>
-                conversation.id ===
-                conversationId
-                  ? ({
-                      ...conversation,
-                      ...normalizedRow,
-                    } as unknown as typeof conversation)
-                  : conversation,
+              (conversation) => {
+                if (
+                  conversation.id !==
+                  conversationId
+                ) {
+                  return conversation;
+                }
+
+                const currentLastMessageTime =
+                  conversation.last_message_at
+                    ? new Date(
+                        conversation.last_message_at,
+                      ).getTime()
+                    : 0;
+                const rowLastMessageValue =
+                  typeof row.last_message_at ===
+                  "string"
+                    ? row.last_message_at
+                    : null;
+                const rowLastMessageTime =
+                  rowLastMessageValue
+                    ? new Date(
+                        rowLastMessageValue,
+                      ).getTime()
+                    : 0;
+                const rowIsOlderThanLocal =
+                  Number.isFinite(
+                    currentLastMessageTime,
+                  ) &&
+                  Number.isFinite(
+                    rowLastMessageTime,
+                  ) &&
+                  currentLastMessageTime > 0 &&
+                  rowLastMessageTime > 0 &&
+                  rowLastMessageTime + 1000 <
+                    currentLastMessageTime;
+
+                const merged = {
+                  ...conversation,
+                  ...normalizedRow,
+                  ...(rowIsOlderThanLocal
+                    ? {
+                        last_message_at:
+                          conversation.last_message_at,
+                        last_message_text:
+                          conversation.last_message_text,
+                        unread_count:
+                          conversation.unread_count,
+                      }
+                    : {}),
+                } as unknown as typeof conversation;
+
+                if (keepManuallyUnread) {
+                  return {
+                    ...merged,
+                    unread_count: Math.max(
+                      1,
+                      persistedManualUnreadCount,
+                      typeof merged.unread_count === "number"
+                        ? merged.unread_count
+                        : conversation.unread_count ?? 0,
+                    ),
+                  };
+                }
+
+                const readBarrier =
+                  readBarrierMessageTimeRef.current.get(
+                    conversationId,
+                  ) ?? 0;
+                const mergedMessageTime =
+                  merged.last_message_at
+                    ? new Date(
+                        merged.last_message_at,
+                      ).getTime()
+                    : 0;
+
+                if (
+                  readBarrier > 0 &&
+                  Number.isFinite(mergedMessageTime)
+                ) {
+                  if (
+                    mergedMessageTime <=
+                    readBarrier + 1000
+                  ) {
+                    return {
+                      ...merged,
+                      unread_count: 0,
+                    };
+                  }
+
+                  readBarrierMessageTimeRef.current.delete(
+                    conversationId,
+                  );
+                }
+
+                return merged;
+              },
             );
 
           return sortLiveConversations(
@@ -1579,6 +2132,9 @@ useInboxRealtime({
       if (
         conversationId ===
           resolvedActiveConversationId &&
+        !manualUnreadConversationIdsRef.current.has(
+          conversationId,
+        ) &&
         rowUnreadCount !== null &&
         rowUnreadCount > 0
       ) {
@@ -1600,10 +2156,145 @@ useInboxRealtime({
   
 
 useEffect(() => {
-  setLiveConversations(
-    conversations,
-  );
-}, [conversations]);
+  setLiveConversations((current) => {
+    const currentById = new Map(
+      current.map((conversation) => [conversation.id, conversation]),
+    );
+
+    const next = conversations.map((conversation) => {
+      const previous =
+        currentById.get(
+          conversation.id,
+        );
+      const persistedManualUnreadCount =
+        persistedManualUnreadCountsRef.current.get(
+          conversation.id,
+        ) ?? 0;
+
+      const serverLastMessageTime =
+        conversation.last_message_at
+          ? new Date(
+              conversation.last_message_at,
+            ).getTime()
+          : 0;
+      const localLastMessageTime =
+        previous?.last_message_at
+          ? new Date(
+              previous.last_message_at,
+            ).getTime()
+          : 0;
+      const serverIsOlderThanLocal =
+        Boolean(previous) &&
+        Number.isFinite(
+          serverLastMessageTime,
+        ) &&
+        Number.isFinite(
+          localLastMessageTime,
+        ) &&
+        serverLastMessageTime > 0 &&
+        localLastMessageTime > 0 &&
+        serverLastMessageTime + 1000 <
+          localLastMessageTime;
+
+      let mergedConversation =
+        serverIsOlderThanLocal && previous
+          ? {
+              ...conversation,
+              last_message_at:
+                previous.last_message_at,
+              last_message_text:
+                previous.last_message_text,
+              unread_count:
+                previous.unread_count,
+            }
+          : conversation;
+
+      if (
+        manualUnreadConversationIdsRef.current.has(
+          conversation.id,
+        ) ||
+        persistedManualUnreadCount > 0
+      ) {
+        return {
+          ...mergedConversation,
+          unread_count: Math.max(
+            1,
+            persistedManualUnreadCount,
+            previous?.unread_count ?? 0,
+            mergedConversation.unread_count ?? 0,
+          ),
+        };
+      }
+
+      const readBarrier =
+        readBarrierMessageTimeRef.current.get(
+          conversation.id,
+        ) ?? 0;
+      const mergedMessageTime =
+        mergedConversation.last_message_at
+          ? new Date(
+              mergedConversation.last_message_at,
+            ).getTime()
+          : 0;
+
+      if (
+        readBarrier > 0 &&
+        Number.isFinite(mergedMessageTime)
+      ) {
+        if (
+          mergedMessageTime <=
+          readBarrier + 1000
+        ) {
+          mergedConversation = {
+            ...mergedConversation,
+            unread_count: 0,
+          };
+        } else {
+          readBarrierMessageTimeRef.current.delete(
+            conversation.id,
+          );
+        }
+      }
+
+      return mergedConversation;
+    });
+
+    /*
+     * Status/channel/view navigation can legitimately omit the currently
+     * selected row from fresh server props. Keep only that selected row in
+     * local state so MessagePanel remains mounted; ConversationList applies
+     * the active left-panel scope before rendering rows.
+     */
+    const selectedId =
+      desiredConversationIdRef.current ??
+      clientSelectedConversationId;
+
+    if (
+      selectedId &&
+      !next.some((conversation) => conversation.id === selectedId)
+    ) {
+      const selectedPrevious = currentById.get(selectedId);
+
+      if (selectedPrevious) {
+        const persistedManualUnreadCount =
+          persistedManualUnreadCountsRef.current.get(selectedId) ?? 0;
+
+        next.push({
+          ...selectedPrevious,
+          unread_count: Math.max(
+            selectedPrevious.unread_count ?? 0,
+            persistedManualUnreadCount,
+          ),
+        });
+      }
+    }
+
+    return sortLiveConversations(next);
+  });
+}, [
+  clientSelectedConversationId,
+  conversations,
+]);
 
 useEffect(() => {
   /*
@@ -1715,12 +2406,23 @@ const loadConversationMessagePage =
   useCallback(
     async (
       conversationId: string,
+      options?: {
+        forceRefresh?: boolean;
+      },
     ): Promise<ConversationMessagePage> => {
-      const cached =
-        conversationMessageCacheRef
-          .current[conversationId];
+      const forceRefresh =
+        options?.forceRefresh ??
+        false;
 
-      if (cached) {
+      const cached =
+        getCachedConversationPage(
+          conversationId,
+        );
+
+      if (
+        cached &&
+        !forceRefresh
+      ) {
         return cached;
       }
 
@@ -1731,6 +2433,13 @@ const loadConversationMessagePage =
       if (pending) {
         return pending;
       }
+
+      const controller =
+        new AbortController();
+
+      conversationMessageAbortRef
+        .current[conversationId] =
+        controller;
 
       const request = (async () => {
         const params =
@@ -1746,6 +2455,8 @@ const loadConversationMessagePage =
           {
             method: "GET",
             cache: "no-store",
+            signal:
+              controller.signal,
           },
         );
 
@@ -1811,7 +2522,8 @@ const loadConversationMessagePage =
               },
             );
 
-        const page = {
+        const now = Date.now();
+        const page: ConversationMessagePage = {
           messages:
             nextMessages,
           hasMore:
@@ -1820,11 +2532,16 @@ const loadConversationMessagePage =
               ? result.hasMore
               : nextMessages.length >=
                 MESSAGE_PAGE_SIZE,
+          fetchedAt:
+            now,
+          lastAccessedAt:
+            now,
         };
 
-        conversationMessageCacheRef
-          .current[conversationId] =
-          page;
+        setCachedConversationPage(
+          conversationId,
+          page,
+        );
 
         return page;
       })();
@@ -1836,13 +2553,29 @@ const loadConversationMessagePage =
       try {
         return await request;
       } finally {
-        delete conversationMessageRequestRef
-          .current[
-            conversationId
-          ];
+        if (
+          conversationMessageAbortRef
+            .current[conversationId] ===
+          controller
+        ) {
+          delete conversationMessageAbortRef
+            .current[conversationId];
+        }
+
+        if (
+          conversationMessageRequestRef
+            .current[conversationId] ===
+          request
+        ) {
+          delete conversationMessageRequestRef
+            .current[conversationId];
+        }
       }
     },
-    [],
+    [
+      getCachedConversationPage,
+      setCachedConversationPage,
+    ],
   );
 
 const prefetchConversation =
@@ -1853,19 +2586,27 @@ const prefetchConversation =
       if (
         conversationId ===
           resolvedActiveConversationId ||
-        conversationMessageCacheRef
-          .current[conversationId]
+        getCachedConversationPage(
+          conversationId,
+        )
       ) {
         return;
       }
 
       void loadConversationMessagePage(
         conversationId,
-      ).catch(() => {
+      ).catch((error) => {
+        if (
+          isAbortError(error)
+        ) {
+          return;
+        }
+
         // Prefetch is best-effort. A click will retry and surface loading.
       });
     },
     [
+      getCachedConversationPage,
       loadConversationMessagePage,
       resolvedActiveConversationId,
     ],
@@ -1875,7 +2616,7 @@ const selectConversationSmoothly =
   useCallback(
     (
       conversationId: string,
-      updateHistory = true,
+      updateHistory = false,
     ) => {
       if (
         !liveConversations.some(
@@ -1899,6 +2640,31 @@ const selectConversationSmoothly =
       const currentConversationId =
         resolvedActiveConversationId;
 
+      /*
+       * Reopening a conversation that was manually marked unread is the
+       * deliberate acknowledgement point. Clear only the destination's
+       * persisted marker so the normal automatic /read flow can run.
+       */
+      if (
+        currentConversationId !== conversationId
+      ) {
+        manualUnreadConversationIdsRef.current.delete(
+          conversationId,
+        );
+        persistedManualUnreadCountsRef.current.delete(
+          conversationId,
+        );
+      }
+
+      if (
+        currentConversationId &&
+        currentConversationId !== conversationId
+      ) {
+        manualUnreadConversationIdsRef.current.delete(
+          currentConversationId,
+        );
+      }
+
       if (
         currentConversationId &&
         !loadingConversationMessages
@@ -1914,17 +2680,34 @@ const selectConversationSmoothly =
           scopedCurrentMessages.length ===
             liveMessages.length
         ) {
-          conversationMessageCacheRef
-            .current[
-              currentConversationId
-            ] = {
+          const existing =
+            getCachedConversationPage(
+              currentConversationId,
+            );
+
+          setCachedConversationPage(
+            currentConversationId,
+            {
               messages:
                 scopedCurrentMessages,
               hasMore:
                 hasMoreOlderMessages,
-            };
+              fetchedAt:
+                existing?.fetchedAt ??
+                Date.now(),
+            },
+          );
         }
       }
+
+      /*
+       * V3.11.17 — a rapid A -> B -> C switch should not leave old selected
+       * message requests consuming bandwidth or racing the new selection.
+       * Keep a request for the destination conversation if it was prefetched.
+       */
+      abortConversationRequestsExcept(
+        conversationId,
+      );
 
       desiredConversationIdRef.current =
         conversationId;
@@ -1940,8 +2723,9 @@ const selectConversationSmoothly =
         false;
 
       const cached =
-        conversationMessageCacheRef
-          .current[conversationId];
+        getCachedConversationPage(
+          conversationId,
+        );
 
       if (cached) {
         setLiveMessages(
@@ -1953,6 +2737,123 @@ const selectConversationSmoothly =
         setLoadingConversationMessages(
           false,
         );
+
+        /*
+         * Show warm cache immediately, then quietly refresh stale data.
+         * No loading flash is shown for a conversation the agent has opened.
+         */
+        if (
+          Date.now() -
+            cached.fetchedAt >
+          MESSAGE_CACHE_STALE_MS
+        ) {
+          void loadConversationMessagePage(
+            conversationId,
+            {
+              forceRefresh: true,
+            },
+          )
+            .then((page) => {
+              if (
+                desiredConversationIdRef
+                  .current !==
+                conversationId
+              ) {
+                return;
+              }
+
+              setLiveMessages(
+                (current) => {
+                  const currentById =
+                    new Map(
+                      current.map(
+                        (message) => [
+                          message.id,
+                          message,
+                        ],
+                      ),
+                    );
+
+                  const merged =
+                    page.messages.map(
+                      (message) => {
+                        const existing =
+                          currentById.get(
+                            message.id,
+                          );
+
+                        const localAttachmentUrl =
+                          existing?.attachment_url?.startsWith(
+                            "blob:",
+                          )
+                            ? existing.attachment_url
+                            : null;
+
+                        return {
+                          ...existing,
+                          ...message,
+                          attachment_url:
+                            message.attachment_url ??
+                            localAttachmentUrl,
+                        } as InboxMessage;
+                      },
+                    );
+
+                  for (
+                    const message of current
+                  ) {
+                    if (
+                      message.id.startsWith(
+                        "optimistic:",
+                      ) &&
+                      !merged.some(
+                        (candidate) =>
+                          candidate.id ===
+                          message.id,
+                      )
+                    ) {
+                      merged.push(message);
+                    }
+                  }
+
+                  return merged.sort(
+                    (first, second) => {
+                      const timeDifference =
+                        new Date(
+                          first.created_at,
+                        ).getTime() -
+                        new Date(
+                          second.created_at,
+                        ).getTime();
+
+                      return timeDifference !== 0
+                        ? timeDifference
+                        : first.id.localeCompare(
+                            second.id,
+                          );
+                    },
+                  );
+                },
+              );
+
+              setHasMoreOlderMessages(
+                page.hasMore,
+              );
+            })
+            .catch((error) => {
+              if (
+                isAbortError(error)
+              ) {
+                return;
+              }
+
+              // Cached data remains usable if the quiet refresh fails.
+              console.warn(
+                "Unable to refresh cached conversation messages:",
+                error,
+              );
+            });
+        }
       } else {
         setLiveMessages([]);
         setHasMoreOlderMessages(
@@ -1982,6 +2883,12 @@ const selectConversationSmoothly =
             );
           })
           .catch((error) => {
+            if (
+              isAbortError(error)
+            ) {
+              return;
+            }
+
             if (
               desiredConversationIdRef
                 .current !==
@@ -2037,14 +2944,81 @@ const selectConversationSmoothly =
       }
     },
     [
+      abortConversationRequestsExcept,
+      getCachedConversationPage,
       hasMoreOlderMessages,
       liveConversations,
       liveMessages,
       loadConversationMessagePage,
       loadingConversationMessages,
       resolvedActiveConversationId,
+      setCachedConversationPage,
     ],
   );
+
+const clearConversationSelection =
+  useCallback(() => {
+    const currentConversationId =
+      resolvedActiveConversationId;
+
+    if (currentConversationId) {
+      manualUnreadConversationIdsRef.current.delete(
+        currentConversationId,
+      );
+    }
+
+    if (
+      currentConversationId &&
+      !loadingConversationMessages
+    ) {
+      const scopedMessages = liveMessages.filter(
+        (message) =>
+          message.conversation_id === currentConversationId,
+      );
+
+      if (scopedMessages.length === liveMessages.length) {
+        const existing = getCachedConversationPage(
+          currentConversationId,
+        );
+        setCachedConversationPage(
+          currentConversationId,
+          {
+            messages: scopedMessages,
+            hasMore: hasMoreOlderMessages,
+            fetchedAt: existing?.fetchedAt ?? Date.now(),
+          },
+        );
+      }
+    }
+
+    abortConversationRequestsExcept(null);
+    desiredConversationIdRef.current = null;
+    setClientSelectedConversationId(null);
+    setLiveMessages([]);
+    setHasMoreOlderMessages(false);
+    setLoadingConversationMessages(false);
+    setConversationMessagesError(null);
+    setOlderMessagesError(null);
+
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      params.delete("conversation");
+      const query = params.toString();
+      window.history.replaceState(
+        null,
+        "",
+        query ? `/dashboard/inbox?${query}` : "/dashboard/inbox",
+      );
+    }
+  }, [
+    abortConversationRequestsExcept,
+    getCachedConversationPage,
+    hasMoreOlderMessages,
+    liveMessages,
+    loadingConversationMessages,
+    resolvedActiveConversationId,
+    setCachedConversationPage,
+  ]);
 
 const retryConversationMessages =
   useCallback(() => {
@@ -2059,6 +3033,15 @@ const retryConversationMessages =
 
     delete conversationMessageCacheRef
       .current[conversationId];
+
+    conversationMessageAbortRef
+      .current[conversationId]
+      ?.abort();
+    delete conversationMessageAbortRef
+      .current[conversationId];
+    delete conversationMessageRequestRef
+      .current[conversationId];
+
     setConversationMessagesError(
       null,
     );
@@ -2141,20 +3124,30 @@ useEffect(() => {
     return;
   }
 
-  conversationMessageCacheRef
-    .current[
-      resolvedActiveConversationId
-    ] = {
+  const existing =
+    getCachedConversationPage(
+      resolvedActiveConversationId,
+    );
+
+  setCachedConversationPage(
+    resolvedActiveConversationId,
+    {
       messages:
         scopedMessages,
       hasMore:
         hasMoreOlderMessages,
-    };
+      fetchedAt:
+        existing?.fetchedAt ??
+        Date.now(),
+    },
+  );
 }, [
+  getCachedConversationPage,
   hasMoreOlderMessages,
   liveMessages,
   loadingConversationMessages,
   resolvedActiveConversationId,
+  setCachedConversationPage,
 ]);
 
 /*
@@ -2170,23 +3163,14 @@ useEffect(() => {
         requestedConversationId,
     )
       ? requestedConversationId
-      : activeConversationId &&
-          liveConversations.some(
-            (conversation) =>
-              conversation.id ===
-              activeConversationId,
-          )
-        ? activeConversationId
-        : liveConversations[0]
-            ?.id ??
-          null;
+      : null;
 
   if (!fallbackId) {
-    desiredConversationIdRef.current =
-      null;
-    setClientSelectedConversationId(
-      null,
-    );
+    /*
+     * Left-panel filters/channels intentionally change the URL without a
+     * conversation parameter. Keep the client-selected center thread alive.
+     * A real browser refresh still starts empty because client state is rebuilt.
+     */
     return;
   }
 
@@ -2200,7 +3184,6 @@ useEffect(() => {
     );
   }
 }, [
-  activeConversationId,
   clientSelectedConversationId,
   liveConversations,
   requestedConversationId,
@@ -2442,15 +3425,10 @@ useEffect(() => {
         requestedConversationId,
     )
   ) {
-    const fallbackId =
-      liveConversations[0]
-        ?.id ??
-      null;
-
     desiredConversationIdRef.current =
-      fallbackId;
+      null;
     setClientSelectedConversationId(
-      fallbackId,
+      null,
     );
 
     if (
@@ -2462,16 +3440,9 @@ useEffect(() => {
           window.location.search,
         );
 
-      if (fallbackId) {
-        params.set(
-          "conversation",
-          fallbackId,
-        );
-      } else {
-        params.delete(
-          "conversation",
-        );
-      }
+      params.delete(
+        "conversation",
+      );
 
       const query =
         params.toString();
@@ -2495,7 +3466,7 @@ useEffect(() => {
     return;
   }
 
-  const activeConversation =
+  const currentConversation =
     liveConversations.find(
       (conversation) =>
         conversation.id ===
@@ -2503,138 +3474,163 @@ useEffect(() => {
     );
 
   if (
-    !activeConversation ||
-    activeConversation.unread_count === 0
+    !currentConversation ||
+    currentConversation.unread_count === 0 ||
+    manualUnreadConversationIdsRef.current.has(
+      resolvedActiveConversationId,
+    )
   ) {
     return;
   }
 
-  if (
-  skipAutomaticReadRef.current ===
-  resolvedActiveConversationId
-) {
-  skipAutomaticReadRef.current =
-    null;
-
-  return;
-}
-
-  let cancelled = false;
-
-  
-
-
-
-async function markConversationRead() {
-    try {
-      const response = await fetch(
-        `/api/conversations/${resolvedActiveConversationId}/read`,
-        {
-          method: "PATCH",
-        },
-      );
-
-      const responseText =
-        await response.text();
-
-      const result = responseText
-        ? (JSON.parse(responseText) as {
-            success: boolean;
-            error?: string;
-          })
-        : {
-            success: response.ok,
-          };
-
-      if (
-        cancelled ||
-        !response.ok ||
-        !result.success
-      ) {
-        return;
-      }
-
-      setLiveConversations(
-        (current) =>
-          current.map(
-            (conversation) =>
-              conversation.id ===
-              resolvedActiveConversationId
-                ? {
-                    ...conversation,
-                    unread_count: 0,
-                  }
-                : conversation,
-          ),
-      );
-    } catch (error) {
-      if (!cancelled) {
-        console.error(error);
-      }
-    }
-  }
-
-  void markConversationRead();
-
-  return () => {
-    cancelled = true;
-  };
+  /*
+   * Use the same tracked read request used by realtime handling. This prevents
+   * a second untracked /read PATCH from racing with Mark unread.
+   */
+  void markConversationReadRealtime(
+    resolvedActiveConversationId,
+  );
 }, [
   liveConversations,
   resolvedActiveConversationId,
 ]);
 
   async function handleMarkUnread() {
-  if (!activeConversation) {
-    return;
-  }
-skipAutomaticReadRef.current =
-  activeConversation.id;
-  setMarkingUnread(true);
-
-  try {
-    const response = await fetch(
-      `/api/conversations/${activeConversation.id}/unread`,
-      {
-        method: "PATCH",
-      },
-    );
-
-   const responseText =
-      await response.text();
-
-    const result = responseText
-      ? (JSON.parse(responseText) as {
-          success: boolean;
-          error?: string;
-        })
-      : {
-          success: response.ok,
-        };
-
-   if (
-      !response.ok ||
-      !result.success
-    ) {
-      skipAutomaticReadRef.current =
-        null;
-
-      throw new Error(
-        result.error ??
-          "Unable to mark conversation unread.",
-      );
+    if (!activeConversation) {
+      return;
     }
 
-    router.refresh();
-  } catch (error) {
-    skipAutomaticReadRef.current =
-      null;
+    const conversationId =
+      activeConversation.id;
 
-    console.error(error);
-  } finally {
-    setMarkingUnread(false);
+    /* Keep it unread for the entire time this exact thread stays open. */
+    readBarrierMessageTimeRef.current.delete(
+      conversationId,
+    );
+    manualUnreadConversationIdsRef.current.add(
+      conversationId,
+    );
+    persistedManualUnreadCountsRef.current.set(
+      conversationId,
+      Math.max(
+        1,
+        activeConversation.unread_count ?? 0,
+      ),
+    );
+
+    setMarkingUnread(true);
+
+    /* Optimistic UI: show the unread badge immediately. */
+    setLiveConversations((current) =>
+      current.map((conversation) =>
+        conversation.id === conversationId
+          ? {
+              ...conversation,
+              unread_count: Math.max(
+                1,
+                conversation.unread_count ?? 0,
+              ),
+            }
+          : conversation,
+      ),
+    );
+
+    try {
+      /*
+       * If TENH was still finishing the automatic read request from opening
+       * this thread, let that tracked request finish first. The unread PATCH is
+       * then guaranteed to be the later write instead of losing a race to
+       * /read and disappearing a moment later.
+       */
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        if (!readInFlightRef.current.has(conversationId)) {
+          break;
+        }
+
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 25);
+        });
+      }
+
+      const response = await fetch(
+        `/api/conversations/${conversationId}/unread`,
+        { method: "PATCH" },
+      );
+
+      const responseText =
+        await response.text();
+      const result: {
+        success: boolean;
+        error?: string;
+        conversation?: {
+          id: string;
+          unread_count: number;
+        };
+      } = responseText
+        ? (JSON.parse(responseText) as {
+            success: boolean;
+            error?: string;
+            conversation?: {
+              id: string;
+              unread_count: number;
+            };
+          })
+        : { success: response.ok };
+
+      if (!response.ok || !result.success) {
+        manualUnreadConversationIdsRef.current.delete(
+          conversationId,
+        );
+        throw new Error(
+          result.error ??
+            "Unable to mark conversation unread.",
+        );
+      }
+
+      const authoritativeUnreadCount =
+        Math.max(
+          1,
+          result.conversation?.unread_count ?? 1,
+        );
+
+      persistedManualUnreadCountsRef.current.set(
+        conversationId,
+        authoritativeUnreadCount,
+      );
+
+      if (
+        manualUnreadConversationIdsRef.current.has(
+          conversationId,
+        )
+      ) {
+        setLiveConversations((current) =>
+          current.map((conversation) =>
+            conversation.id === conversationId
+              ? {
+                  ...conversation,
+                  unread_count: Math.max(
+                    authoritativeUnreadCount,
+                    conversation.unread_count ?? 0,
+                  ),
+                }
+              : conversation,
+          ),
+        );
+      }
+    } catch (error) {
+      manualUnreadConversationIdsRef.current.delete(
+        conversationId,
+      );
+      persistedManualUnreadCountsRef.current.delete(
+        conversationId,
+      );
+      console.error(error);
+      /* Re-sync only on failure. */
+      router.refresh();
+    } finally {
+      setMarkingUnread(false);
+    }
   }
-}
 
 async function handleTogglePin() {
   if (
@@ -4073,12 +5069,9 @@ async function handleSendAttachments(
     return false;
   }
 
-  if (
-    activeConversation.source_type ===
-    "comment"
-  ) {
+  if (replyingToCommentId) {
     setSendError(
-      "Attachments are currently available for Messenger conversations only.",
+      "Cancel the Facebook comment Reply target before sending an attachment.",
     );
     return false;
   }
@@ -4307,31 +5300,23 @@ async function handleSendMessage(
     return;
   }
 
-  const isCommentConversation =
-    activeConversation.source_type ===
-    "comment";
+  /*
+   * V3.11.30.1 — a conversation can contain both normal Messenger DMs and
+   * Facebook comments. Only an explicitly selected comment Reply target uses
+   * the public comment reply endpoint. Otherwise the composer sends a normal
+   * channel message.
+   */
+  const isCommentReply =
+    Boolean(replyingToCommentId);
 
   const commentId =
-    isCommentConversation
-      ? replyingToCommentId
-      : null;
-
-  if (
-    isCommentConversation &&
-    !commentId
-  ) {
-    setSendError(
-      "Select a Facebook comment and click Reply first.",
-    );
-
-    return;
-  }
+    replyingToCommentId;
 
   let conversationPlatform:
     InboxConversationPlatform =
       "facebook";
 
-  if (!isCommentConversation) {
+  if (!isCommentReply) {
     try {
       conversationPlatform =
         await resolveConversationPlatform(
@@ -4490,7 +5475,7 @@ async function handleSendMessage(
     `optimistic:${randomId}`;
 
   const telegramLocation =
-    !isCommentConversation &&
+    !isCommentReply &&
     conversationPlatform ===
       "telegram"
       ? parseTenhLocationMessage(
@@ -4510,7 +5495,7 @@ async function handleSendMessage(
   }
 
   const endpoint =
-    isCommentConversation
+    isCommentReply
       ? "/api/facebook/comments/reply"
       : conversationPlatform ===
           "telegram"
@@ -4521,7 +5506,7 @@ async function handleSendMessage(
 
   const requestBody:
     Record<string, unknown> =
-    isCommentConversation
+    isCommentReply
       ? {
           conversationId:
             activeConversation.id,
@@ -4569,7 +5554,8 @@ async function handleSendMessage(
       message,
       endpoint,
       requestBody,
-      isCommentConversation,
+      isCommentConversation:
+        isCommentReply,
       commentId,
     };
 
@@ -4864,6 +5850,9 @@ return (
         onPrefetchConversation={
           prefetchConversation
         }
+        onClearConversationSelection={
+          clearConversationSelection
+        }
       />
 
    <MessagePanel
@@ -5013,7 +6002,7 @@ return (
       {customerPanelVisible ? (
         <CustomerProfile
           activeConversation={
-            activeConversation
+            customerProfileConversation
           }
         />
       ) : null}

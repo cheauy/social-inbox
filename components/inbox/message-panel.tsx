@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -783,6 +784,33 @@ function HydrationSafeMessageTime({
   );
 }
 
+function getFirstUnreadMessageId(
+  messages: InboxMessage[],
+  unreadCount: number,
+): string | null {
+  if (unreadCount <= 0) {
+    return null;
+  }
+
+  let remaining = unreadCount;
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+
+    if (message.direction !== "incoming") {
+      continue;
+    }
+
+    remaining -= 1;
+
+    if (remaining === 0) {
+      return message.id;
+    }
+  }
+
+  return null;
+}
+
 export function MessagePanel({
   activeConversation,
   messages,
@@ -834,6 +862,45 @@ export function MessagePanel({
   onDeleteComment,
   onRetryMessage,
 }: MessagePanelProps) {
+  /*
+   * V3.11.25 — snapshot unread_count exactly when a conversation opens.
+   * The parent may immediately mark the conversation read, but this snapshot
+   * remains stable long enough to position the viewport at the first unread.
+   */
+  const openedUnreadStateRef =
+    useRef<{
+      conversationId: string | null;
+      unreadCount: number;
+    }>({
+      conversationId: null,
+      unreadCount: 0,
+    });
+
+  const currentConversationId =
+    activeConversation?.id ?? null;
+
+  if (
+    openedUnreadStateRef.current.conversationId !==
+    currentConversationId
+  ) {
+    openedUnreadStateRef.current = {
+      conversationId: currentConversationId,
+      unreadCount: Math.max(
+        0,
+        activeConversation?.unread_count ?? 0,
+      ),
+    };
+  }
+
+  const openingUnreadCount =
+    openedUnreadStateRef.current.unreadCount;
+
+  const firstUnreadMessageId =
+    getFirstUnreadMessageId(
+      messages,
+      openingUnreadCount,
+    );
+
   const [
     optimisticCommentState,
     setOptimisticCommentState,
@@ -935,8 +1002,38 @@ export function MessagePanel({
   const initialScrollDoneRef =
     useRef(false);
 
+  const initialUnreadLoadInFlightRef =
+    useRef(false);
+
+  const initialUnreadAutoLoadStoppedRef =
+    useRef(false);
+
   const userNearBottomRef =
     useRef(true);
+
+  type ConversationScrollPosition = {
+    scrollTop: number;
+    nearBottom: boolean;
+  };
+
+  const conversationScrollPositionsRef =
+    useRef<
+      Record<
+        string,
+        ConversationScrollPosition | undefined
+      >
+    >({});
+
+  const previousConversationIdRef =
+    useRef<string | null>(
+      activeConversation?.id ??
+      null,
+    );
+
+  const pendingScrollRestoreRef =
+    useRef<
+      ConversationScrollPosition | null
+    >(null);
 
   /*
    * V2.7 — preserve the visible viewport while older messages
@@ -977,8 +1074,19 @@ export function MessagePanel({
         );
 
         setNewMessageCount(0);
+
+        if (activeConversation?.id) {
+          conversationScrollPositionsRef
+            .current[
+              activeConversation.id
+            ] = {
+            scrollTop:
+              container.scrollHeight,
+            nearBottom: true,
+          };
+        }
       },
-      [],
+      [activeConversation?.id],
     );
 
   async function loadOlderMessages() {
@@ -1040,6 +1148,18 @@ export function MessagePanel({
     userNearBottomRef.current =
       isNearBottom;
 
+    if (activeConversation?.id) {
+      conversationScrollPositionsRef
+        .current[
+          activeConversation.id
+        ] = {
+        scrollTop:
+          container.scrollTop,
+        nearBottom:
+          isNearBottom,
+      };
+    }
+
     setShowScrollToLatest(
       !isNearBottom,
     );
@@ -1073,7 +1193,37 @@ export function MessagePanel({
   }
 
   useEffect(() => {
+    const nextConversationId =
+      activeConversation?.id ??
+      null;
+
+    const previousConversationId =
+      previousConversationIdRef
+        .current;
+
+    /*
+     * Scroll positions are persisted continuously by handleMessagesScroll
+     * and scrollToNewest. Do not read the DOM here because React may already
+     * have painted the destination conversation when this effect runs.
+     */
+    void previousConversationId;
+
+    pendingScrollRestoreRef.current =
+      nextConversationId
+        ? conversationScrollPositionsRef
+            .current[
+              nextConversationId
+            ] ?? null
+        : null;
+
+    previousConversationIdRef.current =
+      nextConversationId;
+
     initialScrollDoneRef.current =
+      false;
+    initialUnreadLoadInFlightRef.current =
+      false;
+    initialUnreadAutoLoadStoppedRef.current =
       false;
 
     lastMessageIdRef.current =
@@ -1083,10 +1233,16 @@ export function MessagePanel({
       0;
 
     userNearBottomRef.current =
+      pendingScrollRestoreRef.current
+        ?.nearBottom ??
       true;
 
     setShowScrollToLatest(
-      false,
+      Boolean(
+        pendingScrollRestoreRef.current &&
+        !pendingScrollRestoreRef.current
+          .nearBottom,
+      ),
     );
 
     prependScrollSnapshotRef.current =
@@ -1294,6 +1450,13 @@ export function MessagePanel({
   }, [messages]);
 
   useEffect(() => {
+    if (
+      loadingConversationMessages &&
+      messages.length === 0
+    ) {
+      return;
+    }
+
     const latestMessage =
       messages[
         messages.length - 1
@@ -1304,11 +1467,51 @@ export function MessagePanel({
 
     /*
      * First render for this conversation:
-     * jump directly to the newest message.
+     * 1) restore an intentional previous scroll position; otherwise
+     * 2) if it opened unread, position at the FIRST unread incoming message;
+     * 3) otherwise jump to newest.
      */
     if (
       !initialScrollDoneRef.current
     ) {
+      const savedPosition =
+        pendingScrollRestoreRef
+          .current;
+
+      if (
+        !savedPosition &&
+        openingUnreadCount > 0 &&
+        !firstUnreadMessageId &&
+        hasMoreOlderMessages &&
+        !initialUnreadAutoLoadStoppedRef.current
+      ) {
+        if (
+          !loadingOlderMessages &&
+          !initialUnreadLoadInFlightRef.current
+        ) {
+          initialUnreadLoadInFlightRef.current =
+            true;
+
+          void onLoadOlderMessages()
+            .then((loaded) => {
+              if (!loaded) {
+                initialUnreadAutoLoadStoppedRef.current =
+                  true;
+              }
+            })
+            .catch(() => {
+              initialUnreadAutoLoadStoppedRef.current =
+                true;
+            })
+            .finally(() => {
+              initialUnreadLoadInFlightRef.current =
+                false;
+            });
+        }
+
+        return;
+      }
+
       initialScrollDoneRef.current =
         true;
 
@@ -1318,8 +1521,89 @@ export function MessagePanel({
       previousMessageCountRef.current =
         messages.length;
 
+      pendingScrollRestoreRef.current =
+        null;
+
       window.requestAnimationFrame(
         () => {
+          const container =
+            messagesContainerRef.current;
+
+          if (
+            container &&
+            savedPosition &&
+            !savedPosition.nearBottom
+          ) {
+            const maxScrollTop =
+              Math.max(
+                0,
+                container.scrollHeight -
+                  container.clientHeight,
+              );
+
+            container.scrollTop =
+              Math.min(
+                savedPosition.scrollTop,
+                maxScrollTop,
+              );
+
+            userNearBottomRef.current =
+              false;
+            setShowScrollToLatest(
+              true,
+            );
+            return;
+          }
+
+          if (
+            openingUnreadCount > 0 &&
+            firstUnreadMessageId
+          ) {
+            const targetElement =
+              messageElementRefs.current.get(
+                firstUnreadMessageId,
+              );
+
+            if (targetElement) {
+              targetElement.scrollIntoView({
+                behavior: "auto",
+                block: "center",
+              });
+
+              const distanceFromBottom =
+                container
+                  ? container.scrollHeight -
+                    container.scrollTop -
+                    container.clientHeight
+                  : 0;
+
+              const nearBottom =
+                distanceFromBottom <= 120;
+
+              userNearBottomRef.current =
+                nearBottom;
+              setShowScrollToLatest(
+                !nearBottom,
+              );
+
+              if (
+                container &&
+                activeConversation?.id
+              ) {
+                conversationScrollPositionsRef
+                  .current[
+                    activeConversation.id
+                  ] = {
+                  scrollTop:
+                    container.scrollTop,
+                  nearBottom,
+                };
+              }
+
+              return;
+            }
+          }
+
           scrollToNewest("auto");
         },
       );
@@ -1385,7 +1669,17 @@ export function MessagePanel({
       (current) =>
         current + addedCount,
     );
-  }, [messages, scrollToNewest]);
+  }, [
+    activeConversation?.id,
+    firstUnreadMessageId,
+    hasMoreOlderMessages,
+    loadingConversationMessages,
+    loadingOlderMessages,
+    messages,
+    onLoadOlderMessages,
+    openingUnreadCount,
+    scrollToNewest,
+  ]);
 
   useEffect(() => {
     setTelegramContextMenu(null);
@@ -1445,10 +1739,6 @@ export function MessagePanel({
     );
   }
 
-  const isCommentConversation =
-    activeConversation.source_type ===
-    "comment";
-
   const replyingToMessage =
     replyingToCommentId
       ? messages.find(
@@ -1462,16 +1752,6 @@ export function MessagePanel({
     activeConversation.contact
       ?.full_name?.trim() ||
     "Facebook commenter";
-
-  /*
-   * Comment conversations must target one exact
-   * Facebook comment before the reply composer is enabled.
-   *
-   * Messenger conversations remain available normally.
-   */
-  const commentReplyLocked =
-    isCommentConversation &&
-    !replyingToCommentId;
 
   const extendedConversation =
     activeConversation as InboxConversation & {
@@ -1684,10 +1964,27 @@ export function MessagePanel({
       {/* Messages */}
       <div className="relative min-h-0 flex-1">
         {loadingConversationMessages ? (
-          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-[#EEF2F6]/75 backdrop-blur-[1px]">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/90 bg-white/95 px-4 py-2 text-xs font-semibold text-slate-600 shadow-sm">
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
-              Loading messages...
+          <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden bg-[#EEF2F6] px-6 py-5">
+            <div className="mx-auto flex h-full max-w-4xl flex-col justify-end gap-4">
+              {[
+                { side: "left", width: "w-56" },
+                { side: "right", width: "w-72" },
+                { side: "left", width: "w-80" },
+                { side: "right", width: "w-52" },
+                { side: "left", width: "w-64" },
+              ].map((item, index) => (
+                <div
+                  key={index}
+                  className={`flex ${item.side === "right" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`${item.width} animate-pulse rounded-2xl border border-white bg-white/85 p-3 shadow-sm`}
+                  >
+                    <div className="h-3 w-3/4 rounded bg-slate-200" />
+                    <div className="mt-2 h-3 w-1/2 rounded bg-slate-100" />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         ) : conversationMessagesError ? (
@@ -1801,6 +2098,10 @@ export function MessagePanel({
                   post_id?: string;
                   comment_id?: string;
                   parent_id?: string;
+                  item?: string;
+                  source?: string;
+                  parent_comment_id?: string;
+                  reply_comment_id?: string;
 
                   tenh_attachment?: {
                     type?:
@@ -2156,11 +2457,29 @@ export function MessagePanel({
                 replyingToTelegramMessageId ===
                 message.id;
 
+              /*
+               * V3.11.30.1 — comment actions belong to the individual
+               * Facebook comment message, not to the whole conversation.
+               * A TENH thread can contain both Messenger DMs and Page comments.
+               */
+              const isFacebookCommentMessage =
+                Boolean(
+                  rawPayload?.comment_id ||
+                  rawPayload?.post_id ||
+                  rawPayload?.item === "comment" ||
+                  rawPayload?.source ===
+                    "facebook_comment_reply" ||
+                  rawPayload?.parent_comment_id ||
+                  rawPayload?.reply_comment_id,
+                );
+
               const showCommentActions =
-                isCommentConversation &&
-                !isOutgoing &&
+                isFacebookCommentMessage &&
                 Boolean(
                   message.platform_message_id,
+                ) &&
+                !message.id.startsWith(
+                  "optimistic:",
                 );
 
               const isJumpHighlighted =
@@ -2379,8 +2698,19 @@ export function MessagePanel({
               }
 
               return (
+                <Fragment key={message.id}>
+                  {message.id ===
+                  firstUnreadMessageId ? (
+                    <div className="flex items-center gap-3 py-1">
+                      <div className="h-px flex-1 bg-blue-200" />
+                      <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold text-blue-700 shadow-sm">
+                        New messages
+                      </span>
+                      <div className="h-px flex-1 bg-blue-200" />
+                    </div>
+                  ) : null}
+
                 <div
-                  key={message.id}
                   ref={(node) => {
                     if (node) {
                       messageElementRefs.current.set(
@@ -2940,6 +3270,8 @@ export function MessagePanel({
                       {showCommentActions ? (
                         <div className="flex items-center gap-1 border-t border-slate-100 px-2 py-1.5">
 
+                          {!isOutgoing ? (
+                            <>
                           {/* Like / Unlike */}
                           <div className="group/action relative">
                           <button
@@ -3052,6 +3384,8 @@ export function MessagePanel({
                             }
                           />
                           </div>
+                          </>
+                          ) : null}
 
                           {/* Delete */}
                           <div className="group/action relative">
@@ -3064,8 +3398,16 @@ export function MessagePanel({
                               void deleteComment()
                             }
                             className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-red-50 hover:text-red-600 active:scale-90 disabled:cursor-not-allowed disabled:opacity-30"
-                            title="Delete comment"
-                            aria-label="Delete comment"
+                            title={
+                              isOutgoing
+                                ? "Delete reply"
+                                : "Delete comment"
+                            }
+                            aria-label={
+                              isOutgoing
+                                ? "Delete reply"
+                                : "Delete comment"
+                            }
                           >
                             <svg
                               viewBox="0 0 24 24"
@@ -3090,13 +3432,20 @@ export function MessagePanel({
                               />
                             </svg>
                           </button>
-                          <ActionTooltip label="Delete" />
+                          <ActionTooltip
+                            label={
+                              isOutgoing
+                                ? "Delete reply"
+                                : "Delete"
+                            }
+                          />
                           </div>
                         </div>
                       ) : null}
                     </div>
                   </div>
                 </div>
+                </Fragment>
               );
             },
           )}
@@ -3214,8 +3563,7 @@ export function MessagePanel({
       ) : null}
 
       {/* Facebook comment reply target */}
-      {isCommentConversation &&
-      replyingToCommentId ? (
+      {replyingToCommentId ? (
         <div className="shrink-0 border-t border-blue-100 bg-blue-50/80 px-4 py-2">
           <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-white px-3 py-2 shadow-sm">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
@@ -3267,98 +3615,45 @@ export function MessagePanel({
 
       {/* Reply composer */}
       {activeConversation.contact ? (
-        commentReplyLocked ? (
-          /*
-           * Facebook Comment channel:
-           * disable the composer until staff explicitly
-           * selects one comment with the Reply action.
-           */
-          <div className="shrink-0 border-t border-slate-200 bg-white p-4">
-            <div className="mb-2 flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-300">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  className="h-4 w-4"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M20 13a7 7 0 1 1-3-5.74"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M12 8v4l3 2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </div>
+        /*
+         * V3.11.30.1 — Messenger DMs and Facebook comments can share one
+         * thread. The normal composer stays available. Clicking Reply on a
+         * comment switches only that send into a targeted comment reply.
+         */
+        <ReplyBox
+          conversationId={
+            activeConversation.id
+          }
+          contactId={
+            activeConversation.contact.id
+          }
+          businessId={
+            activeConversation.contact
+              .business_id
+          }
 
-              <p className="text-sm font-medium text-slate-500">
-                Select a Facebook comment and click Reply to start chatting.
-              </p>
-            </div>
+          initialTags={
+            activeConversation.contact
+              .tags ?? []
+          }
 
-            <div className="flex items-stretch gap-3">
-              <div
-                className="flex min-h-[54px] flex-1 items-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-400"
-                aria-disabled="true"
-              >
-                Select a comment to reply...
-              </div>
+          reply={reply}
+          sending={sending}
+          error={sendError}
 
-              <button
-                type="button"
-                disabled
-                className="min-w-[112px] rounded-xl bg-slate-200 px-5 font-semibold text-slate-400"
-              >
-                Send
-              </button>
-            </div>
-          </div>
-        ) : (
-          /*
-           * Messenger conversations are always enabled.
-           * Comment conversations become enabled only after
-           * replyingToCommentId has been selected.
-           */
-          <ReplyBox
-            conversationId={
-              activeConversation.id
-            }
-            contactId={
-              activeConversation.contact.id
-            }
-            businessId={
-              activeConversation.contact
-                .business_id
-            }
-
-            initialTags={
-              activeConversation.contact
-                .tags ?? []
-            }
-
-            reply={reply}
-            sending={sending}
-            error={sendError}
-
-            onReplyChange={
-              onReplyChange
-            }
-            onSubmit={
-              onSendMessage
-            }
-            onSendAttachments={
-              onSendAttachments
-            }
-            allowAttachments={
-              !isCommentConversation
-            }
-          />
-        )
+          onReplyChange={
+            onReplyChange
+          }
+          onSubmit={
+            onSendMessage
+          }
+          onSendAttachments={
+            onSendAttachments
+          }
+          allowAttachments={
+            !replyingToCommentId
+          }
+        />
       ) : null}
 
     </section>

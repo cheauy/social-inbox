@@ -2,28 +2,93 @@ import {
   NextRequest,
   NextResponse,
 } from "next/server";
-import {
-  getFacebookPageAccessToken,
-} from "@/lib/facebook/get-facebook-page-access-token";
 
 import {
-  supabaseAdmin,
-} from "@/lib/supabase/admin";
+  getCurrentMember,
+} from "@/lib/auth/get-current-member";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+
+import {
+  FacebookCommentContextError,
+  loadFacebookCommentActionContext,
+} from "../_shared";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 type LikeCommentBody = {
   commentId?: string;
   liked?: boolean;
 };
 
+type GraphResult = {
+  success?: boolean;
+  error?: {
+    message?: string;
+  };
+};
+
+async function readGraphResult(
+  response: Response,
+): Promise<GraphResult> {
+  const text =
+    await response.text();
+
+  if (!text.trim()) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(
+      text,
+    ) as GraphResult;
+  } catch {
+    return {};
+  }
+}
+
 export async function POST(
   request: NextRequest,
 ) {
+  const authResult =
+    await getCurrentMember();
+
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
+    );
+  }
+
+  const currentMember =
+    authResult.member;
+
   try {
-    const body =
-      (await request.json()) as LikeCommentBody;
+    let body: LikeCommentBody;
+
+    try {
+      body =
+        (await request.json()) as LikeCommentBody;
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid JSON request.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
 
     const commentId =
       body.commentId?.trim();
-
     const liked =
       body.liked ?? true;
 
@@ -40,79 +105,47 @@ export async function POST(
       );
     }
 
-     const graphVersion =
-      process.env
-        .FACEBOOK_GRAPH_API_VERSION ??
-      "v26.0";
+    const context =
+      await loadFacebookCommentActionContext({
+        businessId:
+          currentMember.business_id,
+        commentId,
+      });
 
-    const pageAccessToken =
-  await getFacebookPageAccessToken(
-    
-  );
+    const graphVersion =
+      process.env
+        .FACEBOOK_GRAPH_API_VERSION
+        ?.trim() || "v26.0";
+
     const endpoint =
       `https://graph.facebook.com/${graphVersion}/${commentId}/likes`;
 
     const response =
-      await fetch(
-        endpoint,
-        {
-          method:
-            liked
-              ? "POST"
-              : "DELETE",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body:
-            liked
-              ? JSON.stringify({
-                  access_token:
-                    pageAccessToken,
-                })
-              : JSON.stringify({
-                  access_token:
-                    pageAccessToken,
-                }),
+      await fetch(endpoint, {
+        method: liked
+          ? "POST"
+          : "DELETE",
+        headers: {
+          "Content-Type":
+            "application/json",
         },
+        body: JSON.stringify({
+          access_token:
+            context.pageAccessToken,
+        }),
+        cache: "no-store",
+      });
+
+    const result =
+      await readGraphResult(
+        response,
       );
 
-    const text =
-      await response.text();
-
-    let result: {
-      success?: boolean;
-      error?: {
-        message?: string;
-      };
-    } = {};
-
-    const {
-  error: databaseError,
-} = await supabaseAdmin
-  .from("messages")
-  .update({
-    comment_is_liked:
-      liked,
-  })
-  .eq(
-    "platform_message_id",
-    commentId,
-  );
-
-if (databaseError) {
-  throw new Error(
-    databaseError.message,
-  );
-}
-
-    if (text.trim()) {
-      result =
-        JSON.parse(text) as typeof result;
-    }
-
+    /*
+     * V3.11.30: only change TENH local state after Meta confirms the
+     * operation. The old route updated the DB before checking response.ok,
+     * which could display a Like that Facebook had rejected.
+     */
     if (!response.ok) {
       return NextResponse.json(
         {
@@ -128,11 +161,54 @@ if (databaseError) {
       );
     }
 
+    const { error: databaseError } =
+      await supabaseAdmin
+        .from("messages")
+        .update({
+          comment_is_liked: liked,
+        })
+        .eq(
+          "id",
+          context.message.id,
+        )
+        .eq(
+          "business_id",
+          currentMember.business_id,
+        );
+
+    if (databaseError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Facebook updated the comment Like, but TENH could not save the local state.",
+        },
+        {
+          status: 500,
+        },
+      );
+    }
+
     return NextResponse.json({
       success: true,
       liked,
     });
   } catch (error) {
+    if (
+      error instanceof
+      FacebookCommentContextError
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+        },
+        {
+          status: error.status,
+        },
+      );
+    }
+
     return NextResponse.json(
       {
         success: false,

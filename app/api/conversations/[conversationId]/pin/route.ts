@@ -3,7 +3,13 @@ import {
   NextResponse,
 } from "next/server";
 
+import {
+  getCurrentMember,
+} from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type RouteContext = {
   params: Promise<{
@@ -13,6 +19,7 @@ type RouteContext = {
 
 type PinConversationBody = {
   isPinned?: boolean;
+  /* Kept for request compatibility; the server no longer trusts this value. */
   pinnedBy?: string | null;
 };
 
@@ -20,6 +27,24 @@ export async function PATCH(
   request: NextRequest,
   context: RouteContext,
 ) {
+  const authResult =
+    await getCurrentMember();
+
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
+    );
+  }
+
+  const currentMember =
+    authResult.member;
+
   const { conversationId } =
     await context.params;
 
@@ -86,8 +111,9 @@ export async function PATCH(
       pinned_at: body.isPinned
         ? now
         : null,
+      /* Never accept another member id supplied by the browser. */
       pinned_by: body.isPinned
-        ? body.pinnedBy ?? null
+        ? currentMember.id
         : null,
       updated_at: now,
     })
@@ -95,13 +121,17 @@ export async function PATCH(
       "id",
       normalizedConversationId,
     )
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    )
     .select(`
       id,
       is_pinned,
       pinned_at,
       pinned_by
     `)
-    .single();
+    .maybeSingle();
 
   if (error) {
     return NextResponse.json(
@@ -111,10 +141,22 @@ export async function PATCH(
           body.isPinned
             ? "Unable to pin conversation."
             : "Unable to unpin conversation.",
-        details: error.message,
       },
       {
         status: 500,
+      },
+    );
+  }
+
+  if (!conversation) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Conversation was not found or you do not have access.",
+      },
+      {
+        status: 404,
       },
     );
   }

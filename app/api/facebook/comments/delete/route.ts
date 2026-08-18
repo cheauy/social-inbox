@@ -3,24 +3,88 @@ import {
   NextResponse,
 } from "next/server";
 
+import {
+  getCurrentMember,
+} from "@/lib/auth/get-current-member";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 import {
-  getFacebookPageAccessToken,
-} from "@/lib/facebook/get-facebook-page-access-token";
-import {
-  supabaseAdmin,
-} from "@/lib/supabase/admin";
+  FacebookCommentContextError,
+  loadFacebookCommentActionContext,
+} from "../_shared";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type DeleteCommentBody = {
   commentId?: string;
 };
 
+type GraphResult = {
+  success?: boolean;
+  error?: {
+    message?: string;
+  };
+};
+
+async function readGraphResult(
+  response: Response,
+): Promise<GraphResult> {
+  const text =
+    await response.text();
+
+  if (!text.trim()) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(
+      text,
+    ) as GraphResult;
+  } catch {
+    return {};
+  }
+}
+
 export async function POST(
   request: NextRequest,
 ) {
+  const authResult =
+    await getCurrentMember();
+
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
+    );
+  }
+
+  const currentMember =
+    authResult.member;
+
   try {
-    const body =
-      (await request.json()) as DeleteCommentBody;
+    let body: DeleteCommentBody;
+
+    try {
+      body =
+        (await request.json()) as DeleteCommentBody;
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid JSON request.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
 
     const commentId =
       body.commentId?.trim();
@@ -38,58 +102,38 @@ export async function POST(
       );
     }
 
-     const graphVersion =
+    const context =
+      await loadFacebookCommentActionContext({
+        businessId:
+          currentMember.business_id,
+        commentId,
+      });
+
+    const graphVersion =
       process.env
-        .FACEBOOK_GRAPH_API_VERSION ??
-      "v26.0";
+        .FACEBOOK_GRAPH_API_VERSION
+        ?.trim() || "v26.0";
 
-    const pageAccessToken =
-  await getFacebookPageAccessToken();
+    const url = new URL(
+      `https://graph.facebook.com/${graphVersion}/${commentId}`,
+    );
 
-    const url =
-      `https://graph.facebook.com/${graphVersion}/${commentId}` +
-      `?access_token=${encodeURIComponent(
-        pageAccessToken,
-      )}`;
+    /* Preserve the existing Meta request style while routing the exact Page. */
+    url.searchParams.set(
+      "access_token",
+      context.pageAccessToken,
+    );
 
     const response =
-      await fetch(
-        url,
-        {
-          method: "DELETE",
-        },
+      await fetch(url, {
+        method: "DELETE",
+        cache: "no-store",
+      });
+
+    const result =
+      await readGraphResult(
+        response,
       );
-
-    const responseText =
-      await response.text();
-
-    let result: {
-      success?: boolean;
-
-      error?: {
-        message?: string;
-      };
-    } = {};
-
-    if (responseText.trim()) {
-      try {
-        result =
-          JSON.parse(
-            responseText,
-          ) as typeof result;
-      } catch {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Facebook returned invalid JSON.",
-          },
-          {
-            status: 500,
-          },
-        );
-      }
-    }
 
     if (
       !response.ok ||
@@ -98,7 +142,6 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-
           error:
             result.error?.message ??
             "Unable to delete Facebook comment.",
@@ -110,32 +153,64 @@ export async function POST(
       );
     }
 
-    /*
-     * Keep history in Tenh Chat.
-     * Do NOT physically delete our DB row.
-     */
-    const {
-      error: databaseError,
-    } = await supabaseAdmin
-      .from("messages")
-      .update({
-        comment_is_deleted:
-          true,
-
-        comment_deleted_by:
-          "page",
-
-        message_text:
-          "Comment deleted by Page",
-      })
-      .eq(
-        "platform_message_id",
-        commentId,
-      );
+    /* Keep history in TENH; do not physically delete the message row. */
+    const { error: databaseError } =
+      await supabaseAdmin
+        .from("messages")
+        .update({
+          comment_is_deleted: true,
+          comment_deleted_by:
+            "page",
+          comment_is_liked: false,
+          comment_is_hidden: false,
+          message_text:
+            "Comment deleted by Page",
+        })
+        .eq(
+          "id",
+          context.message.id,
+        )
+        .eq(
+          "business_id",
+          currentMember.business_id,
+        );
 
     if (databaseError) {
-      throw new Error(
-        databaseError.message,
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Facebook deleted the comment, but TENH could not save the local deleted state.",
+        },
+        {
+          status: 500,
+        },
+      );
+    }
+
+    const {
+      error: conversationUpdateError,
+    } = await supabaseAdmin
+      .from("conversations")
+      .update({
+        last_message_text:
+          "Comment deleted by Page",
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq(
+        "id",
+        context.conversation.id,
+      )
+      .eq(
+        "business_id",
+        currentMember.business_id,
+      );
+
+    if (conversationUpdateError) {
+      console.warn(
+        "Facebook comment was deleted, but TENH could not refresh the conversation preview:",
+        conversationUpdateError,
       );
     }
 
@@ -143,6 +218,21 @@ export async function POST(
       success: true,
     });
   } catch (error) {
+    if (
+      error instanceof
+      FacebookCommentContextError
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+        },
+        {
+          status: error.status,
+        },
+      );
+    }
+
     console.error(
       "Delete Facebook comment failed:",
       error,
@@ -151,7 +241,6 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-
         error:
           error instanceof Error
             ? error.message

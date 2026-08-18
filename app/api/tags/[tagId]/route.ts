@@ -3,11 +3,20 @@ import {
   NextResponse,
 } from "next/server";
 
+import {
+  getCurrentMember,
+} from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import type { TagColor } from "@/types/inbox";
 
-function isValidHexColor(value: string) {
-  return /^#[0-9A-F]{6}$/i.test(value);
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+function isValidHexColor(
+  value: string,
+) {
+  return /^#[0-9A-F]{6}$/i.test(
+    value,
+  );
 }
 
 type RouteContext = {
@@ -35,12 +44,45 @@ export async function PATCH(
   request: NextRequest,
   context: RouteContext,
 ) {
-  const { tagId } = await context.params;
+  const authResult =
+    await getCurrentMember();
+
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
+    );
+  }
+
+  const currentMember =
+    authResult.member;
+  const { tagId } =
+    await context.params;
+  const normalizedTagId =
+    tagId?.trim();
+
+  if (!normalizedTagId) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Tag ID is required.",
+      },
+      {
+        status: 400,
+      },
+    );
+  }
 
   let body: UpdateTagBody;
 
   try {
-    body = (await request.json()) as UpdateTagBody;
+    body =
+      (await request.json()) as UpdateTagBody;
   } catch {
     return NextResponse.json(
       {
@@ -61,7 +103,8 @@ export async function PATCH(
     is_active?: boolean;
     updated_at: string;
   } = {
-    updated_at: new Date().toISOString(),
+    updated_at:
+      new Date().toISOString(),
   };
 
   if (body.name !== undefined) {
@@ -71,7 +114,8 @@ export async function PATCH(
       return NextResponse.json(
         {
           success: false,
-          error: "Tag name cannot be empty.",
+          error:
+            "Tag name cannot be empty.",
         },
         {
           status: 400,
@@ -95,36 +139,53 @@ export async function PATCH(
     updates.name = name;
   }
 
- if (body.color !== undefined) {
-  const color = body.color.toUpperCase();
+  if (body.color !== undefined) {
+    const color =
+      body.color.toUpperCase();
 
-  if (!isValidHexColor(color)) {
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Tag color must be a valid HEX color, for example #13C2C2.",
-      },
-      {
-        status: 400,
-      },
-    );
+    if (!isValidHexColor(color)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Tag color must be a valid HEX color, for example #13C2C2.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    updates.color = color;
   }
 
-  updates.color = color;
-}
-
   if (body.sortIndex !== undefined) {
+    if (!Number.isFinite(body.sortIndex)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "sortIndex must be a number.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
     updates.sort_index = Math.max(
       0,
       Math.trunc(body.sortIndex),
     );
   }
 
-  if (body.description !== undefined) {
-    const description = cleanOptionalText(
-      body.description,
-    );
+  if (
+    body.description !== undefined
+  ) {
+    const description =
+      cleanOptionalText(
+        body.description,
+      );
 
     if (
       description &&
@@ -142,39 +203,54 @@ export async function PATCH(
       );
     }
 
-    updates.description = description;
+    updates.description =
+      description;
   }
 
   if (body.isActive !== undefined) {
-    updates.is_active = body.isActive;
+    updates.is_active =
+      body.isActive;
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("tags")
-    .update(updates)
-    .eq("id", tagId)
-    .select(`
-      id,
-      business_id,
-      name,
-      color,
-      sort_index,
-      description,
-      is_active,
-      created_at,
-      updated_at
-    `)
-    .maybeSingle();
+  const { data, error } =
+    await supabaseAdmin
+      .from("tags")
+      .update(updates)
+      .eq(
+        "id",
+        normalizedTagId,
+      )
+      .eq(
+        "business_id",
+        currentMember.business_id,
+      )
+      .select(`
+        id,
+        business_id,
+        name,
+        color,
+        sort_index,
+        description,
+        is_active,
+        created_at,
+        updated_at
+      `)
+      .maybeSingle();
 
   if (error) {
     return NextResponse.json(
       {
         success: false,
-        error: "Unable to update tag.",
-        details: error.message,
+        error:
+          error.code === "23505"
+            ? "A tag with this name already exists."
+            : "Unable to update tag.",
       },
       {
-        status: 500,
+        status:
+          error.code === "23505"
+            ? 409
+            : 500,
       },
     );
   }
@@ -183,7 +259,8 @@ export async function PATCH(
     return NextResponse.json(
       {
         success: false,
-        error: "Tag was not found.",
+        error:
+          "Tag was not found or you do not have access.",
       },
       {
         status: 404,
@@ -201,22 +278,78 @@ export async function DELETE(
   _request: NextRequest,
   context: RouteContext,
 ) {
-  const { tagId } = await context.params;
+  const authResult =
+    await getCurrentMember();
 
-  const { error } = await supabaseAdmin
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
+    );
+  }
+
+  const currentMember =
+    authResult.member;
+  const { tagId } =
+    await context.params;
+  const normalizedTagId =
+    tagId?.trim();
+
+  if (!normalizedTagId) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Tag ID is required.",
+      },
+      {
+        status: 400,
+      },
+    );
+  }
+
+  const {
+    data: deleted,
+    error,
+  } = await supabaseAdmin
     .from("tags")
     .delete()
-    .eq("id", tagId);
+    .eq(
+      "id",
+      normalizedTagId,
+    )
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    )
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     return NextResponse.json(
       {
         success: false,
         error: "Unable to delete tag.",
-        details: error.message,
       },
       {
         status: 500,
+      },
+    );
+  }
+
+  if (!deleted) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Tag was not found or you do not have access.",
+      },
+      {
+        status: 404,
       },
     );
   }

@@ -1,4 +1,9 @@
 import {
+  createHmac,
+  timingSafeEqual,
+} from "node:crypto";
+
+import {
   NextRequest,
   NextResponse,
 } from "next/server";
@@ -99,16 +104,107 @@ export async function GET(
   );
 }
 
+function isValidFacebookSignature({
+  rawBody,
+  signature,
+  appSecret,
+}: {
+  rawBody: string;
+  signature: string;
+  appSecret: string;
+}) {
+  const expected =
+    `sha256=${createHmac(
+      "sha256",
+      appSecret,
+    )
+      .update(rawBody, "utf8")
+      .digest("hex")}`;
+
+  const actualBuffer =
+    Buffer.from(
+      signature,
+      "utf8",
+    );
+  const expectedBuffer =
+    Buffer.from(
+      expected,
+      "utf8",
+    );
+
+  if (
+    actualBuffer.length !==
+    expectedBuffer.length
+  ) {
+    return false;
+  }
+
+  return timingSafeEqual(
+    actualBuffer,
+    expectedBuffer,
+  );
+}
+
 export async function POST(
   request: NextRequest,
 ) {
+  const appSecret =
+    process.env
+      .FACEBOOK_APP_SECRET
+      ?.trim();
+
+  if (!appSecret) {
+    console.error(
+      "[Tenh Facebook Webhook] FACEBOOK_APP_SECRET is missing; refusing unsigned webhook processing.",
+    );
+
+    return NextResponse.json(
+      {
+        received: false,
+        error:
+          "Facebook webhook security configuration is incomplete.",
+      },
+      {
+        status: 503,
+      },
+    );
+  }
+
+  const rawBody =
+    await request.text();
+  const signature =
+    request.headers.get(
+      "x-hub-signature-256",
+    ) ?? "";
+
+  if (
+    !signature ||
+    !isValidFacebookSignature({
+      rawBody,
+      signature,
+      appSecret,
+    })
+  ) {
+    return NextResponse.json(
+      {
+        received: false,
+        error:
+          "Invalid Facebook webhook signature.",
+      },
+      {
+        status: 401,
+      },
+    );
+  }
+
   let payload:
     FacebookWebhookPayloadV3110;
 
   try {
     payload =
-      (await request.json()) as
-        FacebookWebhookPayloadV3110;
+      JSON.parse(
+        rawBody,
+      ) as FacebookWebhookPayloadV3110;
   } catch {
     return NextResponse.json(
       {

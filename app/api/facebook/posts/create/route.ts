@@ -2,35 +2,62 @@ import {
   NextRequest,
   NextResponse,
 } from "next/server";
+
+import {
+  getCurrentMember,
+} from "@/lib/auth/get-current-member";
 import {
   getFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
 
-
-
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(
   request: NextRequest,
 ) {
+  const authResult =
+    await getCurrentMember();
+
+  if (!authResult.success) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: authResult.error,
+      },
+      {
+        status: authResult.status,
+      },
+    );
+  }
+
+  if (
+    authResult.member.role !==
+    "owner"
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Only the workspace owner can create a Facebook test post.",
+      },
+      {
+        status: 403,
+      },
+    );
+  }
+
   try {
     const pageId =
-      process.env.FACEBOOK_PAGE_ID;
-
-    const pageAccessToken =
-  await getFacebookPageAccessToken(
-    pageId,
-  );
+      process.env.FACEBOOK_PAGE_ID
+        ?.trim();
 
     const graphVersion =
       process.env
-        .FACEBOOK_GRAPH_API_VERSION ??
-      "v26.0";
+        .FACEBOOK_GRAPH_API_VERSION
+        ?.trim() || "v26.0";
 
-    if (
-      !pageId ||
-      !pageAccessToken
-    ) {
+    if (!pageId) {
       return NextResponse.json(
         {
           success: false,
@@ -43,6 +70,11 @@ export async function POST(
       );
     }
 
+    const pageAccessToken =
+      await getFacebookPageAccessToken(
+        pageId,
+      );
+
     const incomingFormData =
       await request.formData();
 
@@ -51,21 +83,17 @@ export async function POST(
         "photo",
       );
 
-    const caption =
-      String(
-        incomingFormData.get(
-          "caption",
-        ) ?? "",
-      ).trim();
+    const caption = String(
+      incomingFormData.get(
+        "caption",
+      ) ?? "",
+    ).trim();
 
-    if (
-      !(photo instanceof File)
-    ) {
+    if (!(photo instanceof File)) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Photo is required.",
+          error: "Photo is required.",
         },
         {
           status: 400,
@@ -94,30 +122,27 @@ export async function POST(
       photo,
       photo.name,
     );
-
     facebookFormData.append(
       "caption",
       caption,
     );
-
     facebookFormData.append(
       "published",
       "true",
     );
-
     facebookFormData.append(
       "access_token",
       pageAccessToken,
     );
 
-    const response =
-      await fetch(
-        `https://graph.facebook.com/${graphVersion}/${pageId}/photos`,
-        {
-          method: "POST",
-          body: facebookFormData,
-        },
-      );
+    const response = await fetch(
+      `https://graph.facebook.com/${graphVersion}/${pageId}/photos`,
+      {
+        method: "POST",
+        body: facebookFormData,
+        cache: "no-store",
+      },
+    );
 
     const responseText =
       await response.text();
@@ -125,7 +150,6 @@ export async function POST(
     let result: {
       id?: string;
       post_id?: string;
-
       error?: {
         message?: string;
         type?: string;
@@ -133,25 +157,20 @@ export async function POST(
       };
     } = {};
 
-    if (
-      responseText.trim()
-    ) {
+    if (responseText.trim()) {
       try {
-        result =
-          JSON.parse(
-            responseText,
-          ) as typeof result;
+        result = JSON.parse(
+          responseText,
+        ) as typeof result;
       } catch {
         return NextResponse.json(
           {
             success: false,
             error:
               "Facebook returned invalid JSON.",
-            details:
-              responseText,
           },
           {
-            status: 500,
+            status: 502,
           },
         );
       }
@@ -161,15 +180,9 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-
           error:
-            result.error
-              ?.message ??
+            result.error?.message ??
             "Unable to create Facebook post.",
-
-          facebookError:
-            result.error ??
-            null,
         },
         {
           status:
@@ -180,13 +193,10 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-
       photoId:
         result.id ?? null,
-
       postId:
-        result.post_id ??
-        null,
+        result.post_id ?? null,
     });
   } catch (error) {
     console.error(
@@ -197,7 +207,6 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-
         error:
           error instanceof Error
             ? error.message
