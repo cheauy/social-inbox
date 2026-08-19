@@ -22,8 +22,12 @@ type ConnectionResponse = {
   message?: string;
   error?: string;
   details?: string;
+  code?: string;
   joinedExistingSubscription?: boolean;
+  canJoinExistingSubscription?: boolean;
+  alreadyMember?: boolean;
   businessId?: string;
+  subscriptionId?: string | null;
 };
 
 type TelegramWebhookState = {
@@ -84,6 +88,7 @@ export function TelegramChannelPanel({ onConnectionChanged }: Props) {
   const [webhook, setWebhook] = useState<TelegramWebhookState | null>(null);
   const [remote, setRemote] = useState<TelegramRemoteWebhook | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const selected = useMemo(
@@ -146,28 +151,68 @@ export function TelegramChannelPanel({ onConnectionChanged }: Props) {
   async function selectBot(id: string) {
     setSelectedId(id);
     setError(null);
+    setErrorCode(null);
     setNotice(null);
     await loadWebhook(id);
   }
 
+  async function submitTelegramConnection(
+    joinExisting: boolean,
+  ): Promise<ConnectionResponse | null> {
+    const response = await fetch("/api/telegram/connection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: token.trim(),
+        joinExisting,
+      }),
+    });
+
+    const data = await readJson<ConnectionResponse>(response);
+
+    if (
+      !response.ok &&
+      data.code === "BOT_ALREADY_CONNECTED" &&
+      data.canJoinExistingSubscription &&
+      !joinExisting
+    ) {
+      const confirmed = window.confirm(
+        "This Telegram Bot is already connected to another TENH subscription. Join that same subscription as an Agent? TENH will not create a duplicate Bot connection.",
+      );
+
+      if (!confirmed) {
+        return null;
+      }
+
+      return submitTelegramConnection(true);
+    }
+
+    if (!response.ok || !data.success) {
+      setErrorCode(data.code ?? null);
+      throw new Error(data.error ?? "Unable to connect Telegram Bot.");
+    }
+
+    return data;
+  }
+
   async function connectTelegram() {
     if (working || !token.trim()) return;
-    setWorking("connect"); setError(null); setNotice(null);
+
+    setWorking("connect");
+    setError(null);
+    setErrorCode(null);
+    setNotice(null);
+
     try {
-      const response = await fetch("/api/telegram/connection", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: token.trim() }),
-      });
-      const data = await readJson<ConnectionResponse>(response);
-      if (!response.ok || !data.success) {
-        throw new Error(data.error ?? "Unable to connect Telegram Bot.");
+      const data = await submitTelegramConnection(false);
+
+      if (!data) {
+        return;
       }
 
       if (data.joinedExistingSubscription) {
-        // The verified Bot already belongs to another subscription.
-        // The server joined this TENH user as Agent and switched the active
-        // subscription cookie, so reload Integrations in that subscription.
+        // This was an explicit token-verified join. The server switched only
+        // after the user confirmed, and no duplicate Bot row was created.
         window.location.assign(
           "/dashboard/integrations?telegram=joined",
         );
@@ -183,17 +228,25 @@ export function TelegramChannelPanel({ onConnectionChanged }: Props) {
       setToken("");
       setShowAddBot(false);
       await loadConnections(data.connection.id);
+
       setNotice(
-        "Telegram Bot connected. One more step: activate Inbox to start receiving customer messages.",
+        data.message ??
+          "Telegram Bot connected. One more step: activate Inbox to start receiving customer messages.",
       );
     } catch (connectError) {
-      setError(connectError instanceof Error ? connectError.message : "Unable to connect Telegram Bot.");
-    } finally { setWorking(null); }
+      setError(
+        connectError instanceof Error
+          ? connectError.message
+          : "Unable to connect Telegram Bot.",
+      );
+    } finally {
+      setWorking(null);
+    }
   }
 
   async function activate() {
     if (!selected || working) return;
-    setWorking("activate"); setError(null); setNotice(null);
+    setWorking("activate"); setError(null); setErrorCode(null); setNotice(null);
     try {
       const response = await fetch(withConnection("/api/telegram/webhook", selected.id), { method: "POST" });
       const data = await readJson<WebhookResponse>(response);
@@ -207,7 +260,7 @@ export function TelegramChannelPanel({ onConnectionChanged }: Props) {
 
   async function disable() {
     if (!selected || working || !window.confirm(`Disable incoming messages for ${selected.username ? `@${selected.username}` : selected.botName ?? "this Bot"}?`)) return;
-    setWorking("disable"); setError(null); setNotice(null);
+    setWorking("disable"); setError(null); setErrorCode(null); setNotice(null);
     try {
       const response = await fetch(withConnection("/api/telegram/webhook", selected.id), { method: "DELETE" });
       const data = await readJson<WebhookResponse>(response);
@@ -221,7 +274,7 @@ export function TelegramChannelPanel({ onConnectionChanged }: Props) {
 
   async function disconnect() {
     if (!selected || working || !window.confirm(`Disconnect ${selected.username ? `@${selected.username}` : selected.botName ?? "this Telegram Bot"}? Existing TENH conversation history will be kept.`)) return;
-    setWorking("disconnect"); setError(null); setNotice(null);
+    setWorking("disconnect"); setError(null); setErrorCode(null); setNotice(null);
     try {
       const response = await fetch(withConnection("/api/telegram/connection", selected.id), { method: "DELETE" });
       const data = await readJson<ConnectionResponse>(response);
@@ -282,7 +335,19 @@ export function TelegramChannelPanel({ onConnectionChanged }: Props) {
           Each Telegram Bot uses one connection. Customer messages from that Bot will appear in TENH Inbox, and your team can reply from the same Bot. Only the workspace Owner can connect or disconnect Bots.
         </div>
 
-        {error ? <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+        {error ? (
+          <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <p>{error}</p>
+            {errorCode === "SUBSCRIPTION_LOCKED" ? (
+              <a
+                href="/dashboard/subscription"
+                className="mt-2 inline-flex font-semibold underline underline-offset-2"
+              >
+                Open Subscription
+              </a>
+            ) : null}
+          </div>
+        ) : null}
         {notice ? <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div> : null}
 
         {showAddBot ? (

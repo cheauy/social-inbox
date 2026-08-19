@@ -21,15 +21,6 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const FACEBOOK_SCOPES = [
-  "pages_show_list",
-  "pages_messaging",
-  "pages_manage_metadata",
-  "pages_read_engagement",
-  "pages_read_user_content",
-  "pages_manage_engagement",
-] as const;
-
 function redirectToIntegrations(
   request: NextRequest,
   message: string,
@@ -43,6 +34,14 @@ function redirectToIntegrations(
   url.searchParams.set("message", message);
 
   return NextResponse.redirect(url);
+}
+
+function getFacebookLoginForBusinessConfigId() {
+  return (
+    process.env.FACEBOOK_LOGIN_FOR_BUSINESS_CONFIG_ID?.trim() ||
+    process.env.FACEBOOK_LOGIN_CONFIG_ID?.trim() ||
+    ""
+  );
 }
 
 export async function GET(
@@ -59,11 +58,20 @@ export async function GET(
 
   const appId =
     process.env.FACEBOOK_APP_ID?.trim();
+  const businessLoginConfigId =
+    getFacebookLoginForBusinessConfigId();
 
   if (!appId) {
     return redirectToIntegrations(
       request,
       "FACEBOOK_APP_ID is missing.",
+    );
+  }
+
+  if (!businessLoginConfigId) {
+    return redirectToIntegrations(
+      request,
+      "FACEBOOK_LOGIN_FOR_BUSINESS_CONFIG_ID is missing. Create a Facebook Login for Business configuration in Meta, then add its Configuration ID to your TENH environment variables.",
     );
   }
 
@@ -105,9 +113,24 @@ export async function GET(
     redirectUri,
   );
   oauthUrl.searchParams.set("state", state);
+
+  /*
+   * V3.11.32 — Facebook Login for Business.
+   *
+   * IMPORTANT:
+   * Meta's Business Login flow uses config_id instead of scope.
+   * The Meta configuration controls:
+   *   - access-token type (TENH expects User Access Token),
+   *   - Page asset selection,
+   *   - permissions granted to TENH.
+   *
+   * Do not add a normal `scope` parameter here. Doing so changes the
+   * authorization flow and prevents TENH from using the native Meta
+   * business asset selector configured in the App Dashboard.
+   */
   oauthUrl.searchParams.set(
-    "scope",
-    FACEBOOK_SCOPES.join(","),
+    "config_id",
+    businessLoginConfigId,
   );
   oauthUrl.searchParams.set(
     "response_type",

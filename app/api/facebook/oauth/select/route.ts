@@ -36,6 +36,11 @@ type FacebookPage = {
 
 type AccountsResult = {
   data?: FacebookPage[];
+  paging?: {
+    cursors?: {
+      after?: string;
+    };
+  };
   error?: {
     message?: string;
     type?: string;
@@ -78,21 +83,10 @@ function redirectToIntegrations(
   return NextResponse.redirect(url, 303);
 }
 
-async function getPagesWithTokens(
+async function readAccountsPage(
+  url: URL,
   userAccessToken: string,
 ) {
-  const graphVersion =
-    process.env.FACEBOOK_GRAPH_API_VERSION?.trim() ||
-    "v26.0";
-
-  const url = new URL(
-    `https://graph.facebook.com/${graphVersion}/me/accounts`,
-  );
-  url.searchParams.set(
-    "fields",
-    "id,name,access_token,tasks",
-  );
-
   const response = await fetch(url, {
     method: "GET",
     cache: "no-store",
@@ -115,11 +109,59 @@ async function getPagesWithTokens(
   if (!response.ok || payload.error) {
     throw new Error(
       payload.error?.message ??
-        "Unable to load Facebook Pages.",
+        "Unable to load Facebook Pages authorized for TENH.",
     );
   }
 
-  return payload.data ?? [];
+  return payload;
+}
+
+async function getPagesWithTokens(
+  userAccessToken: string,
+) {
+  const graphVersion =
+    process.env.FACEBOOK_GRAPH_API_VERSION?.trim() ||
+    "v26.0";
+
+  const url = new URL(
+    `https://graph.facebook.com/${graphVersion}/me/accounts`,
+  );
+  url.searchParams.set(
+    "fields",
+    "id,name,access_token,tasks",
+  );
+  url.searchParams.set("limit", "100");
+
+  const pages: FacebookPage[] = [];
+  let after: string | undefined;
+
+  // Facebook Login for Business can authorize many Pages. Follow cursor
+  // pagination so TENH can find any Page selected in Meta's asset picker.
+  for (let requestNumber = 0; requestNumber < 20; requestNumber += 1) {
+    if (after) {
+      url.searchParams.set("after", after);
+    } else {
+      url.searchParams.delete("after");
+    }
+
+    const payload = await readAccountsPage(
+      url,
+      userAccessToken,
+    );
+
+    pages.push(...(payload.data ?? []));
+
+    const nextAfter =
+      payload.paging?.cursors?.after?.trim();
+
+    if (!nextAfter || nextAfter === after) {
+      break;
+    }
+
+    after = nextAfter;
+  }
+
+  return pages;
 }
 
 async function subscribePage({

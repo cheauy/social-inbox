@@ -21,6 +21,11 @@ type FacebookPage = {
 
 type AccountsResult = {
   data?: FacebookPage[];
+  paging?: {
+    cursors?: {
+      after?: string;
+    };
+  };
   error?: {
     message?: string;
     type?: string;
@@ -28,21 +33,10 @@ type AccountsResult = {
   };
 };
 
-async function getManagedPages(
+async function readAccountsPage(
+  url: URL,
   userAccessToken: string,
 ) {
-  const graphVersion =
-    process.env.FACEBOOK_GRAPH_API_VERSION?.trim() ||
-    "v26.0";
-
-  const url = new URL(
-    `https://graph.facebook.com/${graphVersion}/me/accounts`,
-  );
-  url.searchParams.set(
-    "fields",
-    "id,name,tasks",
-  );
-
   const response = await fetch(url, {
     method: "GET",
     cache: "no-store",
@@ -65,11 +59,58 @@ async function getManagedPages(
   if (!response.ok || payload.error) {
     throw new Error(
       payload.error?.message ??
-        "Unable to load the Facebook Pages you manage.",
+        "Unable to load the Facebook Pages authorized for TENH.",
     );
   }
 
-  return (payload.data ?? []).filter(
+  return payload;
+}
+
+async function getManagedPages(
+  userAccessToken: string,
+) {
+  const graphVersion =
+    process.env.FACEBOOK_GRAPH_API_VERSION?.trim() ||
+    "v26.0";
+
+  const url = new URL(
+    `https://graph.facebook.com/${graphVersion}/me/accounts`,
+  );
+  url.searchParams.set(
+    "fields",
+    "id,name,tasks",
+  );
+  url.searchParams.set("limit", "100");
+
+  const pages: FacebookPage[] = [];
+  let after: string | undefined;
+
+  // Follow cursor pagination so accounts with many Pages are not truncated.
+  for (let requestNumber = 0; requestNumber < 20; requestNumber += 1) {
+    if (after) {
+      url.searchParams.set("after", after);
+    } else {
+      url.searchParams.delete("after");
+    }
+
+    const payload = await readAccountsPage(
+      url,
+      userAccessToken,
+    );
+
+    pages.push(...(payload.data ?? []));
+
+    const nextAfter =
+      payload.paging?.cursors?.after?.trim();
+
+    if (!nextAfter || nextAfter === after) {
+      break;
+    }
+
+    after = nextAfter;
+  }
+
+  return pages.filter(
     (page): page is Required<
       Pick<FacebookPage, "id">
     > & FacebookPage => Boolean(page.id),
@@ -167,10 +208,10 @@ export default async function FacebookPageSelectPage() {
             Facebook integration
           </p>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">
-            Choose a Facebook Page
+            Choose a Page for this TENH workspace
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            Choose one Page to add or reconnect now. Pages already connected to this TENH workspace stay connected. The list comes from the Pages your Facebook account is allowed to manage.
+            Facebook already asked which Pages TENH may access. The Pages below are the ones Facebook authorized. Choose one Page to add or reconnect to this TENH workspace now.
           </p>
         </div>
 
@@ -179,8 +220,16 @@ export default async function FacebookPageSelectPage() {
             {pageLoadError}
           </div>
         ) : pages.length === 0 ? (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-            Facebook returned no Pages that this account can manage. Check the Facebook account/Page access and try again.
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+              Facebook returned no Pages authorized for TENH. Start the Facebook connection again and select at least one Page in Facebook&apos;s Page access screen.
+            </div>
+            <Link
+              href="/api/facebook/oauth/connect"
+              className="inline-flex rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
+              Choose Pages on Facebook again
+            </Link>
           </div>
         ) : (
           <form
@@ -188,6 +237,10 @@ export default async function FacebookPageSelectPage() {
             method="post"
             className="space-y-4"
           >
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+              Facebook authorized {pages.length} Page{pages.length === 1 ? "" : "s"} for TENH. Your TENH plan&apos;s channel limit still controls how many Pages can be active in this workspace.
+            </div>
+
             <div className="space-y-3">
               {pages.map((page, index) => (
                 <label
@@ -225,19 +278,28 @@ export default async function FacebookPageSelectPage() {
               ))}
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
               <Link
-                href="/dashboard/integrations"
-                className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                href="/api/facebook/oauth/connect"
+                className="text-sm font-semibold text-blue-600 transition hover:text-blue-700"
               >
-                Cancel
+                Change Facebook Page access
               </Link>
-              <button
-                type="submit"
-                className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
-              >
-                Add / reconnect selected Page
-              </button>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Link
+                  href="/dashboard/integrations"
+                  className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Cancel
+                </Link>
+                <button
+                  type="submit"
+                  className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+                >
+                  Add / reconnect selected Page
+                </button>
+              </div>
             </div>
           </form>
         )}

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { decryptChannelCredential } from "@/lib/channels/channel-token-crypto";
+import { deleteTelegramWebhook } from "@/lib/telegram/telegram-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -648,6 +650,91 @@ async function closeOwnedSubscriptions(
   }
 }
 
+async function releaseClosedWorkspaceTelegramBots(
+  snapshots: WorkspaceClosureSnapshot[],
+) {
+  const businessIds = Array.from(
+    new Set(snapshots.map((snapshot) => snapshot.businessId)),
+  );
+
+  if (businessIds.length === 0) {
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("social_accounts")
+    .select(
+      "id,business_id,telegram_bot_token_encrypted,telegram_token_status",
+    )
+    .in("business_id", businessIds)
+    .eq("platform", "telegram")
+    .eq("telegram_token_status", "verified");
+
+  if (error) {
+    console.error(
+      "[TENH Account Delete] Unable to load Telegram Bots for closed workspaces:",
+      error.message,
+    );
+    return;
+  }
+
+  for (const row of data ?? []) {
+    const encryptedToken =
+      typeof row.telegram_bot_token_encrypted === "string"
+        ? row.telegram_bot_token_encrypted
+        : "";
+
+    if (encryptedToken) {
+      try {
+        const token = decryptChannelCredential(encryptedToken);
+        await deleteTelegramWebhook({
+          token,
+          dropPendingUpdates: true,
+        });
+      } catch (telegramError) {
+        // The TENH row is still disconnected below. If Telegram cannot be
+        // reached, any stale delivery reaches a disabled/disconnected TENH
+        // connection and cannot create new customer history.
+        console.warn(
+          "[TENH Account Delete] Telegram webhook cleanup warning:",
+          telegramError instanceof Error
+            ? telegramError.message
+            : telegramError,
+        );
+      }
+    }
+
+    const { error: disconnectError } = await supabaseAdmin
+      .from("social_accounts")
+      .update({
+        is_active: false,
+        telegram_bot_token_encrypted: null,
+        telegram_token_status: "disconnected",
+        telegram_connected_at: null,
+        telegram_token_last_error: null,
+        telegram_webhook_secret_encrypted: null,
+        telegram_webhook_status: "disabled",
+        telegram_webhook_url: null,
+        telegram_webhook_registered_at: null,
+        telegram_webhook_last_error: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", row.id)
+      .eq("business_id", row.business_id);
+
+    if (disconnectError) {
+      console.error(
+        "[TENH Account Delete] CRITICAL: closed workspace Telegram Bot could not be released:",
+        {
+          connectionId: row.id,
+          businessId: row.business_id,
+          message: disconnectError.message,
+        },
+      );
+    }
+  }
+}
+
 async function listAvatarPaths(userId: string) {
   const paths: string[] = [];
   const pageSize = 100;
@@ -950,9 +1037,15 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Auth is now gone and cannot access TENH. Personal-only artifacts are
-    // removed best-effort. Shared business history and records TENH must retain
-    // for billing, security, fraud prevention, or legal obligations remain.
+    // Auth is now gone and cannot access TENH. If this deletion also closed
+    // sole-owned subscriptions, release their live Telegram Bot credentials so
+    // the Bot is not trapped forever inside an ownerless expired workspace.
+    // Historical social-account rows and TENH conversations remain preserved.
+    await releaseClosedWorkspaceTelegramBots(workspaceClosureSnapshots);
+
+    // Personal-only artifacts are removed best-effort. Shared business history
+    // and records TENH must retain for billing, security, fraud prevention, or
+    // legal obligations remain.
     await cleanupPersonalAccountData(user.id, avatarPaths);
 
     const response = NextResponse.json({
