@@ -48,41 +48,27 @@ type ConnectionRow = {
 
 async function loadConnection(
   businessId: string,
+  connectionId = "",
 ) {
-  const {
-    data,
-    error,
-  } =
-    await supabaseAdmin
-      .from("social_accounts")
-      .select(
-        "id,is_active,telegram_token_status,telegram_bot_token_encrypted,telegram_webhook_secret_encrypted,telegram_webhook_status,telegram_webhook_url,telegram_webhook_last_error",
-      )
-      .eq(
-        "business_id",
-        businessId,
-      )
-      .eq(
-        "platform",
-        "telegram",
-      )
-      .order(
-        "created_at",
-        {
-          ascending: true,
-        },
-      )
-      .limit(1)
-      .maybeSingle();
+  let query = supabaseAdmin
+    .from("social_accounts")
+    .select(
+      "id,is_active,telegram_token_status,telegram_bot_token_encrypted,telegram_webhook_secret_encrypted,telegram_webhook_status,telegram_webhook_url,telegram_webhook_last_error",
+    )
+    .eq("business_id", businessId)
+    .eq("platform", "telegram");
 
-  if (error) {
-    throw new Error(
-      error.message,
-    );
+  if (connectionId) {
+    query = query.eq("id", connectionId);
   }
 
-  return data as unknown as
-    ConnectionRow | null;
+  const { data, error } = await query
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data as unknown as ConnectionRow | null;
 }
 
 async function buildDiagnostics(
@@ -337,7 +323,7 @@ async function buildDiagnostics(
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const authResult =
     await getCurrentMember();
 
@@ -362,7 +348,7 @@ export async function GET() {
       {
         success: false,
         error:
-          "Only the workspace owner can run Telegram diagnostics.",
+          "Only the subscription owner can run Telegram diagnostics.",
       },
       { status: 403 },
     );
@@ -371,8 +357,8 @@ export async function GET() {
   try {
     const connection =
       await loadConnection(
-        authResult.member
-          .business_id,
+        authResult.member.business_id,
+        request.nextUrl.searchParams.get("connectionId")?.trim() ?? "",
       );
 
     if (!connection) {
@@ -434,7 +420,7 @@ export async function POST(
       {
         success: false,
         error:
-          "Only the workspace owner can repair the Telegram webhook.",
+          "Only the subscription owner can repair the Telegram webhook.",
       },
       { status: 403 },
     );
@@ -477,8 +463,8 @@ export async function POST(
   try {
     const connection =
       await loadConnection(
-        authResult.member
-          .business_id,
+        authResult.member.business_id,
+        request.nextUrl.searchParams.get("connectionId")?.trim() ?? "",
       );
 
     if (
@@ -550,8 +536,8 @@ export async function POST(
 
     const refreshed =
       await loadConnection(
-        authResult.member
-          .business_id,
+        authResult.member.business_id,
+        request.nextUrl.searchParams.get("connectionId")?.trim() ?? "",
       );
 
     return NextResponse.json({

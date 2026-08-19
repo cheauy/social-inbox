@@ -6,8 +6,6 @@ import {
   type FormEvent,
 } from "react";
 
-import { createClient } from "@/lib/supabase/client";
-
 function EyeIcon() {
   return (
     <svg
@@ -61,6 +59,19 @@ function EyeOffIcon() {
       />
     </svg>
   );
+}
+
+
+function getRegisterApiErrorMessage(payload: unknown) {
+  if (!payload || typeof payload !== "object") {
+    return "Unable to create your account right now. Please try again.";
+  }
+
+  const error = (payload as { error?: unknown }).error;
+
+  return typeof error === "string" && error.trim()
+    ? error.trim()
+    : "Unable to create your account right now. Please try again.";
 }
 
 export function RegisterForm() {
@@ -127,6 +138,14 @@ export function RegisterForm() {
       return;
     }
 
+    if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      setError(
+        "Password must include at least one letter and one number.",
+      );
+
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError(
         "Passwords do not match.",
@@ -139,53 +158,65 @@ export function RegisterForm() {
     setError(null);
 
     try {
-      const supabase =
-        createClient();
-
-      const {
-        data,
-        error: signUpError,
-      } = await supabase.auth.signUp({
-        email: normalizedEmail,
-        password,
-
-        options: {
-          data: {
-            full_name:
-              fullName.trim(),
-            business_name:
-              workspaceName.trim(),
+      const response = await fetch(
+        "/api/auth/register",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
           },
+          cache: "no-store",
+          body: JSON.stringify({
+            fullName: fullName.trim(),
+            workspaceName:
+              workspaceName.trim(),
+            email: normalizedEmail,
+            password,
+          }),
         },
-      });
+      );
 
-      if (signUpError) {
-        throw signUpError;
-      }
+      const payload = (await response
+        .json()
+        .catch(() => null)) as
+        | {
+            success?: boolean;
+            email?: string;
+            error?: string;
+          }
+        | null;
 
-      if (!data.user) {
-        throw new Error(
-          "Unable to create your account.",
+      if (!response.ok || !payload?.success) {
+        setError(
+          getRegisterApiErrorMessage(
+            payload,
+          ),
         );
+        setLoading(false);
+        return;
       }
+
+      const verificationEmail =
+        payload.email || normalizedEmail;
 
       sessionStorage.setItem(
         "tenh_verification_email",
-        normalizedEmail,
+        verificationEmail,
       );
 
       window.location.assign(
         `/verify-email?email=${encodeURIComponent(
-          normalizedEmail,
+          verificationEmail,
         )}`,
       );
-    } catch (registerError) {
+    } catch {
+      // Registration now goes through TENH's same-origin server route instead
+      // of calling Supabase Auth directly from the browser. This avoids
+      // exposing retryable browser/network auth errors in the Next.js dev
+      // overlay and gives the customer a stable error message.
       setError(
-        registerError instanceof Error
-          ? registerError.message
-          : "Unable to create your account.",
+        "TENH could not reach the registration service. Check your connection and try again.",
       );
-
       setLoading(false);
     }
   }
@@ -246,7 +277,7 @@ export function RegisterForm() {
         />
 
         <p className="mt-2 text-xs leading-5 text-slate-500">
-          Your 14-day free trial workspace will be created with this name after email verification and first sign-in.
+          Your 7-day free trial includes 3 channel connections and 1 user. It starts after email verification and first sign-in.
         </p>
       </div>
 

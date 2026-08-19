@@ -128,13 +128,38 @@ export async function GET() {
       );
     }
 
-    const member = authResult.member;
+    // V3.11.31.29 — Billing History follows the authenticated OWNER,
+    // not whichever workspace is currently selected. One TENH login can own
+    // multiple subscriptions/businesses, so resolve every owner membership
+    // server-side from the authenticated Supabase user ID. Agent-only
+    // memberships are intentionally excluded from billing access.
+    const { data: ownerMembershipRows, error: ownerMembershipError } =
+      await supabaseAdmin
+        .from("team_members")
+        .select("business_id")
+        .eq("user_id", authResult.user.id)
+        .eq("role", "owner")
+        .eq("is_active", true);
 
-    if (member.role !== "owner") {
+    if (ownerMembershipError) {
+      throw new Error(
+        `Unable to resolve your owned TENH subscriptions. ${ownerMembershipError.message}`,
+      );
+    }
+
+    const ownedBusinessIds = Array.from(
+      new Set(
+        (ownerMembershipRows ?? [])
+          .map((row) => String(row.business_id ?? "").trim())
+          .filter(Boolean),
+      ),
+    );
+
+    if (ownedBusinessIds.length === 0) {
       return NextResponse.json(
         {
           success: false,
-          error: "Only the workspace owner can view billing history.",
+          error: "Only a subscription owner can view billing history.",
         },
         { status: 403 },
       );
@@ -158,10 +183,10 @@ export async function GET() {
             "created_at",
           ].join(","),
         )
-        .eq("business_id", member.business_id)
+        .in("business_id", ownedBusinessIds)
         .eq("provider", "payway")
         .order("created_at", { ascending: false })
-        .limit(100),
+        .limit(300),
       supabaseAdmin
         .from("manual_payment_requests")
         .select(
@@ -178,15 +203,15 @@ export async function GET() {
             "created_at",
           ].join(","),
         )
-        .eq("business_id", member.business_id)
+        .in("business_id", ownedBusinessIds)
         .order("created_at", { ascending: false })
-        .limit(100),
+        .limit(300),
       supabaseAdmin
         .from("tenh_billing_invoices")
         .select("id,invoice_number,source_type,source_payment_id")
-        .eq("business_id", member.business_id)
+        .in("business_id", ownedBusinessIds)
         .order("issued_at", { ascending: false })
-        .limit(200),
+        .limit(600),
     ]);
 
     if (payWayResult.error) {
@@ -219,7 +244,18 @@ export async function GET() {
       );
     }
 
-    const payWayItems: BillingHistoryItem[] = payWayRows.map(
+    // V3.11.31.14
+    // Billing History "Pending" is reserved for manual bank transfers that
+    // are genuinely waiting for TENH review. A PayWay checkout starts with a
+    // temporary database status of "pending" while ABA/KHQR is open, but an
+    // abandoned/closed checkout should not look like an outstanding customer
+    // obligation in Billing History. Unresolved PayWay attempts are therefore
+    // hidden until PayWay resolves them to approved/declined/cancelled/failed.
+    const visiblePayWayRows = payWayRows.filter(
+      (row) => row.status !== "pending",
+    );
+
+    const payWayItems: BillingHistoryItem[] = visiblePayWayRows.map(
       (row) => {
         const paidAt =
           row.status === "approved"
@@ -291,7 +327,7 @@ export async function GET() {
           new Date(b.createdAt).getTime() -
           new Date(a.createdAt).getTime(),
       )
-      .slice(0, 150);
+      .slice(0, 500);
 
     const approvedItems = items.filter(
       (item) => item.status === "approved",

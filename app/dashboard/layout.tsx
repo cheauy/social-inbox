@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { RemovedWorkspaceAccessBoundary } from "@/components/dashboard/removed-workspace-access-boundary";
+import { WorkspaceSetupRecovery } from "@/components/dashboard/workspace-setup-recovery";
 import { SubscriptionAccessGate } from "@/components/subscription/subscription-access-gate";
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import {
@@ -30,6 +32,36 @@ export default async function DashboardLayout({
       redirect("/login");
     }
 
+    if (
+      authResult.status === 403 &&
+      authResult.code ===
+        "WORKSPACE_ACCESS_REMOVED"
+    ) {
+      return (
+        <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100">
+          <DashboardHeader />
+
+          <RemovedWorkspaceAccessBoundary
+            message={authResult.error}
+          >
+            {children}
+          </RemovedWorkspaceAccessBoundary>
+        </div>
+      );
+    }
+
+    if (
+      authResult.status === 403 &&
+      authResult.code === "WORKSPACE_SETUP_REQUIRED"
+    ) {
+      return (
+        <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100">
+          <DashboardHeader />
+          <WorkspaceSetupRecovery />
+        </div>
+      );
+    }
+
     return (
       <div className="flex min-h-dvh items-center justify-center bg-slate-100 p-6">
         <div className="w-full max-w-xl rounded-2xl border border-red-200 bg-white p-6 shadow-sm">
@@ -42,7 +74,7 @@ export default async function DashboardLayout({
           </p>
 
           <p className="mt-3 text-sm text-slate-500">
-            If this account was disabled by your workspace owner, contact your workspace administrator.
+            Ask an active workspace Owner to verify your TENH access.
           </p>
         </div>
       </div>

@@ -20,6 +20,15 @@ type ContactTagRow = {
     | null;
 };
 
+type ActiveMembershipRow = {
+  business_id: string;
+};
+
+export type InboxConversationScope = {
+  currentBusinessId: string;
+  accessibleBusinessIds: string[];
+};
+
 function sortConversations(
   conversations:
     InboxConversation[],
@@ -64,14 +73,21 @@ function sortConversations(
   );
 }
 
-export async function getConversations(): Promise<
-  InboxConversation[]
+/*
+ * V3.11.31.39 — All Channels scope.
+ *
+ * The channel selector can contain channels from more than one TENH
+ * subscription. "All Channels" therefore needs every subscription the
+ * signed-in user still actively belongs to, not only the workspace saved in
+ * the active-business cookie.
+ *
+ * Removed/inactive memberships are intentionally excluded here. Their
+ * channels may remain visible in the selector as a red access notice, but
+ * their conversations must never be returned by All Channels.
+ */
+export async function getInboxConversationScope(): Promise<
+  InboxConversationScope
 > {
-  /*
-   * V3.1.1:
-   * supabaseAdmin bypasses RLS, so every Inbox query must be
-   * explicitly scoped to the authenticated TENH business.
-   */
   const authResult =
     await getCurrentMember();
 
@@ -81,9 +97,138 @@ export async function getConversations(): Promise<
     );
   }
 
-  const businessId =
-    authResult.member
-      .business_id;
+  const {
+    data,
+    error,
+  } = await supabaseAdmin
+    .from("team_members")
+    .select("business_id")
+    .eq(
+      "user_id",
+      authResult.user.id,
+    )
+    .eq("is_active", true)
+    .order("created_at", {
+      ascending: true,
+    });
+
+  if (error) {
+    console.error(
+      "Unable to load Inbox subscription scope:",
+      error,
+    );
+
+    throw new Error(
+      "Unable to load your accessible TENH subscriptions.",
+    );
+  }
+
+  const accessibleBusinessIds =
+    Array.from(
+      new Set(
+        (
+          (data ?? []) as ActiveMembershipRow[]
+        )
+          .map(
+            (membership) =>
+              membership.business_id,
+          )
+          .filter(Boolean),
+      ),
+    );
+
+  /*
+   * getCurrentMember() already verified the current membership is active.
+   * Keep it in the scope defensively even if a historical membership query
+   * temporarily returns an incomplete row set.
+   */
+  if (
+    !accessibleBusinessIds.includes(
+      authResult.member.business_id,
+    )
+  ) {
+    accessibleBusinessIds.unshift(
+      authResult.member.business_id,
+    );
+  }
+
+  return {
+    currentBusinessId:
+      authResult.member.business_id,
+    accessibleBusinessIds,
+  };
+}
+
+export async function getConversations(
+  businessIds?: string[],
+): Promise<
+  InboxConversation[]
+> {
+  let scopedBusinessIds =
+    Array.from(
+      new Set(
+        (businessIds ?? [])
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    );
+
+  if (
+    scopedBusinessIds.length ===
+    0
+  ) {
+    const scope =
+      await getInboxConversationScope();
+
+    scopedBusinessIds =
+      scope.accessibleBusinessIds;
+  }
+
+  if (
+    scopedBusinessIds.length ===
+    0
+  ) {
+    return [];
+  }
+
+  /*
+   * Disabled channels keep their TENH history but must not appear in Inbox
+   * or All Channels. Resolve the currently enabled social_account ids first
+   * and scope the conversation query to those ids only.
+   */
+  const {
+    data: activeChannelData,
+    error: activeChannelError,
+  } = await supabaseAdmin
+    .from("social_accounts")
+    .select("id")
+    .in(
+      "business_id",
+      scopedBusinessIds,
+    )
+    .eq("is_active", true);
+
+  if (activeChannelError) {
+    console.error(
+      "Unable to load active Inbox channels:",
+      activeChannelError,
+    );
+
+    throw new Error(
+      "Unable to load active TENH channels.",
+    );
+  }
+
+  const activeChannelIds =
+    (activeChannelData ?? [])
+      .map((channel) =>
+        String(channel.id ?? "").trim(),
+      )
+      .filter(Boolean);
+
+  if (activeChannelIds.length === 0) {
+    return [];
+  }
 
   const {
     data,
@@ -142,9 +287,13 @@ export async function getConversations(): Promise<
         platform_account_id
       )
     `)
-    .eq(
+    .in(
       "business_id",
-      businessId,
+      scopedBusinessIds,
+    )
+    .in(
+      "social_account_id",
+      activeChannelIds,
     )
     .order(
       "is_pinned",
@@ -268,6 +417,11 @@ export async function getConversations(): Promise<
     );
   }
 
+  const allowedBusinessIds =
+    new Set(
+      scopedBusinessIds,
+    );
+
   const tagsByContact =
     new Map<
       string,
@@ -294,12 +448,13 @@ export async function getConversations(): Promise<
     }
 
     /*
-     * The contact set is already business-scoped, but also ignore
-     * a mismatched tag as a defense-in-depth check.
+     * supabaseAdmin bypasses RLS. Only keep tags from subscriptions included
+     * in the authenticated user's active Inbox scope.
      */
     if (
-      tag.business_id !==
-      businessId
+      !allowedBusinessIds.has(
+        tag.business_id,
+      )
     ) {
       continue;
     }

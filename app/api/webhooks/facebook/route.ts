@@ -16,6 +16,9 @@ import {
   processFacebookMessage,
 } from "@/lib/facebook/process-message";
 import {
+  markFacebookCommentThreadDeleted,
+} from "@/lib/facebook/mark-comment-thread-deleted";
+import {
   processFacebookMessageStatus,
   type FacebookMessageStatusEvent,
 } from "@/lib/facebook/process-message-status";
@@ -395,6 +398,29 @@ export async function POST(
                 ?.name,
           },
         );
+
+        const commentId =
+          value.comment_id?.trim();
+
+        if (
+          value.verb === "remove" &&
+          commentId
+        ) {
+          const actorId =
+            value.from?.id?.trim() ??
+            null;
+
+          await markFacebookCommentThreadDeleted({
+            pageId,
+            commentId,
+            deletedBy:
+              actorId === pageId
+                ? "page"
+                : "customer",
+          });
+
+          continue;
+        }
 
         await processFacebookComment(
           {

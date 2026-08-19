@@ -7,6 +7,9 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+  markFacebookCommentThreadDeleted,
+} from "@/lib/facebook/mark-comment-thread-deleted";
 
 import {
   FacebookCommentContextError,
@@ -85,9 +88,7 @@ export async function POST(
         : "customer";
 
     const deletedText =
-      deletedBy === "page"
-        ? "Comment deleted by Page"
-        : "Comment is deleted by commenter";
+      "Message deleted by commenter or Page";
 
     const context =
       await loadLocalFacebookCommentContext({
@@ -96,40 +97,12 @@ export async function POST(
         commentId,
       });
 
-    const {
-      error: messageUpdateError,
-    } = await supabaseAdmin
-      .from("messages")
-      .update({
-        comment_is_deleted: true,
-        comment_deleted_by:
-          deletedBy,
-        comment_is_liked: false,
-        comment_is_hidden: false,
-        message_text:
-          deletedText,
-      })
-      .eq(
-        "id",
-        context.message.id,
-      )
-      .eq(
-        "business_id",
+    await markFacebookCommentThreadDeleted({
+      businessId:
         currentMember.business_id,
-      );
-
-    if (messageUpdateError) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Unable to mark the local comment deleted.",
-        },
-        {
-          status: 500,
-        },
-      );
-    }
+      commentId,
+      deletedBy,
+    });
 
     const {
       error: conversationUpdateError,

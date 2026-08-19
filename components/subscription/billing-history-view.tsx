@@ -220,7 +220,7 @@ export function BillingHistoryView() {
               Billing history
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              Review ABA PayWay attempts and manual bank-transfer payments for this TENH workspace.
+              Review ABA PayWay and manual bank-transfer payments across all TENH subscriptions you own.
             </p>
           </div>
         </div>
@@ -231,22 +231,7 @@ export function BillingHistoryView() {
           </div>
         ) : null}
 
-        <section className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard label="Payments" value={String(summary?.total ?? 0)} detail="All recorded payment attempts" />
-          <SummaryCard
-            label="Approved"
-            value={String(summary?.approved ?? 0)}
-            detail={`${summary?.receipts ?? 0} paid receipt${(summary?.receipts ?? 0) === 1 ? "" : "s"} available`}
-            tone="green"
-          />
-          <SummaryCard label="Pending" value={String(summary?.pending ?? 0)} detail="Still waiting for confirmation" tone="amber" />
-          <SummaryCard
-            label="Approved total"
-            value={formatMoney(summary?.approvedUsdTotal ?? 0, "USD")}
-            detail="Approved USD payments"
-            tone="blue"
-          />
-        </section>
+
 
         <section className="mt-6 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-5 py-5 sm:px-6">
@@ -441,33 +426,6 @@ export function BillingHistoryView() {
           </div>
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function SummaryCard({
-  label,
-  value,
-  detail,
-  tone = "slate",
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  tone?: "slate" | "green" | "amber" | "blue";
-}) {
-  const classes = {
-    slate: "border-slate-200 bg-white",
-    green: "border-emerald-200 bg-emerald-50",
-    amber: "border-amber-200 bg-amber-50",
-    blue: "border-blue-200 bg-blue-50",
-  }[tone];
-
-  return (
-    <div className={`rounded-[24px] border p-5 shadow-sm ${classes}`}>
-      <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{label}</p>
-      <p className="mt-2 text-3xl font-black tracking-tight text-slate-950">{value}</p>
-      <p className="mt-2 text-xs leading-5 text-slate-500">{detail}</p>
     </div>
   );
 }

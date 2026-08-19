@@ -7,6 +7,9 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+  markFacebookCommentThreadDeleted,
+} from "@/lib/facebook/mark-comment-thread-deleted";
 
 import {
   FacebookCommentContextError,
@@ -153,40 +156,17 @@ export async function POST(
       );
     }
 
-    /* Keep history in TENH; do not physically delete the message row. */
-    const { error: databaseError } =
-      await supabaseAdmin
-        .from("messages")
-        .update({
-          comment_is_deleted: true,
-          comment_deleted_by:
-            "page",
-          comment_is_liked: false,
-          comment_is_hidden: false,
-          message_text:
-            "Comment deleted by Page",
-        })
-        .eq(
-          "id",
-          context.message.id,
-        )
-        .eq(
-          "business_id",
-          currentMember.business_id,
-        );
-
-    if (databaseError) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Facebook deleted the comment, but TENH could not save the local deleted state.",
-        },
-        {
-          status: 500,
-        },
-      );
-    }
+    /*
+     * Keep history in TENH, but mirror Facebook's thread deletion.
+     * If the parent comment disappears, all locally saved replies that
+     * point to that comment (including nested replies) become deleted too.
+     */
+    await markFacebookCommentThreadDeleted({
+      businessId:
+        currentMember.business_id,
+      commentId,
+      deletedBy: "page",
+    });
 
     const {
       error: conversationUpdateError,
@@ -194,7 +174,7 @@ export async function POST(
       .from("conversations")
       .update({
         last_message_text:
-          "Comment deleted by Page",
+          "Message deleted by commenter or Page",
         updated_at:
           new Date().toISOString(),
       })

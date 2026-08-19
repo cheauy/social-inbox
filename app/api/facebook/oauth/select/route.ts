@@ -8,6 +8,7 @@ import {
 
 import {
   getCurrentMember,
+  TENH_ACTIVE_BUSINESS_COOKIE,
 } from "@/lib/auth/get-current-member";
 import {
   encryptFacebookToken,
@@ -289,8 +290,76 @@ export async function POST(
       existingPage.business_id !==
         currentMember.business_id
     ) {
+      /*
+       * V3.11.31 — verified duplicate Page = join existing subscription.
+       *
+       * Facebook just returned this Page + Page access token from /me/accounts,
+       * so this authenticated Facebook user proved they can manage the Page.
+       * Do NOT duplicate or move the Page connection. Join the existing TENH
+       * subscription as an Agent and switch the active subscription instead.
+       */
+      const { data: joinedRows, error: joinError } =
+        await supabaseAdmin.rpc(
+          "tenh_join_subscription_as_agent",
+          {
+            p_user_id: authResult.user.id,
+            p_business_id:
+              existingPage.business_id,
+            p_full_name:
+              currentMember.full_name,
+            p_email:
+              currentMember.email ||
+              authResult.user.email ||
+              "",
+          },
+        );
+
+      if (joinError) {
+        throw new Error(joinError.message);
+      }
+
+      const joined = Array.isArray(joinedRows)
+        ? joinedRows[0]
+        : joinedRows;
+
+      if (!joined) {
+        throw new Error(
+          "Unable to join the existing TENH subscription for this Facebook Page.",
+        );
+      }
+
+      cookieStore.set(
+        TENH_ACTIVE_BUSINESS_COOKIE,
+        existingPage.business_id,
+        {
+          httpOnly: true,
+          sameSite: "lax",
+          secure:
+            process.env.NODE_ENV ===
+            "production",
+          path: "/",
+          maxAge: 60 * 60 * 24 * 365,
+        },
+      );
+
+      cookieStore.delete(
+        FACEBOOK_OAUTH_SESSION_COOKIE,
+      );
+
+      return redirectToIntegrations(request, {
+        facebook: "connected",
+        message:
+          joined.role === "owner"
+            ? "This Facebook Page already belongs to one of your TENH subscriptions. TENH switched to that subscription."
+            : "This Facebook Page already belongs to an existing TENH subscription. You joined that subscription as an Agent.",
+      });
+    }
+
+    // Only the Owner may attach a brand-new Page to this subscription.
+    // An Agent can use channels already connected by the Owner.
+    if (currentMember.role !== "owner") {
       throw new Error(
-        "This Facebook Page is already connected to another TENH workspace.",
+        "Only the subscription Owner can connect a new Facebook Page. You can use Pages already connected to subscriptions where you are an Agent.",
       );
     }
 

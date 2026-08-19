@@ -68,34 +68,35 @@ function jsonError(
 
 async function loadTelegramConnection(
   businessId: string,
+  connectionId = "",
 ) {
-  const { data, error } =
-    await supabaseAdmin
-      .from("social_accounts")
-      .select(`
-        id,
-        business_id,
-        platform_account_id,
-        is_active,
-        telegram_bot_token_encrypted,
-        telegram_token_status,
-        telegram_webhook_status,
-        telegram_webhook_url,
-        telegram_webhook_registered_at,
-        telegram_webhook_last_error
-      `)
-      .eq("business_id", businessId)
-      .eq("platform", "telegram")
-      .order("created_at", {
-        ascending: true,
-      })
-      .limit(1)
-      .maybeSingle<TelegramWebhookRow>();
+  let query = supabaseAdmin
+    .from("social_accounts")
+    .select(`
+      id,
+      business_id,
+      platform_account_id,
+      is_active,
+      telegram_bot_token_encrypted,
+      telegram_token_status,
+      telegram_webhook_status,
+      telegram_webhook_url,
+      telegram_webhook_registered_at,
+      telegram_webhook_last_error
+    `)
+    .eq("business_id", businessId)
+    .eq("platform", "telegram");
 
-  if (error) {
-    throw new Error(error.message);
+  if (connectionId) {
+    query = query.eq("id", connectionId);
   }
 
+  const { data, error } = await query
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle<TelegramWebhookRow>();
+
+  if (error) throw new Error(error.message);
   return data ?? null;
 }
 
@@ -172,7 +173,7 @@ function decryptBotToken(
   );
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const authResult =
     await getCurrentMember();
 
@@ -187,6 +188,7 @@ export async function GET() {
     const connection =
       await loadTelegramConnection(
         authResult.member.business_id,
+        request.nextUrl.searchParams.get("connectionId")?.trim() ?? "",
       );
 
     if (!connection) {
@@ -283,7 +285,7 @@ export async function POST(
 
   if (currentMember.role !== "owner") {
     return jsonError(
-      "Only the workspace owner can activate the Telegram Inbox.",
+      "Only the subscription owner can activate this Telegram Bot Inbox.",
       403,
     );
   }
@@ -295,6 +297,7 @@ export async function POST(
     const loaded =
       await loadTelegramConnection(
         currentMember.business_id,
+        request.nextUrl.searchParams.get("connectionId")?.trim() ?? "",
       );
 
     if (
@@ -469,7 +472,7 @@ export async function POST(
   });
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   const authResult =
     await getCurrentMember();
 
@@ -485,7 +488,7 @@ export async function DELETE() {
 
   if (currentMember.role !== "owner") {
     return jsonError(
-      "Only the workspace owner can disable the Telegram Inbox.",
+      "Only the subscription owner can disable this Telegram Bot Inbox.",
       403,
     );
   }
@@ -494,6 +497,7 @@ export async function DELETE() {
     const connection =
       await loadTelegramConnection(
         currentMember.business_id,
+        request.nextUrl.searchParams.get("connectionId")?.trim() ?? "",
       );
 
     if (!connection) {

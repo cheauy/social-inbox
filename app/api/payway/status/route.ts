@@ -1,6 +1,7 @@
+import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
-import { getCurrentMember } from "@/lib/auth/get-current-member";
+import { getCurrentMember, TENH_ACTIVE_BUSINESS_COOKIE } from "@/lib/auth/get-current-member";
 import { verifyAndFinalizePayWayTransaction } from "@/lib/payway/finalize-payment";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -52,7 +53,6 @@ export async function GET(request: NextRequest) {
         .select("id,business_id,status,provider_status,plan_code,billing_cycle")
         .eq("provider", "payway")
         .eq("provider_transaction_id", transactionId)
-        .eq("business_id", member.business_id)
         .maybeSingle();
 
     if (transactionError) {
@@ -63,13 +63,36 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Payment transaction was not found for this workspace.",
+          error: "Payment transaction was not found.",
         },
         { status: 404 },
       );
     }
 
+    const { data: transactionMember } = await supabaseAdmin
+      .from("team_members")
+      .select("id,role")
+      .eq("business_id", transaction.business_id)
+      .eq("user_id", authResult.user.id)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (!transactionMember || transactionMember.role !== "owner") {
+      return NextResponse.json(
+        { success: false, error: "You do not have access to this payment transaction." },
+        { status: 403 },
+      );
+    }
+
     if (transaction.status === "approved") {
+      const cookieStore = await cookies();
+      cookieStore.set(TENH_ACTIVE_BUSINESS_COOKIE, transaction.business_id, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 365,
+      });
       return NextResponse.json({
         success: true,
         transactionId,
@@ -82,6 +105,17 @@ export async function GET(request: NextRequest) {
       transactionId,
       "browser-status",
     );
+
+    if (result.paymentState === "approved" && "businessId" in result && result.businessId) {
+      const cookieStore = await cookies();
+      cookieStore.set(TENH_ACTIVE_BUSINESS_COOKIE, result.businessId, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 365,
+      });
+    }
 
     return NextResponse.json({
       success: true,

@@ -12,6 +12,10 @@ import {
 
 type InboxChannel = {
   id: string;
+  businessId: string;
+  accessAllowed: boolean;
+  subscriptionAccessAllowed: boolean;
+  channelEnabled: boolean;
   platform:
     | "facebook"
     | "telegram";
@@ -27,8 +31,22 @@ type InboxChannel = {
 type ChannelsResponse = {
   success?: boolean;
   error?: string;
+  currentBusinessId?: string | null;
+  currentBusinessAccess?: boolean;
   channels?: InboxChannel[];
 };
+
+const REMOVED_ACCESS_TITLE =
+  "You no longer have access to this subscription.";
+
+const REMOVED_ACCESS_DETAIL =
+  "An Owner may have removed your access. Your TENH account and any other subscriptions are unchanged.";
+
+const CHANNEL_DISABLED_TITLE =
+  "This channel is disabled.";
+
+const CHANNEL_DISABLED_DETAIL =
+  "An Owner disabled this channel. It does not use a channel slot and cannot be opened until an Owner enables it.";
 
 function ChannelIcon({
   platform,
@@ -71,7 +89,6 @@ function ChannelIcon({
   );
 }
 
-
 export function InboxChannelSelector() {
   const router =
     useRouter();
@@ -86,6 +103,26 @@ export function InboxChannelSelector() {
     useState<string | null>(null);
   const [channels, setChannels] =
     useState<InboxChannel[]>([]);
+  const [
+    currentBusinessId,
+    setCurrentBusinessId,
+  ] =
+    useState<string | null>(null);
+  const [
+    currentBusinessAccess,
+    setCurrentBusinessAccess,
+  ] =
+    useState(true);
+  const [
+    deniedChannelId,
+    setDeniedChannelId,
+  ] =
+    useState<string | null>(null);
+  const [
+    switchingChannelId,
+    setSwitchingChannelId,
+  ] =
+    useState<string | null>(null);
 
   const selectedChannelId =
     searchParams.get("channel") ??
@@ -125,6 +162,14 @@ export function InboxChannelSelector() {
         if (!cancelled) {
           setChannels(
             result.channels ?? [],
+          );
+          setCurrentBusinessId(
+            result.currentBusinessId ??
+              null,
+          );
+          setCurrentBusinessAccess(
+            result.currentBusinessAccess !==
+              false,
           );
         }
       } catch (loadError) {
@@ -202,7 +247,7 @@ export function InboxChannelSelector() {
     return "Messenger";
   }
 
-  function selectChannel(
+  function buildInboxUrl(
     channelId: string | null,
   ) {
     const query =
@@ -236,13 +281,160 @@ export function InboxChannelSelector() {
     const queryString =
       query.toString();
 
+    return queryString
+      ? `/dashboard/inbox?${queryString}`
+      : "/dashboard/inbox";
+  }
+
+  async function selectChannel(
+    channel: InboxChannel,
+  ) {
+    setError(null);
+
+    /*
+     * A removed subscription remains visible so the user understands what
+     * happened, but TENH never opens it and never changes workspace context.
+     */
+    if (!channel.accessAllowed) {
+      setDeniedChannelId(
+        channel.id,
+      );
+      setError(
+        channel.subscriptionAccessAllowed &&
+        !channel.channelEnabled
+          ? `${CHANNEL_DISABLED_TITLE} ${CHANNEL_DISABLED_DETAIL}`
+          : `${REMOVED_ACCESS_TITLE} ${REMOVED_ACCESS_DETAIL}`,
+      );
+      setOpen(true);
+      return;
+    }
+
+    setDeniedChannelId(null);
+    setSwitchingChannelId(
+      channel.id,
+    );
+
+    try {
+      /*
+       * Moving to a channel that belongs to another subscription is a manual
+       * user action. TENH never performs this switch automatically.
+       */
+      if (
+        channel.businessId !==
+        currentBusinessId
+      ) {
+        const switchResponse =
+          await fetch(
+            "/api/workspaces/switch",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                businessId:
+                  channel.businessId,
+              }),
+            },
+          );
+
+        const switchResult =
+          (await switchResponse.json()) as {
+            success?: boolean;
+            error?: string;
+          };
+
+        if (
+          !switchResponse.ok ||
+          !switchResult.success
+        ) {
+          if (
+            switchResponse.status ===
+            403
+          ) {
+            setChannels(
+              (current) =>
+                current.map(
+                  (item) =>
+                    item.businessId ===
+                    channel.businessId
+                      ? {
+                          ...item,
+                          subscriptionAccessAllowed:
+                            false,
+                          accessAllowed:
+                            false,
+                        }
+                      : item,
+                ),
+            );
+            setDeniedChannelId(
+              channel.id,
+            );
+            setOpen(true);
+            return;
+          }
+
+          throw new Error(
+            switchResult.error ??
+              "Unable to open this channel.",
+          );
+        }
+
+        setCurrentBusinessId(
+          channel.businessId,
+        );
+        setCurrentBusinessAccess(
+          true,
+        );
+      }
+
+      setOpen(false);
+
+      router.push(
+        buildInboxUrl(
+          channel.id,
+        ),
+      );
+      router.refresh();
+    } catch (selectError) {
+      setError(
+        selectError instanceof Error
+          ? selectError.message
+          : "Unable to open this channel.",
+      );
+      setOpen(true);
+    } finally {
+      setSwitchingChannelId(
+        null,
+      );
+    }
+  }
+
+  function selectAllChannels() {
+    setDeniedChannelId(null);
+
+    /*
+     * "All Channels" only shows conversations for the currently accessible
+     * subscription. If that subscription was removed, do not silently move
+     * the user elsewhere.
+     */
+    if (!currentBusinessAccess) {
+      setError(
+        `${REMOVED_ACCESS_TITLE} ${REMOVED_ACCESS_DETAIL}`,
+      );
+      setOpen(true);
+      return;
+    }
+
+    setError(null);
     setOpen(false);
 
     router.push(
-      queryString
-        ? `/dashboard/inbox?${queryString}`
-        : "/dashboard/inbox",
+      buildInboxUrl(null),
     );
+    router.refresh();
   }
 
   const selectedLabel =
@@ -259,6 +451,125 @@ export function InboxChannelSelector() {
     selectedChannel?.platform ??
     "all";
 
+  const selectedAccessBlocked =
+    Boolean(
+      selectedChannel &&
+        !selectedChannel.accessAllowed,
+    );
+
+  const selectedBlockTitle =
+    selectedChannel &&
+    selectedChannel.subscriptionAccessAllowed &&
+    !selectedChannel.channelEnabled
+      ? CHANNEL_DISABLED_TITLE
+      : REMOVED_ACCESS_TITLE;
+
+  function renderChannelButton(
+    channel: InboxChannel,
+  ) {
+    const selected =
+      selectedChannelId ===
+      channel.id;
+
+    const denied =
+      deniedChannelId ===
+      channel.id;
+
+    const switching =
+      switchingChannelId ===
+      channel.id;
+
+    const selectedClasses =
+      channel.platform ===
+      "telegram"
+        ? "bg-sky-50"
+        : "bg-blue-50";
+
+    return (
+      <div
+        key={channel.id}
+        className="rounded-xl"
+      >
+        <button
+          type="button"
+          onClick={() =>
+            void selectChannel(
+              channel,
+            )
+          }
+          disabled={Boolean(
+            switchingChannelId,
+          )}
+          className={`flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition disabled:cursor-wait ${
+            selected
+              ? selectedClasses
+              : channel.accessAllowed
+                ? "hover:bg-slate-50"
+                : "hover:bg-red-50/60"
+          }`}
+        >
+          <ChannelIcon
+            platform={
+              channel.platform
+            }
+          />
+
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold text-slate-900">
+              {channel.name}
+            </span>
+
+            <span className="mt-0.5 block truncate text-xs text-slate-500">
+              {channelSecondaryText(
+                channel,
+              )}
+            </span>
+
+            {!channel.accessAllowed ? (
+              <span className="mt-1 block text-[11px] font-semibold leading-4 text-red-600">
+                {channel.subscriptionAccessAllowed &&
+                !channel.channelEnabled
+                  ? CHANNEL_DISABLED_TITLE
+                  : REMOVED_ACCESS_TITLE}
+              </span>
+            ) : null}
+
+            {denied ? (
+              <span className="mt-1 block text-[11px] leading-4 text-red-500">
+                {channel.subscriptionAccessAllowed &&
+                !channel.channelEnabled
+                  ? CHANNEL_DISABLED_DETAIL
+                  : REMOVED_ACCESS_DETAIL}
+              </span>
+            ) : null}
+          </span>
+
+          {switching ? (
+            <span className="shrink-0 text-xs font-semibold text-slate-400">
+              Opening…
+            </span>
+          ) : selected &&
+            channel.accessAllowed ? (
+            <span
+              className={`shrink-0 text-sm font-bold ${
+                channel.platform ===
+                "telegram"
+                  ? "text-sky-600"
+                  : "text-blue-600"
+              }`}
+            >
+              ✓
+            </span>
+          ) : !channel.accessAllowed ? (
+            <span className="shrink-0 text-sm font-bold text-red-500">
+              !
+            </span>
+          ) : null}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="relative shrink-0 border-b border-slate-200 bg-white px-3 py-3">
       <button
@@ -269,7 +580,11 @@ export function InboxChannelSelector() {
               !current,
           )
         }
-        className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left transition hover:border-slate-300 hover:bg-white"
+        className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
+          selectedAccessBlocked
+            ? "border-red-200 bg-red-50/50 hover:bg-red-50"
+            : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white"
+        }`}
         aria-expanded={open}
       >
         <ChannelIcon
@@ -288,6 +603,12 @@ export function InboxChannelSelector() {
               ? "Loading channels..."
               : selectedLabel}
           </span>
+
+          {selectedAccessBlocked ? (
+            <span className="mt-1 block text-[11px] font-semibold text-red-600">
+              {selectedBlockTitle}
+            </span>
+          ) : null}
         </span>
 
         <svg
@@ -324,15 +645,16 @@ export function InboxChannelSelector() {
           <div className="absolute left-3 right-3 top-[72px] z-50 max-h-[420px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
             <button
               type="button"
-              onClick={() =>
-                selectChannel(
-                  null,
-                )
+              onClick={
+                selectAllChannels
               }
               className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-                !selectedChannelId
+                !selectedChannelId &&
+                currentBusinessAccess
                   ? "bg-blue-50"
-                  : "hover:bg-slate-50"
+                  : currentBusinessAccess
+                    ? "hover:bg-slate-50"
+                    : "hover:bg-red-50/60"
               }`}
             >
               <ChannelIcon
@@ -346,9 +668,15 @@ export function InboxChannelSelector() {
                 <span className="mt-0.5 block text-xs text-slate-500">
                   Messenger and Telegram
                 </span>
+                {!currentBusinessAccess ? (
+                  <span className="mt-1 block text-[11px] font-semibold text-red-600">
+                    {REMOVED_ACCESS_TITLE}
+                  </span>
+                ) : null}
               </span>
 
-              {!selectedChannelId ? (
+              {!selectedChannelId &&
+              currentBusinessAccess ? (
                 <span className="text-sm font-bold text-blue-600">
                   ✓
                 </span>
@@ -363,49 +691,7 @@ export function InboxChannelSelector() {
                 </p>
 
                 {facebookChannels.map(
-                  (channel) => (
-                    <button
-                      key={
-                        channel.id
-                      }
-                      type="button"
-                      onClick={() =>
-                        selectChannel(
-                          channel.id,
-                        )
-                      }
-                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-                        selectedChannelId ===
-                        channel.id
-                          ? "bg-blue-50"
-                          : "hover:bg-slate-50"
-                      }`}
-                    >
-                      <ChannelIcon
-                        platform="facebook"
-                      />
-
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-slate-900">
-                          {
-                            channel.name
-                          }
-                        </span>
-                        <span className="mt-0.5 block text-xs text-slate-500">
-                          {channelSecondaryText(
-                            channel,
-                          )}
-                        </span>
-                      </span>
-
-                      {selectedChannelId ===
-                      channel.id ? (
-                        <span className="text-sm font-bold text-blue-600">
-                          ✓
-                        </span>
-                      ) : null}
-                    </button>
-                  ),
+                  renderChannelButton,
                 )}
               </div>
             ) : null}
@@ -418,49 +704,7 @@ export function InboxChannelSelector() {
                 </p>
 
                 {telegramChannels.map(
-                  (channel) => (
-                    <button
-                      key={
-                        channel.id
-                      }
-                      type="button"
-                      onClick={() =>
-                        selectChannel(
-                          channel.id,
-                        )
-                      }
-                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-                        selectedChannelId ===
-                        channel.id
-                          ? "bg-sky-50"
-                          : "hover:bg-slate-50"
-                      }`}
-                    >
-                      <ChannelIcon
-                        platform="telegram"
-                      />
-
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-slate-900">
-                          {
-                            channel.name
-                          }
-                        </span>
-                        <span className="mt-0.5 block truncate text-xs text-slate-500">
-                          {channelSecondaryText(
-                            channel,
-                          )}
-                        </span>
-                      </span>
-
-                      {selectedChannelId ===
-                      channel.id ? (
-                        <span className="text-sm font-bold text-sky-600">
-                          ✓
-                        </span>
-                      ) : null}
-                    </button>
-                  ),
+                  renderChannelButton,
                 )}
               </div>
             ) : null}
@@ -468,12 +712,12 @@ export function InboxChannelSelector() {
             {!loading &&
             channels.length === 0 ? (
               <div className="px-3 py-5 text-center text-xs text-slate-500">
-                No active channels connected.
+                No channels connected.
               </div>
             ) : null}
 
             {error ? (
-              <div className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              <div className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
                 {error}
               </div>
             ) : null}

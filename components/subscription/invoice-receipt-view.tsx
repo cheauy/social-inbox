@@ -222,7 +222,7 @@ export function InvoiceReceiptView({
                     TENH Chat
                   </p>
                   <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                    Subscription billing
+                    Official subscription receipt
                   </p>
                 </div>
               </div>

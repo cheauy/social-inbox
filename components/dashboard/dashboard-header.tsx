@@ -8,7 +8,6 @@ import { isCurrentUserTenhAdminIdentity } from "@/lib/admin/tenh-admin-auth";
 
 const normalNavigation = [
   { label: "Inbox", href: "/dashboard/inbox" },
-  { label: "Customers", href: "/dashboard/customers" },
   { label: "Group Chat", href: "/dashboard/group-chat" },
   { label: "Analytics", href: "/dashboard/analytics" },
   { label: "Subscription", href: "/dashboard/subscription" },

@@ -77,7 +77,7 @@ function getLockedCopy(
       return {
         eyebrow: wasTrial ? "Free trial completed" : "Subscription expired",
         title: wasTrial
-          ? "Your 14-day trial has ended"
+          ? "Your 7-day trial has ended"
           : "Your TENH Chat subscription has expired",
         message:
           "Choose Mini, Standard, or Pro and select Monthly, 3 Months, 6 Months, or 1 Year. Access restores only after the new payment is approved.",
@@ -179,7 +179,18 @@ export function SubscriptionAccessGate({
       "/dashboard/subscription/",
     );
 
-  if (!access.locked || subscriptionPage) {
+  const profilePage =
+    pathname === "/dashboard/profile" ||
+    pathname.startsWith("/dashboard/profile/");
+
+  const profileAllowedWhileExpired =
+    access.reason === "expired" && profilePage;
+
+  if (
+    !access.locked ||
+    subscriptionPage ||
+    profileAllowedWhileExpired
+  ) {
     return children;
   }
 
@@ -280,8 +291,19 @@ export function SubscriptionAccessGate({
                 <ArrowIcon />
               </Link>
 
+              {access.reason === "expired" ? (
+                <Link
+                  href="/dashboard/profile"
+                  className="mt-3 inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 py-3.5 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-4 focus:ring-slate-100"
+                >
+                  Profile &amp; account
+                </Link>
+              ) : null}
+
               <p className="mt-4 text-center text-xs leading-5 text-slate-400">
-                Your existing workspace data stays preserved while access is paused.
+                {access.reason === "expired"
+                  ? "Your workspace stays preserved. You can still open Profile & account to manage or delete your TENH account."
+                  : "Your existing workspace data stays preserved while access is paused."}
               </p>
             </section>
           </div>

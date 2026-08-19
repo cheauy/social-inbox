@@ -27,9 +27,7 @@ export type InboxRealtimeEvent = {
 };
 
 type UseInboxRealtimeInput = {
-  businessId:
-    | string
-    | null;
+  businessIds: string[];
 
   onRealtimeEvent:
     (
@@ -45,7 +43,7 @@ type UseInboxRealtimeInput = {
 };
 
 export function useInboxRealtime({
-  businessId,
+  businessIds,
   onRealtimeEvent,
   onFallbackRefresh,
 }: UseInboxRealtimeInput) {
@@ -65,10 +63,33 @@ export function useInboxRealtime({
       onFallbackRefresh;
   }, [onFallbackRefresh]);
 
+  /*
+   * Keep the effect stable when the caller recreates the array while
+   * preserving the exact set of accessible subscriptions.
+   */
+  const businessIdsKey =
+    Array.from(
+      new Set(
+        businessIds
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    )
+      .sort()
+      .join("|");
+
   useEffect(() => {
-    if (!businessId) {
+    const scopedBusinessIds =
+      businessIdsKey
+        ? businessIdsKey.split("|")
+        : [];
+
+    if (
+      scopedBusinessIds.length ===
+      0
+    ) {
       console.warn(
-        "[Tenh Realtime V2.8] No businessId.",
+        "[Tenh Realtime V3.11.31.39] No accessible business ids.",
       );
 
       return;
@@ -80,11 +101,11 @@ export function useInboxRealtime({
     let cancelled =
       false;
 
-    let channel:
+    const channels: Array<
       ReturnType<
         typeof supabase.channel
       >
-      | null = null;
+    > = [];
 
     async function startRealtime() {
       const {
@@ -103,7 +124,7 @@ export function useInboxRealtime({
         !sessionData.session
       ) {
         console.error(
-          "[Tenh Realtime V2.8] No authenticated session.",
+          "[Tenh Realtime V3.11.31.39] No authenticated session.",
           sessionError?.message ??
             "",
         );
@@ -123,171 +144,183 @@ export function useInboxRealtime({
       }
 
       console.log(
-        "[Tenh Realtime V2.8] JWT applied.",
+        "[Tenh Realtime V3.11.31.39] JWT applied.",
       );
 
-      channel =
-        supabase
-          .channel(
-            `tenh-inbox-v2-${businessId}`,
-          )
+      for (
+        const businessId of
+          scopedBusinessIds
+      ) {
+        if (cancelled) {
+          break;
+        }
 
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "messages",
-              filter:
-                `business_id=eq.${businessId}`,
-            },
-            (payload) => {
-              const eventType =
-                payload.eventType as
-                  InboxRealtimeEventType;
+        const channel =
+          supabase
+            .channel(
+              `tenh-inbox-v3-${businessId}`,
+            )
 
-              console.log(
-                "[Tenh Realtime V2.8] messages",
-                eventType,
-              );
-
-              eventCallbackRef.current({
+            .on(
+              "postgres_changes",
+              {
+                event: "*",
+                schema: "public",
                 table: "messages",
-                eventType,
-                newRow:
-                  (payload.new ??
-                    {}) as Record<
-                    string,
-                    unknown
-                  >,
-                oldRow:
-                  (payload.old ??
-                    {}) as Record<
-                    string,
-                    unknown
-                  >,
-              });
-            },
-          )
+                filter:
+                  `business_id=eq.${businessId}`,
+              },
+              (payload) => {
+                const eventType =
+                  payload.eventType as
+                    InboxRealtimeEventType;
 
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table:
-                "conversations",
-              filter:
-                `business_id=eq.${businessId}`,
-            },
-            (payload) => {
-              const eventType =
-                payload.eventType as
-                  InboxRealtimeEventType;
+                console.log(
+                  "[Tenh Realtime V3.11.31.39] messages",
+                  businessId,
+                  eventType,
+                );
 
-              console.log(
-                "[Tenh Realtime V2.8] conversations",
-                eventType,
-              );
+                eventCallbackRef.current({
+                  table: "messages",
+                  eventType,
+                  newRow:
+                    (payload.new ??
+                      {}) as Record<
+                      string,
+                      unknown
+                    >,
+                  oldRow:
+                    (payload.old ??
+                      {}) as Record<
+                      string,
+                      unknown
+                    >,
+                });
+              },
+            )
 
-              eventCallbackRef.current({
+            .on(
+              "postgres_changes",
+              {
+                event: "*",
+                schema: "public",
                 table:
                   "conversations",
-                eventType,
-                newRow:
-                  (payload.new ??
-                    {}) as Record<
-                    string,
-                    unknown
-                  >,
-                oldRow:
-                  (payload.old ??
-                    {}) as Record<
-                    string,
-                    unknown
-                  >,
-              });
+                filter:
+                  `business_id=eq.${businessId}`,
+              },
+              (payload) => {
+                const eventType =
+                  payload.eventType as
+                    InboxRealtimeEventType;
 
-              /*
-               * A new raw conversation row has no joined contact,
-               * team-member or social-account objects. Ask the
-               * server for enriched data only in this uncommon case.
-               */
-              if (
-                eventType ===
-                "INSERT"
-              ) {
-                fallbackRefreshRef
-                  .current?.();
-              }
-            },
-          )
+                console.log(
+                  "[Tenh Realtime V3.11.31.39] conversations",
+                  businessId,
+                  eventType,
+                );
 
-          /*
-           * V2.8 — activity is our enriched-data synchronization signal.
-           *
-           * Existing customer/tag/note APIs already write an activity row.
-           * Watching this business-scoped table lets other agents refresh
-           * nested customer/tag data without polling.
-           */
-          .on(
-            "postgres_changes",
-            {
-              event: "INSERT",
-              schema: "public",
-              table:
-                "conversation_activity",
-              filter:
-                `business_id=eq.${businessId}`,
-            },
-            (payload) => {
-              console.log(
-                "[Tenh Realtime V2.8] conversation_activity INSERT",
-              );
+                eventCallbackRef.current({
+                  table:
+                    "conversations",
+                  eventType,
+                  newRow:
+                    (payload.new ??
+                      {}) as Record<
+                      string,
+                      unknown
+                    >,
+                  oldRow:
+                    (payload.old ??
+                      {}) as Record<
+                      string,
+                      unknown
+                    >,
+                });
 
-              eventCallbackRef.current({
+                /*
+                 * A new raw conversation row has no joined contact,
+                 * team-member or social-account objects. Ask the server for
+                 * enriched data only in this uncommon case.
+                 */
+                if (
+                  eventType ===
+                    "INSERT"
+                ) {
+                  fallbackRefreshRef
+                    .current?.();
+                }
+              },
+            )
+
+            .on(
+              "postgres_changes",
+              {
+                event: "INSERT",
+                schema: "public",
                 table:
                   "conversation_activity",
-                eventType:
-                  "INSERT",
-                newRow:
-                  (payload.new ??
-                    {}) as Record<
-                    string,
-                    unknown
-                  >,
-                oldRow: {},
-              });
-            },
-          )
-
-          .subscribe(
-            (
-              status,
-              error,
-            ) => {
-              console.log(
-                "[Tenh Realtime V2.8] Channel status:",
-                status,
-              );
-
-              if (error) {
-                console.error(
-                  "[Tenh Realtime V2.8] Channel error:",
-                  error,
-                );
-              }
-
-              if (
-                status ===
-                "SUBSCRIBED"
-              ) {
+                filter:
+                  `business_id=eq.${businessId}`,
+              },
+              (payload) => {
                 console.log(
-                  "[Tenh Realtime V2.8] ✅ MULTI-AGENT REALTIME READY",
+                  "[Tenh Realtime V3.11.31.39] conversation_activity INSERT",
+                  businessId,
                 );
-              }
-            },
-          );
+
+                eventCallbackRef.current({
+                  table:
+                    "conversation_activity",
+                  eventType:
+                    "INSERT",
+                  newRow:
+                    (payload.new ??
+                      {}) as Record<
+                      string,
+                      unknown
+                    >,
+                  oldRow: {},
+                });
+              },
+            )
+
+            .subscribe(
+              (
+                status,
+                error,
+              ) => {
+                console.log(
+                  "[Tenh Realtime V3.11.31.39] Channel status:",
+                  businessId,
+                  status,
+                );
+
+                if (error) {
+                  console.error(
+                    "[Tenh Realtime V3.11.31.39] Channel error:",
+                    businessId,
+                    error,
+                  );
+                }
+
+                if (
+                  status ===
+                    "SUBSCRIBED"
+                ) {
+                  console.log(
+                    "[Tenh Realtime V3.11.31.39] ✅ SUBSCRIPTION REALTIME READY",
+                    businessId,
+                  );
+                }
+              },
+            );
+
+        channels.push(
+          channel,
+        );
+      }
     }
 
     void startRealtime();
@@ -333,12 +366,15 @@ export function useInboxRealtime({
         .subscription
         .unsubscribe();
 
-      if (channel) {
+      for (
+        const channel of
+          channels
+      ) {
         void supabase
           .removeChannel(
             channel,
           );
       }
     };
-  }, [businessId]);
+  }, [businessIdsKey]);
 }

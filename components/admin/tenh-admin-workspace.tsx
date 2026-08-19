@@ -6,10 +6,9 @@ import {
   useMemo,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
-
 import { AdminBillingAnalytics } from "@/components/admin/admin-billing-analytics";
 import { AdminBillingManagement } from "@/components/admin/admin-billing-management";
+import { AdminChannelHealth } from "@/components/admin/admin-channel-health";
 import { AdminSecurityPanel } from "@/components/admin/admin-security-panel";
 import { CustomerReportReview } from "@/components/admin/customer-report-review";
 import { SystemAnnouncementAdmin } from "@/components/admin/system-announcement-admin";
@@ -21,6 +20,7 @@ type AdminTab =
   | "manual-payments"
   | "customer-reports"
   | "announcements"
+  | "channel-health"
   | "security";
 
 type TenhAdminWorkspaceProps = {
@@ -84,6 +84,11 @@ const tabs: Array<{
     description: "Notify users about TENH updates",
   },
   {
+    id: "channel-health",
+    label: "Run diagnostics",
+    description: "Messenger and Telegram health",
+  },
+  {
     id: "security",
     label: "Security",
     description: "Admin identity and two-factor authentication",
@@ -107,7 +112,6 @@ export function TenhAdminWorkspace({
   initialTab,
   adminMfaRequired,
 }: TenhAdminWorkspaceProps) {
-  const router = useRouter();
   const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
   const [summary, setSummary] = useState<AdminSummary>(EMPTY_SUMMARY);
   const [summaryLoading, setSummaryLoading] = useState(true);
@@ -186,10 +190,17 @@ export function TenhAdminWorkspace({
 
   function chooseTab(tab: AdminTab) {
     setActiveTab(tab);
-    router.replace(
-      `/dashboard/admin?tab=${encodeURIComponent(tab)}`,
-      { scroll: false },
-    );
+
+    /*
+     * The admin tabs are already rendered client-side. Updating only the URL
+     * with the History API avoids an unnecessary App Router/RSC navigation on
+     * every tab click, which also avoids stale Turbopack HMR module graphs
+     * after replacing admin files during local development. A full reload still
+     * restores the selected tab from ?tab=.
+     */
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    window.history.replaceState(window.history.state, "", url.toString());
   }
 
   return (
@@ -437,6 +448,8 @@ export function TenhAdminWorkspace({
               <CustomerReportReview onQueueChanged={loadSummary} />
             ) : activeTab === "announcements" ? (
               <SystemAnnouncementAdmin />
+            ) : activeTab === "channel-health" ? (
+              <AdminChannelHealth />
             ) : (
               <AdminSecurityPanel
                 adminMfaRequired={adminMfaRequired}

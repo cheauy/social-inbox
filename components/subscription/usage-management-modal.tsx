@@ -29,26 +29,17 @@ type Connection = {
   facebook_token_status: string | null;
 };
 
-type TelegramConnectionResponse = {
-  success?: boolean;
-  connection?: {
-    id: string;
-    botId: string | null;
-    botName: string | null;
-    username: string | null;
-    isActive: boolean;
-    status: string;
-  } | null;
-};
-
 type UsageResponse = {
   success?: boolean;
   error?: string;
   details?: string;
+  businessId?: string;
   currentMemberId?: string;
   currentMemberRole?: string;
   canManage?: boolean;
   subscription?: {
+    id: string;
+    business_id: string;
     plan_code: string;
     status: string;
     member_limit: number;
@@ -95,6 +86,11 @@ async function readResult(
   }
 }
 
+function shortSubscriptionId(value: string | null | undefined) {
+  const id = value?.trim();
+  return id ? `#${id.slice(0, 8).toUpperCase()}` : "Unknown subscription";
+}
+
 function initial(name: string) {
   return (
     name.trim().charAt(0).toUpperCase() ||
@@ -120,6 +116,24 @@ function StatusPill({
   );
 }
 
+function ChannelStatusPill({
+  active,
+}: {
+  active: boolean;
+}) {
+  return (
+    <span
+      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+        active
+          ? "bg-emerald-100 text-emerald-700"
+          : "bg-amber-100 text-amber-700"
+      }`}
+    >
+      {active ? "Active" : "Disabled"}
+    </span>
+  );
+}
+
 export function UsageManagementModal({
   open,
   initialTab,
@@ -135,6 +149,8 @@ export function UsageManagementModal({
   const [error, setError] =
     useState<string | null>(null);
   const [notice, setNotice] =
+    useState<string | null>(null);
+  const [memberActionMenuId, setMemberActionMenuId] =
     useState<string | null>(null);
   const [data, setData] =
     useState<UsageResponse | null>(null);
@@ -152,23 +168,13 @@ export function UsageManagementModal({
     setError(null);
 
     try {
-      const [response, telegramResponse] =
-        await Promise.all([
-          fetch(
-            "/api/subscription/usage-management",
-            {
-              method: "GET",
-              cache: "no-store",
-            },
-          ),
-          fetch(
-            "/api/telegram/connection",
-            {
-              method: "GET",
-              cache: "no-store",
-            },
-          ),
-        ]);
+      const response = await fetch(
+        "/api/subscription/usage-management",
+        {
+          method: "GET",
+          cache: "no-store",
+        },
+      );
 
       const result = await readResult(
         response,
@@ -181,80 +187,22 @@ export function UsageManagementModal({
         );
       }
 
-      let telegramResult:
-        | TelegramConnectionResponse
-        | null = null;
-
-      if (telegramResponse.ok) {
-        try {
-          telegramResult =
-            (await telegramResponse.json()) as
-              TelegramConnectionResponse;
-        } catch {
-          telegramResult = null;
-        }
-      }
-
-      const existingConnections =
-        result.connections ?? [];
-
-      const telegram =
-        telegramResult?.connection;
-
-      const telegramConnection:
-        | Connection
-        | null =
-        telegram?.isActive
-          ? {
-              id: telegram.id,
-              platform: "telegram",
-              platform_account_id:
-                telegram.botId,
-              account_name:
-                telegram.botName ??
-                (telegram.username
-                  ? `@${telegram.username}`
-                  : "Telegram Bot"),
-              is_active: true,
-              facebook_token_status: null,
-            }
-          : null;
-
-      const mergedConnections =
-        telegramConnection &&
-        !existingConnections.some(
-          (connection) =>
-            connection.platform ===
-            "telegram",
-        )
-          ? [
-              ...existingConnections,
-              telegramConnection,
-            ]
-          : existingConnections;
-
-      const activeChannelCount =
-        mergedConnections.filter(
-          (connection) =>
-            connection.is_active,
-        ).length;
-
+      /*
+       * V3.11.31.39 — usage-management is the canonical source for
+       * every customer channel stored in social_accounts (Messenger,
+       * Telegram, and future supported platforms). Do not merge the
+       * legacy singular /api/telegram/connection response here because
+       * it only exposes the first Bot through its compatibility field.
+       */
       const nextUsage = {
-        members:
-          result.usage?.members ?? 0,
-        channels: Math.max(
-          result.usage?.channels ?? 0,
-          activeChannelCount,
-        ),
+        members: result.usage?.members ?? 0,
+        channels: result.usage?.channels ?? 0,
       };
 
-      const nextResult: UsageResponse = {
+      setData({
         ...result,
-        connections: mergedConnections,
         usage: nextUsage,
-      };
-
-      setData(nextResult);
+      });
 
       onUsageChangedRef.current?.(
         nextUsage,
@@ -277,6 +225,7 @@ export function UsageManagementModal({
 
     setTab(initialTab);
     setNotice(null);
+    setMemberActionMenuId(null);
     void load();
   }, [
     open,
@@ -293,6 +242,11 @@ export function UsageManagementModal({
       event: KeyboardEvent,
     ) {
       if (event.key === "Escape") {
+        if (memberActionMenuId) {
+          setMemberActionMenuId(null);
+          return;
+        }
+
         onClose();
       }
     }
@@ -308,7 +262,47 @@ export function UsageManagementModal({
         onKeyDown,
       );
     };
-  }, [open, onClose]);
+  }, [
+    open,
+    onClose,
+    memberActionMenuId,
+  ]);
+
+  useEffect(() => {
+    if (!memberActionMenuId) {
+      return;
+    }
+
+    function closeMemberMenu(
+      event: MouseEvent,
+    ) {
+      const target =
+        event.target;
+
+      if (
+        target instanceof Element &&
+        target.closest(
+          "[data-member-access-menu]",
+        )
+      ) {
+        return;
+      }
+
+      setMemberActionMenuId(null);
+    }
+
+    document.addEventListener(
+      "mousedown",
+      closeMemberMenu,
+    );
+
+    return () => {
+      document.removeEventListener(
+        "mousedown",
+        closeMemberMenu,
+      );
+    };
+  }, [memberActionMenuId]);
 
   const members = data?.members ?? [];
   const connections =
@@ -318,8 +312,14 @@ export function UsageManagementModal({
     channels: 0,
   };
   const subscription = data?.subscription;
+  const businessId = data?.businessId ?? "";
+  const subscriptionId = subscription?.id ?? "";
+  const subscriptionLabel = shortSubscriptionId(subscriptionId);
+  const hasSafeMutationContext = Boolean(businessId && subscriptionId);
   const canManage =
-    data?.canManage === true;
+    data?.canManage === true && hasSafeMutationContext;
+  const currentMemberId =
+    data?.currentMemberId ?? "";
 
   const memberLimit =
     subscription?.member_limit ?? null;
@@ -348,9 +348,14 @@ export function UsageManagementModal({
           active: boolean;
         }
       | {
+          kind: "member-role";
+          id: string;
+          role: "owner" | "admin";
+        }
+      | {
           kind: "connection";
           id: string;
-          active: false;
+          active: boolean;
         },
   ) {
     setSavingId(body.id);
@@ -366,7 +371,11 @@ export function UsageManagementModal({
             "Content-Type":
               "application/json",
           },
-          body: JSON.stringify(body),
+          body: JSON.stringify({
+            ...body,
+            businessId,
+            subscriptionId,
+          }),
         },
       );
 
@@ -408,9 +417,12 @@ export function UsageManagementModal({
       return;
     }
 
-    if (member.role === "owner") {
+    if (
+      member.id === currentMemberId &&
+      member.is_active
+    ) {
       setError(
-        "The workspace owner always occupies one seat. Transfer ownership before deactivating an owner.",
+        "You cannot remove your own access from the subscription you are currently using.",
       );
       return;
     }
@@ -420,8 +432,8 @@ export function UsageManagementModal({
 
     const confirmed = window.confirm(
       nextActive
-        ? `Reactivate ${member.full_name}? This will use one active team-member seat.`
-        : `Deactivate ${member.full_name}? They will lose TENH workspace access, but their history and activity records will be kept.`,
+        ? `Restore ${member.full_name}'s access to ${subscriptionLabel}? This will use one active user seat in this subscription.`
+        : `Remove ${member.full_name}'s access from ${subscriptionLabel}? They will no longer be able to open this subscription or its Inbox. Their TENH account, history, and access to any other subscriptions will stay unchanged.`,
     );
 
     if (!confirmed) {
@@ -435,7 +447,66 @@ export function UsageManagementModal({
     });
   }
 
-  function disconnect(
+  function shareOwner(
+    member: Member,
+  ) {
+    if (!canManage) {
+      return;
+    }
+
+    if (!member.is_active) {
+      setError(
+        "Reactivate this user before sharing Owner access.",
+      );
+      return;
+    }
+
+    if (member.role === "owner") {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Share Owner access with ${member.full_name} on ${subscriptionLabel}? They will receive full Owner permissions for this subscription only, including billing, channel, user, and workspace management.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    void patch({
+      kind: "member-role",
+      id: member.id,
+      role: "owner",
+    });
+  }
+
+  function disableOwnerShare(
+    member: Member,
+  ) {
+    if (!canManage || member.id === currentMemberId) {
+      return;
+    }
+
+    if (member.role !== "owner") {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Disable Owner share for ${member.full_name} on ${subscriptionLabel}? They will keep access to this subscription as an Admin, but will no longer have Owner-level billing, subscription, or ownership permissions.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    void patch({
+      kind: "member-role",
+      id: member.id,
+      role: "admin",
+    });
+  }
+
+  function toggleChannel(
     connection: Connection,
   ) {
     if (!canManage) {
@@ -446,8 +517,13 @@ export function UsageManagementModal({
       connection.account_name ??
       "Connected channel";
 
+    const nextActive =
+      !connection.is_active;
+
     const confirmed = window.confirm(
-      `Disconnect ${name}? New events will stop for this channel. Existing TENH customers, conversations, messages, and history will be kept.`,
+      nextActive
+        ? `Enable ${name} on ${subscriptionLabel}? This channel will be available in Inbox again and will use one channel slot in this subscription.`
+        : `Disable ${name} on ${subscriptionLabel}? It will stop appearing as an available Inbox channel and will no longer use a channel slot. Existing TENH customer and message history will be kept.`,
     );
 
     if (!confirmed) {
@@ -457,7 +533,7 @@ export function UsageManagementModal({
     void patch({
       kind: "connection",
       id: connection.id,
-      active: false,
+      active: nextActive,
     });
   }
 
@@ -482,6 +558,9 @@ export function UsageManagementModal({
             <p className="mt-1 text-sm leading-6 text-slate-500">
               Active users consume user seats. Active customer channels consume channel slots.
             </p>
+            <p className="mt-2 text-xs font-semibold text-blue-700">
+              Managing subscription: {subscriptionLabel}
+            </p>
           </div>
 
           <button
@@ -495,7 +574,8 @@ export function UsageManagementModal({
         </div>
 
         <div className="border-b border-slate-200 px-6 sm:px-7">
-          <div className="flex gap-7">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex gap-7">
             <button
               type="button"
               onClick={() => setTab("connections")}
@@ -527,13 +607,21 @@ export function UsageManagementModal({
                 : ""}
               )
             </button>
+            </div>
+
           </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-6 sm:p-7">
-          {!canManage && !loading ? (
+          {!loading && !hasSafeMutationContext ? (
+            <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-800">
+              TENH cannot safely identify this subscription. Editing is locked until you reload the page and confirm the subscription ID.
+            </div>
+          ) : null}
+
+          {!canManage && hasSafeMutationContext && !loading ? (
             <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
-              Only the workspace owner can activate/deactivate users or disconnect channels. You can still review current usage.
+              Only workspace Owners can manage user access or disconnect channels. You can still review current usage.
             </div>
           ) : null}
 
@@ -561,7 +649,7 @@ export function UsageManagementModal({
                     Workspace channels
                   </p>
                   <p className="mt-1 text-sm text-slate-600">
-                    Each connected account uses one workspace channel slot. Multiple TENH users can work from the same connected channel without using another slot.
+                    Each enabled channel uses one workspace channel slot. Owners can disable channels they are not using and enable them again later without deleting TENH history.
                   </p>
                 </div>
 
@@ -605,7 +693,7 @@ export function UsageManagementModal({
                                 <p className="truncate font-semibold text-slate-900">
                                   {name}
                                 </p>
-                                <StatusPill
+                                <ChannelStatusPill
                                   active={
                                     connection.is_active
                                   }
@@ -625,42 +713,59 @@ export function UsageManagementModal({
                           </div>
 
                           <div className="flex shrink-0 items-center gap-2">
-                            {connection.platform ===
-                            "telegram" ? (
-                              <Link
-                                href="/dashboard/integrations"
-                                className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
-                              >
-                                Manage channel
-                              </Link>
-                            ) : connection.is_active ? (
+                            {canManage ? (
                               <button
                                 type="button"
                                 disabled={
-                                  !canManage ||
                                   savingId ===
-                                    connection.id
+                                  connection.id
                                 }
                                 onClick={() =>
-                                  disconnect(
+                                  toggleChannel(
                                     connection,
                                   )
                                 }
-                                className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                className={`flex h-10 w-10 items-center justify-center rounded-xl border transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                                  connection.is_active
+                                    ? "border-red-200 bg-white text-red-600 hover:bg-red-50"
+                                    : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                }`}
+                                aria-label={
+                                  connection.is_active
+                                    ? `Disable ${name}`
+                                    : `Enable ${name}`
+                                }
+                                title={
+                                  connection.is_active
+                                    ? "Disable channel"
+                                    : "Enable channel"
+                                }
                               >
                                 {savingId ===
-                                connection.id
-                                  ? "Disconnecting..."
-                                  : "Disconnect"}
+                                connection.id ? (
+                                  <span className="text-xs font-bold">…</span>
+                                ) : (
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    className="h-5 w-5"
+                                    aria-hidden="true"
+                                  >
+                                    <path
+                                      d="M12 2v10"
+                                      strokeLinecap="round"
+                                    />
+                                    <path
+                                      d="M6.2 5.8a8 8 0 1 0 11.6 0"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                )}
                               </button>
-                            ) : (
-                              <Link
-                                href="/dashboard/integrations"
-                                className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
-                              >
-                                Manage channel
-                              </Link>
-                            )}
+                            ) : null}
                           </div>
                         </div>
                       );
@@ -677,7 +782,7 @@ export function UsageManagementModal({
                     Active team-member seats
                   </p>
                   <p className="mt-1 text-sm text-slate-600">
-                    Deactivated members keep their TENH history but cannot access the workspace and do not consume an active seat.
+                    Users without access keep their TENH history but cannot open this subscription or Inbox and do not consume an active seat.
                   </p>
                 </div>
 
@@ -738,33 +843,102 @@ export function UsageManagementModal({
                         </div>
                       </div>
 
-                      <div className="flex shrink-0 items-center gap-2">
-                        {isOwner ? (
+                      <div className="relative flex shrink-0 items-center justify-end" data-member-access-menu>
+                        {isCurrent && active ? (
                           <span className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-500">
-                            Always active
+                            Current access
                           </span>
                         ) : (
-                          <button
-                            type="button"
-                            disabled={
-                              !canManage ||
-                              savingId === member.id
-                            }
-                            onClick={() =>
-                              toggleMember(member)
-                            }
-                            className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                              active
-                                ? "border-red-200 bg-white text-red-600 hover:bg-red-50"
-                                : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                            }`}
-                          >
-                            {savingId === member.id
-                              ? "Saving..."
-                              : active
-                                ? "Deactivate"
-                                : "Reactivate"}
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              disabled={
+                                !canManage ||
+                                savingId === member.id
+                              }
+                              onClick={() =>
+                                setMemberActionMenuId(
+                                  (current) =>
+                                    current === member.id
+                                      ? null
+                                      : member.id,
+                                )
+                              }
+                              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                              aria-label={`Edit ${member.full_name} access`}
+                              title="Edit access"
+                            >
+                              {savingId === member.id ? (
+                                <span className="text-xs font-semibold">…</span>
+                              ) : (
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  className="h-4 w-4"
+                                  aria-hidden="true"
+                                >
+                                  <path
+                                    d="M12 20h9"
+                                    strokeLinecap="round"
+                                  />
+                                  <path
+                                    d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              )}
+                            </button>
+
+                            {memberActionMenuId === member.id ? (
+                              <div className="absolute bottom-12 right-0 z-30 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                                {active && isOwner ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setMemberActionMenuId(null);
+                                      disableOwnerShare(member);
+                                    }}
+                                    className="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-amber-700 transition hover:bg-amber-50"
+                                  >
+                                    Disable Owner Share
+                                  </button>
+                                ) : null}
+
+                                {active && !isOwner ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setMemberActionMenuId(null);
+                                      shareOwner(member);
+                                    }}
+                                    className="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-blue-700 transition hover:bg-blue-50"
+                                  >
+                                    Share Owner
+                                  </button>
+                                ) : null}
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setMemberActionMenuId(null);
+                                    toggleMember(member);
+                                  }}
+                                  className={`flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm font-semibold transition ${
+                                    active
+                                      ? "text-red-600 hover:bg-red-50"
+                                      : "text-emerald-700 hover:bg-emerald-50"
+                                  }`}
+                                >
+                                  {active
+                                    ? "Remove access"
+                                    : "Restore access"}
+                                </button>
+                              </div>
+                            ) : null}
+                          </>
                         )}
                       </div>
                     </div>
@@ -777,13 +951,14 @@ export function UsageManagementModal({
 
         <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4 text-xs leading-5 text-slate-500 sm:px-7">
           <p>
-            Disconnecting a channel or deactivating a user does not delete TENH customer/message history.
+            Removing a user's access only removes them from this subscription. Their TENH account, history, and access to other subscriptions stay unchanged.
           </p>
           <p>
-            Reconnecting a channel uses its authorization flow so TENH can refresh access and event subscriptions.
+            Disabling a channel frees its slot and blocks that channel from Inbox while keeping existing TENH customer and message history.
           </p>
         </div>
       </div>
+
     </div>
   );
 }

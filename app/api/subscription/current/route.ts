@@ -21,6 +21,11 @@ type SubscriptionRow = {
   storage_limit_bytes: number | null;
   monthly_message_limit: number | null;
   payment_provider: string | null;
+  billing_cycle: string | null;
+  last_paid_amount: number | null;
+  last_paid_currency: string | null;
+  pricing_version: string | null;
+  pricing_snapshot: Record<string, unknown> | null;
   suspended_at: string | null;
   created_at: string;
   updated_at: string;
@@ -77,6 +82,11 @@ export async function GET() {
             "storage_limit_bytes",
             "monthly_message_limit",
             "payment_provider",
+            "billing_cycle",
+            "last_paid_amount",
+            "last_paid_currency",
+            "pricing_version",
+            "pricing_snapshot",
             "suspended_at",
             "created_at",
             "updated_at",
@@ -161,6 +171,8 @@ export async function GET() {
     return noStoreJson({
       success: true,
       subscription,
+      currentMemberRole: member.role,
+      currentBusinessId: member.business_id,
       usage: {
         members:
           membersResult.count ?? 0,

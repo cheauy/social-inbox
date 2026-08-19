@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useState,
   type FormEvent,
 } from "react";
@@ -67,8 +68,22 @@ export function LoginForm() {
   const searchParams =
     useSearchParams();
 
+  // Chromium extensions/password managers can inject attributes such as
+  // fdprocessedid before React hydrates the server HTML. Render the actual
+  // controls only after hydration so extension DOM mutations cannot create a
+  // server/client markup mismatch on the login screen.
+  const [mounted, setMounted] =
+    useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const callbackError =
     searchParams.get("error");
+
+  const accountDeleted =
+    searchParams.get("accountDeleted") === "1";
 
   const [email, setEmail] =
     useState("");
@@ -238,8 +253,29 @@ function EyeOffIcon() {
         );
       }
 
+      const provisionResponse = await fetch(
+        "/api/onboarding/ensure-workspace",
+        {
+          method: "POST",
+          cache: "no-store",
+        },
+      );
+
+      const provisionPayload = (await provisionResponse.json().catch(() => null)) as
+        | { success?: boolean; error?: string; trialGranted?: boolean | null }
+        | null;
+
+      if (!provisionResponse.ok || !provisionPayload?.success) {
+        throw new Error(
+          provisionPayload?.error ||
+            "Unable to prepare your TENH workspace.",
+        );
+      }
+
       window.location.assign(
-        "/dashboard/inbox",
+        provisionPayload.trialGranted === false
+          ? "/dashboard/subscription?trial=not-eligible"
+          : "/dashboard/inbox",
       );
     } catch (loginError) {
       setError(
@@ -252,8 +288,34 @@ function EyeOffIcon() {
     }
   }
 
+  if (!mounted) {
+    return (
+      <div
+        className="mt-8 space-y-3"
+        aria-hidden="true"
+      >
+        <div className="h-12 rounded-xl bg-slate-100" />
+        <div className="h-12 rounded-xl bg-slate-100" />
+        <div className="my-6 h-px bg-slate-200" />
+        <div className="h-12 rounded-xl bg-slate-100" />
+        <div className="h-12 rounded-xl bg-slate-100" />
+      </div>
+    );
+  }
+
   return (
     <div className="mt-8">
+      {accountDeleted ? (
+        <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <p className="font-bold">
+            Account deleted
+          </p>
+          <p className="mt-1 leading-6">
+            Your TENH login and personal profile were permanently deleted, and your workspace access was revoked.
+          </p>
+        </div>
+      ) : null}
+
       <div className="space-y-3">
         <button
           type="button"

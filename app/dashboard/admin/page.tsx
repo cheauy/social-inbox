@@ -4,6 +4,9 @@ import {
   requireTenhAdminPage,
 } from "@/lib/admin/tenh-admin-auth";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type AdminPageProps = {
   searchParams: Promise<{
     tab?: string | string[];
@@ -16,6 +19,7 @@ export type AdminTab =
   | "manual-payments"
   | "customer-reports"
   | "announcements"
+  | "channel-health"
   | "security";
 
 function resolveTab(
@@ -28,6 +32,7 @@ function resolveTab(
     tab === "manual-payments" ||
     tab === "customer-reports" ||
     tab === "announcements" ||
+    tab === "channel-health" ||
     tab === "security"
   ) {
     return tab;

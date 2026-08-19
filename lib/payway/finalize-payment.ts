@@ -58,6 +58,35 @@ export async function verifyAndFinalizePayWayTransaction(
 
   const billingTransaction = transaction as BillingTransaction;
 
+  const transactionMetadata =
+    billingTransaction.metadata &&
+    typeof billingTransaction.metadata === "object" &&
+    !Array.isArray(billingTransaction.metadata)
+      ? billingTransaction.metadata
+      : {};
+
+  /*
+   * Account deletion can intentionally cancel a pending purchase before the
+   * Auth user is removed. Never let a late PayWay callback resurrect a
+   * workspace or purchase that TENH explicitly cancelled for account deletion.
+   */
+  if (
+    billingTransaction.status === "cancelled" &&
+    (
+      transactionMetadata.account_user_deleted === true ||
+      transactionMetadata.account_owner_deleted === true
+    )
+  ) {
+    return {
+      found: true as const,
+      paymentState: "cancelled" as const,
+      transactionId,
+      businessId: billingTransaction.business_id,
+      providerStatus: "ACCOUNT_DELETED",
+      providerStatusCode: null,
+    };
+  }
+
   if (billingTransaction.status === "approved") {
     return {
       found: true as const,
@@ -84,7 +113,7 @@ export async function verifyAndFinalizePayWayTransaction(
     typeof providerData.apv === "string" ? providerData.apv.trim() : null;
 
   const metadata = {
-    ...(billingTransaction.metadata ?? {}),
+    ...transactionMetadata,
     payway_last_verification: {
       source,
       checked_at: new Date().toISOString(),

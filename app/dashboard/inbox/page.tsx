@@ -1,5 +1,8 @@
 import { InboxView } from "@/components/inbox/inbox-view";
-import { getConversations } from "@/lib/inbox/get-conversations";
+import {
+  getConversations,
+  getInboxConversationScope,
+} from "@/lib/inbox/get-conversations";
 import { getMessages } from "@/lib/inbox/get-messages";
 import { getTeamMembers } from "@/lib/inbox/get-team-members";
 
@@ -40,11 +43,16 @@ export default async function InboxPage({
 }: InboxPageProps) {
   const params = await searchParams;
 
+  const inboxScope =
+    await getInboxConversationScope();
+
   const [
     allConversations,
     teamMembers,
   ] = await Promise.all([
-    getConversations(),
+    getConversations(
+      inboxScope.accessibleBusinessIds,
+    ),
     getTeamMembers(),
   ]);
 
@@ -202,6 +210,12 @@ export default async function InboxPage({
           activeStatus={activeStatus}
           statusCounts={statusCounts}
           teamMembers={teamMembers}
+          currentBusinessId={
+            inboxScope.currentBusinessId
+          }
+          accessibleBusinessIds={
+            inboxScope.accessibleBusinessIds
+          }
         />
       </div>
     </div>

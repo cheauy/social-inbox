@@ -1,10 +1,12 @@
 import "server-only";
 
+import { cookies } from "next/headers";
 import type { User } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { ensureUserWorkspace } from "@/lib/onboarding/ensure-user-workspace";
+
+export const TENH_ACTIVE_BUSINESS_COOKIE = "tenh_active_business_id";
 
 export type AuthenticatedMember = {
   id: string;
@@ -17,16 +19,28 @@ export type AuthenticatedMember = {
   is_active: boolean;
 };
 
+export type WorkspaceAccessNotice = {
+  type: "workspace_access_removed";
+  businessId: string;
+};
+
+export type WorkspaceAccessErrorCode =
+  | "WORKSPACE_ACCESS_REMOVED"
+  | "WORKSPACE_SETUP_REQUIRED";
+
 type GetCurrentMemberResult =
   | {
       success: true;
       user: User;
       member: AuthenticatedMember;
+      accessNotice?: WorkspaceAccessNotice;
     }
   | {
       success: false;
       status: 401 | 403 | 500;
       error: string;
+      code?: WorkspaceAccessErrorCode;
+      businessId?: string;
     };
 
 const MEMBER_SELECT = `
@@ -45,151 +59,112 @@ function normalizeEmail(value: string | null | undefined) {
 }
 
 function reviewerDisplayName(user: User) {
-  const metadata = user.user_metadata as
-    | Record<string, unknown>
-    | undefined;
-
-  const candidates = [
-    metadata?.full_name,
-    metadata?.name,
-    metadata?.display_name,
-  ];
+  const metadata = user.user_metadata as Record<string, unknown> | undefined;
+  const candidates = [metadata?.full_name, metadata?.name, metadata?.display_name];
 
   for (const candidate of candidates) {
-    if (
-      typeof candidate === "string" &&
-      candidate.trim().length > 0
-    ) {
+    if (typeof candidate === "string" && candidate.trim()) {
       return candidate.trim().slice(0, 120);
     }
   }
 
-  const email = normalizeEmail(user.email);
-  const emailName = email.split("@")[0]?.trim();
-
-  if (emailName) {
-    return emailName.slice(0, 120);
-  }
-
-  return "Meta Reviewer";
+  return normalizeEmail(user.email).split("@")[0]?.slice(0, 120) || "Meta Reviewer";
 }
 
-async function loadActiveMember(userId: string) {
+async function loadActiveMembers(userId: string) {
   return supabaseAdmin
     .from("team_members")
     .select(MEMBER_SELECT)
     .eq("user_id", userId)
     .eq("is_active", true)
-    .maybeSingle();
+    .order("created_at", { ascending: true });
 }
 
-/**
- * TEMPORARY META APP REVIEW BRIDGE
- * --------------------------------
- * This does NOT turn normal signups into workspaces.
- * It only provisions the ONE authenticated reviewer account configured with:
- *
- *   TENH_META_REVIEWER_EMAIL
- *   TENH_META_REVIEW_BUSINESS_ID
- *
- * Remove those environment variables after Meta App Review, or keep this helper
- * dormant. Production signup/trial/subscription onboarding should be implemented
- * separately so normal customers receive their own isolated business workspace.
- */
-async function provisionMetaReviewer(
-  user: User,
-): Promise<AuthenticatedMember | null> {
-  const configuredEmail = normalizeEmail(
-    process.env.TENH_META_REVIEWER_EMAIL,
-  );
-  const configuredBusinessId =
-    process.env.TENH_META_REVIEW_BUSINESS_ID?.trim() ?? "";
+async function hasRemovedWorkspaceAccess(
+  userId: string,
+  businessId: string,
+) {
+  if (!businessId) {
+    return false;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("team_members")
+    .select("id,is_active")
+    .eq("user_id", userId)
+    .eq("business_id", businessId)
+    .maybeSingle();
+
+  if (error) {
+    console.error(
+      "Unable to verify removed workspace access:",
+      error,
+    );
+    return false;
+  }
+
+  return Boolean(data && data.is_active === false);
+}
+
+function chooseMember(
+  members: AuthenticatedMember[],
+) {
+  // Only choose a default when there is no saved workspace selection.
+  return members.find((member) => member.role === "owner") ?? members[0] ?? null;
+}
+
+/** Temporary Meta App Review bridge. It stays isolated to the configured review workspace. */
+async function provisionMetaReviewer(user: User): Promise<AuthenticatedMember | null> {
+  const configuredEmail = normalizeEmail(process.env.TENH_META_REVIEWER_EMAIL);
+  const configuredBusinessId = process.env.TENH_META_REVIEW_BUSINESS_ID?.trim() ?? "";
   const userEmail = normalizeEmail(user.email);
 
-  if (
-    !configuredEmail ||
-    !configuredBusinessId ||
-    !userEmail ||
-    userEmail !== configuredEmail
-  ) {
+  if (!configuredEmail || !configuredBusinessId || !userEmail || userEmail !== configuredEmail) {
     return null;
   }
 
-  // Never create a reviewer membership for an invalid/nonexistent workspace.
-  const {
-    data: business,
-    error: businessError,
-  } = await supabaseAdmin
+  const { data: business, error: businessError } = await supabaseAdmin
     .from("businesses")
     .select("id")
     .eq("id", configuredBusinessId)
     .maybeSingle();
 
-  if (businessError) {
-    console.error(
-      "Unable to verify Meta review workspace:",
-      businessError,
-    );
+  if (businessError || !business) {
+    console.error("Unable to verify Meta review workspace:", businessError);
     return null;
   }
 
-  if (!business) {
-    console.error(
-      "TENH_META_REVIEW_BUSINESS_ID does not match an existing business.",
-    );
-    return null;
-  }
-
-  // If this reviewer user already has a team_members row but it is inactive,
-  // reactivate only this explicitly configured reviewer account.
-  const {
-    data: existingMember,
-    error: existingMemberError,
-  } = await supabaseAdmin
+  const { data: exactMember, error: exactMemberError } = await supabaseAdmin
     .from("team_members")
     .select(MEMBER_SELECT)
     .eq("user_id", user.id)
+    .eq("business_id", configuredBusinessId)
     .maybeSingle();
 
-  if (existingMemberError) {
-    console.error(
-      "Unable to inspect Meta reviewer membership:",
-      existingMemberError,
-    );
+  if (exactMemberError) {
+    console.error("Unable to inspect Meta reviewer membership:", exactMemberError);
     return null;
   }
 
-  if (existingMember) {
-    const {
-      data: reactivated,
-      error: reactivateError,
-    } = await supabaseAdmin
+  if (exactMember) {
+    if (exactMember.is_active) return exactMember as AuthenticatedMember;
+
+    const { data: reactivated, error: reactivateError } = await supabaseAdmin
       .from("team_members")
-      .update({
-        business_id: configuredBusinessId,
-        email: userEmail,
-        role: "admin",
-        is_active: true,
-      })
-      .eq("id", existingMember.id)
+      .update({ email: userEmail, role: "admin", is_active: true })
+      .eq("id", exactMember.id)
       .select(MEMBER_SELECT)
       .single();
 
     if (reactivateError || !reactivated) {
-      console.error(
-        "Unable to reactivate Meta reviewer membership:",
-        reactivateError,
-      );
+      console.error("Unable to reactivate Meta reviewer membership:", reactivateError);
       return null;
     }
 
     return reactivated as AuthenticatedMember;
   }
 
-  const {
-    data: createdMember,
-    error: createMemberError,
-  } = await supabaseAdmin
+  const { data: createdMember, error: createMemberError } = await supabaseAdmin
     .from("team_members")
     .insert({
       user_id: user.id,
@@ -204,45 +179,89 @@ async function provisionMetaReviewer(
     .single();
 
   if (createMemberError || !createdMember) {
-    console.error(
-      "Unable to create Meta reviewer membership:",
-      createMemberError,
-    );
+    console.error("Unable to create Meta reviewer membership:", createMemberError);
     return null;
   }
 
   return createdMember as AuthenticatedMember;
 }
 
-export async function getCurrentMember(): Promise<
-  GetCurrentMemberResult
-> {
+export async function getCurrentMember(): Promise<GetCurrentMemberResult> {
   const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    return {
-      success: false,
-      status: 401,
-      error: "Unauthorized.",
-    };
+    return { success: false, status: 401, error: "Unauthorized." };
   }
 
-  const {
-    data,
-    error,
-  } = await loadActiveMember(user.id);
+  const cookieStore = await cookies();
+  const requestedBusinessId =
+    cookieStore
+      .get(TENH_ACTIVE_BUSINESS_COOKIE)
+      ?.value?.trim() ?? "";
+
+  /*
+   * Never silently move a user to another subscription.
+   *
+   * If a saved workspace exists, TENH must honor that selection. When the
+   * membership was removed or deactivated, return an explicit 403 instead
+   * of choosing another active membership behind the user's back.
+   */
+  if (requestedBusinessId) {
+    const {
+      data: requestedMember,
+      error: requestedMemberError,
+    } = await supabaseAdmin
+      .from("team_members")
+      .select(MEMBER_SELECT)
+      .eq("user_id", user.id)
+      .eq("business_id", requestedBusinessId)
+      .maybeSingle();
+
+    if (requestedMemberError) {
+      console.error(
+        "Unable to verify selected workspace membership:",
+        requestedMemberError,
+      );
+
+      return {
+        success: false,
+        status: 500,
+        error: "Unable to verify your selected TENH subscription.",
+      };
+    }
+
+    if (requestedMember) {
+      const member = requestedMember as AuthenticatedMember;
+
+      if (member.is_active) {
+        return {
+          success: true,
+          user,
+          member,
+        };
+      }
+
+      return {
+        success: false,
+        status: 403,
+        code: "WORKSPACE_ACCESS_REMOVED",
+        businessId: requestedBusinessId,
+        error:
+          "You no longer have access to this subscription. An Owner may have removed your access. Your TENH account and any other subscriptions are unchanged.",
+      };
+    }
+
+    // No membership row exists for the saved workspace. Treat this as a
+    // stale selection (for example another account previously used this
+    // browser), not as proof that an Owner removed access. Continue below
+    // and resolve one of this user's own active memberships.
+  }
+
+  const { data, error } = await loadActiveMembers(user.id);
 
   if (error) {
-    console.error(
-      "Unable to load current team member:",
-      error,
-    );
-
+    console.error("Unable to load current team memberships:", error);
     return {
       success: false,
       status: 500,
@@ -250,42 +269,31 @@ export async function getCurrentMember(): Promise<
     };
   }
 
-  if (data) {
-    return {
-      success: true,
-      user,
-      member: data as AuthenticatedMember,
-    };
+  const activeMembers = (data ?? []) as AuthenticatedMember[];
+
+  if (activeMembers.length > 0) {
+    const member = chooseMember(activeMembers);
+
+    if (member) {
+      return {
+        success: true,
+        user,
+        member,
+      };
+    }
   }
 
-  // Keep the dedicated Meta App Review bridge FIRST so the configured reviewer
-  // stays attached to the existing review workspace instead of receiving a new trial workspace.
   const reviewerMember = await provisionMetaReviewer(user);
-
   if (reviewerMember) {
-    return {
-      success: true,
-      user,
-      member: reviewerMember,
-    };
-  }
-
-  // V3.8.1 production onboarding. The helper delegates to one atomic PostgreSQL
-  // function and does not embed subscription/business creation logic in this auth file.
-  const onboardedMember = await ensureUserWorkspace(user);
-
-  if (onboardedMember) {
-    return {
-      success: true,
-      user,
-      member: onboardedMember,
-    };
+    return { success: true, user, member: reviewerMember };
   }
 
   return {
     success: false,
     status: 403,
+    code: "WORKSPACE_SETUP_REQUIRED",
+    businessId: requestedBusinessId || undefined,
     error:
-      "Your TENH workspace is unavailable or your team access is inactive.",
+      "TENH could not find an active workspace for this account yet. If this is a new account, setup will be completed safely before Inbox opens.",
   };
 }

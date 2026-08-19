@@ -103,20 +103,43 @@ export function VerifyEmailForm() {
         );
       }
 
-     sessionStorage.removeItem(
-  "tenh_verification_email",
-);
+      const provisionResponse = await fetch(
+        "/api/onboarding/ensure-workspace",
+        {
+          method: "POST",
+          cache: "no-store",
+        },
+      );
 
-setVerified(true);
-setMessage(
-  "Email verified successfully.",
-);
+      const provisionPayload = (await provisionResponse.json().catch(() => null)) as
+        | { success?: boolean; error?: string; trialGranted?: boolean | null }
+        | null;
 
-window.setTimeout(() => {
-  window.location.assign(
-    "/dashboard/inbox",
-  );
-}, 1800);
+      if (!provisionResponse.ok || !provisionPayload?.success) {
+        throw new Error(
+          provisionPayload?.error ||
+            "Email verified, but TENH could not prepare your workspace.",
+        );
+      }
+
+      sessionStorage.removeItem(
+        "tenh_verification_email",
+      );
+
+      setVerified(true);
+      setMessage(
+        provisionPayload.trialGranted === false
+          ? "Email verified. This account is not eligible for another free trial; choose a paid subscription to continue."
+          : "Email verified successfully.",
+      );
+
+      window.setTimeout(() => {
+        window.location.assign(
+          provisionPayload.trialGranted === false
+            ? "/dashboard/subscription?trial=not-eligible"
+            : "/dashboard/inbox",
+        );
+      }, 1800);
     } catch (verifyError) {
       setError(
         verifyError instanceof Error

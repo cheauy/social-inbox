@@ -2,6 +2,7 @@
 
 import Script from "next/script";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useEffect,
   useMemo,
@@ -13,6 +14,7 @@ import {
   TENH_BILLING_CYCLES,
   TENH_PLANS,
   calculatePlanTotalCents,
+  calculateCustomTotalCents,
   formatUsdFromCents,
   type BillingCycle,
   type PlanCode,
@@ -66,7 +68,36 @@ type SubscriptionPaymentViewProps = {
   billingCycle: BillingCycle;
   initialPayWayReturn?: string | null;
   initialTransactionId?: string | null;
+  customConnections?: number | null;
+  customUsers?: number | null;
+  renewSame?: boolean;
+  renewalTotalCents?: number | null;
+  upgradeFromPlanCode?: PlanCode | null;
+  upgradeTotalCents?: number | null;
+  customUpgrade?: boolean;
+  customUpgradeTotalCents?: number | null;
+  customUpgradeCurrentPeriodEnd?: string | null;
+  customUpgradeNewPeriodEnd?: string | null;
+  purchaseBusinessId?: string | null;
 };
+
+function formatSubscriptionDate(value: string | null | undefined) {
+  if (!value) {
+    return "—";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const year = date.getUTCFullYear();
+
+  return `${day}/${month}/${year}`;
+}
 
 function statusPanelClasses(
   state: PayWayPaymentState,
@@ -91,7 +122,7 @@ function payWayStateLabel(
 ) {
   switch (state) {
     case "approved":
-      return "Payment approved — activating your workspace";
+      return "Payment approved";
     case "declined":
       return "Payment declined";
     case "cancelled":
@@ -112,10 +143,48 @@ export function SubscriptionPaymentView({
   billingCycle,
   initialPayWayReturn = null,
   initialTransactionId = null,
+  customConnections = null,
+  customUsers = null,
+  renewSame = false,
+  renewalTotalCents = null,
+  upgradeFromPlanCode = null,
+  upgradeTotalCents = null,
+  customUpgrade = false,
+  customUpgradeTotalCents = null,
+  customUpgradeCurrentPeriodEnd = null,
+  customUpgradeNewPeriodEnd = null,
+  purchaseBusinessId = null,
 }: SubscriptionPaymentViewProps) {
+  const router = useRouter();
+
+  async function returnToSubscription() {
+    try {
+      await fetch("/api/workspaces/restore-purchase-origin", {
+        method: "POST",
+        cache: "no-store",
+      });
+    } catch {
+      // Navigation still works if there is no purchase-origin context.
+    }
+
+    router.push("/dashboard/subscription");
+    router.refresh();
+  }
+
   const plan = useMemo(
-    () => TENH_PLANS.find((item) => item.id === planCode) ?? null,
-    [planCode],
+    () =>
+      planCode === "custom" &&
+      customConnections !== null &&
+      customUsers !== null
+        ? {
+            id: "custom" as const,
+            name: "Custom",
+            description: "Custom TENH subscription",
+            channels: customConnections,
+            users: customUsers,
+          }
+        : TENH_PLANS.find((item) => item.id === planCode) ?? null,
+    [planCode, customConnections, customUsers],
   );
   const cycle = useMemo(
     () =>
@@ -125,8 +194,36 @@ export function SubscriptionPaymentView({
     [billingCycle],
   );
   const totalCents = useMemo(
-    () => calculatePlanTotalCents(planCode, billingCycle),
-    [planCode, billingCycle],
+    () =>
+      customUpgradeTotalCents !== null &&
+      Number.isFinite(customUpgradeTotalCents)
+        ? customUpgradeTotalCents
+        : upgradeTotalCents !== null &&
+      Number.isFinite(upgradeTotalCents)
+        ? upgradeTotalCents
+        : renewSame &&
+            renewalTotalCents !== null &&
+            Number.isFinite(renewalTotalCents)
+          ? renewalTotalCents
+          : planCode === "custom" &&
+            customConnections !== null &&
+            customUsers !== null
+          ? calculateCustomTotalCents(
+              customConnections,
+              customUsers,
+              billingCycle,
+            )
+          : calculatePlanTotalCents(planCode, billingCycle),
+    [
+      planCode,
+      billingCycle,
+      customConnections,
+      customUsers,
+      renewSame,
+      renewalTotalCents,
+      upgradeTotalCents,
+      customUpgradeTotalCents,
+    ],
   );
 
   const [checkoutMethod, setCheckoutMethod] =
@@ -168,6 +265,38 @@ export function SubscriptionPaymentView({
     useState<File | null>(null);
   const [manualQrPreviewOpen, setManualQrPreviewOpen] =
     useState(false);
+
+  useEffect(() => {
+    if (initialPayWayReturn !== "cancelled") return;
+
+    let cancelled = false;
+
+    async function finalizeCancelledReturn() {
+      try {
+        await fetch("/api/workspaces/restore-purchase-origin", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            transactionId: initialTransactionId ?? "",
+          }),
+        });
+      } finally {
+        if (!cancelled) {
+          window.location.replace(
+            "/dashboard/subscription?payway=cancelled",
+          );
+        }
+      }
+    }
+
+    void finalizeCancelledReturn();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialPayWayReturn, initialTransactionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -372,12 +501,15 @@ export function SubscriptionPaymentView({
         setPayWayStatusText(result.providerStatus ?? null);
 
         if (nextState === "approved") {
+          /*
+           * V3.11.31.31 — keep the official ABA PayWay success popup open.
+           *
+           * Do NOT force-navigate TENH here. PayWay owns its success modal and
+           * the customer decides when to close it, click outside it, download
+           * the PayWay receipt, or use PayWay's Continue Shopping action.
+           * TENH has already verified + activated the payment server-side.
+           */
           setCheckoutError(null);
-          window.setTimeout(() => {
-            window.location.assign(
-              `/dashboard/subscription?payway=approved&tran_id=${encodeURIComponent(transactionId)}`,
-            );
-          }, 900);
           return;
         }
 
@@ -448,7 +580,13 @@ export function SubscriptionPaymentView({
           body: JSON.stringify({
             planCode,
             billingCycle,
+            renewSame,
+            customUpgrade,
+            ...(planCode === "custom"
+              ? { connections: customConnections, users: customUsers }
+              : {}),
             paymentMethod: "abapay_khqr",
+            ...(purchaseBusinessId ? { purchaseBusinessId } : {}),
           }),
         },
       );
@@ -457,6 +595,7 @@ export function SubscriptionPaymentView({
       let result: {
         success?: boolean;
         error?: string;
+        details?: string;
         checkoutUrl?: string;
         transactionId?: string;
         fields?: Record<string, string>;
@@ -480,7 +619,12 @@ export function SubscriptionPaymentView({
         !result.fields
       ) {
         throw new Error(
-          result.error ?? "Unable to start ABA PayWay checkout.",
+          [
+            result.error ?? "Unable to start ABA PayWay checkout.",
+            result.details ? `Database: ${result.details}` : null,
+          ]
+            .filter(Boolean)
+            .join("\n"),
         );
       }
 
@@ -561,6 +705,11 @@ export function SubscriptionPaymentView({
             action: "prepare-upload",
             planCode,
             billingCycle,
+            renewSame,
+            customUpgrade,
+            ...(planCode === "custom"
+              ? { connections: customConnections, users: customUsers }
+              : {}),
             fileName: manualProof.name,
             mimeType: manualProof.type,
             sizeBytes: manualProof.size,
@@ -621,6 +770,11 @@ export function SubscriptionPaymentView({
             requestId: prepareResult.requestId,
             planCode,
             billingCycle,
+            renewSame,
+            customUpgrade,
+            ...(planCode === "custom"
+              ? { connections: customConnections, users: customUsers }
+              : {}),
             customerNote: manualCustomerNote.trim(),
             fileName: manualProof.name,
             mimeType: manualProof.type,
@@ -633,6 +787,7 @@ export function SubscriptionPaymentView({
       const result = (await finalizeResponse.json()) as {
         success?: boolean;
         error?: string;
+        details?: string;
         request?: ManualPaymentRequest;
       };
 
@@ -642,8 +797,13 @@ export function SubscriptionPaymentView({
         !result.request
       ) {
         throw new Error(
-          result.error ??
-            "Unable to submit manual payment proof.",
+          [
+            result.error ??
+              "Unable to submit manual payment proof.",
+            result.details ? `Database: ${result.details}` : null,
+          ]
+            .filter(Boolean)
+            .join("\n"),
         );
       }
 
@@ -727,18 +887,19 @@ export function SubscriptionPaymentView({
       <div className="mx-auto w-full max-w-6xl">
         <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <Link
-              href="/dashboard/subscription"
+            <button
+              type="button"
+              onClick={() => void returnToSubscription()}
               className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-blue-600"
             >
               <span aria-hidden="true">←</span>
               Back to plans
-            </Link>
+            </button>
             <p className="mt-4 text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
               Secure payment
             </p>
             <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-              Complete your subscription
+              {customUpgrade || upgradeTotalCents !== null ? "Complete your upgrade" : "Complete your subscription"}
             </h1>
             <p className="mt-2 text-sm leading-6 text-slate-500">
               Choose how you want to pay. TENH verifies the selected plan and amount on the server before activation.
@@ -771,17 +932,27 @@ export function SubscriptionPaymentView({
                 <div className="mt-6 border-t border-white/10 pt-5">
                   <div className="flex items-end justify-between gap-4">
                     <p className="text-sm font-medium text-blue-100/75">
-                      Total to pay
+                      {customUpgrade || upgradeTotalCents !== null ? "Upgrade price" : "Total to pay"}
                     </p>
                     <p className="text-3xl font-black tracking-tight">
                       {formatUsdFromCents(totalCents)}
                     </p>
                   </div>
                   <p className="mt-2 text-right text-xs text-blue-100/65">
-                    USD · Automatically calculated from your selected package
+                    {upgradeTotalCents !== null
+                      ? "USD · You pay only the difference for this prepaid period"
+                      : "USD · Automatically calculated from your selected package"}
                   </p>
                 </div>
               </div>
+
+            
+
+              {upgradeTotalCents !== null && upgradeFromPlanCode ? (
+                <div className="mt-4 rounded-2xl border border-blue-300/20 bg-blue-400/10 p-4 text-sm text-blue-100">
+                  Upgrade keeps this subscription ID and starts the selected higher-plan period after approved payment.
+                </div>
+              ) : null}
 
               <dl className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
                 <div className="rounded-2xl border border-white/15 bg-white/[0.08] p-4">
@@ -802,12 +973,13 @@ export function SubscriptionPaymentView({
                 </div>
               </dl>
 
-              <Link
-                href="/dashboard/subscription"
+              <button
+                type="button"
+                onClick={() => void returnToSubscription()}
                 className="mt-5 inline-flex text-sm font-semibold text-blue-300 hover:text-blue-200"
               >
                 Change package
-              </Link>
+              </button>
 
               {checkoutMethod === "manual" ? (
                 <div className="mt-7 border-t border-white/15 pt-6">
@@ -863,7 +1035,7 @@ export function SubscriptionPaymentView({
                 Payment method
               </p>
               <p className="mt-1 text-sm text-slate-500">
-                Select ABA Pay/KHQR or submit a manual bank-transfer receipt.
+                Select ABA KHQR or submit a manual bank-transfer receipt.
               </p>
 
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -879,21 +1051,18 @@ export function SubscriptionPaymentView({
                       : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-xs font-black text-white">
-                        ABA
-                      </div>
-                      <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-[10px] font-black text-slate-950">
-                        KHQR
-                      </div>
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-950">
-                        ABA Pay / KHQR
+                  <div className="flex items-center gap-4">
+                    <img
+                      src="/images/aba-khqr.png"
+                      alt="ABA KHQR"
+                      className="h-11 w-11 shrink-2 rounded-xl object-contain"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-base font-bold text-slate-950">
+                        ABA KHQR
                       </p>
-                      <p className="mt-0.5 text-xs leading-5 text-slate-500">
-                        Official ABA PayWay secure checkout.
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        Scan to pay with any banking app
                       </p>
                     </div>
                   </div>
@@ -951,11 +1120,9 @@ export function SubscriptionPaymentView({
                         ABA PayWay
                       </p>
                       <p className="mt-1 text-lg font-bold text-slate-950">
-                        Pay {formatUsdFromCents(totalCents)} securely
+                        Total {formatUsdFromCents(totalCents)} 
                       </p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        PayWay opens the official ABA checkout popup. TENH activates your plan only after server verification.
-                      </p>
+                     
                     </div>
 
                     <button
@@ -973,12 +1140,19 @@ export function SubscriptionPaymentView({
                         ? "Opening ABA PayWay..."
                         : !payWayPluginReady
                           ? "Loading PayWay..."
-                          : "Checkout with ABA PayWay"}
+                          : "Checkout"}
                     </button>
                   </div>
 
+                    {customUpgrade ? (
+                <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                  <p className="font-bold">Custom Upgrade</p>
+                  <p className="mt-1">Your same Subscription ID stays active. Current expiry {formatSubscriptionDate(customUpgradeCurrentPeriodEnd)}{customUpgradeNewPeriodEnd && customUpgradeNewPeriodEnd !== customUpgradeCurrentPeriodEnd ? ` → ${formatSubscriptionDate(customUpgradeNewPeriodEnd)}` : ""}.</p>
+                </div>
+              ) : null}
+
                   {checkoutError ? (
-                    <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <div className="mt-4 whitespace-pre-wrap rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                       {checkoutError}
                     </div>
                   ) : null}
@@ -1000,6 +1174,28 @@ export function SubscriptionPaymentView({
                           ? ` · ${payWayStatusText}`
                           : ""}
                       </p>
+
+                      {payWayPaymentState === "approved" ? (
+                        <div className="mt-3 border-t border-emerald-200 pt-3">
+                          <p className="text-xs leading-5 text-emerald-800">
+                            Payment is complete. TENH will not redirect you automatically. The official ABA success window can stay open until you choose what to do next.
+                          </p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Link
+                              href="/dashboard/subscription"
+                              className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700"
+                            >
+                              Back to subscription
+                            </Link>
+                            <Link
+                              href="/dashboard/subscription/billing-history"
+                              className="inline-flex items-center justify-center rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-50"
+                            >
+                              View TENH receipt
+                            </Link>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -1072,6 +1268,7 @@ export function SubscriptionPaymentView({
                           </div>
                         </div>
                       ) : null}
+                      
 
                       <div className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">

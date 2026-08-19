@@ -103,6 +103,24 @@ type PlatformAwareConversation =
       | null;
   };
 
+type BusinessAwareConversation =
+  InboxConversation & {
+    business_id?: string | null;
+  };
+
+function getConversationBusinessId(
+  conversation: InboxConversation,
+): string | null {
+  const businessAware =
+    conversation as BusinessAwareConversation;
+
+  return (
+    businessAware.business_id ??
+    conversation.contact?.business_id ??
+    null
+  );
+}
+
 function isAbortError(
   error: unknown,
 ): boolean {
@@ -387,11 +405,36 @@ export function InboxView({
   activeStatus,
   statusCounts,
   teamMembers,
+  currentBusinessId,
+  accessibleBusinessIds,
 }: InboxViewProps) {
 
   const router = useRouter();
   const searchParams =
   useSearchParams();
+
+  /*
+   * Keep the client-side workspace context in sync with deliberate
+   * conversation switches. All Channels can contain conversations from
+   * several subscriptions, so a cross-subscription click must update the
+   * TENH workspace cookie before loading that thread, but it should not force
+   * a full browser refresh.
+   */
+  const [
+    activeBusinessId,
+    setActiveBusinessId,
+  ] = useState(currentBusinessId);
+
+  const activeBusinessIdRef =
+    useRef(currentBusinessId);
+
+  useEffect(() => {
+    activeBusinessIdRef.current =
+      currentBusinessId;
+    setActiveBusinessId(
+      currentBusinessId,
+    );
+  }, [currentBusinessId]);
 
 const requestedConversationId =
   searchParams.get("conversation");
@@ -966,25 +1009,17 @@ useEffect(() => {
   setSendError(null);
 }, [resolvedActiveConversationId]);
 
-const realtimeBusinessId =
+const realtimeBusinessIds =
   useMemo(
     () =>
-      activeConversation
-        ?.contact
-        ?.business_id ??
-      liveConversations.find(
-        (conversation) =>
-          Boolean(
-            conversation.contact
-              ?.business_id,
-          ),
-      )?.contact
-        ?.business_id ??
-      null,
-    [
-      activeConversation,
-      liveConversations,
-    ],
+      Array.from(
+        new Set(
+          accessibleBusinessIds
+            .map((id) => id.trim())
+            .filter(Boolean),
+        ),
+      ),
+    [accessibleBusinessIds],
   );
 
 
@@ -1002,7 +1037,11 @@ const {
   status: agentPresenceStatus,
 } = useAgentPresence({
   businessId:
-    realtimeBusinessId,
+    activeConversation
+      ? getConversationBusinessId(
+          activeConversation,
+        ) ?? activeBusinessId
+      : activeBusinessId,
   conversationId:
     resolvedActiveConversationId,
   teamMembers,
@@ -1335,8 +1374,8 @@ function showMultiAgentToast(
 }
 
 useInboxRealtime({
-  businessId:
-    realtimeBusinessId,
+  businessIds:
+    realtimeBusinessIds,
 
   onRealtimeEvent: (
     event,
@@ -2583,6 +2622,34 @@ const prefetchConversation =
     (
       conversationId: string,
     ) => {
+      const targetConversation =
+        liveConversations.find(
+          (conversation) =>
+            conversation.id ===
+            conversationId,
+        );
+
+      const targetBusinessId =
+        targetConversation
+          ? getConversationBusinessId(
+              targetConversation,
+            )
+          : null;
+
+      /*
+       * All Channels can contain conversations from several subscriptions.
+       * Do not prefetch another subscription through APIs that are currently
+       * scoped to the active workspace cookie. A deliberate click will switch
+       * workspace context first.
+       */
+      if (
+        targetBusinessId &&
+        targetBusinessId !==
+          activeBusinessId
+      ) {
+        return;
+      }
+
       if (
         conversationId ===
           resolvedActiveConversationId ||
@@ -2606,7 +2673,9 @@ const prefetchConversation =
       });
     },
     [
+      activeBusinessId,
       getCachedConversationPage,
+      liveConversations,
       loadConversationMessagePage,
       resolvedActiveConversationId,
     ],
@@ -2614,18 +2683,88 @@ const prefetchConversation =
 
 const selectConversationSmoothly =
   useCallback(
-    (
+    async (
       conversationId: string,
       updateHistory = false,
     ) => {
-      if (
-        !liveConversations.some(
+      const targetConversation =
+        liveConversations.find(
           (conversation) =>
             conversation.id ===
             conversationId,
-        )
-      ) {
+        );
+
+      if (!targetConversation) {
         return;
+      }
+
+      const targetBusinessId =
+        getConversationBusinessId(
+          targetConversation,
+        );
+
+      /*
+       * All Channels can display conversations from every subscription the
+       * user can still access. A click on another subscription first updates
+       * the active workspace cookie, then continues in this same mounted
+       * Inbox. Do not hard-refresh the page just to change conversations.
+       */
+      if (
+        targetBusinessId &&
+        targetBusinessId !==
+          activeBusinessIdRef.current
+      ) {
+        try {
+          const response =
+            await fetch(
+              "/api/workspaces/switch",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type":
+                    "application/json",
+                },
+                body: JSON.stringify({
+                  businessId:
+                    targetBusinessId,
+                }),
+              },
+            );
+
+          const result =
+            (await response.json()) as {
+              success?: boolean;
+              error?: string;
+            };
+
+          if (
+            !response.ok ||
+            !result.success
+          ) {
+            throw new Error(
+              result.error ??
+                "Unable to open this conversation.",
+            );
+          }
+
+          /*
+           * Set-Cookie from the switch response is applied before the next
+           * request. Message/read/send APIs can now use the destination
+           * subscription immediately without a browser reload.
+           */
+          activeBusinessIdRef.current =
+            targetBusinessId;
+          setActiveBusinessId(
+            targetBusinessId,
+          );
+        } catch (error) {
+          setConversationMessagesError(
+            error instanceof Error
+              ? error.message
+              : "Unable to open this conversation.",
+          );
+          return;
+        }
       }
 
       if (
@@ -2953,6 +3092,8 @@ const selectConversationSmoothly =
       loadingConversationMessages,
       resolvedActiveConversationId,
       setCachedConversationPage,
+      activeBusinessId,
+      searchParams,
     ],
   );
 
@@ -4404,8 +4545,11 @@ function createOptimisticMessage({
   return {
     id: tempId,
     business_id:
-      realtimeBusinessId ??
-      "",
+      activeConversation
+        ? getConversationBusinessId(
+            activeConversation,
+          ) ?? activeBusinessId
+        : activeBusinessId,
     platform_message_id:
       tempId,
     conversation_id:
@@ -4548,8 +4692,11 @@ function createOptimisticAttachmentMessage({
   return {
     id: tempId,
     business_id:
-      realtimeBusinessId ??
-      "",
+      activeConversation
+        ? getConversationBusinessId(
+            activeConversation,
+          ) ?? activeBusinessId
+        : activeBusinessId,
     platform_message_id:
       tempId,
     conversation_id:
@@ -5856,6 +6003,10 @@ return (
       />
 
    <MessagePanel
+  key={
+    resolvedActiveConversationId ??
+    "no-conversation"
+  }
   activeConversation={
     activeConversation
   }

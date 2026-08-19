@@ -15,10 +15,6 @@ import {
 } from "@/components/inbox/conversation-header";
 
 import {
-  formatMessageTime,
-} from "@/components/inbox/inbox-utils";
-
-import {
   ReplyBox,
   type ReplyAttachment,
 } from "@/components/inbox/reply-box";
@@ -720,6 +716,118 @@ function CompactAudioPlayer({
   );
 }
 
+function getValidMessageDate(
+  value: string | null | undefined,
+) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime())
+    ? null
+    : date;
+}
+
+function isSameLocalMessageDay(
+  firstValue: string | null | undefined,
+  secondValue: string | null | undefined,
+) {
+  const first =
+    getValidMessageDate(firstValue);
+  const second =
+    getValidMessageDate(secondValue);
+
+  if (!first || !second) {
+    return false;
+  }
+
+  return (
+    first.getFullYear() ===
+      second.getFullYear() &&
+    first.getMonth() ===
+      second.getMonth() &&
+    first.getDate() ===
+      second.getDate()
+  );
+}
+
+function formatMessageClockTime(
+  value: string | null | undefined,
+) {
+  const date =
+    getValidMessageDate(value);
+
+  if (!date) {
+    return "";
+  }
+
+  return date.toLocaleTimeString(
+    "en-US",
+    {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    },
+  );
+}
+
+function formatMessageDayLabel(
+  value: string | null | undefined,
+) {
+  const date =
+    getValidMessageDate(value);
+
+  if (!date) {
+    return "";
+  }
+
+  const now = new Date();
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  );
+  const startOfMessageDay =
+    new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+    );
+
+  const differenceDays =
+    Math.round(
+      (
+        startOfToday.getTime() -
+        startOfMessageDay.getTime()
+      ) / 86_400_000,
+    );
+
+  if (differenceDays === 0) {
+    return "Today";
+  }
+
+  if (differenceDays === 1) {
+    return "Yesterday";
+  }
+
+  return date.toLocaleDateString(
+    "en-US",
+    date.getFullYear() ===
+      now.getFullYear()
+      ? {
+          month: "long",
+          day: "numeric",
+        }
+      : {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        },
+  );
+}
+
 function HydrationSafeMessageTime({
   value,
 }: {
@@ -728,31 +836,8 @@ function HydrationSafeMessageTime({
   const [hydrated, setHydrated] =
     useState(false);
 
-  const [
-    relativeTimeTick,
-    setRelativeTimeTick,
-  ] = useState(0);
-
   useEffect(() => {
     setHydrated(true);
-
-    /*
-     * Keep relative labels such as 11m / 12m fresh after hydration.
-     * The server and the browser's FIRST render both use the same
-     * deterministic placeholder, preventing SSR hydration mismatch
-     * when a minute boundary is crossed during page load.
-     */
-    const timer =
-      window.setInterval(() => {
-        setRelativeTimeTick(
-          (current) =>
-            current + 1,
-        );
-      }, 30_000);
-
-    return () => {
-      window.clearInterval(timer);
-    };
   }, []);
 
   if (!value) {
@@ -762,7 +847,7 @@ function HydrationSafeMessageTime({
   if (!hydrated) {
     return (
       <span
-        className="inline-block min-w-[2rem]"
+        className="inline-block min-w-[3.5rem]"
         aria-label="Message time loading"
       >
         &nbsp;
@@ -770,16 +855,43 @@ function HydrationSafeMessageTime({
     );
   }
 
-  /*
-   * Reading the tick is intentional: it re-renders this component
-   * periodically so formatMessageTime() can advance from e.g. 11m
-   * to 12m while the Inbox stays open.
-   */
-  void relativeTimeTick;
+  return (
+    <>
+      {formatMessageClockTime(value)}
+    </>
+  );
+}
+
+function HydrationSafeMessageDay({
+  value,
+}: {
+  value: string | null | undefined;
+}) {
+  const [hydrated, setHydrated] =
+    useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  if (!value) {
+    return null;
+  }
+
+  if (!hydrated) {
+    return (
+      <span
+        className="inline-block min-w-[4rem]"
+        aria-label="Message date loading"
+      >
+        &nbsp;
+      </span>
+    );
+  }
 
   return (
     <>
-      {formatMessageTime(value)}
+      {formatMessageDayLabel(value)}
     </>
   );
 }
@@ -2056,10 +2168,32 @@ export function MessagePanel({
 
           <div className="space-y-4">
           {messages.map(
-            (message) => {
+            (message, messageIndex) => {
               const isOutgoing =
                 message.direction ===
                 "outgoing";
+
+              const messageTimestamp =
+                message.platform_created_at ??
+                message.created_at;
+
+              const previousMessage =
+                messageIndex > 0
+                  ? messages[messageIndex - 1]
+                  : null;
+
+              const previousMessageTimestamp =
+                previousMessage
+                  ? previousMessage.platform_created_at ??
+                    previousMessage.created_at
+                  : null;
+
+              const showMessageDay =
+                messageIndex === 0 ||
+                !isSameLocalMessageDay(
+                  messageTimestamp,
+                  previousMessageTimestamp,
+                );
 
               const messageStatus =
                 message as InboxMessage & {
@@ -2473,6 +2607,33 @@ export function MessagePanel({
                   rawPayload?.reply_comment_id,
                 );
 
+              const facebookReplyParentId =
+                rawPayload?.source ===
+                  "facebook_comment_reply" &&
+                typeof rawPayload
+                  ?.parent_comment_id ===
+                  "string"
+                  ? rawPayload.parent_comment_id.trim()
+                  : null;
+
+              const facebookReplyParentMessage =
+                facebookReplyParentId
+                  ? messages.find(
+                      (candidate) =>
+                        candidate.platform_message_id ===
+                        facebookReplyParentId,
+                    ) ?? null
+                  : null;
+
+              const facebookReplyPreviewText =
+                facebookReplyParentMessage
+                  ?.comment_is_deleted
+                  ? "Message deleted by commenter or Page"
+                  : facebookReplyParentMessage
+                      ?.message_text
+                      ?.trim() ||
+                    "Comment";
+
               const showCommentActions =
                 isFacebookCommentMessage &&
                 Boolean(
@@ -2531,7 +2692,7 @@ export function MessagePanel({
                   );
 
                   showActionNotice(
-                    "Comment is deleted by commenter",
+                    "Message deleted by commenter or Page",
                   );
 
                   return;
@@ -2601,7 +2762,7 @@ export function MessagePanel({
                   );
 
                   showActionNotice(
-                    "Comment is deleted by commenter",
+                    "Message deleted by commenter or Page",
                   );
 
                   return;
@@ -2673,7 +2834,7 @@ export function MessagePanel({
                   );
 
                   showActionNotice(
-                    "Comment is deleted by commenter",
+                    "Message deleted by commenter or Page",
                   );
 
                   return;
@@ -2699,14 +2860,15 @@ export function MessagePanel({
 
               return (
                 <Fragment key={message.id}>
-                  {message.id ===
-                  firstUnreadMessageId ? (
+                  {showMessageDay ? (
                     <div className="flex items-center gap-3 py-1">
-                      <div className="h-px flex-1 bg-blue-200" />
-                      <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold text-blue-700 shadow-sm">
-                        New messages
+                      <div className="h-px flex-1 bg-blue-200/70" />
+                      <span className="rounded-full border border-blue-200 bg-white/90 px-3 py-1 text-[11px] font-semibold text-blue-700 shadow-sm">
+                        <HydrationSafeMessageDay
+                          value={messageTimestamp}
+                        />
                       </span>
-                      <div className="h-px flex-1 bg-blue-200" />
+                      <div className="h-px flex-1 bg-blue-200/70" />
                     </div>
                   ) : null}
 
@@ -2833,6 +2995,27 @@ export function MessagePanel({
                           </button>
                         ) : null}
 
+                        {facebookReplyParentId &&
+                        !commentState.deleted ? (
+                          <div
+                            className={`mb-2.5 block w-full border-l-[3px] pl-2.5 text-left text-xs ${
+                              isOutgoing
+                                ? "border-emerald-500"
+                                : "border-sky-500"
+                            }`}
+                          >
+                            <span className="flex items-center gap-1.5 font-semibold text-slate-600">
+                              <ReplyIcon />
+                              <span>
+                                Reply to comment
+                              </span>
+                            </span>
+                            <span className="mt-0.5 block max-w-[320px] truncate leading-4 text-slate-500">
+                              {facebookReplyPreviewText}
+                            </span>
+                          </div>
+                        ) : null}
+
                         {commentState.deleted ? (
                           <div className="flex items-center gap-2 py-1 text-sm italic text-slate-400">
                             <svg
@@ -2859,10 +3042,7 @@ export function MessagePanel({
                             </svg>
 
                             <span>
-                              {commentState.deletedBy ===
-                              "customer"
-                                ? "Comment is deleted by commenter"
-                                : "Comment deleted by Page"}
+                              Message deleted by commenter or Page
                             </span>
                           </div>
                         ) : postId ? (
@@ -3187,10 +3367,7 @@ export function MessagePanel({
                         >
                           <span className="text-slate-500">
                             <HydrationSafeMessageTime
-                              value={
-                                message.platform_created_at ??
-                                message.created_at
-                              }
+                              value={messageTimestamp}
                             />
                           </span>
 

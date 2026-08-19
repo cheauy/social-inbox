@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import { TelegramChannelPanel } from "@/components/integrations/telegram-channel-panel";
+import { WorkspaceContextSwitcher } from "@/components/subscription/workspace-context-switcher";
 
 import {
   TENH_CHANNEL_CATALOG,
@@ -60,33 +61,33 @@ function ChannelMark({
 
 function StatusPill({
   channel,
-  telegramConnected,
-  facebookConnectionCount,
+  activeCount = 0,
+  totalCount = 0,
 }: {
   channel: TenhChannelDefinition;
-  telegramConnected?: boolean;
-  facebookConnectionCount?: number;
+  activeCount?: number;
+  totalCount?: number;
 }) {
-  if (channel.platform === "facebook") {
-    return (facebookConnectionCount ?? 0) > 0 ? (
-      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
-        Connected
-      </span>
-    ) : (
-      <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-        Not connected
-      </span>
-    );
-  }
+  if (channel.platform === "facebook" || channel.platform === "telegram") {
+    if (activeCount > 0) {
+      return (
+        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+          Connected
+        </span>
+      );
+    }
 
-  if (channel.platform === "telegram") {
-    return telegramConnected ? (
-      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
-        Connected
-      </span>
-    ) : (
-      <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
-        Setup
+    if (totalCount > 0) {
+      return (
+        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+          Disabled
+        </span>
+      );
+    }
+
+    return (
+      <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+        {channel.platform === "telegram" ? "Setup" : "Not connected"}
       </span>
     );
   }
@@ -222,67 +223,46 @@ export function IntegrationWorkspace({
 }: IntegrationWorkspaceProps) {
   const [activePlatform, setActivePlatform] =
     useState<TenhChannelPlatform>("facebook");
-  const [telegramConnected, setTelegramConnected] =
-    useState(false);
-  const [facebookConnectionCount, setFacebookConnectionCount] =
-    useState(0);
+  const [telegramSummary, setTelegramSummary] = useState({ active: 0, total: 0 });
+  const [facebookSummary, setFacebookSummary] = useState({ active: 0, total: 0 });
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadConnectionSummary() {
       try {
-        const [usageResponse, telegramResponse] =
-          await Promise.all([
-            fetch("/api/subscription/usage-management", {
-              method: "GET",
-              cache: "no-store",
-            }),
-            fetch("/api/telegram/connection", {
-              method: "GET",
-              cache: "no-store",
-            }),
-          ]);
+        const usageResponse = await fetch("/api/subscription/usage-management", {
+          method: "GET",
+          cache: "no-store",
+        });
 
-        if (usageResponse.ok) {
-          const usageResult =
-            (await usageResponse.json()) as {
-              connections?: Array<{
-                platform?: string;
-                is_active?: boolean;
-              }>;
-            };
+        if (!usageResponse.ok) return;
 
-          if (!cancelled) {
-            setFacebookConnectionCount(
-              (usageResult.connections ?? []).filter(
-                (connection) =>
-                  connection.platform === "facebook" &&
-                  connection.is_active === true,
-              ).length,
-            );
-          }
-        }
+        const usageResult = (await usageResponse.json()) as {
+          connections?: Array<{
+            platform?: string;
+            is_active?: boolean;
+          }>;
+        };
 
-        if (telegramResponse.ok) {
-          const telegramResult =
-            (await telegramResponse.json()) as {
-              connection?: {
-                isActive?: boolean;
-                status?: string;
-              } | null;
-            };
+        if (cancelled) return;
 
-          if (!cancelled) {
-            setTelegramConnected(
-              Boolean(
-                telegramResult.connection?.isActive &&
-                  telegramResult.connection?.status ===
-                    "verified",
-              ),
-            );
-          }
-        }
+        const connections = usageResult.connections ?? [];
+        const facebook = connections.filter(
+          (connection) => connection.platform === "facebook",
+        );
+        const telegram = connections.filter(
+          (connection) => connection.platform === "telegram",
+        );
+
+        setFacebookSummary({
+          total: facebook.length,
+          active: facebook.filter((connection) => connection.is_active === true).length,
+        });
+        setTelegramSummary({
+          total: telegram.length,
+          active: telegram.filter((connection) => connection.is_active === true).length,
+        });
       } catch {
         // Keep navigation usable if a status probe fails.
       }
@@ -315,6 +295,8 @@ export function IntegrationWorkspace({
             Select a channel to manage its connection.
           </p>
         </div>
+
+        <WorkspaceContextSwitcher compact className="mb-3" />
 
         <nav
           className="space-y-1.5"
@@ -363,14 +345,12 @@ export function IntegrationWorkspace({
 
                     <span className="mt-1 block text-[11px] text-slate-500">
                       {channel.platform === "facebook"
-                        ? facebookConnectionCount > 0
-                          ? facebookConnectionCount === 1
-                            ? "1 Page connected"
-                            : `${facebookConnectionCount} Pages connected`
+                        ? facebookSummary.total > 0
+                          ? `${facebookSummary.active}/${facebookSummary.total} Pages enabled`
                           : "Not connected"
                         : channel.platform === "telegram"
-                          ? telegramConnected
-                            ? "Bot connected"
+                          ? telegramSummary.total > 0
+                            ? `${telegramSummary.active}/${telegramSummary.total} Bots enabled`
                             : "Setup available"
                           : channel.availability ===
                               "available"
@@ -384,15 +364,19 @@ export function IntegrationWorkspace({
 
                   <StatusPill
                     channel={channel}
-                    telegramConnected={
-                      channel.platform === "telegram"
-                        ? telegramConnected
-                        : undefined
-                    }
-                    facebookConnectionCount={
+                    activeCount={
                       channel.platform === "facebook"
-                        ? facebookConnectionCount
-                        : undefined
+                        ? facebookSummary.active
+                        : channel.platform === "telegram"
+                          ? telegramSummary.active
+                          : 0
+                    }
+                    totalCount={
+                      channel.platform === "facebook"
+                        ? facebookSummary.total
+                        : channel.platform === "telegram"
+                          ? telegramSummary.total
+                          : 0
                     }
                   />
                 </button>
@@ -406,22 +390,22 @@ export function IntegrationWorkspace({
         </div>
       </aside>
 
-      <div className="min-w-0">
+      <div className="min-h-0 min-w-0">
+        <div className="max-h-[calc(100dvh-7rem)] overflow-y-auto overscroll-contain pr-1">
         {activePlatform === "facebook" ? (
           <div className="min-w-0">
             {children}
           </div>
         ) : activePlatform === "telegram" ? (
           <TelegramChannelPanel
-            onConnectionChanged={
-              setTelegramConnected
-            }
+            onConnectionChanged={setTelegramSummary}
           />
         ) : (
           <PlannedChannelPanel
             channel={activeChannel}
           />
         )}
+        </div>
       </div>
     </div>
   );

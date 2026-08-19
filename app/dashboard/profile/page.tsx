@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { ProfileForm } from "@/components/profile/profile-form";
+import { DeleteAccountSection } from "@/components/profile/delete-account-section";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function ProfilePage() {
@@ -32,24 +33,28 @@ export default async function ProfilePage() {
       : null;
 
   return (
-    <div className="mx-auto w-full max-w-4xl p-6">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-950">
-          Profile information
-        </h1>
+    <div className="h-full min-h-0 overflow-y-auto">
+      <div className="mx-auto w-full max-w-4xl p-6 pb-10">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-950">
+            Profile information
+          </h1>
 
-        <p className="mt-2 text-sm text-slate-500">
-          Manage your personal information and profile image.
-        </p>
-      </div>
+          <p className="mt-2 text-sm text-slate-500">
+            Manage your personal information and profile image.
+          </p>
+        </div>
 
-      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <ProfileForm
-          initialFullName={fullName}
-          initialPhone={phone}
-          email={user.email ?? ""}
-          initialAvatarUrl={avatarUrl}
-        />
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <ProfileForm
+            initialFullName={fullName}
+            initialPhone={phone}
+            email={user.email ?? ""}
+            initialAvatarUrl={avatarUrl}
+          />
+        </div>
+
+        <DeleteAccountSection email={user.email ?? ""} />
       </div>
     </div>
   );
