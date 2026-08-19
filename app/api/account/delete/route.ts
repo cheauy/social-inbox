@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { decryptChannelCredential } from "@/lib/channels/channel-token-crypto";
+import { decryptFacebookToken } from "@/lib/facebook/facebook-token-crypto";
 import { deleteTelegramWebhook } from "@/lib/telegram/telegram-api";
 
 export const runtime = "nodejs";
@@ -650,91 +651,6 @@ async function closeOwnedSubscriptions(
   }
 }
 
-async function releaseClosedWorkspaceTelegramBots(
-  snapshots: WorkspaceClosureSnapshot[],
-) {
-  const businessIds = Array.from(
-    new Set(snapshots.map((snapshot) => snapshot.businessId)),
-  );
-
-  if (businessIds.length === 0) {
-    return;
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from("social_accounts")
-    .select(
-      "id,business_id,telegram_bot_token_encrypted,telegram_token_status",
-    )
-    .in("business_id", businessIds)
-    .eq("platform", "telegram")
-    .eq("telegram_token_status", "verified");
-
-  if (error) {
-    console.error(
-      "[TENH Account Delete] Unable to load Telegram Bots for closed workspaces:",
-      error.message,
-    );
-    return;
-  }
-
-  for (const row of data ?? []) {
-    const encryptedToken =
-      typeof row.telegram_bot_token_encrypted === "string"
-        ? row.telegram_bot_token_encrypted
-        : "";
-
-    if (encryptedToken) {
-      try {
-        const token = decryptChannelCredential(encryptedToken);
-        await deleteTelegramWebhook({
-          token,
-          dropPendingUpdates: true,
-        });
-      } catch (telegramError) {
-        // The TENH row is still disconnected below. If Telegram cannot be
-        // reached, any stale delivery reaches a disabled/disconnected TENH
-        // connection and cannot create new customer history.
-        console.warn(
-          "[TENH Account Delete] Telegram webhook cleanup warning:",
-          telegramError instanceof Error
-            ? telegramError.message
-            : telegramError,
-        );
-      }
-    }
-
-    const { error: disconnectError } = await supabaseAdmin
-      .from("social_accounts")
-      .update({
-        is_active: false,
-        telegram_bot_token_encrypted: null,
-        telegram_token_status: "disconnected",
-        telegram_connected_at: null,
-        telegram_token_last_error: null,
-        telegram_webhook_secret_encrypted: null,
-        telegram_webhook_status: "disabled",
-        telegram_webhook_url: null,
-        telegram_webhook_registered_at: null,
-        telegram_webhook_last_error: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", row.id)
-      .eq("business_id", row.business_id);
-
-    if (disconnectError) {
-      console.error(
-        "[TENH Account Delete] CRITICAL: closed workspace Telegram Bot could not be released:",
-        {
-          connectionId: row.id,
-          businessId: row.business_id,
-          message: disconnectError.message,
-        },
-      );
-    }
-  }
-}
-
 async function listAvatarPaths(userId: string) {
   const paths: string[] = [];
   const pageSize = 100;
@@ -768,6 +684,163 @@ async function listAvatarPaths(userId: string) {
   }
 
   return paths;
+}
+
+async function releaseEndedWorkspaceChannels(
+  businessIds: string[],
+) {
+  const uniqueBusinessIds =
+    Array.from(
+      new Set(
+        businessIds
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    );
+
+  if (uniqueBusinessIds.length === 0) {
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("social_accounts")
+    .select(`
+      id,
+      business_id,
+      platform,
+      platform_account_id,
+      is_active,
+      facebook_token_status,
+      facebook_page_access_token_encrypted,
+      telegram_token_status,
+      telegram_bot_token_encrypted
+    `)
+    .in("business_id", uniqueBusinessIds)
+    .in("platform", ["facebook", "telegram"]);
+
+  if (error) {
+    console.error(
+      "[TENH Account Delete] CRITICAL: unable to load channels for final release:",
+      error.message,
+    );
+    return;
+  }
+
+  const graphVersion =
+    process.env.FACEBOOK_GRAPH_API_VERSION?.trim() ||
+    "v26.0";
+
+  for (const account of data ?? []) {
+    if (account.platform === "telegram") {
+      if (account.telegram_bot_token_encrypted) {
+        try {
+          const token = decryptChannelCredential(
+            account.telegram_bot_token_encrypted,
+          );
+
+          await deleteTelegramWebhook({
+            token,
+            dropPendingUpdates: true,
+          });
+        } catch (remoteError) {
+          console.warn(
+            "[TENH Account Delete] Telegram webhook release warning:",
+            account.id,
+            remoteError instanceof Error
+              ? remoteError.message
+              : "Unknown Telegram release error",
+          );
+        }
+      }
+
+      const { error: clearError } = await supabaseAdmin
+        .from("social_accounts")
+        .update({
+          is_active: false,
+          telegram_bot_token_encrypted: null,
+          telegram_token_status: "disconnected",
+          telegram_connected_at: null,
+          telegram_token_last_error: null,
+          telegram_webhook_secret_encrypted: null,
+          telegram_webhook_status: "disabled",
+          telegram_webhook_url: null,
+          telegram_webhook_registered_at: null,
+          telegram_webhook_last_error: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", account.id)
+        .eq("business_id", account.business_id);
+
+      if (clearError) {
+        console.error(
+          "[TENH Account Delete] CRITICAL: Telegram credentials could not be released:",
+          account.id,
+          clearError.message,
+        );
+      }
+
+      continue;
+    }
+
+    /*
+     * Legacy Facebook rows may have NULL token status. NULL still represents a
+     * live claim unless the row was explicitly fully disconnected.
+     */
+    if (
+      account.facebook_token_status !== "disconnected" &&
+      account.facebook_page_access_token_encrypted &&
+      account.platform_account_id
+    ) {
+      try {
+        const pageToken = decryptFacebookToken(
+          account.facebook_page_access_token_encrypted,
+        );
+
+        const url = new URL(
+          `https://graph.facebook.com/${graphVersion}/${account.platform_account_id}/subscribed_apps`,
+        );
+
+        await fetch(url, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${pageToken}`,
+          },
+          cache: "no-store",
+        });
+      } catch (remoteError) {
+        console.warn(
+          "[TENH Account Delete] Facebook webhook release warning:",
+          account.id,
+          remoteError instanceof Error
+            ? remoteError.message
+            : "Unknown Facebook release error",
+        );
+      }
+    }
+
+    const { error: clearError } = await supabaseAdmin
+      .from("social_accounts")
+      .update({
+        is_active: false,
+        facebook_page_access_token_encrypted: null,
+        facebook_user_access_token_encrypted: null,
+        facebook_user_token_expires_at: null,
+        facebook_connected_at: null,
+        facebook_token_status: "disconnected",
+        facebook_token_last_error: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", account.id)
+      .eq("business_id", account.business_id);
+
+    if (clearError) {
+      console.error(
+        "[TENH Account Delete] CRITICAL: Facebook credentials could not be released:",
+        account.id,
+        clearError.message,
+      );
+    }
+  }
 }
 
 async function cleanupPersonalAccountData(
@@ -1037,15 +1110,19 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Auth is now gone and cannot access TENH. If this deletion also closed
-    // sole-owned subscriptions, release their live Telegram Bot credentials so
-    // the Bot is not trapped forever inside an ownerless expired workspace.
-    // Historical social-account rows and TENH conversations remain preserved.
-    await releaseClosedWorkspaceTelegramBots(workspaceClosureSnapshots);
+    // Auth is now gone. If the Owner explicitly ended a last-owner
+    // subscription, release Messenger/Telegram credentials only now—after the
+    // irreversible Auth deletion succeeded. Conversation history remains.
+    if (ownerDecision === "delete_subscriptions") {
+      await releaseEndedWorkspaceChannels(
+        impact.blockingSubscriptions.map(
+          (item) => item.businessId,
+        ),
+      );
+    }
 
     // Personal-only artifacts are removed best-effort. Shared business history
-    // and records TENH must retain for billing, security, fraud prevention, or
-    // legal obligations remain.
+    // and records TENH must retain remain preserved.
     await cleanupPersonalAccountData(user.id, avatarPaths);
 
     const response = NextResponse.json({

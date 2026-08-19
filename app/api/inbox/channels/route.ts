@@ -19,6 +19,15 @@ type MembershipRow = {
   is_active: boolean;
 };
 
+type SubscriptionRow = {
+  id: string;
+  business_id: string;
+  status: string;
+  current_period_end: string | null;
+  trial_ends_at: string | null;
+  created_at: string | null;
+};
+
 type ChannelRow = {
   id: string;
   business_id: string;
@@ -32,15 +41,40 @@ type ChannelRow = {
   telegram_bot_name: string | null;
 };
 
+const OPERATIONAL_STATUSES = new Set(["active", "trialing"]);
+
 function noStoreHeaders() {
   return {
     "Cache-Control": "no-store, max-age=0",
   };
 }
 
+function isPeriodEnded(value: string | null | undefined) {
+  if (!value) return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && timestamp <= Date.now();
+}
+
+function isOperationalSubscription(subscription: SubscriptionRow | null) {
+  if (!subscription) {
+    // Legacy/unmanaged workspaces stay operational until migrated.
+    return true;
+  }
+
+  if (!OPERATIONAL_STATUSES.has(subscription.status)) {
+    return false;
+  }
+
+  const end =
+    subscription.status === "trialing"
+      ? subscription.trial_ends_at ?? subscription.current_period_end
+      : subscription.current_period_end;
+
+  return !isPeriodEnded(end);
+}
+
 export async function GET() {
-  const supabase =
-    await createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },
@@ -62,11 +96,8 @@ export async function GET() {
 
   try {
     /*
-     * Load both active and inactive memberships.
-     *
-     * Inactive memberships are intentionally kept in the channel selector so
-     * TENH can explain why an old Page/Bot can no longer be opened. They are
-     * never used to load conversations.
+     * Keep historical memberships visible in the selector only so TENH can
+     * explain removed access. They never become operational Inbox access.
      */
     const {
       data: membershipData,
@@ -86,54 +117,80 @@ export async function GET() {
     }
 
     const memberships =
-      (membershipData ?? []) as
-        MembershipRow[];
+      (membershipData ?? []) as MembershipRow[];
 
-    const accessByBusiness =
+    const membershipAccessByBusiness =
       new Map<string, boolean>();
 
     for (const membership of memberships) {
-      const existing =
-        accessByBusiness.get(
-          membership.business_id,
-        );
-
-      /*
-       * If historical duplicate membership rows ever exist, an active row
-       * wins. This avoids incorrectly blocking a valid subscription.
-       */
-      accessByBusiness.set(
+      membershipAccessByBusiness.set(
         membership.business_id,
-        Boolean(existing) ||
+        membershipAccessByBusiness.get(membership.business_id) === true ||
           membership.is_active === true,
       );
     }
 
     const businessIds =
-      Array.from(
-        accessByBusiness.keys(),
+      Array.from(membershipAccessByBusiness.keys());
+
+    const subscriptionByBusiness =
+      new Map<string, SubscriptionRow>();
+
+    if (businessIds.length > 0) {
+      const {
+        data: subscriptionData,
+        error: subscriptionError,
+      } = await supabaseAdmin
+        .from("business_subscriptions")
+        .select(
+          "id,business_id,status,current_period_end,trial_ends_at,created_at",
+        )
+        .in("business_id", businessIds)
+        .order("created_at", { ascending: false });
+
+      if (subscriptionError) {
+        throw new Error(subscriptionError.message);
+      }
+
+      for (const row of (subscriptionData ?? []) as SubscriptionRow[]) {
+        if (!subscriptionByBusiness.has(row.business_id)) {
+          subscriptionByBusiness.set(row.business_id, row);
+        }
+      }
+    }
+
+    const subscriptionAccessByBusiness =
+      new Map<string, boolean>();
+
+    for (const businessId of businessIds) {
+      subscriptionAccessByBusiness.set(
+        businessId,
+        membershipAccessByBusiness.get(businessId) === true &&
+          isOperationalSubscription(
+            subscriptionByBusiness.get(businessId) ?? null,
+          ),
+      );
+    }
+
+    const accessibleBusinessIds =
+      businessIds.filter(
+        (businessId) =>
+          subscriptionAccessByBusiness.get(businessId) === true,
       );
 
-    const cookieStore =
-      await cookies();
+    const cookieStore = await cookies();
 
     const currentBusinessId =
       cookieStore
-        .get(
-          TENH_ACTIVE_BUSINESS_COOKIE,
-        )
+        .get(TENH_ACTIVE_BUSINESS_COOKIE)
         ?.value?.trim() ?? null;
 
     const currentBusinessAccess =
       currentBusinessId
-        ? accessByBusiness.get(
-            currentBusinessId,
-          ) === true
+        ? subscriptionAccessByBusiness.get(currentBusinessId) === true
         : true;
 
-    if (
-      businessIds.length === 0
-    ) {
+    if (accessibleBusinessIds.length === 0) {
       return NextResponse.json(
         {
           success: true,
@@ -142,8 +199,7 @@ export async function GET() {
           channels: [],
         },
         {
-          headers:
-            noStoreHeaders(),
+          headers: noStoreHeaders(),
         },
       );
     }
@@ -165,10 +221,7 @@ export async function GET() {
             "telegram_bot_name",
           ].join(","),
         )
-        .in(
-          "business_id",
-          businessIds,
-        )
+        .in("business_id", accessibleBusinessIds)
         .in("platform", [
           "facebook",
           "telegram",
@@ -178,78 +231,67 @@ export async function GET() {
         });
 
     if (error) {
-      throw new Error(
-        error.message,
-      );
+      throw new Error(error.message);
     }
 
     const rows =
-      (data ?? []) as unknown as
-        ChannelRow[];
+      (data ?? []) as unknown as ChannelRow[];
 
     /*
-     * Keep Owner-disabled channels visible so the selector can explain why
-     * they cannot be opened. Fully disconnected channels stay hidden.
+     * The Inbox selector is operational UI, so expose only channels the
+     * signed-in user can currently use. Removed memberships, expired
+     * subscriptions and Owner-disabled channels stay preserved elsewhere but
+     * must not leak names/usernames into another user's Inbox selector.
      */
-    const visibleRows = rows.filter(
-      (row) => {
-        if (row.is_active === true) {
-          return true;
-        }
-
-        if (row.platform === "facebook") {
-          return row.facebook_token_status !== "disconnected";
-        }
-
-        if (row.platform === "telegram") {
-          return row.telegram_token_status === "verified";
-        }
-
+    const visibleRows = rows.filter((row) => {
+      if (row.is_active !== true) {
         return false;
-      },
-    );
+      }
 
-    const channels = visibleRows.map(
-      (row) => {
-        const subscriptionAccessAllowed =
-          accessByBusiness.get(
-            row.business_id,
-          ) === true;
-        const channelEnabled =
-          row.is_active === true;
+      if (row.platform === "facebook") {
+        return row.facebook_token_status !== "disconnected";
+      }
 
-        return {
-          id: row.id,
-          businessId:
-            row.business_id,
-          subscriptionAccessAllowed,
-          channelEnabled,
-          accessAllowed:
-            subscriptionAccessAllowed &&
-            channelEnabled,
-          platform:
-            row.platform ===
-            "telegram"
-              ? "telegram"
-              : "facebook",
-          platformAccountId:
-            row.platform_account_id,
-          name:
-            row.platform ===
-            "telegram"
-              ? row.telegram_bot_name ??
-                row.account_name ??
-                "Telegram Bot"
-              : row.account_name ??
-                "Facebook Page",
-          username:
-            row.platform ===
-            "telegram"
-              ? row.telegram_bot_username
-              : null,
-        };
-      },
-    );
+      if (row.platform === "telegram") {
+        return row.telegram_token_status === "verified";
+      }
+
+      return false;
+    });
+
+    const channels = visibleRows.map((row) => {
+      const subscription =
+        subscriptionByBusiness.get(row.business_id) ?? null;
+
+      return {
+        id: row.id,
+        businessId: row.business_id,
+        subscriptionId: subscription?.id ?? null,
+        subscriptionStatus: subscription?.status ?? null,
+        subscriptionOperational: true,
+        membershipAccessAllowed: true,
+        subscriptionAccessAllowed: true,
+        channelEnabled: true,
+        accessAllowed: true,
+        platform:
+          row.platform === "telegram"
+            ? "telegram"
+            : "facebook",
+        platformAccountId:
+          row.platform_account_id,
+        name:
+          row.platform === "telegram"
+            ? row.telegram_bot_name ??
+              row.account_name ??
+              "Telegram Bot"
+            : row.account_name ??
+              "Facebook Page",
+        username:
+          row.platform === "telegram"
+            ? row.telegram_bot_username
+            : null,
+      };
+    });
 
     return NextResponse.json(
       {

@@ -1,8 +1,23 @@
 import Image from "next/image";
+import { Suspense } from "react";
 
 import { RegisterForm } from "@/components/auth/register-form";
 
-export default function RegisterPage() {
+type RegisterPageProps = {
+  searchParams: Promise<{
+    invite?: string | string[];
+  }>;
+};
+
+export default async function RegisterPage({
+  searchParams,
+}: RegisterPageProps) {
+  const params = await searchParams;
+  const inviteValue = Array.isArray(params.invite)
+    ? params.invite[0]
+    : params.invite;
+  const joiningExistingWorkspace = Boolean(inviteValue?.trim());
+
   return (
     <main
       className="relative flex min-h-dvh items-center justify-center overflow-hidden p-4 sm:p-6"
@@ -29,11 +44,15 @@ export default function RegisterPage() {
             />
 
             <h1 className="mt-7 text-5xl font-bold tracking-tight">
-              Create your workspace
+              {joiningExistingWorkspace
+                ? "Join your TENH team"
+                : "Create your workspace"}
             </h1>
 
             <p className="mt-5 max-w-lg text-base leading-8 text-slate-300">
-             Set up your team workspace to manage customer conversations, organize customer information, assign teammates, and deliver faster support.
+              {joiningExistingWorkspace
+                ? "Create your TENH login, verify the invited email, and join the existing subscription without creating another trial."
+                : "Set up your team workspace to manage customer conversations, organize customer information, assign teammates, and deliver faster support."}
             </p>
           </div>
         </section>
@@ -48,7 +67,13 @@ export default function RegisterPage() {
               Register your Tenh Chat account.
             </p>
 
-            <RegisterForm />
+            <Suspense
+              fallback={
+                <div className="mt-8 h-96 animate-pulse rounded-2xl bg-slate-100" />
+              }
+            >
+              <RegisterForm />
+            </Suspense>
           </div>
         </section>
       </div>

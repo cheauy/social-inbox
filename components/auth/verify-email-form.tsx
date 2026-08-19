@@ -18,6 +18,12 @@ export function VerifyEmailForm() {
   const emailFromQuery =
     searchParams.get("email") ?? "";
 
+  const inviteFromQuery =
+    searchParams.get("invite")?.trim() ?? "";
+
+  const [inviteToken, setInviteToken] =
+    useState(inviteFromQuery);
+
   const [email, setEmail] =
     useState(emailFromQuery);
 
@@ -40,6 +46,19 @@ export function VerifyEmailForm() {
   useState(false);
 
   useEffect(() => {
+    if (inviteFromQuery) {
+      setInviteToken(inviteFromQuery);
+    } else {
+      const storedInvite =
+        sessionStorage.getItem(
+          "tenh_pending_invitation_token",
+        );
+
+      if (storedInvite) {
+        setInviteToken(storedInvite);
+      }
+    }
+
     if (emailFromQuery) {
       setEmail(emailFromQuery);
       return;
@@ -53,7 +72,7 @@ export function VerifyEmailForm() {
     if (storedEmail) {
       setEmail(storedEmail);
     }
-  }, [emailFromQuery]);
+  }, [emailFromQuery, inviteFromQuery]);
 
   function handleTokenChange(
     value: string,
@@ -70,7 +89,7 @@ export function VerifyEmailForm() {
 
     if (!email || token.length !== 8) {
       setError(
-        "Enter the complete six-digit verification code.",
+        "Enter the complete eight-digit verification code.",
       );
 
       return;
@@ -103,23 +122,77 @@ export function VerifyEmailForm() {
         );
       }
 
-      const provisionResponse = await fetch(
-        "/api/onboarding/ensure-workspace",
-        {
-          method: "POST",
-          cache: "no-store",
-        },
-      );
+      let nextDestination =
+        "/dashboard/inbox";
+      let successMessage =
+        "Email verified successfully.";
 
-      const provisionPayload = (await provisionResponse.json().catch(() => null)) as
-        | { success?: boolean; error?: string; trialGranted?: boolean | null }
-        | null;
-
-      if (!provisionResponse.ok || !provisionPayload?.success) {
-        throw new Error(
-          provisionPayload?.error ||
-            "Email verified, but TENH could not prepare your workspace.",
+      if (inviteToken) {
+        const acceptResponse = await fetch(
+          "/api/invitations/accept",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            cache: "no-store",
+            body: JSON.stringify({
+              token: inviteToken,
+            }),
+          },
         );
+
+        const acceptPayload = (await acceptResponse.json().catch(() => null)) as
+          | {
+              success?: boolean;
+              error?: string;
+            }
+          | null;
+
+        if (!acceptResponse.ok || !acceptPayload?.success) {
+          throw new Error(
+            acceptPayload?.error ||
+              "Email verified, but TENH could not accept your workspace invitation.",
+          );
+        }
+
+        sessionStorage.removeItem(
+          "tenh_pending_invitation_token",
+        );
+        nextDestination =
+          "/dashboard/inbox?joined=1";
+        successMessage =
+          "Email verified and workspace invitation accepted.";
+      } else {
+        const provisionResponse = await fetch(
+          "/api/onboarding/ensure-workspace",
+          {
+            method: "POST",
+            cache: "no-store",
+          },
+        );
+
+        const provisionPayload = (await provisionResponse.json().catch(() => null)) as
+          | {
+              success?: boolean;
+              error?: string;
+              trialGranted?: boolean | null;
+            }
+          | null;
+
+        if (!provisionResponse.ok || !provisionPayload?.success) {
+          throw new Error(
+            provisionPayload?.error ||
+              "Email verified, but TENH could not prepare your workspace.",
+          );
+        }
+
+        if (provisionPayload.trialGranted === false) {
+          nextDestination =
+            "/dashboard/subscription?trial=not-eligible";
+          successMessage =
+            "Email verified. This account is not eligible for another free trial; choose a paid subscription to continue.";
+        }
       }
 
       sessionStorage.removeItem(
@@ -127,17 +200,11 @@ export function VerifyEmailForm() {
       );
 
       setVerified(true);
-      setMessage(
-        provisionPayload.trialGranted === false
-          ? "Email verified. This account is not eligible for another free trial; choose a paid subscription to continue."
-          : "Email verified successfully.",
-      );
+      setMessage(successMessage);
 
       window.setTimeout(() => {
         window.location.assign(
-          provisionPayload.trialGranted === false
-            ? "/dashboard/subscription?trial=not-eligible"
-            : "/dashboard/inbox",
+          nextDestination,
         );
       }, 1800);
     } catch (verifyError) {

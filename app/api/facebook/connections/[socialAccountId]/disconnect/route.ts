@@ -61,6 +61,21 @@ export async function POST(
 
   const currentMember =
     authResult.member;
+
+  if (currentMember.role !== "owner") {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Only the subscription Owner can disconnect Facebook Pages.",
+        code: "OWNER_REQUIRED",
+      },
+      {
+        status: 403,
+      },
+    );
+  }
+
   const { socialAccountId } =
     await context.params;
   const cleanSocialAccountId =
@@ -91,7 +106,11 @@ export async function POST(
       platform_account_id,
       account_name,
       is_active,
-      facebook_page_access_token_encrypted
+      facebook_token_status,
+      facebook_page_access_token_encrypted,
+      facebook_user_access_token_encrypted,
+      facebook_user_token_expires_at,
+      facebook_connected_at
     `)
     .eq("id", cleanSocialAccountId)
     .eq(
@@ -129,7 +148,13 @@ export async function POST(
     );
   }
 
-  if (!socialAccount.is_active) {
+  const isFullyDisconnected =
+    socialAccount.facebook_token_status === "disconnected" &&
+    socialAccount.is_active === false &&
+    !socialAccount.facebook_page_access_token_encrypted &&
+    !socialAccount.facebook_user_access_token_encrypted;
+
+  if (isFullyDisconnected) {
     return NextResponse.json({
       success: true,
       alreadyDisconnected: true,
@@ -203,12 +228,13 @@ export async function POST(
     .from("social_accounts")
     .update({
       is_active: false,
-      facebook_token_status:
-        "disconnected",
-      facebook_token_last_error:
-        warning,
-      updated_at:
-        new Date().toISOString(),
+      facebook_page_access_token_encrypted: null,
+      facebook_user_access_token_encrypted: null,
+      facebook_user_token_expires_at: null,
+      facebook_connected_at: null,
+      facebook_token_status: "disconnected",
+      facebook_token_last_error: warning,
+      updated_at: new Date().toISOString(),
     })
     .eq("id", socialAccount.id)
     .eq(

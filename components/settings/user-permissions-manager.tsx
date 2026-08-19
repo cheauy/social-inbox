@@ -50,6 +50,27 @@ type UsageResponse = {
   message?: string;
 };
 
+type PendingInvitation = {
+  id: string;
+  business_id: string;
+  subscription_id: string;
+  email: string;
+  role: "agent" | "owner";
+  status: "pending";
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type InvitationsResponse = {
+  success?: boolean;
+  error?: string;
+  message?: string;
+  invitationUrl?: string;
+  invitations?: PendingInvitation[];
+  invitation?: PendingInvitation;
+};
+
 async function readResult(response: Response): Promise<UsageResponse> {
   const text = await response.text();
 
@@ -195,6 +216,48 @@ export function UserPermissionsManager({ initialTab = "users" }: { initialTab?: 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [data, setData] = useState<UsageResponse | null>(null);
+  const [invitations, setInvitations] =
+    useState<PendingInvitation[]>([]);
+  const [inviteOpen, setInviteOpen] =
+    useState(false);
+  const [inviteEmail, setInviteEmail] =
+    useState("");
+  const [inviteRole, setInviteRole] =
+    useState<"agent" | "owner">("agent");
+  const [inviteWorking, setInviteWorking] =
+    useState<string | null>(null);
+  const [localInviteUrl, setLocalInviteUrl] =
+    useState<string | null>(null);
+
+  const loadInvitations = useCallback(async () => {
+    try {
+      const response = await fetch(
+        "/api/team/invitations",
+        {
+          method: "GET",
+          cache: "no-store",
+        },
+      );
+
+      const result =
+        (await response.json()) as InvitationsResponse;
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.error ??
+            "Unable to load pending invitations.",
+        );
+      }
+
+      setInvitations(result.invitations ?? []);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load pending invitations.",
+      );
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -225,7 +288,8 @@ export function UserPermissionsManager({ initialTab = "users" }: { initialTab?: 
 
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadInvitations();
+  }, [load, loadInvitations]);
 
   const members = data?.members ?? [];
   const connections = data?.connections ?? [];
@@ -306,6 +370,137 @@ export function UserPermissionsManager({ initialTab = "users" }: { initialTab?: 
       );
     } finally {
       setSavingId(null);
+    }
+  }
+
+  async function sendInvitation() {
+    const email = inviteEmail.trim().toLowerCase();
+
+    if (!canManage || !email || inviteWorking) {
+      return;
+    }
+
+    setInviteWorking("create");
+    setError(null);
+    setNotice(null);
+    setLocalInviteUrl(null);
+
+    try {
+      const response = await fetch(
+        "/api/team/invitations",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email,
+            role: inviteRole,
+          }),
+        },
+      );
+
+      const result =
+        (await response.json()) as InvitationsResponse;
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.error ??
+            "Unable to send invitation.",
+        );
+      }
+
+      setInviteEmail("");
+      setInviteOpen(false);
+      setNotice(
+        result.message ??
+          `Invitation sent to ${email}.`,
+      );
+      setLocalInviteUrl(
+        result.invitationUrl ?? null,
+      );
+
+      await Promise.all([
+        load(),
+        loadInvitations(),
+      ]);
+    } catch (inviteError) {
+      setError(
+        inviteError instanceof Error
+          ? inviteError.message
+          : "Unable to send invitation.",
+      );
+    } finally {
+      setInviteWorking(null);
+    }
+  }
+
+  async function manageInvitation(
+    invitation: PendingInvitation,
+    action: "resend" | "cancel",
+  ) {
+    if (!canManage || inviteWorking) {
+      return;
+    }
+
+    if (
+      action === "cancel" &&
+      !window.confirm(
+        `Cancel the invitation for ${invitation.email}? Its reserved user seat will become available.`,
+      )
+    ) {
+      return;
+    }
+
+    setInviteWorking(invitation.id);
+    setError(null);
+    setNotice(null);
+    setLocalInviteUrl(null);
+
+    try {
+      const response = await fetch(
+        `/api/team/invitations/${encodeURIComponent(invitation.id)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            action,
+          }),
+        },
+      );
+
+      const result =
+        (await response.json()) as InvitationsResponse;
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.error ??
+            "Unable to update invitation.",
+        );
+      }
+
+      setNotice(
+        result.message ??
+          "Invitation updated.",
+      );
+      setLocalInviteUrl(
+        result.invitationUrl ?? null,
+      );
+
+      await Promise.all([
+        load(),
+        loadInvitations(),
+      ]);
+    } catch (inviteError) {
+      setError(
+        inviteError instanceof Error
+          ? inviteError.message
+          : "Unable to update invitation.",
+      );
+    } finally {
+      setInviteWorking(null);
     }
   }
 
@@ -468,6 +663,151 @@ export function UserPermissionsManager({ initialTab = "users" }: { initialTab?: 
                   <p className="mt-1 text-sm leading-6 text-slate-600">
                     The permission grid below is for {subscriptionLabel} only. Owner and subscription-access controls are editable by Owners; other columns show the permissions that come with that role.
                   </p>
+                </div>
+
+                <div className="mb-5 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-semibold text-slate-900">
+                        Invite user
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-slate-600">
+                        Invite by email to this exact subscription. Pending invitations reserve a user seat. Channel tokens or Facebook Page access never grant TENH membership.
+                      </p>
+                      <p className="mt-1 text-xs font-semibold text-slate-500">
+                        Seats: {usage.members + invitations.length}
+                        {memberLimit !== null ? `/${memberLimit}` : ""} · {invitations.length} pending
+                      </p>
+                    </div>
+
+                    {canManage ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setInviteOpen((current) => !current)
+                        }
+                        className="shrink-0 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                      >
+                        {inviteOpen ? "Close" : "+ Invite User"}
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {inviteOpen && canManage ? (
+                    <div className="mt-4 grid gap-3 rounded-xl border border-blue-100 bg-white p-4 sm:grid-cols-[1fr_150px_auto]">
+                      <input
+                        type="email"
+                        value={inviteEmail}
+                        onChange={(event) =>
+                          setInviteEmail(event.target.value)
+                        }
+                        placeholder="user@example.com"
+                        disabled={Boolean(inviteWorking)}
+                        className="min-w-0 rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+
+                      <select
+                        value={inviteRole}
+                        onChange={(event) =>
+                          setInviteRole(
+                            event.target.value === "owner"
+                              ? "owner"
+                              : "agent",
+                          )
+                        }
+                        disabled={Boolean(inviteWorking)}
+                        className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500"
+                      >
+                        <option value="agent">Agent</option>
+                        <option value="owner">Owner</option>
+                      </select>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void sendInvitation()
+                        }
+                        disabled={
+                          Boolean(inviteWorking) ||
+                          !inviteEmail.trim()
+                        }
+                        className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                      >
+                        {inviteWorking === "create"
+                          ? "Sending..."
+                          : "Send Invite"}
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {localInviteUrl ? (
+                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                      Local development email is not configured. Test link:{" "}
+                      <a
+                        href={localInviteUrl}
+                        className="font-bold underline"
+                      >
+                        Open invitation
+                      </a>
+                    </div>
+                  ) : null}
+
+                  {invitations.length > 0 ? (
+                    <div className="mt-4 space-y-2">
+                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+                        Pending invitations
+                      </p>
+
+                      {invitations.map((invitation) => (
+                        <div
+                          key={invitation.id}
+                          className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-900">
+                              {invitation.email}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {invitation.role === "owner" ? "Owner" : "Agent"} · expires {new Date(invitation.expires_at).toLocaleDateString()}
+                            </p>
+                          </div>
+
+                          {canManage ? (
+                            <div className="flex shrink-0 gap-2">
+                              <button
+                                type="button"
+                                disabled={Boolean(inviteWorking)}
+                                onClick={() =>
+                                  void manageInvitation(
+                                    invitation,
+                                    "resend",
+                                  )
+                                }
+                                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                              >
+                                {inviteWorking === invitation.id
+                                  ? "Working..."
+                                  : "Resend"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={Boolean(inviteWorking)}
+                                onClick={() =>
+                                  void manageInvitation(
+                                    invitation,
+                                    "cancel",
+                                  )
+                                }
+                                className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="overflow-x-auto rounded-2xl border border-slate-200">

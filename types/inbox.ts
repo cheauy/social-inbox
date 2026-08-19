@@ -18,6 +18,7 @@ export type TagColor = string;
 
 export type TeamMember = {
   id: string;
+  business_id?: string;
   full_name: string;
   email: string;
   role: string;
@@ -135,6 +136,8 @@ export type ContactNote = {
 
 export type InboxConversation = {
   id: string;
+  business_id: string;
+  subscription_id?: string | null;
   status: ConversationStatus;
   unread_count: number;
   last_message_text: string | null;
@@ -183,6 +186,7 @@ parent_comment_id:
   social_account: {
     id: string;
     account_name: string;
+    platform?: string;
     platform_account_id: string;
   } | null;
 };

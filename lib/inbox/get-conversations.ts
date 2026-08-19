@@ -24,6 +24,71 @@ type ActiveMembershipRow = {
   business_id: string;
 };
 
+type SubscriptionStateRow = {
+  id: string;
+  business_id: string;
+  status: string;
+  current_period_end: string | null;
+  trial_ends_at: string | null;
+  created_at?: string | null;
+};
+
+const OPERATIONAL_SUBSCRIPTION_STATUSES = new Set(["active", "trialing"]);
+
+function isPeriodEnded(value: string | null | undefined) {
+  if (!value) return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && timestamp <= Date.now();
+}
+
+function isOperationalSubscription(subscription: SubscriptionStateRow | null) {
+  if (!subscription) {
+    // Preserve legacy/unmanaged workspaces until they are migrated.
+    return true;
+  }
+
+  if (!OPERATIONAL_SUBSCRIPTION_STATUSES.has(subscription.status)) {
+    return false;
+  }
+
+  const end =
+    subscription.status === "trialing"
+      ? subscription.trial_ends_at ?? subscription.current_period_end
+      : subscription.current_period_end;
+
+  return !isPeriodEnded(end);
+}
+
+async function loadLatestSubscriptions(businessIds: string[]) {
+  if (businessIds.length === 0) {
+    return new Map<string, SubscriptionStateRow>();
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("business_subscriptions")
+    .select(
+      "id,business_id,status,current_period_end,trial_ends_at,created_at",
+    )
+    .in("business_id", businessIds)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(
+      `Unable to verify TENH subscription access: ${error.message}`,
+    );
+  }
+
+  const latest = new Map<string, SubscriptionStateRow>();
+
+  for (const row of (data ?? []) as SubscriptionStateRow[]) {
+    if (!latest.has(row.business_id)) {
+      latest.set(row.business_id, row);
+    }
+  }
+
+  return latest;
+}
+
 export type InboxConversationScope = {
   currentBusinessId: string;
   accessibleBusinessIds: string[];
@@ -123,34 +188,20 @@ export async function getInboxConversationScope(): Promise<
     );
   }
 
-  const accessibleBusinessIds =
+  const memberBusinessIds =
     Array.from(
       new Set(
-        (
-          (data ?? []) as ActiveMembershipRow[]
-        )
-          .map(
-            (membership) =>
-              membership.business_id,
-          )
+        ((data ?? []) as ActiveMembershipRow[])
+          .map((membership) => membership.business_id)
           .filter(Boolean),
       ),
     );
 
-  /*
-   * getCurrentMember() already verified the current membership is active.
-   * Keep it in the scope defensively even if a historical membership query
-   * temporarily returns an incomplete row set.
-   */
-  if (
-    !accessibleBusinessIds.includes(
-      authResult.member.business_id,
-    )
-  ) {
-    accessibleBusinessIds.unshift(
-      authResult.member.business_id,
-    );
-  }
+  const subscriptions = await loadLatestSubscriptions(memberBusinessIds);
+
+  const accessibleBusinessIds = memberBusinessIds.filter((businessId) =>
+    isOperationalSubscription(subscriptions.get(businessId) ?? null),
+  );
 
   return {
     currentBusinessId:
@@ -191,6 +242,9 @@ export async function getConversations(
     return [];
   }
 
+  const subscriptionByBusiness =
+    await loadLatestSubscriptions(scopedBusinessIds);
+
   /*
    * Disabled channels keep their TENH history but must not appear in Inbox
    * or All Channels. Resolve the currently enabled social_account ids first
@@ -201,7 +255,7 @@ export async function getConversations(
     error: activeChannelError,
   } = await supabaseAdmin
     .from("social_accounts")
-    .select("id")
+    .select("id,platform,facebook_token_status,telegram_token_status")
     .in(
       "business_id",
       scopedBusinessIds,
@@ -221,6 +275,19 @@ export async function getConversations(
 
   const activeChannelIds =
     (activeChannelData ?? [])
+      .filter((channel) => {
+        if (channel.platform === "telegram") {
+          return channel.telegram_token_status === "verified";
+        }
+
+        if (channel.platform === "facebook") {
+          // Legacy connected Facebook rows may have a NULL token status. Only
+          // an explicit full Disconnect releases/removes them from Inbox.
+          return channel.facebook_token_status !== "disconnected";
+        }
+
+        return true;
+      })
       .map((channel) =>
         String(channel.id ?? "").trim(),
       )
@@ -284,6 +351,7 @@ export async function getConversations(
       social_account:social_accounts (
         id,
         account_name,
+        platform,
         platform_account_id
       )
     `)
@@ -326,10 +394,17 @@ export async function getConversations(
     ) as unknown as
       InboxConversation[];
 
+  const conversationsWithSubscription =
+    conversations.map((conversation) => ({
+      ...conversation,
+      subscription_id:
+        subscriptionByBusiness.get(conversation.business_id)?.id ?? null,
+    }));
+
   const contactIds =
     Array.from(
       new Set(
-        conversations
+        conversationsWithSubscription
           .map(
             (
               conversation,
@@ -353,7 +428,7 @@ export async function getConversations(
     0
   ) {
     return sortConversations(
-      conversations.map(
+      conversationsWithSubscription.map(
         (
           conversation,
         ) => {
@@ -475,7 +550,7 @@ export async function getConversations(
   }
 
   const enriched =
-    conversations.map(
+    conversationsWithSubscription.map(
       (
         conversation,
       ) => {

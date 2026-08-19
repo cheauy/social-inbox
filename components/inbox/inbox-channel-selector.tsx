@@ -10,22 +10,25 @@ import {
   useState,
 } from "react";
 
+import {
+  shortSubscriptionId,
+  subscriptionAccentColor,
+} from "@/lib/inbox/subscription-visual";
+
 type InboxChannel = {
   id: string;
   businessId: string;
+  subscriptionId: string | null;
+  subscriptionStatus?: string | null;
+  subscriptionOperational?: boolean;
+  membershipAccessAllowed?: boolean;
   accessAllowed: boolean;
   subscriptionAccessAllowed: boolean;
   channelEnabled: boolean;
-  platform:
-    | "facebook"
-    | "telegram";
-  platformAccountId:
-    | string
-    | null;
+  platform: "facebook" | "telegram";
+  platformAccountId: string | null;
   name: string;
-  username:
-    | string
-    | null;
+  username: string | null;
 };
 
 type ChannelsResponse = {
@@ -36,11 +39,26 @@ type ChannelsResponse = {
   channels?: InboxChannel[];
 };
 
+type SubscriptionGroup = {
+  key: string;
+  businessId: string;
+  subscriptionId: string | null;
+  accessAllowed: boolean;
+  operational: boolean;
+  channels: InboxChannel[];
+};
+
 const REMOVED_ACCESS_TITLE =
   "You no longer have access to this subscription.";
 
 const REMOVED_ACCESS_DETAIL =
-  "An Owner may have removed your access. Your TENH account and any other subscriptions are unchanged.";
+  "An Owner may have removed your access. Your TENH account and other subscriptions are unchanged.";
+
+const SUBSCRIPTION_LOCKED_TITLE =
+  "This subscription is inactive.";
+
+const SUBSCRIPTION_LOCKED_DETAIL =
+  "Reactivate this subscription before its channels can appear in the operational TENH Inbox.";
 
 const CHANNEL_DISABLED_TITLE =
   "This channel is disabled.";
@@ -51,10 +69,7 @@ const CHANNEL_DISABLED_DETAIL =
 function ChannelIcon({
   platform,
 }: {
-  platform:
-    | "facebook"
-    | "telegram"
-    | "all";
+  platform: "facebook" | "telegram" | "all";
 }) {
   if (platform === "all") {
     return (
@@ -72,16 +87,11 @@ function ChannelIcon({
       ? "/images/channels/messenger.png"
       : "/images/channels/telegram.png";
 
-  const alt =
-    platform === "facebook"
-      ? "Messenger"
-      : "Telegram";
-
   return (
     <span className="h-8 w-8 shrink-0 overflow-hidden rounded-lg">
       <img
         src={src}
-        alt={alt}
+        alt={platform === "facebook" ? "Messenger" : "Telegram"}
         className="h-full w-full object-cover"
         draggable={false}
       />
@@ -90,43 +100,26 @@ function ChannelIcon({
 }
 
 export function InboxChannelSelector() {
-  const router =
-    useRouter();
-  const searchParams =
-    useSearchParams();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const [open, setOpen] =
-    useState(false);
-  const [loading, setLoading] =
-    useState(true);
-  const [error, setError] =
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [channels, setChannels] = useState<InboxChannel[]>([]);
+  const [currentBusinessId, setCurrentBusinessId] =
     useState<string | null>(null);
-  const [channels, setChannels] =
-    useState<InboxChannel[]>([]);
-  const [
-    currentBusinessId,
-    setCurrentBusinessId,
-  ] =
+  const [deniedChannelId, setDeniedChannelId] =
     useState<string | null>(null);
-  const [
-    currentBusinessAccess,
-    setCurrentBusinessAccess,
-  ] =
-    useState(true);
-  const [
-    deniedChannelId,
-    setDeniedChannelId,
-  ] =
-    useState<string | null>(null);
-  const [
-    switchingChannelId,
-    setSwitchingChannelId,
-  ] =
+  const [switchingChannelId, setSwitchingChannelId] =
     useState<string | null>(null);
 
   const selectedChannelId =
     searchParams.get("channel") ??
     searchParams.get("page");
+
+  const selectedWorkspaceId =
+    searchParams.get("workspace");
 
   useEffect(() => {
     let cancelled = false;
@@ -136,40 +129,27 @@ export function InboxChannelSelector() {
       setError(null);
 
       try {
-        const response =
-          await fetch(
-            "/api/inbox/channels",
-            {
-              method: "GET",
-              cache: "no-store",
-            },
-          );
+        const response = await fetch(
+          "/api/inbox/channels",
+          {
+            method: "GET",
+            cache: "no-store",
+          },
+        );
 
         const result =
-          (await response.json()) as
-            ChannelsResponse;
+          (await response.json()) as ChannelsResponse;
 
-        if (
-          !response.ok ||
-          !result.success
-        ) {
+        if (!response.ok || !result.success) {
           throw new Error(
-            result.error ??
-              "Unable to load channels.",
+            result.error ?? "Unable to load channels.",
           );
         }
 
         if (!cancelled) {
-          setChannels(
-            result.channels ?? [],
-          );
+          setChannels(result.channels ?? []);
           setCurrentBusinessId(
-            result.currentBusinessId ??
-              null,
-          );
-          setCurrentBusinessAccess(
-            result.currentBusinessAccess !==
-              false,
+            result.currentBusinessId ?? null,
           );
         }
       } catch (loadError) {
@@ -200,45 +180,51 @@ export function InboxChannelSelector() {
         selectedChannelId
           ? channels.find(
               (channel) =>
-                channel.id ===
-                selectedChannelId,
+                channel.id === selectedChannelId,
             ) ?? null
           : null,
-      [
-        channels,
-        selectedChannelId,
-      ],
+      [channels, selectedChannelId],
     );
 
-  const facebookChannels =
-    useMemo(
-      () =>
-        channels.filter(
-          (channel) =>
-            channel.platform ===
-            "facebook",
-        ),
-      [channels],
-    );
+  const subscriptionGroups =
+    useMemo(() => {
+      const groups = new Map<string, SubscriptionGroup>();
 
-  const telegramChannels =
-    useMemo(
-      () =>
-        channels.filter(
-          (channel) =>
-            channel.platform ===
-            "telegram",
-        ),
-      [channels],
-    );
+      for (const channel of channels) {
+        const key =
+          channel.subscriptionId ??
+          `legacy:${channel.businessId}`;
 
-  function channelSecondaryText(
-    channel: InboxChannel,
-  ) {
-    if (
-      channel.platform ===
-      "telegram"
-    ) {
+        const existing = groups.get(key);
+
+        if (existing) {
+          existing.channels.push(channel);
+          existing.accessAllowed =
+            existing.accessAllowed ||
+            channel.subscriptionAccessAllowed;
+          existing.operational =
+            existing.operational &&
+            channel.subscriptionOperational !== false;
+          continue;
+        }
+
+        groups.set(key, {
+          key,
+          businessId: channel.businessId,
+          subscriptionId: channel.subscriptionId,
+          accessAllowed:
+            channel.subscriptionAccessAllowed,
+          operational:
+            channel.subscriptionOperational !== false,
+          channels: [channel],
+        });
+      }
+
+      return Array.from(groups.values());
+    }, [channels]);
+
+  function channelSecondaryText(channel: InboxChannel) {
+    if (channel.platform === "telegram") {
       return channel.username
         ? `@${channel.username}`
         : "Telegram Bot";
@@ -247,155 +233,106 @@ export function InboxChannelSelector() {
     return "Messenger";
   }
 
-  function buildInboxUrl(
-    channelId: string | null,
-  ) {
+  function buildInboxUrl({
+    channelId = null,
+    workspaceId = null,
+  }: {
+    channelId?: string | null;
+    workspaceId?: string | null;
+  }) {
     const query =
-      new URLSearchParams(
-        searchParams.toString(),
-      );
+      new URLSearchParams(searchParams.toString());
 
-    /*
-     * A conversation belongs to one channel.
-     * When switching channels, remove the
-     * previous conversation selection.
-     */
     query.delete("conversation");
-
-    /*
-     * V3.1.17 used ?page=<social_account_uuid>.
-     * Keep reading it for backward compatibility,
-     * but V3.11.4 writes the generic ?channel= key.
-     */
     query.delete("page");
 
     if (channelId) {
-      query.set(
-        "channel",
-        channelId,
-      );
+      query.set("channel", channelId);
+      query.delete("workspace");
     } else {
       query.delete("channel");
+
+      if (workspaceId) {
+        query.set("workspace", workspaceId);
+      } else {
+        query.delete("workspace");
+      }
     }
 
-    const queryString =
-      query.toString();
+    const queryString = query.toString();
 
     return queryString
       ? `/dashboard/inbox?${queryString}`
       : "/dashboard/inbox";
   }
 
-  async function selectChannel(
-    channel: InboxChannel,
-  ) {
+  async function switchBusinessIfNeeded(businessId: string) {
+    if (businessId === currentBusinessId) {
+      return;
+    }
+
+    const switchResponse = await fetch(
+      "/api/workspaces/switch",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          businessId,
+        }),
+      },
+    );
+
+    const switchResult =
+      (await switchResponse.json()) as {
+        success?: boolean;
+        error?: string;
+      };
+
+    if (!switchResponse.ok || !switchResult.success) {
+      throw new Error(
+        switchResult.error ??
+          "Unable to open this subscription.",
+      );
+    }
+
+    setCurrentBusinessId(businessId);
+  }
+
+  function accessErrorForChannel(channel: InboxChannel) {
+    if (channel.membershipAccessAllowed === false) {
+      return `${REMOVED_ACCESS_TITLE} ${REMOVED_ACCESS_DETAIL}`;
+    }
+
+    if (channel.subscriptionOperational === false) {
+      return `${SUBSCRIPTION_LOCKED_TITLE} ${SUBSCRIPTION_LOCKED_DETAIL}`;
+    }
+
+    return `${CHANNEL_DISABLED_TITLE} ${CHANNEL_DISABLED_DETAIL}`;
+  }
+
+  async function selectChannel(channel: InboxChannel) {
     setError(null);
 
-    /*
-     * A removed subscription remains visible so the user understands what
-     * happened, but TENH never opens it and never changes workspace context.
-     */
     if (!channel.accessAllowed) {
-      setDeniedChannelId(
-        channel.id,
-      );
-      setError(
-        channel.subscriptionAccessAllowed &&
-        !channel.channelEnabled
-          ? `${CHANNEL_DISABLED_TITLE} ${CHANNEL_DISABLED_DETAIL}`
-          : `${REMOVED_ACCESS_TITLE} ${REMOVED_ACCESS_DETAIL}`,
-      );
+      setDeniedChannelId(channel.id);
+      setError(accessErrorForChannel(channel));
       setOpen(true);
       return;
     }
 
     setDeniedChannelId(null);
-    setSwitchingChannelId(
-      channel.id,
-    );
+    setSwitchingChannelId(channel.id);
 
     try {
-      /*
-       * Moving to a channel that belongs to another subscription is a manual
-       * user action. TENH never performs this switch automatically.
-       */
-      if (
-        channel.businessId !==
-        currentBusinessId
-      ) {
-        const switchResponse =
-          await fetch(
-            "/api/workspaces/switch",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-              body: JSON.stringify({
-                businessId:
-                  channel.businessId,
-              }),
-            },
-          );
-
-        const switchResult =
-          (await switchResponse.json()) as {
-            success?: boolean;
-            error?: string;
-          };
-
-        if (
-          !switchResponse.ok ||
-          !switchResult.success
-        ) {
-          if (
-            switchResponse.status ===
-            403
-          ) {
-            setChannels(
-              (current) =>
-                current.map(
-                  (item) =>
-                    item.businessId ===
-                    channel.businessId
-                      ? {
-                          ...item,
-                          subscriptionAccessAllowed:
-                            false,
-                          accessAllowed:
-                            false,
-                        }
-                      : item,
-                ),
-            );
-            setDeniedChannelId(
-              channel.id,
-            );
-            setOpen(true);
-            return;
-          }
-
-          throw new Error(
-            switchResult.error ??
-              "Unable to open this channel.",
-          );
-        }
-
-        setCurrentBusinessId(
-          channel.businessId,
-        );
-        setCurrentBusinessAccess(
-          true,
-        );
-      }
+      await switchBusinessIfNeeded(channel.businessId);
 
       setOpen(false);
-
       router.push(
-        buildInboxUrl(
-          channel.id,
-        ),
+        buildInboxUrl({
+          channelId: channel.id,
+        }),
       );
       router.refresh();
     } catch (selectError) {
@@ -406,113 +343,110 @@ export function InboxChannelSelector() {
       );
       setOpen(true);
     } finally {
-      setSwitchingChannelId(
-        null,
-      );
+      setSwitchingChannelId(null);
     }
   }
 
-  function selectAllChannels() {
-    setDeniedChannelId(null);
+  async function selectSubscription(group: SubscriptionGroup) {
+    setError(null);
 
-    /*
-     * "All Channels" only shows conversations for the currently accessible
-     * subscription. If that subscription was removed, do not silently move
-     * the user elsewhere.
-     */
-    if (!currentBusinessAccess) {
+    if (!group.accessAllowed) {
       setError(
-        `${REMOVED_ACCESS_TITLE} ${REMOVED_ACCESS_DETAIL}`,
+        group.operational
+          ? `${REMOVED_ACCESS_TITLE} ${REMOVED_ACCESS_DETAIL}`
+          : `${SUBSCRIPTION_LOCKED_TITLE} ${SUBSCRIPTION_LOCKED_DETAIL}`,
       );
       setOpen(true);
       return;
     }
 
+    setSwitchingChannelId(`group:${group.key}`);
+
+    try {
+      await switchBusinessIfNeeded(group.businessId);
+      setOpen(false);
+      router.push(
+        buildInboxUrl({
+          workspaceId: group.businessId,
+        }),
+      );
+      router.refresh();
+    } catch (selectError) {
+      setError(
+        selectError instanceof Error
+          ? selectError.message
+          : "Unable to open this subscription.",
+      );
+      setOpen(true);
+    } finally {
+      setSwitchingChannelId(null);
+    }
+  }
+
+  function selectAllChannels() {
+    setDeniedChannelId(null);
     setError(null);
     setOpen(false);
 
     router.push(
-      buildInboxUrl(null),
+      buildInboxUrl({
+        channelId: null,
+        workspaceId: null,
+      }),
     );
     router.refresh();
   }
 
+  const selectedWorkspaceGroup =
+    selectedWorkspaceId
+      ? subscriptionGroups.find(
+          (group) =>
+            group.businessId === selectedWorkspaceId,
+        ) ?? null
+      : null;
+
   const selectedLabel =
     selectedChannel
-      ? selectedChannel.platform ===
-          "telegram"
-        ? selectedChannel.username
-          ? `@${selectedChannel.username}`
-          : selectedChannel.name
+      ? selectedChannel.platform === "telegram" &&
+        selectedChannel.username
+        ? `@${selectedChannel.username}`
         : selectedChannel.name
-      : "All Channels";
+      : selectedWorkspaceGroup
+        ? shortSubscriptionId(
+            selectedWorkspaceGroup.subscriptionId,
+          )
+        : "All Channels";
 
   const selectedPlatform =
-    selectedChannel?.platform ??
-    "all";
-
-  const selectedAccessBlocked =
-    Boolean(
-      selectedChannel &&
-        !selectedChannel.accessAllowed,
-    );
-
-  const selectedBlockTitle =
-    selectedChannel &&
-    selectedChannel.subscriptionAccessAllowed &&
-    !selectedChannel.channelEnabled
-      ? CHANNEL_DISABLED_TITLE
-      : REMOVED_ACCESS_TITLE;
+    selectedChannel?.platform ?? "all";
 
   function renderChannelButton(
     channel: InboxChannel,
   ) {
     const selected =
-      selectedChannelId ===
-      channel.id;
-
+      selectedChannelId === channel.id;
     const denied =
-      deniedChannelId ===
-      channel.id;
-
+      deniedChannelId === channel.id;
     const switching =
-      switchingChannelId ===
-      channel.id;
-
-    const selectedClasses =
-      channel.platform ===
-      "telegram"
-        ? "bg-sky-50"
-        : "bg-blue-50";
+      switchingChannelId === channel.id;
 
     return (
-      <div
-        key={channel.id}
-        className="rounded-xl"
-      >
+      <div key={channel.id} className="rounded-xl">
         <button
           type="button"
           onClick={() =>
-            void selectChannel(
-              channel,
-            )
+            void selectChannel(channel)
           }
-          disabled={Boolean(
-            switchingChannelId,
-          )}
+          disabled={Boolean(switchingChannelId)}
           className={`flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition disabled:cursor-wait ${
             selected
-              ? selectedClasses
+              ? "bg-blue-50"
               : channel.accessAllowed
                 ? "hover:bg-slate-50"
                 : "hover:bg-red-50/60"
           }`}
         >
-          <ChannelIcon
-            platform={
-              channel.platform
-            }
-          />
+          <ChannelIcon platform={channel.platform} />
 
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold text-slate-900">
@@ -520,26 +454,22 @@ export function InboxChannelSelector() {
             </span>
 
             <span className="mt-0.5 block truncate text-xs text-slate-500">
-              {channelSecondaryText(
-                channel,
-              )}
+              {channelSecondaryText(channel)}
             </span>
 
             {!channel.accessAllowed ? (
               <span className="mt-1 block text-[11px] font-semibold leading-4 text-red-600">
-                {channel.subscriptionAccessAllowed &&
-                !channel.channelEnabled
-                  ? CHANNEL_DISABLED_TITLE
-                  : REMOVED_ACCESS_TITLE}
+                {channel.membershipAccessAllowed === false
+                  ? REMOVED_ACCESS_TITLE
+                  : channel.subscriptionOperational === false
+                    ? SUBSCRIPTION_LOCKED_TITLE
+                    : CHANNEL_DISABLED_TITLE}
               </span>
             ) : null}
 
             {denied ? (
               <span className="mt-1 block text-[11px] leading-4 text-red-500">
-                {channel.subscriptionAccessAllowed &&
-                !channel.channelEnabled
-                  ? CHANNEL_DISABLED_DETAIL
-                  : REMOVED_ACCESS_DETAIL}
+                {accessErrorForChannel(channel)}
               </span>
             ) : null}
           </span>
@@ -548,16 +478,8 @@ export function InboxChannelSelector() {
             <span className="shrink-0 text-xs font-semibold text-slate-400">
               Opening…
             </span>
-          ) : selected &&
-            channel.accessAllowed ? (
-            <span
-              className={`shrink-0 text-sm font-bold ${
-                channel.platform ===
-                "telegram"
-                  ? "text-sky-600"
-                  : "text-blue-600"
-              }`}
-            >
+          ) : selected && channel.accessAllowed ? (
+            <span className="shrink-0 text-sm font-bold text-blue-600">
               ✓
             </span>
           ) : !channel.accessAllowed ? (
@@ -575,23 +497,12 @@ export function InboxChannelSelector() {
       <button
         type="button"
         onClick={() =>
-          setOpen(
-            (current) =>
-              !current,
-          )
+          setOpen((current) => !current)
         }
-        className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
-          selectedAccessBlocked
-            ? "border-red-200 bg-red-50/50 hover:bg-red-50"
-            : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white"
-        }`}
+        className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left transition hover:border-slate-300 hover:bg-white"
         aria-expanded={open}
       >
-        <ChannelIcon
-          platform={
-            selectedPlatform
-          }
-        />
+        <ChannelIcon platform={selectedPlatform} />
 
         <span className="min-w-0 flex-1">
           <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
@@ -603,12 +514,6 @@ export function InboxChannelSelector() {
               ? "Loading channels..."
               : selectedLabel}
           </span>
-
-          {selectedAccessBlocked ? (
-            <span className="mt-1 block text-[11px] font-semibold text-red-600">
-              {selectedBlockTitle}
-            </span>
-          ) : null}
         </span>
 
         <svg
@@ -617,9 +522,7 @@ export function InboxChannelSelector() {
           stroke="currentColor"
           strokeWidth="2"
           className={`h-4 w-4 shrink-0 text-slate-400 transition ${
-            open
-              ? "rotate-180"
-              : ""
+            open ? "rotate-180" : ""
           }`}
           aria-hidden="true"
         >
@@ -636,30 +539,21 @@ export function InboxChannelSelector() {
           <button
             type="button"
             className="fixed inset-0 z-40 cursor-default"
-            onClick={() =>
-              setOpen(false)
-            }
+            onClick={() => setOpen(false)}
             aria-label="Close channel selector"
           />
 
-          <div className="absolute left-3 right-3 top-[72px] z-50 max-h-[420px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
+          <div className="absolute left-3 right-3 top-[72px] z-50 max-h-[440px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
             <button
               type="button"
-              onClick={
-                selectAllChannels
-              }
+              onClick={selectAllChannels}
               className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-                !selectedChannelId &&
-                currentBusinessAccess
+                !selectedChannelId && !selectedWorkspaceId
                   ? "bg-blue-50"
-                  : currentBusinessAccess
-                    ? "hover:bg-slate-50"
-                    : "hover:bg-red-50/60"
+                  : "hover:bg-slate-50"
               }`}
             >
-              <ChannelIcon
-                platform="all"
-              />
+              <ChannelIcon platform="all" />
 
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold text-slate-900">
@@ -668,49 +562,76 @@ export function InboxChannelSelector() {
                 <span className="mt-0.5 block text-xs text-slate-500">
                   Messenger and Telegram
                 </span>
-                {!currentBusinessAccess ? (
-                  <span className="mt-1 block text-[11px] font-semibold text-red-600">
-                    {REMOVED_ACCESS_TITLE}
-                  </span>
-                ) : null}
               </span>
 
-              {!selectedChannelId &&
-              currentBusinessAccess ? (
+              {!selectedChannelId && !selectedWorkspaceId ? (
                 <span className="text-sm font-bold text-blue-600">
                   ✓
                 </span>
               ) : null}
             </button>
 
-            {facebookChannels.length >
-            0 ? (
-              <div className="mt-2 border-t border-slate-100 pt-2">
-                <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                  Messenger
-                </p>
+            {subscriptionGroups.map((group) => {
+              const color = subscriptionAccentColor(
+                group.subscriptionId,
+                group.businessId,
+              );
+              const groupSelected =
+                selectedWorkspaceId === group.businessId &&
+                !selectedChannelId;
+              const groupSwitching =
+                switchingChannelId === `group:${group.key}`;
 
-                {facebookChannels.map(
-                  renderChannelButton,
-                )}
-              </div>
-            ) : null}
+              return (
+                <div
+                  key={group.key}
+                  className="mt-2 border-t border-slate-100 pt-2"
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void selectSubscription(group)
+                    }
+                    disabled={Boolean(switchingChannelId)}
+                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition ${
+                      groupSelected
+                        ? "bg-slate-100"
+                        : group.accessAllowed
+                          ? "hover:bg-slate-50"
+                          : "hover:bg-red-50/60"
+                    }`}
+                  >
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: color }}
+                      aria-hidden="true"
+                    />
+                    <span className="min-w-0 flex-1 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-600">
+                      {shortSubscriptionId(group.subscriptionId)}
+                    </span>
+                    {groupSwitching ? (
+                      <span className="text-[10px] font-semibold text-slate-400">
+                        Opening…
+                      </span>
+                    ) : groupSelected ? (
+                      <span className="text-xs font-bold text-slate-600">
+                        ✓
+                      </span>
+                    ) : !group.accessAllowed ? (
+                      <span className="text-xs font-bold text-red-500">
+                        !
+                      </span>
+                    ) : null}
+                  </button>
 
-            {telegramChannels.length >
-            0 ? (
-              <div className="mt-2 border-t border-slate-100 pt-2">
-                <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                  Telegram
-                </p>
+                  <div className="mt-0.5">
+                    {group.channels.map(renderChannelButton)}
+                  </div>
+                </div>
+              );
+            })}
 
-                {telegramChannels.map(
-                  renderChannelButton,
-                )}
-              </div>
-            ) : null}
-
-            {!loading &&
-            channels.length === 0 ? (
+            {!loading && channels.length === 0 ? (
               <div className="px-3 py-5 text-center text-xs text-slate-500">
                 No channels connected.
               </div>

@@ -68,6 +68,31 @@ export function LoginForm() {
   const searchParams =
     useSearchParams();
 
+  const requestedNext =
+    searchParams.get("next")?.trim() ?? "";
+
+  const safeNext =
+    requestedNext.startsWith("/") &&
+    !requestedNext.startsWith("//") &&
+    !requestedNext.includes("\\")
+      ? requestedNext
+      : "/dashboard/inbox";
+
+  const invitationToken = (() => {
+    if (!safeNext.startsWith("/invite/accept")) {
+      return "";
+    }
+
+    try {
+      return new URL(
+        safeNext,
+        "https://tenh.local",
+      ).searchParams.get("token")?.trim() ?? "";
+    } catch {
+      return "";
+    }
+  })();
+
   // Chromium extensions/password managers can inject attributes such as
   // fdprocessedid before React hydrates the server HTML. Render the actual
   // controls only after hydration so extension DOM mutations cannot create a
@@ -81,9 +106,6 @@ export function LoginForm() {
 
   const callbackError =
     searchParams.get("error");
-
-  const accountDeleted =
-    searchParams.get("accountDeleted") === "1";
 
   const [email, setEmail] =
     useState("");
@@ -126,7 +148,7 @@ const [showPassword, setShowPassword] =
       const redirectTo =
         `${window.location.origin}` +
         "/auth/callback" +
-        "?next=/dashboard/inbox";
+        `?next=${encodeURIComponent(safeNext)}`;
 
       const { error: oauthError } =
         await supabase.auth
@@ -253,6 +275,11 @@ function EyeOffIcon() {
         );
       }
 
+      if (safeNext.startsWith("/invite/accept")) {
+        window.location.assign(safeNext);
+        return;
+      }
+
       const provisionResponse = await fetch(
         "/api/onboarding/ensure-workspace",
         {
@@ -305,17 +332,6 @@ function EyeOffIcon() {
 
   return (
     <div className="mt-8">
-      {accountDeleted ? (
-        <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <p className="font-bold">
-            Account deleted
-          </p>
-          <p className="mt-1 leading-6">
-            Your TENH login and personal profile were permanently deleted, and your workspace access was revoked.
-          </p>
-        </div>
-      ) : null}
-
       <div className="space-y-3">
         <button
           type="button"
@@ -457,7 +473,11 @@ function EyeOffIcon() {
    <p className="text-center text-sm text-slate-500">
   Don&apos;t have an account?{" "}
   <a
-    href="/register"
+    href={
+      invitationToken
+        ? `/register?invite=${encodeURIComponent(invitationToken)}`
+        : "/register"
+    }
     className="font-bold text-blue-600 hover:text-blue-700"
   >
     Create account

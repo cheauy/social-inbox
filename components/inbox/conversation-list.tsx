@@ -30,6 +30,10 @@ import {
   InboxChannelSelector,
 } from "@/components/inbox/inbox-channel-selector";
 import { ReminderListPanel } from "@/components/inbox/reminder-list-panel";
+import {
+  shortSubscriptionId,
+  subscriptionAccentColor,
+} from "@/lib/inbox/subscription-visual";
 
 type SearchAwareContact =
   NonNullable<InboxConversation["contact"]> & {
@@ -452,6 +456,8 @@ type ChannelDirectoryEntry = {
     | "facebook"
     | "telegram";
   name: string;
+  businessId: string;
+  subscriptionId: string | null;
 };
 
 type ChannelDirectory =
@@ -474,6 +480,8 @@ type ChannelsApiResponse = {
       | "facebook"
       | "telegram";
     name: string;
+    businessId: string;
+    subscriptionId: string | null;
   }>;
 };
 
@@ -1118,6 +1126,10 @@ export function ConversationList({
               channel.platform,
             name:
               channel.name,
+            businessId:
+              channel.businessId,
+            subscriptionId:
+              channel.subscriptionId,
           };
         }
 
@@ -3201,6 +3213,26 @@ export function ConversationList({
                     channelDirectoryLoaded,
                   );
 
+                const conversationChannel =
+                  conversation.social_account?.id
+                    ? channelDirectory[
+                        conversation.social_account.id
+                      ]
+                    : null;
+
+                const subscriptionId =
+                  conversation.subscription_id ??
+                  conversationChannel?.subscriptionId ??
+                  null;
+
+                const subscriptionColor =
+                  subscriptionAccentColor(
+                    subscriptionId,
+                    conversation.business_id ??
+                      conversationChannel?.businessId ??
+                      null,
+                  );
+
                 return (
                   <button
                     key={
@@ -3290,6 +3322,23 @@ export function ConversationList({
                       </div>
 
                       <div className="mt-2 flex flex-wrap items-center gap-1">
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600"
+                          title="TENH subscription"
+                        >
+                          <span
+                            className="h-2 w-2 rounded-full"
+                            style={{
+                              backgroundColor:
+                                subscriptionColor,
+                            }}
+                            aria-hidden="true"
+                          />
+                          {shortSubscriptionId(
+                            subscriptionId,
+                          )}
+                        </span>
+
                         {getConversationChannel(
                           conversation,
                         ) ===

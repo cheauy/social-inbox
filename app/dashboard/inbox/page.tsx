@@ -25,6 +25,7 @@ type InboxPageProps = {
     status?: string | string[];
     channel?: string | string[];
     page?: string | string[];
+    workspace?: string | string[];
   }>;
 };
 
@@ -53,7 +54,9 @@ export default async function InboxPage({
     getConversations(
       inboxScope.accessibleBusinessIds,
     ),
-    getTeamMembers(),
+    getTeamMembers(
+      inboxScope.accessibleBusinessIds,
+    ),
   ]);
 
   /*
@@ -62,6 +65,23 @@ export default async function InboxPage({
    * `page` is the legacy V3.1.17 Facebook Page key.
    * Keep accepting it so old Inbox/Page links continue to work.
    */
+  const selectedWorkspaceId =
+    getSingleSearchParam(
+      params.workspace,
+    );
+
+  const workspaceConversations =
+    selectedWorkspaceId &&
+    inboxScope.accessibleBusinessIds.includes(
+      selectedWorkspaceId,
+    )
+      ? allConversations.filter(
+          (conversation) =>
+            conversation.business_id ===
+            selectedWorkspaceId,
+        )
+      : allConversations;
+
   const selectedChannelId =
     getSingleSearchParam(
       params.channel,
@@ -72,12 +92,12 @@ export default async function InboxPage({
 
   const channelConversations =
     selectedChannelId
-      ? allConversations.filter(
+      ? workspaceConversations.filter(
           (conversation) =>
             conversation.social_account?.id ===
             selectedChannelId,
         )
-      : allConversations;
+      : workspaceConversations;
 
   const requestedStatus =
     getSingleSearchParam(
@@ -185,7 +205,7 @@ export default async function InboxPage({
       ).length,
 
     spam:
-      allConversations.filter(
+      channelConversations.filter(
         (conversation) =>
           conversation.status ===
           "spam",

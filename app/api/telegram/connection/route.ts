@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-
-import {
-  getCurrentMember,
-  TENH_ACTIVE_BUSINESS_COOKIE,
-} from "@/lib/auth/get-current-member";
+import { getCurrentMember } from "@/lib/auth/get-current-member";
 import {
   decryptChannelCredential,
   encryptChannelCredential,
@@ -34,7 +29,6 @@ type TelegramGetMeResult = {
 
 type ConnectTelegramBody = {
   token?: string;
-  joinExisting?: boolean;
 };
 
 type TelegramConnectionRow = {
@@ -64,11 +58,6 @@ type SubscriptionState = {
   trial_ends_at: string | null;
 };
 
-type MemberLookup = {
-  id: string;
-  role: string;
-  is_active: boolean;
-};
 
 const TELEGRAM_SELECT = `
   id,
@@ -222,31 +211,6 @@ async function loadVerifiedBotClaim(botId: string) {
   };
 }
 
-async function loadMembership(userId: string, businessId: string) {
-  const { data, error } = await supabaseAdmin
-    .from("team_members")
-    .select("id,role,is_active")
-    .eq("user_id", userId)
-    .eq("business_id", businessId)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return (data ?? null) as MemberLookup | null;
-}
-
-async function setActiveBusinessCookie(businessId: string) {
-  const cookieStore = await cookies();
-  cookieStore.set(TENH_ACTIVE_BUSINESS_COOKIE, businessId, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 365,
-  });
-}
 
 async function verifyTelegramToken(token: string) {
   const controller = new AbortController();
@@ -382,196 +346,46 @@ async function verifyWorkspaceCanUseTelegram(
   };
 }
 
-async function verifyWorkspaceCanAcceptMember(businessId: string) {
-  const subscription = await loadSubscriptionState(businessId);
-
-  if (!isOperationalSubscription(subscription)) {
-    return {
-      success: false as const,
-      response: jsonError(
-        "This Telegram Bot belongs to a TENH subscription that is expired or inactive. Its Owner must reactivate or disconnect the Bot first.",
-        409,
-        "BOT_SUBSCRIPTION_LOCKED",
-      ),
-    };
-  }
-
-  const entitlementResult = await getBusinessEntitlements(businessId);
-
-  if (!entitlementResult.success) {
-    console.error(
-      "[TENH Telegram] Unable to check member capacity:",
-      entitlementResult.error,
-    );
-
-    return {
-      success: false as const,
-      response: jsonError(
-        "TENH could not verify the destination subscription's user capacity. Try again.",
-        503,
-        "ENTITLEMENT_UNAVAILABLE",
-      ),
-    };
-  }
-
-  const entitlement = entitlementResult.data;
-
-  if (entitlement.managed && entitlement.locked) {
-    return {
-      success: false as const,
-      response: jsonError(
-        "This Telegram Bot belongs to a TENH subscription that is expired or inactive. Its Owner must reactivate or disconnect the Bot first.",
-        409,
-        "BOT_SUBSCRIPTION_LOCKED",
-      ),
-    };
-  }
-
-  if (
-    entitlement.managed &&
-    entitlement.activeMembers >= (entitlement.memberLimit ?? 0)
-  ) {
-    return {
-      success: false as const,
-      response: jsonError(
-        "This Telegram Bot already belongs to another TENH subscription, but that subscription has no free user seats. Ask an Owner to add user capacity first.",
-        409,
-        "MEMBER_LIMIT_REACHED",
-      ),
-    };
-  }
-
-  return {
-    success: true as const,
-    subscription,
-  };
-}
-
 async function handleBotClaimedByAnotherSubscription({
   claim,
   userId,
-  fullName,
-  email,
-  joinExisting,
 }: {
   claim: TelegramConnectionRow;
   userId: string;
-  fullName: string;
-  email: string;
-  joinExisting: boolean;
 }) {
-  const membership = await loadMembership(userId, claim.business_id);
-
   const subscription = await loadSubscriptionState(claim.business_id);
 
-  if (!isOperationalSubscription(subscription)) {
-    return jsonError(
-      "This Telegram Bot is already connected to a TENH subscription that is expired or inactive. Its Owner must reactivate or disconnect the Bot before it can be connected elsewhere.",
-      409,
-      "BOT_SUBSCRIPTION_LOCKED",
+  const { data: membership, error: membershipError } = await supabaseAdmin
+    .from("team_members")
+    .select("id,role,is_active")
+    .eq("user_id", userId)
+    .eq("business_id", claim.business_id)
+    .maybeSingle();
+
+  if (membershipError) {
+    console.error(
+      "[TENH Telegram] Unable to verify existing Bot membership:",
+      membershipError.message,
     );
   }
 
   if (membership?.is_active) {
-    await setActiveBusinessCookie(claim.business_id);
-
-    return NextResponse.json({
-      success: true,
-      joinedExistingSubscription: true,
-      alreadyMember: true,
-      businessId: claim.business_id,
-      subscriptionId: subscription?.id ?? null,
-      connection: toPublicConnection(claim),
-      message:
-        "This Telegram Bot already belongs to a TENH subscription you can access. TENH opened that same subscription; no duplicate Bot connection was created.",
-    });
-  }
-
-  if (!joinExisting) {
     return jsonError(
-      "This Telegram Bot is already connected to another TENH subscription. Join that same subscription instead of creating a duplicate Bot connection.",
+      "This Telegram Bot is already connected to another TENH subscription you can access. Open that subscription's existing Bot connection; TENH did not create a duplicate.",
       409,
-      "BOT_ALREADY_CONNECTED",
-      {
-        canJoinExistingSubscription: true,
-      },
+      "BOT_ALREADY_CONNECTED_YOURS",
     );
   }
 
-  const capacity = await verifyWorkspaceCanAcceptMember(claim.business_id);
-  if (!capacity.success) {
-    return capacity.response;
-  }
-
-  const { data: joinedRows, error: joinError } = await supabaseAdmin.rpc(
-    "tenh_join_subscription_as_agent",
-    {
-      p_user_id: userId,
-      p_business_id: claim.business_id,
-      p_full_name: fullName,
-      p_email: email,
-    },
+  return jsonError(
+    isOperationalSubscription(subscription)
+      ? "This Telegram Bot is already connected to another TENH workspace. Ask that workspace Owner to invite you if you need access."
+      : "This Telegram Bot is already connected to another TENH workspace whose subscription is inactive. Its Owner must reactivate or fully disconnect the Bot before it can be connected elsewhere.",
+    409,
+    isOperationalSubscription(subscription)
+      ? "BOT_ALREADY_CONNECTED"
+      : "BOT_SUBSCRIPTION_LOCKED",
   );
-
-  if (joinError) {
-    console.error(
-      "[TENH Telegram] Unable to join existing Bot subscription:",
-      joinError.message,
-    );
-
-    const lower = joinError.message.toLowerCase();
-
-    if (lower.includes("member limit") || lower.includes("user limit")) {
-      return jsonError(
-        "That TENH subscription has no free user seats. Ask an Owner to add capacity first.",
-        409,
-        "MEMBER_LIMIT_REACHED",
-      );
-    }
-
-    if (
-      lower.includes("subscription") &&
-      (lower.includes("inactive") ||
-        lower.includes("expired") ||
-        lower.includes("not active"))
-    ) {
-      return jsonError(
-        "That TENH subscription is no longer active. Its Owner must reactivate it before another user can join.",
-        409,
-        "BOT_SUBSCRIPTION_LOCKED",
-      );
-    }
-
-    return jsonError(
-      "TENH could not safely join the Bot's existing subscription. No duplicate Bot connection was created.",
-      500,
-      "JOIN_FAILED",
-    );
-  }
-
-  const joined = Array.isArray(joinedRows) ? joinedRows[0] : joinedRows;
-
-  if (!joined) {
-    return jsonError(
-      "TENH could not safely join the Bot's existing subscription. No duplicate Bot connection was created.",
-      500,
-      "JOIN_FAILED",
-    );
-  }
-
-  await setActiveBusinessCookie(claim.business_id);
-
-  return NextResponse.json({
-    success: true,
-    joinedExistingSubscription: true,
-    businessId: claim.business_id,
-    subscriptionId: capacity.subscription?.id ?? null,
-    connection: toPublicConnection(claim),
-    message:
-      joined.role === "owner"
-        ? "This Telegram Bot already belongs to one of your TENH subscriptions. TENH opened that same subscription."
-        : "You joined the Telegram Bot's existing TENH subscription as an Agent. No duplicate Bot connection was created.",
-  });
 }
 
 export async function GET() {
@@ -665,9 +479,6 @@ export async function POST(request: NextRequest) {
       return handleBotClaimedByAnotherSubscription({
         claim: verifiedClaim.row,
         userId: authResult.user.id,
-        fullName: currentMember.full_name,
-        email: currentMember.email || authResult.user.email || "",
-        joinExisting: body.joinExisting === true,
       });
     }
 
@@ -701,7 +512,7 @@ export async function POST(request: NextRequest) {
       }
 
       return jsonError(
-        "Only the subscription Owner can connect a new Telegram Bot. If this Bot already belongs to another TENH subscription, you can join that same subscription after confirming.",
+        "Only the subscription Owner can connect or reconnect Telegram Bots. Ask an Owner to connect the Bot or invite you to the correct workspace.",
         403,
         "OWNER_REQUIRED",
       );
@@ -790,9 +601,6 @@ export async function POST(request: NextRequest) {
           return handleBotClaimedByAnotherSubscription({
             claim: raceClaim.row,
             userId: authResult.user.id,
-            fullName: currentMember.full_name,
-            email: currentMember.email || authResult.user.email || "",
-            joinExisting: body.joinExisting === true,
           });
         }
 
@@ -898,7 +706,13 @@ export async function DELETE(request: NextRequest) {
       connectionId,
     );
 
-    if (!existing || existing.telegram_token_status === "disconnected") {
+    const isFullyDisconnected =
+      existing?.telegram_token_status === "disconnected" &&
+      existing.is_active === false &&
+      !existing.telegram_bot_token_encrypted &&
+      !existing.telegram_webhook_secret_encrypted;
+
+    if (!existing || isFullyDisconnected) {
       return NextResponse.json({
         success: true,
         message: "Telegram Bot is already disconnected.",

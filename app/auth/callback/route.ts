@@ -17,9 +17,16 @@ export async function GET(
   const code =
     requestUrl.searchParams.get("code");
 
-  const next =
+  const requestedNext =
     requestUrl.searchParams.get("next") ??
     "/dashboard/inbox";
+
+  const next =
+    requestedNext.startsWith("/") &&
+    !requestedNext.startsWith("//") &&
+    !requestedNext.includes("\\")
+      ? requestedNext
+      : "/dashboard/inbox";
 
   if (!code) {
     return NextResponse.redirect(
@@ -62,6 +69,17 @@ export async function GET(
         "/login?error=oauth_user_missing",
         requestUrl.origin,
       ),
+    );
+  }
+
+  /*
+   * An invitation login must return to the invitation before provisioning.
+   * Otherwise a brand-new invited user would accidentally receive/create a
+   * separate trial workspace before joining the existing subscription.
+   */
+  if (next.startsWith("/invite/accept")) {
+    return NextResponse.redirect(
+      new URL(next, requestUrl.origin),
     );
   }
 

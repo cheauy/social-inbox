@@ -23,11 +23,6 @@ type ConnectionResponse = {
   error?: string;
   details?: string;
   code?: string;
-  joinedExistingSubscription?: boolean;
-  canJoinExistingSubscription?: boolean;
-  alreadyMember?: boolean;
-  businessId?: string;
-  subscriptionId?: string | null;
 };
 
 type TelegramWebhookState = {
@@ -156,36 +151,16 @@ export function TelegramChannelPanel({ onConnectionChanged }: Props) {
     await loadWebhook(id);
   }
 
-  async function submitTelegramConnection(
-    joinExisting: boolean,
-  ): Promise<ConnectionResponse | null> {
+  async function submitTelegramConnection(): Promise<ConnectionResponse> {
     const response = await fetch("/api/telegram/connection", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         token: token.trim(),
-        joinExisting,
       }),
     });
 
     const data = await readJson<ConnectionResponse>(response);
-
-    if (
-      !response.ok &&
-      data.code === "BOT_ALREADY_CONNECTED" &&
-      data.canJoinExistingSubscription &&
-      !joinExisting
-    ) {
-      const confirmed = window.confirm(
-        "This Telegram Bot is already connected to another TENH subscription. Join that same subscription as an Agent? TENH will not create a duplicate Bot connection.",
-      );
-
-      if (!confirmed) {
-        return null;
-      }
-
-      return submitTelegramConnection(true);
-    }
 
     if (!response.ok || !data.success) {
       setErrorCode(data.code ?? null);
@@ -204,20 +179,8 @@ export function TelegramChannelPanel({ onConnectionChanged }: Props) {
     setNotice(null);
 
     try {
-      const data = await submitTelegramConnection(false);
+      const data = await submitTelegramConnection();
 
-      if (!data) {
-        return;
-      }
-
-      if (data.joinedExistingSubscription) {
-        // This was an explicit token-verified join. The server switched only
-        // after the user confirmed, and no duplicate Bot row was created.
-        window.location.assign(
-          "/dashboard/integrations?telegram=joined",
-        );
-        return;
-      }
 
       if (!data.connection) {
         throw new Error(
@@ -323,9 +286,11 @@ export function TelegramChannelPanel({ onConnectionChanged }: Props) {
                   ? "Disabled"
                   : "Not connected"}
             </span>
-            <button type="button" onClick={() => setShowAddBot((v) => !v)} className="rounded-xl bg-sky-600 px-3 py-2 text-xs font-bold text-white hover:bg-sky-700">
-              {canManage ? "+ Add Bot" : "+ Join Bot"}
-            </button>
+            {canManage ? (
+              <button type="button" onClick={() => setShowAddBot((v) => !v)} className="rounded-xl bg-sky-600 px-3 py-2 text-xs font-bold text-white hover:bg-sky-700">
+                + Add Bot
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -350,20 +315,18 @@ export function TelegramChannelPanel({ onConnectionChanged }: Props) {
         ) : null}
         {notice ? <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div> : null}
 
-        {showAddBot ? (
+        {showAddBot && canManage ? (
           <div className="mb-6 rounded-2xl border border-sky-200 bg-sky-50 p-5">
             <p className="font-bold text-slate-900">
-              {canManage ? "Connect another Telegram Bot" : "Join an existing Bot subscription"}
+              Connect another Telegram Bot
             </p>
             <p className="mt-1 text-xs text-slate-600">
-              {canManage
-                ? "Create your Bot in @BotFather, copy the Bot Token, then paste it here."
-                : "Paste the Bot Token for a Bot you are allowed to use. If it already belongs to a TENH workspace, you can join that workspace as an Agent."}
+              Create your Bot in @BotFather, copy the Bot Token, then paste it here. A Bot already claimed by another TENH workspace cannot be used to join or take over that workspace.
             </p>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
               <input type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="123456789:AA..." autoComplete="off" spellCheck={false} className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100" />
               <button type="button" disabled={Boolean(working) || !token.trim()} onClick={() => void connectTelegram()} className="rounded-xl bg-sky-600 px-5 py-3 text-sm font-bold text-white hover:bg-sky-700 disabled:opacity-50">
-                {working === "connect" ? "Verifying..." : canManage ? "Connect Bot" : "Verify & Join"}
+                {working === "connect" ? "Verifying..." : "Connect Bot"}
               </button>
             </div>
           </div>
@@ -375,8 +338,8 @@ export function TelegramChannelPanel({ onConnectionChanged }: Props) {
           <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-7 text-center">
             <p className="font-bold text-slate-900">No Telegram Bot connected</p>
             <p className="mt-2 text-sm text-slate-500">Connect the first Bot to start using Telegram in this subscription.</p>
-            {!canManage ? <p className="mt-4 text-sm font-medium text-amber-700">Only the subscription Owner can attach a brand-new Bot. You may verify an already-owned Bot to join its subscription as Agent.</p> : null}
-            {!showAddBot ? <button type="button" onClick={() => setShowAddBot(true)} className="mt-4 rounded-xl bg-sky-600 px-5 py-3 text-sm font-bold text-white">{canManage ? "Connect Telegram Bot" : "Join existing Bot subscription"}</button> : null}
+            {!canManage ? <p className="mt-4 text-sm font-medium text-amber-700">Only the subscription Owner can connect a Telegram Bot. Ask an Owner to invite you to the workspace if you need access.</p> : null}
+            {canManage && !showAddBot ? <button type="button" onClick={() => setShowAddBot(true)} className="mt-4 rounded-xl bg-sky-600 px-5 py-3 text-sm font-bold text-white">Connect Telegram Bot</button> : null}
           </div>
         ) : (
           <div className="grid gap-6 xl:grid-cols-[280px_1fr]">

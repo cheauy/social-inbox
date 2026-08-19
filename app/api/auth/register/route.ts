@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
+import {
+  loadInvitationByToken,
+} from "@/lib/team/subscription-invitations";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -196,7 +199,7 @@ async function signUpOnce(
   email: string,
   password: string,
   fullName: string,
-  workspaceName: string,
+  workspaceName: string | null,
 ) {
   const supabase = await createClient();
 
@@ -210,7 +213,9 @@ async function signUpOnce(
     options: {
       data: {
         full_name: fullName,
-        business_name: workspaceName,
+        ...(workspaceName
+          ? { business_name: workspaceName }
+          : {}),
       },
     },
   });
@@ -281,16 +286,88 @@ export async function POST(request: Request) {
 
   const fullName = normalizeText(payload.fullName);
   const workspaceName = normalizeText(payload.workspaceName);
+  const inviteToken = normalizeText(payload.inviteToken);
   const email = normalizeEmail(payload.email);
   const password =
     typeof payload.password === "string"
       ? payload.password
       : "";
 
+  let invitation:
+    | Awaited<ReturnType<typeof loadInvitationByToken>>
+    | null = null;
+
+  if (inviteToken) {
+    try {
+      invitation =
+        await loadInvitationByToken(inviteToken);
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "INVITE_VERIFY_FAILED",
+          error:
+            "TENH could not verify this invitation. Please reopen the invitation link and try again.",
+        },
+        {
+          status: 503,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        },
+      );
+    }
+
+    const inviteExpired =
+      invitation?.expires_at
+        ? Date.parse(invitation.expires_at) <= Date.now()
+        : true;
+
+    if (
+      !invitation ||
+      invitation.status !== "pending" ||
+      inviteExpired
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "INVITE_EXPIRED",
+          error:
+            "This invitation has expired or is no longer available. Ask the workspace Owner to send a new invitation.",
+        },
+        {
+          status: 410,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        },
+      );
+    }
+
+    if (
+      invitation.email.trim().toLowerCase() !== email
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "INVITE_EMAIL_MISMATCH",
+          error:
+            "Use the same email address that received this TENH invitation.",
+        },
+        {
+          status: 403,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        },
+      );
+    }
+  }
+
   if (
     !fullName ||
     fullName.length > MAX_NAME_LENGTH ||
-    !workspaceName ||
+    (!inviteToken && !workspaceName) ||
     workspaceName.length > MAX_NAME_LENGTH ||
     !looksLikeEmail(email) ||
     !password ||
@@ -304,7 +381,9 @@ export async function POST(request: Request) {
         success: false,
         code: "INVALID_INPUT",
         error:
-          "Check your name, workspace, email, and password, then try again.",
+          inviteToken
+            ? "Check your name, invited email, and password, then try again."
+            : "Check your name, workspace, email, and password, then try again.",
       },
       {
         status: 400,
@@ -321,7 +400,7 @@ export async function POST(request: Request) {
         email,
         password,
         fullName,
-        workspaceName,
+        invitation ? null : workspaceName,
       );
 
     if (error) {

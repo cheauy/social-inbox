@@ -11,111 +11,11 @@ import {
   FACEBOOK_OAUTH_SESSION_COOKIE,
 } from "@/lib/facebook/facebook-oauth-session";
 
+import {
+  getFacebookAuthorizedPages,
+} from "@/lib/facebook/facebook-authorized-pages";
+
 export const dynamic = "force-dynamic";
-
-type FacebookPage = {
-  id?: string;
-  name?: string;
-  tasks?: string[];
-};
-
-type AccountsResult = {
-  data?: FacebookPage[];
-  paging?: {
-    cursors?: {
-      after?: string;
-    };
-  };
-  error?: {
-    message?: string;
-    type?: string;
-    code?: number;
-  };
-};
-
-async function readAccountsPage(
-  url: URL,
-  userAccessToken: string,
-) {
-  const response = await fetch(url, {
-    method: "GET",
-    cache: "no-store",
-    headers: {
-      Authorization: `Bearer ${userAccessToken}`,
-    },
-  });
-
-  const text = await response.text();
-  let payload: AccountsResult = {};
-
-  if (text.trim()) {
-    try {
-      payload = JSON.parse(text) as AccountsResult;
-    } catch {
-      payload = {};
-    }
-  }
-
-  if (!response.ok || payload.error) {
-    throw new Error(
-      payload.error?.message ??
-        "Unable to load the Facebook Pages authorized for TENH.",
-    );
-  }
-
-  return payload;
-}
-
-async function getManagedPages(
-  userAccessToken: string,
-) {
-  const graphVersion =
-    process.env.FACEBOOK_GRAPH_API_VERSION?.trim() ||
-    "v26.0";
-
-  const url = new URL(
-    `https://graph.facebook.com/${graphVersion}/me/accounts`,
-  );
-  url.searchParams.set(
-    "fields",
-    "id,name,tasks",
-  );
-  url.searchParams.set("limit", "100");
-
-  const pages: FacebookPage[] = [];
-  let after: string | undefined;
-
-  // Follow cursor pagination so accounts with many Pages are not truncated.
-  for (let requestNumber = 0; requestNumber < 20; requestNumber += 1) {
-    if (after) {
-      url.searchParams.set("after", after);
-    } else {
-      url.searchParams.delete("after");
-    }
-
-    const payload = await readAccountsPage(
-      url,
-      userAccessToken,
-    );
-
-    pages.push(...(payload.data ?? []));
-
-    const nextAfter =
-      payload.paging?.cursors?.after?.trim();
-
-    if (!nextAfter || nextAfter === after) {
-      break;
-    }
-
-    after = nextAfter;
-  }
-
-  return pages.filter(
-    (page): page is Required<
-      Pick<FacebookPage, "id">
-    > & FacebookPage => Boolean(page.id),
-  );
-}
 
 export default async function FacebookPageSelectPage() {
   const authResult = await getCurrentMember();
@@ -139,7 +39,7 @@ export default async function FacebookPageSelectPage() {
   if (!encryptedSession) {
     return (
       <main className="p-6">
-        <div className="mx-auto max-w-3xl">
+        <div className="mx-auto max-w-4xl">
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
             Your Facebook connection session expired. Start again from Integrations.
           </div>
@@ -185,14 +85,19 @@ export default async function FacebookPageSelectPage() {
   }
 
   let pages: Awaited<
-    ReturnType<typeof getManagedPages>
-  > = [];
+    ReturnType<typeof getFacebookAuthorizedPages>
+  >["pages"] = [];
+  let authorizedTargetIds: string[] = [];
+  let unresolvedTargetIds: string[] = [];
   let pageLoadError: string | null = null;
 
   try {
-    pages = await getManagedPages(
+    const authorized = await getFacebookAuthorizedPages(
       session.userAccessToken,
     );
+    pages = authorized.pages;
+    authorizedTargetIds = authorized.authorizedTargetIds;
+    unresolvedTargetIds = authorized.unresolvedTargetIds;
   } catch (error) {
     pageLoadError =
       error instanceof Error
@@ -202,7 +107,7 @@ export default async function FacebookPageSelectPage() {
 
   return (
     <main className="p-6">
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-4xl">
         <div className="mb-6">
           <p className="text-sm font-semibold text-blue-600">
             Facebook integration
@@ -237,45 +142,53 @@ export default async function FacebookPageSelectPage() {
             method="post"
             className="space-y-4"
           >
-            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-              Facebook authorized {pages.length} Page{pages.length === 1 ? "" : "s"} for TENH. Your TENH plan&apos;s channel limit still controls how many Pages can be active in this workspace.
-            </div>
+            {unresolvedTargetIds.length > 0 ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                Facebook authorized {unresolvedTargetIds.length} additional Page{unresolvedTargetIds.length === 1 ? "" : "s"}, but Meta did not allow TENH to resolve the Page details yet. Recheck Page access and the <span className="font-semibold">business_management</span>, <span className="font-semibold">pages_show_list</span>, <span className="font-semibold">pages_manage_metadata</span>, and <span className="font-semibold">pages_messaging</span> permissions, then reconnect.
+              </div>
+            ) : null}
 
-            <div className="space-y-3">
-              {pages.map((page, index) => (
-                <label
-                  key={page.id}
-                  className="flex cursor-pointer items-start gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:bg-blue-50/30"
-                >
-                  <input
-                    type="radio"
-                    name="pageId"
-                    value={page.id}
-                    defaultChecked={index === 0}
-                    required
-                    className="mt-1 h-4 w-4 accent-blue-600"
-                  />
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="max-h-[300px] overflow-y-auto overscroll-contain pr-1">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {pages.map((page, index) => (
+                    <label
+                      key={page.id}
+                      className="block cursor-pointer"
+                    >
+                      <input
+                        type="radio"
+                        name="pageId"
+                        value={page.id}
+                        defaultChecked={index === 0}
+                        required
+                        className="peer sr-only"
+                      />
 
-                  <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-lg font-bold text-white">
-                      f
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-semibold text-slate-900">
-                        {page.name || "Facebook Page"}
-                      </p>
-                      <p className="mt-1 break-all text-xs text-slate-500">
-                        Page ID: {page.id}
-                      </p>
-                      {page.tasks?.length ? (
-                        <p className="mt-2 text-xs text-slate-400">
-                          Access: {page.tasks.join(", ")}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                </label>
-              ))}
+                      <div className="flex min-h-[88px] items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-300 hover:bg-blue-50/30 peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-checked:ring-1 peer-checked:ring-blue-500">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-lg font-bold text-white shadow-sm">
+                          f
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold text-slate-900">
+                            {page.name || "Facebook Page"}
+                          </p>
+                          <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                            <span className="flex h-4 w-4 items-center justify-center rounded bg-blue-600 text-[10px] font-bold text-white">
+                              f
+                            </span>
+                            <span>Facebook</span>
+                          </div>
+                          <p className="mt-1 truncate text-xs text-slate-400">
+                            Page ID: {page.id}
+                          </p>
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 pt-2">

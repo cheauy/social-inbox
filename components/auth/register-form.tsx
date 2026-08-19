@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import {
+  useEffect,
   useState,
   type FormEvent,
 } from "react";
+import { useSearchParams } from "next/navigation";
 
 function EyeIcon() {
   return (
@@ -75,6 +77,19 @@ function getRegisterApiErrorMessage(payload: unknown) {
 }
 
 export function RegisterForm() {
+  const searchParams = useSearchParams();
+  const inviteToken =
+    searchParams.get("invite")?.trim() ?? "";
+
+  const [inviteInfo, setInviteInfo] = useState<{
+    email: string;
+    role: "agent" | "owner";
+    businessName: string;
+    subscriptionLabel: string;
+  } | null>(null);
+  const [inviteLoading, setInviteLoading] =
+    useState(Boolean(inviteToken));
+
   const [fullName, setFullName] =
     useState("");
 
@@ -108,6 +123,69 @@ export function RegisterForm() {
   const [error, setError] =
     useState<string | null>(null);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadInvitation() {
+      if (!inviteToken) {
+        setInviteLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `/api/invitations/accept?token=${encodeURIComponent(inviteToken)}`,
+          {
+            method: "GET",
+            cache: "no-store",
+          },
+        );
+
+        const result = (await response.json()) as {
+          success?: boolean;
+          error?: string;
+          invitation?: {
+            email: string;
+            role: "agent" | "owner";
+            businessName: string;
+            subscriptionLabel: string;
+          };
+        };
+
+        if (!response.ok || !result.success || !result.invitation) {
+          throw new Error(
+            result.error ??
+              "Unable to verify this TENH invitation.",
+          );
+        }
+
+        if (!cancelled) {
+          setInviteInfo(result.invitation);
+          setEmail(result.invitation.email);
+          setWorkspaceName(result.invitation.businessName);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Unable to verify this TENH invitation.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setInviteLoading(false);
+        }
+      }
+    }
+
+    void loadInvitation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteToken]);
+
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>,
   ) {
@@ -118,13 +196,14 @@ export function RegisterForm() {
 
     if (
       !fullName.trim() ||
-      !workspaceName.trim() ||
+      (!inviteToken && !workspaceName.trim()) ||
+      (inviteToken && !inviteInfo) ||
       !normalizedEmail ||
       !password ||
       !confirmPassword
     ) {
       setError(
-        "Please complete every field.",
+        inviteToken ? "Complete the invitation registration fields." : "Please complete every field.",
       );
 
       return;
@@ -172,6 +251,8 @@ export function RegisterForm() {
               workspaceName.trim(),
             email: normalizedEmail,
             password,
+            inviteToken:
+              inviteToken || undefined,
           }),
         },
       );
@@ -204,10 +285,21 @@ export function RegisterForm() {
         verificationEmail,
       );
 
+      if (inviteToken) {
+        sessionStorage.setItem(
+          "tenh_pending_invitation_token",
+          inviteToken,
+        );
+      }
+
+      const inviteQuery = inviteToken
+        ? `&invite=${encodeURIComponent(inviteToken)}`
+        : "";
+
       window.location.assign(
         `/verify-email?email=${encodeURIComponent(
           verificationEmail,
-        )}`,
+        )}${inviteQuery}`,
       );
     } catch {
       // Registration now goes through TENH's same-origin server route instead
@@ -253,33 +345,62 @@ export function RegisterForm() {
         />
       </div>
 
-      <div>
-        <label
-          htmlFor="register-workspace"
-          className="text-sm font-bold text-slate-900"
-        >
-          Business / workspace name
-        </label>
+      {inviteToken ? (
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-blue-600">
+            Existing workspace invitation
+          </p>
+          {inviteLoading ? (
+            <p className="mt-2 text-sm text-slate-600">
+              Verifying invitation...
+            </p>
+          ) : inviteInfo ? (
+            <>
+              <p className="mt-2 font-bold text-slate-900">
+                {inviteInfo.businessName}
+              </p>
+              <p className="mt-1 text-sm text-slate-600">
+                {inviteInfo.subscriptionLabel} · {inviteInfo.role === "owner" ? "Owner" : "Agent"}
+              </p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                This registration joins the existing subscription after email verification. TENH will not create another free trial.
+              </p>
+            </>
+          ) : (
+            <p className="mt-2 text-sm text-red-700">
+              This invitation cannot be used.
+            </p>
+          )}
+        </div>
+      ) : (
+        <div>
+          <label
+            htmlFor="register-workspace"
+            className="text-sm font-bold text-slate-900"
+          >
+            Business / workspace name
+          </label>
 
-        <input
-          id="register-workspace"
-          value={workspaceName}
-          onChange={(event) =>
-            setWorkspaceName(
-              event.target.value,
-            )
-          }
-          disabled={loading}
-          autoComplete="organization"
-          placeholder="Example: Apex Clothing"
-          required
-          className={fieldClass}
-        />
+          <input
+            id="register-workspace"
+            value={workspaceName}
+            onChange={(event) =>
+              setWorkspaceName(
+                event.target.value,
+              )
+            }
+            disabled={loading}
+            autoComplete="organization"
+            placeholder="Example: Apex Clothing"
+            required
+            className={fieldClass}
+          />
 
-        <p className="mt-2 text-xs leading-5 text-slate-500">
-          Your 7-day free trial includes 3 channel connections and 1 user. It starts after email verification and first sign-in.
-        </p>
-      </div>
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            Your 7-day free trial includes 3 channel connections and 1 user. It starts after email verification and first sign-in.
+          </p>
+        </div>
+      )}
 
       <div>
         <label
@@ -298,7 +419,7 @@ export function RegisterForm() {
               event.target.value,
             )
           }
-          disabled={loading}
+          disabled={loading || Boolean(inviteToken)}
           autoComplete="email"
           placeholder="you@example.com"
           required

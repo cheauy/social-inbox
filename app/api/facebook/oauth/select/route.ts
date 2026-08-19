@@ -8,7 +8,6 @@ import {
 
 import {
   getCurrentMember,
-  TENH_ACTIVE_BUSINESS_COOKIE,
 } from "@/lib/auth/get-current-member";
 import {
   encryptFacebookToken,
@@ -36,17 +35,50 @@ type FacebookPage = {
 
 type AccountsResult = {
   data?: FacebookPage[];
-  paging?: {
-    cursors?: {
-      after?: string;
-    };
-  };
   error?: {
     message?: string;
     type?: string;
     code?: number;
   };
 };
+
+
+type ExistingFacebookConnection = {
+  id: string;
+  business_id: string;
+  platform_account_id: string | null;
+  is_active: boolean | null;
+  facebook_token_status: string | null;
+  created_at: string | null;
+};
+
+function isLiveFacebookClaim(row: ExistingFacebookConnection) {
+  return row.facebook_token_status !== "disconnected";
+}
+
+async function loadFacebookPageConnections(pageId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("social_accounts")
+    .select(
+      "id,business_id,platform_account_id,is_active,facebook_token_status,created_at",
+    )
+    .eq("platform", "facebook")
+    .eq("platform_account_id", pageId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (error) {
+    console.error(
+      "[Tenh Facebook OAuth] Unable to verify existing Page ownership:",
+      error.message,
+    );
+    throw new Error(
+      "TENH could not verify this Facebook Page ownership. Please try again.",
+    );
+  }
+
+  return (data ?? []) as ExistingFacebookConnection[];
+}
 
 function redirectToIntegrations(
   request: NextRequest,
@@ -83,10 +115,21 @@ function redirectToIntegrations(
   return NextResponse.redirect(url, 303);
 }
 
-async function readAccountsPage(
-  url: URL,
+async function getPagesWithTokens(
   userAccessToken: string,
 ) {
+  const graphVersion =
+    process.env.FACEBOOK_GRAPH_API_VERSION?.trim() ||
+    "v26.0";
+
+  const url = new URL(
+    `https://graph.facebook.com/${graphVersion}/me/accounts`,
+  );
+  url.searchParams.set(
+    "fields",
+    "id,name,access_token,tasks",
+  );
+
   const response = await fetch(url, {
     method: "GET",
     cache: "no-store",
@@ -109,59 +152,11 @@ async function readAccountsPage(
   if (!response.ok || payload.error) {
     throw new Error(
       payload.error?.message ??
-        "Unable to load Facebook Pages authorized for TENH.",
+        "Unable to load Facebook Pages.",
     );
   }
 
-  return payload;
-}
-
-async function getPagesWithTokens(
-  userAccessToken: string,
-) {
-  const graphVersion =
-    process.env.FACEBOOK_GRAPH_API_VERSION?.trim() ||
-    "v26.0";
-
-  const url = new URL(
-    `https://graph.facebook.com/${graphVersion}/me/accounts`,
-  );
-  url.searchParams.set(
-    "fields",
-    "id,name,access_token,tasks",
-  );
-  url.searchParams.set("limit", "100");
-
-  const pages: FacebookPage[] = [];
-  let after: string | undefined;
-
-  // Facebook Login for Business can authorize many Pages. Follow cursor
-  // pagination so TENH can find any Page selected in Meta's asset picker.
-  for (let requestNumber = 0; requestNumber < 20; requestNumber += 1) {
-    if (after) {
-      url.searchParams.set("after", after);
-    } else {
-      url.searchParams.delete("after");
-    }
-
-    const payload = await readAccountsPage(
-      url,
-      userAccessToken,
-    );
-
-    pages.push(...(payload.data ?? []));
-
-    const nextAfter =
-      payload.paging?.cursors?.after?.trim();
-
-    if (!nextAfter || nextAfter === after) {
-      break;
-    }
-
-    after = nextAfter;
-  }
-
-  return pages;
+  return payload.data ?? [];
 }
 
 async function subscribePage({
@@ -304,109 +299,75 @@ export async function POST(
       );
     }
 
-    // Prevent one Facebook Page from being attached to two TENH workspaces.
-    const {
-      data: existingPage,
-      error: existingPageError,
-    } = await supabaseAdmin
-      .from("social_accounts")
-      .select(`
-        id,
-        business_id,
-        platform_account_id,
-        is_active
-      `)
-      .eq("platform", "facebook")
-      .eq(
-        "platform_account_id",
-        selectedPage.id,
-      )
-      .maybeSingle();
+    /*
+     * V3.11.31.43 — channel credentials are never TENH membership.
+     *
+     * A Facebook user may have Meta access to a Page without having TENH
+     * workspace access. Therefore authorizing the same Page must never
+     * auto-create a TENH membership, move the Page, or reveal workspace data.
+     */
+    const pageConnections = await loadFacebookPageConnections(
+      selectedPage.id,
+    );
 
-    if (existingPageError) {
-      throw new Error(existingPageError.message);
+    const liveClaims = pageConnections.filter(isLiveFacebookClaim);
+
+    if (liveClaims.length > 1) {
+      console.error(
+        "[Tenh Facebook OAuth] Duplicate live Page ownership detected.",
+        liveClaims.map((row) => ({
+          id: row.id,
+          businessId: row.business_id,
+          pageId: row.platform_account_id,
+        })),
+      );
+
+      throw new Error(
+        "TENH found conflicting ownership records for this Facebook Page. For safety, the Page was not connected. Contact TENH support before retrying.",
+      );
     }
+
+    const liveClaim = liveClaims[0] ?? null;
 
     if (
-      existingPage &&
-      existingPage.business_id !==
-        currentMember.business_id
+      liveClaim &&
+      liveClaim.business_id !== currentMember.business_id
     ) {
-      /*
-       * V3.11.31 — verified duplicate Page = join existing subscription.
-       *
-       * Facebook just returned this Page + Page access token from /me/accounts,
-       * so this authenticated Facebook user proved they can manage the Page.
-       * Do NOT duplicate or move the Page connection. Join the existing TENH
-       * subscription as an Agent and switch the active subscription instead.
-       */
-      const { data: joinedRows, error: joinError } =
-        await supabaseAdmin.rpc(
-          "tenh_join_subscription_as_agent",
-          {
-            p_user_id: authResult.user.id,
-            p_business_id:
-              existingPage.business_id,
-            p_full_name:
-              currentMember.full_name,
-            p_email:
-              currentMember.email ||
-              authResult.user.email ||
-              "",
-          },
-        );
-
-      if (joinError) {
-        throw new Error(joinError.message);
-      }
-
-      const joined = Array.isArray(joinedRows)
-        ? joinedRows[0]
-        : joinedRows;
-
-      if (!joined) {
-        throw new Error(
-          "Unable to join the existing TENH subscription for this Facebook Page.",
-        );
-      }
-
-      cookieStore.set(
-        TENH_ACTIVE_BUSINESS_COOKIE,
-        existingPage.business_id,
-        {
-          httpOnly: true,
-          sameSite: "lax",
-          secure:
-            process.env.NODE_ENV ===
-            "production",
-          path: "/",
-          maxAge: 60 * 60 * 24 * 365,
-        },
-      );
-
-      cookieStore.delete(
-        FACEBOOK_OAUTH_SESSION_COOKIE,
-      );
-
-      return redirectToIntegrations(request, {
-        facebook: "connected",
-        message:
-          joined.role === "owner"
-            ? "This Facebook Page already belongs to one of your TENH subscriptions. TENH switched to that subscription."
-            : "This Facebook Page already belongs to an existing TENH subscription. You joined that subscription as an Agent.",
-      });
-    }
-
-    // Only the Owner may attach a brand-new Page to this subscription.
-    // An Agent can use channels already connected by the Owner.
-    if (currentMember.role !== "owner") {
       throw new Error(
-        "Only the subscription Owner can connect a new Facebook Page. You can use Pages already connected to subscriptions where you are an Agent.",
+        "This Facebook Page is already connected to another TENH workspace. Ask that workspace Owner to invite you if you need access.",
       );
     }
 
-    // V3.8.2 — a new active Page consumes one channel slot.
-    // Reconnecting an already-active Page does not consume another slot.
+    const existingPage =
+      liveClaim?.business_id === currentMember.business_id
+        ? liveClaim
+        : pageConnections.find(
+            (row) => row.business_id === currentMember.business_id,
+          ) ?? null;
+
+    /*
+     * Agents use the Page connection already owned by their subscription.
+     * Meta Page authorization is not a TENH permission grant and cannot be
+     * used to replace credentials or reactivate a channel.
+     */
+    if (currentMember.role !== "owner") {
+      if (liveClaim?.business_id === currentMember.business_id) {
+        cookieStore.delete(FACEBOOK_OAUTH_SESSION_COOKIE);
+
+        return redirectToIntegrations(request, {
+          facebook: "connected",
+          message:
+            "This Facebook Page is already connected to this TENH subscription. Your TENH permissions control whether you can use its Inbox conversations.",
+        });
+      }
+
+      throw new Error(
+        "Only the subscription Owner can connect or reconnect a Facebook Page. Ask an Owner to connect the Page or invite you to the correct workspace.",
+      );
+    }
+
+    // Re-enabling a disabled or fully disconnected Page consumes a channel
+    // slot. Refreshing credentials for an already-active Page does not.
     const consumesNewChannelSlot =
       !existingPage || existingPage.is_active !== true;
 
@@ -467,9 +428,18 @@ export async function POST(
         .single();
 
       if (updateError || !updatedAccount) {
+        if (updateError?.code === "23505") {
+          throw new Error(
+            "This Facebook Page was connected to another TENH workspace at the same time. TENH did not create a duplicate connection.",
+          );
+        }
+
+        console.error(
+          "[Tenh Facebook OAuth] Unable to update Page connection:",
+          updateError?.message ?? "No row returned",
+        );
         throw new Error(
-          updateError?.message ??
-            "Unable to update the Facebook Page connection.",
+          "Unable to update the Facebook Page connection.",
         );
       }
 
@@ -485,9 +455,18 @@ export async function POST(
         .single();
 
       if (insertError || !insertedAccount) {
+        if (insertError?.code === "23505") {
+          throw new Error(
+            "This Facebook Page was connected to another TENH workspace at the same time. TENH did not create a duplicate connection.",
+          );
+        }
+
+        console.error(
+          "[Tenh Facebook OAuth] Unable to save Page connection:",
+          insertError?.message ?? "No row returned",
+        );
         throw new Error(
-          insertError?.message ??
-            "Unable to save the Facebook Page connection.",
+          "Unable to save the Facebook Page connection.",
         );
       }
 

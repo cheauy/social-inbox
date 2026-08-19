@@ -6,6 +6,10 @@ import {
   getInitial,
   statusOptions,
 } from "@/components/inbox/inbox-utils";
+import {
+  shortSubscriptionId,
+  subscriptionAccentColor,
+} from "@/lib/inbox/subscription-visual";
 
 import type {
   ConversationStatus,
@@ -301,6 +305,15 @@ export function ConversationHeader({
       ? "Telegram Bot"
       : "Facebook Page");
 
+  const subscriptionLabel =
+    shortSubscriptionId(conversation.subscription_id);
+
+  const subscriptionColor =
+    subscriptionAccentColor(
+      conversation.subscription_id,
+      conversation.business_id,
+    );
+
   const validTeamMembers = Array.from(
     new Map(
       teamMembers
@@ -309,7 +322,9 @@ export function ConversationHeader({
             Boolean(member.id) &&
             Boolean(
               member.full_name?.trim(),
-            ),
+            ) &&
+            (!member.business_id ||
+              member.business_id === conversation.business_id),
         )
         .map((member) => [
           member.id,
@@ -339,6 +354,20 @@ export function ConversationHeader({
             </span>
             <span className="truncate">
               {accountName}
+            </span>
+            <span className="text-slate-300">
+              ·
+            </span>
+            <span className="inline-flex shrink-0 items-center gap-1 font-bold text-slate-600">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{
+                  backgroundColor:
+                    subscriptionColor,
+                }}
+                aria-hidden="true"
+              />
+              {subscriptionLabel}
             </span>
           </div>
 
