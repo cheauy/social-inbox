@@ -10,7 +10,6 @@ import {
   decodeFacebookOAuthSession,
   FACEBOOK_OAUTH_SESSION_COOKIE,
 } from "@/lib/facebook/facebook-oauth-session";
-
 import {
   getFacebookAuthorizedPages,
 } from "@/lib/facebook/facebook-authorized-pages";
@@ -71,8 +70,7 @@ export default async function FacebookPageSelectPage() {
   }
 
   if (
-    session.businessId !==
-      currentMember.business_id ||
+    session.businessId !== currentMember.business_id ||
     session.memberId !== currentMember.id
   ) {
     return (
@@ -87,7 +85,6 @@ export default async function FacebookPageSelectPage() {
   let pages: Awaited<
     ReturnType<typeof getFacebookAuthorizedPages>
   >["pages"] = [];
-  let authorizedTargetIds: string[] = [];
   let unresolvedTargetIds: string[] = [];
   let pageLoadError: string | null = null;
 
@@ -96,7 +93,6 @@ export default async function FacebookPageSelectPage() {
       session.userAccessToken,
     );
     pages = authorized.pages;
-    authorizedTargetIds = authorized.authorizedTargetIds;
     unresolvedTargetIds = authorized.unresolvedTargetIds;
   } catch (error) {
     pageLoadError =
@@ -113,10 +109,10 @@ export default async function FacebookPageSelectPage() {
             Facebook integration
           </p>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">
-            Choose a Page for this TENH workspace
+            Choose Pages for this TENH workspace
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            Facebook already asked which Pages TENH may access. The Pages below are the ones Facebook authorized. Choose one Page to add or reconnect to this TENH workspace now.
+            Select one or more Facebook Pages to connect to this TENH workspace.
           </p>
         </div>
 
@@ -127,13 +123,13 @@ export default async function FacebookPageSelectPage() {
         ) : pages.length === 0 ? (
           <div className="space-y-4">
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-              Facebook returned no Pages authorized for TENH. Start the Facebook connection again and select at least one Page in Facebook&apos;s Page access screen.
+              Facebook returned no Pages authorized for TENH. Reconnect Page access and select at least one Page in Facebook.
             </div>
             <Link
               href="/api/facebook/oauth/connect"
               className="inline-flex rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
             >
-              Choose Pages on Facebook again
+              Reconnect Page access
             </Link>
           </div>
         ) : (
@@ -144,28 +140,26 @@ export default async function FacebookPageSelectPage() {
           >
             {unresolvedTargetIds.length > 0 ? (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                Facebook authorized {unresolvedTargetIds.length} additional Page{unresolvedTargetIds.length === 1 ? "" : "s"}, but Meta did not allow TENH to resolve the Page details yet. Recheck Page access and the <span className="font-semibold">business_management</span>, <span className="font-semibold">pages_show_list</span>, <span className="font-semibold">pages_manage_metadata</span>, and <span className="font-semibold">pages_messaging</span> permissions, then reconnect.
+                Facebook authorized {unresolvedTargetIds.length} additional Page{unresolvedTargetIds.length === 1 ? "" : "s"}, but Meta did not allow TENH to resolve the Page details yet. Reconnect Page access and verify the required Facebook permissions.
               </div>
             ) : null}
 
             <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
               <div className="max-h-[300px] overflow-y-auto overscroll-contain pr-1">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {pages.map((page, index) => (
+                  {pages.map((page) => (
                     <label
                       key={page.id}
-                      className="block cursor-pointer"
+                      className="relative block cursor-pointer"
                     >
                       <input
-                        type="radio"
+                        type="checkbox"
                         name="pageId"
                         value={page.id}
-                        defaultChecked={index === 0}
-                        required
-                        className="peer sr-only"
+                        className="peer absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 cursor-pointer accent-blue-600"
                       />
 
-                      <div className="flex min-h-[88px] items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-300 hover:bg-blue-50/30 peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-checked:ring-1 peer-checked:ring-blue-500">
+                      <div className="flex min-h-[88px] items-center gap-3 rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-3 transition hover:border-blue-300 hover:bg-blue-50/30 peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-checked:ring-1 peer-checked:ring-blue-500">
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-lg font-bold text-white shadow-sm">
                           f
                         </div>
@@ -196,7 +190,7 @@ export default async function FacebookPageSelectPage() {
                 href="/api/facebook/oauth/connect"
                 className="text-sm font-semibold text-blue-600 transition hover:text-blue-700"
               >
-                Change Facebook Page access
+                Reconnect Page access
               </Link>
 
               <div className="flex flex-wrap items-center gap-3">
@@ -208,9 +202,9 @@ export default async function FacebookPageSelectPage() {
                 </Link>
                 <button
                   type="submit"
-                  className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+                  className="rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
                 >
-                  Add / reconnect selected Page
+                  Connect
                 </button>
               </div>
             </div>
