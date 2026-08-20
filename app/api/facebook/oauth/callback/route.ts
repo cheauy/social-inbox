@@ -18,6 +18,23 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const FACEBOOK_PRODUCTION_ORIGIN =
+  "https://tenhchat.com";
+
+const FACEBOOK_COOKIE_DOMAIN =
+  process.env.NODE_ENV === "production"
+    ? ".tenhchat.com"
+    : undefined;
+
+function getFacebookAppOrigin(
+  request: NextRequest,
+) {
+  return process.env.NODE_ENV === "production"
+    ? FACEBOOK_PRODUCTION_ORIGIN
+    : request.nextUrl.origin;
+}
+
+
 type TokenResult = {
   access_token?: string;
   token_type?: string;
@@ -51,7 +68,7 @@ function redirectWithError(
 ) {
   const url = new URL(
     "/dashboard/integrations",
-    request.nextUrl.origin,
+    getFacebookAppOrigin(request),
   );
 
   url.searchParams.set("facebook", "error");
@@ -134,7 +151,7 @@ export async function GET(
 
   const redirectUri = new URL(
     "/api/facebook/oauth/callback",
-    request.nextUrl.origin,
+    getFacebookAppOrigin(request),
   ).toString();
 
   try {
@@ -250,18 +267,27 @@ export async function GET(
     const response = NextResponse.redirect(
       new URL(
         "/dashboard/integrations/facebook/select",
-        request.nextUrl.origin,
+        getFacebookAppOrigin(request),
       ),
     );
 
-    // Clear the one-time OAuth state cookie on the same response.
-    response.cookies.delete(
+    // Clear OAuth state using the same shared production domain.
+    response.cookies.set(
       FACEBOOK_OAUTH_STATE_COOKIE,
+      "",
+      {
+        httpOnly: true,
+        secure:
+          process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        domain: FACEBOOK_COOKIE_DOMAIN,
+        maxAge: 0,
+      },
     );
 
-    // Keep the User token only in an encrypted, httpOnly, short-lived cookie.
-    // Attach it directly to the redirect response so the browser receives
-    // the Set-Cookie header before loading the Page-selection screen.
+    // Share the short-lived selection session across tenhchat.com and
+    // www.tenhchat.com so a canonical-host redirect cannot lose it.
     response.cookies.set(
       FACEBOOK_OAUTH_SESSION_COOKIE,
       encryptedSession,
@@ -271,15 +297,8 @@ export async function GET(
           process.env.NODE_ENV === "production",
         sameSite: "lax",
         path: "/",
+        domain: FACEBOOK_COOKIE_DOMAIN,
         maxAge: 15 * 60,
-      },
-    );
-
-    console.log(
-      "[Tenh Facebook OAuth] Selection session created",
-      {
-        origin: request.nextUrl.origin,
-        sessionLength: encryptedSession.length,
       },
     );
 

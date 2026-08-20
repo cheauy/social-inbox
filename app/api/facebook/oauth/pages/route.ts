@@ -27,6 +27,23 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const FACEBOOK_PRODUCTION_ORIGIN =
+  "https://tenhchat.com";
+
+const FACEBOOK_COOKIE_DOMAIN =
+  process.env.NODE_ENV === "production"
+    ? ".tenhchat.com"
+    : undefined;
+
+function getFacebookAppOrigin(
+  request: NextRequest,
+) {
+  return process.env.NODE_ENV === "production"
+    ? FACEBOOK_PRODUCTION_ORIGIN
+    : request.nextUrl.origin;
+}
+
+
 type StoredFacebookUserToken = {
   facebook_user_access_token_encrypted: string | null;
   facebook_user_token_expires_at: string | null;
@@ -34,20 +51,41 @@ type StoredFacebookUserToken = {
   facebook_token_status: string | null;
 };
 
-function redirectToSelector(request: NextRequest) {
-  return NextResponse.redirect(
+function redirectToSelector(
+  request: NextRequest,
+  sessionValue?: string,
+) {
+  const response = NextResponse.redirect(
     new URL(
       "/dashboard/integrations/facebook/select",
-      request.nextUrl.origin,
+      getFacebookAppOrigin(request),
     ),
   );
+
+  if (sessionValue) {
+    response.cookies.set(
+      FACEBOOK_OAUTH_SESSION_COOKIE,
+      sessionValue,
+      {
+        httpOnly: true,
+        secure:
+          process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        domain: FACEBOOK_COOKIE_DOMAIN,
+        maxAge: 15 * 60,
+      },
+    );
+  }
+
+  return response;
 }
 
 function redirectToFacebookLogin(request: NextRequest) {
   return NextResponse.redirect(
     new URL(
       "/api/facebook/oauth/connect",
-      request.nextUrl.origin,
+      getFacebookAppOrigin(request),
     ),
   );
 }
@@ -117,7 +155,10 @@ export async function GET(request: NextRequest) {
         existingSession.memberId === currentMember.id &&
         !tokenIsExpired(existingSession.userTokenExpiresAt)
       ) {
-        return redirectToSelector(request);
+        return redirectToSelector(
+          request,
+          existingSessionValue,
+        );
       }
     } catch {
       // Fall through and rebuild the selection session from the encrypted
@@ -165,6 +206,7 @@ export async function GET(request: NextRequest) {
 
   for (const row of tokenRows ?? []) {
     if (
+      row.facebook_token_status === "disconnected" ||
       !row.facebook_user_access_token_encrypted ||
       tokenIsExpired(row.facebook_user_token_expires_at)
     ) {
@@ -217,10 +259,8 @@ export async function GET(request: NextRequest) {
   }
 
   if (!bestToken) {
-    // First-ever connection, expired/revoked authorization, or a different
-    // Facebook account is required. Only in those cases do we reauthorize
-    // through Facebook Login for Business. Soft-disconnected Page rows may still
-    // provide a valid Facebook user authorization for reopening the selector.
+    // First connection, expired token, revoked access, or a different Facebook
+    // account is required. Reauthorize through Facebook Login for Business.
     return redirectToFacebookLogin(request);
   }
 
@@ -231,17 +271,8 @@ export async function GET(request: NextRequest) {
     userTokenExpiresAt: bestToken.expiresAt,
   });
 
-  cookieStore.set(
-    FACEBOOK_OAUTH_SESSION_COOKIE,
+  return redirectToSelector(
+    request,
     encryptedSession,
-    {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 15 * 60,
-    },
   );
-
-  return redirectToSelector(request);
 }

@@ -21,6 +21,23 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const FACEBOOK_PRODUCTION_ORIGIN =
+  "https://tenhchat.com";
+
+const FACEBOOK_COOKIE_DOMAIN =
+  process.env.NODE_ENV === "production"
+    ? ".tenhchat.com"
+    : undefined;
+
+function getFacebookAppOrigin(
+  request: NextRequest,
+) {
+  return process.env.NODE_ENV === "production"
+    ? FACEBOOK_PRODUCTION_ORIGIN
+    : request.nextUrl.origin;
+}
+
+
 function redirectToIntegrations(
   request: NextRequest,
   message: string,
@@ -81,7 +98,7 @@ export async function GET(
 
   const redirectUri = new URL(
     "/api/facebook/oauth/callback",
-    request.nextUrl.origin,
+    getFacebookAppOrigin(request),
   ).toString();
 
   const state = randomBytes(32).toString("hex");
@@ -99,6 +116,7 @@ export async function GET(
         process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
+      domain: FACEBOOK_COOKIE_DOMAIN,
       maxAge: 10 * 60,
     },
   );
