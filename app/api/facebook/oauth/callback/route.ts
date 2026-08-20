@@ -78,8 +78,6 @@ export async function GET(
     FACEBOOK_OAUTH_STATE_COOKIE,
   )?.value;
 
-  cookieStore.delete(FACEBOOK_OAUTH_STATE_COOKIE);
-
   const state = request.nextUrl.searchParams.get(
     "state",
   );
@@ -249,34 +247,43 @@ export async function GET(
         userTokenExpiresAt,
       });
 
-const response = NextResponse.redirect(
-  new URL(
-    "/dashboard/integrations/facebook/select",
-    request.nextUrl.origin,
-  ),
-);
-
-response.cookies.set(
-  FACEBOOK_OAUTH_SESSION_COOKIE,
-  encryptedSession,
-  {
-    httpOnly: true,
-    secure:
-      process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 15 * 60,
-  },
-);
-
-return response;
-
-    return NextResponse.redirect(
+    const response = NextResponse.redirect(
       new URL(
         "/dashboard/integrations/facebook/select",
         request.nextUrl.origin,
       ),
     );
+
+    // Clear the one-time OAuth state cookie on the same response.
+    response.cookies.delete(
+      FACEBOOK_OAUTH_STATE_COOKIE,
+    );
+
+    // Keep the User token only in an encrypted, httpOnly, short-lived cookie.
+    // Attach it directly to the redirect response so the browser receives
+    // the Set-Cookie header before loading the Page-selection screen.
+    response.cookies.set(
+      FACEBOOK_OAUTH_SESSION_COOKIE,
+      encryptedSession,
+      {
+        httpOnly: true,
+        secure:
+          process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 15 * 60,
+      },
+    );
+
+    console.log(
+      "[Tenh Facebook OAuth] Selection session created",
+      {
+        origin: request.nextUrl.origin,
+        sessionLength: encryptedSession.length,
+      },
+    );
+
+    return response;
   } catch (error) {
     console.error(
       "[Tenh Facebook OAuth] Callback failed:",
