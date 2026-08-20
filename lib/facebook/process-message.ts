@@ -26,7 +26,7 @@ type FacebookMessengerProfile = {
   };
 };
 
-async function getFacebookMessengerCustomerName({
+async function getFacebookMessengerCustomerProfile({
   pageId,
   customerId,
 }: {
@@ -127,11 +127,23 @@ async function getFacebookMessengerCustomerName({
         .join(" ")
         .trim();
 
-    if (!fullName) {
+    const profilePictureUrl =
+      result.profile_pic
+        ?.trim() ||
+      null;
+
+    if (
+      !fullName &&
+      !profilePictureUrl
+    ) {
       return null;
     }
 
-    return fullName;
+    return {
+      fullName:
+        fullName || null,
+      profilePictureUrl,
+    };
   } catch (error) {
     console.warn(
       "[Tenh Facebook Message] Messenger profile enrichment request failed but message will still be saved.",
@@ -221,13 +233,23 @@ export async function processFacebookMessage(
    * Best-effort only: a profile lookup failure must never block
    * the message from being saved.
    */
-  const customerName =
+  const customerProfile =
     !isEcho
-      ? await getFacebookMessengerCustomerName({
+      ? await getFacebookMessengerCustomerProfile({
           pageId,
           customerId,
         })
       : null;
+
+  const customerName =
+    customerProfile
+      ?.fullName ??
+    null;
+
+  const customerProfilePictureUrl =
+    customerProfile
+      ?.profilePictureUrl ??
+    null;
 
   /*
    * Match the working Facebook comment flow:
@@ -256,6 +278,11 @@ export async function processFacebookMessage(
       customerName;
   }
 
+  if (customerProfilePictureUrl) {
+    contactPayload.profile_picture_url =
+      customerProfilePictureUrl;
+  }
+
   const { data: contact, error: contactError } =
     await supabaseAdmin
       .from("contacts")
@@ -276,13 +303,20 @@ export async function processFacebookMessage(
     );
   }
 
-  if (customerName) {
+  if (
+    customerName ||
+    customerProfilePictureUrl
+  ) {
     console.log(
       "[Tenh Facebook Message] Messenger customer profile enriched.",
       {
         pageId,
         customerId,
         customerName,
+        hasProfilePicture:
+          Boolean(
+            customerProfilePictureUrl,
+          ),
       },
     );
   }
