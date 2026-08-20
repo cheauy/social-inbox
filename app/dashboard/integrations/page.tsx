@@ -118,7 +118,7 @@ export default async function IntegrationsPage({
 
           {facebookResult === "connected" ? (
             <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
-              Facebook Page connected successfully.
+              {resultMessage || "Facebook Page connected successfully."}
             </div>
           ) : null}
 
@@ -273,6 +273,25 @@ export default async function IntegrationsPage({
                             >
                               Open Page
                             </a>
+                          ) : null}
+
+                          {enabled ? (
+                            <form
+                              action="/api/facebook/comments/sync"
+                              method="post"
+                            >
+                              <input
+                                type="hidden"
+                                name="socialAccountId"
+                                value={account.id}
+                              />
+                              <button
+                                type="submit"
+                                className="inline-flex items-center justify-center rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-semibold text-violet-700 transition hover:bg-violet-100"
+                              >
+                                Sync comments
+                              </button>
+                            </form>
                           ) : null}
 
                           <a
