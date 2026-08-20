@@ -249,18 +249,27 @@ export async function GET(
         userTokenExpiresAt,
       });
 
-    cookieStore.set(
-      FACEBOOK_OAUTH_SESSION_COOKIE,
-      encryptedSession,
-      {
-        httpOnly: true,
-        secure:
-          process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: 15 * 60,
-      },
-    );
+const response = NextResponse.redirect(
+  new URL(
+    "/dashboard/integrations/facebook/select",
+    request.nextUrl.origin,
+  ),
+);
+
+response.cookies.set(
+  FACEBOOK_OAUTH_SESSION_COOKIE,
+  encryptedSession,
+  {
+    httpOnly: true,
+    secure:
+      process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 15 * 60,
+  },
+);
+
+return response;
 
     return NextResponse.redirect(
       new URL(
