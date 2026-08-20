@@ -1,5 +1,8 @@
 import "server-only";
 
+import {
+  getFacebookPageAccessToken,
+} from "@/lib/facebook/get-facebook-page-access-token";
 import { getFacebookMessageContent } from "@/lib/facebook/get-message-content";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { FacebookMessagingEvent } from "@/types/facebook";
@@ -8,6 +11,135 @@ function toIso(timestamp?: number) {
   return timestamp
     ? new Date(timestamp).toISOString()
     : new Date().toISOString();
+}
+
+type FacebookMessengerProfile = {
+  id?: string;
+  first_name?: string;
+  last_name?: string;
+  profile_pic?: string;
+  error?: {
+    message?: string;
+    code?: number;
+    type?: string;
+    fbtrace_id?: string;
+  };
+};
+
+async function getFacebookMessengerCustomerName({
+  pageId,
+  customerId,
+}: {
+  pageId: string;
+  customerId: string;
+}) {
+  let pageAccessToken: string | null = null;
+
+  try {
+    pageAccessToken =
+      await getFacebookPageAccessToken(
+        pageId,
+      );
+  } catch (error) {
+    console.warn(
+      "[Tenh Facebook Message] No OAuth Page token for Messenger profile enrichment.",
+      error,
+    );
+
+    return null;
+  }
+
+  try {
+    const graphVersion =
+      process.env
+        .FACEBOOK_GRAPH_API_VERSION ??
+      "v26.0";
+
+    const url =
+      new URL(
+        `https://graph.facebook.com/${graphVersion}/${customerId}`,
+      );
+
+    url.searchParams.set(
+      "fields",
+      "first_name,last_name,profile_pic",
+    );
+
+    const response =
+      await fetch(
+        url,
+        {
+          method: "GET",
+          cache: "no-store",
+          headers: {
+            Authorization:
+              `Bearer ${pageAccessToken}`,
+          },
+        },
+      );
+
+    const text =
+      await response.text();
+
+    let result:
+      FacebookMessengerProfile = {};
+
+    if (text.trim()) {
+      try {
+        result =
+          JSON.parse(
+            text,
+          ) as FacebookMessengerProfile;
+      } catch {
+        console.warn(
+          "[Tenh Facebook Message] Messenger profile enrichment returned invalid JSON.",
+        );
+      }
+    }
+
+    if (
+      !response.ok ||
+      result.error
+    ) {
+      console.warn(
+        "[Tenh Facebook Message] Messenger profile enrichment failed but message will still be saved.",
+        {
+          status:
+            response.status,
+          error:
+            result.error,
+          pageId,
+          customerId,
+        },
+      );
+
+      return null;
+    }
+
+    const fullName =
+      [
+        result.first_name
+          ?.trim(),
+        result.last_name
+          ?.trim(),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
+    if (!fullName) {
+      return null;
+    }
+
+    return fullName;
+  } catch (error) {
+    console.warn(
+      "[Tenh Facebook Message] Messenger profile enrichment request failed but message will still be saved.",
+      error,
+    );
+
+    return null;
+  }
 }
 
 export async function processFacebookMessage(
@@ -81,17 +213,54 @@ export async function processFacebookMessage(
 
   const messageTime = toIso(event.timestamp);
 
+  /*
+   * Messenger webhook payloads normally contain the customer's PSID,
+   * but not the customer's display name. Enrich incoming messages
+   * with the Messenger User Profile API using this Page's access token.
+   *
+   * Best-effort only: a profile lookup failure must never block
+   * the message from being saved.
+   */
+  const customerName =
+    !isEcho
+      ? await getFacebookMessengerCustomerName({
+          pageId,
+          customerId,
+        })
+      : null;
+
+  /*
+   * Match the working Facebook comment flow:
+   * only write full_name when we actually have a real name.
+   * This avoids overwriting an existing real customer name with null.
+   */
+  const contactPayload:
+    Record<
+      string,
+      unknown
+    > = {
+    business_id:
+      socialAccount.business_id,
+    platform:
+      "facebook",
+    platform_user_id:
+      customerId,
+    last_contact_at:
+      messageTime,
+    updated_at:
+      new Date().toISOString(),
+  };
+
+  if (customerName) {
+    contactPayload.full_name =
+      customerName;
+  }
+
   const { data: contact, error: contactError } =
     await supabaseAdmin
       .from("contacts")
       .upsert(
-        {
-          business_id: socialAccount.business_id,
-          platform: "facebook",
-          platform_user_id: customerId,
-          last_contact_at: messageTime,
-          updated_at: new Date().toISOString(),
-        },
+        contactPayload,
         {
           onConflict:
             "business_id,platform,platform_user_id",
@@ -104,6 +273,17 @@ export async function processFacebookMessage(
     throw new Error(
       contactError?.message ??
         "Unable to create contact.",
+    );
+  }
+
+  if (customerName) {
+    console.log(
+      "[Tenh Facebook Message] Messenger customer profile enriched.",
+      {
+        pageId,
+        customerId,
+        customerName,
+      },
     );
   }
 
