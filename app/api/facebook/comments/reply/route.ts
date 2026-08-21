@@ -6,6 +6,10 @@ import {
 import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
+import {
+  isFacebookAccessTokenError,
+  refreshFacebookPageAccessToken,
+} from "@/lib/facebook/get-facebook-page-access-token";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 import {
@@ -125,46 +129,97 @@ export async function POST(
         .FACEBOOK_GRAPH_API_VERSION
         ?.trim() || "v26.0";
 
-    const response = await fetch(
-      `https://graph.facebook.com/${graphVersion}/${commentId}/comments`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type":
-            "application/json",
+    async function sendReply(
+      pageAccessToken: string,
+    ) {
+      const response = await fetch(
+        `https://graph.facebook.com/${graphVersion}/${commentId}/comments`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            message,
+            access_token:
+              pageAccessToken,
+          }),
+          cache: "no-store",
         },
-        body: JSON.stringify({
-          message,
-          access_token:
-            context.pageAccessToken,
-        }),
-        cache: "no-store",
-      },
-    );
+      );
 
-    const responseText =
-      await response.text();
+      const responseText =
+        await response.text();
+      let result: GraphReplyResult = {};
 
-    let result: GraphReplyResult = {};
-
-    if (responseText.trim()) {
-      try {
-        result = JSON.parse(
-          responseText,
-        ) as GraphReplyResult;
-      } catch {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Facebook returned invalid JSON.",
-          },
-          {
-            status: 502,
-          },
-        );
+      if (responseText.trim()) {
+        try {
+          result = JSON.parse(
+            responseText,
+          ) as GraphReplyResult;
+        } catch {
+          return {
+            response,
+            result,
+            invalidJson: true,
+          };
+        }
       }
+
+      return {
+        response,
+        result,
+        invalidJson: false,
+      };
     }
+
+    let attempt =
+      await sendReply(
+        context.pageAccessToken,
+      );
+
+    /*
+     * A Page token can be invalidated by Meta even though the previously
+     * authorized User token is still valid. Repair that case automatically
+     * and retry exactly once. If the User authorization itself is gone, the
+     * refresh helper returns a clear reconnect-required error instead.
+     */
+    if (
+      (!attempt.response.ok ||
+        attempt.result.error) &&
+      isFacebookAccessTokenError(
+        attempt.result.error,
+      )
+    ) {
+      const refreshedToken =
+        await refreshFacebookPageAccessToken(
+          context.pageId,
+        );
+
+      attempt =
+        await sendReply(
+          refreshedToken,
+        );
+    }
+
+    if (attempt.invalidJson) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Facebook returned invalid JSON.",
+        },
+        {
+          status: 502,
+        },
+      );
+    }
+
+    const {
+      response,
+      result,
+    } = attempt;
 
     if (
       !response.ok ||

@@ -8,6 +8,8 @@ import {
 } from "@/lib/auth/get-current-member";
 import {
   getFacebookPageAccessToken,
+  isFacebookAccessTokenError,
+  refreshFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
 import {
   supabaseAdmin,
@@ -368,10 +370,40 @@ export async function POST(
     false;
 
   try {
-    const standardAttempt =
+    let standardAttempt =
       await sendToFacebook({
         useHumanAgentTag: false,
       });
+
+    /*
+     * Meta can invalidate a stored Page token while the User authorization
+     * behind it is still valid. In that specific case TENH re-derives the
+     * Page token from the encrypted User token and retries once. This does
+     * not bypass revoked Facebook authorization; if the User token is no
+     * longer valid, the refresh helper returns a reconnect-required error.
+     */
+    if (
+      (!standardAttempt.response.ok ||
+        standardAttempt.result.error) &&
+      isFacebookAccessTokenError(
+        standardAttempt.result.error,
+      )
+    ) {
+      pageAccessToken =
+        await refreshFacebookPageAccessToken(
+          pageId,
+        );
+
+      graphUrl.searchParams.set(
+        "access_token",
+        pageAccessToken,
+      );
+
+      standardAttempt =
+        await sendToFacebook({
+          useHumanAgentTag: false,
+        });
+    }
 
     facebookResponse =
       standardAttempt.response;

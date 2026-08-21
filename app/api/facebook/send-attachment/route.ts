@@ -9,6 +9,8 @@ import {
 
 import {
   getFacebookPageAccessToken,
+  isFacebookAccessTokenError,
+  refreshFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
 
 import {
@@ -560,10 +562,8 @@ export async function POST(
     pageAccessToken,
   );
 
-  let uploadResponse: Response;
-
-  try {
-    uploadResponse =
+  async function uploadAttachment() {
+    const response =
       await fetch(
         uploadUrl,
         {
@@ -572,6 +572,53 @@ export async function POST(
           cache: "no-store",
         },
       );
+
+    let payload:
+      AttachmentUploadResponse = {};
+
+    try {
+      payload =
+        (await response.json()) as
+          AttachmentUploadResponse;
+    } catch {
+      // handled below
+    }
+
+    return {
+      response,
+      payload,
+    };
+  }
+
+  let uploadAttempt: {
+    response: Response;
+    payload: AttachmentUploadResponse;
+  };
+
+  try {
+    uploadAttempt =
+      await uploadAttachment();
+
+    if (
+      (!uploadAttempt.response.ok ||
+        uploadAttempt.payload.error) &&
+      isFacebookAccessTokenError(
+        uploadAttempt.payload.error,
+      )
+    ) {
+      pageAccessToken =
+        await refreshFacebookPageAccessToken(
+          pageId,
+        );
+
+      uploadUrl.searchParams.set(
+        "access_token",
+        pageAccessToken,
+      );
+
+      uploadAttempt =
+        await uploadAttachment();
+    }
   } catch (uploadError) {
     console.error(
       "Facebook attachment upload request failed:",
@@ -582,7 +629,9 @@ export async function POST(
       {
         success: false,
         error:
-          "Unable to upload the attachment to Facebook.",
+          uploadError instanceof Error
+            ? uploadError.message
+            : "Unable to upload the attachment to Facebook.",
       },
       {
         status: 502,
@@ -590,16 +639,10 @@ export async function POST(
     );
   }
 
-  let uploadPayload:
-    AttachmentUploadResponse = {};
-
-  try {
-    uploadPayload =
-      (await uploadResponse.json()) as
-        AttachmentUploadResponse;
-  } catch {
-    // handled below
-  }
+  const uploadResponse =
+    uploadAttempt.response;
+  const uploadPayload =
+    uploadAttempt.payload;
 
   const attachmentId =
     uploadPayload.attachment_id
@@ -644,10 +687,8 @@ export async function POST(
     pageAccessToken,
   );
 
-  let sendResponse: Response;
-
-  try {
-    sendResponse =
+  async function sendAttachment() {
+    const response =
       await fetch(
         sendUrl,
         {
@@ -675,6 +716,53 @@ export async function POST(
           cache: "no-store",
         },
       );
+
+    let payload:
+      SendMessageResponse = {};
+
+    try {
+      payload =
+        (await response.json()) as
+          SendMessageResponse;
+    } catch {
+      // handled below
+    }
+
+    return {
+      response,
+      payload,
+    };
+  }
+
+  let sendAttempt: {
+    response: Response;
+    payload: SendMessageResponse;
+  };
+
+  try {
+    sendAttempt =
+      await sendAttachment();
+
+    if (
+      (!sendAttempt.response.ok ||
+        sendAttempt.payload.error) &&
+      isFacebookAccessTokenError(
+        sendAttempt.payload.error,
+      )
+    ) {
+      pageAccessToken =
+        await refreshFacebookPageAccessToken(
+          pageId,
+        );
+
+      sendUrl.searchParams.set(
+        "access_token",
+        pageAccessToken,
+      );
+
+      sendAttempt =
+        await sendAttachment();
+    }
   } catch (sendError) {
     console.error(
       "Facebook attachment send request failed:",
@@ -685,7 +773,9 @@ export async function POST(
       {
         success: false,
         error:
-          "The attachment was uploaded, but Facebook could not send it to the customer.",
+          sendError instanceof Error
+            ? sendError.message
+            : "The attachment was uploaded, but Facebook could not send it to the customer.",
       },
       {
         status: 502,
@@ -693,16 +783,10 @@ export async function POST(
     );
   }
 
-  let sendPayload:
-    SendMessageResponse = {};
-
-  try {
-    sendPayload =
-      (await sendResponse.json()) as
-        SendMessageResponse;
-  } catch {
-    // handled below
-  }
+  const sendResponse =
+    sendAttempt.response;
+  const sendPayload =
+    sendAttempt.payload;
 
   const facebookMessageId =
     sendPayload.message_id
