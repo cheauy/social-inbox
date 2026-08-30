@@ -14,6 +14,10 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   FACEBOOK_OAUTH_SESSION_COOKIE,
   FACEBOOK_OAUTH_STATE_COOKIE,
 } from "@/lib/facebook/facebook-oauth-session";
@@ -70,6 +74,19 @@ export async function GET(
     return redirectToIntegrations(
       request,
       authResult.error,
+    );
+  }
+
+  if (
+    !(await memberHasPermission(
+      authResult.member,
+      "channels",
+      "manage",
+    ))
+  ) {
+    return redirectToIntegrations(
+      request,
+      "You do not have permission to connect channels in this workspace.",
     );
   }
 

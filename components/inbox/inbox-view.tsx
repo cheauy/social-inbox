@@ -16,6 +16,7 @@ import type { FormEvent } from "react";
 
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { CustomerProfile } from "@/components/inbox/customer-profile";
+import { CustomerTimelineModal } from "@/components/inbox/customer-timeline-modal";
 import type { InboxViewProps } from "@/components/inbox/inbox-view-types";
 import { MessagePanel } from "@/components/inbox/message-panel";
 import type {
@@ -37,6 +38,7 @@ import {
 
 import type {
   ConversationStatus,
+  CustomerTag,
   InboxConversation,
   InboxMessage,
 } from "@/types/inbox";
@@ -229,6 +231,28 @@ function buildMultiAgentToast(
     message = `${actorName} changed status to ${capitalizeFirst(
       metadata.newStatus,
     )}`;
+  } else if (activityType === "assigned") {
+    const newAssignee = isRecord(metadata.newAssignee)
+      ? metadata.newAssignee
+      : isRecord(metadata.assignedTo)
+        ? metadata.assignedTo
+        : null;
+    const assigneeName =
+      newAssignee &&
+      typeof newAssignee.name === "string" &&
+      newAssignee.name.trim()
+        ? newAssignee.name.trim()
+        : null;
+
+    if (assigneeName) {
+      message = `${actorName} assigned this conversation to ${assigneeName}`;
+    }
+  } else if (activityType === "unassigned") {
+    message = `${actorName} unassigned this conversation`;
+  } else if (activityType === "pinned") {
+    message = `${actorName} pinned this conversation`;
+  } else if (activityType === "unpinned") {
+    message = `${actorName} unpinned this conversation`;
   } else if (
     activityType === "tag_added" ||
     activityType === "tag_removed"
@@ -414,11 +438,11 @@ export function InboxView({
   useSearchParams();
 
   /*
-   * Keep the client-side workspace context in sync with deliberate
-   * conversation switches. All Channels can contain conversations from
-   * several subscriptions, so a cross-subscription click must update the
-   * TENH workspace cookie before loading that thread, but it should not force
-   * a full browser refresh.
+   * The header-selected workspace scopes Group Chat / Analytics / Integrations
+   * / Settings. Inbox is intentionally different: All Channels can contain
+   * conversations from every active subscription, so opening a customer must
+   * never mutate the global workspace selection. Conversation APIs authorize
+   * against the conversation's own business_id on the server.
    */
   const [
     activeBusinessId,
@@ -523,6 +547,57 @@ const [pinError, setPinError] =
   useState<string | null>(null);
 
 /*
+ * Short-lived optimistic barriers. They prevent an older router.refresh
+ * payload from undoing a pin/tag change while the database/realtime event is
+ * catching up, but release automatically once authoritative data matches.
+ */
+const pinOverrideRef =
+  useRef<
+    Map<
+      string,
+      { isPinned: boolean; expiresAt: number }
+    >
+  >(new Map());
+
+const contactTagsOverrideRef =
+  useRef<
+    Map<
+      string,
+      { tags: CustomerTag[]; expiresAt: number }
+    >
+  >(new Map());
+
+const assignmentOverrideRef =
+  useRef<
+    Map<
+      string,
+      { assignedTo: string | null; expiresAt: number }
+    >
+  >(new Map());
+
+const statusOverrideRef =
+  useRef<
+    Map<
+      string,
+      { status: ConversationStatus; expiresAt: number }
+    >
+  >(new Map());
+
+const collaborationSyncInFlightRef =
+  useRef(false);
+
+/*
+ * If the optional collaborative fallback route is missing in a local/stale
+ * deployment, disable only the polling safety net for this page load. Supabase
+ * Realtime stays active, so Inbox collaboration keeps working without flooding
+ * the console with 404/HTML JSON parse errors every three seconds.
+ */
+const collaborationFallbackUnavailableRef =
+  useRef(false);
+const collaborationFallbackWarningShownRef =
+  useRef(false);
+
+/*
  * V3.11.18 — a manually-unread conversation stays unread while the agent
  * remains inside that same thread. Leaving the thread releases the hold, so
  * opening it again can acknowledge it normally.
@@ -578,6 +653,73 @@ const previousActiveConversationIdRef =
     liveMessages,
     setLiveMessages,
   ] = useState(messages);
+
+  /*
+   * Keep quick-tag changes visible immediately across the Inbox.
+   * CustomerTagSelector dispatches this event after the API confirms an add/remove,
+   * so the conversation list/profile/composer update without router.refresh().
+   */
+  useEffect(() => {
+    function handleContactTagsChanged(event: Event) {
+      const detail = (
+        event as CustomEvent<{
+          contactId?: string;
+          tags?: CustomerTag[];
+        }>
+      ).detail;
+
+      const contactId = detail?.contactId?.trim();
+      const tags = Array.isArray(detail?.tags)
+        ? detail.tags
+        : null;
+
+      if (!contactId || !tags) {
+        return;
+      }
+
+      const normalizedTags = Array.from(
+        new Map(
+          tags.map((tag) => [tag.id, tag]),
+        ).values(),
+      );
+
+      contactTagsOverrideRef.current.set(
+        contactId,
+        {
+          tags: normalizedTags,
+          expiresAt: Date.now() + 6_000,
+        },
+      );
+
+      setLiveConversations((current) =>
+        current.map((conversation) => {
+          if (conversation.contact?.id !== contactId) {
+            return conversation;
+          }
+
+          return {
+            ...conversation,
+            contact: {
+              ...conversation.contact,
+              tags: normalizedTags,
+            },
+          };
+        }),
+      );
+    }
+
+    window.addEventListener(
+      "tenh-contact-tags-changed",
+      handleContactTagsChanged,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "tenh-contact-tags-changed",
+        handleContactTagsChanged,
+      );
+    };
+  }, []);
 
   type ConversationMessagePage = {
     messages: InboxMessage[];
@@ -817,10 +959,32 @@ const previousActiveConversationIdRef =
     );
 
   /*
+   * V3.11.32 — remember the latest incoming-message signal per thread.
+   * Supabase can deliver the messages INSERT and conversations UPDATE in
+   * either order, so this lets us distinguish a real new-message unread
+   * update from a teammate manually choosing Mark as unread.
+   */
+  const recentIncomingConversationAtRef =
+    useRef<Map<string, number>>(
+      new Map(),
+    );
+
+  /*
    * Prevent multiple read PATCH requests for the same
    * active conversation while realtime events arrive.
    */
   const readInFlightRef =
+    useRef<Set<string>>(
+      new Set(),
+    );
+
+  /*
+   * A local Mark as unread PATCH may briefly race with another realtime
+   * read=0 event. Keep only that exact local write protected; once the write
+   * completes, a teammate's later read/unread change is authoritative and
+   * must update every browser live.
+   */
+  const unreadWriteInFlightRef =
     useRef<Set<string>>(
       new Set(),
     );
@@ -1034,6 +1198,7 @@ const realtimeBusinessIds =
 const {
   viewingAgents,
   typingAgents,
+  teamPresence,
   status: agentPresenceStatus,
 } = useAgentPresence({
   businessId:
@@ -1373,6 +1538,171 @@ function showMultiAgentToast(
     );
 }
 
+function normalizeCustomerTags(
+  tags: CustomerTag[],
+) {
+  const unique = new Map<string, CustomerTag>();
+
+  for (const tag of tags) {
+    if (tag?.id) {
+      unique.set(tag.id, tag);
+    }
+  }
+
+  return Array.from(unique.values());
+}
+
+type CollaborativeInboxConversationState = {
+  id: string;
+  business_id: string;
+  contact_id: string | null;
+  is_pinned: boolean;
+  pinned_at: string | null;
+  pinned_by: string | null;
+  assigned_to: string | null;
+  assigned_at: string | null;
+  assigned_member: InboxConversation["assigned_member"];
+  status: ConversationStatus;
+  status_updated_at: string | null;
+  unread_count: number;
+  last_message_at: string | null;
+  updated_at: string | null;
+  tags: CustomerTag[];
+};
+
+type CollaborativeInboxStateResponse = {
+  success?: boolean;
+  error?: string;
+  conversations?: CollaborativeInboxConversationState[];
+};
+
+function updateContactTagsLive(
+  contactId: string,
+  tags: CustomerTag[],
+  remember = true,
+) {
+  const normalizedTags = normalizeCustomerTags(tags);
+
+  if (remember) {
+    contactTagsOverrideRef.current.set(
+      contactId,
+      {
+        tags: normalizedTags,
+        expiresAt: Date.now() + 6_000,
+      },
+    );
+  }
+
+  setLiveConversations((current) =>
+    current.map((conversation) => {
+      if (conversation.contact?.id !== contactId) {
+        return conversation;
+      }
+
+      return {
+        ...conversation,
+        contact: {
+          ...conversation.contact,
+          tags: normalizedTags,
+        },
+      };
+    }),
+  );
+}
+
+function applyRealtimeTagActivity(
+  row: Record<string, unknown>,
+) {
+  const activityType =
+    typeof row.activity_type === "string"
+      ? row.activity_type
+      : "";
+
+  if (
+    activityType !== "tag_added" &&
+    activityType !== "tag_removed"
+  ) {
+    return;
+  }
+
+  const contactId =
+    typeof row.contact_id === "string"
+      ? row.contact_id
+      : null;
+
+  if (!contactId) {
+    return;
+  }
+
+  const metadata =
+    row.metadata && typeof row.metadata === "object"
+      ? (row.metadata as Record<string, unknown>)
+      : null;
+  const rawTag =
+    metadata?.tag && typeof metadata.tag === "object"
+      ? (metadata.tag as Record<string, unknown>)
+      : null;
+  const tagId =
+    typeof rawTag?.id === "string"
+      ? rawTag.id
+      : null;
+
+  if (!tagId) {
+    return;
+  }
+
+  const override =
+    contactTagsOverrideRef.current.get(contactId);
+  const currentTags =
+    override?.tags ??
+    liveConversations.find(
+      (conversation) => conversation.contact?.id === contactId,
+    )?.contact?.tags ??
+    [];
+
+  if (activityType === "tag_removed") {
+    updateContactTagsLive(
+      contactId,
+      currentTags.filter((tag) => tag.id !== tagId),
+    );
+    return;
+  }
+
+  const existingTag = currentTags.find(
+    (tag) => tag.id === tagId,
+  );
+  const now = new Date().toISOString();
+  const incomingTag: CustomerTag =
+    existingTag ?? {
+      id: tagId,
+      business_id:
+        typeof row.business_id === "string"
+          ? row.business_id
+          : activeBusinessId,
+      name:
+        typeof rawTag?.name === "string"
+          ? rawTag.name
+          : "Tag",
+      color:
+        typeof rawTag?.color === "string"
+          ? rawTag.color
+          : "#64748b",
+      sort_index: 0,
+      description: null,
+      is_active: true,
+      created_at: now,
+      updated_at: now,
+    };
+
+  updateContactTagsLive(
+    contactId,
+    [
+      ...currentTags.filter((tag) => tag.id !== tagId),
+      incomingTag,
+    ],
+  );
+}
+
 useInboxRealtime({
   businessIds:
     realtimeBusinessIds,
@@ -1428,6 +1758,13 @@ useInboxRealtime({
         showMultiAgentToast(
           event.newRow,
         );
+      }
+
+      if (
+        activityType === "tag_added" ||
+        activityType === "tag_removed"
+      ) {
+        applyRealtimeTagActivity(event.newRow);
       }
 
       const needsEnrichedRefresh =
@@ -1509,6 +1846,23 @@ useInboxRealtime({
         handledIncomingMessageIdsRef.current.add(
           messageId,
         );
+
+        recentIncomingConversationAtRef.current.set(
+          conversationId,
+          Date.now(),
+        );
+
+        if (
+          recentIncomingConversationAtRef.current.size >
+          500
+        ) {
+          const cutoff = Date.now() - 30_000;
+          for (const [id, receivedAt] of recentIncomingConversationAtRef.current) {
+            if (receivedAt < cutoff) {
+              recentIncomingConversationAtRef.current.delete(id);
+            }
+          }
+        }
 
         if (
           handledIncomingMessageIdsRef.current.size >
@@ -1994,6 +2348,174 @@ useInboxRealtime({
         return;
       }
 
+      const realtimeMergeRow = {
+        ...row,
+      } as Record<string, unknown>;
+
+      const pinOverride =
+        pinOverrideRef.current.get(conversationId);
+      const rowPinned =
+        typeof row.is_pinned === "boolean"
+          ? row.is_pinned
+          : null;
+
+      if (rowPinned !== null && pinOverride) {
+        if (
+          pinOverride.expiresAt > Date.now() &&
+          rowPinned !== pinOverride.isPinned
+        ) {
+          delete realtimeMergeRow.is_pinned;
+          delete realtimeMergeRow.pinned_at;
+          delete realtimeMergeRow.pinned_by;
+        } else {
+          pinOverrideRef.current.delete(conversationId);
+        }
+      }
+
+      const assignmentOverride =
+        assignmentOverrideRef.current.get(conversationId);
+      const rowHasAssignment =
+        Object.prototype.hasOwnProperty.call(row, "assigned_to");
+      const rowAssignedTo =
+        typeof row.assigned_to === "string"
+          ? row.assigned_to
+          : null;
+      let protectAssignedMember = false;
+
+      if (rowHasAssignment && assignmentOverride) {
+        if (
+          assignmentOverride.expiresAt > Date.now() &&
+          rowAssignedTo !== assignmentOverride.assignedTo
+        ) {
+          delete realtimeMergeRow.assigned_to;
+          delete realtimeMergeRow.assigned_at;
+          protectAssignedMember = true;
+        } else {
+          assignmentOverrideRef.current.delete(conversationId);
+        }
+      }
+
+      const statusOverride =
+        statusOverrideRef.current.get(conversationId);
+      const rowStatus =
+        typeof row.status === "string"
+          ? (row.status as ConversationStatus)
+          : null;
+
+      if (rowStatus && statusOverride) {
+        if (
+          statusOverride.expiresAt > Date.now() &&
+          rowStatus !== statusOverride.status
+        ) {
+          delete realtimeMergeRow.status;
+          delete realtimeMergeRow.status_updated_at;
+        } else {
+          statusOverrideRef.current.delete(conversationId);
+        }
+      }
+
+      if (
+        rowPinned !== null &&
+        activeConversation?.id === conversationId &&
+        Boolean(activeConversation.is_pinned) !== rowPinned &&
+        !(pinOverride && pinOverride.isPinned === rowPinned)
+      ) {
+        const actorMemberId =
+          typeof row.pinned_by === "string"
+            ? row.pinned_by
+            : null;
+        const actorName =
+          (actorMemberId
+            ? teamMembers.find((member) => member.id === actorMemberId)
+                ?.full_name
+            : null) ?? "A teammate";
+        const changedAt =
+          typeof row.updated_at === "string"
+            ? row.updated_at
+            : Date.now().toString();
+
+        showMultiAgentToast({
+          id: `pin-live-${conversationId}-${changedAt}`,
+          activity_type: rowPinned ? "pin_live" : "unpin_live",
+          actor_name: actorName,
+          description: rowPinned
+            ? `${actorName} pinned this conversation`
+            : `${actorName} unpinned this conversation`,
+        });
+      }
+
+      const existingConversation =
+        liveConversations.find(
+          (conversation) =>
+            conversation.id === conversationId,
+        ) ?? null;
+
+      const rowUnreadCount =
+        typeof row.unread_count === "number"
+          ? row.unread_count
+          : null;
+      const existingLastMessageTime =
+        existingConversation?.last_message_at
+          ? new Date(existingConversation.last_message_at).getTime()
+          : 0;
+      const rowLastMessageValue =
+        typeof row.last_message_at === "string"
+          ? row.last_message_at
+          : null;
+      const rowLastMessageTime = rowLastMessageValue
+        ? new Date(rowLastMessageValue).getTime()
+        : 0;
+      const recentIncomingAt =
+        recentIncomingConversationAtRef.current.get(conversationId) ?? 0;
+      const hasRecentIncomingSignal =
+        recentIncomingAt > 0 &&
+        Date.now() - recentIncomingAt < 5_000;
+      const rowAdvancesMessage =
+        Number.isFinite(rowLastMessageTime) &&
+        Number.isFinite(existingLastMessageTime) &&
+        rowLastMessageTime > 0 &&
+        (existingLastMessageTime === 0 ||
+          rowLastMessageTime > existingLastMessageTime + 1_000);
+      const unreadComesFromNewMessage =
+        rowUnreadCount !== null &&
+        rowUnreadCount > 0 &&
+        (hasRecentIncomingSignal || rowAdvancesMessage);
+      const isSharedManualUnreadUpdate =
+        rowUnreadCount !== null &&
+        rowUnreadCount > 0 &&
+        !unreadComesFromNewMessage;
+
+      if (unreadComesFromNewMessage && hasRecentIncomingSignal) {
+        recentIncomingConversationAtRef.current.delete(conversationId);
+      }
+
+      /*
+       * V3.11.32 — unread is shared team state. A teammate's manual Mark as
+       * unread changes only unread_count, not the latest message. Keep that
+       * unread marker even when this browser already has the thread open.
+       */
+      if (isSharedManualUnreadUpdate) {
+        manualUnreadConversationIdsRef.current.add(conversationId);
+        persistedManualUnreadCountsRef.current.set(
+          conversationId,
+          Math.max(1, rowUnreadCount ?? 1),
+        );
+        readBarrierMessageTimeRef.current.delete(conversationId);
+      }
+
+      /*
+       * A read=0 written by another teammate must also win immediately. The
+       * only exception is while this browser is in the middle of its own
+       * Mark as unread PATCH, where the later local write is intentional.
+       */
+      if (
+        rowUnreadCount === 0 &&
+        !unreadWriteInFlightRef.current.has(conversationId)
+      ) {
+        manualUnreadConversationIdsRef.current.delete(conversationId);
+        persistedManualUnreadCountsRef.current.delete(conversationId);
+      }
+
       setLiveConversations(
         (current) => {
           const exists =
@@ -2011,38 +2533,29 @@ useInboxRealtime({
             return current;
           }
 
-          const rowUnreadCount =
-            typeof row.unread_count ===
-            "number"
-              ? row.unread_count
-              : null;
-
           const isActiveConversation =
             conversationId ===
             resolvedActiveConversationId;
 
           /*
-           * The webhook correctly increments unread_count first.
-           * If the agent is already viewing this conversation,
-           * never flash that unread badge locally. We immediately
-           * acknowledge it as read after the authoritative
-           * conversation UPDATE arrives.
+           * Only a real incoming-message unread should be auto-acknowledged
+           * while the thread is open. A teammate's manual Mark as unread must
+           * stay visible live to everyone.
            */
           const shouldAcknowledgeRead =
             isActiveConversation &&
+            unreadComesFromNewMessage &&
             !manualUnreadConversationIdsRef.current.has(
               conversationId,
-            ) &&
-            rowUnreadCount !== null &&
-            rowUnreadCount > 0;
+            );
 
           const normalizedRow =
             shouldAcknowledgeRead
               ? {
-                  ...row,
+                  ...realtimeMergeRow,
                   unread_count: 0,
                 }
-              : row;
+              : realtimeMergeRow;
 
           const persistedManualUnreadCount =
             persistedManualUnreadCountsRef.current.get(
@@ -2094,7 +2607,7 @@ useInboxRealtime({
                   rowLastMessageTime + 1000 <
                     currentLastMessageTime;
 
-                const merged = {
+                let merged = {
                   ...conversation,
                   ...normalizedRow,
                   ...(rowIsOlderThanLocal
@@ -2108,6 +2621,17 @@ useInboxRealtime({
                       }
                     : {}),
                 } as unknown as typeof conversation;
+
+                if (rowHasAssignment && !protectAssignedMember) {
+                  merged = {
+                    ...merged,
+                    assigned_member: rowAssignedTo
+                      ? teamMembers.find(
+                          (member) => member.id === rowAssignedTo,
+                        ) ?? null
+                      : null,
+                  };
+                }
 
                 if (keepManuallyUnread) {
                   return {
@@ -2162,20 +2686,13 @@ useInboxRealtime({
         },
       );
 
-      const rowUnreadCount =
-        typeof row.unread_count ===
-        "number"
-          ? row.unread_count
-          : null;
-
       if (
         conversationId ===
           resolvedActiveConversationId &&
+        unreadComesFromNewMessage &&
         !manualUnreadConversationIdsRef.current.has(
           conversationId,
-        ) &&
-        rowUnreadCount !== null &&
-        rowUnreadCount > 0
+        )
       ) {
         void markConversationReadRealtime(
           conversationId,
@@ -2192,7 +2709,366 @@ useInboxRealtime({
     router.refresh();
   },
 });
-  
+
+/*
+ * Realtime is the fast path. This lightweight server-authoritative sync is the
+ * safety net for deployments where a Supabase Realtime publication/policy is
+ * delayed or unavailable. It keeps pin, assignment and customer tags aligned
+ * for Owners and teammates without refreshing the page or replacing messages.
+ */
+const collaborationConversationIdsKey = useMemo(
+  () =>
+    liveConversations
+      .map((conversation) => conversation.id)
+      .sort()
+      .join("|"),
+  [liveConversations],
+);
+
+useEffect(() => {
+  const conversationIds =
+    collaborationConversationIdsKey
+      ? collaborationConversationIdsKey.split("|")
+      : [];
+
+  if (conversationIds.length === 0) {
+    return;
+  }
+
+  let cancelled = false;
+  let timer: number | null = null;
+
+  async function syncCollaborativeState() {
+    if (
+      cancelled ||
+      collaborationFallbackUnavailableRef.current ||
+      collaborationSyncInFlightRef.current ||
+      document.visibilityState === "hidden" ||
+      !navigator.onLine
+    ) {
+      return;
+    }
+
+    collaborationSyncInFlightRef.current = true;
+
+    try {
+      const response = await fetch(
+        "/api/inbox/live-state",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          cache: "no-store",
+          body: JSON.stringify({
+            conversationIds,
+          }),
+        },
+      );
+
+      const text = await response.text();
+      const contentType =
+        response.headers.get("content-type") ?? "";
+
+      if (response.status === 404) {
+        collaborationFallbackUnavailableRef.current = true;
+
+        if (!collaborationFallbackWarningShownRef.current) {
+          collaborationFallbackWarningShownRef.current = true;
+          console.warn(
+            "Collaborative Inbox fallback route is unavailable. Realtime remains active; restart Next.js after adding app/api/inbox/live-state/route.ts.",
+          );
+        }
+
+        return;
+      }
+
+      if (!contentType.toLowerCase().includes("application/json")) {
+        throw new Error(
+          `Collaborative Inbox fallback returned ${response.status} ${response.statusText || ""} with a non-JSON response.`,
+        );
+      }
+
+      let result: CollaborativeInboxStateResponse | null = null;
+
+      if (text.trim()) {
+        try {
+          result = JSON.parse(text) as CollaborativeInboxStateResponse;
+        } catch {
+          throw new Error(
+            "Collaborative Inbox fallback returned invalid JSON.",
+          );
+        }
+      }
+
+      if (
+        !response.ok ||
+        !result?.success ||
+        !Array.isArray(result.conversations)
+      ) {
+        throw new Error(
+          result?.error ??
+            "Unable to synchronize Inbox state.",
+        );
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      const stateByConversationId = new Map(
+        result.conversations.map((state) => [state.id, state]),
+      );
+
+      setLiveConversations((current) =>
+        sortLiveConversations(
+          current.map((conversation) => {
+            const state = stateByConversationId.get(conversation.id);
+
+            if (!state) {
+              return conversation;
+            }
+
+            let nextConversation: InboxConversation = {
+              ...conversation,
+            };
+
+            /*
+             * V3.11.32 fallback for shared read/unread state. Realtime remains
+             * the fast path, while this 3-second authoritative sync guarantees
+             * that every teammate still converges if a realtime UPDATE is lost.
+             */
+            const serverUnreadCount = Math.max(
+              0,
+              typeof state.unread_count === "number"
+                ? state.unread_count
+                : conversation.unread_count ?? 0,
+            );
+            const localLastMessageTime = conversation.last_message_at
+              ? new Date(conversation.last_message_at).getTime()
+              : 0;
+            const serverLastMessageTime = state.last_message_at
+              ? new Date(state.last_message_at).getTime()
+              : 0;
+            const recentIncomingAt =
+              recentIncomingConversationAtRef.current.get(conversation.id) ?? 0;
+            const fallbackHasRecentIncoming =
+              recentIncomingAt > 0 &&
+              Date.now() - recentIncomingAt < 5_000;
+            const fallbackMessageAdvanced =
+              Number.isFinite(serverLastMessageTime) &&
+              Number.isFinite(localLastMessageTime) &&
+              serverLastMessageTime > 0 &&
+              (localLastMessageTime === 0 ||
+                serverLastMessageTime > localLastMessageTime + 1_000);
+            const fallbackUnreadFromMessage =
+              serverUnreadCount > 0 &&
+              (fallbackHasRecentIncoming || fallbackMessageAdvanced);
+            const fallbackManualUnread =
+              serverUnreadCount > 0 &&
+              !fallbackUnreadFromMessage;
+
+            if (fallbackManualUnread) {
+              manualUnreadConversationIdsRef.current.add(conversation.id);
+              persistedManualUnreadCountsRef.current.set(
+                conversation.id,
+                Math.max(1, serverUnreadCount),
+              );
+              readBarrierMessageTimeRef.current.delete(conversation.id);
+              nextConversation = {
+                ...nextConversation,
+                unread_count: Math.max(1, serverUnreadCount),
+              };
+            } else if (serverUnreadCount === 0) {
+              if (!unreadWriteInFlightRef.current.has(conversation.id)) {
+                manualUnreadConversationIdsRef.current.delete(conversation.id);
+                persistedManualUnreadCountsRef.current.delete(conversation.id);
+                nextConversation = {
+                  ...nextConversation,
+                  unread_count: 0,
+                };
+              }
+            } else {
+              nextConversation = {
+                ...nextConversation,
+                unread_count: serverUnreadCount,
+              };
+            }
+
+            const pinOverride =
+              pinOverrideRef.current.get(conversation.id);
+
+            if (
+              pinOverride &&
+              pinOverride.expiresAt > Date.now() &&
+              state.is_pinned !== pinOverride.isPinned
+            ) {
+              nextConversation = {
+                ...nextConversation,
+                is_pinned: pinOverride.isPinned,
+                pinned_at: pinOverride.isPinned
+                  ? nextConversation.pinned_at ?? new Date().toISOString()
+                  : null,
+                pinned_by: pinOverride.isPinned
+                  ? nextConversation.pinned_by
+                  : null,
+              };
+            } else {
+              pinOverrideRef.current.delete(conversation.id);
+              nextConversation = {
+                ...nextConversation,
+                is_pinned: state.is_pinned,
+                pinned_at: state.pinned_at,
+                pinned_by: state.pinned_by,
+              };
+            }
+
+            const assignmentOverride =
+              assignmentOverrideRef.current.get(conversation.id);
+
+            if (
+              assignmentOverride &&
+              assignmentOverride.expiresAt > Date.now() &&
+              state.assigned_to !== assignmentOverride.assignedTo
+            ) {
+              // Keep the in-flight local assignment until its API request settles.
+            } else {
+              assignmentOverrideRef.current.delete(conversation.id);
+              nextConversation = {
+                ...nextConversation,
+                assigned_to: state.assigned_to,
+                assigned_at: state.assigned_at,
+                assigned_member: state.assigned_member,
+              };
+            }
+
+            const statusOverride =
+              statusOverrideRef.current.get(conversation.id);
+
+            if (
+              statusOverride &&
+              statusOverride.expiresAt > Date.now() &&
+              state.status !== statusOverride.status
+            ) {
+              // Keep the in-flight local status until its API request settles.
+            } else {
+              statusOverrideRef.current.delete(conversation.id);
+              nextConversation = {
+                ...nextConversation,
+                status: state.status,
+              };
+            }
+
+            if (
+              state.contact_id &&
+              nextConversation.contact?.id === state.contact_id
+            ) {
+              const tagOverride =
+                contactTagsOverrideRef.current.get(state.contact_id);
+
+              if (
+                tagOverride &&
+                tagOverride.expiresAt > Date.now()
+              ) {
+                const serverTagIds = new Set(
+                  state.tags.map((tag) => tag.id),
+                );
+                const overrideTagIds = new Set(
+                  tagOverride.tags.map((tag) => tag.id),
+                );
+                const serverMatchesOverride =
+                  serverTagIds.size === overrideTagIds.size &&
+                  Array.from(overrideTagIds).every((tagId) =>
+                    serverTagIds.has(tagId),
+                  );
+
+                if (serverMatchesOverride) {
+                  contactTagsOverrideRef.current.delete(state.contact_id);
+                  nextConversation = {
+                    ...nextConversation,
+                    contact: {
+                      ...nextConversation.contact,
+                      tags: normalizeCustomerTags(state.tags),
+                    },
+                  };
+                } else {
+                  nextConversation = {
+                    ...nextConversation,
+                    contact: {
+                      ...nextConversation.contact,
+                      tags: tagOverride.tags,
+                    },
+                  };
+                }
+              } else {
+                contactTagsOverrideRef.current.delete(state.contact_id);
+                nextConversation = {
+                  ...nextConversation,
+                  contact: {
+                    ...nextConversation.contact,
+                    tags: normalizeCustomerTags(state.tags),
+                  },
+                };
+              }
+            }
+
+            return nextConversation;
+          }),
+        ),
+      );
+    } catch (error) {
+      // Realtime remains active; a temporary sync failure must never break Inbox.
+      console.warn(
+        "Unable to run collaborative Inbox fallback sync:",
+        error,
+      );
+    } finally {
+      collaborationSyncInFlightRef.current = false;
+    }
+  }
+
+  function scheduleNext() {
+    if (
+      cancelled ||
+      collaborationFallbackUnavailableRef.current
+    ) {
+      return;
+    }
+
+    timer = window.setTimeout(async () => {
+      await syncCollaborativeState();
+      scheduleNext();
+    }, 3000);
+  }
+
+  function handleVisibilityOrFocus() {
+    if (document.visibilityState === "visible") {
+      void syncCollaborativeState();
+    }
+  }
+
+  void syncCollaborativeState();
+  scheduleNext();
+
+  window.addEventListener("focus", handleVisibilityOrFocus);
+  window.addEventListener("online", handleVisibilityOrFocus);
+  document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+
+  return () => {
+    cancelled = true;
+
+    if (timer !== null) {
+      window.clearTimeout(timer);
+    }
+
+    window.removeEventListener("focus", handleVisibilityOrFocus);
+    window.removeEventListener("online", handleVisibilityOrFocus);
+    document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+  };
+}, [
+  collaborationConversationIdsKey,
+]);
 
 useEffect(() => {
   setLiveConversations((current) => {
@@ -2247,6 +3123,112 @@ useEffect(() => {
                 previous.unread_count,
             }
           : conversation;
+
+      const pinOverride =
+        pinOverrideRef.current.get(conversation.id);
+
+      if (pinOverride) {
+        if (pinOverride.expiresAt <= Date.now()) {
+          pinOverrideRef.current.delete(conversation.id);
+        } else if (conversation.is_pinned === pinOverride.isPinned) {
+          pinOverrideRef.current.delete(conversation.id);
+        } else {
+          mergedConversation = {
+            ...mergedConversation,
+            is_pinned: pinOverride.isPinned,
+            pinned_at: pinOverride.isPinned
+              ? previous?.pinned_at ??
+                mergedConversation.pinned_at ??
+                new Date().toISOString()
+              : null,
+            pinned_by: pinOverride.isPinned
+              ? previous?.pinned_by ?? mergedConversation.pinned_by
+              : null,
+          };
+        }
+      }
+
+      const assignmentOverride =
+        assignmentOverrideRef.current.get(conversation.id);
+
+      if (assignmentOverride) {
+        if (assignmentOverride.expiresAt <= Date.now()) {
+          assignmentOverrideRef.current.delete(conversation.id);
+        } else if (
+          conversation.assigned_to === assignmentOverride.assignedTo
+        ) {
+          assignmentOverrideRef.current.delete(conversation.id);
+        } else {
+          const optimisticMember = assignmentOverride.assignedTo
+            ? teamMembers.find(
+                (member) => member.id === assignmentOverride.assignedTo,
+              ) ?? mergedConversation.assigned_member
+            : null;
+
+          mergedConversation = {
+            ...mergedConversation,
+            assigned_to: assignmentOverride.assignedTo,
+            assigned_at: assignmentOverride.assignedTo
+              ? previous?.assigned_at ??
+                mergedConversation.assigned_at ??
+                new Date().toISOString()
+              : null,
+            assigned_member: optimisticMember,
+          };
+        }
+      }
+
+      const statusOverride =
+        statusOverrideRef.current.get(conversation.id);
+
+      if (statusOverride) {
+        if (statusOverride.expiresAt <= Date.now()) {
+          statusOverrideRef.current.delete(conversation.id);
+        } else if (conversation.status === statusOverride.status) {
+          statusOverrideRef.current.delete(conversation.id);
+        } else {
+          mergedConversation = {
+            ...mergedConversation,
+            status: statusOverride.status,
+          };
+        }
+      }
+
+      const contactId = mergedConversation.contact?.id ?? null;
+      if (contactId) {
+        const tagOverride =
+          contactTagsOverrideRef.current.get(contactId);
+
+        if (tagOverride) {
+          if (tagOverride.expiresAt <= Date.now()) {
+            contactTagsOverrideRef.current.delete(contactId);
+          } else {
+            const serverTagIds = new Set(
+              (conversation.contact?.tags ?? []).map((tag) => tag.id),
+            );
+            const overrideTagIds = new Set(
+              tagOverride.tags.map((tag) => tag.id),
+            );
+            const serverMatchesOverride =
+              serverTagIds.size === overrideTagIds.size &&
+              Array.from(overrideTagIds).every((tagId) =>
+                serverTagIds.has(tagId),
+              );
+
+            if (serverMatchesOverride) {
+              contactTagsOverrideRef.current.delete(contactId);
+            } else if (mergedConversation.contact) {
+              mergedConversation = {
+                ...mergedConversation,
+                contact: {
+                  ...mergedConversation.contact,
+                  tags: tagOverride.tags,
+                },
+              };
+            }
+          }
+        }
+      }
 
       if (
         manualUnreadConversationIdsRef.current.has(
@@ -2305,8 +3287,7 @@ useEffect(() => {
      * the active left-panel scope before rendering rows.
      */
     const selectedId =
-      desiredConversationIdRef.current ??
-      clientSelectedConversationId;
+      desiredConversationIdRef.current;
 
     if (
       selectedId &&
@@ -2331,7 +3312,6 @@ useEffect(() => {
     return sortLiveConversations(next);
   });
 }, [
-  clientSelectedConversationId,
   conversations,
 ]);
 
@@ -2622,34 +3602,6 @@ const prefetchConversation =
     (
       conversationId: string,
     ) => {
-      const targetConversation =
-        liveConversations.find(
-          (conversation) =>
-            conversation.id ===
-            conversationId,
-        );
-
-      const targetBusinessId =
-        targetConversation
-          ? getConversationBusinessId(
-              targetConversation,
-            )
-          : null;
-
-      /*
-       * All Channels can contain conversations from several subscriptions.
-       * Do not prefetch another subscription through APIs that are currently
-       * scoped to the active workspace cookie. A deliberate click will switch
-       * workspace context first.
-       */
-      if (
-        targetBusinessId &&
-        targetBusinessId !==
-          activeBusinessId
-      ) {
-        return;
-      }
-
       if (
         conversationId ===
           resolvedActiveConversationId ||
@@ -2673,9 +3625,7 @@ const prefetchConversation =
       });
     },
     [
-      activeBusinessId,
       getCachedConversationPage,
-      liveConversations,
       loadConversationMessagePage,
       resolvedActiveConversationId,
     ],
@@ -2698,74 +3648,8 @@ const selectConversationSmoothly =
         return;
       }
 
-      const targetBusinessId =
-        getConversationBusinessId(
-          targetConversation,
-        );
-
-      /*
-       * All Channels can display conversations from every subscription the
-       * user can still access. A click on another subscription first updates
-       * the active workspace cookie, then continues in this same mounted
-       * Inbox. Do not hard-refresh the page just to change conversations.
-       */
-      if (
-        targetBusinessId &&
-        targetBusinessId !==
-          activeBusinessIdRef.current
-      ) {
-        try {
-          const response =
-            await fetch(
-              "/api/workspaces/switch",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type":
-                    "application/json",
-                },
-                body: JSON.stringify({
-                  businessId:
-                    targetBusinessId,
-                }),
-              },
-            );
-
-          const result =
-            (await response.json()) as {
-              success?: boolean;
-              error?: string;
-            };
-
-          if (
-            !response.ok ||
-            !result.success
-          ) {
-            throw new Error(
-              result.error ??
-                "Unable to open this conversation.",
-            );
-          }
-
-          /*
-           * Set-Cookie from the switch response is applied before the next
-           * request. Message/read/send APIs can now use the destination
-           * subscription immediately without a browser reload.
-           */
-          activeBusinessIdRef.current =
-            targetBusinessId;
-          setActiveBusinessId(
-            targetBusinessId,
-          );
-        } catch (error) {
-          setConversationMessagesError(
-            error instanceof Error
-              ? error.message
-              : "Unable to open this conversation.",
-          );
-          return;
-        }
-      }
+      // Keep the global workspace selection unchanged. The selected thread's
+      // own business id is resolved and authorized by Inbox APIs.
 
       if (
         conversationId ===
@@ -3660,6 +4544,7 @@ useEffect(() => {
     );
 
     setMarkingUnread(true);
+    unreadWriteInFlightRef.current.add(conversationId);
 
     /* Optimistic UI: show the unread badge immediately. */
     setLiveConversations((current) =>
@@ -3769,48 +4654,67 @@ useEffect(() => {
       /* Re-sync only on failure. */
       router.refresh();
     } finally {
+      unreadWriteInFlightRef.current.delete(conversationId);
       setMarkingUnread(false);
     }
   }
 
 async function handleTogglePin() {
-  if (
-    !activeConversation ||
-    pinning
-  ) {
+  if (!activeConversation || pinning) {
     return;
   }
 
-  const nextPinned =
-    !activeConversation.is_pinned;
+  const conversationId = activeConversation.id;
+  const previousPinState = {
+    is_pinned: Boolean(activeConversation.is_pinned),
+    pinned_at: activeConversation.pinned_at ?? null,
+    pinned_by: activeConversation.pinned_by ?? null,
+  };
+  const nextPinned = !previousPinState.is_pinned;
 
   setPinning(true);
   setPinError(null);
 
+  pinOverrideRef.current.set(conversationId, {
+    isPinned: nextPinned,
+    expiresAt: Date.now() + 15_000,
+  });
+
+  setLiveConversations((current) =>
+    sortLiveConversations(
+      current.map((conversation) =>
+        conversation.id === conversationId
+          ? {
+              ...conversation,
+              is_pinned: nextPinned,
+              pinned_at: nextPinned
+                ? new Date().toISOString()
+                : null,
+              pinned_by: nextPinned
+                ? conversation.pinned_by
+                : null,
+            }
+          : conversation,
+      ),
+    ),
+  );
+
   try {
     const response = await fetch(
-      `/api/conversations/${activeConversation.id}/pin`,
+      `/api/conversations/${conversationId}/pin`,
       {
         method: "PATCH",
-
         headers: {
-          "Content-Type":
-            "application/json",
+          "Content-Type": "application/json",
         },
-
-        body: JSON.stringify({
-          isPinned: nextPinned,
-        }),
+        body: JSON.stringify({ isPinned: nextPinned }),
       },
     );
 
-    const responseText =
-      await response.text();
-
+    const responseText = await response.text();
     let result: {
       success: boolean;
       error?: string;
-
       conversation?: {
         id: string;
         is_pinned: boolean;
@@ -3821,27 +4725,9 @@ async function handleTogglePin() {
 
     if (responseText.trim()) {
       try {
-        result = JSON.parse(
-          responseText,
-        ) as {
-          success: boolean;
-          error?: string;
-
-          conversation?: {
-            id: string;
-            is_pinned: boolean;
-            pinned_at:
-              | string
-              | null;
-            pinned_by:
-              | string
-              | null;
-          };
-        };
+        result = JSON.parse(responseText);
       } catch {
-        throw new Error(
-          "Pin API returned invalid JSON.",
-        );
+        throw new Error("Pin API returned invalid JSON.");
       }
     } else {
       result = {
@@ -3852,50 +4738,62 @@ async function handleTogglePin() {
       };
     }
 
-    if (
-      !response.ok ||
-      !result.success
-    ) {
+    if (!response.ok || !result.success) {
       throw new Error(
-        result.error ??
-          "Unable to update conversation pin.",
+        result.error ?? "Unable to update conversation pin.",
       );
     }
 
-    if (
-      result.conversation
-    ) {
-      setLiveConversations(
-        (current) =>
-          sortLiveConversations(
-            current.map(
-              (conversation) =>
-                conversation.id ===
-                result.conversation?.id
-                  ? {
-                      ...conversation,
-                      ...result.conversation,
-                    }
-                  : conversation,
-            ),
+    if (result.conversation) {
+      pinOverrideRef.current.set(conversationId, {
+        isPinned: result.conversation.is_pinned,
+        expiresAt: Date.now() + 15_000,
+      });
+
+      setLiveConversations((current) =>
+        sortLiveConversations(
+          current.map((conversation) =>
+            conversation.id === result.conversation?.id
+              ? { ...conversation, ...result.conversation }
+              : conversation,
           ),
+        ),
       );
     }
   } catch (error) {
+    const localOverride =
+      pinOverrideRef.current.get(conversationId);
+
+    if (localOverride?.isPinned === nextPinned) {
+      pinOverrideRef.current.delete(conversationId);
+      setLiveConversations((current) =>
+        sortLiveConversations(
+          current.map((conversation) =>
+            conversation.id === conversationId
+              ? { ...conversation, ...previousPinState }
+              : conversation,
+          ),
+        ),
+      );
+    }
+
     const message =
       error instanceof Error
         ? error.message
         : "Unable to update conversation pin.";
 
     setPinError(message);
-
-    console.error(
-      "Unable to update conversation pin:",
-      error,
-    );
+    console.error("Unable to update conversation pin:", error);
   } finally {
     setPinning(false);
   }
+}
+
+function handleContactTagsChange(
+  contactId: string,
+  tags: CustomerTag[],
+) {
+  updateContactTagsLive(contactId, tags);
 }
 
 function showTelegramActionNotice(
@@ -5760,17 +6658,39 @@ async function handleSendMessage(
   ) {
     if (
       !activeConversation ||
+      updatingStatus ||
       nextStatus === activeConversation.status
     ) {
       return;
     }
 
+    const conversationId = activeConversation.id;
+    const previousStatus = activeConversation.status;
+
+    statusOverrideRef.current.set(conversationId, {
+      status: nextStatus,
+      expiresAt: Date.now() + 8_000,
+    });
+
     setUpdatingStatus(true);
     setStatusError(null);
 
+    setLiveConversations((current) =>
+      sortLiveConversations(
+        current.map((conversation) =>
+          conversation.id === conversationId
+            ? {
+                ...conversation,
+                status: nextStatus,
+              }
+            : conversation,
+        ),
+      ),
+    );
+
     try {
       const response = await fetch(
-        `/api/conversations/${activeConversation.id}/status`,
+        `/api/conversations/${conversationId}/status`,
         {
           method: "PATCH",
           headers: {
@@ -5783,45 +6703,65 @@ async function handleSendMessage(
       );
 
       const result =
-      (await response.json()) as {
-        success?: boolean;
-        error?: string;
-        conversation?: {
-          id: string;
-          status: ConversationStatus;
+        (await response.json()) as {
+          success?: boolean;
+          error?: string;
+          conversation?: {
+            id: string;
+            status: ConversationStatus;
+          };
+          activityRecorded?: boolean;
         };
-        activityRecorded?: boolean;
-      };
 
-      if (!response.ok || !result.success) {
+      if (!response.ok || !result.success || !result.conversation) {
         throw new Error(
           result.error ??
             "Unable to update status.",
         );
       }
 
-      
+      const authoritativeStatus =
+        result.conversation.status;
 
-      if (
-        result.conversation
-      ) {
-        setLiveConversations(
-          (current) =>
-            sortLiveConversations(
-              current.map(
-                (conversation) =>
-                  conversation.id ===
-                  result.conversation?.id
-                    ? {
-                        ...conversation,
-                        ...result.conversation,
-                      }
-                    : conversation,
-              ),
+      statusOverrideRef.current.set(conversationId, {
+        status: authoritativeStatus,
+        expiresAt: Date.now() + 3_000,
+      });
+
+      setLiveConversations((current) =>
+        sortLiveConversations(
+          current.map((conversation) =>
+            conversation.id === conversationId
+              ? {
+                  ...conversation,
+                  status: authoritativeStatus,
+                }
+              : conversation,
+          ),
+        ),
+      );
+    } catch (error) {
+      const currentOverride =
+        statusOverrideRef.current.get(conversationId);
+
+      if (currentOverride?.status === nextStatus) {
+        statusOverrideRef.current.delete(conversationId);
+
+        setLiveConversations((current) =>
+          sortLiveConversations(
+            current.map((conversation) =>
+              conversation.id === conversationId &&
+              conversation.status === nextStatus
+                ? {
+                    ...conversation,
+                    status: previousStatus,
+                  }
+                : conversation,
             ),
+          ),
         );
       }
-    } catch (error) {
+
       setStatusError(
         error instanceof Error
           ? error.message
@@ -5835,10 +6775,11 @@ async function handleSendMessage(
 async function handleAssignmentChange(
   assignedTo: string,
 ) {
-  if (!activeConversation) {
+  if (!activeConversation || assigning) {
     return;
   }
 
+  const conversationId = activeConversation.id;
   const nextAssignedTo =
     assignedTo === "unassigned"
       ? null
@@ -5851,20 +6792,49 @@ async function handleAssignmentChange(
     return;
   }
 
+  const previousAssignment = {
+    assigned_to: activeConversation.assigned_to,
+    assigned_at: activeConversation.assigned_at,
+    assigned_member: activeConversation.assigned_member,
+  };
+
+  const optimisticMember = nextAssignedTo
+    ? teamMembers.find((member) => member.id === nextAssignedTo) ?? null
+    : null;
+
+  assignmentOverrideRef.current.set(conversationId, {
+    assignedTo: nextAssignedTo,
+    expiresAt: Date.now() + 8_000,
+  });
+
   setAssigning(true);
   setAssignmentError(null);
 
+  setLiveConversations((current) =>
+    sortLiveConversations(
+      current.map((conversation) =>
+        conversation.id === conversationId
+          ? {
+              ...conversation,
+              assigned_to: nextAssignedTo,
+              assigned_at: nextAssignedTo
+                ? new Date().toISOString()
+                : null,
+              assigned_member: optimisticMember,
+            }
+          : conversation,
+      ),
+    ),
+  );
+
   try {
     const response = await fetch(
-      `/api/conversations/${activeConversation.id}/assignment`,
+      `/api/conversations/${conversationId}/assignment`,
       {
         method: "PATCH",
-
         headers: {
-          "Content-Type":
-            "application/json",
+          "Content-Type": "application/json",
         },
-
         body: JSON.stringify({
           assignedTo: nextAssignedTo,
         }),
@@ -5875,59 +6845,152 @@ async function handleAssignmentChange(
       (await response.json()) as {
         success?: boolean;
         error?: string;
-
         conversation?: {
           id: string;
-          assigned_to:
-            | string
-            | null;
-          assigned_at:
-            | string
-            | null;
+          assigned_to: string | null;
+          assigned_at: string | null;
         };
-
-        activityRecorded?: boolean;
       };
 
-    if (
-      !response.ok ||
-      !result.success
-    ) {
+    if (!response.ok || !result.success) {
       throw new Error(
         result.error ??
           "Unable to assign the conversation.",
       );
     }
 
-    if (
-      result.conversation
-    ) {
-      setLiveConversations(
-        (current) =>
-          sortLiveConversations(
-            current.map(
-              (conversation) =>
-                conversation.id ===
-                result.conversation?.id
-                  ? {
-                      ...conversation,
-                      ...result.conversation,
-                    }
-                  : conversation,
-            ),
+    if (result.conversation) {
+      const authoritativeMember =
+        result.conversation.assigned_to
+          ? teamMembers.find(
+              (member) =>
+                member.id === result.conversation?.assigned_to,
+            ) ?? null
+          : null;
+
+      assignmentOverrideRef.current.set(conversationId, {
+        assignedTo: result.conversation.assigned_to,
+        expiresAt: Date.now() + 3_000,
+      });
+
+      setLiveConversations((current) =>
+        sortLiveConversations(
+          current.map((conversation) =>
+            conversation.id === result.conversation?.id
+              ? {
+                  ...conversation,
+                  ...result.conversation,
+                  assigned_member: authoritativeMember,
+                }
+              : conversation,
           ),
+        ),
       );
     }
-  } catch (assignmentError) {
+  } catch (error) {
+    assignmentOverrideRef.current.delete(conversationId);
+
+    setLiveConversations((current) =>
+      sortLiveConversations(
+        current.map((conversation) =>
+          conversation.id === conversationId
+            ? {
+                ...conversation,
+                ...previousAssignment,
+              }
+            : conversation,
+        ),
+      ),
+    );
+
     setAssignmentError(
-      assignmentError instanceof Error
-        ? assignmentError.message
+      error instanceof Error
+        ? error.message
         : "Unable to assign the conversation.",
     );
   } finally {
     setAssigning(false);
   }
 }
+
+async function handleAssignToMe() {
+  if (!activeConversation || assigning) {
+    return;
+  }
+
+  if (activeConversation.assigned_to) {
+    return;
+  }
+
+  const conversationId = activeConversation.id;
+
+  setAssigning(true);
+  setAssignmentError(null);
+
+  try {
+    const response = await fetch(
+      `/api/conversations/${conversationId}/claim`,
+      { method: "PATCH" },
+    );
+
+    const text = await response.text();
+    const result = text.trim()
+      ? (JSON.parse(text) as {
+          success?: boolean;
+          error?: string;
+          conversation?: {
+            id: string;
+            assigned_to: string | null;
+            assigned_at: string | null;
+          };
+        })
+      : null;
+
+    if (!response.ok || !result?.success || !result.conversation) {
+      throw new Error(
+        result?.error ??
+          "Unable to assign this conversation to you.",
+      );
+    }
+
+    const assignedMember =
+      result.conversation.assigned_to
+        ? teamMembers.find(
+            (member) =>
+              member.id === result.conversation?.assigned_to,
+          ) ?? null
+        : null;
+
+    assignmentOverrideRef.current.set(conversationId, {
+      assignedTo: result.conversation.assigned_to,
+      expiresAt: Date.now() + 3_000,
+    });
+
+    setLiveConversations((current) =>
+      sortLiveConversations(
+        current.map((conversation) =>
+          conversation.id === result.conversation?.id
+            ? {
+                ...conversation,
+                ...result.conversation,
+                assigned_member: assignedMember,
+              }
+            : conversation,
+        ),
+      ),
+    );
+  } catch (error) {
+    assignmentOverrideRef.current.delete(conversationId);
+    setAssignmentError(
+      error instanceof Error
+        ? error.message
+        : "Unable to assign this conversation to you.",
+    );
+  } finally {
+    setAssigning(false);
+  }
+}
+
 return (
 <div className="relative h-[calc(100vh-72px)] w-full overflow-hidden bg-white">
   {multiAgentToast ? (
@@ -6035,6 +7098,7 @@ return (
   }
   viewingAgents={viewingAgents}
   typingAgents={typingAgents}
+  teamPresence={teamPresence}
   agentPresenceStatus={agentPresenceStatus}
   reply={reply}
   sending={sending}
@@ -6049,6 +7113,8 @@ return (
   }
 
   onReplyChange={setReply}
+
+  onContactTagsChange={handleContactTagsChange}
 
   onSendMessage={
     handleSendMessage
@@ -6155,9 +7221,29 @@ return (
           activeConversation={
             customerProfileConversation
           }
+          assigning={assigning}
+          onAssignToMe={() => {
+            void handleAssignToMe();
+          }}
+          onContactTagsChange={
+            handleContactTagsChange
+          }
         />
       ) : null}
     </div>
+
+
+    {historyOpen && activeConversation?.contact ? (
+      <CustomerTimelineModal
+        contactId={activeConversation.contact.id}
+        customerName={
+          activeConversation.contact.full_name?.trim() ||
+          "Customer"
+        }
+        onClose={() => setHistoryOpen(false)}
+      />
+    ) : null}
+
 
    {!customerPanelVisible && (
   <button

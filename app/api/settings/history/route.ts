@@ -5,6 +5,7 @@ import {
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { requirePermission } from "@/lib/auth/require-permission";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

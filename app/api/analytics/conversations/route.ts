@@ -53,8 +53,14 @@ function parseInteger(
   minimum: number,
   maximum: number,
 ) {
+  // Number(null) is 0, not NaN, so a missing parameter used to skip the
+  // fallback entirely and silently apply a 1-minute SLA. parseInt("")
+  // yields NaN, which correctly falls through to the fallback.
   const parsed =
-    Number(value);
+    Number.parseInt(
+      value ?? "",
+      10,
+    );
 
   if (
     !Number.isFinite(
@@ -238,7 +244,7 @@ export async function GET(
       ),
       10,
       1,
-      240,
+      1440,
     );
 
   const tzOffsetMinutes =
@@ -294,10 +300,12 @@ export async function GET(
         success: false,
         error:
           "Unable to load conversation reports.",
-        details:
-          error.message,
-        hint:
-          "Run supabase/01-v2-16-conversation-reports.sql first.",
+        ...(process.env.NODE_ENV !== "production"
+          ? { details: error.message }
+          : {}),
+        ...(process.env.NODE_ENV !== "production"
+          ? { hint: "Run supabase/01-v2-16-conversation-reports.sql first." }
+          : {}),
       },
       {
         status: 500,

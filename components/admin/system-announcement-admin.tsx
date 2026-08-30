@@ -63,13 +63,20 @@ const toneOptions: Array<{
 
 const toneClasses: Record<AnnouncementTone, string> = {
   update:
-    "border-violet-200 bg-violet-50 text-violet-700",
+    "border-violet-300 bg-violet-100 text-violet-700",
   info:
     "border-blue-200 bg-blue-50 text-blue-700",
   maintenance:
-    "border-amber-200 bg-amber-50 text-amber-700",
+    "border-amber-200 bg-amber-50 text-amber-800",
   important:
-    "border-red-200 bg-red-50 text-red-700",
+    "border-rose-200 bg-rose-50 text-rose-700",
+};
+
+const toneDotClasses: Record<AnnouncementTone, string> = {
+  update: "bg-violet-500",
+  info: "bg-blue-400",
+  maintenance: "bg-amber-500",
+  important: "bg-rose-500",
 };
 
 function formatDate(value: string | null) {
@@ -114,6 +121,26 @@ function getAlertState(alert: Announcement) {
   return "Active";
 }
 
+function BellIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path
+        d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M10 21h4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function SystemAnnouncementAdmin() {
   const [announcements, setAnnouncements] =
     useState<Announcement[]>([]);
@@ -129,6 +156,7 @@ export function SystemAnnouncementAdmin() {
   const [linkLabel, setLinkLabel] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [endsAt, setEndsAt] = useState("");
+  const [showEndInput, setShowEndInput] = useState(false);
 
   const loadAnnouncements = useCallback(async () => {
     setLoading(true);
@@ -217,6 +245,7 @@ export function SystemAnnouncementAdmin() {
       setLinkLabel("");
       setLinkUrl("");
       setEndsAt("");
+      setShowEndInput(false);
       setSuccess(
         "Update alert published. Active TENH users will see it in the dashboard.",
       );
@@ -273,213 +302,314 @@ export function SystemAnnouncementAdmin() {
     }
   }
 
+  const selectedToneLabel =
+    toneOptions.find((item) => item.value === tone)?.label ??
+    "New update";
+
+  const publishButtonLabel = saving
+    ? "Publishing..."
+    : !title.trim()
+      ? "Add a title to publish"
+      : !message.trim()
+        ? "Add a message to publish"
+        : "Publish update";
+
   return (
     <div className="space-y-5">
       {error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       ) : null}
 
       {success ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
           {success}
         </div>
       ) : null}
 
-      <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-5 py-5 sm:px-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-violet-600">
-                User notification
-              </p>
-              <h2 className="mt-1 text-xl font-bold text-slate-950">
-                Publish a TENH update alert
-              </h2>
-              <p className="mt-1 text-sm leading-6 text-slate-500">
-                The newest active alert appears directly below the TENH dashboard header. Users can dismiss it after reading.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-center">
-              <p className="text-2xl font-black text-violet-950">
-                {activeCount}
-              </p>
-              <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-violet-600">
-                Active alerts
-              </p>
-            </div>
+      <section>
+        <div className="flex items-end justify-between gap-4 border-b border-slate-200 pb-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+              Admin
+            </p>
+            <h2 className="mt-0.5 text-xl font-semibold tracking-tight text-slate-950">
+              Publish an update alert
+            </h2>
           </div>
+
+          <p className="pb-0.5 text-xs text-slate-500">
+            {loading
+              ? "Checking live alerts..."
+              : activeCount === 0
+                ? "No alert is live right now"
+                : `${activeCount} alert${activeCount === 1 ? " is" : "s are"} live right now`}
+          </p>
         </div>
 
-        <div className="grid gap-5 p-5 sm:p-6 xl:grid-cols-[0.8fr_1.2fr]">
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
           <div>
-            <label className="text-sm font-bold text-slate-800">
-              Alert type
-            </label>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-              {toneOptions.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setTone(option.value)}
-                  className={`rounded-2xl border p-3 text-left transition ${
-                    tone === option.value
-                      ? toneClasses[option.value]
-                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                  }`}
-                >
-                  <p className="text-sm font-bold">
+            <p className="text-xs font-medium text-slate-700">Type</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {toneOptions.map((option) => {
+                const selected = tone === option.value;
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setTone(option.value)}
+                    title={option.helper}
+                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                      selected
+                        ? toneClasses[option.value]
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span
+                      className={`h-2 w-2 rounded-sm ${toneDotClasses[option.value]}`}
+                      aria-hidden="true"
+                    />
                     {option.label}
-                  </p>
-                  <p className="mt-1 text-xs leading-4 opacity-65">
-                    {option.helper}
-                  </p>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-bold text-slate-800">
+          <div className="mt-4">
+            <div className="flex items-center justify-between gap-3">
+              <label
+                htmlFor="tenh-announcement-title"
+                className="text-xs font-medium text-slate-700"
+              >
                 Title
               </label>
-              <input
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                maxLength={120}
-                placeholder="Example: New Inbox improvements are now live"
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-              />
+              <span className="text-[11px] text-slate-400">
+                {title.length} / 120
+              </span>
             </div>
+            <input
+              id="tenh-announcement-title"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              maxLength={120}
+              placeholder="New inbox improvements are live"
+              className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+            />
+          </div>
 
+          <div className="mt-4">
+            <div className="flex items-center justify-between gap-3">
+              <label
+                htmlFor="tenh-announcement-message"
+                className="text-xs font-medium text-slate-700"
+              >
+                Message
+              </label>
+              <span className="text-[11px] text-slate-400">
+                {message.length} / 1500
+              </span>
+            </div>
+            <textarea
+              id="tenh-announcement-message"
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              maxLength={1500}
+              rows={3}
+              placeholder="What changed, and what should they do about it."
+              className="mt-1.5 w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+            />
+            <p className="mt-1.5 text-[11px] text-slate-400">
+              Keep it concise so users can understand the update quickly.
+            </p>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div>
-              <div className="flex items-center justify-between gap-3">
-                <label className="text-sm font-bold text-slate-800">
-                  Message
-                </label>
-                <span className="text-xs text-slate-400">
-                  {message.length}/1500
-                </span>
-              </div>
-              <textarea
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                maxLength={1500}
-                rows={4}
-                placeholder="Tell users what changed and what they need to know."
-                className="mt-2 w-full resize-y rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-              />
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <label className="text-sm font-bold text-slate-800">
-                  Button label
-                  <span className="ml-1 font-normal text-slate-400">
-                    optional
-                  </span>
-                </label>
-                <input
-                  value={linkLabel}
-                  onChange={(event) => setLinkLabel(event.target.value)}
-                  maxLength={40}
-                  placeholder="View update"
-                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-bold text-slate-800">
-                  Button link
-                  <span className="ml-1 font-normal text-slate-400">
-                    optional
-                  </span>
-                </label>
-                <input
-                  value={linkUrl}
-                  onChange={(event) => setLinkUrl(event.target.value)}
-                  placeholder="/dashboard/inbox or https://..."
-                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm font-bold text-slate-800">
-                Automatically end alert
-                <span className="ml-1 font-normal text-slate-400">
-                  optional
-                </span>
+              <label
+                htmlFor="tenh-announcement-link-label"
+                className="text-xs font-medium text-slate-700"
+              >
+                Button label <span className="text-slate-400">optional</span>
               </label>
               <input
-                type="datetime-local"
-                value={endsAt}
-                onChange={(event) => setEndsAt(event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                id="tenh-announcement-link-label"
+                value={linkLabel}
+                onChange={(event) => setLinkLabel(event.target.value)}
+                maxLength={40}
+                placeholder="View update"
+                className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none placeholder:text-slate-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
               />
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-                Preview
-              </p>
-              <div className={`mt-3 rounded-2xl border p-4 ${toneClasses[tone]}`}>
-                <p className="text-[10px] font-black uppercase tracking-[0.12em] opacity-70">
-                  {toneOptions.find((item) => item.value === tone)?.label}
+            <div>
+              <label
+                htmlFor="tenh-announcement-link-url"
+                className="text-xs font-medium text-slate-700"
+              >
+                Button link <span className="text-slate-400">optional</span>
+              </label>
+              <input
+                id="tenh-announcement-link-url"
+                value={linkUrl}
+                onChange={(event) => setLinkUrl(event.target.value)}
+                placeholder="/dashboard/inbox"
+                className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none placeholder:text-slate-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 border-t border-slate-200 pt-3">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showEndInput}
+                onClick={() => {
+                  setShowEndInput((current) => {
+                    if (current) {
+                      setEndsAt("");
+                    }
+                    return !current;
+                  });
+                }}
+                className={`relative h-5 w-9 rounded-full transition ${
+                  showEndInput ? "bg-violet-600" : "bg-slate-200"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition ${
+                    showEndInput ? "left-[18px]" : "left-0.5"
+                  }`}
+                />
+              </button>
+              <div>
+                <p className="text-xs font-semibold text-slate-800">
+                  End automatically
                 </p>
-                <p className="mt-1 text-sm font-bold">
-                  {title.trim() || "Your update title"}
-                </p>
-                <p className="mt-1 text-sm leading-5 opacity-70">
-                  {message.trim() || "Your update message will appear here."}
+                <p className="text-[11px] text-slate-400">
+                  Otherwise it stays live until you remove it.
                 </p>
               </div>
             </div>
 
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => void publish()}
-                disabled={
-                  saving || !title.trim() || !message.trim()
-                }
-                className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {saving ? "Publishing..." : "Publish update alert"}
-              </button>
-            </div>
+            {showEndInput ? (
+              <div className="mt-3 max-w-sm">
+                <label
+                  htmlFor="tenh-announcement-ends-at"
+                  className="text-[11px] font-medium text-slate-500"
+                >
+                  End date and time
+                </label>
+                <input
+                  id="tenh-announcement-ends-at"
+                  type="datetime-local"
+                  value={endsAt}
+                  onChange={(event) => setEndsAt(event.target.value)}
+                  className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                />
+              </div>
+            ) : null}
           </div>
         </div>
       </section>
 
-      <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-slate-950">
-              Alert history
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Active and previous TENH update messages.
-            </p>
+      <section>
+        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">
+          How users will see it
+        </p>
+
+        <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+            <span className="text-xs font-bold text-slate-900">TENH</span>
+            <div className="flex items-center gap-3 text-slate-400">
+              <BellIcon />
+              <span className="h-5 w-5 rounded-full bg-slate-200" />
+            </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => void loadAnnouncements()}
-            disabled={loading}
-            className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            {loading ? "Refreshing..." : "Refresh"}
-          </button>
+          <div className="p-3 sm:p-4">
+            <div className={`rounded-lg border px-3 py-3 ${toneClasses[tone]}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[9px] font-black uppercase tracking-[0.08em] opacity-75">
+                    {selectedToneLabel}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs font-bold">
+                    {title.trim() || "Your update title"}
+                  </p>
+                  <p className="mt-0.5 text-[11px] leading-4 opacity-80">
+                    {message.trim() || "Your message appears here."}
+                  </p>
+                  {linkLabel.trim() ? (
+                    <span className="mt-2 inline-flex rounded-md border border-current/20 bg-white/50 px-2 py-1 text-[10px] font-semibold">
+                      {linkLabel.trim()}
+                    </span>
+                  ) : null}
+                </div>
+                <span className="shrink-0 text-xs opacity-70" aria-hidden="true">
+                  ×
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-2 h-2 w-[44%] rounded-full bg-slate-200" />
+            <div className="mt-1.5 h-2 w-[70%] rounded-full bg-slate-100" />
+          </div>
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold text-slate-800">
+            Goes to every TENH user
+          </p>
+          <p className="mt-0.5 text-[11px] text-slate-400">
+            Users can dismiss this alert individually.
+          </p>
         </div>
 
-        <div className="mt-5 space-y-3">
+        <button
+          type="button"
+          onClick={() => void publish()}
+          disabled={saving || !title.trim() || !message.trim()}
+          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          {publishButtonLabel}
+        </button>
+      </section>
+
+      <section>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-slate-950">
+            Alert history
+          </h2>
+
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-slate-400">
+              {loading
+                ? "Loading..."
+                : announcements.length === 0
+                  ? "Nothing published yet"
+                  : `${announcements.length} alert${announcements.length === 1 ? "" : "s"}`}
+            </span>
+            <button
+              type="button"
+              onClick={() => void loadAnnouncements()}
+              disabled={loading}
+              className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {loading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-3 space-y-2">
           {!loading && announcements.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 px-5 py-10 text-center text-sm text-slate-500">
-              No update alerts have been published yet.
+            <div className="rounded-xl border border-dashed border-slate-300 px-5 py-8 text-center text-xs text-slate-500">
+              Your first alert will appear here, with the option to end it early.
             </div>
           ) : null}
 
@@ -489,35 +619,38 @@ export function SystemAnnouncementAdmin() {
             return (
               <article
                 key={alert.id}
-                className="rounded-2xl border border-slate-200 p-4"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-3"
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span
-                        className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] ${toneClasses[alert.tone]}`}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${toneClasses[alert.tone]}`}
                       >
-                        {alert.tone}
+                        <span className={`h-1.5 w-1.5 rounded-sm ${toneDotClasses[alert.tone]}`} />
+                        {toneOptions.find((item) => item.value === alert.tone)?.label ?? alert.tone}
                       </span>
                       <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] ${
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                           state === "Active"
                             ? "bg-emerald-100 text-emerald-700"
-                            : "bg-slate-100 text-slate-600"
+                            : state === "Scheduled"
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-slate-100 text-slate-600"
                         }`}
                       >
                         {state}
                       </span>
                     </div>
 
-                    <h3 className="mt-2 font-bold text-slate-950">
+                    <h3 className="mt-2 text-sm font-semibold text-slate-950">
                       {alert.title}
                     </h3>
-                    <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                    <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-600">
                       {alert.message}
                     </p>
 
-                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-400">
                       <span>Published {formatDate(alert.created_at)}</span>
                       <span>Ends {formatDate(alert.ends_at)}</span>
                       {alert.created_by_email ? (
@@ -530,7 +663,7 @@ export function SystemAnnouncementAdmin() {
                     <button
                       type="button"
                       onClick={() => void endAlert(alert.id)}
-                      className="shrink-0 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100"
+                      className="shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-semibold text-red-700 hover:bg-red-100"
                     >
                       End alert
                     </button>

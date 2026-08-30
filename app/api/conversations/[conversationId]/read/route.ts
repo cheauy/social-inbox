@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
 import {
-  getCurrentMember,
-} from "@/lib/auth/get-current-member";
+  getInboxConversationAccess,
+} from "@/lib/inbox/get-inbox-resource-access";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -18,24 +18,6 @@ export async function PATCH(
   _request: Request,
   context: RouteContext,
 ) {
-  const authResult =
-    await getCurrentMember();
-
-  if (!authResult.success) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: authResult.error,
-      },
-      {
-        status: authResult.status,
-      },
-    );
-  }
-
-  const currentMember =
-    authResult.member;
-
   const { conversationId } =
     await context.params;
 
@@ -53,6 +35,18 @@ export async function PATCH(
       },
     );
   }
+
+  const access =
+    await getInboxConversationAccess(normalizedConversationId);
+
+  if (!access.success) {
+    return NextResponse.json(
+      { success: false, error: access.error },
+      { status: access.status },
+    );
+  }
+
+  const currentMember = access.member;
 
   /*
    * V3.11.30 stability/security:

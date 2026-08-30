@@ -183,32 +183,33 @@ export function calculateCapacityMonthlyCents(
     return null;
   }
 
-  // Custom pricing always uses the cheapest eligible TENH package as its
-  // anchor, then charges only for capacity above that package. This keeps a
-  // Custom subscription from costing more than a fixed plan with the exact
-  // same capacity.
-  const standardMonthly =
-    1300 +
-    Math.max(0, connections - 3) * TENH_CUSTOM_PRICING.extraConnectionCents +
-    Math.max(0, users - 1) * TENH_CUSTOM_PRICING.extraUserCents;
+  // Custom pricing anchors on the cheapest TENH package, then charges only
+  // for capacity ABOVE that package.
+  //
+  // Every package is always a candidate, even when the requested capacity
+  // is below what it includes. Previously a package only counted if the
+  // request met BOTH its minimums, which made the price non-monotonic:
+  // 11 connections + 8 users could not reach the Pro anchor and cost
+  // $64/month, while 12 connections + 8 users hit Pro and cost $59. Asking
+  // for less capacity cost more, in 112 combinations.
+  //
+  // Charging the package base when the request is smaller is correct: a
+  // customer can always buy the package outright, so its price is a
+  // ceiling for anything it already covers.
+  const anchors = [
+    { connections: 3, users: 1, monthlyCents: 1300 },
+    { connections: 5, users: 3, monthlyCents: 2500 },
+    { connections: 12, users: 8, monthlyCents: 5900 },
+  ];
 
-  const candidates = [standardMonthly];
-
-  if (connections >= 5 && users >= 3) {
-    candidates.push(
-      2500 +
-        (connections - 5) * TENH_CUSTOM_PRICING.extraConnectionCents +
-        (users - 3) * TENH_CUSTOM_PRICING.extraUserCents,
-    );
-  }
-
-  if (connections >= 12 && users >= 8) {
-    candidates.push(
-      5900 +
-        (connections - 12) * TENH_CUSTOM_PRICING.extraConnectionCents +
-        (users - 8) * TENH_CUSTOM_PRICING.extraUserCents,
-    );
-  }
+  const candidates = anchors.map(
+    (anchor) =>
+      anchor.monthlyCents +
+      Math.max(0, connections - anchor.connections) *
+        TENH_CUSTOM_PRICING.extraConnectionCents +
+      Math.max(0, users - anchor.users) *
+        TENH_CUSTOM_PRICING.extraUserCents,
+  );
 
   return Math.min(...candidates);
 }

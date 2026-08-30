@@ -51,7 +51,10 @@ function parseInteger(
   minimum: number,
   maximum: number,
 ) {
-  const parsed = Number(value);
+  // Number(null) is 0, not NaN, so a missing parameter used to skip
+  // the fallback entirely. parseInt("") yields NaN, which falls
+  // through correctly.
+  const parsed = Number.parseInt(value ?? "", 10);
 
   if (!Number.isFinite(parsed)) {
     return fallback;
@@ -289,10 +292,12 @@ export async function GET(
         success: false,
         error:
           "Unable to load customer insights.",
-        details:
-          error.message,
-        hint:
-          "Run the V2.15 customer-insights SQL first.",
+        ...(process.env.NODE_ENV !== "production"
+          ? { details: error.message }
+          : {}),
+        ...(process.env.NODE_ENV !== "production"
+          ? { hint: "Run the V2.15 customer-insights SQL first." }
+          : {}),
       },
       {
         status: 500,

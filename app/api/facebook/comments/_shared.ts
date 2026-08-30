@@ -1,6 +1,7 @@
 import {
   getFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
+import { authorizeInboxBusinessAccess, type InboxAuthorizedMember } from "@/lib/inbox/get-inbox-resource-access";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export class FacebookCommentContextError extends Error {
@@ -266,4 +267,113 @@ export async function loadFacebookCommentActionContext({
     pageId,
     pageAccessToken,
   };
+}
+
+
+export type AuthorizedFacebookCommentActionContext =
+  FacebookCommentActionContext & {
+    member: InboxAuthorizedMember;
+  };
+
+export async function loadAuthorizedFacebookCommentActionContext({
+  commentId,
+  conversationId,
+}: {
+  commentId: string;
+  conversationId?: string | null;
+}): Promise<AuthorizedFacebookCommentActionContext> {
+  let messageQuery = supabaseAdmin
+    .from("messages")
+    .select("id,business_id,conversation_id,platform_message_id")
+    .eq("platform_message_id", commentId);
+
+  if (conversationId) {
+    messageQuery = messageQuery.eq("conversation_id", conversationId);
+  }
+
+  const { data: messageData, error: messageError } =
+    await messageQuery.maybeSingle();
+
+  if (messageError) {
+    throw new FacebookCommentContextError(
+      "Unable to verify the Facebook comment.",
+      500,
+    );
+  }
+
+  const message = messageData as CommentMessageRow | null;
+
+  if (!message) {
+    throw new FacebookCommentContextError(
+      "Facebook comment was not found.",
+      404,
+    );
+  }
+
+  const access = await authorizeInboxBusinessAccess(message.business_id);
+
+  if (!access.success) {
+    throw new FacebookCommentContextError(access.error, access.status);
+  }
+
+  const context = await loadFacebookCommentActionContext({
+    businessId: message.business_id,
+    commentId,
+    conversationId,
+  });
+
+  return {
+    ...context,
+    member: access.member,
+  };
+}
+
+
+export async function loadAuthorizedLocalFacebookCommentContext({
+  commentId,
+  conversationId,
+}: {
+  commentId: string;
+  conversationId?: string | null;
+}): Promise<LocalFacebookCommentContext & { member: InboxAuthorizedMember }> {
+  let messageQuery = supabaseAdmin
+    .from("messages")
+    .select("id,business_id,conversation_id,platform_message_id")
+    .eq("platform_message_id", commentId);
+
+  if (conversationId) {
+    messageQuery = messageQuery.eq("conversation_id", conversationId);
+  }
+
+  const { data: messageData, error: messageError } =
+    await messageQuery.maybeSingle();
+
+  if (messageError) {
+    throw new FacebookCommentContextError(
+      "Unable to verify the Facebook comment.",
+      500,
+    );
+  }
+
+  const message = messageData as CommentMessageRow | null;
+
+  if (!message) {
+    throw new FacebookCommentContextError(
+      "Facebook comment was not found.",
+      404,
+    );
+  }
+
+  const access = await authorizeInboxBusinessAccess(message.business_id);
+  if (!access.success) {
+    throw new FacebookCommentContextError(access.error, access.status);
+  }
+
+  const context = await loadLocalFacebookCommentContext({
+    businessId: message.business_id,
+    commentId,
+    conversationId,
+  });
+
+  return { ...context, member: access.member };
 }

@@ -7,11 +7,16 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 import {
   canActivateAnotherChannel,
 } from "@/lib/subscription/get-business-entitlements";
+import { resolveTeamProfilePictures } from "@/lib/team/resolve-team-profile-pictures";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,7 +66,7 @@ type UpdateBody =
   | (MutationContext & {
       kind: "member-role";
       id?: string;
-      role?: "owner" | "admin";
+      role?: "owner" | "admin" | "agent";
     })
   | (MutationContext & {
       kind: "connection";
@@ -84,8 +89,17 @@ function jsonError(
   );
 }
 
-function canManageUsage(role: string) {
-  return role === "owner";
+/** Permission flags for the selected workspace. Owners always pass. */
+async function canManageMembers(member: { id: string; role: string }) {
+  return memberHasPermission(member, "team_members", "manage");
+}
+
+async function canManageChannels(member: { id: string; role: string }) {
+  return memberHasPermission(member, "channels", "manage");
+}
+
+async function canManageBilling(member: { id: string; role: string }) {
+  return memberHasPermission(member, "billing", "manage");
 }
 
 async function verifyMutationContext({
@@ -241,6 +255,13 @@ async function loadUsage(
     (membersResult.data ?? []) as TeamMemberRow[];
   const connections =
     (connectionsResult.data ?? []) as SocialAccountRow[];
+  const [profilePictures, memberManage, channelManage, billingManage] =
+    await Promise.all([
+      resolveTeamProfilePictures(members),
+      canManageMembers({ id: currentMemberId, role: currentMemberRole }),
+      canManageChannels({ id: currentMemberId, role: currentMemberRole }),
+      canManageBilling({ id: currentMemberId, role: currentMemberRole }),
+    ]);
 
   /*
    * Keep temporarily disabled channels in Capacity so an Owner can enable
@@ -271,8 +292,11 @@ async function loadUsage(
     businessId,
     currentMemberId,
     currentMemberRole,
-    canManage:
-      canManageUsage(currentMemberRole),
+    // Keep canManage for older callers, but expose the real scoped controls.
+    canManage: memberManage,
+    canManageMembers: memberManage,
+    canManageChannels: channelManage,
+    canManageBilling: billingManage,
     subscription,
     usage: {
       members: members.filter(
@@ -289,7 +313,7 @@ async function loadUsage(
       role: member.role,
       is_active: member.is_active,
       profile_picture_url:
-        member.profile_picture_url,
+        profilePictures.get(member.id) ?? member.profile_picture_url ?? null,
     })),
     connections: visibleConnections.map(
       (connection) => ({
@@ -360,13 +384,6 @@ export async function PATCH(
 
   const currentMember = authResult.member;
 
-  if (!canManageUsage(currentMember.role)) {
-    return jsonError(
-      "Only the workspace owner can manage subscription seats and connected channels.",
-      403,
-    );
-  }
-
   let body: UpdateBody;
 
   try {
@@ -375,6 +392,19 @@ export async function PATCH(
     return jsonError(
       "Invalid JSON request.",
       400,
+    );
+  }
+
+  const mayManageTarget =
+    body.kind === "connection"
+      ? await canManageChannels(currentMember)
+      : await canManageMembers(currentMember);
+
+  if (!mayManageTarget) {
+    return permissionDenied(
+      body.kind === "connection"
+        ? "Only an Owner or a member with Manage permission can change channels in this workspace."
+        : "Only an Owner or a member with Manage permission can change Team members in this workspace.",
     );
   }
 
@@ -397,12 +427,19 @@ export async function PATCH(
   }
 
   if (body.kind === "member-role") {
+    if (currentMember.role !== "owner") {
+      return permissionDenied(
+        "Only an Owner can change Team member roles or grant Owner access.",
+      );
+    }
+
     if (
       body.role !== "owner" &&
-      body.role !== "admin"
+      body.role !== "admin" &&
+      body.role !== "agent"
     ) {
       return jsonError(
-        "Only Owner sharing or Owner-share removal is supported here.",
+        "Unsupported member role.",
         400,
       );
     }
@@ -450,9 +487,9 @@ export async function PATCH(
       );
     }
 
-    if (targetMember.id === currentMember.id && body.role === "admin") {
+    if (targetMember.id === currentMember.id && body.role !== "owner") {
       return jsonError(
-        "You cannot disable your own Owner access from this screen.",
+        "You cannot change your own Owner role from this screen. Another Owner must change it.",
         409,
       );
     }
@@ -488,8 +525,8 @@ export async function PATCH(
     if (updateError) {
       return jsonError(
         body.role === "owner"
-          ? "Unable to share Owner access with this team member."
-          : "Unable to disable Owner share for this team member.",
+          ? "Unable to make this team member an Owner."
+          : "Unable to change this team member's role.",
         409,
         updateError.message,
       );
@@ -506,8 +543,10 @@ export async function PATCH(
       changed: true,
       message:
         body.role === "owner"
-          ? `Owner access is now shared with ${targetMember.full_name}.`
-          : `Owner share was disabled for ${targetMember.full_name}. They are now an Admin.`,
+          ? `${targetMember.full_name} is now an Owner.`
+          : `${targetMember.full_name}'s role is now ${
+              body.role === "admin" ? "Admin" : "Agent"
+            }.`,
       ...data,
     });
   }
@@ -553,6 +592,15 @@ export async function PATCH(
       return jsonError(
         "Team member not found.",
         404,
+      );
+    }
+
+    if (
+      currentMember.role !== "owner" &&
+      targetMember.role === "owner"
+    ) {
+      return permissionDenied(
+        "Only an Owner can change another Owner's access.",
       );
     }
 

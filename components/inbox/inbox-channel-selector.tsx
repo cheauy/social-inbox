@@ -14,6 +14,9 @@ import {
   shortSubscriptionId,
   subscriptionAccentColor,
 } from "@/lib/inbox/subscription-visual";
+import {
+  useWorkspaceLanguageId,
+} from "@/components/display/workspace-language-text";
 
 type InboxChannel = {
   id: string;
@@ -74,10 +77,32 @@ function ChannelIcon({
   if (platform === "all") {
     return (
       <span
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-700"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 ring-1 ring-blue-100"
         aria-hidden="true"
       >
-        A
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          className="h-4.5 w-4.5"
+        >
+          <path
+            d="m12 3 8 4-8 4-8-4 8-4Z"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="m4 12 8 4 8-4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="m4 17 8 4 8-4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </span>
     );
   }
@@ -102,13 +127,12 @@ function ChannelIcon({
 export function InboxChannelSelector() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const isKhmer = useWorkspaceLanguageId() === "km";
 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [channels, setChannels] = useState<InboxChannel[]>([]);
-  const [currentBusinessId, setCurrentBusinessId] =
-    useState<string | null>(null);
   const [deniedChannelId, setDeniedChannelId] =
     useState<string | null>(null);
   const [switchingChannelId, setSwitchingChannelId] =
@@ -148,9 +172,6 @@ export function InboxChannelSelector() {
 
         if (!cancelled) {
           setChannels(result.channels ?? []);
-          setCurrentBusinessId(
-            result.currentBusinessId ?? null,
-          );
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -266,40 +287,6 @@ export function InboxChannelSelector() {
       : "/dashboard/inbox";
   }
 
-  async function switchBusinessIfNeeded(businessId: string) {
-    if (businessId === currentBusinessId) {
-      return;
-    }
-
-    const switchResponse = await fetch(
-      "/api/workspaces/switch",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          businessId,
-        }),
-      },
-    );
-
-    const switchResult =
-      (await switchResponse.json()) as {
-        success?: boolean;
-        error?: string;
-      };
-
-    if (!switchResponse.ok || !switchResult.success) {
-      throw new Error(
-        switchResult.error ??
-          "Unable to open this subscription.",
-      );
-    }
-
-    setCurrentBusinessId(businessId);
-  }
-
   function accessErrorForChannel(channel: InboxChannel) {
     if (channel.membershipAccessAllowed === false) {
       return `${REMOVED_ACCESS_TITLE} ${REMOVED_ACCESS_DETAIL}`;
@@ -326,8 +313,6 @@ export function InboxChannelSelector() {
     setSwitchingChannelId(channel.id);
 
     try {
-      await switchBusinessIfNeeded(channel.businessId);
-
       setOpen(false);
       router.push(
         buildInboxUrl({
@@ -363,7 +348,6 @@ export function InboxChannelSelector() {
     setSwitchingChannelId(`group:${group.key}`);
 
     try {
-      await switchBusinessIfNeeded(group.businessId);
       setOpen(false);
       router.push(
         buildInboxUrl({
@@ -415,7 +399,7 @@ export function InboxChannelSelector() {
         ? shortSubscriptionId(
             selectedWorkspaceGroup.subscriptionId,
           )
-        : "All Channels";
+        : isKhmer ? "ឆានែលទាំងអស់" : "All Channels";
 
   const selectedPlatform =
     selectedChannel?.platform ?? "all";
@@ -476,7 +460,7 @@ export function InboxChannelSelector() {
 
           {switching ? (
             <span className="shrink-0 text-xs font-semibold text-slate-400">
-              Opening…
+              {isKhmer ? "កំពុងបើក…" : "Opening…"}
             </span>
           ) : selected && channel.accessAllowed ? (
             <span className="shrink-0 text-sm font-bold text-blue-600">
@@ -493,7 +477,7 @@ export function InboxChannelSelector() {
   }
 
   return (
-    <div className="relative shrink-0 border-b border-slate-200 bg-white px-3 py-3">
+    <div className="relative flex h-[86px] shrink-0 items-center border-b border-slate-200 bg-white px-3 py-3">
       <button
         type="button"
         onClick={() =>
@@ -506,12 +490,12 @@ export function InboxChannelSelector() {
 
         <span className="min-w-0 flex-1">
           <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-            Customer channel
+            {isKhmer ? "ឆានែលអតិថិជន" : "Customer channel"}
           </span>
 
           <span className="mt-0.5 block truncate text-sm font-semibold text-slate-900">
             {loading
-              ? "Loading channels..."
+              ? isKhmer ? "កំពុងផ្ទុកឆានែល..." : "Loading channels..."
               : selectedLabel}
           </span>
         </span>
@@ -540,7 +524,7 @@ export function InboxChannelSelector() {
             type="button"
             className="fixed inset-0 z-40 cursor-default"
             onClick={() => setOpen(false)}
-            aria-label="Close channel selector"
+            aria-label={isKhmer ? "បិទកម្មវិធីជ្រើសរើសឆានែល" : "Close channel selector"}
           />
 
           <div className="absolute left-3 right-3 top-[72px] z-50 max-h-[440px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
@@ -557,10 +541,10 @@ export function InboxChannelSelector() {
 
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold text-slate-900">
-                  All Channels
+                  {isKhmer ? "ឆានែលទាំងអស់" : "All Channels"}
                 </span>
                 <span className="mt-0.5 block text-xs text-slate-500">
-                  Messenger and Telegram
+                  {isKhmer ? "Messenger និង Telegram" : "Messenger and Telegram"}
                 </span>
               </span>
 
@@ -611,7 +595,7 @@ export function InboxChannelSelector() {
                     </span>
                     {groupSwitching ? (
                       <span className="text-[10px] font-semibold text-slate-400">
-                        Opening…
+                        {isKhmer ? "កំពុងបើក…" : "Opening…"}
                       </span>
                     ) : groupSelected ? (
                       <span className="text-xs font-bold text-slate-600">

@@ -2,11 +2,34 @@ import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getCurrentMember, TENH_ACTIVE_BUSINESS_COOKIE } from "@/lib/auth/get-current-member";
+import { memberHasPermission } from "@/lib/auth/require-permission";
 import { verifyAndFinalizePayWayTransaction } from "@/lib/payway/finalize-payment";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+async function findPayWayInvoiceId(
+  businessId: string,
+  sourcePaymentId: string,
+) {
+  const { data, error } = await supabaseAdmin
+    .from("tenh_billing_invoices")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("source_type", "payway")
+    .eq("source_payment_id", sourcePaymentId)
+    .maybeSingle();
+
+  if (error) {
+    // Receipt creation must never turn an already-approved payment into an
+    // error screen. The customer can still continue and open Billing History.
+    console.warn("[TENH PayWay] Unable to resolve receipt for transaction:", error.message);
+    return null;
+  }
+
+  return typeof data?.id === "string" ? data.id : null;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,18 +42,6 @@ export async function GET(request: NextRequest) {
           error: authResult.error,
         },
         { status: authResult.status },
-      );
-    }
-
-    const member = authResult.member;
-
-    if (member.role !== "owner") {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Only the workspace owner can verify a subscription payment.",
-        },
-        { status: 403 },
       );
     }
 
@@ -77,9 +88,12 @@ export async function GET(request: NextRequest) {
       .eq("is_active", true)
       .maybeSingle();
 
-    if (!transactionMember || transactionMember.role !== "owner") {
+    if (
+      !transactionMember ||
+      !(await memberHasPermission(transactionMember, "billing", "manage"))
+    ) {
       return NextResponse.json(
-        { success: false, error: "You do not have access to this payment transaction." },
+        { success: false, error: "You do not have Subscription & billing Manage permission for this payment transaction." },
         { status: 403 },
       );
     }
@@ -93,11 +107,17 @@ export async function GET(request: NextRequest) {
         path: "/",
         maxAge: 60 * 60 * 24 * 365,
       });
+      const invoiceId = await findPayWayInvoiceId(
+        transaction.business_id,
+        transaction.id,
+      );
+
       return NextResponse.json({
         success: true,
         transactionId,
         paymentState: "approved",
         providerStatus: transaction.provider_status,
+        invoiceId,
       });
     }
 
@@ -117,6 +137,14 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const invoiceId =
+      result.paymentState === "approved"
+        ? await findPayWayInvoiceId(
+            transaction.business_id,
+            transaction.id,
+          )
+        : null;
+
     return NextResponse.json({
       success: true,
       transactionId,
@@ -129,6 +157,7 @@ export async function GET(request: NextRequest) {
           : null,
       subscription:
         "subscription" in result ? result.subscription : null,
+      invoiceId,
     });
   } catch (error) {
     console.error("[TENH PayWay] Status verification failed:", error);

@@ -68,21 +68,14 @@ const EMPTY_SUMMARY: AgentSummary = {
   slaRate: null,
 };
 
-function formatDuration(
-  seconds: number,
-) {
-  const safe = Math.max(
-    0,
-    Math.round(seconds || 0),
-  );
+function formatDuration(seconds: number) {
+  const safe = Math.max(0, Math.round(seconds || 0));
 
   if (safe < 60) {
     return `${safe}s`;
   }
 
-  const minutes = Math.floor(
-    safe / 60,
-  );
+  const minutes = Math.floor(safe / 60);
   const secondsLeft = safe % 60;
 
   if (minutes < 60) {
@@ -91,9 +84,7 @@ function formatDuration(
       : `${minutes}m`;
   }
 
-  const hours = Math.floor(
-    minutes / 60,
-  );
+  const hours = Math.floor(minutes / 60);
   const minutesLeft = minutes % 60;
 
   return minutesLeft
@@ -101,18 +92,11 @@ function formatDuration(
     : `${hours}h`;
 }
 
-function getInitial(
-  name: string,
-) {
-  return (
-    name.trim().charAt(0).toUpperCase() ||
-    "A"
-  );
+function getInitial(name: string) {
+  return name.trim().charAt(0).toUpperCase() || "A";
 }
 
-function roleLabel(
-  role: string,
-) {
+function roleLabel(role: string) {
   if (role === "owner") {
     return "Owner";
   }
@@ -124,136 +108,283 @@ function roleLabel(
   return "Agent";
 }
 
+function formatRange(period: PeriodKey) {
+  const days = period === "7d" ? 7 : period === "30d" ? 30 : 90;
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(end.getDate() - days + 1);
 
-type SpeedStatus =
-  | "fast"
-  | "normal"
-  | "slow"
-  | "need-data";
+  const sameYear = start.getFullYear() === end.getFullYear();
+  const startText = new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" as const }),
+  }).format(start);
+  const endText = new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(end);
 
-function getAgentSpeedStatus(
-  agent: AgentRow,
-  slaMinutes: number,
-): SpeedStatus {
-  /*
-   * V2.14.2: avoid judging an agent from only one or two
-   * attributed first replies. Three is the minimum sample used
-   * before showing Fast / Normal / Slow.
-   */
-  if (agent.firstResponses < 3) {
-    return "need-data";
-  }
-
-  const targetSeconds =
-    Math.max(slaMinutes, 1) * 60;
-  const slaRate =
-    agent.slaRate ?? 0;
-
-  if (
-    agent.avgFirstResponseSeconds <=
-      targetSeconds * 0.5 &&
-    slaRate >= 90
-  ) {
-    return "fast";
-  }
-
-  if (
-    agent.avgFirstResponseSeconds >
-      targetSeconds ||
-    slaRate < 70
-  ) {
-    return "slow";
-  }
-
-  return "normal";
+  return `${startText} – ${endText}`;
 }
 
-function speedStatusCopy(
-  status: SpeedStatus,
-) {
-  if (status === "fast") {
-    return {
-      label: "Fast",
-      dot: "bg-emerald-500",
-      badge:
-        "border-emerald-200 bg-emerald-50 text-emerald-700",
-    };
+function SpeedIcon({
+  tone,
+  size = "small",
+}: {
+  tone: "fast" | "normal" | "slow" | "unknown";
+  size?: "small" | "large";
+}) {
+  const color =
+    tone === "fast"
+      ? "#16A34A"
+      : tone === "normal"
+        ? "#F59E0B"
+        : tone === "slow"
+          ? "#EF4444"
+          : "#94A3B8";
+
+  const background =
+    tone === "fast"
+      ? "#F0FDF4"
+      : tone === "normal"
+        ? "#FFF7ED"
+        : tone === "slow"
+          ? "#FEF2F2"
+          : "#F8FAFC";
+
+  const boxClass =
+    size === "large"
+      ? "h-10 w-10 rounded-xl"
+      : "h-5 w-5 rounded-md";
+
+  const iconClass =
+    size === "large" ? "h-7 w-7" : "h-4 w-4";
+
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center justify-center ${boxClass}`}
+      style={{ backgroundColor: background }}
+      aria-hidden="true"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={color}
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={iconClass}
+      >
+        <path d="M4.7 16.9a8.5 8.5 0 1 1 14.6 0" />
+        <path d="M12 5.5v1.4" />
+        <path d="m7.4 7.4 1 1" />
+        <path d="M5.6 12H7" />
+        <path d="m16.6 7.4-1 1" />
+        <path d="M17 12h1.4" />
+        <path d="m12 12 4-3" />
+        <circle cx="12" cy="12" r="1.2" fill={color} stroke="none" />
+      </svg>
+    </span>
+  );
+}
+
+function metricIcon(icon: "reply" | "bolt" | "clock" | "shield") {
+  if (icon === "reply") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
+        <path d="M5 5h14v10H9l-4 4V5Z" strokeLinejoin="round" />
+        <path d="M8 9h8M8 12h5" strokeLinecap="round" />
+      </svg>
+    );
   }
 
-  if (status === "slow") {
-    return {
-      label: "Slow",
-      dot: "bg-red-500",
-      badge:
-        "border-red-200 bg-red-50 text-red-700",
-    };
+  if (icon === "bolt") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-5 w-5" aria-hidden="true">
+        <path d="m13 2-8 11h6l-1 9 9-12h-6V2Z" strokeLinejoin="round" />
+      </svg>
+    );
   }
 
-  if (status === "normal") {
-    return {
-      label: "Normal",
-      dot: "bg-amber-500",
-      badge:
-        "border-amber-200 bg-amber-50 text-amber-700",
-    };
+  if (icon === "clock") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-5 w-5" aria-hidden="true">
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 7v5l3 2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
   }
 
-  return {
-    label: "Need more data",
-    dot: "bg-slate-300",
-    badge:
-      "border-slate-200 bg-slate-50 text-slate-500",
-  };
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
+      <path d="M12 3 19 6v5c0 4.4-2.8 8.2-7 10-4.2-1.8-7-5.6-7-10V6l7-3Z" strokeLinejoin="round" />
+      <path d="m9.5 12 1.7 1.7 3.5-3.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function MetricCard({
   label,
   value,
   helper,
+  icon,
+  tone,
 }: {
   label: string;
   value: string;
   helper: string;
+  icon: "reply" | "bolt" | "clock" | "shield";
+  tone: "blue" | "green" | "purple" | "indigo";
 }) {
+  const palette = {
+    blue: "bg-blue-50 text-blue-600",
+    green: "bg-emerald-50 text-emerald-600",
+    purple: "bg-violet-50 text-violet-600",
+    indigo: "bg-indigo-50 text-indigo-600",
+  }[tone];
+
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-        {label}
-      </p>
-      <p className="mt-2 text-2xl font-bold text-slate-950">
-        {value}
-      </p>
-      <p className="mt-1 text-xs text-slate-500">
-        {helper}
-      </p>
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start gap-4">
+        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${palette}`}>
+          {metricIcon(icon)}
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-600">{label}</p>
+          <p className="mt-1 text-3xl font-bold tracking-tight text-slate-950">{value}</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">{helper}</p>
+        </div>
+      </div>
     </div>
   );
 }
 
-export function AgentPerformancePanel() {
-  const [period, setPeriod] =
-    useState<PeriodKey>("7d");
-  const [slaMinutes, setSlaMinutes] =
-    useState(10);
-  const [summary, setSummary] =
-    useState<AgentSummary>(
-      EMPTY_SUMMARY,
-    );
-  const [agents, setAgents] =
-    useState<AgentRow[]>([]);
-  const [businessId, setBusinessId] =
-    useState<string | null>(null);
-  const [loading, setLoading] =
-    useState(true);
-  const [refreshing, setRefreshing] =
-    useState(false);
-  const [error, setError] =
-    useState<string | null>(null);
+function getSpeed(agent: AgentRow, slaMinutes: number) {
+  if (agent.firstResponses < 3 || agent.slaRate === null) {
+    return {
+      label: "Need data",
+      tone: "unknown" as const,
+      classes: "bg-slate-100 text-slate-500",
+    };
+  }
 
-  const refreshTimerRef =
-    useRef<ReturnType<typeof setTimeout> | null>(
-      null,
-    );
+  const targetSeconds = slaMinutes * 60;
+
+  if (agent.avgFirstResponseSeconds <= targetSeconds / 2 && agent.slaRate >= 90) {
+    return {
+      label: "Fast",
+      tone: "fast" as const,
+      classes: "bg-emerald-100 text-emerald-700",
+    };
+  }
+
+  if (agent.avgFirstResponseSeconds > targetSeconds || agent.slaRate < 70) {
+    return {
+      label: "Slow",
+      tone: "slow" as const,
+      classes: "bg-red-100 text-red-600",
+    };
+  }
+
+  return {
+    label: "Normal",
+    tone: "normal" as const,
+    classes: "bg-amber-100 text-amber-700",
+  };
+}
+
+function PerformanceLine({
+  agent,
+  slaMinutes,
+}: {
+  agent: AgentRow;
+  slaMinutes: number;
+}) {
+  if (agent.firstResponses < 1) {
+    return <span className="text-xs text-slate-400">—</span>;
+  }
+
+  // UI-only indicator built from the current verified agent metrics.
+  // It is intentionally not labeled as historical trend because the
+  // existing API does not return per-agent historical trend points.
+  const target = Math.max(1, slaMinutes * 60);
+  const responseRatio = Math.max(
+    0,
+    Math.min(2, agent.avgFirstResponseSeconds / target),
+  );
+  const responseScore = Math.max(0, 100 - responseRatio * 50);
+  const slaScore = Math.max(0, Math.min(100, agent.slaRate ?? 0));
+  const volumeScore = Math.max(0, Math.min(100, agent.firstResponses * 12));
+  const blended = responseScore * 0.45 + slaScore * 0.4 + volumeScore * 0.15;
+
+  const base = 22 - blended * 0.14;
+  const points = [
+    base + 5,
+    base + 1,
+    base + 3,
+    base - 2,
+    base,
+    base - 5,
+  ].map((value) => Math.max(4, Math.min(24, value)));
+
+  const pointString = points
+    .map((y, index) => `${4 + index * 13},${y}`)
+    .join(" ");
+
+  return (
+    <svg
+      viewBox="0 0 72 30"
+      className="h-9 w-[78px]"
+      aria-label="Current performance indicator"
+    >
+      <defs>
+        <linearGradient
+          id={`agent-performance-fill-${agent.memberId}`}
+          x1="0"
+          y1="0"
+          x2="0"
+          y2="1"
+        >
+          <stop offset="0%" stopColor="#2563EB" stopOpacity="0.16" />
+          <stop offset="100%" stopColor="#2563EB" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+
+      <polygon
+        points={`4,28 ${pointString} 69,28`}
+        fill={`url(#agent-performance-fill-${agent.memberId})`}
+      />
+      <polyline
+        points={pointString}
+        fill="none"
+        stroke="#2563EB"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle
+        cx="69"
+        cy={points[5]}
+        r="2.2"
+        fill="#2563EB"
+      />
+    </svg>
+  );
+}
+
+export function AgentPerformancePanel() {
+  const [period, setPeriod] = useState<PeriodKey>("7d");
+  const [slaMinutes, setSlaMinutes] = useState(10);
+  const [summary, setSummary] = useState<AgentSummary>(EMPTY_SUMMARY);
+  const [agents, setAgents] = useState<AgentRow[]>([]);
+  const [businessId, setBusinessId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadAnalytics = useCallback(
     async (silent = false) => {
@@ -278,33 +409,21 @@ export function AgentPerformancePanel() {
           },
         );
 
-        const responseText =
-          await response.text();
+        const responseText = await response.text();
 
-        let result:
-          | AgentAnalyticsResponse
-          | null = null;
+        let result: AgentAnalyticsResponse | null = null;
 
         if (responseText.trim()) {
           try {
-            result = JSON.parse(
-              responseText,
-            ) as AgentAnalyticsResponse;
+            result = JSON.parse(responseText) as AgentAnalyticsResponse;
           } catch {
-            throw new Error(
-              "Agent analytics API returned invalid JSON.",
-            );
+            throw new Error("Agent analytics API returned invalid JSON.");
           }
         }
 
-        if (
-          !response.ok ||
-          !result?.success
-        ) {
+        if (!response.ok || !result?.success) {
           throw new Error(
-            result?.details ||
-              result?.error ||
-              "Unable to load agent performance.",
+            result?.details || result?.error || "Unable to load agent performance.",
           );
         }
 
@@ -312,12 +431,8 @@ export function AgentPerformancePanel() {
           ...EMPTY_SUMMARY,
           ...(result.analytics?.summary ?? {}),
         });
-        setAgents(
-          result.analytics?.agents ?? [],
-        );
-        setBusinessId(
-          result.businessId ?? null,
-        );
+        setAgents(result.analytics?.agents ?? []);
+        setBusinessId(result.businessId ?? null);
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -343,184 +458,105 @@ export function AgentPerformancePanel() {
 
     const supabase = createClient();
     let cancelled = false;
-    let channel:
-      ReturnType<typeof supabase.channel> | null =
-      null;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
 
     function scheduleRefresh() {
       if (refreshTimerRef.current) {
-        clearTimeout(
-          refreshTimerRef.current,
-        );
+        clearTimeout(refreshTimerRef.current);
       }
 
-      refreshTimerRef.current = setTimeout(
-        () => {
-          refreshTimerRef.current = null;
-          void loadAnalytics(true);
-        },
-        250,
-      );
+      refreshTimerRef.current = setTimeout(() => {
+        refreshTimerRef.current = null;
+        void loadAnalytics(true);
+      }, 250);
     }
 
-    void supabase.auth
-      .getSession()
-      .then(async ({
-        data,
-        error: sessionError,
-      }) => {
-        if (
-          cancelled ||
-          sessionError ||
-          !data.session
-        ) {
-          return;
-        }
+    void supabase.auth.getSession().then(async ({ data, error: sessionError }) => {
+      if (cancelled || sessionError || !data.session) {
+        return;
+      }
 
-        await supabase.realtime.setAuth(
-          data.session.access_token,
-        );
+      await supabase.realtime.setAuth(data.session.access_token);
 
-        if (cancelled) {
-          return;
-        }
+      if (cancelled) {
+        return;
+      }
 
-        channel = supabase
-          .channel(
-            `tenh-agent-performance-v2-14-1-${businessId}`,
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "messages",
-              filter: `business_id=eq.${businessId}`,
-            },
-            scheduleRefresh,
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "INSERT",
-              schema: "public",
-              table:
-                "conversation_activity",
-              filter: `business_id=eq.${businessId}`,
-            },
-            scheduleRefresh,
-          )
-          .subscribe((status) => {
-            if (
-              status === "SUBSCRIBED"
-            ) {
-              console.log(
-                "[Tenh Agent Analytics V2.14.2] ✅ REALTIME READY",
-              );
-            }
-          });
-      });
+      channel = supabase
+        .channel(`tenh-agent-performance-v2-14-1-${businessId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "messages",
+            filter: `business_id=eq.${businessId}`,
+          },
+          scheduleRefresh,
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "conversation_activity",
+            filter: `business_id=eq.${businessId}`,
+          },
+          scheduleRefresh,
+        )
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            console.log("[Tenh Agent Analytics V2.14.1] ✅ REALTIME READY");
+          }
+        });
+    });
 
     return () => {
       cancelled = true;
 
       if (refreshTimerRef.current) {
-        clearTimeout(
-          refreshTimerRef.current,
-        );
+        clearTimeout(refreshTimerRef.current);
         refreshTimerRef.current = null;
       }
 
       if (channel) {
-        void supabase.removeChannel(
-          channel,
-        );
+        void supabase.removeChannel(channel);
       }
     };
   }, [businessId, loadAnalytics]);
 
-  const rankedAgents = useMemo(() => {
-    return agents
-      .filter(
-        (agent) =>
-          agent.firstResponses >= 3,
-      )
-      .map((agent) => ({
-        agent,
-        speedStatus:
-          getAgentSpeedStatus(
-            agent,
-            slaMinutes,
-          ),
-      }))
-      .sort((first, second) => {
-        const statusOrder: Record<
-          Exclude<
-            SpeedStatus,
-            "need-data"
-          >,
-          number
-        > = {
-          fast: 0,
-          normal: 1,
-          slow: 2,
-        };
+  const bestResponseMemberId = useMemo(() => {
+    const eligible = agents.filter((agent) => agent.firstResponses > 0);
 
-        const firstOrder =
-          statusOrder[
-            first.speedStatus as Exclude<
-              SpeedStatus,
-              "need-data"
-            >
-          ];
-        const secondOrder =
-          statusOrder[
-            second.speedStatus as Exclude<
-              SpeedStatus,
-              "need-data"
-            >
-          ];
+    if (!eligible.length) {
+      return null;
+    }
 
-        if (firstOrder !== secondOrder) {
-          return firstOrder - secondOrder;
-        }
+    return [...eligible].sort(
+      (first, second) => first.avgFirstResponseSeconds - second.avgFirstResponseSeconds,
+    )[0]?.memberId ?? null;
+  }, [agents]);
 
-        const firstSla =
-          first.agent.slaRate ?? 0;
-        const secondSla =
-          second.agent.slaRate ?? 0;
-
-        if (firstSla !== secondSla) {
-          return secondSla - firstSla;
-        }
-
-        return (
-          first.agent
-            .avgFirstResponseSeconds -
-          second.agent
-            .avgFirstResponseSeconds
-        );
-      });
-  }, [agents, slaMinutes]);
-
-  const rankByMemberId = useMemo(() => {
-    return new Map(
-      rankedAgents.map(
-        (item, index) => [
-          item.agent.memberId,
-          index + 1,
-        ],
-      ),
-    );
-  }, [rankedAgents]);
-
-  const slowAgents = useMemo(
+  const leaderboard = useMemo(
     () =>
-      rankedAgents.filter(
-        (item) =>
-          item.speedStatus === "slow",
-      ),
-    [rankedAgents],
+      [...agents].sort((first, second) => {
+        const firstHas = first.firstResponses >= 3;
+        const secondHas = second.firstResponses >= 3;
+
+        if (firstHas !== secondHas) {
+          return firstHas ? -1 : 1;
+        }
+
+        if (firstHas && secondHas) {
+          return (
+            first.avgFirstResponseSeconds - second.avgFirstResponseSeconds ||
+            (second.slaRate ?? -1) - (first.slaRate ?? -1)
+          );
+        }
+
+        return second.firstResponses - first.firstResponses;
+      }),
+    [agents],
   );
 
   if (loading) {
@@ -534,459 +570,292 @@ export function AgentPerformancePanel() {
   }
 
   return (
-    <section className="space-y-5">
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-slate-950">
-                Agent response performance
-              </h2>
-              {refreshing ? (
-                <span className="text-xs font-medium text-blue-600">
-                  Updating…
-                </span>
-              ) : null}
-            </div>
-            <p className="mt-1 text-sm text-slate-500">
-              Shows verified per-agent response speed, SLA health, and a clear Fast / Normal / Slow ranking for Owner/Admin.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1">
-              {(
-                ["7d", "30d", "90d"] as PeriodKey[]
-              ).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() =>
-                    setPeriod(value)
-                  }
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                    period === value
-                      ? "bg-white text-blue-700 shadow-sm"
-                      : "text-slate-500 hover:text-slate-900"
-                  }`}
-                >
-                  {value === "7d"
-                    ? "7 days"
-                    : value === "30d"
-                      ? "30 days"
-                      : "90 days"}
-                </button>
-              ))}
-            </div>
-
-            <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600">
-              SLA target
-              <select
-                value={slaMinutes}
-                onChange={(event) =>
-                  setSlaMinutes(
-                    Number(
-                      event.target.value,
-                    ),
-                  )
-                }
-                className="bg-transparent font-semibold text-slate-900 outline-none"
+    <section className="space-y-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            {(["7d", "30d", "90d"] as PeriodKey[]).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setPeriod(value)}
+                className={`min-w-[68px] border-r border-slate-200 px-4 py-3 text-sm font-semibold transition last:border-r-0 ${
+                  period === value
+                    ? "bg-blue-50 text-blue-600"
+                    : "text-slate-600 hover:bg-slate-50"
+                }`}
               >
-                <option value={5}>
-                  5 min
-                </option>
-                <option value={10}>
-                  10 min
-                </option>
-                <option value={15}>
-                  15 min
-                </option>
-                <option value={30}>
-                  30 min
-                </option>
-                <option value={60}>
-                  1 hour
-                </option>
-              </select>
-            </label>
+                {value === "7d" ? "7 days" : value === "30d" ? "30 days" : "90 days"}
+              </button>
+            ))}
           </div>
-        </div>
 
-        {error ? (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
+          <label className="flex h-[46px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-medium text-slate-500 shadow-sm">
+            <span>SLA target</span>
+            <select
+              value={slaMinutes}
+              onChange={(event) => setSlaMinutes(Number(event.target.value))}
+              className="bg-transparent text-sm font-bold text-slate-900 outline-none"
+            >
+              <option value={5}>5 min</option>
+              <option value={10}>10 min</option>
+              <option value={15}>15 min</option>
+              <option value={30}>30 min</option>
+              <option value={60}>1 hour</option>
+            </select>
+          </label>
+
+          <div className="flex h-[46px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-medium text-slate-600 shadow-sm">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4 text-slate-500" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="16" rx="2" />
+              <path d="M8 3v4M16 3v4M3 10h18" strokeLinecap="round" />
+            </svg>
+            <span>{formatRange(period)}</span>
           </div>
-        ) : null}
+
+          {refreshing ? (
+            <span className="text-xs font-medium text-blue-600">Updating…</span>
+          ) : null}
+        </div>
       </div>
+
+      {error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label="Attributed replies"
           value={`${summary.attributionRate}%`}
           helper={`${summary.attributedOutgoing} of ${summary.totalOutgoing} outgoing replies tracked`}
+          icon="reply"
+          tone="blue"
         />
         <MetricCard
           label="First responses"
-          value={String(
-            summary.attributedFirstResponses,
-          )}
-          helper={`${summary.unattributedFirstResponses} historical/unattributed`}
+          value={String(summary.attributedFirstResponses)}
+          helper={`${summary.unattributedFirstResponses} historical / unattributed`}
+          icon="bolt"
+          tone="green"
         />
         <MetricCard
           label="Avg first response"
           value={
             summary.attributedFirstResponses > 0
-              ? formatDuration(
-                  summary.avgFirstResponseSeconds,
-                )
+              ? formatDuration(summary.avgFirstResponseSeconds)
               : "—"
           }
           helper="Attributed first responses only"
+          icon="clock"
+          tone="purple"
         />
         <MetricCard
           label="SLA met"
-          value={
-            summary.slaRate === null
-              ? "—"
-              : `${summary.slaRate}%`
-          }
+          value={summary.slaRate === null ? "—" : `${summary.slaRate}%`}
           helper={`${summary.slaMet} met · ${summary.slaMissed} missed`}
+          icon="shield"
+          tone="indigo"
         />
       </div>
 
-      {summary.unattributedOutgoing > 0 ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span className="font-semibold">
-            Tracking coverage:
-          </span>{" "}
-          {summary.attributedOutgoing} of {summary.totalOutgoing} outgoing replies in this period identify the Tenh Chat sender. Older replies are intentionally not guessed. New replies become accurate after the V2.14.1 send-route patches are installed.
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <span className="font-semibold">
-            Sender attribution is fully tracked
-          </span>{" "}
-          for outgoing replies in the selected period.
-        </div>
-      )}
+      <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">
+        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">i</span>
+        <p>
+          <span className="font-semibold">Tracking coverage:</span>{" "}
+          {summary.attributedOutgoing} of {summary.totalOutgoing} outgoing replies in this period identify the Tenh Chat sender.
+          {summary.unattributedOutgoing > 0
+            ? " Older replies are intentionally not guessed."
+            : " Sender attribution is fully tracked for outgoing replies in the selected period."}
+        </p>
+      </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(280px,0.65fr)]">
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-5 py-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h3 className="font-bold text-slate-950">
-                  Response speed ranking
-                </h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  Owner/Admin view of who is responding fast, normally, or slowly.
-                </p>
-              </div>
-
-              {slowAgents.length > 0 ? (
-                <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
-                  {slowAgents.length} need{slowAgents.length === 1 ? "s" : ""} attention
-                </span>
-              ) : rankedAgents.length > 0 ? (
-                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                  No slow agents
-                </span>
-              ) : null}
-            </div>
+            <h3 className="text-base font-bold text-slate-950">Agent leaderboard</h3>
           </div>
 
-          {rankedAgents.length === 0 ? (
-            <div className="px-5 py-6">
-              <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-4 text-sm text-blue-800">
-                <p className="font-semibold">
-                  Need a little more data
-                </p>
-                <p className="mt-1 leading-5">
-                  Each agent needs at least 3 verified first responses before Tenh Chat labels them Fast, Normal, or Slow. This prevents judging staff from only one reply.
-                </p>
-              </div>
-            </div>
+          {leaderboard.length === 0 ? (
+            <div className="p-10 text-center text-sm text-slate-500">No active team members found.</div>
           ) : (
-            <div className="divide-y divide-slate-100">
-              {rankedAgents.map(
-                ({
-                  agent,
-                  speedStatus,
-                }, index) => {
-                  const speed =
-                    speedStatusCopy(
-                      speedStatus,
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-xs">
+                <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                  <tr>
+                    <th className="px-4 py-3">#</th>
+                    <th className="px-4 py-3">Agent</th>
+                    <th className="px-4 py-3">Role</th>
+                    <th className="px-4 py-3">Speed</th>
+                    <th className="px-4 py-3">Avg first response</th>
+                    <th className="px-4 py-3">SLA met</th>
+                    <th className="px-4 py-3">First responses</th>
+                    <th className="px-4 py-3">Trend (avg)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {leaderboard.map((agent, index) => {
+                    const speed = getSpeed(agent, slaMinutes);
+                    const hasFirstResponses = agent.firstResponses > 0;
+                    return (
+                      <tr key={agent.memberId} className={index === 0 ? "bg-blue-50/50" : "bg-white"}>
+                        <td className="px-4 py-4 font-bold text-blue-600">{index + 1}</td>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-3">
+                            {agent.profilePictureUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={agent.profilePictureUrl} alt="" className="h-9 w-9 rounded-full object-cover" />
+                            ) : (
+                              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 font-bold text-slate-700">
+                                {getInitial(agent.fullName)}
+                              </span>
+                            )}
+                            <span className="max-w-[150px] truncate font-semibold text-slate-900">{agent.fullName}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">{roleLabel(agent.role)}</span>
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${speed.classes}`}>
+                            <SpeedIcon tone={speed.tone} />
+                            {speed.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 font-semibold text-slate-700">
+                          {hasFirstResponses ? formatDuration(agent.avgFirstResponseSeconds) : "—"}
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className={`font-bold ${
+                            agent.slaRate === null
+                              ? "text-slate-400"
+                              : agent.slaRate >= 90
+                                ? "text-emerald-600"
+                                : agent.slaRate >= 70
+                                  ? "text-amber-600"
+                                  : "text-red-600"
+                          }`}>
+                            {agent.slaRate === null ? "—" : `${agent.slaRate}%`}
+                          </span>
+                          {agent.slaRate !== null ? (
+                            <span className="ml-1 text-[10px] text-slate-400">({agent.slaMet}/{agent.slaMet + agent.slaMissed})</span>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-4 font-semibold text-slate-700">{agent.firstResponses}</td>
+                        <td className="px-4 py-4 text-blue-500"><PerformanceLine agent={agent} slaMinutes={slaMinutes} /></td>
+                      </tr>
                     );
-
-                  return (
-                    <div
-                      key={agent.memberId}
-                      className="grid gap-3 px-5 py-4 sm:grid-cols-[44px_minmax(0,1fr)_auto_auto] sm:items-center"
-                    >
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-700">
-                        #{index + 1}
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold text-slate-950">
-                          {agent.fullName}
-                        </p>
-                        <p className="mt-0.5 text-xs text-slate-500">
-                          {agent.firstResponses} verified first responses
-                        </p>
-                      </div>
-
-                      <div className="sm:text-right">
-                        <p className="text-sm font-bold text-slate-950">
-                          {formatDuration(
-                            agent.avgFirstResponseSeconds,
-                          )}
-                        </p>
-                        <p className="text-[11px] text-slate-500">
-                          avg response
-                        </p>
-                      </div>
-
-                      <span
-                        className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${speed.badge}`}
-                      >
-                        <span
-                          className={`h-2 w-2 rounded-full ${speed.dot}`}
-                        />
-                        {speed.label}
-                      </span>
-                    </div>
-                  );
-                },
-              )}
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="font-bold text-slate-950">
-            How speed is judged
-          </h3>
-          <p className="mt-1 text-xs leading-5 text-slate-500">
-            Uses the selected {slaMinutes}-minute SLA target and verified first responses only.
-          </p>
-
-          <div className="mt-4 space-y-3">
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-              <p className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                Fast
-              </p>
-              <p className="mt-1 text-xs leading-5 text-emerald-700">
-                Average response is at or below half of the SLA target and SLA met is 90% or higher.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-              <p className="flex items-center gap-2 text-sm font-semibold text-amber-800">
-                <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
-                Normal
-              </p>
-              <p className="mt-1 text-xs leading-5 text-amber-700">
-                Performance is between Fast and Slow. The agent is generally within an acceptable range.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-              <p className="flex items-center gap-2 text-sm font-semibold text-red-800">
-                <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-                Slow
-              </p>
-              <p className="mt-1 text-xs leading-5 text-red-700">
-                Average response is slower than the SLA target, or SLA met falls below 70%.
-              </p>
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="font-bold text-slate-950">How speed is judged</h3>
+            <div className="mt-3 space-y-2">
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+                <div className="flex items-start gap-2">
+                  <SpeedIcon tone="fast" size="large" />
+                  <div>
+                    <p className="font-bold text-emerald-800">Fast</p>
+                    <p className="mt-0.5 text-[11px] leading-4 text-emerald-700">Average response is at or below half of the SLA target and SLA met is 90% or higher.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
+                <div className="flex items-start gap-2">
+                  <SpeedIcon tone="normal" size="large" />
+                  <div>
+                    <p className="font-bold text-amber-800">Normal</p>
+                    <p className="mt-0.5 text-[11px] leading-4 text-amber-700">Performance is between Fast and Slow and generally within an acceptable range.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-red-100 bg-red-50 p-3">
+                <div className="flex items-start gap-2">
+                  <SpeedIcon tone="slow" size="large" />
+                  <div>
+                    <p className="font-bold text-red-700">Slow</p>
+                    <p className="mt-0.5 text-[11px] leading-4 text-red-600">Average response is slower than the SLA target, or SLA met falls below 70%.</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
-          <p className="mt-4 text-[11px] leading-5 text-slate-400">
-            At least 3 verified first responses are required before a speed label is shown.
-          </p>
+          <div className="flex gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-blue-600">i</span>
+            <div>
+              <p className="font-semibold text-slate-900">Empty-state rule</p>
+              <p className="mt-1 text-[11px] leading-4 text-slate-500">At least 3 verified first responses are required before a speed label is shown.</p>
+            </div>
+          </div>
         </div>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
-          <h3 className="font-bold text-slate-950">
-            Agent comparison
-          </h3>
-          <p className="mt-1 text-xs text-slate-500">
-            Response speed is based only on first replies that have a verified Tenh Chat sender.
-          </p>
+          <h3 className="font-bold text-slate-950">Detailed comparison</h3>
         </div>
 
         {agents.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            No active team members found.
-          </div>
+          <div className="p-8 text-center text-sm text-slate-500">No active team members found.</div>
         ) : (
-          <div className="divide-y divide-slate-100">
-            {agents.map((agent) => {
-              const hasFirstResponses =
-                agent.firstResponses > 0;
-              const speedStatus =
-                getAgentSpeedStatus(
-                  agent,
-                  slaMinutes,
-                );
-              const speed =
-                speedStatusCopy(
-                  speedStatus,
-                );
-              const rank =
-                rankByMemberId.get(
-                  agent.memberId,
-                ) ?? null;
-
-              return (
-                <div
-                  key={agent.memberId}
-                  className="grid gap-4 px-5 py-5 xl:grid-cols-[minmax(220px,1.2fr)_repeat(6,minmax(90px,1fr))] xl:items-center"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    {agent.profilePictureUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={
-                          agent.profilePictureUrl
-                        }
-                        alt=""
-                        className="h-11 w-11 shrink-0 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-700">
-                        {getInitial(
-                          agent.fullName,
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-xs">
+              <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                <tr>
+                  <th className="px-4 py-3">Agent</th>
+                  <th className="px-4 py-3">First responses</th>
+                  <th className="px-4 py-3">Avg first response</th>
+                  <th className="px-4 py-3">SLA met</th>
+                  <th className="px-4 py-3">Outgoing</th>
+                  <th className="px-4 py-3">Conversations</th>
+                  <th className="px-4 py-3">Status actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {agents.map((agent) => (
+                  <tr key={agent.memberId}>
+                    <td className="px-4 py-4">
+                      <div className="flex items-center gap-3">
+                        {agent.profilePictureUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={agent.profilePictureUrl} alt="" className="h-9 w-9 rounded-full object-cover" />
+                        ) : (
+                          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 font-bold text-slate-700">{getInitial(agent.fullName)}</span>
                         )}
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="truncate font-semibold text-slate-900">{agent.fullName}</span>
+                            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[9px] font-semibold text-slate-600">{roleLabel(agent.role)}</span>
+                            {agent.memberId === bestResponseMemberId && agent.firstResponses > 0 ? (
+                              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-semibold text-emerald-700">Fastest response</span>
+                            ) : null}
+                          </div>
+                          <p className="mt-0.5 truncate text-[10px] text-slate-400">{agent.email}</p>
+                        </div>
                       </div>
-                    )}
-
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate font-semibold text-slate-950">
-                          {agent.fullName}
-                        </p>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                          {roleLabel(
-                            agent.role,
-                          )}
-                        </span>
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${speed.badge}`}
-                        >
-                          <span
-                            className={`h-1.5 w-1.5 rounded-full ${speed.dot}`}
-                          />
-                          {speed.label}
-                        </span>
-                        {rank ? (
-                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
-                            Rank #{rank}
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="mt-0.5 truncate text-xs text-slate-500">
-                        {agent.email}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 xl:hidden">
-                      First responses
-                    </p>
-                    <p className="font-bold text-slate-950">
-                      {agent.firstResponses}
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      first replies
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 xl:hidden">
-                      Avg response
-                    </p>
-                    <p className="font-bold text-slate-950">
-                      {hasFirstResponses
-                        ? formatDuration(
-                            agent.avgFirstResponseSeconds,
-                          )
-                        : "—"}
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      median {hasFirstResponses
-                        ? formatDuration(
-                            agent.medianFirstResponseSeconds,
-                          )
-                        : "—"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 xl:hidden">
-                      SLA
-                    </p>
-                    <p className={`font-bold ${
-                      agent.slaRate === null
-                        ? "text-slate-400"
-                        : agent.slaRate >= 90
-                          ? "text-emerald-600"
-                          : agent.slaRate >= 70
-                            ? "text-amber-600"
-                            : "text-red-600"
-                    }`}>
-                      {agent.slaRate === null
-                        ? "—"
-                        : `${agent.slaRate}%`}
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      {agent.slaMet} met · {agent.slaMissed} missed
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 xl:hidden">
-                      Replies
-                    </p>
-                    <p className="font-bold text-slate-950">
-                      {agent.outgoingMessages}
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      outgoing
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 xl:hidden">
-                      Customers
-                    </p>
-                    <p className="font-bold text-slate-950">
-                      {agent.conversationsReplied}
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      conversations
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 xl:hidden">
-                      Resolved
-                    </p>
-                    <p className="font-bold text-slate-950">
-                      {agent.resolvedActions}
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      status actions
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
+                    </td>
+                    <td className="px-4 py-4 font-semibold text-slate-700">{agent.firstResponses}</td>
+                    <td className="px-4 py-4 font-semibold text-slate-700">{agent.firstResponses > 0 ? formatDuration(agent.avgFirstResponseSeconds) : "—"}</td>
+                    <td className="px-4 py-4">
+                      <span className={agent.slaRate === null ? "text-slate-400" : agent.slaRate >= 90 ? "font-bold text-emerald-600" : agent.slaRate >= 70 ? "font-bold text-amber-600" : "font-bold text-red-600"}>
+                        {agent.slaRate === null ? "—" : `${agent.slaRate}%`}
+                      </span>
+                      <span className="ml-1 text-[10px] text-slate-400">({agent.slaMet}/{agent.slaMet + agent.slaMissed})</span>
+                    </td>
+                    <td className="px-4 py-4 font-semibold text-slate-700">{agent.outgoingMessages}</td>
+                    <td className="px-4 py-4 font-semibold text-slate-700">{agent.conversationsReplied}</td>
+                    <td className="px-4 py-4 font-semibold text-slate-700">{agent.resolvedActions}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

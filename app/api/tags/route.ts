@@ -6,7 +6,10 @@ import {
 import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
+import { authorizeInboxBusinessAccess } from "@/lib/inbox/get-inbox-resource-access";
+import { DEFAULT_TAG_SEED_MARKER } from "@/lib/settings/ensure-workspace-default-content";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { requirePermission } from "@/lib/auth/require-permission";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -56,12 +59,49 @@ export async function GET(
   const currentMember =
     authResult.member;
 
+  const requestedBusinessId =
+    request.nextUrl.searchParams
+      .get("businessId")
+      ?.trim() ?? "";
+
+  let businessId =
+    currentMember.business_id;
+
+  /*
+   * Inbox is intentionally multi-workspace. Allow a conversation to read
+   * tags from its own active workspace, but only after TENH verifies the
+   * signed-in user still belongs to that workspace. Settings mutations below
+   * continue to use only the header-selected authenticated workspace.
+   */
+  if (
+    requestedBusinessId &&
+    requestedBusinessId !== currentMember.business_id
+  ) {
+    const access =
+      await authorizeInboxBusinessAccess(
+        requestedBusinessId,
+      );
+
+    if (!access.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: access.error,
+        },
+        {
+          status: access.status,
+        },
+      );
+    }
+
+    businessId = access.businessId;
+  }
+
   const activeOnly =
     request.nextUrl.searchParams.get(
       "activeOnly",
     ) === "true";
 
-  /* Ignore browser-supplied businessId and use the authenticated workspace. */
   let query = supabaseAdmin
     .from("tags")
     .select(`
@@ -77,8 +117,9 @@ export async function GET(
     `)
     .eq(
       "business_id",
-      currentMember.business_id,
+      businessId,
     )
+    .neq("name", DEFAULT_TAG_SEED_MARKER)
     .order("is_active", {
       ascending: false,
     })
@@ -134,6 +175,12 @@ export async function POST(
       },
     );
   }
+  const permissionGuard =
+    await requirePermission("tags_quick_replies", "manage");
+
+  if (!permissionGuard.success) {
+    return permissionGuard.response;
+  }
 
   const currentMember =
     authResult.member;
@@ -181,6 +228,18 @@ export async function POST(
         success: false,
         error:
           "Tag name is required.",
+      },
+      {
+        status: 400,
+      },
+    );
+  }
+
+  if (name === DEFAULT_TAG_SEED_MARKER) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "This tag name is reserved by TENH.",
       },
       {
         status: 400,

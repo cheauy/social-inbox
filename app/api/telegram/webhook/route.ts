@@ -11,6 +11,10 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   decryptChannelCredential,
   encryptChannelCredential,
 } from "@/lib/channels/channel-token-crypto";
@@ -283,12 +287,16 @@ export async function POST(
   const currentMember =
     authResult.member;
 
-  if (currentMember.role !== "owner") {
-    return jsonError(
-      "Only the subscription owner can activate this Telegram Bot Inbox.",
-      403,
+  // Was owner-only. The channels permission makes the
+  // Roles & permissions setting meaningful; Owners always pass.
+  if (
+    !(await memberHasPermission(currentMember, "channels", "manage"))
+  ) {
+    return permissionDenied(
+      "You do not have permission to manage channels in this workspace.",
     );
   }
+
 
   let connection: TelegramWebhookRow;
   let token: string;
@@ -486,12 +494,16 @@ export async function DELETE(request: NextRequest) {
   const currentMember =
     authResult.member;
 
-  if (currentMember.role !== "owner") {
-    return jsonError(
-      "Only the subscription owner can disable this Telegram Bot Inbox.",
-      403,
+  // Was owner-only. The channels permission makes the
+  // Roles & permissions setting meaningful; Owners always pass.
+  if (
+    !(await memberHasPermission(currentMember, "channels", "manage"))
+  ) {
+    return permissionDenied(
+      "You do not have permission to manage channels in this workspace.",
     );
   }
+
 
   try {
     const connection =

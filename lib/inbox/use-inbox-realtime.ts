@@ -286,6 +286,51 @@ export function useInboxRealtime({
               },
             )
 
+            .on(
+              "postgres_changes",
+              {
+                event: "*",
+                schema: "public",
+                table: "business_subscriptions",
+                filter: `business_id=eq.${businessId}`,
+              },
+              () => {
+                // Subscription expiry/reactivation changes Inbox scope. Ask the
+                // server to recalculate accessible businesses and channels.
+                fallbackRefreshRef.current?.();
+              },
+            )
+
+            .on(
+              "postgres_changes",
+              {
+                event: "*",
+                schema: "public",
+                table: "team_members",
+                filter: `business_id=eq.${businessId}`,
+              },
+              () => {
+                // Access removal/reactivation must disappear from Inbox without
+                // waiting for a logout or hard browser refresh.
+                fallbackRefreshRef.current?.();
+              },
+            )
+
+            .on(
+              "postgres_changes",
+              {
+                event: "*",
+                schema: "public",
+                table: "social_accounts",
+                filter: `business_id=eq.${businessId}`,
+              },
+              () => {
+                // Channel enable/disable or disconnect changes the operational
+                // All Channels set immediately.
+                fallbackRefreshRef.current?.();
+              },
+            )
+
             .subscribe(
               (
                 status,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { TENH_ACTIVE_BUSINESS_COOKIE } from "@/lib/auth/get-current-member";
 import {
+  acceptSubscriptionInvitationSafely,
   hashInvitationToken,
   loadInvitationByToken,
 } from "@/lib/team/subscription-invitations";
@@ -36,67 +37,6 @@ function errorResponse(
 function isExpired(value: string) {
   const timestamp = Date.parse(value);
   return !Number.isFinite(timestamp) || timestamp <= Date.now();
-}
-
-function mapAcceptError(message: string) {
-  const lower = message.toLowerCase();
-
-  if (lower.includes("tenh_invite_email_mismatch")) {
-    return {
-      status: 403,
-      code: "INVITE_EMAIL_MISMATCH",
-      error:
-        "This invitation was sent to a different email address. Sign in with the invited email.",
-    };
-  }
-
-  if (
-    lower.includes("tenh_invite_expired") ||
-    lower.includes("tenh_invite_not_pending")
-  ) {
-    return {
-      status: 410,
-      code: "INVITE_EXPIRED",
-      error:
-        "This invitation has expired or is no longer available. Ask the workspace Owner to send a new invitation.",
-    };
-  }
-
-  if (lower.includes("tenh_invite_seat_limit")) {
-    return {
-      status: 409,
-      code: "MEMBER_LIMIT_REACHED",
-      error:
-        "This subscription no longer has an available user seat. Ask the Owner to add capacity and resend the invitation.",
-    };
-  }
-
-  if (lower.includes("tenh_invite_subscription_locked")) {
-    return {
-      status: 409,
-      code: "SUBSCRIPTION_LOCKED",
-      error:
-        "This TENH subscription is expired or inactive. Its Owner must reactivate it before you can join.",
-    };
-  }
-
-  if (
-    lower.includes("tenh_invite_not_found") ||
-    lower.includes("tenh_invite_subscription_not_found")
-  ) {
-    return {
-      status: 404,
-      code: "INVITE_NOT_FOUND",
-      error: "This TENH invitation could not be found.",
-    };
-  }
-
-  return {
-    status: 500,
-    code: "INVITE_ACCEPT_FAILED",
-    error:
-      "TENH could not safely accept this invitation. No workspace access was changed.",
-  };
 }
 
 export async function GET(request: NextRequest) {
@@ -303,54 +243,55 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { data, error } = await supabaseAdmin.rpc(
-      "tenh_accept_subscription_invitation",
-      {
-        p_token_hash: hashInvitationToken(token),
-        p_user_id: user.id,
-        p_email: email,
-        p_full_name:
-          typeof user.user_metadata?.full_name === "string"
-            ? user.user_metadata.full_name
-            : "",
-      },
-    );
+    const result = await acceptSubscriptionInvitationSafely({
+      tokenHash: hashInvitationToken(token),
+      userId: user.id,
+      email,
+      fullName:
+        typeof user.user_metadata?.full_name === "string"
+          ? user.user_metadata.full_name
+          : "",
+    });
 
-    if (error) {
-      const safe = mapAcceptError(error.message);
+    if (!result.success) {
+      if (result.code === "INVITE_ACCEPT_FAILED") {
+        console.error(
+          "[TENH Invite] Accept failed without changing workspace access.",
+          result.debug ?? { code: result.code },
+        );
+      } else {
+        console.warn(
+          "[TENH Invite] Safe accept rejected:",
+          result.code,
+        );
+      }
 
-      console.warn(
-        "[TENH Invite] Atomic accept rejected:",
-        safe.code,
-      );
-
-      return errorResponse(
-        safe.error,
-        safe.status,
-        safe.code,
+      return NextResponse.json(
+        {
+          success: false,
+          error: result.error,
+          code: result.code,
+          ...(process.env.NODE_ENV !== "production" && result.debug
+            ? { debug: result.debug }
+            : {}),
+        },
+        {
+          status: result.status,
+          headers: NO_STORE_HEADERS,
+        },
       );
     }
 
-    const accepted = Array.isArray(data)
-      ? data[0]
-      : data;
-
-    if (!accepted?.business_id) {
-      return errorResponse(
-        "TENH could not confirm the accepted workspace membership.",
-        500,
-        "INVITE_ACCEPT_FAILED",
-      );
-    }
+    const accepted = result.data;
 
     const response = NextResponse.json(
       {
         success: true,
         businessId: accepted.business_id,
         subscriptionId:
-          accepted.subscription_id ?? null,
-        memberId: accepted.member_id ?? null,
-        role: accepted.role ?? null,
+          accepted.subscription_id || null,
+        memberId: accepted.member_id,
+        role: accepted.role,
         message:
           "Invitation accepted. This workspace is now available in your ONE TENH Inbox.",
       },
@@ -375,8 +316,8 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     console.error(
-      "[TENH Invite] Accept failed:",
-      error instanceof Error ? error.message : error,
+      "[TENH Invite] Accept threw:",
+      error instanceof Error ? error.stack ?? error.message : error,
     );
 
     return errorResponse(

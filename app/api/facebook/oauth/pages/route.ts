@@ -10,6 +10,10 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   getFacebookAuthorizedPages,
 } from "@/lib/facebook/facebook-authorized-pages";
 import {
@@ -138,6 +142,14 @@ export async function GET(request: NextRequest) {
   }
 
   const currentMember = authResult.member;
+
+  if (
+    !(await memberHasPermission(currentMember, "channels", "view"))
+  ) {
+    return permissionDenied(
+      "You do not have permission to view channels in this workspace.",
+    );
+  }
   const cookieStore = await cookies();
   const existingSessionValue = cookieStore.get(
     FACEBOOK_OAUTH_SESSION_COOKIE,

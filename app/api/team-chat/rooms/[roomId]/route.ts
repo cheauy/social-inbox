@@ -5,7 +5,10 @@ import {
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { canManageTeamChat } from "@/lib/team/team-chat-server";
+import {
+  canManageTeamChat,
+  safeDetails,
+} from "@/lib/team/team-chat-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,7 +84,7 @@ export async function DELETE(
       {
         success: false,
         error: "Unable to load team group.",
-        details: roomError.message,
+        ...safeDetails(roomError.message),
       },
       {
         status: 500,
@@ -130,7 +133,7 @@ export async function DELETE(
       {
         success: false,
         error: "Unable to delete team group.",
-        details: deleteError.message,
+        ...safeDetails(deleteError.message),
       },
       {
         status: 500,

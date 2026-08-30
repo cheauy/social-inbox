@@ -5,6 +5,7 @@ import {
   getTenhAdminUser,
 } from "@/lib/admin/tenh-admin-auth";
 import { logTenhAdminAction } from "@/lib/admin/log-tenh-admin-action";
+import { getManualPaymentPayWaySafety } from "@/lib/billing/manual-payment-payway-safety";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -144,6 +145,50 @@ async function sendManualPaymentNotification({
   };
 }
 
+function snapshotObject(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function purchaseTypeFromSnapshot(
+  snapshot: unknown,
+  renewSame: boolean,
+) {
+  const value = clean(snapshotObject(snapshot).purchase_type);
+
+  if (
+    value === "upgrade" ||
+    value === "custom-upgrade" ||
+    value === "renew-same" ||
+    value === "subscription"
+  ) {
+    return value;
+  }
+
+  return renewSame ? "renew-same" : "subscription";
+}
+
+function numberOrNull(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function sameMoney(left: unknown, right: unknown) {
+  const a = Number(left);
+  const b = Number(right);
+  return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) < 0.005;
+}
+
+function safeDateMs(value: unknown) {
+  if (typeof value !== "string" || !value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
 async function loadRequests() {
   const { data: rows, error } = await supabaseAdmin
     .from("manual_payment_requests")
@@ -153,6 +198,10 @@ async function loadRequests() {
       requested_by_member_id,
       plan_code,
       billing_cycle,
+      target_member_limit,
+      target_channel_limit,
+      renew_same,
+      pricing_snapshot,
       amount,
       currency,
       status,
@@ -196,23 +245,91 @@ async function loadRequests() {
       role: string | null;
     }
   >();
+  const subscriptionMap = new Map<string, any>();
+  const activeMembersMap = new Map<string, number>();
+  const activeChannelsMap = new Map<string, number>();
+  const payWayMap = new Map<string, any[]>();
 
   if (businessIds.length > 0) {
-    const { data: businesses, error: businessError } =
-      await supabaseAdmin
+    const [
+      businessesResult,
+      subscriptionsResult,
+      membersResult,
+      channelsResult,
+      payWayResult,
+    ] = await Promise.all([
+      supabaseAdmin
         .from("businesses")
         .select("id,name")
-        .in("id", businessIds);
+        .in("id", businessIds),
+      supabaseAdmin
+        .from("business_subscriptions")
+        .select(
+          "business_id,status,plan_code,billing_cycle,member_limit,channel_limit,current_period_start,current_period_end,payment_provider",
+        )
+        .in("business_id", businessIds),
+      supabaseAdmin
+        .from("team_members")
+        .select("business_id")
+        .in("business_id", businessIds)
+        .eq("is_active", true),
+      supabaseAdmin
+        .from("social_accounts")
+        .select("business_id")
+        .in("business_id", businessIds)
+        .eq("is_active", true),
+      supabaseAdmin
+        .from("billing_transactions")
+        .select(
+          "id,business_id,provider_transaction_id,plan_code,billing_cycle,target_member_limit,target_channel_limit,amount,currency,status,verified_at,created_at",
+        )
+        .in("business_id", businessIds)
+        .eq("provider", "payway")
+        .order("created_at", { ascending: false })
+        .limit(500),
+    ]);
 
-    if (businessError) {
-      throw new Error(businessError.message);
+    const failed = [
+      businessesResult,
+      subscriptionsResult,
+      membersResult,
+      channelsResult,
+      payWayResult,
+    ].find((result) => result.error);
+
+    if (failed?.error) {
+      throw new Error(failed.error.message);
     }
 
-    for (const business of businesses ?? []) {
+    for (const business of businessesResult.data ?? []) {
       businessMap.set(
         business.id,
         business.name ?? "TENH workspace",
       );
+    }
+
+    for (const subscription of subscriptionsResult.data ?? []) {
+      subscriptionMap.set(subscription.business_id, subscription);
+    }
+
+    for (const member of membersResult.data ?? []) {
+      activeMembersMap.set(
+        member.business_id,
+        (activeMembersMap.get(member.business_id) ?? 0) + 1,
+      );
+    }
+
+    for (const channel of channelsResult.data ?? []) {
+      activeChannelsMap.set(
+        channel.business_id,
+        (activeChannelsMap.get(channel.business_id) ?? 0) + 1,
+      );
+    }
+
+    for (const transaction of payWayResult.data ?? []) {
+      const list = payWayMap.get(transaction.business_id) ?? [];
+      list.push(transaction);
+      payWayMap.set(transaction.business_id, list);
     }
   }
 
@@ -254,6 +371,67 @@ async function loadRequests() {
       const requester = row.requested_by_member_id
         ? requesterMap.get(row.requested_by_member_id)
         : null;
+      const subscription = subscriptionMap.get(row.business_id) ?? null;
+      const purchaseType = purchaseTypeFromSnapshot(
+        row.pricing_snapshot,
+        Boolean(row.renew_same),
+      );
+      const targetMemberLimit = numberOrNull(row.target_member_limit);
+      const targetChannelLimit = numberOrNull(row.target_channel_limit);
+      const rowCreatedAt = safeDateMs(row.created_at) ?? Date.now();
+      const now = Date.now();
+      const matchingPayWay = (payWayMap.get(row.business_id) ?? []).filter(
+        (transaction) =>
+          transaction.plan_code === row.plan_code &&
+          transaction.billing_cycle === row.billing_cycle &&
+          sameMoney(transaction.amount, row.amount) &&
+          (targetMemberLimit === null ||
+            numberOrNull(transaction.target_member_limit) === null ||
+            numberOrNull(transaction.target_member_limit) === targetMemberLimit) &&
+          (targetChannelLimit === null ||
+            numberOrNull(transaction.target_channel_limit) === null ||
+            numberOrNull(transaction.target_channel_limit) === targetChannelLimit),
+      );
+
+      const approvedConflict = matchingPayWay.find((transaction) => {
+        if (transaction.status !== "approved") return false;
+        const paidAt =
+          safeDateMs(transaction.verified_at) ??
+          safeDateMs(transaction.created_at);
+        return (
+          paidAt !== null &&
+          Math.abs(rowCreatedAt - paidAt) <= 48 * 60 * 60 * 1000
+        );
+      });
+
+      const pendingConflict = matchingPayWay.find((transaction) => {
+        if (transaction.status !== "pending") return false;
+        const createdAt = safeDateMs(transaction.created_at);
+        return (
+          createdAt !== null &&
+          now - createdAt <= 15 * 60 * 1000
+        );
+      });
+
+      const periodEnd = safeDateMs(subscription?.current_period_end);
+      const activePayWaySamePurchase = Boolean(
+        subscription &&
+          subscription.status === "active" &&
+          subscription.payment_provider === "payway" &&
+          subscription.plan_code === row.plan_code &&
+          subscription.billing_cycle === row.billing_cycle &&
+          (periodEnd === null || periodEnd > now),
+      );
+
+      const blockingPayWay = approvedConflict ?? pendingConflict ?? null;
+      const safetyBlocked =
+        activePayWaySamePurchase || Boolean(blockingPayWay);
+      const safetyKind = activePayWaySamePurchase || approvedConflict
+        ? "approved"
+        : pendingConflict
+          ? "pending"
+          : "clear";
+      const latestPayWay = (payWayMap.get(row.business_id) ?? [])[0] ?? null;
 
       return {
         id: row.id,
@@ -266,6 +444,9 @@ async function loadRequests() {
         requesterRole: requester?.role ?? null,
         planCode: row.plan_code,
         billingCycle: row.billing_cycle,
+        purchaseType,
+        targetMemberLimit,
+        targetChannelLimit,
         amount: Number(row.amount),
         currency: row.currency,
         status: row.status,
@@ -279,6 +460,53 @@ async function loadRequests() {
         reviewNote: row.review_note,
         approvedAt: row.approved_at,
         createdAt: row.created_at,
+        currentSubscription: subscription
+          ? {
+              status: subscription.status,
+              planCode: subscription.plan_code,
+              billingCycle: subscription.billing_cycle,
+              memberLimit: numberOrNull(subscription.member_limit),
+              channelLimit: numberOrNull(subscription.channel_limit),
+              currentPeriodStart: subscription.current_period_start,
+              currentPeriodEnd: subscription.current_period_end,
+              paymentProvider: subscription.payment_provider,
+            }
+          : null,
+        currentUsage: {
+          activeMembers: activeMembersMap.get(row.business_id) ?? 0,
+          activeChannels: activeChannelsMap.get(row.business_id) ?? 0,
+        },
+        paymentSafety: {
+          blocked: safetyBlocked,
+          kind: safetyKind,
+          message: safetyBlocked
+            ? safetyKind === "pending"
+              ? "A matching ABA PayWay checkout is still recent/pending. Do not approve manual payment until PayWay finishes or is cancelled."
+              : "A matching ABA PayWay purchase is already verified/active. Do not approve this manual payment; it could charge/activate the same purchase twice."
+            : "No matching recent ABA PayWay conflict detected by TENH.",
+          transaction: blockingPayWay
+            ? {
+                transactionId: blockingPayWay.provider_transaction_id,
+                status: blockingPayWay.status,
+                amount: Number(blockingPayWay.amount),
+                currency: blockingPayWay.currency,
+                createdAt: blockingPayWay.created_at,
+                verifiedAt: blockingPayWay.verified_at,
+              }
+            : null,
+          latestPayWay: latestPayWay
+            ? {
+                transactionId: latestPayWay.provider_transaction_id,
+                status: latestPayWay.status,
+                planCode: latestPayWay.plan_code,
+                billingCycle: latestPayWay.billing_cycle,
+                amount: Number(latestPayWay.amount),
+                currency: latestPayWay.currency,
+                createdAt: latestPayWay.created_at,
+                verifiedAt: latestPayWay.verified_at,
+              }
+            : null,
+        },
       };
     }),
   );
@@ -383,8 +611,12 @@ export async function POST(request: Request) {
         requested_by_member_id,
         plan_code,
         billing_cycle,
+        target_member_limit,
+        target_channel_limit,
+        pricing_snapshot,
         amount,
-        currency
+        currency,
+        created_at
       `)
       .eq("id", requestId)
       .maybeSingle();
@@ -486,6 +718,77 @@ export async function POST(request: Request) {
       notificationSent: notification.sent,
       notificationWarning: notification.warning,
     });
+  }
+
+  if (payment.status === "submitted") {
+    const payWaySafety = await getManualPaymentPayWaySafety({
+      businessId: payment.business_id,
+      planCode: payment.plan_code,
+      billingCycle: payment.billing_cycle,
+      amount: Number(payment.amount),
+      targetMemberLimit: numberOrNull(payment.target_member_limit),
+      targetChannelLimit: numberOrNull(payment.target_channel_limit),
+      manualCreatedAt: payment.created_at,
+    });
+
+    if (payWaySafety.blocked) {
+      return noStoreJson(
+        {
+          success: false,
+          error: payWaySafety.message,
+          code:
+            payWaySafety.kind === "approved"
+              ? "TENH_MANUAL_DUPLICATE_PAYWAY_APPROVED"
+              : "TENH_MANUAL_PAYWAY_STILL_PENDING",
+        },
+        { status: 409 },
+      );
+    }
+
+    const { data: currentSubscription, error: subscriptionError } =
+      await supabaseAdmin
+        .from("business_subscriptions")
+        .select(
+          "status,plan_code,billing_cycle,current_period_end,payment_provider",
+        )
+        .eq("business_id", payment.business_id)
+        .maybeSingle();
+
+    if (subscriptionError) {
+      return noStoreJson(
+        {
+          success: false,
+          error:
+            "Unable to verify the current subscription before approval.",
+          details: subscriptionError.message,
+        },
+        { status: 500 },
+      );
+    }
+
+    const currentPeriodEnd = safeDateMs(
+      currentSubscription?.current_period_end,
+    );
+    const activePayWaySamePurchase = Boolean(
+      currentSubscription &&
+        currentSubscription.status === "active" &&
+        currentSubscription.payment_provider === "payway" &&
+        currentSubscription.plan_code === payment.plan_code &&
+        currentSubscription.billing_cycle === payment.billing_cycle &&
+        (currentPeriodEnd === null || currentPeriodEnd > Date.now()),
+    );
+
+    if (activePayWaySamePurchase) {
+      return noStoreJson(
+        {
+          success: false,
+          error:
+            "This subscription purchase is already active from ABA PayWay. Manual approval is blocked to prevent a duplicate activation/payment.",
+          code: "TENH_MANUAL_DUPLICATE_PAYWAY_ACTIVE",
+        },
+        { status: 409 },
+      );
+    }
   }
 
   if (

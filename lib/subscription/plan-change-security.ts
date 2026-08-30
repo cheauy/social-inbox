@@ -4,20 +4,11 @@ import { syncBusinessSubscriptionLifecycle } from "@/lib/subscription/sync-subsc
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export type PaidPlanCode = "mini" | "standard" | "pro";
-export type BillingCycle = "monthly" | "3-months" | "6-months" | "12-months";
 export type PlanChangeMode =
   | "active-paid"
   | "subscribe"
   | "suspended"
   | "unmanaged";
-
-export type PendingPlanChange = {
-  type: "downgrade";
-  planCode: PaidPlanCode;
-  billingCycle: BillingCycle | null;
-  requestedAt: string | null;
-  effectiveAt: string | null;
-};
 
 export type PlanChangeState = {
   subscription: {
@@ -29,21 +20,16 @@ export type PlanChangeState = {
     member_limit: number;
     channel_limit: number;
     payment_provider: string | null;
-    pending_plan_code: string | null;
-    pending_billing_cycle: string | null;
-    pending_plan_change_type: string | null;
-    pending_plan_requested_at: string | null;
-    pending_plan_effective_at: string | null;
   } | null;
   mode: PlanChangeMode;
   canManage: boolean;
+  isOwner: boolean;
   currentPlan: PaidPlanCode | null;
   currentRank: number;
   usage: {
     members: number;
     channels: number;
   };
-  pendingChange: PendingPlanChange | null;
 };
 
 export type PurchaseEligibility = {
@@ -61,7 +47,7 @@ export type PurchaseEligibility = {
   message: string;
 };
 
-export const paidPlanRanks: Record<PaidPlanCode, number> = {
+const paidPlanRanks: Record<PaidPlanCode, number> = {
   mini: 1,
   standard: 2,
   pro: 3,
@@ -80,18 +66,9 @@ export function isPaidPlan(value: string): value is PaidPlanCode {
   return value === "mini" || value === "standard" || value === "pro";
 }
 
-export function isBillingCycle(value: string): value is BillingCycle {
-  return (
-    value === "monthly" ||
-    value === "3-months" ||
-    value === "6-months" ||
-    value === "12-months"
-  );
-}
-
 export async function loadPlanChangeState(
   businessId: string,
-  memberRole: string,
+  access: string | { canManage: boolean; isOwner: boolean },
 ): Promise<PlanChangeState> {
   await syncBusinessSubscriptionLifecycle(businessId);
 
@@ -109,11 +86,6 @@ export async function loadPlanChangeState(
             "member_limit",
             "channel_limit",
             "payment_provider",
-            "pending_plan_code",
-            "pending_billing_cycle",
-            "pending_plan_change_type",
-            "pending_plan_requested_at",
-            "pending_plan_effective_at",
           ].join(","),
         )
         .eq("business_id", businessId)
@@ -183,41 +155,22 @@ export async function loadPlanChangeState(
         ? "active-paid"
         : "subscribe";
 
-  const pendingPlanValue =
-    subscriptionData?.pending_plan_code ?? null;
-
-  const pendingPlan: PaidPlanCode | null =
-    pendingPlanValue &&
-    isPaidPlan(pendingPlanValue)
-      ? pendingPlanValue
-      : null;
-
-  const pendingCycle =
-    subscriptionData?.pending_billing_cycle ?? null;
+  const isOwner =
+    typeof access === "string" ? access === "owner" : access.isOwner;
+  const canManage =
+    typeof access === "string" ? access === "owner" : access.canManage;
 
   return {
     subscription: subscriptionData ?? null,
     mode,
-    canManage: memberRole === "owner",
+    canManage,
+    isOwner,
     currentPlan,
     currentRank,
     usage: {
       members: members.count ?? 0,
       channels: channels.count ?? 0,
     },
-    pendingChange:
-      pendingPlan &&
-      subscriptionData?.pending_plan_change_type === "downgrade"
-        ? {
-            type: "downgrade",
-            planCode: pendingPlan,
-            billingCycle: isBillingCycle(pendingCycle ?? "")
-              ? (pendingCycle as BillingCycle)
-              : null,
-            requestedAt: subscriptionData.pending_plan_requested_at,
-            effectiveAt: subscriptionData.pending_plan_effective_at,
-          }
-        : null,
   };
 }
 
@@ -225,15 +178,6 @@ export function getPlanPurchaseEligibility(
   state: PlanChangeState,
   targetPlan: PaidPlanCode,
 ): PurchaseEligibility {
-  if (!state.canManage) {
-    return {
-      allowed: false,
-      action: "blocked",
-      reason: "owner-only",
-      message: "Only the workspace owner can purchase or change the subscription plan.",
-    };
-  }
-
   if (state.mode === "unmanaged") {
     return {
       allowed: false,
@@ -267,6 +211,16 @@ export function getPlanPurchaseEligibility(
   }
 
   if (state.mode === "subscribe" || !state.currentPlan) {
+    if (!state.isOwner) {
+      return {
+        allowed: false,
+        action: "blocked",
+        reason: "owner-only",
+        message:
+          "Only the workspace Owner can reactivate or replace this workspace subscription. Team members can still buy a new subscription for their own workspace.",
+      };
+    }
+
     return {
       allowed: true,
       action: "subscribe",
@@ -294,7 +248,17 @@ export function getPlanPurchaseEligibility(
       action: "blocked",
       reason: "schedule-downgrade",
       message:
-        "A lower plan cannot replace an active paid plan immediately. Schedule the downgrade from Subscription instead.",
+        "A lower plan cannot replace an active paid plan immediately. Buy it as a new prepaid subscription for the next period instead.",
+    };
+  }
+
+  if (!state.canManage) {
+    return {
+      allowed: false,
+      action: "blocked",
+      reason: "owner-only",
+      message:
+        "Subscription & billing Manage permission is required to upgrade this workspace subscription.",
     };
   }
 

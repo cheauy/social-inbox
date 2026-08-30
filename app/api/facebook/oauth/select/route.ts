@@ -11,6 +11,10 @@ import {
   TENH_ACTIVE_BUSINESS_COOKIE,
 } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   getFacebookAuthorizedPages,
 } from "@/lib/facebook/facebook-authorized-pages";
 import {
@@ -340,11 +344,16 @@ export async function POST(
       );
     }
 
-    if (currentMember.role !== "owner") {
-      throw new Error(
-        "Only the subscription Owner can connect or reconnect Facebook Pages.",
+    // Was owner-only. The channels permission makes the
+    // Roles & permissions setting meaningful; Owners always pass.
+    if (
+      !(await memberHasPermission(currentMember, "channels", "manage"))
+    ) {
+      return permissionDenied(
+        "You do not have permission to manage channels in this workspace.",
       );
     }
+
 
     const pagesConsumingNewSlots = selectedPages.filter((page) => {
       const existing = existingByPageId.get(page.id);

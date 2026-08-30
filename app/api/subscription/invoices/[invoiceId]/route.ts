@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
+import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -65,7 +69,9 @@ export async function GET(
 
   const currentMember = authResult.member;
 
-  if (currentMember.role !== "owner") {
+  if (
+    !(await memberHasPermission(currentMember, "billing", "manage"))
+  ) {
     return NextResponse.json(
       {
         success: false,

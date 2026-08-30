@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { TENH_ACTIVE_BUSINESS_COOKIE } from "@/lib/auth/get-current-member";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { ensureWorkspaceDefaultContent } from "@/lib/settings/ensure-workspace-default-content";
 import {
   getTrustedSubscriptionQuote,
   type BillingCycle,
@@ -20,6 +21,30 @@ type Body = {
   users?: unknown;
   billingCycle?: unknown;
 };
+
+type RpcErrorLike = {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+};
+
+function isMissingRpcSignature(error: RpcErrorLike | null | undefined) {
+  if (!error) return false;
+
+  const text = [error.code, error.message, error.details, error.hint]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    error.code === "PGRST202" ||
+    error.code === "42883" ||
+    /could not find the function/i.test(text) ||
+    /function .* does not exist/i.test(text) ||
+    /no function matches/i.test(text) ||
+    /schema cache/i.test(text)
+  );
+}
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -59,26 +84,93 @@ export async function POST(request: Request) {
     [metadata?.full_name, metadata?.name, metadata?.display_name]
       .find((value) => typeof value === "string" && value.trim()) as string | undefined;
 
-  const { data, error } = await supabaseAdmin.rpc(
+  // "Buy new subscription" must always create a separate workspace owned by
+  // the buyer. Record the caller's existing memberships first so an Agent in
+  // somebody else's workspace can never accidentally pay against that joined
+  // workspace if the database RPC returns the wrong business.
+  const { data: existingMemberships, error: existingMembershipsError } =
+    await supabaseAdmin
+      .from("team_members")
+      .select("business_id")
+      .eq("user_id", user.id);
+
+  if (existingMembershipsError) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Unable to verify your existing TENH workspaces before purchase.",
+        details: existingMembershipsError.message,
+      },
+      { status: 500 },
+    );
+  }
+
+  const existingBusinessIds = new Set(
+    (existingMemberships ?? []).map((membership) => membership.business_id),
+  );
+
+  const coreRpcArgs = {
+    p_user_id: user.id,
+    p_full_name: fullName?.trim() || user.email?.split("@")[0] || "TENH Owner",
+    p_email: user.email ?? "",
+    p_business_name: businessName,
+    p_plan_code: quote.planCode,
+    p_channel_limit: quote.channels,
+    p_member_limit: quote.users,
+    p_billing_cycle: quote.cycle.id as BillingCycle,
+  };
+
+  // PostgREST resolves RPCs by the exact argument list. Keep Buy New working
+  // safely across TENH database deployments that have either the current or
+  // an older create-workspace function signature. Retry ONLY when PostgREST
+  // explicitly says the function signature is missing, so a real RPC failure
+  // can never create a duplicate workspace on retry.
+  let rpcResult = await supabaseAdmin.rpc(
     "tenh_create_subscription_workspace",
     {
-      p_user_id: user.id,
-      p_full_name: fullName?.trim() || user.email?.split("@")[0] || "TENH Owner",
-      p_email: user.email ?? "",
-      p_business_name: businessName,
-      p_plan_code: quote.planCode,
-      p_channel_limit: quote.channels,
-      p_member_limit: quote.users,
-      p_billing_cycle: quote.cycle.id as BillingCycle,
+      ...coreRpcArgs,
       p_monthly_price_cents: quote.monthlyCents,
       p_total_price_cents: quote.totalCents,
       p_pricing_version: quote.pricingVersion,
     },
   );
 
+  if (rpcResult.error && isMissingRpcSignature(rpcResult.error)) {
+    rpcResult = await supabaseAdmin.rpc(
+      "tenh_create_subscription_workspace",
+      {
+        ...coreRpcArgs,
+        p_monthly_price_cents: quote.monthlyCents,
+        p_total_price_cents: quote.totalCents,
+      },
+    );
+  }
+
+  if (rpcResult.error && isMissingRpcSignature(rpcResult.error)) {
+    rpcResult = await supabaseAdmin.rpc(
+      "tenh_create_subscription_workspace",
+      coreRpcArgs,
+    );
+  }
+
+  const { data, error } = rpcResult;
+
   if (error) {
+    console.error("[TENH] Unable to create subscription workspace:", {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
+
     return NextResponse.json(
-      { success: false, error: "Unable to create the new subscription.", details: error.message },
+      {
+        success: false,
+        error: "Unable to create the new subscription.",
+        ...(process.env.NODE_ENV !== "production"
+          ? { details: error.message, code: error.code }
+          : {}),
+      },
       { status: 500 },
     );
   }
@@ -88,6 +180,78 @@ export async function POST(request: Request) {
 
   if (!businessId) {
     return NextResponse.json({ success: false, error: "TENH created no subscription workspace." }, { status: 500 });
+  }
+
+  if (existingBusinessIds.has(businessId)) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "TENH blocked this purchase because Buy new subscription must create a separate workspace.",
+      },
+      { status: 409 },
+    );
+  }
+
+  const { data: createdMembership, error: createdMembershipError } =
+    await supabaseAdmin
+      .from("team_members")
+      .select("id,role,is_active")
+      .eq("business_id", businessId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+  if (createdMembershipError || !createdMembership) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "The subscription workspace was created, but TENH could not verify its Owner membership.",
+        details: createdMembershipError?.message,
+      },
+      { status: 500 },
+    );
+  }
+
+  let purchaseMemberId = createdMembership.id;
+
+  if (createdMembership.role !== "owner" || createdMembership.is_active !== true) {
+    const { data: ownerMembership, error: ownerMembershipError } =
+      await supabaseAdmin
+        .from("team_members")
+        .update({ role: "owner", is_active: true })
+        .eq("id", createdMembership.id)
+        .eq("business_id", businessId)
+        .eq("user_id", user.id)
+        .select("id,role,is_active")
+        .maybeSingle();
+
+    if (
+      ownerMembershipError ||
+      !ownerMembership ||
+      ownerMembership.role !== "owner" ||
+      ownerMembership.is_active !== true
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "TENH could not make you Owner of the new subscription workspace.",
+          details: ownerMembershipError?.message,
+        },
+        { status: 500 },
+      );
+    }
+
+    purchaseMemberId = ownerMembership.id;
+  }
+
+  // Seed starter content into the new subscription workspace itself. The
+  // defaults are not shared rows, so later edits/deletes stay isolated here.
+  try {
+    await ensureWorkspaceDefaultContent(businessId);
+  } catch (seedError) {
+    console.error(
+      "Unable to initialize new subscription starter content:",
+      seedError,
+    );
   }
 
   const cookieStore = await cookies();
@@ -136,7 +300,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     success: true,
     businessId,
-    memberId: row.member_id,
+    memberId: purchaseMemberId,
     subscriptionId: row.subscription_id,
     quote,
     paymentUrl:

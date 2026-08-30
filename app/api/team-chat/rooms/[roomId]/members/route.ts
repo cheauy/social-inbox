@@ -8,6 +8,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
   canManageTeamChat,
   getAccessibleRoom,
+  safeDetails,
 } from "@/lib/team/team-chat-server";
 
 export const runtime = "nodejs";
@@ -66,7 +67,7 @@ export async function PUT(
     );
   }
 
-  let body: { memberIds?: string[] };
+  let body: { memberIds?: unknown };
 
   try {
     body = await request.json();
@@ -77,11 +78,15 @@ export async function PUT(
     );
   }
 
+  const submitted = Array.isArray(body.memberIds)
+    ? body.memberIds.filter(
+        (memberId): memberId is string =>
+          typeof memberId === "string",
+      )
+    : [];
+
   const requested = Array.from(
-    new Set([
-      currentMember.id,
-      ...(body.memberIds ?? []),
-    ]),
+    new Set([currentMember.id, ...submitted]),
   );
 
   const { data: validMembers, error: validationError } =
@@ -97,37 +102,76 @@ export async function PUT(
       {
         success: false,
         error: "Unable to validate group members.",
-        details: validationError.message,
+        ...safeDetails(validationError.message),
       },
       { status: 500 },
     );
   }
 
   const validIds = (validMembers ?? []).map(
-    (member) => member.id,
+    (member) => member.id as string,
   );
 
-  const { error: deleteError } = await supabaseAdmin
-    .from("team_chat_room_members")
-    .delete()
-    .eq("room_id", room.id);
+  const { data: existingRows, error: existingError } =
+    await supabaseAdmin
+      .from("team_chat_room_members")
+      .select("member_id")
+      .eq("room_id", room.id)
+      .eq("business_id", currentMember.business_id);
 
-  if (deleteError) {
+  if (existingError) {
     return NextResponse.json(
       {
         success: false,
-        error: "Unable to update group members.",
-        details: deleteError.message,
+        error: "Unable to load current group members.",
+        ...safeDetails(existingError.message),
       },
       { status: 500 },
     );
   }
 
-  if (validIds.length > 0) {
+  const existingIds = new Set(
+    (existingRows ?? []).map((row) => row.member_id as string),
+  );
+
+  const nextIds = new Set(validIds);
+
+  // Diff instead of delete-everything-then-reinsert. The old approach
+  // was not atomic (a failed insert wiped the group) and it destroyed
+  // every member's last_read_at, resetting unread counts on every save.
+  const toRemove = [...existingIds].filter(
+    (memberId) => !nextIds.has(memberId),
+  );
+
+  const toAdd = [...nextIds].filter(
+    (memberId) => !existingIds.has(memberId),
+  );
+
+  if (toRemove.length > 0) {
+    const { error: removeError } = await supabaseAdmin
+      .from("team_chat_room_members")
+      .delete()
+      .eq("room_id", room.id)
+      .eq("business_id", currentMember.business_id)
+      .in("member_id", toRemove);
+
+    if (removeError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unable to remove group members.",
+          ...safeDetails(removeError.message),
+        },
+        { status: 500 },
+      );
+    }
+  }
+
+  if (toAdd.length > 0) {
     const { error: insertError } = await supabaseAdmin
       .from("team_chat_room_members")
       .insert(
-        validIds.map((memberId) => ({
+        toAdd.map((memberId) => ({
           room_id: room.id,
           business_id: currentMember.business_id,
           member_id: memberId,
@@ -142,9 +186,8 @@ export async function PUT(
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Group membership was cleared but could not be rebuilt. Please save members again.",
-          details: insertError.message,
+          error: "Unable to add group members.",
+          ...safeDetails(insertError.message),
         },
         { status: 500 },
       );
@@ -154,5 +197,7 @@ export async function PUT(
   return NextResponse.json({
     success: true,
     memberIds: validIds,
+    added: toAdd.length,
+    removed: toRemove.length,
   });
 }

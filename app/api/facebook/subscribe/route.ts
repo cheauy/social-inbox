@@ -4,6 +4,10 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   getFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -64,18 +68,16 @@ export async function POST(
     );
   }
 
-  if (authResult.member.role !== "owner") {
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Only the workspace owner can repair Facebook webhook subscriptions.",
-      },
-      {
-        status: 403,
-      },
+  // Was owner-only. The channels permission makes the
+  // Roles & permissions setting meaningful; Owners always pass.
+  if (
+    !(await memberHasPermission(authResult.member, "channels", "manage"))
+  ) {
+    return permissionDenied(
+      "You do not have permission to manage channels in this workspace.",
     );
   }
+
 
   let body: SubscribeBody = {};
 

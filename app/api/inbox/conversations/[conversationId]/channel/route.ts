@@ -4,8 +4,8 @@ import {
 } from "next/server";
 
 import {
-  getCurrentMember,
-} from "@/lib/auth/get-current-member";
+  getInboxConversationAccess,
+} from "@/lib/inbox/get-inbox-resource-access";
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
@@ -28,24 +28,6 @@ export async function GET(
   _request: NextRequest,
   context: RouteContext,
 ) {
-  const authResult =
-    await getCurrentMember();
-
-  if (!authResult.success) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: authResult.error,
-      },
-      {
-        status: authResult.status,
-        headers: {
-          "Cache-Control": "no-store",
-        },
-      },
-    );
-  }
-
   const { conversationId } =
     await context.params;
 
@@ -56,6 +38,16 @@ export async function GET(
         error: "Conversation ID is required.",
       },
       { status: 400 },
+    );
+  }
+
+  const access =
+    await getInboxConversationAccess(conversationId);
+
+  if (!access.success) {
+    return NextResponse.json(
+      { success: false, error: access.error },
+      { status: access.status, headers: { "Cache-Control": "no-store" } },
     );
   }
 
@@ -72,7 +64,7 @@ export async function GET(
       )
       .eq(
         "business_id",
-        authResult.member.business_id,
+        access.businessId,
       )
       .maybeSingle();
 

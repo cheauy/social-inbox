@@ -7,6 +7,10 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   decryptChannelCredential,
 } from "@/lib/channels/channel-token-crypto";
 import {
@@ -340,19 +344,16 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Was owner-only. The channels permission makes the
+  // Roles & permissions setting meaningful; Owners always pass.
   if (
-    authResult.member.role !==
-    "owner"
+    !(await memberHasPermission(authResult.member, "channels", "manage"))
   ) {
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Only the subscription owner can run Telegram diagnostics.",
-      },
-      { status: 403 },
+    return permissionDenied(
+      "You do not have permission to manage channels in this workspace.",
     );
   }
+
 
   try {
     const connection =
@@ -412,19 +413,16 @@ export async function POST(
     );
   }
 
+  // Was owner-only. The channels permission makes the
+  // Roles & permissions setting meaningful; Owners always pass.
   if (
-    authResult.member.role !==
-    "owner"
+    !(await memberHasPermission(authResult.member, "channels", "manage"))
   ) {
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Only the subscription owner can repair the Telegram webhook.",
-      },
-      { status: 403 },
+    return permissionDenied(
+      "You do not have permission to manage channels in this workspace.",
     );
   }
+
 
   let body: {
     action?: string;

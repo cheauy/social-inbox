@@ -131,9 +131,12 @@ export async function GET(
         success: false,
         error:
           "Unable to load SLA analytics.",
-        details: error.message,
-        hint:
-          "Run supabase/01-v2-14-sla-response-analytics.sql first, then restart npm run dev.",
+        ...(process.env.NODE_ENV !== "production"
+          ? { details: error.message }
+          : {}),
+        ...(process.env.NODE_ENV !== "production"
+          ? { hint: "Run supabase/01-v2-14-sla-response-analytics.sql first, then restart npm run dev." }
+          : {}),
       },
       {
         status: 500,
@@ -164,7 +167,9 @@ export async function GET(
         slaMet: 0,
         slaMissed: 0,
         slaWaiting: 0,
-        slaRate: 100,
+        // null, not 100 — nothing happened, so nothing was met.
+        // The agents route already reports null here.
+        slaRate: null,
         resolved: 0,
         avgResolutionSeconds: 0,
       },

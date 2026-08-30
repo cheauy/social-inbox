@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { SubscriptionPaymentView } from "@/components/subscription/subscription-payment-view";
 import { getCurrentMember } from "@/lib/auth/get-current-member";
+import { memberHasPermission } from "@/lib/auth/require-permission";
 import {
   getPlanPurchaseEligibility,
   isPaidPlan,
@@ -17,6 +18,7 @@ import {
 } from "@/lib/subscription/plan-catalog";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { buildCustomUpgradeQuote } from "@/lib/subscription/custom-upgrade";
+import { syncBusinessSubscriptionLifecycle } from "@/lib/subscription/sync-subscription-lifecycle";
 
 type PaymentPageProps = {
   searchParams: Promise<{
@@ -52,6 +54,7 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
 
   const member = authResult.member;
   const targetBusinessId = purchaseBusinessId || member.business_id;
+  let billingMember: Pick<typeof member, "id" | "role"> = member;
 
   if (purchaseBusinessId && purchaseBusinessId !== member.business_id) {
     const { data: purchaseMember, error: purchaseMemberError } = await supabaseAdmin
@@ -62,11 +65,28 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
       .eq("is_active", true)
       .maybeSingle();
 
-    if (purchaseMemberError || !purchaseMember || purchaseMember.role !== "owner") {
-      redirect("/dashboard/subscription?plan_change_blocked=owner-only");
+    if (purchaseMemberError || !purchaseMember) {
+      redirect("/dashboard/subscription?plan_change_blocked=billing-permission");
     }
-  } else if (member.role !== "owner") {
+
+    billingMember = purchaseMember;
+  }
+
+  if (!(await memberHasPermission(billingMember, "billing", "manage"))) {
+    redirect("/dashboard/subscription?plan_change_blocked=billing-permission");
+  }
+
+  // Reactivating a preserved subscription is an Owner-only decision. A team
+  // member may still buy a brand-new subscription and becomes Owner of that
+  // newly-created workspace, but cannot reactivate another Owner's workspace.
+  if (renewSame && billingMember.role !== "owner") {
     redirect("/dashboard/subscription?plan_change_blocked=owner-only");
+  }
+
+  try {
+    await syncBusinessSubscriptionLifecycle(targetBusinessId);
+  } catch (error) {
+    console.error("[TENH] Unable to synchronize subscription before checkout:", error);
   }
 
   let renewalSnapshot:
@@ -82,7 +102,7 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
       await supabaseAdmin
         .from("business_subscriptions")
         .select(
-          "status,plan_code,billing_cycle,last_paid_amount,last_paid_currency,member_limit,channel_limit,pricing_snapshot",
+          "status,plan_code,billing_cycle,last_paid_amount,last_paid_currency,member_limit,channel_limit,current_period_end,pricing_snapshot",
         )
         .eq("business_id", targetBusinessId)
         .maybeSingle();
@@ -100,10 +120,16 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
       Number.isFinite(savedRenewalCents) && savedRenewalCents > 0
         ? savedRenewalCents / 100
         : Number(previous?.last_paid_amount);
+    const previousPeriodEnd = previous?.current_period_end
+      ? Date.parse(previous.current_period_end)
+      : Number.NaN;
     const eligibleStatus =
       previous?.status === "expired" ||
       previous?.status === "past_due" ||
-      previous?.status === "cancelled";
+      previous?.status === "cancelled" ||
+      (previous?.status === "active" &&
+        Number.isFinite(previousPeriodEnd) &&
+        previousPeriodEnd <= Date.now());
 
     if (
       previousError ||
@@ -167,6 +193,11 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
               customUsers={capacity.users}
               customUpgrade
               customUpgradeTotalCents={quote.totalCents}
+              customUpgradeCurrentConnections={quote.currentConnections}
+              customUpgradeCurrentUsers={quote.currentUsers}
+              customUpgradeCurrentBillingCycle={quote.currentBillingCycle}
+              customUpgradeRemainingDays={quote.remainingDays}
+              customUpgradeExtensionMonths={quote.extensionMonths}
               customUpgradeCurrentPeriodEnd={quote.currentPeriodEnd}
               customUpgradeNewPeriodEnd={quote.newPeriodEnd}
               initialPayWayReturn={single(params.payway).trim() || null}
@@ -178,6 +209,14 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
       } catch {
         redirect("/dashboard/subscription?plan_change_blocked=invalid-custom-upgrade");
       }
+    }
+
+    // Subscription & billing = Manage grants upgrade access only. It never
+    // lets a team member replace/reactivate somebody else's preserved custom
+    // subscription. Buy New is unaffected because the buyer is Owner of the
+    // newly-created purchase workspace.
+    if (!renewSame && billingMember.role !== "owner") {
+      redirect("/dashboard/subscription?plan_change_blocked=owner-only");
     }
 
     // A normal custom purchase cannot replace an active subscription. Use
@@ -223,7 +262,15 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
     );
   }
 
-  const state = await loadPlanChangeState(targetBusinessId, "owner");
+  const billingCanManage = await memberHasPermission(
+    billingMember,
+    "billing",
+    "manage",
+  );
+  const state = await loadPlanChangeState(targetBusinessId, {
+    canManage: billingCanManage,
+    isOwner: billingMember.role === "owner",
+  });
   const eligibility = getPlanPurchaseEligibility(state, planCode);
 
   if (!eligibility.allowed) {

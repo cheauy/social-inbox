@@ -4,6 +4,7 @@ import type { User } from "@supabase/supabase-js";
 
 import type { AuthenticatedMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { ensureWorkspaceDefaultContent } from "@/lib/settings/ensure-workspace-default-content";
 import {
   completeFreeTrialClaim,
   getTrialClaimForUser,
@@ -338,6 +339,18 @@ export async function provisionUserWorkspace(
         error: "Unable to create your TENH workspace.",
         code: "PROVISION_FAILED",
       };
+    }
+
+    // Every newly-created TENH workspace receives its own starter tags and
+    // quick replies. These are ordinary workspace rows and can be edited or
+    // deleted without changing any other subscription/workspace.
+    try {
+      await ensureWorkspaceDefaultContent(member.business_id);
+    } catch (seedError) {
+      console.error(
+        "Unable to initialize TENH workspace starter content:",
+        seedError,
+      );
     }
 
     if (reservation.eligible) {

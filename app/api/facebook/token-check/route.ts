@@ -4,6 +4,10 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   getFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
 
@@ -26,21 +30,16 @@ export async function GET() {
     );
   }
 
+  // Was owner-only. The channels permission makes the
+  // Roles & permissions setting meaningful; Owners always pass.
   if (
-    authResult.member.role !==
-    "owner"
+    !(await memberHasPermission(authResult.member, "channels", "manage"))
   ) {
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Only the workspace owner can check the Facebook Page token.",
-      },
-      {
-        status: 403,
-      },
+    return permissionDenied(
+      "You do not have permission to manage channels in this workspace.",
     );
   }
+
 
   const pageId =
     process.env.FACEBOOK_PAGE_ID

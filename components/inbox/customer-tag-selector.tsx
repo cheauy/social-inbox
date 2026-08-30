@@ -3,6 +3,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -85,7 +86,7 @@ function CheckIcon() {
       fill="none"
       stroke="currentColor"
       strokeWidth="3"
-      className="h-5 w-5"
+      className="h-4 w-4"
       aria-hidden="true"
     >
       <path
@@ -95,6 +96,65 @@ function CheckIcon() {
       />
     </svg>
   );
+}
+
+function getReadableTagTextColor(
+  color: string,
+) {
+  const normalized =
+    color.trim();
+
+  const compactHex =
+    normalized.match(
+      /^#([0-9a-f]{3})$/i,
+    );
+
+  const fullHex =
+    normalized.match(
+      /^#([0-9a-f]{6})(?:[0-9a-f]{2})?$/i,
+    );
+
+  let hex: string | null =
+    null;
+
+  if (compactHex) {
+    hex = compactHex[1]
+      .split("")
+      .map(
+        (character) =>
+          `${character}${character}`,
+      )
+      .join("");
+  } else if (fullHex) {
+    hex = fullHex[1];
+  }
+
+  if (!hex) {
+    return "#ffffff";
+  }
+
+  const red = parseInt(
+    hex.slice(0, 2),
+    16,
+  );
+  const green = parseInt(
+    hex.slice(2, 4),
+    16,
+  );
+  const blue = parseInt(
+    hex.slice(4, 6),
+    16,
+  );
+
+  const brightness =
+    (red * 299 +
+      green * 587 +
+      blue * 114) /
+    1000;
+
+  return brightness > 170
+    ? "#0f172a"
+    : "#ffffff";
 }
 
 export function CustomerTagSelector({
@@ -145,12 +205,14 @@ export function CustomerTagSelector({
     useState(false);
 
   const [
-    updatingTagId,
-    setUpdatingTagId,
-  ] =
-    useState<
-      string | null
-    >(null);
+    updatingTagIds,
+    setUpdatingTagIds,
+  ] = useState<Set<string>>(new Set());
+
+  const [
+    visibleCount,
+    setVisibleCount,
+  ] = useState(20);
 
   const [
     error,
@@ -160,14 +222,68 @@ export function CustomerTagSelector({
       string | null
     >(null);
 
-  useEffect(() => {
-    setSelectedTags(
-      Array.isArray(
-        initialTags,
-      )
+  const popupRootRef =
+    useRef<HTMLDivElement>(null);
+
+  /*
+   * Keep the latest selection outside React's render cycle too.
+   * This prevents fast double-clicks / multi-tag clicks from using a stale
+   * selectedTags closure while the previous request is still in flight.
+   */
+  const selectedTagsRef =
+    useRef<CustomerTag[]>(
+      Array.isArray(initialTags)
         ? initialTags
         : [],
     );
+
+  const inflightTagIdsRef =
+    useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handleOutsidePointerDown(
+      event: PointerEvent,
+    ) {
+      const target =
+        event.target as Node | null;
+
+      if (
+        target &&
+        popupRootRef.current &&
+        !popupRootRef.current.contains(target)
+      ) {
+        setOpen(false);
+        setSearch("");
+        setError(null);
+      }
+    }
+
+    document.addEventListener(
+      "pointerdown",
+      handleOutsidePointerDown,
+    );
+
+    return () => {
+      document.removeEventListener(
+        "pointerdown",
+        handleOutsidePointerDown,
+      );
+    };
+  }, [open]);
+
+  useEffect(() => {
+    const nextTags =
+      Array.isArray(initialTags)
+        ? initialTags
+        : [];
+
+    selectedTagsRef.current =
+      nextTags;
+    setSelectedTags(nextTags);
   }, [
     initialTags,
     contactId,
@@ -302,10 +418,21 @@ export function CustomerTagSelector({
       search,
     ]);
 
+  const visibleTags = useMemo(
+    () => filteredTags.slice(0, visibleCount),
+    [filteredTags, visibleCount],
+  );
+
+  useEffect(() => {
+    setVisibleCount(20);
+  }, [search, open]);
+
   function publishTags(
     nextTags:
       CustomerTag[],
   ) {
+    selectedTagsRef.current =
+      nextTags;
     setSelectedTags(
       nextTags,
     );
@@ -335,18 +462,34 @@ export function CustomerTagSelector({
   async function addTag(
     tag: CustomerTag,
   ) {
+    const currentTags =
+      selectedTagsRef.current;
+
     if (
-      updatingTagId ||
-      selectedTagIds.has(
-        tag.id,
+      inflightTagIdsRef.current.has(tag.id) ||
+      currentTags.some(
+        (selectedTag) => selectedTag.id === tag.id,
       )
     ) {
       return;
     }
 
-    setUpdatingTagId(
-      tag.id,
-    );
+    /*
+     * Lock synchronously before the fetch. React state alone is not enough
+     * because a second click can happen before the next render.
+     */
+    inflightTagIdsRef.current.add(tag.id);
+    setUpdatingTagIds((current) => {
+      const next = new Set(current);
+      next.add(tag.id);
+      return next;
+    });
+
+    /* Optimistic: visible to this browser immediately. */
+    publishTags([
+      ...currentTags,
+      tag,
+    ]);
     setError(null);
 
     try {
@@ -356,8 +499,7 @@ export function CustomerTagSelector({
             contactId,
           )}/tags`,
           {
-            method:
-              "POST",
+            method: "POST",
             headers: {
               "Content-Type":
                 "application/json",
@@ -392,26 +534,31 @@ export function CustomerTagSelector({
         );
       }
 
-      const returnedTag =
-        result.tag ??
-        tag;
-
-      const nextTags =
-        selectedTagIds.has(
-          returnedTag.id,
-        )
-          ? selectedTags
-          : [
-              ...selectedTags,
-              returnedTag,
-            ];
-
-      publishTags(
-        nextTags,
-      );
+      /*
+       * Prefer the authoritative tag returned by the server, but do not
+       * replace unrelated tags that may have changed while this request ran.
+       */
+      if (result.tag) {
+        publishTags(
+          selectedTagsRef.current.map(
+            (selectedTag) =>
+              selectedTag.id === tag.id
+                ? result.tag as CustomerTag
+                : selectedTag,
+          ),
+        );
+      }
     } catch (
       addError
     ) {
+      /* Roll back only this tag so concurrent successful changes survive. */
+      publishTags(
+        selectedTagsRef.current.filter(
+          (selectedTag) =>
+            selectedTag.id !== tag.id,
+        ),
+      );
+
       setError(
         addError instanceof
           Error
@@ -419,36 +566,47 @@ export function CustomerTagSelector({
           : "Unable to add tag.",
       );
     } finally {
-      setUpdatingTagId(
-        null,
-      );
+      inflightTagIdsRef.current.delete(tag.id);
+      setUpdatingTagIds((current) => {
+        const next = new Set(current);
+        next.delete(tag.id);
+        return next;
+      });
     }
   }
 
   async function removeTag(
     tag: CustomerTag,
   ) {
+    const currentTags =
+      selectedTagsRef.current;
+
     if (
-      updatingTagId
+      inflightTagIdsRef.current.has(tag.id) ||
+      !currentTags.some(
+        (selectedTag) => selectedTag.id === tag.id,
+      )
     ) {
       return;
     }
 
-    setUpdatingTagId(
-      tag.id,
+    inflightTagIdsRef.current.add(tag.id);
+    setUpdatingTagIds((current) => {
+      const next = new Set(current);
+      next.add(tag.id);
+      return next;
+    });
+
+    /* Optimistic: remove immediately. */
+    publishTags(
+      currentTags.filter(
+        (selectedTag) =>
+          selectedTag.id !== tag.id,
+      ),
     );
     setError(null);
 
     try {
-      /*
-       * IMPORTANT V3.1.1 FIX:
-       *
-       * Your existing TENH route is:
-       *   DELETE /api/contacts/[contactId]/tags
-       *
-       * and it expects tagId + conversationId in a JSON body.
-       * Do NOT call /tags/[tagId].
-       */
       const params =
         new URLSearchParams();
 
@@ -493,19 +651,21 @@ export function CustomerTagSelector({
             "Unable to remove tag.",
         );
       }
-
-      publishTags(
-        selectedTags.filter(
-          (
-            selectedTag,
-          ) =>
-            selectedTag.id !==
-            tag.id,
-        ),
-      );
     } catch (
       removeError
     ) {
+      /* Restore only this tag; never overwrite another concurrent change. */
+      if (
+        !selectedTagsRef.current.some(
+          (selectedTag) => selectedTag.id === tag.id,
+        )
+      ) {
+        publishTags([
+          ...selectedTagsRef.current,
+          tag,
+        ]);
+      }
+
       setError(
         removeError instanceof
           Error
@@ -513,9 +673,12 @@ export function CustomerTagSelector({
           : "Unable to remove tag.",
       );
     } finally {
-      setUpdatingTagId(
-        null,
-      );
+      inflightTagIdsRef.current.delete(tag.id);
+      setUpdatingTagIds((current) => {
+        const next = new Set(current);
+        next.delete(tag.id);
+        return next;
+      });
     }
   }
 
@@ -523,8 +686,9 @@ export function CustomerTagSelector({
     tag: CustomerTag,
   ) {
     if (
-      selectedTagIds.has(
-        tag.id,
+      selectedTagsRef.current.some(
+        (selectedTag) =>
+          selectedTag.id === tag.id,
       )
     ) {
       await removeTag(
@@ -539,16 +703,14 @@ export function CustomerTagSelector({
   }
 
   return (
-    <div className="relative">
+    <div
+      ref={popupRootRef}
+      className="relative"
+    >
       <button
         type="button"
         onClick={() => {
-          setOpen(
-            (
-              current,
-            ) =>
-              !current,
-          );
+          setOpen((current) => !current);
           setSearch("");
           setError(null);
         }}
@@ -559,17 +721,13 @@ export function CustomerTagSelector({
         }`}
         aria-label="Quick tags"
         title="Quick tags"
-        aria-expanded={
-          open
-        }
+        aria-expanded={open}
       >
         <TagIcon />
 
-        {selectedTags.length >
-        0 ? (
+        {selectedTags.length > 0 ? (
           <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold leading-none text-white">
-            {selectedTags.length >
-            9
+            {selectedTags.length > 9
               ? "9+"
               : selectedTags.length}
           </span>
@@ -577,178 +735,138 @@ export function CustomerTagSelector({
       </button>
 
       {open ? (
-        <>
-          <button
-            type="button"
-            className="fixed inset-0 z-40 cursor-default"
-            onClick={() =>
-              setOpen(
-                false,
-              )
-            }
-            aria-label="Close quick tags"
-          />
+        <div className="absolute bottom-12 left-0 z-50 w-[430px] max-w-[calc(100vw-28px)] overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.20)]">
+          <div className="border-b border-slate-200 px-5 pb-4 pt-5">
+            <p className="text-xl font-bold tracking-tight text-slate-950">
+              Quick tags
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              Click a tag to add or remove it.
+            </p>
 
-          <div className="absolute bottom-12 left-0 z-50 w-80 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            <div className="border-b border-slate-200 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-bold text-slate-900">
-                    Quick tags
-                  </p>
+            <div className="relative mt-4">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path
+                  d="m20 20-3.5-3.5"
+                  strokeLinecap="round"
+                />
+              </svg>
 
-                  <p className="mt-0.5 text-[11px] text-slate-500">
-                    Click a tag to add or remove it.
-                  </p>
-                </div>
+              <input
+                value={search}
+                onChange={(event) =>
+                  setSearch(event.target.value)
+                }
+                placeholder="Search tags..."
+                className="h-12 w-full rounded-2xl border border-slate-300 bg-white pl-12 pr-4 text-[15px] outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              />
+            </div>
+          </div>
 
+          <div className="max-h-[360px] overflow-y-auto overscroll-contain px-5 py-5">
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-slate-500">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
+                Loading tags...
+              </div>
+            ) : filteredTags.length === 0 ? (
+              <div className="px-4 py-8 text-center text-sm text-slate-500">
+                No tags found.
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-x-3 gap-y-4">
+                {visibleTags.map((tag) => {
+                  const selected =
+                    selectedTagIds.has(tag.id);
+
+                  const textColor =
+                    getReadableTagTextColor(tag.color);
+
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() =>
+                        void toggleTag(tag)
+                      }
+                      disabled={updatingTagIds.has(tag.id)}
+                      title={tag.description ?? tag.name}
+                      className={`inline-flex min-h-11 max-w-full items-center gap-2 rounded-2xl border px-4 py-2.5 text-[15px] font-semibold transition active:scale-[0.98] ${
+                        selected
+                          ? "shadow-sm ring-2 ring-white ring-offset-1"
+                          : "hover:brightness-95"
+                      } disabled:cursor-wait disabled:opacity-70`}
+                      style={{
+                        backgroundColor: tag.color,
+                        borderColor: tag.color,
+                        color: textColor,
+                      }}
+                    >
+                      <span className="max-w-[235px] truncate">
+                        {tag.name}
+                      </span>
+
+                      {selected ? (
+                        <span
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white"
+                          style={{ color: tag.color }}
+                        >
+                          <CheckIcon />
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {!loading &&
+            visibleTags.length < filteredTags.length ? (
+              <div className="mt-4 border-t border-slate-100 pt-3">
                 <button
                   type="button"
                   onClick={() =>
-                    setOpen(
-                      false,
-                    )
+                    setVisibleCount((count) => count + 20)
                   }
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                  aria-label="Close"
+                  className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold text-blue-600 transition hover:bg-blue-50"
                 >
-                  ×
+                  Show 20 more · {filteredTags.length - visibleTags.length} remaining
                 </button>
               </div>
-
-              <div className="relative mt-3">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-                  aria-hidden="true"
-                >
-                  <circle
-                    cx="11"
-                    cy="11"
-                    r="7"
-                  />
-                  <path
-                    d="m20 20-3.5-3.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-
-                <input
-                  value={
-                    search
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    setSearch(
-                      event.target.value,
-                    )
-                  }
-                  placeholder="Search tags..."
-                  className="w-full rounded-xl border border-slate-300 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-            </div>
-
-            <div className="max-h-72 overflow-y-auto p-2">
-              {loading ? (
-                <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-slate-500">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
-                  Loading tags...
-                </div>
-              ) : filteredTags.length ===
-                0 ? (
-                <div className="px-4 py-8 text-center text-sm text-slate-500">
-                  No tags found.
-                </div>
-              ) : (
-                filteredTags.map(
-                  (
-                    tag,
-                  ) => {
-                    const selected =
-                      selectedTagIds.has(
-                        tag.id,
-                      );
-
-                    const updating =
-                      updatingTagId ===
-                      tag.id;
-
-                    return (
-                      <button
-                        key={
-                          tag.id
-                        }
-                        type="button"
-                        onClick={() =>
-                          void toggleTag(
-                            tag,
-                          )
-                        }
-                        disabled={
-                          Boolean(
-                            updatingTagId,
-                          )
-                        }
-                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-                          selected
-                            ? "bg-emerald-50"
-                            : "hover:bg-slate-50"
-                        } disabled:cursor-wait disabled:opacity-60`}
-                      >
-                        <span
-                          className="h-3 w-3 shrink-0 rounded-full"
-                          style={{
-                            backgroundColor:
-                              tag.color,
-                          }}
-                        />
-
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-slate-800">
-                            {
-                              tag.name
-                            }
-                          </p>
-
-                          {tag.description ? (
-                            <p className="mt-0.5 truncate text-[11px] text-slate-400">
-                              {
-                                tag.description
-                              }
-                            </p>
-                          ) : null}
-                        </div>
-
-                        {updating ? (
-                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
-                        ) : selected ? (
-                          <span className="text-emerald-600">
-                            <CheckIcon />
-                          </span>
-                        ) : null}
-                      </button>
-                    );
-                  },
-                )
-              )}
-            </div>
-
-            {error ? (
-              <div className="border-t border-red-100 bg-red-50 px-4 py-3 text-xs text-red-700">
-                {error}
-              </div>
             ) : null}
-
-            <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-500">
-              Manage tag names and colors in Settings → Conversation Tags.
-            </div>
           </div>
-        </>
+
+          {error ? (
+            <div className="border-t border-red-100 bg-red-50 px-5 py-3 text-xs text-red-700">
+              {error}
+            </div>
+          ) : null}
+
+          <div className="flex items-center gap-2 border-t border-slate-200 bg-slate-50/80 px-5 py-4 text-xs text-slate-500">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              className="h-5 w-5 shrink-0"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.6v-.1A1.7 1.7 0 0 0 8 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.86-2.86.06-.06A1.7 1.7 0 0 0 3.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H1.8V9.6h.1A1.7 1.7 0 0 0 3.6 8a1.7 1.7 0 0 0-.34-1.88l-.06-.06L6.06 3.2l.06.06A1.7 1.7 0 0 0 8 3.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V1.8h4v.1A1.7 1.7 0 0 0 15 3.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 19.4 8c.12.4.33.75.6 1 .3.27.7.4 1.1.4h.1v4h-.1a1.7 1.7 0 0 0-1.7 1.6Z" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span>
+              Manage tag names and colors in Settings → Quick tag.
+            </span>
+          </div>
+        </div>
       ) : null}
     </div>
   );

@@ -4,6 +4,10 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   getPayWayConfig,
   getPayWayReadiness,
 } from "@/lib/payway/config";
@@ -42,16 +46,14 @@ export async function GET() {
     }
 
     if (
-      authResult.member.role !==
-      "owner"
+      !(await memberHasPermission(
+        authResult.member,
+        "billing",
+      "manage",
+      ))
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Only the workspace owner can view PayWay diagnostics.",
-        },
-        { status: 403 },
+      return permissionDenied(
+        "Only the workspace owner can view PayWay diagnostics.",
       );
     }
 

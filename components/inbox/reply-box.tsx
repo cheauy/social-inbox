@@ -6,15 +6,28 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
 
 import EmojiPicker from "emoji-picker-react";
 
 import { CustomerTagSelector } from "@/components/inbox/customer-tag-selector";
+import {
+  LocationPickerDialog,
+  type PickedLocation,
+} from "@/components/inbox/location-picker-dialog";
 import { SavedReplySelector } from "@/components/inbox/saved-reply-selector";
+import {
+  useWorkspaceLanguageId,
+} from "@/components/display/workspace-language-text";
 
-import type { CustomerTag } from "@/types/inbox";
+import type {
+  ConversationStatus,
+  CustomerTag,
+} from "@/types/inbox";
+
+import type {
+  AgentPresence,
+} from "@/lib/inbox/use-agent-presence";
 
 export type ReplyAttachmentKind =
   | "image"
@@ -38,6 +51,11 @@ type ReplyBoxProps = {
   contactId: string;
   businessId: string;
   initialTags: CustomerTag[];
+  typingAgents?: AgentPresence[];
+
+  onTagsChange?: (
+    tags: CustomerTag[],
+  ) => void;
 
   allowAttachments?: boolean;
 
@@ -50,6 +68,10 @@ type ReplyBoxProps = {
   onSendAttachments?: (
     attachments: ReplyAttachment[],
   ) => Promise<boolean>;
+
+  onStatusChange?: (
+    status: ConversationStatus,
+  ) => void;
 };
 
 const TENH_ATTACHMENT_LIMITS = {
@@ -202,19 +224,20 @@ function EmojiIcon() {
   );
 }
 
-function PlusIcon() {
+function AttachIcon() {
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="1.8"
       className="h-5 w-5"
       aria-hidden="true"
     >
       <path
-        d="M12 5v14M5 12h14"
+        d="m8.5 12.5 6.8-6.8a3 3 0 1 1 4.2 4.2l-8.9 8.9a5 5 0 0 1-7.1-7.1l8.2-8.2"
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
@@ -254,281 +277,12 @@ function formatFileSize(bytes: number) {
   ).toFixed(1)} MB`;
 }
 
+function formatVoiceDuration(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
 
-const LOCATION_MAP_TILE_SIZE = 256;
-const LOCATION_MAP_MIN_ZOOM = 3;
-const LOCATION_MAP_MAX_ZOOM = 18;
-
-type LocationPoint = {
-  latitude: number;
-  longitude: number;
-};
-
-type LocationMapSize = {
-  width: number;
-  height: number;
-};
-
-function clampLocationLatitude(
-  latitude: number,
-) {
-  return Math.max(
-    -85.05112878,
-    Math.min(
-      85.05112878,
-      latitude,
-    ),
-  );
-}
-
-function wrapLocationLongitude(
-  longitude: number,
-) {
-  return (
-    ((longitude + 180) % 360 + 360) %
-      360 -
-    180
-  );
-}
-
-function locationToWorldPixel({
-  latitude,
-  longitude,
-  zoom,
-}: LocationPoint & {
-  zoom: number;
-}) {
-  const scale =
-    LOCATION_MAP_TILE_SIZE *
-    2 ** zoom;
-
-  const clampedLatitude =
-    clampLocationLatitude(
-      latitude,
-    );
-
-  const latitudeRadians =
-    (clampedLatitude *
-      Math.PI) /
-    180;
-
-  const worldX =
-    ((wrapLocationLongitude(
-      longitude,
-    ) +
-      180) /
-      360) *
-    scale;
-
-  const worldY =
-    (
-      0.5 -
-      Math.log(
-        (
-          1 +
-          Math.sin(
-            latitudeRadians,
-          )
-        ) /
-          (
-            1 -
-            Math.sin(
-              latitudeRadians,
-            )
-          ),
-      ) /
-        (4 * Math.PI)
-    ) *
-    scale;
-
-  return {
-    x: worldX,
-    y: worldY,
-    scale,
-  };
-}
-
-function worldPixelToLocation({
-  x,
-  y,
-  zoom,
-}: {
-  x: number;
-  y: number;
-  zoom: number;
-}): LocationPoint {
-  const scale =
-    LOCATION_MAP_TILE_SIZE *
-    2 ** zoom;
-
-  const normalizedX =
-    ((x % scale) + scale) %
-    scale;
-
-  const clampedY =
-    Math.max(
-      0,
-      Math.min(
-        scale,
-        y,
-      ),
-    );
-
-  const longitude =
-    (normalizedX / scale) *
-      360 -
-    180;
-
-  const normalizedY =
-    0.5 -
-    clampedY / scale;
-
-  const latitude =
-    (
-      90 -
-      (360 *
-        Math.atan(
-          Math.exp(
-            -normalizedY *
-              2 *
-              Math.PI,
-          ),
-        )) /
-        Math.PI
-    );
-
-  return {
-    latitude:
-      clampLocationLatitude(
-        latitude,
-      ),
-    longitude:
-      wrapLocationLongitude(
-        longitude,
-      ),
-  };
-}
-
-function getLocationMapTiles({
-  center,
-  zoom,
-  size,
-}: {
-  center: LocationPoint;
-  zoom: number;
-  size: LocationMapSize;
-}) {
-  const centerWorld =
-    locationToWorldPixel({
-      ...center,
-      zoom,
-    });
-
-  const tilesPerAxis =
-    2 ** zoom;
-
-  const viewportLeft =
-    centerWorld.x -
-    size.width / 2;
-
-  const viewportTop =
-    centerWorld.y -
-    size.height / 2;
-
-  /*
-   * Keep only a half-tile preload buffer around the viewport.
-   * V3.11.9.2 loaded a full extra tile on every edge, which produced many
-   * more image requests and made the picker feel slow.
-   */
-  const preloadBuffer =
-    LOCATION_MAP_TILE_SIZE / 2;
-
-  const startTileX =
-    Math.floor(
-      (
-        viewportLeft -
-        preloadBuffer
-      ) /
-        LOCATION_MAP_TILE_SIZE,
-    );
-
-  const endTileX =
-    Math.floor(
-      (
-        viewportLeft +
-        size.width +
-        preloadBuffer
-      ) /
-        LOCATION_MAP_TILE_SIZE,
-    );
-
-  const startTileY =
-    Math.floor(
-      (
-        viewportTop -
-        preloadBuffer
-      ) /
-        LOCATION_MAP_TILE_SIZE,
-    );
-
-  const endTileY =
-    Math.floor(
-      (
-        viewportTop +
-        size.height +
-        preloadBuffer
-      ) /
-        LOCATION_MAP_TILE_SIZE,
-    );
-
-  const tiles: Array<{
-    key: string;
-    x: number;
-    y: number;
-    url: string;
-  }> = [];
-
-  for (
-    let tileY = startTileY;
-    tileY <= endTileY;
-    tileY += 1
-  ) {
-    if (
-      tileY < 0 ||
-      tileY >= tilesPerAxis
-    ) {
-      continue;
-    }
-
-    for (
-      let tileX = startTileX;
-      tileX <= endTileX;
-      tileX += 1
-    ) {
-      const wrappedTileX =
-        ((tileX %
-          tilesPerAxis) +
-          tilesPerAxis) %
-        tilesPerAxis;
-
-      tiles.push({
-        key:
-          `${zoom}:${tileX}:${tileY}`,
-        x:
-          tileX *
-            LOCATION_MAP_TILE_SIZE -
-          viewportLeft,
-        y:
-          tileY *
-            LOCATION_MAP_TILE_SIZE -
-          viewportTop,
-        url:
-          `https://tile.openstreetmap.org/${zoom}/${wrappedTileX}/${tileY}.png`,
-      });
-    }
-  }
-
-  return tiles;
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
 export function ReplyBox({
@@ -538,12 +292,17 @@ export function ReplyBox({
   contactId,
   businessId,
   initialTags,
+  typingAgents = [],
+  onTagsChange,
   conversationId,
   allowAttachments = true,
   onReplyChange,
   onSubmit,
   onSendAttachments,
+  onStatusChange,
 }: ReplyBoxProps) {
+  const isKhmer = useWorkspaceLanguageId() === "km";
+
   const [sendingContent, setSendingContent] =
     useState(false);
 
@@ -560,6 +319,9 @@ export function ReplyBox({
   const fileInputRef =
     useRef<HTMLInputElement | null>(null);
 
+  const replyInputRef =
+    useRef<HTMLTextAreaElement | null>(null);
+
   const [attachments, setAttachments] =
     useState<ReplyAttachment[]>([]);
 
@@ -569,79 +331,47 @@ export function ReplyBox({
   const [moreOpen, setMoreOpen] =
     useState(false);
 
-  const [gettingLocation, setGettingLocation] =
+  const [locationPickerOpen, setLocationPickerOpen] =
     useState(false);
 
-  const [
-    locationPickerOpen,
-    setLocationPickerOpen,
-  ] = useState(false);
+  const [lastPickedLocation, setLastPickedLocation] =
+    useState<PickedLocation | null>(null);
 
-  const [
-    locationPickerError,
-    setLocationPickerError,
-  ] = useState<string | null>(null);
+  type SendMode =
+    | "now"
+    | "close"
+    | "pending";
 
-  const [
-    selectedLocation,
-    setSelectedLocation,
-  ] = useState<LocationPoint | null>(
-    null,
-  );
+  const [sendMode, setSendMode] =
+    useState<SendMode>("now");
 
-  const locationMapRef =
-    useRef<HTMLDivElement | null>(
-      null,
-    );
+  const [sendMenuOpen, setSendMenuOpen] =
+    useState(false);
 
-  const [
-    locationMapSize,
-    setLocationMapSize,
-  ] = useState<LocationMapSize>({
-    width: 420,
-    height: 290,
-  });
+  type ToolbarPanel =
+    | "quick-tag"
+    | "quick-reply"
+    | "emoji"
+    | "attach"
+    | null;
 
-  const [
-    locationMapZoom,
-    setLocationMapZoom,
-  ] = useState(17);
+  const [activeToolbarPanel, setActiveToolbarPanel] =
+    useState<ToolbarPanel>(null);
 
-  const [
-    locationMapDragging,
-    setLocationMapDragging,
-  ] = useState(false);
+  const pendingPostSendStatusRef =
+    useRef<ConversationStatus | null>(null);
 
-  const locationTileLayerRef =
-    useRef<HTMLDivElement | null>(
-      null,
-    );
-
-  const locationDragRef =
-    useRef<{
-      pointerId: number;
-      startX: number;
-      startY: number;
-      lastX: number;
-      lastY: number;
-      moved: boolean;
-      startLocation: LocationPoint;
-    } | null>(null);
-
-  const locationDragFrameRef =
-    useRef<number | null>(
-      null,
-    );
-
-  const locationPendingDragRef =
-    useRef({
-      x: 0,
-      y: 0,
-    });
+  const previousSendingRef =
+    useRef(sending);
 
   const [
     recordingVoice,
     setRecordingVoice,
+  ] = useState(false);
+
+  const [
+    recordingPaused,
+    setRecordingPaused,
   ] = useState(false);
 
   const [
@@ -653,6 +383,30 @@ export function ReplyBox({
     recordingError,
     setRecordingError,
   ] = useState<string | null>(null);
+
+  const [
+    voiceReview,
+    setVoiceReview,
+  ] = useState<{
+    attachmentId: string;
+    durationSeconds: number;
+  } | null>(null);
+
+  const [
+    voiceReviewPlaying,
+    setVoiceReviewPlaying,
+  ] = useState(false);
+
+  const [
+    voicePlaybackSeconds,
+    setVoicePlaybackSeconds,
+  ] = useState(0);
+
+  const voicePreviewAudioRef =
+    useRef<HTMLAudioElement | null>(null);
+
+  const recordingSecondsRef =
+    useRef(0);
 
   const mediaRecorderRef =
     useRef<MediaRecorder | null>(null);
@@ -670,6 +424,115 @@ export function ReplyBox({
 
   const discardRecordingRef =
     useRef(false);
+
+  function closeExpandedChildSelector(
+    ariaLabel: "Quick tags" | "Quick replies",
+  ) {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const trigger = document.querySelector<HTMLButtonElement>(
+      `button[aria-label="${ariaLabel}"][aria-expanded="true"]`,
+    );
+
+    trigger?.click();
+  }
+
+  function dismissToolbarPanels() {
+    setEmojiOpen(false);
+    setMoreOpen(false);
+    setSendMenuOpen(false);
+    closeExpandedChildSelector("Quick tags");
+    closeExpandedChildSelector("Quick replies");
+
+    if (typeof window !== "undefined") {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+        }),
+      );
+
+      const activeElement =
+        document.activeElement;
+
+      if (activeElement instanceof HTMLElement) {
+        activeElement.blur();
+      }
+    }
+  }
+
+  function clearToolbarPanel() {
+    setActiveToolbarPanel(null);
+  }
+
+  /*
+   * Keep the two existing selector components mutually exclusive.
+   * They own their own open state, so we mirror aria-expanded and
+   * close the opposite selector after React finishes its click cycle.
+   */
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    let frame = 0;
+
+    const syncSelectorState = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const quickTagOpen = Boolean(
+          document.querySelector(
+            'button[aria-label="Quick tags"][aria-expanded="true"]',
+          ),
+        );
+        const quickReplyOpen = Boolean(
+          document.querySelector(
+            'button[aria-label="Quick replies"][aria-expanded="true"]',
+          ),
+        );
+
+        if (quickTagOpen && quickReplyOpen) {
+          if (activeToolbarPanel === "quick-reply") {
+            closeExpandedChildSelector("Quick tags");
+          } else {
+            closeExpandedChildSelector("Quick replies");
+          }
+          return;
+        }
+
+        if (quickTagOpen) {
+          setActiveToolbarPanel("quick-tag");
+          return;
+        }
+
+        if (quickReplyOpen) {
+          setActiveToolbarPanel("quick-reply");
+          return;
+        }
+
+        if (!emojiOpen && !moreOpen) {
+          setActiveToolbarPanel(null);
+        }
+      });
+    };
+
+    const observer = new MutationObserver(syncSelectorState);
+    observer.observe(document.body, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["aria-expanded"],
+      childList: true,
+    });
+
+    syncSelectorState();
+
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [activeToolbarPanel, emojiOpen, moreOpen]);
 
   function clearRecordingTimer() {
     if (recordingTimerRef.current) {
@@ -748,7 +611,11 @@ export function ReplyBox({
 
     setEmojiOpen(false);
     setMoreOpen(false);
+    setSendMenuOpen(false);
+    clearToolbarPanel();
     setRecordingError(null);
+    setVoiceReviewPlaying(false);
+    setVoicePlaybackSeconds(0);
 
     try {
       const stream =
@@ -802,6 +669,7 @@ export function ReplyBox({
         clearRecordingTimer();
         stopRecordingTracks();
         setRecordingVoice(false);
+        setRecordingPaused(false);
 
         if (
           discardRecordingRef.current
@@ -873,40 +741,54 @@ export function ReplyBox({
             attachment,
           ],
         );
+
+        setVoiceReview({
+          attachmentId: attachment.id,
+          durationSeconds: Math.max(1, recordingSecondsRef.current),
+        });
+        setVoiceReviewPlaying(false);
+        setVoicePlaybackSeconds(0);
       };
 
       recorder.onerror = () => {
         clearRecordingTimer();
         stopRecordingTracks();
         setRecordingVoice(false);
+        setRecordingPaused(false);
         setRecordingError(
           "Voice recording stopped because the browser reported an audio error.",
         );
       };
 
       recorder.start(250);
+      recordingSecondsRef.current = 0;
       setRecordingSeconds(0);
+      setRecordingPaused(false);
       setRecordingVoice(true);
 
       recordingTimerRef.current =
         setInterval(() => {
+          if (
+            mediaRecorderRef.current?.state !==
+            "recording"
+          ) {
+            return;
+          }
+
           setRecordingSeconds(
             (current) => {
-              const next =
-                current + 1;
+              const next = current + 1;
+              recordingSecondsRef.current = next;
 
               /*
                * Prevent accidental extremely long recordings.
                */
               if (
                 next >= 300 &&
-                mediaRecorderRef
-                  .current
-                  ?.state ===
+                mediaRecorderRef.current?.state ===
                   "recording"
               ) {
-                mediaRecorderRef
-                  .current.stop();
+                mediaRecorderRef.current.stop();
               }
 
               return next;
@@ -929,6 +811,28 @@ export function ReplyBox({
           : "Unable to start the microphone.",
       );
     }
+  }
+
+  function pauseVoiceRecording() {
+    const recorder = mediaRecorderRef.current;
+
+    if (!recorder || recorder.state !== "recording") {
+      return;
+    }
+
+    recorder.pause();
+    setRecordingPaused(true);
+  }
+
+  function resumeVoiceRecording() {
+    const recorder = mediaRecorderRef.current;
+
+    if (!recorder || recorder.state !== "paused") {
+      return;
+    }
+
+    recorder.resume();
+    setRecordingPaused(false);
   }
 
   function finishVoiceRecording() {
@@ -965,13 +869,131 @@ export function ReplyBox({
       clearRecordingTimer();
       stopRecordingTracks();
       setRecordingVoice(false);
+      setRecordingPaused(false);
     }
 
+    recordingSecondsRef.current = 0;
     setRecordingSeconds(0);
+    setVoiceReviewPlaying(false);
+    setVoicePlaybackSeconds(0);
+  }
+
+  function getVoiceReviewAttachment() {
+    if (!voiceReview) {
+      return null;
+    }
+
+    return (
+      attachments.find(
+        (attachment) => attachment.id === voiceReview.attachmentId,
+      ) ?? null
+    );
+  }
+
+  function discardVoiceReview() {
+    if (!voiceReview) {
+      return;
+    }
+
+    const attachment = getVoiceReviewAttachment();
+
+    if (voicePreviewAudioRef.current) {
+      voicePreviewAudioRef.current.pause();
+    }
+
+    if (attachment) {
+      URL.revokeObjectURL(attachment.previewUrl);
+    }
+
+    setAttachments((current) =>
+      current.filter((item) => item.id !== voiceReview.attachmentId),
+    );
+    setVoiceReview(null);
+    setVoiceReviewPlaying(false);
+    setVoicePlaybackSeconds(0);
+    recordingSecondsRef.current = 0;
+    setRecordingSeconds(0);
+  }
+
+  function reRecordVoice() {
+    discardVoiceReview();
+
+    window.setTimeout(() => {
+      void startVoiceRecording();
+    }, 0);
+  }
+
+  async function toggleVoiceReviewPlayback() {
+    const audio = voicePreviewAudioRef.current;
+
+    if (!audio) {
+      return;
+    }
+
+    if (voiceReviewPlaying) {
+      audio.pause();
+      setVoiceReviewPlaying(false);
+      return;
+    }
+
+    try {
+      await audio.play();
+      setVoiceReviewPlaying(true);
+    } catch {
+      setVoiceReviewPlaying(false);
+    }
+  }
+
+  async function sendVoiceReview() {
+    const attachment = getVoiceReviewAttachment();
+
+    if (!attachment || !onSendAttachments || isSending) {
+      return;
+    }
+
+    if (voicePreviewAudioRef.current) {
+      voicePreviewAudioRef.current.pause();
+    }
+
+    setVoiceReviewPlaying(false);
+    setSendingContent(true);
+    setRecordingError(null);
+
+    try {
+      const success = await onSendAttachments([attachment]);
+
+      if (!success) {
+        return;
+      }
+
+      URL.revokeObjectURL(attachment.previewUrl);
+      setAttachments((current) =>
+        current.filter((item) => item.id !== attachment.id),
+      );
+      setVoiceReview(null);
+      setVoicePlaybackSeconds(0);
+      recordingSecondsRef.current = 0;
+      setRecordingSeconds(0);
+    } catch (sendError) {
+      console.error(
+        "Unable to send voice message:",
+        sendError,
+      );
+
+      setRecordingError(
+        "Unable to send voice message. Please try again.",
+      );
+    } finally {
+      setSendingContent(false);
+    }
   }
 
   useEffect(() => {
     return () => {
+      if (voicePreviewAudioRef.current) {
+        voicePreviewAudioRef.current.pause();
+      }
+
       discardRecordingRef.current =
         true;
 
@@ -988,17 +1010,40 @@ export function ReplyBox({
 
       clearRecordingTimer();
       stopRecordingTracks();
-
-      if (
-        locationDragFrameRef.current !==
-        null
-      ) {
-        window.cancelAnimationFrame(
-          locationDragFrameRef.current,
-        );
-      }
     };
   }, []);
+
+  /*
+   * Safe post-send status action.
+   * We only close/mark pending AFTER the parent send cycle finishes
+   * without a send error. This reuses the existing status handler.
+   */
+  useEffect(() => {
+    const wasSending =
+      previousSendingRef.current;
+
+    previousSendingRef.current =
+      sending;
+
+    if (
+      !wasSending ||
+      sending ||
+      !pendingPostSendStatusRef.current
+    ) {
+      return;
+    }
+
+    const nextStatus =
+      pendingPostSendStatusRef.current;
+
+    pendingPostSendStatusRef.current =
+      null;
+
+    if (!error && onStatusChange) {
+      onStatusChange(nextStatus);
+      setSendMode("now");
+    }
+  }, [error, onStatusChange, sending]);
 
   function addAttachments(
     files: FileList | null,
@@ -1086,6 +1131,7 @@ export function ReplyBox({
     ]);
 
     setMoreOpen(false);
+    clearToolbarPanel();
   }
 
   function handleImageChange(
@@ -1157,521 +1203,25 @@ export function ReplyBox({
     onReplyChange(`${reply}${emoji}`);
   }
 
-  function requestCurrentLocation({
-    openPicker,
-  }: {
-    openPicker: boolean;
-  }) {
-    if (
-      typeof navigator ===
-        "undefined" ||
-      !navigator.geolocation
-    ) {
-      const message =
-        "Location is not supported by this browser.";
-
-      if (openPicker) {
-        window.alert(message);
-      } else {
-        setLocationPickerError(
-          message,
-        );
-      }
-
-      return;
-    }
-
-    if (openPicker) {
-      setMoreOpen(false);
-      setEmojiOpen(false);
-      setLocationPickerOpen(
-        true,
-      );
-      setSelectedLocation(
-        null,
-      );
-    }
-
-    setLocationPickerError(
-      null,
-    );
-    setGettingLocation(true);
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setSelectedLocation({
-          latitude:
-            position.coords.latitude,
-          longitude:
-            position.coords.longitude,
-        });
-
-        setLocationMapZoom(17);
-        setGettingLocation(
-          false,
-        );
-      },
-      (locationError) => {
-        setGettingLocation(
-          false,
-        );
-
-        if (
-          locationError.code ===
-          locationError.PERMISSION_DENIED
-        ) {
-          setLocationPickerError(
-            "Location permission was denied. Allow location access in your browser and try again.",
-          );
-          return;
-        }
-
-        setLocationPickerError(
-          "Unable to get your current location.",
-        );
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 15000,
-      },
-    );
-  }
-
   function addLocation() {
-    requestCurrentLocation({
-      openPicker: true,
-    });
+    setMoreOpen(false);
+    clearToolbarPanel();
+    setLocationPickerOpen(true);
   }
 
-  function useMyCurrentLocation() {
-    requestCurrentLocation({
-      openPicker: false,
-    });
-  }
-
-  function closeLocationPicker() {
-    setLocationPickerOpen(false);
-    setLocationPickerError(null);
-    setSelectedLocation(null);
-    setGettingLocation(false);
-  }
-
-  function confirmSelectedLocation() {
-    if (!selectedLocation) {
-      return;
-    }
-
-    const latitude =
-      selectedLocation.latitude;
-    const longitude =
-      selectedLocation.longitude;
-
+  function confirmPickedLocation(location: PickedLocation) {
+    const latitude = Number(location.latitude.toFixed(6));
+    const longitude = Number(location.longitude.toFixed(6));
     const locationMessage =
       `📍 Location: https://www.google.com/maps?q=${latitude},${longitude}`;
 
+    setLastPickedLocation({ latitude, longitude });
     onReplyChange(
       reply.trim()
-        ? `${reply}
-${locationMessage}`
+        ? `${reply}\n${locationMessage}`
         : locationMessage,
     );
-
-    closeLocationPicker();
-  }
-
-  useEffect(() => {
-    if (
-      !locationPickerOpen ||
-      !locationMapRef.current
-    ) {
-      return;
-    }
-
-    const mapElement =
-      locationMapRef.current;
-
-    function updateMapSize() {
-      const rect =
-        mapElement.getBoundingClientRect();
-
-      setLocationMapSize({
-        width:
-          Math.max(
-            1,
-            rect.width,
-          ),
-        height:
-          Math.max(
-            1,
-            rect.height,
-          ),
-      });
-    }
-
-    updateMapSize();
-
-    const observer =
-      typeof ResizeObserver !==
-      "undefined"
-        ? new ResizeObserver(
-            updateMapSize,
-          )
-        : null;
-
-    observer?.observe(
-      mapElement,
-    );
-
-    window.addEventListener(
-      "resize",
-      updateMapSize,
-    );
-
-    return () => {
-      observer?.disconnect();
-
-      window.removeEventListener(
-        "resize",
-        updateMapSize,
-      );
-    };
-  }, [locationPickerOpen]);
-
-  function applyLocationDragTransform(
-    x: number,
-    y: number,
-  ) {
-    const tileLayer =
-      locationTileLayerRef.current;
-
-    if (!tileLayer) {
-      return;
-    }
-
-    locationPendingDragRef.current =
-      {
-        x,
-        y,
-      };
-
-    if (
-      locationDragFrameRef.current !==
-      null
-    ) {
-      return;
-    }
-
-    locationDragFrameRef.current =
-      window.requestAnimationFrame(
-        () => {
-          locationDragFrameRef.current =
-            null;
-
-          const pending =
-            locationPendingDragRef.current;
-
-          tileLayer.style.transform =
-            `translate3d(${pending.x}px, ${pending.y}px, 0)`;
-        },
-      );
-  }
-
-  function resetLocationDragTransform() {
-    if (
-      locationDragFrameRef.current !==
-      null
-    ) {
-      window.cancelAnimationFrame(
-        locationDragFrameRef.current,
-      );
-
-      locationDragFrameRef.current =
-        null;
-    }
-
-    locationPendingDragRef.current =
-      {
-        x: 0,
-        y: 0,
-      };
-
-    if (
-      locationTileLayerRef.current
-    ) {
-      locationTileLayerRef.current.style.transform =
-        "translate3d(0, 0, 0)";
-    }
-  }
-
-  function locationFromMapOffset({
-    baseLocation,
-    offsetX,
-    offsetY,
-  }: {
-    baseLocation:
-      LocationPoint;
-    offsetX: number;
-    offsetY: number;
-  }) {
-    const centerWorld =
-      locationToWorldPixel({
-        ...baseLocation,
-        zoom:
-          locationMapZoom,
-      });
-
-    return worldPixelToLocation({
-      /*
-       * Moving map imagery right means the selected map center moves west,
-       * so subtract the pointer movement from world coordinates.
-       */
-      x:
-        centerWorld.x -
-        offsetX,
-      y:
-        centerWorld.y -
-        offsetY,
-      zoom:
-        locationMapZoom,
-    });
-  }
-
-  function handleLocationMapPointerDown(
-    event:
-      ReactPointerEvent<HTMLDivElement>,
-  ) {
-    if (
-      !selectedLocation ||
-      gettingLocation
-    ) {
-      return;
-    }
-
-    if (
-      event.button !== 0 &&
-      event.pointerType ===
-        "mouse"
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-
-    event.currentTarget.setPointerCapture(
-      event.pointerId,
-    );
-
-    locationDragRef.current =
-      {
-        pointerId:
-          event.pointerId,
-        startX:
-          event.clientX,
-        startY:
-          event.clientY,
-        lastX:
-          event.clientX,
-        lastY:
-          event.clientY,
-        moved: false,
-        startLocation:
-          selectedLocation,
-      };
-
-    setLocationMapDragging(
-      true,
-    );
-  }
-
-  function handleLocationMapPointerMove(
-    event:
-      ReactPointerEvent<HTMLDivElement>,
-  ) {
-    const drag =
-      locationDragRef.current;
-
-    if (
-      !drag ||
-      drag.pointerId !==
-        event.pointerId
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-
-    drag.lastX =
-      event.clientX;
-    drag.lastY =
-      event.clientY;
-
-    const offsetX =
-      drag.lastX -
-      drag.startX;
-
-    const offsetY =
-      drag.lastY -
-      drag.startY;
-
-    if (
-      Math.hypot(
-        offsetX,
-        offsetY,
-      ) > 4
-    ) {
-      drag.moved =
-        true;
-    }
-
-    applyLocationDragTransform(
-      offsetX,
-      offsetY,
-    );
-  }
-
-  function finishLocationMapPointer(
-    event:
-      ReactPointerEvent<HTMLDivElement>,
-  ) {
-    const drag =
-      locationDragRef.current;
-
-    if (
-      !drag ||
-      drag.pointerId !==
-        event.pointerId
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-
-    const offsetX =
-      event.clientX -
-      drag.startX;
-
-    const offsetY =
-      event.clientY -
-      drag.startY;
-
-    let nextLocation:
-      | LocationPoint
-      | null = null;
-
-    if (drag.moved) {
-      nextLocation =
-        locationFromMapOffset({
-          baseLocation:
-            drag.startLocation,
-          offsetX,
-          offsetY,
-        });
-    } else if (
-      locationMapRef.current
-    ) {
-      const rect =
-        locationMapRef.current.getBoundingClientRect();
-
-      /*
-       * A simple click/tap still selects the clicked point.
-       * Because the pin stays centered, this recenters that point under it.
-       */
-      nextLocation =
-        locationFromMapOffset({
-          baseLocation:
-            drag.startLocation,
-          offsetX:
-            rect.width / 2 -
-            (
-              event.clientX -
-              rect.left
-            ),
-          offsetY:
-            rect.height / 2 -
-            (
-              event.clientY -
-              rect.top
-            ),
-        });
-    }
-
-    try {
-      if (
-        event.currentTarget.hasPointerCapture(
-          event.pointerId,
-        )
-      ) {
-        event.currentTarget.releasePointerCapture(
-          event.pointerId,
-        );
-      }
-    } catch {
-      // Pointer may already be released by the browser.
-    }
-
-    locationDragRef.current =
-      null;
-    setLocationMapDragging(
-      false,
-    );
-
-    if (nextLocation) {
-      setSelectedLocation(
-        nextLocation,
-      );
-
-      setLocationPickerError(
-        null,
-      );
-    }
-
-    /*
-     * The next render receives tiles centered on nextLocation.
-     * Reset the temporary DOM transform without forcing React updates while
-     * the pointer is moving.
-     */
-    window.requestAnimationFrame(
-      resetLocationDragTransform,
-    );
-  }
-
-  function cancelLocationMapPointer(
-    event:
-      ReactPointerEvent<HTMLDivElement>,
-  ) {
-    const drag =
-      locationDragRef.current;
-
-    if (
-      !drag ||
-      drag.pointerId !==
-        event.pointerId
-    ) {
-      return;
-    }
-
-    locationDragRef.current =
-      null;
-    setLocationMapDragging(
-      false,
-    );
-    resetLocationDragTransform();
-  }
-
-  function changeLocationMapZoom(
-    delta: number,
-  ) {
-    setLocationMapZoom(
-      (current) =>
-        Math.max(
-          LOCATION_MAP_MIN_ZOOM,
-          Math.min(
-            LOCATION_MAP_MAX_ZOOM,
-            current + delta,
-          ),
-        ),
-    );
+    setLocationPickerOpen(false);
   }
 
   function handleSubmit(
@@ -1690,16 +1240,36 @@ ${locationMessage}`
       return;
     }
 
+    const postSendStatus:
+      | ConversationStatus
+      | null =
+      sendMode === "close"
+        ? "closed"
+        : sendMode === "pending"
+          ? "pending"
+          : null;
+
+    pendingPostSendStatusRef.current =
+      postSendStatus;
+
+    setSendMenuOpen(false);
+
     if (attachments.length > 0) {
       event.preventDefault();
-      void sendAttachments();
+      void sendAttachments(
+        postSendStatus,
+      );
       return;
     }
 
     onSubmit(event);
   }
 
-  async function sendAttachments() {
+  async function sendAttachments(
+    postSendStatus:
+      | ConversationStatus
+      | null = null,
+  ) {
     if (
       !onSendAttachments ||
       attachments.length === 0
@@ -1717,6 +1287,22 @@ ${locationMessage}`
 
       if (success) {
         clearAttachments();
+
+        pendingPostSendStatusRef.current =
+          null;
+
+        if (
+          postSendStatus &&
+          onStatusChange
+        ) {
+          onStatusChange(
+            postSendStatus,
+          );
+          setSendMode("now");
+        }
+      } else {
+        pendingPostSendStatusRef.current =
+          null;
       }
     } catch (sendError) {
       console.error(
@@ -1732,73 +1318,69 @@ ${locationMessage}`
     }
   }
 
+  useEffect(() => {
+    const textarea = replyInputRef.current;
+
+    if (!textarea) {
+      return;
+    }
+
+    textarea.style.height = "48px";
+    const nextHeight = Math.min(128, Math.max(48, textarea.scrollHeight));
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > 128 ? "auto" : "hidden";
+  }, [reply]);
+
+
   return (
-    <div className="shrink-0 border-t border-slate-200 bg-white">
-      {attachments.length > 0 ? (
-        <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
+    <div className="shrink-0 w-full border-t border-slate-200 bg-white">
+      {attachments.some(
+        (attachment) => attachment.id !== voiceReview?.attachmentId,
+      ) ? (
+        <div className="mx-3 mt-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
           <div className="flex gap-3 overflow-x-auto pb-1">
-            {attachments.map(
+            {attachments
+              .filter(
+                (attachment) => attachment.id !== voiceReview?.attachmentId,
+              )
+              .map(
               (attachment) => (
                 <div
                   key={attachment.id}
                   className="relative shrink-0"
                 >
-                  {attachment.kind ===
-                  "image" ? (
+                  {attachment.kind === "image" ? (
                     <img
-                      src={
-                        attachment.previewUrl
-                      }
-                      alt={
-                        attachment.file.name
-                      }
-                      className="h-24 w-24 rounded-xl border border-slate-200 object-cover shadow-sm"
+                      src={attachment.previewUrl}
+                      alt={attachment.file.name}
+                      className="h-20 w-20 rounded-xl border border-slate-200 object-cover shadow-sm"
                     />
-                  ) : attachment.kind ===
-                    "video" ? (
+                  ) : attachment.kind === "video" ? (
                     <video
-                      src={
-                        attachment.previewUrl
-                      }
-                      className="h-24 w-32 rounded-xl border border-slate-200 bg-black object-cover shadow-sm"
+                      src={attachment.previewUrl}
+                      className="h-20 w-28 rounded-xl border border-slate-200 bg-black object-cover shadow-sm"
                       muted
                     />
-                  ) : attachment.kind ===
-                    "audio" ? (
-                    <div className="flex h-24 w-64 flex-col justify-between rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                      <div className="flex items-center gap-2 text-slate-600">
-                        <AudioIcon />
-                        <span className="text-xs font-semibold uppercase tracking-wide">
-                          Audio
-                        </span>
-                      </div>
+                  ) : attachment.kind === "audio" ? (
+                    <div className="flex h-20 w-60 items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                      <AudioIcon />
                       <audio
                         src={attachment.previewUrl}
                         controls
                         preload="metadata"
-                        className="h-8 w-full"
+                        className="h-8 min-w-0 flex-1"
                       />
                     </div>
                   ) : (
-                    <div className="flex h-24 w-44 flex-col justify-between rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                      <div className="flex items-center gap-2 text-slate-600">
-                        <FileIcon />
-                        <span className="text-xs font-semibold uppercase tracking-wide">
-                          File
-                        </span>
-                      </div>
-
-                      <div>
+                    <div className="flex h-20 w-44 items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                      <FileIcon />
+                      <div className="min-w-0">
                         <p className="truncate text-xs font-medium text-slate-800">
-                          {
-                            attachment.file
-                              .name
-                          }
+                          {attachment.file.name}
                         </p>
                         <p className="mt-0.5 text-[11px] text-slate-400">
                           {formatFileSize(
-                            attachment.file
-                              .size,
+                            attachment.file.size,
                           )}
                         </p>
                       </div>
@@ -1817,663 +1399,796 @@ ${locationMessage}`
                   >
                     ×
                   </button>
-
-                  {attachment.kind !==
-                  "file" ? (
-                    <span className="absolute bottom-1 left-1 rounded bg-slate-950/70 px-1.5 py-0.5 text-[10px] text-white">
-                      {attachment.kind ===
-                      "image"
-                        ? "Image"
-                        : attachment.kind ===
-                            "video"
-                          ? "Video"
-                          : "Audio"}
-                    </span>
-                  ) : null}
                 </div>
               ),
             )}
           </div>
-
-          <p className="mt-2 text-xs text-slate-500">
-            {attachments.length}{" "}
-            attachment
-            {attachments.length === 1
-              ? ""
-              : "s"}{" "}
-            selected
-          </p>
         </div>
       ) : null}
 
-      <div className="relative flex items-center gap-2 px-4 py-2">
-        <div
-          className={
-            isSending
-              ? "pointer-events-none opacity-50"
-              : ""
-          }
-        >
-          <CustomerTagSelector
-            contactId={contactId}
-            businessId={businessId}
-            conversationId={
-              conversationId
-            }
-            initialTags={initialTags}
-          />
-        </div>
+      {recordingVoice ? (
+        <div className="w-full border-t border-slate-200 bg-white px-3 py-2.5">
+          <div className="flex min-h-[58px] w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-2 shadow-[0_5px_18px_rgba(15,23,42,0.07)]">
+            <div className="flex min-w-[92px] shrink-0 items-center gap-2">
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${
+                  recordingPaused
+                    ? "bg-slate-400"
+                    : "animate-pulse bg-red-500"
+                }`}
+                aria-hidden="true"
+              />
+              <span className="text-sm font-semibold text-slate-800">
+                {recordingPaused ? (isKhmer ? "បានផ្អាក" : "Paused") : (isKhmer ? "កំពុងថត" : "Recording")}
+              </span>
+            </div>
 
-        <div
-          className={
-            isSending
-              ? "pointer-events-none opacity-50"
-              : ""
-          }
-        >
-          <SavedReplySelector
-            businessId={businessId}
-            onSelect={onReplyChange}
-          />
-        </div>
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div
+                className="flex h-8 min-w-0 flex-1 items-center justify-center gap-[2px] overflow-hidden px-2"
+                aria-label="Voice recording waveform"
+              >
+                {[
+                  7, 11, 6, 15, 9, 18, 12, 21, 14, 10, 17, 23,
+                  13, 8, 16, 20, 11, 15, 7, 19, 12, 22, 14, 9,
+                  17, 12, 20, 8, 15, 11, 18, 7, 13, 10, 16, 8,
+                  12, 7, 14, 9, 11, 6,
+                ].map((height, index) => (
+                  <span
+                    key={index}
+                    className={`w-[2px] shrink-0 rounded-full transition-all ${
+                      recordingPaused
+                        ? "bg-slate-300"
+                        : index % 4 === 0
+                          ? "bg-blue-500"
+                          : "bg-slate-400"
+                    }`}
+                    style={{
+                      height: `${Math.max(4, height - (recordingPaused ? 4 : 0))}px`,
+                      opacity: recordingPaused ? 0.75 : 1,
+                    }}
+                  />
+                ))}
+              </div>
 
-        <div
-          className={
-            isSending
-              ? "pointer-events-none opacity-50"
-              : ""
-          }
-        >
+              <div className="w-[58px] shrink-0 text-right">
+                <div className="font-mono text-sm font-bold tabular-nums text-slate-900">
+                  {String(Math.floor(recordingSeconds / 60)).padStart(1, "0")}:{String(
+                    recordingSeconds % 60,
+                  ).padStart(2, "0")}
+                </div>
+                <div className="mt-0.5 text-[10px] tabular-nums text-slate-400">
+                  {Math.floor(Math.max(0, 300 - recordingSeconds) / 60)}:{String(
+                    Math.max(0, 300 - recordingSeconds) % 60,
+                  ).padStart(2, "0")} left
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={cancelVoiceRecording}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl px-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+              title="Discard recording"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                className="h-4 w-4"
+                aria-hidden="true"
+              >
+                <path d="M4 7h16" strokeLinecap="round" />
+                <path d="m9 7 .6-2h4.8l.6 2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="m7 7 .8 13h8.4L17 7" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span>{isKhmer ? "បោះចោល" : "Discard"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={
+                recordingPaused
+                  ? resumeVoiceRecording
+                  : pauseVoiceRecording
+              }
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-50"
+            >
+              {recordingPaused ? (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="h-3.5 w-3.5"
+                  aria-hidden="true"
+                >
+                  <path d="M8 5v14l11-7-11-7Z" />
+                </svg>
+              ) : (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="h-3.5 w-3.5"
+                  aria-hidden="true"
+                >
+                  <rect x="7" y="5" width="3.5" height="14" rx="1" />
+                  <rect x="13.5" y="5" width="3.5" height="14" rx="1" />
+                </svg>
+              )}
+              <span>{recordingPaused ? (isKhmer ? "បន្ត" : "Resume") : (isKhmer ? "ផ្អាក" : "Pause")}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={finishVoiceRecording}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-[0_5px_12px_rgba(37,99,235,0.22)] transition hover:bg-blue-700"
+              title="Finish recording"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="h-4 w-4"
+                aria-hidden="true"
+              >
+                <path d="m5 12 4 4L19 6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span>{isKhmer ? "រួចរាល់" : "Done"}</span>
+            </button>
+          </div>
+        </div>
+      ) : voiceReview && getVoiceReviewAttachment() ? (
+        <div className="w-full border-t border-slate-200 bg-white px-3 py-2.5">
+          <div className="flex min-h-[58px] w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-[0_5px_18px_rgba(15,23,42,0.07)]">
+            <button
+              type="button"
+              onClick={() => void toggleVoiceReviewPlayback()}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-blue-600 transition hover:border-blue-200 hover:bg-blue-50"
+              aria-label={voiceReviewPlaying ? "Pause voice preview" : "Play voice preview"}
+              title={voiceReviewPlaying ? "Pause" : "Play"}
+            >
+              {voiceReviewPlaying ? (
+                <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5" aria-hidden="true">
+                  <rect x="7" y="5" width="3.5" height="14" rx="1" />
+                  <rect x="13.5" y="5" width="3.5" height="14" rx="1" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5 translate-x-[1px]" aria-hidden="true">
+                  <path d="M8 5v14l11-7-11-7Z" />
+                </svg>
+              )}
+            </button>
+
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div
+                className="flex h-8 min-w-[190px] flex-1 items-center gap-[2px] overflow-hidden"
+                aria-label="Recorded voice waveform"
+              >
+                {[
+                  4, 8, 6, 12, 9, 16, 10, 19, 13, 22, 17, 25,
+                  20, 14, 18, 24, 15, 11, 20, 17, 13, 21, 16, 10,
+                  12, 18, 14, 22, 19, 15, 11, 17, 13, 9, 12, 8,
+                  10, 7, 9, 5, 7, 4,
+                ].map((height, index) => {
+                  const playedRatio = voiceReview.durationSeconds > 0
+                    ? Math.min(1, voicePlaybackSeconds / voiceReview.durationSeconds)
+                    : 0;
+                  const played = index / 42 <= playedRatio;
+
+                  return (
+                    <span
+                      key={index}
+                      className={`w-[2px] shrink-0 rounded-full ${
+                        played || voicePlaybackSeconds === 0
+                          ? "bg-blue-600"
+                          : "bg-blue-300"
+                      }`}
+                      style={{ height: `${height}px` }}
+                    />
+                  );
+                })}
+              </div>
+
+              <div className="w-[62px] shrink-0 text-left">
+                <div className="font-mono text-sm font-bold tabular-nums text-slate-900">
+                  {formatVoiceDuration(
+                    voicePlaybackSeconds > 0
+                      ? voicePlaybackSeconds
+                      : voiceReview.durationSeconds,
+                  )}
+                </div>
+                <div className="mt-0.5 text-[10px] tabular-nums text-slate-400">
+                  of {formatVoiceDuration(voiceReview.durationSeconds)}
+                </div>
+              </div>
+            </div>
+
+            <audio
+              ref={voicePreviewAudioRef}
+              src={getVoiceReviewAttachment()?.previewUrl}
+              preload="metadata"
+              className="hidden"
+              onTimeUpdate={(event) => {
+                setVoicePlaybackSeconds(event.currentTarget.currentTime);
+              }}
+              onEnded={() => {
+                setVoiceReviewPlaying(false);
+                setVoicePlaybackSeconds(0);
+              }}
+              onPause={() => setVoiceReviewPlaying(false)}
+              onPlay={() => setVoiceReviewPlaying(true)}
+            />
+
+            <button
+              type="button"
+              onClick={reRecordVoice}
+              disabled={isSending}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl px-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50"
+              title="Re-record voice note"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4" aria-hidden="true">
+                <path d="M20 11a8 8 0 1 0-2.3 5.7" strokeLinecap="round" />
+                <path d="M20 5v6h-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span>{isKhmer ? "ថតឡើងវិញ" : "Re-record"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={discardVoiceReview}
+              disabled={isSending}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl px-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50"
+              title="Discard voice note"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4" aria-hidden="true">
+                <path d="M4 7h16" strokeLinecap="round" />
+                <path d="m9 7 .6-2h4.8l.6 2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="m7 7 .8 13h8.4L17 7" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span>Discard</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void sendVoiceReview()}
+              disabled={isSending || !onSendAttachments}
+              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-[0_5px_12px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Send voice note"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4" aria-hidden="true">
+                <path d="M21 3 10 14" strokeLinecap="round" />
+                <path d="m21 3-7 18-4-7-7-4 18-7Z" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span>{isSending ? (isKhmer ? "កំពុងផ្ញើ..." : "Sending...") : (isKhmer ? "ផ្ញើសារជាសំឡេង" : "Send voice note")}</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+      <>
+        {typingAgents.length > 0 ? (
+          <div className="border-b border-amber-100 bg-amber-50 px-3 py-2">
+            <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-amber-800">
+              <span className="flex -space-x-1.5">
+                {typingAgents.slice(0, 2).map((agent) => (
+                  <span
+                    key={agent.user_id}
+                    className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border-2 border-amber-50 bg-blue-500 text-[9px] font-bold text-white"
+                    title={agent.name}
+                  >
+                    {agent.profile_picture_url ? (
+                      <img src={agent.profile_picture_url} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      agent.name.trim().charAt(0).toUpperCase() || "?"
+                    )}
+                  </span>
+                ))}
+              </span>
+
+              <span className="min-w-0 truncate">
+                {typingAgents.length === 1
+                  ? `${typingAgents[0].name} is writing a reply`
+                  : typingAgents.length === 2
+                    ? `${typingAgents[0].name} and ${typingAgents[1].name} are writing a reply`
+                    : `${typingAgents.length} teammates are writing a reply`}
+              </span>
+
+              <span className="inline-flex shrink-0 items-center gap-0.5" aria-hidden="true">
+                <span className="h-1 w-1 animate-bounce rounded-full bg-amber-500 [animation-delay:-0.2s]" />
+                <span className="h-1 w-1 animate-bounce rounded-full bg-amber-500 [animation-delay:-0.1s]" />
+                <span className="h-1 w-1 animate-bounce rounded-full bg-amber-500" />
+              </span>
+            </div>
+          </div>
+        ) : null}
+
+        <form
+        onSubmit={handleSubmit}
+        className="relative w-full min-w-0 bg-white px-3 py-2"
+      >
+        <div className="flex min-w-0 items-center gap-1.5">
+          {/* Real TENH quick tag selector */}
+          <div
+            onMouseDownCapture={() => {
+              if (!isSending) {
+                setEmojiOpen(false);
+                setMoreOpen(false);
+                setSendMenuOpen(false);
+                setActiveToolbarPanel("quick-tag");
+
+                window.setTimeout(() => {
+                  closeExpandedChildSelector("Quick replies");
+                }, 0);
+              }
+            }}
+            onClick={(event) => {
+              if (isSending) {
+                return;
+              }
+
+              const target = event.target as HTMLElement;
+              const clickedControlSurface =
+                event.target === event.currentTarget ||
+                Boolean(target.closest('[data-quick-control-label="quick-tag"]'));
+
+              if (!clickedControlSurface) {
+                return;
+              }
+
+              event.currentTarget.querySelector<HTMLButtonElement>(
+                'button[aria-label="Quick tags"]',
+              )?.click();
+            }}
+            className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl transition [&>div>button]:!h-5 [&>div>button]:!w-5 [&>div>button]:!rounded-none [&>div>button]:!border-0 [&>div>button]:!bg-transparent [&>div>button]:!p-0 [&>div>button]:!shadow-none [&>div>button]:!text-current ${
+              isSending
+                ? "pointer-events-none opacity-50"
+                : activeToolbarPanel === "quick-tag"
+                  ? "bg-blue-50 text-blue-600"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+            }`}
+          >
+            <CustomerTagSelector
+              contactId={contactId}
+              businessId={businessId}
+              conversationId={conversationId}
+              initialTags={initialTags}
+              onTagsChange={onTagsChange}
+            />
+          </div>
+
+          {/* Real TENH saved reply selector */}
+          <div
+            onMouseDownCapture={() => {
+              if (!isSending) {
+                setEmojiOpen(false);
+                setMoreOpen(false);
+                setSendMenuOpen(false);
+                setActiveToolbarPanel("quick-reply");
+
+                window.setTimeout(() => {
+                  closeExpandedChildSelector("Quick tags");
+                }, 0);
+              }
+            }}
+            onClick={(event) => {
+              if (isSending) {
+                return;
+              }
+
+              const target = event.target as HTMLElement;
+              const clickedControlSurface =
+                event.target === event.currentTarget ||
+                Boolean(target.closest('[data-quick-control-label="quick-reply"]'));
+
+              if (!clickedControlSurface) {
+                return;
+              }
+
+              event.currentTarget.querySelector<HTMLButtonElement>(
+                'button[aria-label="Quick replies"]',
+              )?.click();
+            }}
+            className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl transition [&>div>button]:!h-5 [&>div>button]:!w-5 [&>div>button]:!rounded-none [&>div>button]:!border-0 [&>div>button]:!bg-transparent [&>div>button]:!p-0 [&>div>button]:!shadow-none [&>div>button]:!text-current ${
+              isSending
+                ? "pointer-events-none opacity-50"
+                : activeToolbarPanel === "quick-reply"
+                  ? "bg-blue-50 text-blue-600"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+            }`}
+          >
+            <SavedReplySelector
+              businessId={businessId}
+              onSelect={onReplyChange}
+            />
+          </div>
+
+          {/* Real emoji picker */}
           <button
             type="button"
+            disabled={isSending}
             onClick={() => {
-              setEmojiOpen(
-                (current) => !current,
-              );
+              const nextOpen = !emojiOpen;
+
+              closeExpandedChildSelector("Quick tags");
+              closeExpandedChildSelector("Quick replies");
+              setActiveToolbarPanel(nextOpen ? "emoji" : null);
+              setEmojiOpen(nextOpen);
               setMoreOpen(false);
+              setSendMenuOpen(false);
             }}
-            className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${
               emojiOpen
-                ? "bg-blue-50 text-blue-700"
-                : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-            }`}
-            aria-label="Choose emoji"
-            title="Choose emoji"
+                ? "bg-blue-50 text-blue-600"
+                : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+            } disabled:opacity-40`}
+            aria-label={isKhmer ? "ជ្រើសរើស Emoji" : "Choose emoji"}
             aria-expanded={emojiOpen}
           >
             <EmojiIcon />
           </button>
-        </div>
 
-        <div
-          className={
-            isSending
-              ? "pointer-events-none opacity-50"
-              : ""
-          }
-        >
-          <button
-            type="button"
-            disabled={!allowAttachments}
-            onClick={() =>
-              void startVoiceRecording()
-            }
-            className={`flex h-9 w-9 items-center justify-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-35 ${
-              recordingVoice
-                ? "bg-red-50 text-red-600"
-                : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-            }`}
-            aria-label="Record voice message"
-            title={
-              allowAttachments
-                ? "Record voice message"
-                : "Voice messages are available for Messenger conversations"
-            }
-          >
-            <AudioIcon />
-          </button>
-        </div>
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleImageChange}
+            className="hidden"
+          />
+          <input
+            ref={videoInputRef}
+            type="file"
+            accept="video/*"
+            multiple
+            onChange={handleVideoChange}
+            className="hidden"
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            onChange={handleFileChange}
+            className="hidden"
+          />
 
-        <div
-          className={
-            isSending
-              ? "pointer-events-none opacity-50"
-              : ""
-          }
-        >
-          <button
-            type="button"
-            disabled={!allowAttachments}
-            onClick={() => {
-              setMoreOpen(
-                (current) => !current,
-              );
-              setEmojiOpen(false);
-            }}
-            className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition ${
-              moreOpen
-                ? "bg-blue-50 text-blue-700"
-                : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-            } disabled:cursor-not-allowed disabled:opacity-35`}
-            aria-label="Add content"
-            title={
-              allowAttachments
-                ? "Add content"
-                : "Attachments are available for Messenger conversations"
-            }
-            aria-expanded={moreOpen}
-          >
-            <PlusIcon />
+          <div className="min-w-0 flex-[1_1_320px] pl-1">
+            <div className="flex min-h-12 min-w-0 items-center rounded-2xl border border-slate-200 bg-white pl-1.5 pr-1 transition focus-within:border-violet-300 focus-within:ring-2 focus-within:ring-violet-100">
+              <button
+                type="button"
+                disabled={isSending || !allowAttachments}
+                onClick={() => {
+                  const nextOpen = !moreOpen;
 
-            {attachments.length > 0 ? (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
-                {attachments.length}
-              </span>
-            ) : null}
-          </button>
-        </div>
+                  closeExpandedChildSelector("Quick tags");
+                  closeExpandedChildSelector("Quick replies");
+                  setActiveToolbarPanel(nextOpen ? "attach" : null);
+                  setMoreOpen(nextOpen);
+                  setEmojiOpen(false);
+                  setSendMenuOpen(false);
+                }}
+                className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${
+                  moreOpen
+                    ? "bg-blue-50 text-blue-600"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                } disabled:cursor-not-allowed disabled:opacity-35`}
+                aria-label={isKhmer ? "ភ្ជាប់មាតិកា" : "Attach content"}
+                title={isKhmer ? "ភ្ជាប់មាតិកា" : "Attach content"}
+                aria-expanded={moreOpen}
+              >
+                <span className="relative">
+                  <AttachIcon />
+                  {attachments.length > 0 ? (
+                    <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-semibold text-white">
+                      {attachments.length}
+                    </span>
+                  ) : null}
+                </span>
+              </button>
 
-        <input
-          ref={imageInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={handleImageChange}
-          className="hidden"
-        />
-
-        <input
-          ref={videoInputRef}
-          type="file"
-          accept="video/*"
-          multiple
-          onChange={handleVideoChange}
-          className="hidden"
-        />
-
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          onChange={handleFileChange}
-          className="hidden"
-        />
-
-        {emojiOpen ? (
-          <>
-            <button
-              type="button"
-              onClick={() =>
-                setEmojiOpen(false)
-              }
-              className="fixed inset-0 z-40 cursor-default bg-slate-950/5"
-              aria-label="Close emoji picker"
-            />
-
-            <div className="fixed bottom-28 left-1/2 z-50 -translate-x-1/2 overflow-hidden rounded-xl shadow-2xl">
-              <EmojiPicker
-                width={350}
-                height={420}
-                lazyLoadEmojis
-                searchDisabled={false}
-                skinTonesDisabled={false}
-                onEmojiClick={(
-                  emojiData,
-                ) =>
-                  insertEmoji(
-                    emojiData.emoji,
-                  )
+              <button
+                type="button"
+                disabled={isSending || !allowAttachments}
+                onClick={() => void startVoiceRecording()}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${
+                  recordingVoice
+                    ? "bg-red-50 text-red-600"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                } disabled:cursor-not-allowed disabled:opacity-35`}
+                aria-label={isKhmer ? "ថតសារជាសំឡេង" : "Record voice message"}
+                title={
+                  allowAttachments
+                    ? isKhmer ? "ថតសារជាសំឡេង" : "Record voice message"
+                    : isKhmer ? "មិនអាចប្រើសារជាសំឡេង ខណៈកំពុងឆ្លើយតបផ្ទាល់ទៅមតិយោបល់ Facebook" : "Voice messages are unavailable while replying directly to a Facebook comment"
                 }
+              >
+                <AudioIcon />
+              </button>
+
+              <span className="mx-1 h-6 w-px shrink-0 bg-slate-200" aria-hidden="true" />
+
+              <textarea
+                ref={replyInputRef}
+                name="message"
+                value={reply}
+                onChange={(event) => onReplyChange(event.target.value)}
+                placeholder={isKhmer ? "សរសេរការឆ្លើយតប..." : "Write a reply..."}
+                disabled={isSending}
+                rows={1}
+                className="block h-12 max-h-32 min-h-12 min-w-0 flex-1 resize-none overflow-y-hidden border-0 bg-transparent px-2 py-3 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400 focus:ring-0 disabled:bg-slate-50"
               />
             </div>
-          </>
-        ) : null}
+          </div>
 
-        {moreOpen ? (
-          <>
-            <button
-              type="button"
-              onClick={() =>
-                setMoreOpen(false)
-              }
-              className="fixed inset-0 z-40 cursor-default bg-slate-950/5"
-              aria-label="Close content menu"
-            />
-
-            <div className="fixed bottom-28 left-1/2 z-50 w-64 -translate-x-1/2 overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-2xl">
+          {/* Safe split Send button */}
+          <div className="relative shrink-0">
+            <div className="flex overflow-hidden rounded-xl bg-blue-600 text-white shadow-[0_6px_16px_rgba(37,99,235,0.22)]">
               <button
-                type="button"
-                onClick={() => {
-                  setMoreOpen(false);
-                  imageInputRef.current?.click();
-                }}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+                type="submit"
+                disabled={
+                  isSending ||
+                  (!reply.trim() &&
+                    attachments.length === 0)
+                }
+                className="inline-flex h-12 min-w-[96px] items-center justify-center gap-2 px-4 text-sm font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                title={
+                  sendMode === "close"
+                    ? isKhmer ? "ផ្ញើ និងបិទការសន្ទនា" : "Send & close conversation"
+                    : sendMode === "pending"
+                      ? isKhmer ? "ផ្ញើ និងសម្គាល់ថាកំពុងរង់ចាំ" : "Send & mark pending"
+                      : isKhmer ? "ផ្ញើឥឡូវ" : "Send now"
+                }
               >
-                <ImageIcon />
-                <span>Add images</span>
-                <span className="ml-auto text-xs text-slate-400">
-                  Multiple
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setMoreOpen(false);
-                  videoInputRef.current?.click();
-                }}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
-              >
-                <VideoIcon />
-                <span>Add videos</span>
-              </button>
-
-
-              <button
-                type="button"
-                onClick={() => {
-                  setMoreOpen(false);
-                  fileInputRef.current?.click();
-                }}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
-              >
-                <FileIcon />
-                <span>Add files</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={addLocation}
-                disabled={gettingLocation}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:text-slate-400"
-              >
-                <LocationIcon />
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  className="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M21 3 10 14"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="m21 3-7 18-4-7-7-4 18-7Z"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
                 <span>
-                  Send location
+                  {isSending
+                    ? isKhmer ? "កំពុងផ្ញើ..." : "Sending..."
+                    : isKhmer ? "ផ្ញើ" : "Send"}
                 </span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isSending}
+                onClick={() => {
+                  const nextOpen = !sendMenuOpen;
+
+                  if (nextOpen) {
+                    closeExpandedChildSelector("Quick tags");
+                    closeExpandedChildSelector("Quick replies");
+                    setEmojiOpen(false);
+                    setMoreOpen(false);
+                    clearToolbarPanel();
+                  }
+
+                  setSendMenuOpen(nextOpen);
+                  setEmojiOpen(false);
+                  setMoreOpen(false);
+                }}
+                className="flex h-12 w-10 items-center justify-center border-l border-white/20 transition hover:bg-blue-700 disabled:opacity-50"
+                aria-label={isKhmer ? "ជម្រើសផ្ញើ" : "Send options"}
+                aria-expanded={sendMenuOpen}
+                title={isKhmer ? "ជម្រើសផ្ញើ" : "Send options"}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="m6 9 6 6 6-6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </button>
             </div>
-          </>
-        ) : null}
-      </div>
 
-      {locationPickerOpen ? (
+            {sendMenuOpen ? (
+              <>
+                <button
+                  type="button"
+                  className="fixed inset-0 z-40 cursor-default bg-transparent"
+                  onClick={() => {
+                    setSendMenuOpen(false);
+                    clearToolbarPanel();
+                  }}
+                  aria-label="Close send options"
+                />
+                <div className="absolute bottom-[calc(100%+10px)] right-0 z-50 w-64 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.18)]">
+                  {(
+                    [
+                      [
+                        "now",
+                        isKhmer ? "ផ្ញើឥឡូវ" : "Send now",
+                        isKhmer ? "ផ្ញើដោយមិនប្តូរស្ថានភាព" : "Send without changing status",
+                      ],
+                      [
+                        "close",
+                        isKhmer ? "ផ្ញើ និងបិទការសន្ទនា" : "Send & close conversation",
+                        isKhmer ? "បិទតែបន្ទាប់ពីផ្ញើបានជោគជ័យ" : "Closes only after a successful send",
+                      ],
+                      [
+                        "pending",
+                        isKhmer ? "ផ្ញើ និងសម្គាល់ថាកំពុងរង់ចាំ" : "Send & mark pending",
+                        isKhmer ? "សម្គាល់ថាកំពុងរង់ចាំតែបន្ទាប់ពីផ្ញើបានជោគជ័យ" : "Marks pending only after a successful send",
+                      ],
+                    ] as const
+                  ).map(
+                    ([mode, label, help]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        disabled={
+                          mode !== "now" &&
+                          !onStatusChange
+                        }
+                        onClick={() => {
+                          setSendMode(mode);
+                          setSendMenuOpen(false);
+                        }}
+                        className={`flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+                          sendMode === mode
+                            ? "bg-violet-50 text-violet-700"
+                            : "text-slate-700 hover:bg-slate-50"
+                        } disabled:cursor-not-allowed disabled:opacity-40`}
+                      >
+                        <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-xs">
+                          {sendMode === mode
+                            ? "✓"
+                            : ""}
+                        </span>
+                        <span>
+                          <span className="block text-sm font-semibold">
+                            {label}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] font-normal text-slate-400">
+                            {help}
+                          </span>
+                        </span>
+                      </button>
+                    ),
+                  )}
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+
+        {error ? (
+          <p className="mt-2 px-1 text-xs text-red-600">
+            {error}
+          </p>
+        ) : null}
+      </form>
+      </>
+      )}
+
+      {/* Existing, functional emoji picker */}
+      {emojiOpen ? (
         <>
           <button
             type="button"
-            onClick={closeLocationPicker}
-            className="fixed inset-0 z-[70] cursor-default bg-slate-950/35 backdrop-blur-[1px]"
-            aria-label="Close location picker"
+            onClick={() => {
+              setEmojiOpen(false);
+              clearToolbarPanel();
+            }}
+            className="fixed inset-0 z-40 cursor-default bg-slate-950/5"
+            aria-label="Close emoji picker"
           />
+          <div className="fixed bottom-28 left-1/2 z-50 -translate-x-1/2 overflow-hidden rounded-xl shadow-2xl">
+            <EmojiPicker
+              width={350}
+              height={420}
+              lazyLoadEmojis
+              searchDisabled={false}
+              skinTonesDisabled={false}
+              onEmojiClick={(emojiData) =>
+                insertEmoji(
+                  emojiData.emoji,
+                )
+              }
+            />
+          </div>
+        </>
+      ) : null}
 
-          <div
-            className="fixed left-1/2 top-1/2 z-[80] w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Choose location"
-          >
-            <div className="flex h-14 items-center justify-between border-b border-slate-200 px-5">
-              <h3 className="text-lg font-semibold text-slate-900">
-                Location
-              </h3>
+      <LocationPickerDialog
+        open={locationPickerOpen}
+        isKhmer={isKhmer}
+        initialLocation={lastPickedLocation}
+        onClose={() => setLocationPickerOpen(false)}
+        onConfirm={confirmPickedLocation}
+      />
 
-              <button
-                type="button"
-                onClick={closeLocationPicker}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                aria-label="Close location picker"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="relative h-[290px] bg-slate-100">
-              {selectedLocation ? (
-                <div
-                  ref={locationMapRef}
-                  onPointerDown={
-                    handleLocationMapPointerDown
-                  }
-                  onPointerMove={
-                    handleLocationMapPointerMove
-                  }
-                  onPointerUp={
-                    finishLocationMapPointer
-                  }
-                  onPointerCancel={
-                    cancelLocationMapPointer
-                  }
-                  className={`relative h-full w-full overflow-hidden bg-slate-200 ${
-                    locationMapDragging
-                      ? "cursor-grabbing"
-                      : "cursor-grab"
-                  }`}
-                  style={{
-                    touchAction:
-                      "none",
-                  }}
-                  role="application"
-                  aria-label="Location map. Drag to move the map, click to select a point."
-                >
-                  <div
-                    ref={
-                      locationTileLayerRef
-                    }
-                    className="pointer-events-none absolute inset-0 will-change-transform"
-                  >
-                    {getLocationMapTiles({
-                      center:
-                        selectedLocation,
-                      zoom:
-                        locationMapZoom,
-                      size:
-                        locationMapSize,
-                    }).map(
-                      (tile) => (
-                        <img
-                          key={tile.key}
-                          src={tile.url}
-                          alt=""
-                          draggable={false}
-                          loading="eager"
-                          decoding="async"
-                          className="pointer-events-none absolute h-64 w-64 select-none"
-                          style={{
-                            left:
-                              tile.x,
-                            top:
-                              tile.y,
-                          }}
-                        />
-                      ),
-                    )}
-                  </div>
-
-                  <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
-                    <span className="rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow">
-                      Drag map or click to choose
-                    </span>
-                  </div>
-
-                  <div className="absolute right-3 top-3 z-10 overflow-hidden rounded-lg border border-slate-200 bg-white shadow">
-                    <button
-                      type="button"
-                      onPointerDown={(
-                        event,
-                      ) => {
-                        event.stopPropagation();
-                      }}
-                      onClick={(
-                        event,
-                      ) => {
-                        event.stopPropagation();
-                        changeLocationMapZoom(
-                          1,
-                        );
-                      }}
-                      disabled={
-                        locationMapZoom >=
-                        LOCATION_MAP_MAX_ZOOM
-                      }
-                      className="flex h-9 w-9 items-center justify-center border-b border-slate-200 text-xl font-semibold text-slate-700 transition hover:bg-slate-50 disabled:text-slate-300"
-                      aria-label="Zoom in"
-                    >
-                      +
-                    </button>
-
-                    <button
-                      type="button"
-                      onPointerDown={(
-                        event,
-                      ) => {
-                        event.stopPropagation();
-                      }}
-                      onClick={(
-                        event,
-                      ) => {
-                        event.stopPropagation();
-                        changeLocationMapZoom(
-                          -1,
-                        );
-                      }}
-                      disabled={
-                        locationMapZoom <=
-                        LOCATION_MAP_MIN_ZOOM
-                      }
-                      className="flex h-9 w-9 items-center justify-center text-xl font-semibold text-slate-700 transition hover:bg-slate-50 disabled:text-slate-300"
-                      aria-label="Zoom out"
-                    >
-                      −
-                    </button>
-                  </div>
-
-                  <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-full flex-col items-center">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-full border-4 border-white bg-blue-500 text-white shadow-xl">
-                      <LocationIcon />
-                    </div>
-                    <div className="h-3 w-1 rounded-b-full bg-blue-500 shadow" />
-                  </div>
-
-                  <button
-                    type="button"
-                    onPointerDown={(
-                      event,
-                    ) => {
-                      event.stopPropagation();
-                    }}
-                    onClick={(
-                      event,
-                    ) => {
-                      event.stopPropagation();
-                      useMyCurrentLocation();
-                    }}
-                    disabled={
-                      gettingLocation
-                    }
-                    className="absolute bottom-7 right-3 z-20 flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 shadow-lg transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
-                  >
-                    <span className="flex h-5 w-5 items-center justify-center">
-                      <LocationIcon />
-                    </span>
-                    <span>
-                      {gettingLocation
-                        ? "Locating..."
-                        : "My Location"}
-                    </span>
-                  </button>
-
-                  {gettingLocation ? (
-                    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/15">
-                      <div className="rounded-full bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 shadow-lg">
-                        Finding your location...
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-white/90 px-1.5 py-0.5 text-[10px] text-slate-600 shadow-sm">
-                    © OpenStreetMap contributors
-                  </div>
-                </div>
-              ) : (
-                <div className="flex h-full items-center justify-center px-8 text-center">
-                  <div>
-                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-600">
-                      <LocationIcon />
-                    </div>
-
-                    <p className="mt-3 text-sm font-medium text-slate-700">
-                      {gettingLocation
-                        ? "Finding your location..."
-                        : "Location unavailable"}
-                    </p>
-
-                    {locationPickerError ? (
-                      <p className="mt-2 text-xs leading-5 text-red-600">
-                        {locationPickerError}
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-xs text-slate-500">
-                        Allow browser location access to place the pin.
-                      </p>
-                    )}
-
-                    {locationPickerError ? (
-                      <button
-                        type="button"
-                        onClick={addLocation}
-                        className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-700"
-                      >
-                        Try again
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              )}
-
-            </div>
-
+      {/* Existing, functional Plus/content menu */}
+      {moreOpen ? (
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setMoreOpen(false);
+              clearToolbarPanel();
+            }}
+            className="fixed inset-0 z-40 cursor-default bg-slate-950/5"
+            aria-label="Close content menu"
+          />
+          <div className="fixed bottom-28 left-1/2 z-50 w-64 -translate-x-1/2 overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-2xl">
             <button
               type="button"
-              onClick={confirmSelectedLocation}
-              disabled={
-                gettingLocation ||
-                !selectedLocation
-              }
-              className="flex w-full items-center gap-3 border-t border-slate-200 bg-white px-5 py-4 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => {
+                setMoreOpen(false);
+                imageInputRef.current?.click();
+              }}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
             >
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white">
-                <LocationIcon />
+              <ImageIcon />
+              <span>{isKhmer ? "បន្ថែមរូបភាព" : "Add images"}</span>
+              <span className="ml-auto text-xs text-slate-400">
+                {isKhmer ? "ច្រើន" : "Multiple"}
               </span>
-
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-slate-900">
-                  Send This Location
-                </span>
-
-                <span className="mt-0.5 block truncate text-xs text-slate-500">
-                  {gettingLocation
-                    ? "Loading..."
-                    : selectedLocation
-                      ? `${selectedLocation.latitude.toFixed(
-                          6,
-                        )}, ${selectedLocation.longitude.toFixed(
-                          6,
-                        )}`
-                      : "Location unavailable"}
-                </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMoreOpen(false);
+                videoInputRef.current?.click();
+              }}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <VideoIcon />
+              <span>{isKhmer ? "បន្ថែមវីដេអូ" : "Add videos"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMoreOpen(false);
+                fileInputRef.current?.click();
+              }}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <FileIcon />
+              <span>{isKhmer ? "បន្ថែមឯកសារ" : "Add files"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={addLocation}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <LocationIcon />
+              <span>{isKhmer ? "ផ្ញើទីតាំង" : "Send location"}</span>
+              <span className="ml-auto text-xs text-slate-400">
+                {isKhmer ? "ជ្រើសលើផែនទី" : "Choose on map"}
               </span>
             </button>
           </div>
         </>
       ) : null}
 
-      {recordingVoice ? (
-        <div className="mx-4 mb-2 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5">
-          <span className="relative flex h-3 w-3 shrink-0">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-            <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
-          </span>
-
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-red-700">
-              Recording voice
-            </p>
-            <p className="text-xs text-red-600">
-              {Math.floor(
-                recordingSeconds / 60,
-              )}
-              :
-              {String(
-                recordingSeconds % 60,
-              ).padStart(2, "0")}
-              {" · "}
-              max 5 minutes
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={
-              cancelVoiceRecording
-            }
-            className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-white"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="button"
-            onClick={
-              finishVoiceRecording
-            }
-            className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700"
-          >
-            Stop
-          </button>
-        </div>
-      ) : null}
-
       {recordingError ? (
-        <div className="mx-4 mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+        <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
           {recordingError}
         </div>
       ) : null}
-
-      <div className="px-4 pb-3">
-        <form
-          onSubmit={handleSubmit}
-          className="flex items-end gap-3"
-        >
-          <div className="min-w-0 flex-1">
-            <textarea
-              name="message"
-              value={reply}
-              onChange={(event) =>
-                onReplyChange(
-                  event.target.value,
-                )
-              }
-              placeholder="Write a reply..."
-              disabled={isSending}
-              rows={1}
-              className="max-h-32 min-h-11 w-full resize-y rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
-            />
-
-            {attachments.length > 0 &&
-            reply.trim() ? (
-              <p className="mt-1 text-[11px] text-slate-400">
-                V2.4 sends the selected attachments first. Your typed text stays in the composer so you can send it next.
-              </p>
-            ) : null}
-
-            {error ? (
-              <p className="mt-1 text-xs text-red-600">
-                {error}
-              </p>
-            ) : null}
-          </div>
-
-          <button
-            type="submit"
-            disabled={
-              isSending ||
-              (!reply.trim() &&
-                attachments.length === 0)
-            }
-            className="flex h-11 min-w-24 items-center justify-center rounded-xl bg-blue-600 px-5 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-          >
-            {isSending ? (
-              <span className="flex items-center gap-2">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                Sending...
-              </span>
-            ) : (
-              "Send"
-            )}
-          </button>
-        </form>
-      </div>
     </div>
   );
 }

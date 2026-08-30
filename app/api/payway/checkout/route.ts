@@ -8,6 +8,10 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   getPayWayConfig,
   getPayWayReadiness,
 } from "@/lib/payway/config";
@@ -26,6 +30,7 @@ import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 import { buildCustomUpgradeQuote, type CustomUpgradeQuote } from "@/lib/subscription/custom-upgrade";
+import { syncBusinessSubscriptionLifecycle } from "@/lib/subscription/sync-subscription-lifecycle";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -196,19 +201,6 @@ export async function POST(
 
     const member = authResult.member;
 
-    if (member.role !== "owner") {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Only the workspace owner can start a subscription payment.",
-        },
-        {
-          status: 403,
-        },
-      );
-    }
-
     const body =
       (await request.json()) as CheckoutBody;
 
@@ -227,14 +219,37 @@ export async function POST(
         .eq("is_active", true)
         .maybeSingle();
 
-      if (purchaseMemberError || !purchaseMember || purchaseMember.role !== "owner") {
+      if (purchaseMemberError || !purchaseMember) {
         return NextResponse.json(
-          { success: false, error: "You do not have Owner access to this purchase workspace." },
+          { success: false, error: "You do not have access to this subscription workspace." },
           { status: 403 },
         );
       }
 
       billingMember = purchaseMember as typeof member;
+    }
+
+    // Permission is checked against the workspace being PAID FOR, not the
+    // workspace currently open in the header. This is what lets an Agent buy
+    // a separate TENH subscription: the new workspace makes that user Owner,
+    // while their role in the joined workspace remains untouched.
+    if (!(await memberHasPermission(billingMember, "billing", "manage"))) {
+      return permissionDenied(
+        "You do not have Subscription & billing Manage permission for this workspace.",
+      );
+    }
+
+    try {
+      await syncBusinessSubscriptionLifecycle(billingMember.business_id);
+    } catch (error) {
+      console.error("[TENH PayWay] Subscription lifecycle sync failed:", error);
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unable to verify the subscription status before payment.",
+        },
+        { status: 503 },
+      );
     }
 
     const planCode =
@@ -328,6 +343,13 @@ export async function POST(
     const requestedCustomUpgrade =
       body.customUpgrade === true ||
       cleanString(body.customUpgrade).toLowerCase() === "true";
+
+    if (requestedRenewSame && billingMember.role !== "owner") {
+      return permissionDenied(
+        "Only the workspace Owner can reactivate this preserved subscription.",
+      );
+    }
+
     let customUpgradeQuote: CustomUpgradeQuote | null = null;
 
     let quote = getTrustedSubscriptionQuote({
@@ -381,10 +403,16 @@ export async function POST(
       const savedCycle = getBillingCycleDefinition(
         subscription.billing_cycle ?? "",
       );
+      const currentPeriodEnd = subscription.current_period_end
+        ? Date.parse(subscription.current_period_end)
+        : Number.NaN;
       const eligibleStatus =
         subscription.status === "expired" ||
         subscription.status === "past_due" ||
-        subscription.status === "cancelled";
+        subscription.status === "cancelled" ||
+        (subscription.status === "active" &&
+          Number.isFinite(currentPeriodEnd) &&
+          currentPeriodEnd <= Date.now());
 
       if (
         !eligibleStatus ||
@@ -478,6 +506,20 @@ export async function POST(
       }
     }
 
+    // A team member with Subscription & billing = Manage may upgrade the
+    // joined workspace, but cannot subscribe/reactivate/replace it. Buy New
+    // remains separate because that flow creates a new workspace where the
+    // buyer is Owner before checkout reaches this route.
+    if (
+      billingMember.role !== "owner" &&
+      purchaseType !== "upgrade" &&
+      purchaseType !== "custom-upgrade"
+    ) {
+      return permissionDenied(
+        "Subscription & billing Manage allows upgrades only. Buy new subscription creates your own workspace.",
+      );
+    }
+
     if (!quote) {
       return NextResponse.json(
         {
@@ -558,39 +600,45 @@ export async function POST(
         config.environment,
       );
 
-    const cancelParams = new URLSearchParams({
-      payway: "cancelled",
+    // PayWay's modal close/cancel must hit TENH's server route first so TENH
+    // closes the provider transaction before returning to Subscription. This
+    // prevents an abandoned ABA transaction from remaining Pending.
+    const cancelUrl =
+      `${browserReturnBaseUrl}/api/payway/cancel-return?tran_id=${encodeURIComponent(
+        transactionId,
+      )}`;
+
+    const successParams = new URLSearchParams({
+      payway: "returned",
       tran_id: transactionId,
       plan: planCode,
       cycle: billingCycle,
     });
 
     if (requestedPurchaseBusinessId) {
-      cancelParams.set(
+      successParams.set(
         "purchase_business",
         requestedPurchaseBusinessId,
       );
     }
 
     if (planCode === "custom") {
-      cancelParams.set("connections", String(quote.channels));
-      cancelParams.set("users", String(quote.users));
-      if (requestedCustomUpgrade) cancelParams.set("upgrade", "custom");
+      successParams.set("connections", String(quote.channels));
+      successParams.set("users", String(quote.users));
+      if (requestedCustomUpgrade) {
+        successParams.set("upgrade", "custom");
+      }
     }
 
-    if (requestedRenewSame) cancelParams.set("renew", "same");
+    if (requestedRenewSame) {
+      successParams.set("renew", "same");
+    }
 
-    // Use an existing dashboard page as PayWay's cancel target. This avoids
-    // depending on a dedicated cancel API route being present in the deployed
-    // build, while the page safely finalizes the cancellation server-side.
-    const cancelUrl =
-      `${browserReturnBaseUrl}/dashboard/subscription/payment?${cancelParams.toString()}`;
-
+    // After ABA confirms payment, return to the payment page itself. TENH
+    // verifies the transaction there and shows receipt / Close / Continue
+    // actions instead of immediately pushing the customer away.
     const continueSuccessUrl =
-      `${browserReturnBaseUrl}/dashboard/subscription` +
-      `?payway=returned&tran_id=${encodeURIComponent(
-        transactionId,
-      )}`;
+      `${browserReturnBaseUrl}/dashboard/subscription/payment?${successParams.toString()}`;
 
     /*
      * V3.8.5.14 — official ABA PayWay modal / Checkout gate

@@ -3,17 +3,18 @@ import {
   NextResponse,
 } from "next/server";
 
-import {
-  getCurrentMember,
-} from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
 import {
   markFacebookCommentThreadDeleted,
 } from "@/lib/facebook/mark-comment-thread-deleted";
 
 import {
   FacebookCommentContextError,
-  loadFacebookCommentActionContext,
+  loadAuthorizedFacebookCommentActionContext,
 } from "../_shared";
 
 export const runtime = "nodejs";
@@ -52,24 +53,6 @@ async function readGraphResult(
 export async function POST(
   request: NextRequest,
 ) {
-  const authResult =
-    await getCurrentMember();
-
-  if (!authResult.success) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: authResult.error,
-      },
-      {
-        status: authResult.status,
-      },
-    );
-  }
-
-  const currentMember =
-    authResult.member;
-
   try {
     let body: DeleteCommentBody;
 
@@ -106,11 +89,19 @@ export async function POST(
     }
 
     const context =
-      await loadFacebookCommentActionContext({
-        businessId:
-          currentMember.business_id,
+      await loadAuthorizedFacebookCommentActionContext({
         commentId,
       });
+
+    const currentMember = context.member;
+
+    if (
+      !(await memberHasPermission(currentMember, "conversations", "manage"))
+    ) {
+      return permissionDenied(
+        "You do not have permission to reply in this workspace.",
+      );
+    }
 
     const graphVersion =
       process.env

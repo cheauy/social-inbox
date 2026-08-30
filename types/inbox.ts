@@ -58,6 +58,8 @@ export type ConversationActivityType =
   | "status_changed"
   | "assigned"
   | "unassigned"
+  | "pinned"
+  | "unpinned"
   | "tag_added"
   | "tag_removed"
   | "note_added"

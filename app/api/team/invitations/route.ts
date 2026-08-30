@@ -12,6 +12,7 @@ import {
   type SubscriptionInvitationRole,
 } from "@/lib/team/subscription-invitations";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { requirePermission } from "@/lib/auth/require-permission";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,6 +93,12 @@ export async function GET() {
       authResult.status,
       authResult.code,
     );
+  }
+  const permissionGuard =
+    await requirePermission("team_members", "view");
+
+  if (!permissionGuard.success) {
+    return permissionGuard.response;
   }
 
   if (authResult.member.role !== "owner") {
@@ -176,14 +183,13 @@ export async function POST(request: NextRequest) {
       authResult.code,
     );
   }
+  const permissionGuard =
+    await requirePermission("team_members", "manage");
 
-  if (authResult.member.role !== "owner") {
-    return invitationError(
-      "Only an Owner can invite users to this subscription.",
-      403,
-      "OWNER_REQUIRED",
-    );
+  if (!permissionGuard.success) {
+    return permissionGuard.response;
   }
+
 
   let body: {
     email?: unknown;
@@ -213,6 +219,14 @@ export async function POST(request: NextRequest) {
       "Enter a valid email and choose Agent or Owner.",
       400,
       "INVALID_INVITATION",
+    );
+  }
+
+  if (role === "owner" && authResult.member.role !== "owner") {
+    return invitationError(
+      "Only an Owner can invite another Owner.",
+      403,
+      "OWNER_REQUIRED",
     );
   }
 

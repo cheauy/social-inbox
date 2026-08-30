@@ -7,6 +7,10 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   getFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
 import {
@@ -260,18 +264,16 @@ export async function POST(
     );
   }
 
+  // Was owner-only. The channels permission makes the
+  // Roles & permissions setting meaningful; Owners always pass.
   if (
-    authResult.member.role !==
-    "owner"
+    !(await memberHasPermission(authResult.member, "channels", "manage"))
   ) {
-    return redirectToIntegrations(
-      request,
-      {
-        warning:
-          "Only the workspace owner can manually sync Facebook comments.",
-      },
+    return permissionDenied(
+      "You do not have permission to manage channels in this workspace.",
     );
   }
+
 
   let body: SyncBody = {};
 

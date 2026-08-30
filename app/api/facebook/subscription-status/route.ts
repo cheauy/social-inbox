@@ -4,6 +4,10 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   getFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
 import {
@@ -97,6 +101,14 @@ export async function GET() {
 
   const currentMember =
     authResult.member;
+
+  if (
+    !(await memberHasPermission(currentMember, "channels", "view"))
+  ) {
+    return permissionDenied(
+      "You do not have permission to view channels in this workspace.",
+    );
+  }
 
   const {
     data: accounts,

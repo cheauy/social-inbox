@@ -69,9 +69,7 @@ type WorkspaceListSubscriptionRow = {
   member_limit: number | string | null;
   channel_limit: number | string | null;
   payment_provider: string | null;
-  pending_plan_code: string | null;
-  pending_billing_cycle: string | null;
-  pending_plan_effective_at: string | null;
+
 };
 
 type WorkspaceDetailSubscriptionRow = {
@@ -88,12 +86,7 @@ type WorkspaceDetailSubscriptionRow = {
   storage_limit_bytes: number | string | null;
   monthly_message_limit: number | string | null;
   payment_provider: string | null;
-  pending_plan_code: string | null;
-  pending_billing_cycle: string | null;
-  pending_plan_change_type: string | null;
-  pending_plan_requested_at: string | null;
-  pending_plan_effective_at: string | null;
-  pending_plan_requested_by_member_id: string | null;
+
   created_at: string;
   updated_at: string;
 };
@@ -334,9 +327,6 @@ async function loadWorkspaceList(
             "member_limit",
             "channel_limit",
             "payment_provider",
-            "pending_plan_code",
-            "pending_billing_cycle",
-            "pending_plan_effective_at",
           ].join(","),
         )
         .in("business_id", businessIds),
@@ -441,9 +431,6 @@ async function loadWorkspaceList(
       memberLimit: subscription?.member_limit ?? null,
       channelLimit: subscription?.channel_limit ?? null,
       paymentProvider: subscription?.payment_provider ?? null,
-      pendingPlanCode: subscription?.pending_plan_code ?? null,
-      pendingBillingCycle: subscription?.pending_billing_cycle ?? null,
-      pendingEffectiveAt: subscription?.pending_plan_effective_at ?? null,
       activeMembers,
       activeChannels: activeChannelsByBusiness.get(business.id) ?? 0,
       pendingManual: manualPayments.filter(
@@ -507,12 +494,6 @@ async function loadWorkspaceDetail(businessId: string) {
           "storage_limit_bytes",
           "monthly_message_limit",
           "payment_provider",
-          "pending_plan_code",
-          "pending_billing_cycle",
-          "pending_plan_change_type",
-          "pending_plan_requested_at",
-          "pending_plan_effective_at",
-          "pending_plan_requested_by_member_id",
           "created_at",
           "updated_at",
         ].join(","),
@@ -526,7 +507,7 @@ async function loadWorkspaceDetail(businessId: string) {
       .order("created_at", { ascending: true }),
     supabaseAdmin
       .from("social_accounts")
-      .select("id,platform,platform_account_id,is_active,created_at")
+      .select("id,platform,platform_account_id,account_name,is_active,created_at")
       .eq("business_id", businessId)
       .order("created_at", { ascending: true }),
     supabaseAdmin
@@ -698,6 +679,7 @@ async function loadWorkspaceDetail(businessId: string) {
     channels: channels.map((channel) => ({
       id: channel.id,
       platform: channel.platform,
+      accountName: channel.account_name,
       platformAccountId: channel.platform_account_id,
       active: channel.is_active,
       createdAt: channel.created_at,

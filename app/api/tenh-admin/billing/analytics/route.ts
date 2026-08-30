@@ -97,8 +97,6 @@ type SubscriptionRow = {
   plan_code: string;
   status: string;
   current_period_end: string | null;
-  pending_plan_change_type: string | null;
-  pending_plan_code: string | null;
 };
 
 type RenewalRow = {
@@ -181,7 +179,7 @@ async function fetchSubscriptions() {
     const { data, error } = await supabaseAdmin
       .from("business_subscriptions")
       .select(
-        "business_id,plan_code,status,current_period_end,pending_plan_change_type,pending_plan_code",
+        "business_id,plan_code,status,current_period_end",
       )
       .order("updated_at", { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
@@ -406,11 +404,6 @@ function currentSubscriptionSummary(rows: SubscriptionRow[]) {
     expired: rows.filter((row) => row.status === "expired").length,
     pastDue: rows.filter((row) => row.status === "past_due").length,
     suspended: rows.filter((row) => row.status === "suspended").length,
-    scheduledDowngrades: rows.filter(
-      (row) =>
-        row.pending_plan_change_type === "downgrade" &&
-        Boolean(row.pending_plan_code),
-    ).length,
     planDistribution,
     upcomingExpiry: {
       within24h: expiringWithin(day),

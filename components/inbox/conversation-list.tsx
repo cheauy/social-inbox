@@ -9,6 +9,7 @@ import {
   useDeferredValue,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -31,9 +32,9 @@ import {
 } from "@/components/inbox/inbox-channel-selector";
 import { ReminderListPanel } from "@/components/inbox/reminder-list-panel";
 import {
-  shortSubscriptionId,
-  subscriptionAccentColor,
-} from "@/lib/inbox/subscription-visual";
+  useWorkspaceLanguageId,
+} from "@/components/display/workspace-language-text";
+import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog";
 
 type SearchAwareContact =
   NonNullable<InboxConversation["contact"]> & {
@@ -90,9 +91,17 @@ type BuiltInViewKey =
   | "my"
   | "unassigned"
   | "comment"
+  | "open"
   | "pinned";
 
+type WorkspaceScope =
+  | "all"
+  | "current"
+  | "selected";
+
 type SavedViewFilters = {
+  workspaceScope: WorkspaceScope;
+  workspaceIds: string[];
   status:
     | "any"
     | "open"
@@ -108,9 +117,14 @@ type SavedViewFilters = {
   channel:
     | "any"
     | "messenger"
-    | "comment";
+    | "comment"
+    | "telegram";
   unreadOnly: boolean;
   pinnedOnly: boolean;
+  /*
+   * New rows store `${workspaceId}::${tagId}` so the same label can safely
+   * exist in more than one workspace. Legacy plain tag IDs remain readable.
+   */
   tagIds: string[];
 };
 
@@ -127,8 +141,31 @@ type SavedView = {
 type ViewsResponse = {
   success?: boolean;
   error?: string;
+  businessId?: string;
   memberId?: string;
   views?: SavedView[];
+};
+
+type SmartViewWorkspaceOption = {
+  businessId: string;
+  businessName: string;
+  memberId: string;
+};
+
+type SmartViewTagOption = {
+  id: string;
+  businessId: string;
+  name: string;
+  color: string;
+  count: number;
+};
+
+type SmartViewOptionsResponse = {
+  success?: boolean;
+  error?: string;
+  currentBusinessId?: string | null;
+  workspaces?: SmartViewWorkspaceOption[];
+  tags?: SmartViewTagOption[];
 };
 
 type ViewEditorState = {
@@ -142,6 +179,8 @@ type ViewEditorState = {
 
 const EMPTY_FILTERS:
   SavedViewFilters = {
+    workspaceScope: "all",
+    workspaceIds: [],
     status: "any",
     assignment: "any",
     channel: "any",
@@ -149,6 +188,197 @@ const EMPTY_FILTERS:
     pinnedOnly: false,
     tagIds: [],
   };
+
+const SMART_VIEW_TAG_SEPARATOR = "::";
+
+function makeSmartViewTagReference(
+  workspaceId: string,
+  tagId: string,
+) {
+  return `${workspaceId}${SMART_VIEW_TAG_SEPARATOR}${tagId}`;
+}
+
+function parseSmartViewTagReference(
+  value: string,
+) {
+  const separatorIndex = value.indexOf(
+    SMART_VIEW_TAG_SEPARATOR,
+  );
+
+  if (separatorIndex <= 0) {
+    return null;
+  }
+
+  const workspaceId = value
+    .slice(0, separatorIndex)
+    .trim();
+  const tagId = value
+    .slice(separatorIndex + SMART_VIEW_TAG_SEPARATOR.length)
+    .trim();
+
+  if (!workspaceId || !tagId) {
+    return null;
+  }
+
+  return { workspaceId, tagId };
+}
+
+const DEFAULT_SMART_VIEW_ORDER_IDS = [
+  "default:my",
+  "default:unassigned",
+  "default:comment",
+  "default:open",
+] as const;
+
+function normalizeSmartViewOrder(
+  stored: unknown,
+  availableIds: string[],
+) {
+  const available = new Set(availableIds);
+  const seen = new Set<string>();
+  const next: string[] = [];
+
+  if (Array.isArray(stored)) {
+    for (const value of stored) {
+      if (
+        typeof value === "string" &&
+        available.has(value) &&
+        !seen.has(value)
+      ) {
+        seen.add(value);
+        next.push(value);
+      }
+    }
+  }
+
+  for (const value of availableIds) {
+    if (!seen.has(value)) {
+      seen.add(value);
+      next.push(value);
+    }
+  }
+
+  return next;
+}
+
+/*
+ * Smart Views have existed across several TENH Inbox versions. Keep old saved
+ * JSON rows usable instead of silently turning a saved filter into zero
+ * matches when one of the historical key names is present. New saves continue
+ * to use the current camelCase shape.
+ */
+function normalizeSavedViewFilters(
+  value: unknown,
+): SavedViewFilters {
+  const record =
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+
+  const workspaceScope =
+    typeof record.workspaceScope === "string" &&
+    ["all", "current", "selected"].includes(record.workspaceScope)
+      ? (record.workspaceScope as WorkspaceScope)
+      : typeof record.workspace_scope === "string" &&
+          ["all", "current", "selected"].includes(record.workspace_scope)
+        ? (record.workspace_scope as WorkspaceScope)
+        : "all";
+
+  const rawWorkspaceIds =
+    record.workspaceIds ??
+    record.workspace_ids ??
+    record.businessIds ??
+    record.business_ids;
+
+  const workspaceIds = Array.isArray(rawWorkspaceIds)
+    ? Array.from(
+        new Set(
+          rawWorkspaceIds
+            .filter(
+              (workspaceId): workspaceId is string =>
+                typeof workspaceId === "string" &&
+                workspaceId.trim().length > 0,
+            )
+            .map((workspaceId) => workspaceId.trim()),
+        ),
+      ).slice(0, 30)
+    : [];
+
+  const status =
+    typeof record.status === "string" &&
+    [
+      "any",
+      "open",
+      "pending",
+      "resolved",
+      "closed",
+      "spam",
+    ].includes(record.status)
+      ? (record.status as SavedViewFilters["status"])
+      : "any";
+
+  const assignment =
+    typeof record.assignment === "string" &&
+    [
+      "any",
+      "me",
+      "assigned",
+      "unassigned",
+    ].includes(record.assignment)
+      ? (record.assignment as SavedViewFilters["assignment"])
+      : "any";
+
+  const channel =
+    typeof record.channel === "string" &&
+    ["any", "messenger", "comment", "telegram"].includes(record.channel)
+      ? (record.channel as SavedViewFilters["channel"])
+      : "any";
+
+  const rawTagIds =
+    record.tagIds ??
+    record.tag_ids ??
+    record.tags;
+
+  const tagIds = Array.isArray(rawTagIds)
+    ? Array.from(
+        new Set(
+          rawTagIds
+            .filter(
+              (tagId): tagId is string =>
+                typeof tagId === "string" &&
+                tagId.trim().length > 0,
+            )
+            .map((tagId) => tagId.trim()),
+        ),
+      ).slice(0, 20)
+    : [];
+
+  return {
+    workspaceScope,
+    workspaceIds,
+    status,
+    assignment,
+    channel,
+    unreadOnly:
+      record.unreadOnly === true ||
+      record.unread_only === true,
+    pinnedOnly:
+      record.pinnedOnly === true ||
+      record.pinned_only === true,
+    tagIds,
+  };
+}
+
+function normalizeSavedView(
+  view: SavedView,
+): SavedView {
+  return {
+    ...view,
+    filters: normalizeSavedViewFilters(view.filters),
+  };
+}
 
 const filterOptions: Array<{
   value: StatusFilter;
@@ -254,84 +484,6 @@ function UnreadIcon() {
   );
 }
 
-function CommentIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="h-5 w-5"
-      aria-hidden="true"
-    >
-      <path
-        d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M8 9h8M8 13h5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function AssignedToMeIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="h-5 w-5"
-      aria-hidden="true"
-    >
-      <circle
-        cx="9"
-        cy="8"
-        r="4"
-      />
-      <path
-        d="M3 21v-2a6 6 0 0 1 12 0v2"
-        strokeLinecap="round"
-      />
-      <path
-        d="m16 12 2 2 4-4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function UnassignedIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="h-5 w-5"
-      aria-hidden="true"
-    >
-      <circle
-        cx="9"
-        cy="8"
-        r="4"
-      />
-      <path
-        d="M3 21v-2a6 6 0 0 1 10-4.4"
-        strokeLinecap="round"
-      />
-      <path
-        d="m16 16 5 5M21 16l-5 5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 function ReminderIcon() {
   return (
     <svg
@@ -361,14 +513,22 @@ function PinIcon() {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth="1.9"
       className="h-5 w-5"
       aria-hidden="true"
     >
       <path
-        d="m14 4 6 6-3 1-4 4-1 5-3-3-5 3 3-5 4-4 1-3Z"
+        d="M9 4h6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M10 4 9.25 9.7 7 12v1.5h10V12l-2.25-2.3L14 4"
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+      <path
+        d="M12 13.5V21"
+        strokeLinecap="round"
       />
     </svg>
   );
@@ -670,23 +830,58 @@ function getConversationPlatform(
 }
 
 function getConversationChannel(
-  conversation:
-    InboxConversation,
+  conversation: InboxConversation,
+  channelDirectory?: ChannelDirectory,
 ) {
-  const sourceType =
-    (
-      conversation as
-        InboxConversation & {
-          source_type?:
-            | string
-            | null;
-        }
-    ).source_type;
+  const extended =
+    conversation as InboxConversation & {
+      platform?: string | null;
+      source_type?: string | null;
+      social_account?:
+        | (InboxConversation["social_account"] & {
+            platform?: string | null;
+          })
+        | null;
+    };
 
-  return sourceType ===
-    "comment"
-    ? "comment"
-    : "messenger";
+  const sourceType =
+    extended.source_type
+      ?.trim()
+      .toLowerCase() || "";
+
+  if (sourceType === "comment") {
+    return "comment" as const;
+  }
+
+  const socialAccountId =
+    conversation.social_account?.id;
+  const registeredPlatform =
+    socialAccountId && channelDirectory
+      ? channelDirectory[socialAccountId]?.platform
+      : null;
+
+  if (registeredPlatform === "telegram") {
+    return "telegram" as const;
+  }
+
+  const explicitPlatform =
+    extended.platform
+      ?.trim()
+      .toLowerCase() ||
+    extended.social_account
+      ?.platform
+      ?.trim()
+      .toLowerCase() ||
+    "";
+
+  if (
+    sourceType === "telegram" ||
+    explicitPlatform === "telegram"
+  ) {
+    return "telegram" as const;
+  }
+
+  return "messenger" as const;
 }
 
 function isConversationPinned(
@@ -734,6 +929,9 @@ function matchesSavedView({
   conversation,
   view,
   memberId,
+  memberIdByBusiness,
+  workspaceContextId,
+  channelDirectory,
 }: {
   conversation:
     InboxConversation;
@@ -742,9 +940,36 @@ function matchesSavedView({
   memberId:
     | string
     | null;
+  memberIdByBusiness?: Record<string, string>;
+  workspaceContextId?: string | null;
+  channelDirectory?: ChannelDirectory;
 }) {
   const filters =
-    view.filters;
+    normalizeSavedViewFilters(
+      view.filters,
+    );
+
+  if (
+    filters.workspaceScope === "current"
+  ) {
+    if (
+      !workspaceContextId ||
+      conversation.business_id !== workspaceContextId
+    ) {
+      return false;
+    }
+  } else if (
+    filters.workspaceScope === "selected"
+  ) {
+    if (
+      filters.workspaceIds.length === 0 ||
+      !filters.workspaceIds.includes(
+        conversation.business_id,
+      )
+    ) {
+      return false;
+    }
+  }
 
   if (
     filters.status !==
@@ -777,6 +1002,7 @@ function matchesSavedView({
       "any" &&
     getConversationChannel(
       conversation,
+      channelDirectory,
     ) !== filters.channel
   ) {
     return false;
@@ -786,10 +1012,15 @@ function matchesSavedView({
     filters.assignment ===
     "me"
   ) {
+    const workspaceMemberId =
+      memberIdByBusiness?.[
+        conversation.business_id
+      ] ?? memberId;
+
     if (
-      !memberId ||
+      !workspaceMemberId ||
       conversation.assigned_to !==
-        memberId
+        workspaceMemberId
     ) {
       return false;
     }
@@ -817,27 +1048,74 @@ function matchesSavedView({
     filters.tagIds.length >
     0
   ) {
+    const conversationTags =
+      conversation.contact
+        ?.tags ?? [];
+
     const conversationTagIds =
       new Set(
-        (
-          conversation.contact
-            ?.tags ?? []
-        ).map(
-          (tag) =>
-            tag.id,
+        conversationTags.map(
+          (tag) => tag.id,
         ),
       );
 
+    const conversationTagNames =
+      new Set(
+        conversationTags.map(
+          (tag) =>
+            tag.name
+              .trim()
+              .toLowerCase(),
+        ),
+      );
+
+    const allowLegacyNameFallback =
+      filters.workspaceScope === "current" ||
+      (filters.workspaceScope === "selected" &&
+        filters.workspaceIds.length === 1);
+
     /*
-     * Tag behavior = ANY selected tag.
-     * Example: VIP + High Value means customer may have either tag.
+     * New references are workspace-scoped (`businessId::tagId`) so identical
+     * tag names across subscriptions can never collide. Plain UUID/tag IDs
+     * from older TENH Smart Views remain valid. The historical tag-name
+     * fallback is intentionally limited to a single workspace because a
+     * label like "VIP" is ambiguous across multiple businesses.
      */
     const hasSelectedTag =
       filters.tagIds.some(
-        (tagId) =>
-          conversationTagIds.has(
-            tagId,
-          ),
+        (tagReference) => {
+          const scopedReference =
+            parseSmartViewTagReference(
+              tagReference,
+            );
+
+          if (scopedReference) {
+            return (
+              conversation.business_id ===
+                scopedReference.workspaceId &&
+              conversationTagIds.has(
+                scopedReference.tagId,
+              )
+            );
+          }
+
+          if (
+            conversationTagIds.has(
+              tagReference,
+            )
+          ) {
+            return true;
+          }
+
+          return (
+            allowLegacyNameFallback &&
+            conversationTagNames.has(
+              tagReference
+                .trim()
+                .toLowerCase(),
+            )
+          );
+        },
       );
 
     if (!hasSelectedTag) {
@@ -853,6 +1131,9 @@ function matchesView({
   key,
   savedViews,
   memberId,
+  memberIdByBusiness,
+  workspaceContextId,
+  channelDirectory,
 }: {
   conversation:
     InboxConversation;
@@ -862,6 +1143,9 @@ function matchesView({
   memberId:
     | string
     | null;
+  memberIdByBusiness?: Record<string, string>;
+  workspaceContextId?: string | null;
+  channelDirectory?: ChannelDirectory;
 }) {
   if (
     key === "all"
@@ -881,10 +1165,15 @@ function matchesView({
   if (
     key === "my"
   ) {
+    const workspaceMemberId =
+      memberIdByBusiness?.[
+        conversation.business_id
+      ] ?? memberId;
+
     return Boolean(
-      memberId &&
+      workspaceMemberId &&
         conversation.assigned_to ===
-          memberId,
+          workspaceMemberId,
     );
   }
 
@@ -901,8 +1190,15 @@ function matchesView({
     return (
       getConversationChannel(
         conversation,
+        channelDirectory,
       ) === "comment"
     );
+  }
+
+  if (
+    key === "open"
+  ) {
+    return conversation.status === "open";
   }
 
   if (
@@ -928,6 +1224,9 @@ function matchesView({
     view:
       savedView,
     memberId,
+    memberIdByBusiness,
+    workspaceContextId,
+    channelDirectory,
   });
 }
 
@@ -942,6 +1241,7 @@ function viewKeyFromUrl(
     value ===
       "unassigned" ||
     value === "comment" ||
+    value === "open" ||
     value === "pinned"
   ) {
     return value;
@@ -973,6 +1273,8 @@ export function ConversationList({
   const searchParams =
     useSearchParams();
 
+  const isKhmer = useWorkspaceLanguageId() === "km";
+
   /*
    * Generic V3.11.4 channel key.
    * `page` remains a read-only compatibility alias
@@ -981,6 +1283,9 @@ export function ConversationList({
   const selectedChannelId =
     searchParams.get("channel") ??
     searchParams.get("page");
+
+  const selectedWorkspaceId =
+    searchParams.get("workspace");
 
   const [search, setSearch] =
     useState("");
@@ -995,6 +1300,8 @@ export function ConversationList({
     useState(0);
   const [reminderRefreshKey, setReminderRefreshKey] =
     useState(0);
+  // Keep the reminder workflow active, but do not show its old left-rail icon.
+  const showReminderRailShortcut = false;
 
 
   /*
@@ -1203,6 +1510,21 @@ export function ConversationList({
     >(null);
 
   const [
+    currentBusinessId,
+    setCurrentBusinessId,
+  ] = useState<string | null>(null);
+
+  const [
+    smartViewWorkspaces,
+    setSmartViewWorkspaces,
+  ] = useState<SmartViewWorkspaceOption[]>([]);
+
+  const [
+    smartViewTags,
+    setSmartViewTags,
+  ] = useState<SmartViewTagOption[]>([]);
+
+  const [
     editor,
     setEditor,
   ] =
@@ -1226,12 +1548,38 @@ export function ConversationList({
     >(null);
 
   const [
+    deleteViewTarget,
+    setDeleteViewTarget,
+  ] =
+    useState<
+      SavedView | null
+    >(null);
+
+  const [
     viewActionMenuId,
     setViewActionMenuId,
   ] =
     useState<
       string | null
     >(null);
+
+  const [
+    smartViewOrder,
+    setSmartViewOrder,
+  ] = useState<string[]>([
+    ...DEFAULT_SMART_VIEW_ORDER_IDS,
+  ]);
+
+  const [
+    draggingSmartViewId,
+    setDraggingSmartViewId,
+  ] = useState<string | null>(null);
+
+  const smartViewOrderRef = useRef<string[]>([
+    ...DEFAULT_SMART_VIEW_ORDER_IDS,
+  ]);
+
+  const draggingSmartViewIdRef = useRef<string | null>(null);
 
   const [
     selectedViewKey,
@@ -1257,6 +1605,52 @@ export function ConversationList({
   }, [
     searchParams,
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSmartViewOptions() {
+      try {
+        const response = await fetch(
+          "/api/inbox/smart-view-options",
+          { cache: "no-store" },
+        );
+
+        const result =
+          (await response.json()) as SmartViewOptionsResponse;
+
+        if (
+          cancelled ||
+          !response.ok ||
+          !result.success
+        ) {
+          return;
+        }
+
+        setCurrentBusinessId(
+          result.currentBusinessId ?? null,
+        );
+        setSmartViewWorkspaces(
+          result.workspaces ?? [],
+        );
+        setSmartViewTags(
+          result.tags ?? [],
+        );
+      } catch {
+        /*
+         * Smart View filtering still works from the conversations already in
+         * the Inbox. This lookup only supplies the complete cross-workspace
+         * workspace/tag directory for the editor.
+         */
+      }
+    }
+
+    void loadSmartViewOptions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled =
@@ -1301,9 +1695,14 @@ export function ConversationList({
             null,
         );
 
+        setCurrentBusinessId((current) =>
+          current ?? result.businessId ?? null,
+        );
+
         setSavedViews(
-          result.views ??
-            [],
+          (result.views ?? []).map(
+            normalizeSavedView,
+          ),
         );
       } catch (
         error
@@ -1334,6 +1733,208 @@ export function ConversationList({
         true;
     };
   }, []);
+
+  const availableSmartViewOrderIds =
+    useMemo(
+      () => [
+        ...DEFAULT_SMART_VIEW_ORDER_IDS,
+        ...savedViews.map(
+          (view) => `saved:${view.id}`,
+        ),
+      ],
+      [savedViews],
+    );
+
+  const smartViewOrderIdentity =
+    useMemo(() => {
+      const memberIds = smartViewWorkspaces
+        .map((workspace) => workspace.memberId)
+        .filter(Boolean)
+        .sort();
+
+      return memberIds.length > 0
+        ? memberIds.join("|")
+        : memberId;
+    }, [
+      memberId,
+      smartViewWorkspaces,
+    ]);
+
+  const smartViewOrderStorageKey =
+    useMemo(
+      () =>
+        smartViewOrderIdentity
+          ? `tenh:smart-view-order:v2:${smartViewOrderIdentity}`
+          : null,
+      [smartViewOrderIdentity],
+    );
+
+  useEffect(() => {
+    if (!smartViewOrderStorageKey) {
+      const next = normalizeSmartViewOrder(
+        null,
+        availableSmartViewOrderIds,
+      );
+      smartViewOrderRef.current = next;
+      setSmartViewOrder(next);
+      return;
+    }
+
+    let stored: unknown = null;
+
+    try {
+      const raw = window.localStorage.getItem(
+        smartViewOrderStorageKey,
+      );
+
+      if (raw) {
+        stored = JSON.parse(raw);
+      } else if (memberId) {
+        // Migrate the existing per-workspace order from the previous build.
+        const legacyKeys = [
+          `tenh:smart-view-order:${memberId}:${selectedWorkspaceId ?? "current"}`,
+          `tenh:smart-view-order:${memberId}:current`,
+        ];
+
+        for (const legacyKey of legacyKeys) {
+          const legacyRaw = window.localStorage.getItem(legacyKey);
+          if (!legacyRaw) {
+            continue;
+          }
+
+          stored = JSON.parse(legacyRaw);
+          break;
+        }
+      }
+    } catch {
+      stored = null;
+    }
+
+    const next = normalizeSmartViewOrder(
+      stored,
+      availableSmartViewOrderIds,
+    );
+
+    smartViewOrderRef.current = next;
+    setSmartViewOrder(next);
+
+    try {
+      window.localStorage.setItem(
+        smartViewOrderStorageKey,
+        JSON.stringify(next),
+      );
+    } catch {
+      // Ordering is a convenience only; Smart Views still work without storage.
+    }
+  }, [
+    availableSmartViewOrderIds,
+    memberId,
+    selectedWorkspaceId,
+    smartViewOrderStorageKey,
+  ]);
+
+  function persistSmartViewOrder(
+    next: string[],
+  ) {
+    smartViewOrderRef.current = next;
+    setSmartViewOrder(next);
+
+    if (!smartViewOrderStorageKey) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        smartViewOrderStorageKey,
+        JSON.stringify(next),
+      );
+    } catch {
+      // Keep the in-memory order if browser storage is unavailable.
+    }
+  }
+
+  function moveSmartView(
+    draggedId: string,
+    targetId: string,
+  ) {
+    if (draggedId === targetId) {
+      return;
+    }
+
+    const current =
+      normalizeSmartViewOrder(
+        smartViewOrderRef.current,
+        availableSmartViewOrderIds,
+      );
+    const fromIndex = current.indexOf(draggedId);
+    const targetIndex = current.indexOf(targetId);
+
+    if (fromIndex < 0 || targetIndex < 0) {
+      return;
+    }
+
+    const next = [...current];
+    next.splice(fromIndex, 1);
+    next.splice(targetIndex, 0, draggedId);
+    persistSmartViewOrder(next);
+  }
+
+  function beginSmartViewPointerDrag(
+    orderId: string,
+  ) {
+    draggingSmartViewIdRef.current = orderId;
+    setDraggingSmartViewId(orderId);
+  }
+
+  function endSmartViewPointerDrag() {
+    draggingSmartViewIdRef.current = null;
+    setDraggingSmartViewId(null);
+  }
+
+  function moveSmartViewFromPointer(
+    clientX: number,
+    clientY: number,
+  ) {
+    const draggedId = draggingSmartViewIdRef.current;
+    if (!draggedId) {
+      return;
+    }
+
+    const pointedElement = document.elementFromPoint(
+      clientX,
+      clientY,
+    ) as HTMLElement | null;
+    const targetRow = pointedElement?.closest<HTMLElement>(
+      "[data-smart-view-order-id]",
+    );
+    const targetId = targetRow?.dataset.smartViewOrderId;
+
+    if (targetId && targetId !== draggedId) {
+      moveSmartView(draggedId, targetId);
+    }
+  }
+
+  function moveSmartViewByKeyboard(
+    orderId: string,
+    direction: -1 | 1,
+  ) {
+    const current = normalizeSmartViewOrder(
+      smartViewOrderRef.current,
+      availableSmartViewOrderIds,
+    );
+    const index = current.indexOf(orderId);
+    const targetIndex = index + direction;
+
+    if (
+      index < 0 ||
+      targetIndex < 0 ||
+      targetIndex >= current.length
+    ) {
+      return;
+    }
+
+    moveSmartView(orderId, current[targetIndex]);
+  }
 
   /*
    * V3.11.25 — InboxView may keep one selected conversation locally so the
@@ -1367,68 +1968,194 @@ export function ConversationList({
       ],
     );
 
-  const allTags =
-    useMemo(
-      () => {
-        const map =
-          new Map<
-            string,
-            {
-              id: string;
-              name: string;
-              color: string;
-              count: number;
-            }
-          >();
+  const workspaceContextId =
+    selectedWorkspaceId ?? currentBusinessId;
 
-        for (
-          const conversation of
-          scopedConversations
-        ) {
-          for (
-            const tag of
-            conversation.contact
-              ?.tags ?? []
-          ) {
-            const existing =
-              map.get(
-                tag.id,
-              );
+  const fallbackWorkspaceOptions =
+    useMemo(() => {
+      const businessIds = Array.from(
+        new Set(
+          conversations
+            .map((conversation) => conversation.business_id)
+            .filter(Boolean),
+        ),
+      );
 
-            if (existing) {
-              existing.count +=
-                1;
-            } else {
-              map.set(
-                tag.id,
-                {
-                  id:
-                    tag.id,
-                  name:
-                    tag.name,
-                  color:
-                    tag.color,
-                  count: 1,
-                },
-              );
-            }
+      return businessIds.map((businessId) => ({
+        businessId,
+        businessName: `Workspace ${businessId.slice(0, 8)}`,
+        memberId:
+          businessId === currentBusinessId
+            ? memberId ?? ""
+            : "",
+      }));
+    }, [
+      conversations,
+      currentBusinessId,
+      memberId,
+    ]);
+
+  const availableSmartViewWorkspaces =
+    smartViewWorkspaces.length > 0
+      ? smartViewWorkspaces
+      : fallbackWorkspaceOptions;
+
+  const memberIdByBusiness =
+    useMemo(() => {
+      const map: Record<string, string> = {};
+
+      for (const workspace of smartViewWorkspaces) {
+        if (workspace.memberId) {
+          map[workspace.businessId] = workspace.memberId;
+        }
+      }
+
+      if (
+        currentBusinessId &&
+        memberId &&
+        !map[currentBusinessId]
+      ) {
+        map[currentBusinessId] = memberId;
+      }
+
+      return map;
+    }, [
+      currentBusinessId,
+      memberId,
+      smartViewWorkspaces,
+    ]);
+
+  const fallbackSmartViewTags =
+    useMemo(() => {
+      const map = new Map<string, SmartViewTagOption>();
+
+      for (const conversation of conversations) {
+        for (const tag of conversation.contact?.tags ?? []) {
+          const businessId =
+            tag.business_id || conversation.business_id;
+          const key = makeSmartViewTagReference(
+            businessId,
+            tag.id,
+          );
+          const existing = map.get(key);
+
+          if (existing) {
+            existing.count += 1;
+          } else {
+            map.set(key, {
+              id: tag.id,
+              businessId,
+              name: tag.name,
+              color: tag.color,
+              count: 1,
+            });
           }
         }
+      }
 
-        return Array.from(
-          map.values(),
-        ).sort(
-          (
-            first,
-            second,
-          ) =>
-            first.name.localeCompare(
-              second.name,
-            ),
+      return Array.from(map.values()).sort((first, second) =>
+        first.name.localeCompare(second.name),
+      );
+    }, [conversations]);
+
+  const availableSmartViewTags =
+    smartViewTags.length > 0
+      ? smartViewTags
+      : fallbackSmartViewTags;
+
+  const editorWorkspaceIds =
+    useMemo(() => {
+      if (!editor) {
+        return [] as string[];
+      }
+
+      if (editor.filters.workspaceScope === "all") {
+        return availableSmartViewWorkspaces.map(
+          (workspace) => workspace.businessId,
         );
-      },
-      [scopedConversations],
-    );
+      }
+
+      if (editor.filters.workspaceScope === "current") {
+        return workspaceContextId
+          ? [workspaceContextId]
+          : [];
+      }
+
+      return editor.filters.workspaceIds;
+    }, [
+      editor,
+      availableSmartViewWorkspaces,
+      workspaceContextId,
+    ]);
+
+  const editorTagGroups =
+    useMemo(() => {
+      if (!editor) {
+        return [] as Array<{
+          businessId: string;
+          businessName: string;
+          tags: SmartViewTagOption[];
+        }>;
+      }
+
+      const allowed = new Set(editorWorkspaceIds);
+      const restrictByWorkspace =
+        editor.filters.workspaceScope !== "all" ||
+        allowed.size > 0;
+      const workspaceNameById = new Map(
+        availableSmartViewWorkspaces.map((workspace) => [
+          workspace.businessId,
+          workspace.businessName,
+        ]),
+      );
+      const groups = new Map<
+        string,
+        {
+          businessId: string;
+          businessName: string;
+          tags: SmartViewTagOption[];
+        }
+      >();
+
+      for (const tag of availableSmartViewTags) {
+        if (
+          restrictByWorkspace &&
+          !allowed.has(tag.businessId)
+        ) {
+          continue;
+        }
+
+        let group = groups.get(tag.businessId);
+        if (!group) {
+          group = {
+            businessId: tag.businessId,
+            businessName:
+              workspaceNameById.get(tag.businessId) ??
+              `Workspace ${tag.businessId.slice(0, 8)}`,
+            tags: [],
+          };
+          groups.set(tag.businessId, group);
+        }
+
+        group.tags.push(tag);
+      }
+
+      return Array.from(groups.values())
+        .map((group) => ({
+          ...group,
+          tags: [...group.tags].sort((first, second) =>
+            first.name.localeCompare(second.name),
+          ),
+        }))
+        .sort((first, second) =>
+          first.businessName.localeCompare(second.businessName),
+        );
+    }, [
+      editor,
+      editorWorkspaceIds,
+      availableSmartViewTags,
+      availableSmartViewWorkspaces,
+    ]);
 
   const totalUnreadCount =
     useMemo(
@@ -1471,13 +2198,19 @@ export function ConversationList({
                 selectedViewKey,
               savedViews,
               memberId,
+              memberIdByBusiness,
+              workspaceContextId,
+              channelDirectory,
             }),
         ),
       [
         scopedConversations,
         memberId,
+        memberIdByBusiness,
+        workspaceContextId,
         savedViews,
         selectedViewKey,
+        channelDirectory,
       ],
     );
 
@@ -1575,6 +2308,9 @@ export function ConversationList({
                   "unread",
                 savedViews,
                 memberId,
+                memberIdByBusiness,
+                workspaceContextId,
+                channelDirectory,
               }),
           ).length,
 
@@ -1587,6 +2323,9 @@ export function ConversationList({
                   "my",
                 savedViews,
                 memberId,
+                memberIdByBusiness,
+                workspaceContextId,
+                channelDirectory,
               }),
           ).length,
 
@@ -1599,6 +2338,9 @@ export function ConversationList({
                   "unassigned",
                 savedViews,
                 memberId,
+                memberIdByBusiness,
+                workspaceContextId,
+                channelDirectory,
               }),
           ).length,
 
@@ -1611,6 +2353,23 @@ export function ConversationList({
                   "comment",
                 savedViews,
                 memberId,
+                memberIdByBusiness,
+                workspaceContextId,
+                channelDirectory,
+              }),
+          ).length,
+
+        open:
+          scopedConversations.filter(
+            (conversation) =>
+              matchesView({
+                conversation,
+                key: "open",
+                savedViews,
+                memberId,
+                memberIdByBusiness,
+                workspaceContextId,
+                channelDirectory,
               }),
           ).length,
 
@@ -1623,15 +2382,109 @@ export function ConversationList({
                   "pinned",
                 savedViews,
                 memberId,
+                memberIdByBusiness,
+                workspaceContextId,
+                channelDirectory,
               }),
           ).length,
       }),
       [
         scopedConversations,
         memberId,
+        memberIdByBusiness,
+        workspaceContextId,
         savedViews,
+        channelDirectory,
       ],
     );
+
+  const defaultSmartViews =
+    useMemo(
+      () => [
+        {
+          orderId: "default:my",
+          key: "my" as BuiltInViewKey,
+          name: isKhmer ? "ចាត់តាំងឱ្យខ្ញុំ" : "Assign to me",
+          count: builtInCounts.my,
+        },
+        {
+          orderId: "default:unassigned",
+          key: "unassigned" as BuiltInViewKey,
+          name: isKhmer ? "មិនទាន់ចាត់តាំង" : "Unassigned",
+          count: builtInCounts.unassigned,
+        },
+        {
+          orderId: "default:comment",
+          key: "comment" as BuiltInViewKey,
+          name: isKhmer ? "មតិយោបល់ Facebook" : "Facebook Comment",
+          count: builtInCounts.comment,
+        },
+        {
+          orderId: "default:open",
+          key: "open" as BuiltInViewKey,
+          name: isKhmer ? "ការសន្ទនាបើក" : "Open conversation",
+          count: builtInCounts.open,
+        },
+      ],
+      [
+        builtInCounts.comment,
+        builtInCounts.my,
+        builtInCounts.open,
+        builtInCounts.unassigned,
+        isKhmer,
+      ],
+    );
+
+  const orderedSmartViewItems =
+    useMemo(() => {
+      const byId = new Map<
+        string,
+        | {
+            kind: "default";
+            orderId: string;
+            key: BuiltInViewKey;
+            name: string;
+            count: number;
+          }
+        | {
+            kind: "saved";
+            orderId: string;
+            view: SavedView;
+          }
+      >();
+
+      for (const item of defaultSmartViews) {
+        byId.set(item.orderId, {
+          kind: "default",
+          ...item,
+        });
+      }
+
+      for (const view of savedViews) {
+        const orderId = `saved:${view.id}`;
+        byId.set(orderId, {
+          kind: "saved",
+          orderId,
+          view,
+        });
+      }
+
+      const order = normalizeSmartViewOrder(
+        smartViewOrder,
+        Array.from(byId.keys()),
+      );
+
+      return order
+        .map((id) => byId.get(id))
+        .filter(
+          (item): item is NonNullable<typeof item> =>
+            Boolean(item),
+        );
+    }, [
+      defaultSmartViews,
+      savedViews,
+      smartViewOrder,
+    ]);
 
   const activeViewLabel =
     useMemo(() => {
@@ -1651,15 +2504,17 @@ export function ConversationList({
           string
         > = {
           unread:
-            "Unread",
+            isKhmer ? "មិនទាន់អាន" : "Unread",
           my:
-            "My conversations",
+            isKhmer ? "ចាត់តាំងឱ្យខ្ញុំ" : "Assign to me",
           unassigned:
-            "Unassigned",
+            isKhmer ? "មិនទាន់ចាត់តាំង" : "Unassigned",
           comment:
-            "Facebook comments",
+            isKhmer ? "មតិយោបល់ Facebook" : "Facebook Comment",
+          open:
+            isKhmer ? "ការសន្ទនាបើក" : "Open conversation",
           pinned:
-            "Pinned",
+            isKhmer ? "Pin" : "Pinned",
         };
 
       if (
@@ -1687,10 +2542,12 @@ export function ConversationList({
     }, [
       savedViews,
       selectedViewKey,
+      isKhmer,
     ]);
 
   function selectView(
     key: string,
+    viewOverride?: SavedView,
   ) {
     setRemindersOpen(false);
     setSearch("");
@@ -1706,13 +2563,57 @@ export function ConversationList({
     );
 
     const query =
-      new URLSearchParams();
-
-    if (selectedChannelId) {
-      query.set(
-        "channel",
-        selectedChannelId,
+      new URLSearchParams(
+        searchParams.toString(),
       );
+
+    query.delete("conversation");
+    query.delete("status");
+    query.delete("view");
+
+    const savedView =
+      viewOverride ??
+      getSavedViewFromKey(
+        key,
+        savedViews,
+      );
+
+    const isDefaultSmartView =
+      ["my", "unassigned", "comment", "open"].includes(key);
+
+    /*
+     * Smart Views own their workspace/channel scope. Default Smart Views are
+     * intentionally global across every accessible subscription. Personal
+     * Smart Views may target all, the current workspace, or selected
+     * workspaces. Clear URL-level channel/workspace filters when needed so a
+     * previous Inbox selection cannot silently hide valid Smart View matches.
+     */
+    if (savedView) {
+      const filters = normalizeSavedViewFilters(
+        savedView.filters,
+      );
+
+      query.delete("channel");
+      query.delete("page");
+
+      if (filters.workspaceScope === "current") {
+        if (workspaceContextId) {
+          query.set("workspace", workspaceContextId);
+        } else {
+          query.delete("workspace");
+        }
+      } else if (
+        filters.workspaceScope === "selected" &&
+        filters.workspaceIds.length === 1
+      ) {
+        query.set("workspace", filters.workspaceIds[0]);
+      } else {
+        query.delete("workspace");
+      }
+    } else if (isDefaultSmartView) {
+      query.delete("workspace");
+      query.delete("channel");
+      query.delete("page");
     }
 
     if (
@@ -1752,31 +2653,65 @@ export function ConversationList({
   function openEditView(
     view: SavedView,
   ) {
-    setViewActionMenuId(
-      null,
-    );
+    if (savingView || deletingViewId) {
+      return;
+    }
+
+    const currentView =
+      savedViews.find(
+        (item) => item.id === view.id,
+      );
+
+    if (!currentView) {
+      setViewActionMenuId(null);
+      setViewsError(
+        "This Smart View is no longer available. Refresh and try again.",
+      );
+      return;
+    }
+
+    const normalizedFilters =
+      normalizeSavedViewFilters(
+        currentView.filters,
+      );
+
+    setViewActionMenuId(null);
+    setViewsError(null);
 
     setEditor({
       id:
-        view.id,
+        currentView.id,
       name:
-        view.name,
+        currentView.name,
       filters: {
-        ...EMPTY_FILTERS,
-        ...view.filters,
+        ...normalizedFilters,
+        workspaceIds: [
+          ...normalizedFilters.workspaceIds,
+        ],
         tagIds: [
-          ...(
-            view.filters
-              ?.tagIds ??
-            []
-          ),
+          ...normalizedFilters.tagIds,
         ],
       },
     });
   }
 
   async function saveView() {
-    if (!editor) {
+    if (!editor || savingView) {
+      return;
+    }
+
+    const editingViewId = editor.id;
+
+    if (
+      editingViewId &&
+      !savedViews.some(
+        (view) => view.id === editingViewId,
+      )
+    ) {
+      setViewsError(
+        "This Smart View is no longer available. Refresh and try again.",
+      );
+      setEditor(null);
       return;
     }
 
@@ -1791,6 +2726,16 @@ export function ConversationList({
     if (!name) {
       setViewsError(
         "Enter a Smart View name.",
+      );
+      return;
+    }
+
+    if (
+      editor.filters.workspaceScope === "selected" &&
+      editor.filters.workspaceIds.length === 0
+    ) {
+      setViewsError(
+        "Select at least one workspace for this Smart View.",
       );
       return;
     }
@@ -1855,23 +2800,35 @@ export function ConversationList({
         );
       }
 
+      if (
+        isEditing &&
+        editingViewId &&
+        result.view.id !== editingViewId
+      ) {
+        throw new Error(
+          "Smart View update returned an unexpected result. Nothing was switched.",
+        );
+      }
+
       setSavedViews(
         (current) => {
+          const normalizedResultView =
+            normalizeSavedView(
+              result.view as SavedView,
+            );
+
           if (isEditing) {
             return current.map(
               (view) =>
-                view.id ===
-                result.view?.id
-                  ? (result.view as
-                      SavedView)
+                view.id === normalizedResultView.id
+                  ? normalizedResultView
                   : view,
             );
           }
 
           return [
             ...current,
-            result.view as
-              SavedView,
+            normalizedResultView,
           ];
         },
       );
@@ -1880,9 +2837,13 @@ export function ConversationList({
         `saved:${result.view.id}`;
 
       setEditor(null);
-      selectView(
-        nextKey,
-      );
+
+      if (!isEditing) {
+        selectView(
+          nextKey,
+          normalizeSavedView(result.view),
+        );
+      }
     } catch (
       error
     ) {
@@ -1902,15 +2863,6 @@ export function ConversationList({
   async function deleteView(
     view: SavedView,
   ) {
-    const confirmed =
-      window.confirm(
-        `Delete Smart View "${view.name}"?`,
-      );
-
-    if (!confirmed) {
-      return;
-    }
-
     setDeletingViewId(
       view.id,
     );
@@ -1953,6 +2905,13 @@ export function ConversationList({
           ),
       );
 
+      persistSmartViewOrder(
+        smartViewOrder.filter(
+          (itemId) =>
+            itemId !== `saved:${view.id}`,
+        ),
+      );
+
       setViewActionMenuId(
         null,
       );
@@ -1965,6 +2924,10 @@ export function ConversationList({
           "all",
         );
       }
+
+      setDeleteViewTarget(
+        null,
+      );
     } catch (
       error
     ) {
@@ -1992,7 +2955,7 @@ export function ConversationList({
     {
       value: "all",
       label:
-        "All conversations",
+        isKhmer ? "ការសន្ទនាទាំងអស់" : "All conversations",
       count:
         builtInCounts.all,
       icon:
@@ -2002,46 +2965,17 @@ export function ConversationList({
       value:
         "unread",
       label:
-        "Unread",
+        isKhmer ? "មិនទាន់អាន" : "Unread",
       count:
         builtInCounts.unread,
       icon:
         <UnreadIcon />,
     },
     {
-      value: "my",
-      label:
-        "My conversations",
-      count:
-        builtInCounts.my,
-      icon:
-        <AssignedToMeIcon />,
-    },
-    {
-      value:
-        "unassigned",
-      label:
-        "Unassigned",
-      count:
-        builtInCounts.unassigned,
-      icon:
-        <UnassignedIcon />,
-    },
-    {
-      value:
-        "comment",
-      label:
-        "Facebook comments",
-      count:
-        builtInCounts.comment,
-      icon:
-        <CommentIcon />,
-    },
-    {
       value:
         "pinned",
       label:
-        "Pinned",
+        isKhmer ? "Pin" : "Pinned",
       count:
         builtInCounts.pinned,
       icon:
@@ -2049,9 +2983,15 @@ export function ConversationList({
     },
   ];
 
+  const isSmartViewSelected =
+    selectedViewKey.startsWith("saved:") ||
+    ["my", "unassigned", "comment", "open"].includes(
+      selectedViewKey,
+    );
+
   return (
     <section className="relative flex h-full min-h-0 w-full min-w-0 overflow-hidden border-r border-slate-200 bg-white">
-      <aside className="relative z-30 flex h-full w-16 shrink-0 flex-col overflow-visible border-r border-slate-200 bg-slate-50 py-3">
+      <aside className="relative z-30 flex h-full w-15 shrink-0 flex-col overflow-visible border-r border-slate-200 bg-slate-50 py-3">
         {railViews.map(
           (view) => {
             const isActive =
@@ -2106,17 +3046,13 @@ export function ConversationList({
                     "unread" &&
                   totalUnreadCount >
                     0
-                    ? ` · ${totalUnreadCount} message${
-                        totalUnreadCount ===
-                        1
-                          ? ""
-                          : "s"
-                      } in ${unreadConversationCount} chat${
-                        unreadConversationCount ===
-                        1
-                          ? ""
-                          : "s"
-                      }`
+                    ? isKhmer
+                      ? ` · ${totalUnreadCount} សារ ក្នុង ${unreadConversationCount} ការសន្ទនា`
+                      : ` · ${totalUnreadCount} message${
+                          totalUnreadCount === 1 ? "" : "s"
+                        } in ${unreadConversationCount} chat${
+                          unreadConversationCount === 1 ? "" : "s"
+                        }`
                     : ` · ${view.count}`}
 
                   <span className="absolute right-full top-1/2 -translate-y-1/2 border-y-4 border-r-4 border-y-transparent border-r-slate-950" />
@@ -2126,6 +3062,7 @@ export function ConversationList({
           },
         )}
 
+        {showReminderRailShortcut ? (
         <button
           type="button"
           onClick={() => {
@@ -2144,8 +3081,8 @@ export function ConversationList({
               ? "bg-amber-100 text-amber-700"
               : "text-slate-600 hover:bg-white hover:text-slate-900"
           }`}
-          aria-label="Follow-up / Reminders"
-          title="Follow-up / Reminders"
+          aria-label={isKhmer ? "តាមដាន / ការរំលឹក" : "Follow-up / Reminders"}
+          title={isKhmer ? "តាមដាន / ការរំលឹក" : "Follow-up / Reminders"}
         >
           <ReminderIcon />
 
@@ -2158,13 +3095,15 @@ export function ConversationList({
           ) : null}
 
           <span className="pointer-events-none absolute left-[58px] top-1/2 z-[100] hidden -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-950 px-3 py-2 text-xs font-medium text-white shadow-xl group-hover:block">
-            Follow-up / Reminders
+            {isKhmer ? "តាមដាន / ការរំលឹក" : "Follow-up / Reminders"}
             {reminderCount > 0
               ? ` · ${reminderCount}`
               : ""}
             <span className="absolute right-full top-1/2 -translate-y-1/2 border-y-4 border-r-4 border-y-transparent border-r-slate-950" />
           </span>
         </button>
+
+        ) : null}
 
         <div className="mx-2 my-2 h-px bg-slate-200" />
 
@@ -2186,28 +3125,22 @@ export function ConversationList({
           }}
           className={`group relative mx-2 mb-1 flex h-12 shrink-0 items-center justify-center rounded-xl transition ${
             viewsOpen ||
-            selectedViewKey.startsWith(
-              "saved:",
-            )
+            isSmartViewSelected
               ? "bg-violet-100 text-violet-700"
               : "text-slate-600 hover:bg-white hover:text-slate-900"
           }`}
-          aria-label="Smart Views"
+          aria-label={isKhmer ? "Smart Views" : "Smart Views"}
         >
           <ViewsIcon />
 
-          {savedViews.length >
-          0 ? (
-            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-slate-50 bg-violet-600 px-1 text-[10px] font-bold leading-none text-white">
-              {savedViews.length >
-              9
-                ? "9+"
-                : savedViews.length}
-            </span>
-          ) : null}
+          <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-slate-50 bg-violet-600 px-1 text-[10px] font-bold leading-none text-white">
+            {savedViews.length + DEFAULT_SMART_VIEW_ORDER_IDS.length > 9
+              ? "9+"
+              : savedViews.length + DEFAULT_SMART_VIEW_ORDER_IDS.length}
+          </span>
 
           <span className="pointer-events-none absolute left-[58px] top-1/2 z-[100] hidden -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-950 px-3 py-2 text-xs font-medium text-white shadow-xl group-hover:block">
-            Smart Views
+            {isKhmer ? "Smart Views" : "Smart Views"}
             <span className="absolute right-full top-1/2 -translate-y-1/2 border-y-4 border-r-4 border-y-transparent border-r-slate-950" />
           </span>
         </button>
@@ -2239,8 +3172,8 @@ export function ConversationList({
                   Smart Views
                 </h2>
 
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Personal saved Inbox filters
+                <p className="mt-1 max-w-[250px] text-xs leading-5 text-slate-500">
+                  Save filters to find conversations faster.
                 </p>
               </div>
 
@@ -2288,8 +3221,8 @@ export function ConversationList({
                   </button>
                 </div>
 
-                <label className="mt-4 block">
-                  <span className="text-xs font-semibold text-slate-600">
+                <label className="mt-5 block">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                     View name
                   </span>
 
@@ -2321,9 +3254,185 @@ export function ConversationList({
                   />
                 </label>
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
+                <section className="mt-5 border-b border-slate-200 pb-5">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h4 className="text-sm font-semibold text-slate-900">
+                      1 · Workspace scope
+                    </h4>
+                  </div>
+
+                  <label className="block">
+                    <span className="sr-only">Workspace scope</span>
+
+                    <select
+                      value={editor.filters.workspaceScope}
+                      onChange={(event) => {
+                        const nextScope =
+                          event.target.value as WorkspaceScope;
+
+                        setEditor((current) => {
+                          if (!current) {
+                            return current;
+                          }
+
+                          const fallbackWorkspaceId =
+                            workspaceContextId ??
+                            availableSmartViewWorkspaces[0]?.businessId ??
+                            null;
+
+                          return {
+                            ...current,
+                            filters: {
+                              ...current.filters,
+                              workspaceScope: nextScope,
+                              workspaceIds:
+                                nextScope === "selected" &&
+                                current.filters.workspaceIds.length === 0 &&
+                                fallbackWorkspaceId
+                                  ? [fallbackWorkspaceId]
+                                  : current.filters.workspaceIds,
+                              // Avoid hidden tag filters when scope changes.
+                              tagIds: [],
+                            },
+                          };
+                        });
+                      }}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="all">
+                        All workspaces
+                      </option>
+                      <option value="current">
+                        Current workspace
+                      </option>
+                      <option value="selected">
+                        Select workspaces
+                      </option>
+                    </select>
+                  </label>
+
+                  {editor.filters.workspaceScope === "current" ? (
+                    <div className="mt-2 rounded-lg bg-white px-3 py-2 text-[11px] text-slate-500 ring-1 ring-slate-200">
+                      {availableSmartViewWorkspaces.find(
+                        (workspace) =>
+                          workspace.businessId === workspaceContextId,
+                      )?.businessName ?? "Current workspace"}
+                    </div>
+                  ) : null}
+
+                  {editor.filters.workspaceScope === "selected" ? (
+                    <div className="mt-2 max-h-32 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
+                      {availableSmartViewWorkspaces.length === 0 ? (
+                        <div className="px-2 py-2 text-xs text-slate-500">
+                          No accessible workspaces are available.
+                        </div>
+                      ) : (
+                        availableSmartViewWorkspaces.map((workspace) => {
+                          const checked =
+                            editor.filters.workspaceIds.includes(
+                              workspace.businessId,
+                            );
+
+                          return (
+                            <label
+                              key={workspace.businessId}
+                              className={`mb-1 flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-xs transition ${
+                                checked
+                                  ? "bg-violet-50 text-violet-800"
+                                  : "text-slate-700 hover:bg-slate-50"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(event) =>
+                                  setEditor((current) => {
+                                    if (!current) {
+                                      return current;
+                                    }
+
+                                    const workspaceIds =
+                                      event.target.checked
+                                        ? Array.from(
+                                            new Set([
+                                              ...current.filters.workspaceIds,
+                                              workspace.businessId,
+                                            ]),
+                                          )
+                                        : current.filters.workspaceIds.filter(
+                                            (businessId) =>
+                                              businessId !== workspace.businessId,
+                                          );
+
+                                    const removedWorkspaceTagIds =
+                                      new Set(
+                                        availableSmartViewTags
+                                          .filter(
+                                            (tag) =>
+                                              tag.businessId ===
+                                              workspace.businessId,
+                                          )
+                                          .map((tag) => tag.id),
+                                      );
+
+                                    const tagIds = event.target.checked
+                                      ? current.filters.tagIds
+                                      : current.filters.tagIds.filter(
+                                          (reference) => {
+                                            const scopedReference =
+                                              parseSmartViewTagReference(
+                                                reference,
+                                              );
+
+                                            if (scopedReference) {
+                                              return (
+                                                scopedReference.workspaceId !==
+                                                workspace.businessId
+                                              );
+                                            }
+
+                                            return !removedWorkspaceTagIds.has(
+                                              reference,
+                                            );
+                                          },
+                                        );
+
+                                    return {
+                                      ...current,
+                                      filters: {
+                                        ...current.filters,
+                                        workspaceIds,
+                                        tagIds,
+                                      },
+                                    };
+                                  })
+                                }
+                                className="h-4 w-4 rounded border-slate-300"
+                              />
+
+                              <span className="min-w-0 flex-1 truncate font-medium">
+                                {workspace.businessName}
+                              </span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                  ) : null}
+
+                  <p className="mt-2 text-[11px] leading-4 text-slate-400">
+                    Choose which workspace conversations this Smart View can include.
+                  </p>
+                </section>
+
+                <section className="border-b border-slate-200 py-5">
+                  <h4 className="mb-4 text-sm font-semibold text-slate-900">
+                    2 · What to match
+                  </h4>
+
+                  <div className="grid grid-cols-2 gap-3">
                   <label>
-                    <span className="text-xs font-semibold text-slate-600">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       Status
                     </span>
 
@@ -2375,8 +3484,8 @@ export function ConversationList({
                   </label>
 
                   <label>
-                    <span className="text-xs font-semibold text-slate-600">
-                      Assignment
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Assigned to
                     </span>
 
                     <select
@@ -2419,12 +3528,12 @@ export function ConversationList({
                       </option>
                     </select>
                   </label>
-                </div>
+                  </div>
 
-                <label className="mt-4 block">
-                  <span className="text-xs font-semibold text-slate-600">
-                    Channel
-                  </span>
+                  <label className="mt-4 block">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Channel
+                    </span>
 
                   <select
                     value={
@@ -2461,11 +3570,22 @@ export function ConversationList({
                     <option value="comment">
                       Facebook comments
                     </option>
+                    <option value="telegram">
+                      Telegram
+                    </option>
                   </select>
-                </label>
+                  </label>
 
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-3">
+                  <div className="mt-4">
+                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Only include
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                  <label className={`flex cursor-pointer items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                    editor.filters.unreadOnly
+                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                  }`}>
                     <input
                       type="checkbox"
                       checked={
@@ -2490,15 +3610,17 @@ export function ConversationList({
                               : current,
                         )
                       }
-                      className="h-4 w-4 rounded border-slate-300"
+                      className="sr-only"
                     />
 
-                    <span className="text-xs font-semibold text-slate-700">
-                      Unread only
-                    </span>
+                    <span>Unread</span>
                   </label>
 
-                  <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-3">
+                  <label className={`flex cursor-pointer items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                    editor.filters.pinnedOnly
+                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                  }`}>
                     <input
                       type="checkbox"
                       checked={
@@ -2523,40 +3645,35 @@ export function ConversationList({
                               : current,
                         )
                       }
-                      className="h-4 w-4 rounded border-slate-300"
+                      className="sr-only"
                     />
 
-                    <span className="text-xs font-semibold text-slate-700">
-                      Pinned only
-                    </span>
+                    <span>Pinned</span>
                   </label>
-                </div>
+                    </div>
+                  </div>
+                </section>
 
-                <div className="mt-4">
+                <section className="pt-5">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold text-slate-600">
-                      Customer tags
-                    </span>
+                    <h4 className="text-sm font-semibold text-slate-900">
+                      3 · Customer tags
+                    </h4>
 
-                    {editor.filters.tagIds.length >
-                    0 ? (
+                    {editor.filters.tagIds.length > 0 ? (
                       <button
                         type="button"
                         onClick={() =>
-                          setEditor(
-                            (
-                              current,
-                            ) =>
-                              current
-                                ? {
-                                    ...current,
-                                    filters: {
-                                      ...current.filters,
-                                      tagIds:
-                                        [],
-                                    },
-                                  }
-                                : current,
+                          setEditor((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  filters: {
+                                    ...current.filters,
+                                    tagIds: [],
+                                  },
+                                }
+                              : current,
                           )
                         }
                         className="text-[11px] font-semibold text-blue-600"
@@ -2566,109 +3683,102 @@ export function ConversationList({
                     ) : null}
                   </div>
 
-                  {allTags.length ===
-                  0 ? (
+                  <p className="mt-1.5 text-[11px] leading-4 text-slate-500">
+                    Tags belong to one workspace. A conversation only matches tags from its own workspace.
+                  </p>
+
+                  {editorTagGroups.length === 0 ? (
                     <div className="mt-2 rounded-xl border border-dashed border-slate-200 px-3 py-4 text-xs text-slate-500">
-                      No customer tags are available in the current Inbox data.
+                      No customer tags are available for the selected workspace scope.
                     </div>
                   ) : (
-                    <div className="mt-2 max-h-44 overflow-y-auto rounded-xl border border-slate-200 p-2">
-                      {allTags.map(
-                        (
-                          tag,
-                        ) => {
-                          const checked =
-                            editor.filters.tagIds.includes(
-                              tag.id,
-                            );
+                    <div className="mt-3 max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
+                      {editorTagGroups.map((group) => (
+                        <div
+                          key={group.businessId}
+                          className="mb-2 last:mb-0"
+                        >
+                          <div className="sticky top-0 z-[1] mb-1 rounded-md bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                            {group.businessName}
+                          </div>
 
-                          return (
-                            <label
-                              key={
-                                tag.id
-                              }
-                              className={`mb-1 flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition ${
-                                checked
-                                  ? "bg-blue-50"
-                                  : "hover:bg-slate-50"
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={
+                          {group.tags.map((tag) => {
+                            const reference =
+                              makeSmartViewTagReference(
+                                tag.businessId,
+                                tag.id,
+                              );
+                            const checked =
+                              editor.filters.tagIds.includes(reference) ||
+                              editor.filters.tagIds.includes(tag.id);
+
+                            return (
+                              <label
+                                key={reference}
+                                className={`mb-1 flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition ${
                                   checked
-                                }
-                                onChange={() =>
-                                  setEditor(
-                                    (
-                                      current,
-                                    ) => {
-                                      if (
-                                        !current
-                                      ) {
+                                    ? "bg-blue-50"
+                                    : "hover:bg-slate-50"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() =>
+                                    setEditor((current) => {
+                                      if (!current) {
                                         return current;
                                       }
 
                                       const currentIds =
-                                        current.filters.tagIds;
+                                        current.filters.tagIds.filter(
+                                          (value) => value !== tag.id,
+                                        );
 
                                       return {
                                         ...current,
                                         filters: {
                                           ...current.filters,
-                                          tagIds:
-                                            currentIds.includes(
-                                              tag.id,
-                                            )
-                                              ? currentIds.filter(
-                                                  (
-                                                    id,
-                                                  ) =>
-                                                    id !==
-                                                    tag.id,
-                                                )
-                                              : [
-                                                  ...currentIds,
-                                                  tag.id,
-                                                ],
+                                          tagIds: currentIds.includes(reference)
+                                            ? currentIds.filter(
+                                                (value) => value !== reference,
+                                              )
+                                            : [...currentIds, reference],
                                         },
                                       };
-                                    },
-                                  )
-                                }
-                                className="h-4 w-4 rounded border-slate-300"
-                              />
+                                    })
+                                  }
+                                  className="h-4 w-4 rounded border-slate-300"
+                                />
 
-                              <span
-                                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                                style={{
-                                  backgroundColor:
-                                    tag.color,
-                                }}
-                              />
+                                <span
+                                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                  style={{
+                                    backgroundColor: tag.color,
+                                  }}
+                                />
 
-                              <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700">
-                                {
-                                  tag.name
-                                }
-                              </span>
+                                <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700">
+                                  {tag.name}
+                                </span>
 
-                              <span className="text-[10px] text-slate-400">
-                                {
-                                  tag.count
-                                }
-                              </span>
-                            </label>
-                          );
-                        },
-                      )}
+                                {tag.count > 0 ? (
+                                  <span className="text-[10px] text-slate-400">
+                                    {tag.count}
+                                  </span>
+                                ) : null}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ))}
                     </div>
                   )}
 
-                  <p className="mt-1.5 text-[10px] leading-4 text-slate-400">
-                    Selecting multiple tags uses OR matching: a customer may have any selected tag.
+                  <p className="mt-2 text-[10px] leading-4 text-slate-400">
+                    Multiple selected tags use OR matching.
                   </p>
-                </div>
+                </section>
 
                 <div className="mt-5 flex gap-2 border-t border-slate-200 pt-4">
                   <button
@@ -2702,74 +3812,116 @@ export function ConversationList({
                 </div>
               </div>
             ) : (
-              <div className="min-h-0 flex-1 overflow-y-auto p-2">
+              <div className="min-h-0 flex-1 overflow-y-auto p-2 pb-20">
                 {viewsLoading ? (
                   <div className="px-4 py-8 text-center text-sm text-slate-500">
                     Loading Smart Views...
                   </div>
-                ) : savedViews.length ===
-                  0 ? (
-                  <div className="px-5 py-10 text-center">
-                    <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-violet-100 text-violet-700">
-                      <ViewsIcon />
+                ) : (
+                  <>
+                    <div className="mb-2 px-2 pt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Drag any view to reorder
                     </div>
 
-                    <p className="mt-3 font-semibold text-slate-800">
-                      No custom views yet
-                    </p>
-
-                    <p className="mt-1 text-xs leading-5 text-slate-500">
-                      Save combinations such as VIP + Unread, My Open Conversations, or Unassigned Messenger.
-                    </p>
-
-                    <button
-                      type="button"
-                      onClick={
-                        openCreateView
-                      }
-                      className="mt-4 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-                    >
-                      Create first view
-                    </button>
-                  </div>
-                ) : (
-                  savedViews.map(
-                    (
-                      view,
-                    ) => {
-                      const key =
-                        `saved:${view.id}`;
-
-                      const isActive =
-                        selectedViewKey ===
-                        key;
-
-                      const count =
-                        conversations.filter(
-                          (
-                            conversation,
-                          ) =>
+                    {orderedSmartViewItems.map((item) => {
+                      const isDefault = item.kind === "default";
+                      const key = isDefault
+                        ? item.key
+                        : `saved:${item.view.id}`;
+                      const name = isDefault
+                        ? item.name
+                        : item.view.name;
+                      const count = isDefault
+                        ? item.count
+                        : scopedConversations.filter((conversation) =>
                             matchesSavedView({
                               conversation,
-                              view,
+                              view: item.view,
                               memberId,
+                              memberIdByBusiness,
+                              workspaceContextId,
+                              channelDirectory,
                             }),
-                        ).length;
+                          ).length;
+                      const isActive = selectedViewKey === key;
+                      const savedView =
+                        item.kind === "saved" ? item.view : null;
 
                       return (
                         <div
-                          key={
-                            view.id
-                          }
-                          className="relative mb-1 flex items-center gap-1"
+                          key={item.orderId}
+                          data-smart-view-order-id={item.orderId}
+                          className={`relative mb-1 flex items-center gap-1 rounded-xl transition ${
+                            draggingSmartViewId === item.orderId
+                              ? "opacity-50"
+                              : ""
+                          }`}
                         >
+                          <span
+                            onPointerDown={(event) => {
+                              if (
+                                event.pointerType === "mouse" &&
+                                event.button !== 0
+                              ) {
+                                return;
+                              }
+
+                              event.preventDefault();
+                              event.currentTarget.setPointerCapture(
+                                event.pointerId,
+                              );
+                              beginSmartViewPointerDrag(item.orderId);
+                            }}
+                            onPointerMove={(event) => {
+                              if (
+                                draggingSmartViewIdRef.current !==
+                                item.orderId
+                              ) {
+                                return;
+                              }
+
+                              event.preventDefault();
+                              moveSmartViewFromPointer(
+                                event.clientX,
+                                event.clientY,
+                              );
+                            }}
+                            onPointerUp={(event) => {
+                              if (
+                                event.currentTarget.hasPointerCapture(
+                                  event.pointerId,
+                                )
+                              ) {
+                                event.currentTarget.releasePointerCapture(
+                                  event.pointerId,
+                                );
+                              }
+                              endSmartViewPointerDrag();
+                            }}
+                            onPointerCancel={() =>
+                              endSmartViewPointerDrag()
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key === "ArrowUp") {
+                                event.preventDefault();
+                                moveSmartViewByKeyboard(item.orderId, -1);
+                              } else if (event.key === "ArrowDown") {
+                                event.preventDefault();
+                                moveSmartViewByKeyboard(item.orderId, 1);
+                              }
+                            }}
+                            className="ml-1 flex h-9 w-6 shrink-0 touch-none cursor-grab select-none items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
+                            title="Drag up or down to reorder"
+                            aria-label={`Drag ${name} to reorder`}
+                            role="button"
+                            tabIndex={0}
+                          >
+                            ⋮⋮
+                          </span>
+
                           <button
                             type="button"
-                            onClick={() =>
-                              selectView(
-                                key,
-                              )
-                            }
+                            onClick={() => selectView(key)}
                             className={`min-w-0 flex-1 rounded-xl px-3 py-3 text-left transition ${
                               isActive
                                 ? "bg-violet-50 text-violet-800"
@@ -2779,82 +3931,102 @@ export function ConversationList({
                             <span className="flex items-center justify-between gap-3">
                               <span className="min-w-0">
                                 <span className="block truncate text-sm font-semibold">
-                                  {
-                                    view.name
-                                  }
+                                  {name}
                                 </span>
 
                                 <span className="mt-0.5 block truncate text-[10px] text-slate-400">
-                                  Personal Smart View
+                                  {isDefault
+                                    ? "Default Smart View"
+                                    : "Personal Smart View"}
                                 </span>
                               </span>
 
                               <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
-                                {
-                                  count
-                                }
+                                {count}
                               </span>
                             </span>
                           </button>
 
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setViewActionMenuId(
-                                (
-                                  current,
-                                ) =>
-                                  current ===
-                                  view.id
-                                    ? null
-                                    : view.id,
-                              )
-                            }
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                            aria-label={`Manage ${view.name}`}
-                          >
-                            <MoreIcon />
-                          </button>
-
-                          {viewActionMenuId ===
-                          view.id ? (
-                            <div className="absolute right-0 top-10 z-20 w-36 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
+                          {savedView ? (
+                            <>
                               <button
                                 type="button"
-                                onClick={() =>
-                                  openEditView(
-                                    view,
-                                  )
-                                }
-                                className="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setViewActionMenuId((current) =>
+                                    current === savedView.id
+                                      ? null
+                                      : savedView.id,
+                                  );
+                                }}
+                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                                aria-label={`Manage ${savedView.name}`}
                               >
-                                Edit view
+                                <MoreIcon />
                               </button>
 
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void deleteView(
-                                    view,
-                                  )
-                                }
-                                disabled={
-                                  deletingViewId ===
-                                  view.id
-                                }
-                                className="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
-                              >
-                                {deletingViewId ===
-                                view.id
-                                  ? "Deleting..."
-                                  : "Delete view"}
-                              </button>
-                            </div>
+                              {viewActionMenuId === savedView.id ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="fixed inset-0 z-10 cursor-default"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setViewActionMenuId(null);
+                                    }}
+                                    aria-label="Close Smart View actions"
+                                  />
+
+                                  <div
+                                    className="absolute right-0 top-10 z-20 w-36 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl"
+                                    onClick={(event) =>
+                                      event.stopPropagation()
+                                    }
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        openEditView(savedView)
+                                      }
+                                      className="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                      Edit view
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setViewActionMenuId(null);
+                                        setDeleteViewTarget(savedView);
+                                      }}
+                                      disabled={
+                                        deletingViewId === savedView.id
+                                      }
+                                      className="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                    >
+                                      {deletingViewId === savedView.id
+                                        ? "Deleting..."
+                                        : "Delete view"}
+                                    </button>
+                                  </div>
+                                </>
+                              ) : null}
+                            </>
                           ) : null}
                         </div>
                       );
-                    },
-                  )
+                    })}
+
+                    {savedViews.length === 0 ? (
+                      <button
+                        type="button"
+                        onClick={openCreateView}
+                        className="mt-3 w-full rounded-xl border border-dashed border-violet-200 bg-violet-50/50 px-3 py-3 text-xs font-semibold text-violet-700 hover:bg-violet-50"
+                      >
+                        + Create personal Smart View
+                      </button>
+                    ) : null}
+                  </>
                 )}
               </div>
             )}
@@ -2904,7 +4076,7 @@ export function ConversationList({
 
               <input
                 type="search"
-                placeholder="Search name, phone or Telegram username..."
+                placeholder={isKhmer ? "ស្វែងរកឈ្មោះ លេខទូរស័ព្ទ ឬឈ្មោះអ្នកប្រើ Telegram..." : "Search name, phone or Telegram username..."}
                 value={
                   search
                 }
@@ -2918,28 +4090,6 @@ export function ConversationList({
                 className="w-full rounded-xl border border-slate-300 py-3 pl-9 pr-3 text-[13px] outline-none transition placeholder:text-[12px] placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
-
-            {totalUnreadCount >
-            0 ? (
-              <button
-                type="button"
-                onClick={() =>
-                  selectView(
-                    "unread",
-                  )
-                }
-                className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-2.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
-                title={`${totalUnreadCount} unread messages`}
-              >
-                <span className="h-2 w-2 rounded-full bg-blue-600" />
-                <span>
-                  {totalUnreadCount >
-                  99
-                    ? "99+"
-                    : totalUnreadCount}
-                </span>
-              </button>
-            ) : null}
 
             <button
               type="button"
@@ -2990,12 +4140,16 @@ export function ConversationList({
 
               <div className="absolute right-3 top-[64px] z-40 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
                 <div className="border-b border-slate-100 px-4 py-3">
-                  <p className="text-sm font-semibold text-slate-900">
-                    Filter by status
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Filter
                   </p>
 
-                  <p className="mt-0.5 text-[10px] text-slate-400">
-                    Status filters stay compatible with your existing Inbox URLs.
+                  <p className="mt-2 text-sm font-semibold text-slate-900">
+                    Conversation status
+                  </p>
+
+                  <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                    Show conversations based on their current status.
                   </p>
                 </div>
 
@@ -3213,26 +4367,6 @@ export function ConversationList({
                     channelDirectoryLoaded,
                   );
 
-                const conversationChannel =
-                  conversation.social_account?.id
-                    ? channelDirectory[
-                        conversation.social_account.id
-                      ]
-                    : null;
-
-                const subscriptionId =
-                  conversation.subscription_id ??
-                  conversationChannel?.subscriptionId ??
-                  null;
-
-                const subscriptionColor =
-                  subscriptionAccentColor(
-                    subscriptionId,
-                    conversation.business_id ??
-                      conversationChannel?.businessId ??
-                      null,
-                  );
-
                 return (
                   <button
                     key={
@@ -3254,7 +4388,7 @@ export function ConversationList({
                         conversation.id,
                       )
                     }
-                    className={`mx-2 my-1 flex min-h-[104px] w-[calc(100%-1rem)] items-center gap-3 rounded-xl border-2 border-white px-3 py-2.5 text-left shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition ${
+                    className={`relative mx-2 my-1 flex min-h-[104px] w-[calc(100%-1rem)] items-center gap-3 rounded-xl border-2 border-white px-3 py-2.5 text-left shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition ${
                       isActive
                         ? "bg-blue-100 ring-1 ring-blue-100"
                         : "bg-white hover:bg-slate-50"
@@ -3321,47 +4455,13 @@ export function ConversationList({
                         ) : null}
                       </div>
 
-                      <div className="mt-2 flex flex-wrap items-center gap-1">
-                        <span
-                          className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600"
-                          title="TENH subscription"
-                        >
-                          <span
-                            className="h-2 w-2 rounded-full"
-                            style={{
-                              backgroundColor:
-                                subscriptionColor,
-                            }}
-                            aria-hidden="true"
-                          />
-                          {shortSubscriptionId(
-                            subscriptionId,
-                          )}
-                        </span>
-
-                        {getConversationChannel(
-                          conversation,
-                        ) ===
-                        "comment" ? (
-                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
-                            Comment
-                          </span>
-                        ) : null}
-
-                        {isConversationPinned(
-                          conversation,
-                        ) ? (
-                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                            Pinned
-                          </span>
-                        ) : null}
-
+                      <div className="mt-2 flex flex-wrap items-center gap-1 pr-9">
                         {(conversation.contact
                           ?.tags ??
                           [])
                           .slice(
                             0,
-                            2,
+                            5,
                           )
                           .map(
                             (
@@ -3371,7 +4471,7 @@ export function ConversationList({
                                 key={
                                   tag.id
                                 }
-                                className="max-w-28 truncate rounded-full px-2 py-0.5 text-xs font-medium text-white"
+                                className="max-w-32 truncate rounded-full px-2.5 py-0.5 text-xs font-medium text-white"
                                 style={{
                                   backgroundColor:
                                     tag.color,
@@ -3387,7 +4487,7 @@ export function ConversationList({
                         {(conversation.contact
                           ?.tags?.length ??
                           0) >
-                        2 ? (
+                        5 ? (
                           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
                             +
                             {(conversation
@@ -3395,10 +4495,22 @@ export function ConversationList({
                               ?.tags
                               ?.length ??
                               0) -
-                              2}
+                              5}
                           </span>
                         ) : null}
                       </div>
+
+                      {isConversationPinned(
+                        conversation,
+                      ) ? (
+                        <span
+                          className="absolute bottom-3 right-3 inline-flex scale-90 items-center justify-center text-red-600"
+                          title={isKhmer ? "បានខ្ទាស់" : "Pinned"}
+                          aria-label={isKhmer ? "បានខ្ទាស់" : "Pinned"}
+                        >
+                          <PinIcon />
+                        </span>
+                      ) : null}
                     </div>
                   </button>
                 );
@@ -3409,6 +4521,32 @@ export function ConversationList({
           </>
         )}
       </div>
+
+      <DeleteConfirmDialog
+        open={Boolean(deleteViewTarget)}
+        title="Delete Smart View?"
+        description={
+          deleteViewTarget
+            ? `"${deleteViewTarget.name}" will be permanently deleted. This action cannot be undone.`
+            : ""
+        }
+        loading={
+          Boolean(
+            deleteViewTarget &&
+              deletingViewId === deleteViewTarget.id,
+          )
+        }
+        onCancel={() => {
+          if (!deletingViewId) {
+            setDeleteViewTarget(null);
+          }
+        }}
+        onConfirm={() => {
+          if (deleteViewTarget && !deletingViewId) {
+            void deleteView(deleteViewTarget);
+          }
+        }}
+      />
     </section>
   );
 }

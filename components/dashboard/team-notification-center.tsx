@@ -10,9 +10,15 @@ import {
 import { useRouter } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
+import { ReminderManagementTab } from "@/components/dashboard/reminder-management-tab";
+
+const GROUP_MENTION_SOUND_SRC = "/alert-sound/mentions-notification.mp3";
+const GROUP_MENTION_FALLBACK_SOUND_SRC = "/alert-sound/crystal-bell-chime.wav";
 
 type TeamNotification = {
   id: string;
+  business_id: string;
+  recipient_member_id: string;
   notification_type: string;
   title: string;
   body: string | null;
@@ -28,8 +34,9 @@ type TeamNotification = {
 type TeamNotificationsResponse = {
   success?: boolean;
   error?: string;
-  memberId?: string;
-  businessId?: string;
+  memberIds?: string[];
+  businessIds?: string[];
+  currentBusinessId?: string | null;
   notifications?: TeamNotification[];
 };
 
@@ -199,7 +206,37 @@ function PaymentRejectedIcon() {
   );
 }
 
+function ReminderNotificationIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v5l3 2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 3h6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function notificationVisual(type: string, isRead: boolean) {
+  if (type === "conversation_reminder") {
+    return {
+      wrapper: isRead
+        ? "bg-amber-50 text-amber-700"
+        : "bg-amber-500 text-white",
+      row: isRead
+        ? "hover:bg-slate-50"
+        : "bg-amber-50/80 hover:bg-amber-50",
+      dot: "bg-amber-500",
+      icon: <ReminderNotificationIcon />,
+    };
+  }
+
   if (type === "manual_payment_approved") {
     return {
       wrapper: isRead
@@ -287,17 +324,110 @@ function normalizeLink(value: string | null) {
   return null;
 }
 
+const TEAM_NOTIFICATIONS_ROOM_READ_EVENT =
+  "tenh:team-notifications-room-read";
+
+function readRealtimeNotification(value: unknown): TeamNotification | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const row = value as Record<string, unknown>;
+
+  if (
+    typeof row.id !== "string" ||
+    typeof row.business_id !== "string" ||
+    typeof row.recipient_member_id !== "string" ||
+    typeof row.notification_type !== "string" ||
+    typeof row.title !== "string" ||
+    typeof row.is_read !== "boolean" ||
+    typeof row.created_at !== "string"
+  ) {
+    return null;
+  }
+
+  const nullableString = (key: string) =>
+    typeof row[key] === "string" ? (row[key] as string) : null;
+
+  return {
+    id: row.id,
+    business_id: row.business_id,
+    recipient_member_id: row.recipient_member_id,
+    notification_type: row.notification_type,
+    title: row.title,
+    body: nullableString("body"),
+    link: nullableString("link"),
+    room_id: nullableString("room_id"),
+    conversation_id: nullableString("conversation_id"),
+    contact_id: nullableString("contact_id"),
+    is_read: row.is_read,
+    read_at: nullableString("read_at"),
+    created_at: row.created_at,
+  };
+}
+
 export function TeamNotificationCenter() {
   const router = useRouter();
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const groupMentionAudioRef = useRef<HTMLAudioElement | null>(null);
+  const groupMentionFallbackRef = useRef(false);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<TeamNotification[]>([]);
   const [announcement, setAnnouncement] = useState<SystemAnnouncement | null>(null);
-  const [memberId, setMemberId] = useState<string | null>(null);
-  const [businessId, setBusinessId] = useState<string | null>(null);
+  const [memberIds, setMemberIds] = useState<string[]>([]);
+  const [currentBusinessId, setCurrentBusinessId] = useState<string | null>(null);
   const [workingId, setWorkingId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"notifications" | "reminders">("notifications");
+  const [pendingReminderCount, setPendingReminderCount] = useState(0);
+
+  useEffect(() => {
+    const audio = new Audio(GROUP_MENTION_SOUND_SRC);
+    audio.preload = "auto";
+
+    audio.addEventListener("error", () => {
+      if (groupMentionFallbackRef.current) {
+        return;
+      }
+
+      groupMentionFallbackRef.current = true;
+      audio.src = GROUP_MENTION_FALLBACK_SOUND_SRC;
+    });
+
+    groupMentionAudioRef.current = audio;
+
+    return () => {
+      audio.pause();
+      groupMentionAudioRef.current = null;
+    };
+  }, []);
+
+  const playGroupMentionSound = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    // GroupChatView already handles its own mention alert while the user is
+    // inside Group Chat. The global header notification center only fills the
+    // gap on every other TENH page, which avoids duplicate sounds.
+    if (window.location.pathname.startsWith("/dashboard/group-chat")) {
+      return;
+    }
+
+    const audio = groupMentionAudioRef.current;
+
+    if (!audio) {
+      return;
+    }
+
+    audio.volume = 0.7;
+    audio.currentTime = 0;
+
+    // Browsers can reject autoplay until the user has interacted with TENH.
+    // Do not let that interrupt the realtime notification update.
+    void audio.play().catch(() => undefined);
+  }, []);
 
   const loadNotifications = useCallback(async (quiet = false) => {
     if (!quiet) {
@@ -328,8 +458,8 @@ export function TeamNotificationCenter() {
       }
 
       setNotifications(teamResult.notifications ?? []);
-      setMemberId(teamResult.memberId ?? null);
-      setBusinessId(teamResult.businessId ?? null);
+      setMemberIds(teamResult.memberIds ?? []);
+      setCurrentBusinessId(teamResult.currentBusinessId ?? null);
 
       if (announcementResponse.ok && announcementResult.success) {
         setAnnouncement(announcementResult.announcement ?? null);
@@ -359,32 +489,146 @@ export function TeamNotificationCenter() {
     };
   }, [loadNotifications]);
 
+  const memberIdsKey = useMemo(
+    () => [...new Set(memberIds)].sort().join("|"),
+    [memberIds],
+  );
+
   useEffect(() => {
-    if (!memberId || !businessId) {
-      return;
-    }
+    const scopedMemberIds = memberIdsKey ? memberIdsKey.split("|") : [];
+    if (scopedMemberIds.length === 0) return;
 
     const supabase = createClient();
-    const channel = supabase
-      .channel(`tenh-header-notifications:${memberId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "team_notifications",
-          filter: `recipient_member_id=eq.${memberId}`,
-        },
-        () => {
-          void loadNotifications(true);
-        },
-      )
-      .subscribe();
+    const channels = scopedMemberIds.map((memberId) =>
+      supabase
+        .channel(`tenh-header-notifications:${memberId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "team_notifications",
+            filter: `recipient_member_id=eq.${memberId}`,
+          },
+          (payload) => {
+            const incoming = readRealtimeNotification(payload.new);
+
+            if (!incoming) {
+              void loadNotifications(true);
+              return;
+            }
+
+            if (
+              !incoming.is_read &&
+              (incoming.notification_type === "team_chat_mention" ||
+                incoming.notification_type === "conversation_reminder")
+            ) {
+              playGroupMentionSound();
+            }
+
+            setNotifications((current) => {
+              if (incoming.is_read) {
+                return current.filter((item) => item.id !== incoming.id);
+              }
+
+              return [
+                incoming,
+                ...current.filter((item) => item.id !== incoming.id),
+              ].slice(0, 80);
+            });
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "team_notifications",
+            filter: `recipient_member_id=eq.${memberId}`,
+          },
+          (payload) => {
+            const updated = readRealtimeNotification(payload.new);
+
+            if (!updated) {
+              void loadNotifications(true);
+              return;
+            }
+
+            setNotifications((current) =>
+              updated.is_read
+                ? current.filter((item) => item.id !== updated.id)
+                : current.map((item) =>
+                    item.id === updated.id ? updated : item,
+                  ),
+            );
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "DELETE",
+            schema: "public",
+            table: "team_notifications",
+            filter: `recipient_member_id=eq.${memberId}`,
+          },
+          (payload) => {
+            const removedId =
+              payload.old &&
+              typeof payload.old === "object" &&
+              typeof (payload.old as Record<string, unknown>).id === "string"
+                ? ((payload.old as Record<string, unknown>).id as string)
+                : null;
+
+            if (!removedId) {
+              void loadNotifications(true);
+              return;
+            }
+
+            setNotifications((current) =>
+              current.filter((item) => item.id !== removedId),
+            );
+          },
+        )
+        .subscribe(),
+    );
 
     return () => {
-      void supabase.removeChannel(channel);
+      for (const channel of channels) {
+        void supabase.removeChannel(channel);
+      }
     };
-  }, [businessId, loadNotifications, memberId]);
+  }, [loadNotifications, memberIdsKey, playGroupMentionSound]);
+
+  useEffect(() => {
+    function handleRoomRead(event: Event) {
+      const roomId =
+        event instanceof CustomEvent &&
+        event.detail &&
+        typeof event.detail.roomId === "string"
+          ? event.detail.roomId
+          : null;
+
+      if (!roomId) {
+        return;
+      }
+
+      setNotifications((current) =>
+        current.filter((item) => item.room_id !== roomId),
+      );
+    }
+
+    window.addEventListener(
+      TEAM_NOTIFICATIONS_ROOM_READ_EVENT,
+      handleRoomRead,
+    );
+
+    return () => {
+      window.removeEventListener(
+        TEAM_NOTIFICATIONS_ROOM_READ_EVENT,
+        handleRoomRead,
+      );
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -418,19 +662,29 @@ export function TeamNotificationCenter() {
     };
   }, [open]);
 
-  const unreadTeamCount = useMemo(
-    () => notifications.filter((item) => !item.is_read).length,
+  const visibleNotifications = useMemo(
+    () => notifications.filter((item) => !item.is_read),
     [notifications],
   );
+
+  const unreadTeamCount = visibleNotifications.length;
 
   const totalUnread = unreadTeamCount + (announcement ? 1 : 0);
   const badgeLabel = totalUnread > 99 ? "99+" : String(totalUnread);
 
   async function markRead(notification: TeamNotification) {
     if (notification.is_read) {
+      setNotifications((current) =>
+        current.filter((item) => item.id !== notification.id),
+      );
       return true;
     }
 
+    // Remove it immediately so opening a mention feels instant. The API call
+    // below persists the read state; if it fails we safely restore the row.
+    setNotifications((current) =>
+      current.filter((item) => item.id !== notification.id),
+    );
     setWorkingId(notification.id);
 
     try {
@@ -446,22 +700,20 @@ export function TeamNotificationCenter() {
       });
 
       if (!response.ok) {
+        setNotifications((current) => [
+          notification,
+          ...current.filter((item) => item.id !== notification.id),
+        ]);
         return false;
       }
 
-      setNotifications((current) =>
-        current.map((item) =>
-          item.id === notification.id
-            ? {
-                ...item,
-                is_read: true,
-                read_at: new Date().toISOString(),
-              }
-            : item,
-        ),
-      );
-
       return true;
+    } catch {
+      setNotifications((current) => [
+        notification,
+        ...current.filter((item) => item.id !== notification.id),
+      ]);
+      return false;
     } finally {
       setWorkingId(null);
     }
@@ -551,8 +803,57 @@ export function TeamNotificationCenter() {
   }
 
   async function openTeamNotification(notification: TeamNotification) {
-    await markRead(notification);
-    navigateTo(notification.link);
+    // Remove the unread badge immediately, then persist in the background.
+    void markRead(notification);
+
+    const safeHref = normalizeLink(notification.link);
+    if (!safeHref) return;
+
+    setOpen(false);
+
+    if (!safeHref.startsWith("/")) {
+      window.open(safeHref, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    const inboxLink =
+      safeHref === "/dashboard/inbox" ||
+      safeHref.startsWith("/dashboard/inbox?") ||
+      safeHref.startsWith("/dashboard/inbox/");
+
+    if (
+      !inboxLink &&
+      notification.business_id &&
+      notification.business_id !== currentBusinessId
+    ) {
+      try {
+        const response = await fetch("/api/workspaces/switch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ businessId: notification.business_id }),
+        });
+        const result = (await response.json()) as {
+          success?: boolean;
+          error?: string;
+        };
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.error ?? "Unable to switch workspace.");
+        }
+
+        setCurrentBusinessId(notification.business_id);
+        window.dispatchEvent(new Event("tenh:workspace-data-changed"));
+      } catch {
+        // The notification may belong to a workspace that expired or was
+        // removed after the notification was created. Refresh the list and do
+        // not navigate into stale workspace data.
+        void loadNotifications(true);
+        return;
+      }
+    }
+
+    router.push(safeHref);
+    router.refresh();
   }
 
   const announcementTone = announcement?.tone ?? "update";
@@ -598,14 +899,16 @@ export function TeamNotificationCenter() {
           <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3.5">
             <div>
               <p className="text-sm font-bold text-slate-950">
-                Notifications
+                {activeTab === "notifications" ? "Notifications" : "Reminders"}
               </p>
               <p className="mt-0.5 text-xs text-slate-500">
-                TENH updates and team activity
+                {activeTab === "notifications"
+                  ? "TENH updates and team activity"
+                  : "Review reminders before they are sent"}
               </p>
             </div>
 
-            {unreadTeamCount > 0 ? (
+            {activeTab === "notifications" && unreadTeamCount > 0 ? (
               <button
                 type="button"
                 onClick={() => {
@@ -619,6 +922,42 @@ export function TeamNotificationCenter() {
             ) : null}
           </div>
 
+          <div className="flex border-b border-slate-100 bg-white px-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab("notifications")}
+              className={`flex flex-1 items-center justify-center gap-1.5 border-b-2 px-3 py-2 text-xs font-bold transition ${
+                activeTab === "notifications"
+                  ? "border-blue-600 text-blue-700"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              Notifications
+              {unreadTeamCount > 0 ? (
+                <span className="rounded-full bg-red-50 px-1.5 py-0.5 text-[9px] text-red-600">
+                  {unreadTeamCount > 99 ? "99+" : unreadTeamCount}
+                </span>
+              ) : null}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("reminders")}
+              className={`flex flex-1 items-center justify-center gap-1.5 border-b-2 px-3 py-2 text-xs font-bold transition ${
+                activeTab === "reminders"
+                  ? "border-blue-600 text-blue-700"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              Reminders
+              {pendingReminderCount > 0 ? (
+                <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] text-amber-700">
+                  {pendingReminderCount > 99 ? "99+" : pendingReminderCount}
+                </span>
+              ) : null}
+            </button>
+          </div>
+
+          {activeTab === "notifications" ? (
           <div className="max-h-[520px] overflow-y-auto p-2">
             {announcement ? (
               <div
@@ -690,11 +1029,11 @@ export function TeamNotificationCenter() {
               </div>
             ) : null}
 
-            {loading && notifications.length === 0 ? (
+            {loading && visibleNotifications.length === 0 ? (
               <div className="px-4 py-10 text-center text-sm text-slate-500">
                 Loading notifications...
               </div>
-            ) : error && notifications.length === 0 && !announcement ? (
+            ) : error && visibleNotifications.length === 0 && !announcement ? (
               <div className="px-4 py-10 text-center">
                 <p className="text-sm font-semibold text-slate-700">
                   Unable to load notifications
@@ -709,7 +1048,7 @@ export function TeamNotificationCenter() {
                   Try again
                 </button>
               </div>
-            ) : notifications.length === 0 && !announcement ? (
+            ) : visibleNotifications.length === 0 && !announcement ? (
               <div className="px-4 py-10 text-center">
                 <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
                   <BellIcon />
@@ -723,7 +1062,7 @@ export function TeamNotificationCenter() {
               </div>
             ) : (
               <div className="space-y-1">
-                {notifications.map((notification) => {
+                {visibleNotifications.map((notification) => {
                   const visual = notificationVisual(
                     notification.notification_type,
                     notification.is_read,
@@ -734,7 +1073,7 @@ export function TeamNotificationCenter() {
                       key={notification.id}
                       type="button"
                       onClick={() => {
-                        void openTeamNotification(notification);
+                        openTeamNotification(notification);
                       }}
                       disabled={workingId === notification.id}
                       className={`flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition disabled:opacity-60 ${visual.row}`}
@@ -778,6 +1117,12 @@ export function TeamNotificationCenter() {
               </div>
             )}
           </div>
+          ) : (
+            <ReminderManagementTab
+              onPendingCountChange={setPendingReminderCount}
+              onClosePanel={() => setOpen(false)}
+            />
+          )}
 
           <div className="border-t border-slate-100 bg-slate-50/70 px-4 py-2.5 text-center text-[10px] text-slate-400">
             Click outside this panel or press Esc to close.

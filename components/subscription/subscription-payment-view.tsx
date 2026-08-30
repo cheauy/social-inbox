@@ -1,8 +1,6 @@
 "use client";
 
 import Script from "next/script";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   useEffect,
   useMemo,
@@ -10,15 +8,108 @@ import {
 } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 import {
   TENH_BILLING_CYCLES,
   TENH_PLANS,
-  calculatePlanTotalCents,
   calculateCustomTotalCents,
+  calculatePlanTotalCents,
   formatUsdFromCents,
   type BillingCycle,
   type PlanCode,
 } from "@/lib/subscription/plan-catalog";
+
+
+function PaymentLockIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <rect x="5" y="10" width="14" height="10" rx="2" />
+      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
+}
+
+function PaymentShieldIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M12 3 5 6v5c0 4.6 2.7 8 7 10 4.3-2 7-5.4 7-10V6l-7-3Z" />
+      <path d="m9.4 12 1.8 1.8 3.8-4" />
+    </svg>
+  );
+}
+
+function PaymentBankIcon({ className = "h-6 w-6" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="m3 9 9-5 9 5" />
+      <path d="M5 10v7M9 10v7M15 10v7M19 10v7M3 20h18M4 17h16" />
+    </svg>
+  );
+}
+
+function PaymentLinkIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M9 12a3 3 0 0 0 3 3h3a3 3 0 1 0 0-6h-1" />
+      <path d="M15 12a3 3 0 0 0-3-3H9a3 3 0 1 0 0 6h1" />
+    </svg>
+  );
+}
+
+function PaymentUsersIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3.5 20v-1.4A4.6 4.6 0 0 1 8.1 14h1.8a4.6 4.6 0 0 1 4.6 4.6V20" />
+      <path d="M16 5.2a3 3 0 0 1 0 5.8M17.2 14.2a4.6 4.6 0 0 1 3.3 4.4V20" />
+    </svg>
+  );
+}
+
+function PaymentClockIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
+function PaymentHeadsetIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M4 14v-2a8 8 0 0 1 16 0v2" />
+      <path d="M18 19h-2M4 14a2 2 0 0 1 2-2h1v7H6a2 2 0 0 1-2-2v-3ZM20 14a2 2 0 0 0-2-2h-1v7h1a2 2 0 0 0 2-2v-3Z" />
+    </svg>
+  );
+}
+
+function PaymentCheckIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="m5 12 4 4L19 6" />
+    </svg>
+  );
+}
+
+function PaymentEditIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M12 20h9" />
+      <path d="m16.5 3.5 4 4L8 20l-5 1 1-5L16.5 3.5Z" />
+    </svg>
+  );
+}
+
+function PaymentUploadIcon({ className = "h-7 w-7" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M12 16V5" />
+      <path d="m8 9 4-4 4 4" />
+      <path d="M5 18.5a4 4 0 0 1-.2-8 6.5 6.5 0 0 1 12.4-1.7A4.6 4.6 0 1 1 18 18.5h-2" />
+    </svg>
+  );
+}
 
 type CheckoutMethod = "payway" | "manual";
 
@@ -68,36 +159,45 @@ type SubscriptionPaymentViewProps = {
   billingCycle: BillingCycle;
   initialPayWayReturn?: string | null;
   initialTransactionId?: string | null;
+
+  /*
+   * Everything below was already being passed by
+   * app/dashboard/subscription/payment/page.tsx but was never declared
+   * here, so React dropped it and TypeScript reported the mismatch (it
+   * was part of the standing error count). The consequences were real:
+   *
+   *  - purchaseBusinessId was lost, so buying an EXTRA subscription was
+   *    charged against the CURRENT workspace. If that workspace already
+   *    had an active paid period the database refused with
+   *    TENH_CUSTOM_ACTIVE_PERIOD_BLOCKED.
+   *  - customConnections / customUsers were lost, so a Custom plan
+   *    reached checkout with no capacity.
+   *  - renewSame and the customUpgrade fields were lost, so renewals and
+   *    capacity upgrades were treated as fresh purchases.
+   */
+
+  /** Workspace this purchase belongs to — a new one when buying extra. */
+  purchaseBusinessId?: string | null;
+
   customConnections?: number | null;
   customUsers?: number | null;
+
   renewSame?: boolean;
   renewalTotalCents?: number | null;
-  upgradeFromPlanCode?: PlanCode | null;
-  upgradeTotalCents?: number | null;
+
   customUpgrade?: boolean;
   customUpgradeTotalCents?: number | null;
+  customUpgradeCurrentConnections?: number | null;
+  customUpgradeCurrentUsers?: number | null;
+  customUpgradeCurrentBillingCycle?: string | null;
+  customUpgradeRemainingDays?: number | null;
+  customUpgradeExtensionMonths?: number | null;
   customUpgradeCurrentPeriodEnd?: string | null;
   customUpgradeNewPeriodEnd?: string | null;
-  purchaseBusinessId?: string | null;
+
+  upgradeFromPlanCode?: string | null;
+  upgradeTotalCents?: number | null;
 };
-
-function formatSubscriptionDate(value: string | null | undefined) {
-  if (!value) {
-    return "—";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "—";
-  }
-
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const year = date.getUTCFullYear();
-
-  return `${day}/${month}/${year}`;
-}
 
 function statusPanelClasses(
   state: PayWayPaymentState,
@@ -119,22 +219,23 @@ function statusPanelClasses(
 
 function payWayStateLabel(
   state: PayWayPaymentState,
+  isKhmer = false,
 ) {
   switch (state) {
     case "approved":
-      return "Payment approved";
+      return isKhmer ? "ការទូទាត់បានអនុម័ត — កំពុងដំណើរការ workspace របស់អ្នក" : "Payment approved — activating your workspace";
     case "declined":
-      return "Payment declined";
+      return isKhmer ? "ការទូទាត់ត្រូវបានបដិសេធ" : "Payment declined";
     case "cancelled":
-      return "Payment cancelled";
+      return isKhmer ? "ការទូទាត់ត្រូវបានបោះបង់" : "Payment cancelled";
     case "failed":
-      return "Payment verification failed";
+      return isKhmer ? "ការផ្ទៀងផ្ទាត់ការទូទាត់បានបរាជ័យ" : "Payment verification failed";
     case "pending":
     case "waiting":
-      return "Waiting for payment confirmation";
+      return isKhmer ? "កំពុងរង់ចាំការបញ្ជាក់ការទូទាត់" : "Waiting for payment confirmation";
     case "idle":
     default:
-      return "Ready for checkout";
+      return isKhmer ? "រួចរាល់សម្រាប់ការទូទាត់" : "Ready for checkout";
   }
 }
 
@@ -143,49 +244,56 @@ export function SubscriptionPaymentView({
   billingCycle,
   initialPayWayReturn = null,
   initialTransactionId = null,
+  purchaseBusinessId = null,
   customConnections = null,
   customUsers = null,
   renewSame = false,
   renewalTotalCents = null,
-  upgradeFromPlanCode = null,
-  upgradeTotalCents = null,
   customUpgrade = false,
   customUpgradeTotalCents = null,
+  customUpgradeCurrentConnections = null,
+  customUpgradeCurrentUsers = null,
+  customUpgradeCurrentBillingCycle = null,
+  customUpgradeRemainingDays = null,
+  customUpgradeExtensionMonths = null,
   customUpgradeCurrentPeriodEnd = null,
   customUpgradeNewPeriodEnd = null,
-  purchaseBusinessId = null,
+  upgradeFromPlanCode = null,
+  upgradeTotalCents = null,
 }: SubscriptionPaymentViewProps) {
-  const router = useRouter();
+  const languageId = useWorkspaceLanguageId();
+  const isKhmer = languageId === "km";
+  const t = (en: string, km: string) => (isKhmer ? km : en);
+  const cycleLabel = (label: string, months: number) => {
+    if (!isKhmer) return label;
+    if (months === 1) return "1 ខែ";
+    if (months === 12) return "1 ឆ្នាំ";
+    return `${months} ខែ`;
+  };
+  const billingCycleText = (value: string) => {
+    const item = TENH_BILLING_CYCLES.find((entry) => entry.id === value);
+    return item ? cycleLabel(item.label, item.months) : value;
+  };
 
-  async function returnToSubscription() {
-    try {
-      await fetch("/api/workspaces/restore-purchase-origin", {
-        method: "POST",
-        cache: "no-store",
-      });
-    } catch {
-      // Navigation still works if there is no purchase-origin context.
+  const plan = useMemo(() => {
+    if (planCode === "custom") {
+      if (customConnections === null || customUsers === null) {
+        return null;
+      }
+
+      return {
+        id: "custom" as const,
+        name: "Custom",
+        description: "Custom TENH subscription",
+        channels: customConnections,
+        users: customUsers,
+        monthlyCents: 0,
+      };
     }
 
-    router.push("/dashboard/subscription");
-    router.refresh();
-  }
+    return TENH_PLANS.find((item) => item.id === planCode) ?? null;
+  }, [planCode, customConnections, customUsers]);
 
-  const plan = useMemo(
-    () =>
-      planCode === "custom" &&
-      customConnections !== null &&
-      customUsers !== null
-        ? {
-            id: "custom" as const,
-            name: "Custom",
-            description: "Custom TENH subscription",
-            channels: customConnections,
-            users: customUsers,
-          }
-        : TENH_PLANS.find((item) => item.id === planCode) ?? null,
-    [planCode, customConnections, customUsers],
-  );
   const cycle = useMemo(
     () =>
       TENH_BILLING_CYCLES.find(
@@ -193,38 +301,129 @@ export function SubscriptionPaymentView({
       ) ?? null,
     [billingCycle],
   );
-  const totalCents = useMemo(
+
+  // The payment page is also used for Custom purchases, Custom Upgrades,
+  // same-subscription reactivation, and fixed-plan upgrades. Those flows
+  // already pass a trusted server-calculated amount. The old UI ignored the
+  // override and called calculatePlanTotalCents(), which returns null for a
+  // Custom plan, so the whole payment page returned null (blank screen).
+  const totalCents = useMemo(() => {
+    if (customUpgrade && customUpgradeTotalCents !== null) {
+      return customUpgradeTotalCents;
+    }
+
+    if (renewSame && renewalTotalCents !== null) {
+      return renewalTotalCents;
+    }
+
+    if (upgradeTotalCents !== null) {
+      return upgradeTotalCents;
+    }
+
+    if (planCode === "custom") {
+      if (customConnections === null || customUsers === null) {
+        return null;
+      }
+
+      return calculateCustomTotalCents(
+        customConnections,
+        customUsers,
+        billingCycle,
+      );
+    }
+
+    return calculatePlanTotalCents(planCode, billingCycle);
+  }, [
+    billingCycle,
+    customConnections,
+    customUpgrade,
+    customUpgradeTotalCents,
+    customUsers,
+    planCode,
+    renewSame,
+    renewalTotalCents,
+    upgradeTotalCents,
+  ]);
+
+  const previousPlan = useMemo(
     () =>
-      customUpgradeTotalCents !== null &&
-      Number.isFinite(customUpgradeTotalCents)
-        ? customUpgradeTotalCents
-        : upgradeTotalCents !== null &&
-      Number.isFinite(upgradeTotalCents)
-        ? upgradeTotalCents
-        : renewSame &&
-            renewalTotalCents !== null &&
-            Number.isFinite(renewalTotalCents)
-          ? renewalTotalCents
-          : planCode === "custom" &&
-            customConnections !== null &&
-            customUsers !== null
-          ? calculateCustomTotalCents(
-              customConnections,
-              customUsers,
-              billingCycle,
-            )
-          : calculatePlanTotalCents(planCode, billingCycle),
-    [
-      planCode,
-      billingCycle,
-      customConnections,
-      customUsers,
-      renewSame,
-      renewalTotalCents,
-      upgradeTotalCents,
-      customUpgradeTotalCents,
-    ],
+      upgradeFromPlanCode
+        ? TENH_PLANS.find((item) => item.id === upgradeFromPlanCode) ?? null
+        : null,
+    [upgradeFromPlanCode],
   );
+
+  const isUpgradeCheckout = Boolean(customUpgrade || upgradeFromPlanCode);
+  const checkoutKind = renewSame
+    ? "reactivate"
+    : isUpgradeCheckout
+      ? "upgrade"
+      : "new";
+
+  const currentUpgradeCycle = customUpgradeCurrentBillingCycle
+    ? TENH_BILLING_CYCLES.find(
+        (item) => item.id === customUpgradeCurrentBillingCycle,
+      ) ?? null
+    : null;
+
+  const summaryConnectionsBefore = customUpgrade
+    ? customUpgradeCurrentConnections
+    : previousPlan?.channels ?? null;
+  const summaryUsersBefore = customUpgrade
+    ? customUpgradeCurrentUsers
+    : previousPlan?.users ?? null;
+  const summaryConnectionsAfter = plan?.channels ?? null;
+  const summaryUsersAfter = plan?.users ?? null;
+
+  const formatPaymentDate = (value: string | null) => {
+    if (!value) return null;
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return null;
+    return new Intl.DateTimeFormat(isKhmer ? "km-KH" : "en-US", {
+      dateStyle: "medium",
+    }).format(date);
+  };
+
+  const summaryHeading =
+    checkoutKind === "upgrade"
+      ? t("Upgrade summary", "សង្ខេបការអាប់ក្រេដ")
+      : checkoutKind === "reactivate"
+        ? t("Reactivation summary", "សង្ខេបការធ្វើឲ្យសកម្មឡើងវិញ")
+        : t("New subscription summary", "សង្ខេបការជាវថ្មី");
+  const summaryBadge =
+    checkoutKind === "upgrade"
+      ? t("UPGRADE", "អាប់ក្រេដ")
+      : checkoutKind === "reactivate"
+        ? t("REACTIVATE", "ធ្វើឲ្យសកម្មឡើងវិញ")
+        : t("NEW SUBSCRIPTION", "ការជាវថ្មី");
+  const summaryPlanTitle =
+    checkoutKind === "upgrade"
+      ? planCode === "custom"
+        ? t("Custom subscription upgrade", "អាប់ក្រេដការជាវផ្ទាល់ខ្លួន")
+        : t(`${plan?.name ?? "TENH"} upgrade`, `អាប់ក្រេដ ${plan?.name ?? "TENH"}`)
+      : planCode === "custom"
+        ? t("Custom subscription", "ការជាវផ្ទាល់ខ្លួន")
+        : plan?.name ?? "TENH";
+  const currentDurationLabel = currentUpgradeCycle
+    ? cycleLabel(currentUpgradeCycle.label, currentUpgradeCycle.months)
+    : null;
+  const targetDurationLabel = cycle
+    ? cycleLabel(cycle.label, cycle.months)
+    : billingCycleText(billingCycle);
+  const currentExpiryLabel = formatPaymentDate(customUpgradeCurrentPeriodEnd);
+  const newExpiryLabel = formatPaymentDate(customUpgradeNewPeriodEnd);
+  const connectionsDelta =
+    summaryConnectionsBefore !== null && summaryConnectionsAfter !== null
+      ? summaryConnectionsAfter - summaryConnectionsBefore
+      : null;
+  const usersDelta =
+    summaryUsersBefore !== null && summaryUsersAfter !== null
+      ? summaryUsersAfter - summaryUsersBefore
+      : null;
+
+  const manualPaymentEndpoint = purchaseBusinessId
+    ? `/api/manual-payments?purchase_business=${encodeURIComponent(purchaseBusinessId)}`
+    : "/api/manual-payments";
 
   const [checkoutMethod, setCheckoutMethod] =
     useState<CheckoutMethod>("payway");
@@ -238,15 +437,17 @@ export function SubscriptionPaymentView({
     useState<string | null>(initialTransactionId);
   const [payWayPaymentState, setPayWayPaymentState] =
     useState<PayWayPaymentState>(
-      initialPayWayReturn === "approved"
-        ? "approved"
-        : initialTransactionId
-          ? "waiting"
+      initialTransactionId
+        ? "waiting"
+        : initialPayWayReturn === "approved"
+          ? "approved"
           : initialPayWayReturn === "cancelled"
             ? "cancelled"
             : "idle",
     );
   const [payWayStatusText, setPayWayStatusText] =
+    useState<string | null>(null);
+  const [payWayInvoiceId, setPayWayInvoiceId] =
     useState<string | null>(null);
 
   const [manualPaymentConfig, setManualPaymentConfig] =
@@ -265,38 +466,6 @@ export function SubscriptionPaymentView({
     useState<File | null>(null);
   const [manualQrPreviewOpen, setManualQrPreviewOpen] =
     useState(false);
-
-  useEffect(() => {
-    if (initialPayWayReturn !== "cancelled") return;
-
-    let cancelled = false;
-
-    async function finalizeCancelledReturn() {
-      try {
-        await fetch("/api/workspaces/restore-purchase-origin", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            transactionId: initialTransactionId ?? "",
-          }),
-        });
-      } finally {
-        if (!cancelled) {
-          window.location.replace(
-            "/dashboard/subscription?payway=cancelled",
-          );
-        }
-      }
-    }
-
-    void finalizeCancelledReturn();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [initialPayWayReturn, initialTransactionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -325,7 +494,7 @@ export function SubscriptionPaymentView({
 
       setPayWayPluginReady(false);
       setCheckoutError(
-        "Unable to initialize PayWay secure checkout. Refresh the page and try again.",
+        t("Unable to initialize PayWay secure checkout. Refresh the page and try again.", "មិនអាចចាប់ផ្តើមការទូទាត់សុវត្ថិភាព PayWay បានទេ។ សូមផ្ទុកទំព័រឡើងវិញ ហើយព្យាយាមម្ដងទៀត។"),
       );
     }
 
@@ -348,7 +517,7 @@ export function SubscriptionPaymentView({
 
       try {
         const response = await fetch(
-          "/api/manual-payments",
+          manualPaymentEndpoint,
           { cache: "no-store" },
         );
 
@@ -362,7 +531,7 @@ export function SubscriptionPaymentView({
         if (!response.ok || !result.success) {
           throw new Error(
             result.error ??
-              "Unable to load manual payment information.",
+              t("Unable to load manual payment information.", "មិនអាចផ្ទុកព័ត៌មានការទូទាត់តាមធនាគារដោយដៃបានទេ។"),
           );
         }
 
@@ -381,7 +550,7 @@ export function SubscriptionPaymentView({
           setManualPaymentError(
             error instanceof Error
               ? error.message
-              : "Unable to load manual payment information.",
+              : t("Unable to load manual payment information.", "មិនអាចផ្ទុកព័ត៌មានការទូទាត់តាមធនាគារដោយដៃបានទេ។"),
           );
         }
       } finally {
@@ -396,7 +565,7 @@ export function SubscriptionPaymentView({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [manualPaymentEndpoint]);
 
   useEffect(() => {
     if (manualPaymentRequest?.status !== "submitted") {
@@ -409,7 +578,7 @@ export function SubscriptionPaymentView({
     async function refreshManualStatus() {
       try {
         const response = await fetch(
-          "/api/manual-payments",
+          manualPaymentEndpoint,
           { cache: "no-store" },
         );
         const result = (await response.json()) as {
@@ -449,7 +618,7 @@ export function SubscriptionPaymentView({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [manualPaymentRequest?.status]);
+  }, [manualPaymentEndpoint, manualPaymentRequest?.status]);
 
   useEffect(() => {
     if (
@@ -482,6 +651,7 @@ export function SubscriptionPaymentView({
           error?: string;
           paymentState?: PayWayPaymentState;
           providerStatus?: string | null;
+          invoiceId?: string | null;
         } = {};
 
         if (text.trim()) {
@@ -490,7 +660,7 @@ export function SubscriptionPaymentView({
 
         if (!response.ok || !result.success) {
           throw new Error(
-            result.error ?? "Unable to verify PayWay payment.",
+            result.error ?? t("Unable to verify PayWay payment.", "មិនអាចផ្ទៀងផ្ទាត់ការទូទាត់ PayWay បានទេ។"),
           );
         }
 
@@ -501,15 +671,14 @@ export function SubscriptionPaymentView({
         setPayWayStatusText(result.providerStatus ?? null);
 
         if (nextState === "approved") {
-          /*
-           * V3.11.31.31 — keep the official ABA PayWay success popup open.
-           *
-           * Do NOT force-navigate TENH here. PayWay owns its success modal and
-           * the customer decides when to close it, click outside it, download
-           * the PayWay receipt, or use PayWay's Continue Shopping action.
-           * TENH has already verified + activated the payment server-side.
-           */
           setCheckoutError(null);
+          setPayWayInvoiceId(result.invoiceId ?? null);
+          setPayWayStatusText(
+            t(
+              "Payment approved. Choose Download receipt, Close, or Continue.",
+              "ការទូទាត់ត្រូវបានអនុម័ត។ សូមជ្រើសរើស ទាញយកបង្កាន់ដៃ បិទ ឬបន្ត។",
+            ),
+          );
           return;
         }
 
@@ -534,7 +703,7 @@ export function SubscriptionPaymentView({
         setPayWayStatusText(
           error instanceof Error
             ? error.message
-            : "Unable to verify payment right now.",
+            : t("Unable to verify payment right now.", "មិនអាចផ្ទៀងផ្ទាត់ការទូទាត់នៅពេលនេះបានទេ។"),
         );
 
         if (attempts < 100) {
@@ -560,7 +729,7 @@ export function SubscriptionPaymentView({
     ) {
       setPayWayPluginReady(false);
       setCheckoutError(
-        "PayWay secure checkout is still loading. Please try again in a moment.",
+        t("PayWay secure checkout is still loading. Please try again in a moment.", "ការទូទាត់សុវត្ថិភាព PayWay កំពុងផ្ទុក។ សូមព្យាយាមម្ដងទៀតបន្តិចទៀត។"),
       );
       return;
     }
@@ -568,6 +737,7 @@ export function SubscriptionPaymentView({
     setCheckoutLoading(true);
     setCheckoutError(null);
     setPayWayStatusText(null);
+    setPayWayInvoiceId(null);
 
     try {
       const response = await fetch(
@@ -580,13 +750,18 @@ export function SubscriptionPaymentView({
           body: JSON.stringify({
             planCode,
             billingCycle,
-            renewSame,
-            customUpgrade,
-            ...(planCode === "custom"
-              ? { connections: customConnections, users: customUsers }
-              : {}),
             paymentMethod: "abapay_khqr",
+            // Without these the server prices and targets the wrong
+            // workspace — see the note on the props type above.
             ...(purchaseBusinessId ? { purchaseBusinessId } : {}),
+            ...(planCode === "custom" && customConnections !== null
+              ? { connections: customConnections }
+              : {}),
+            ...(planCode === "custom" && customUsers !== null
+              ? { users: customUsers }
+              : {}),
+            ...(renewSame ? { renewSame: true } : {}),
+            ...(customUpgrade ? { customUpgrade: true } : {}),
           }),
         },
       );
@@ -595,7 +770,6 @@ export function SubscriptionPaymentView({
       let result: {
         success?: boolean;
         error?: string;
-        details?: string;
         checkoutUrl?: string;
         transactionId?: string;
         fields?: Record<string, string>;
@@ -619,12 +793,7 @@ export function SubscriptionPaymentView({
         !result.fields
       ) {
         throw new Error(
-          [
-            result.error ?? "Unable to start ABA PayWay checkout.",
-            result.details ? `Database: ${result.details}` : null,
-          ]
-            .filter(Boolean)
-            .join("\n"),
+          result.error ?? t("Unable to start ABA PayWay checkout.", "មិនអាចចាប់ផ្តើមការទូទាត់ ABA PayWay បានទេ។"),
         );
       }
 
@@ -653,7 +822,7 @@ export function SubscriptionPaymentView({
       setPayWayTransactionId(result.transactionId);
       setPayWayPaymentState("waiting");
       setPayWayStatusText(
-        "Complete payment in the ABA PayWay secure checkout. TENH will verify the transaction automatically.",
+        t("Complete payment in the ABA PayWay secure checkout. TENH will verify the transaction automatically.", "សូមបញ្ចប់ការទូទាត់ក្នុង ABA PayWay។ TENH នឹងផ្ទៀងផ្ទាត់ប្រតិបត្តិការដោយស្វ័យប្រវត្តិ។"),
       );
 
       payWayBridge.checkout();
@@ -661,7 +830,7 @@ export function SubscriptionPaymentView({
       setCheckoutError(
         error instanceof Error
           ? error.message
-          : "Unable to start ABA PayWay checkout.",
+          : t("Unable to start ABA PayWay checkout.", "មិនអាចចាប់ផ្តើមការទូទាត់ ABA PayWay បានទេ។"),
       );
     } finally {
       setCheckoutLoading(false);
@@ -671,21 +840,21 @@ export function SubscriptionPaymentView({
   async function submitManualPayment() {
     if (!manualPaymentConfig?.enabled) {
       setManualPaymentError(
-        "Manual payment is not available right now.",
+        t("Manual payment is not available right now.", "ការទូទាត់តាមធនាគារដោយដៃមិនអាចប្រើបាននៅពេលនេះទេ។"),
       );
       return;
     }
 
     if (manualPaymentRequest?.status === "submitted") {
       setManualPaymentError(
-        "Your previous manual payment is already waiting for review.",
+        t("Your previous manual payment is already waiting for review.", "ការទូទាត់តាមធនាគារមុនរបស់អ្នកកំពុងរង់ចាំការត្រួតពិនិត្យរួចហើយ។"),
       );
       return;
     }
 
     if (!manualProof) {
       setManualPaymentError(
-        "Upload your bank transfer receipt/payment proof.",
+        t("Upload your bank transfer receipt/payment proof.", "សូមផ្ទុកបង្កាន់ដៃផ្ទេរប្រាក់ ឬភស្តុតាងការទូទាត់។"),
       );
       return;
     }
@@ -705,11 +874,15 @@ export function SubscriptionPaymentView({
             action: "prepare-upload",
             planCode,
             billingCycle,
-            renewSame,
-            customUpgrade,
-            ...(planCode === "custom"
-              ? { connections: customConnections, users: customUsers }
+            ...(purchaseBusinessId ? { purchaseBusinessId } : {}),
+            ...(planCode === "custom" && customConnections !== null
+              ? { connections: customConnections }
               : {}),
+            ...(planCode === "custom" && customUsers !== null
+              ? { users: customUsers }
+              : {}),
+            ...(renewSame ? { renewSame: true } : {}),
+            ...(customUpgrade ? { customUpgrade: true } : {}),
             fileName: manualProof.name,
             mimeType: manualProof.type,
             sizeBytes: manualProof.size,
@@ -736,7 +909,7 @@ export function SubscriptionPaymentView({
       ) {
         throw new Error(
           prepareResult.error ??
-            "Unable to prepare the payment proof upload.",
+            t("Unable to prepare the payment proof upload.", "មិនអាចរៀបចំការផ្ទុកភស្តុតាងការទូទាត់បានទេ។"),
         );
       }
 
@@ -770,11 +943,15 @@ export function SubscriptionPaymentView({
             requestId: prepareResult.requestId,
             planCode,
             billingCycle,
-            renewSame,
-            customUpgrade,
-            ...(planCode === "custom"
-              ? { connections: customConnections, users: customUsers }
+            ...(purchaseBusinessId ? { purchaseBusinessId } : {}),
+            ...(planCode === "custom" && customConnections !== null
+              ? { connections: customConnections }
               : {}),
+            ...(planCode === "custom" && customUsers !== null
+              ? { users: customUsers }
+              : {}),
+            ...(renewSame ? { renewSame: true } : {}),
+            ...(customUpgrade ? { customUpgrade: true } : {}),
             customerNote: manualCustomerNote.trim(),
             fileName: manualProof.name,
             mimeType: manualProof.type,
@@ -787,7 +964,6 @@ export function SubscriptionPaymentView({
       const result = (await finalizeResponse.json()) as {
         success?: boolean;
         error?: string;
-        details?: string;
         request?: ManualPaymentRequest;
       };
 
@@ -797,13 +973,8 @@ export function SubscriptionPaymentView({
         !result.request
       ) {
         throw new Error(
-          [
-            result.error ??
-              "Unable to submit manual payment proof.",
-            result.details ? `Database: ${result.details}` : null,
-          ]
-            .filter(Boolean)
-            .join("\n"),
+          result.error ??
+            t("Unable to submit manual payment proof.", "មិនអាចដាក់ស្នើភស្តុតាងការទូទាត់បានទេ។"),
         );
       }
 
@@ -814,11 +985,156 @@ export function SubscriptionPaymentView({
       setManualPaymentError(
         error instanceof Error
           ? error.message
-          : "Unable to submit manual payment proof.",
+          : t("Unable to submit manual payment proof.", "មិនអាចដាក់ស្នើភស្តុតាងការទូទាត់បានទេ។"),
       );
     } finally {
       setManualPaymentSubmitting(false);
     }
+  }
+
+  async function leaveCheckoutSafely() {
+    const hasPendingPayWay =
+      (payWayPaymentState === "waiting" || payWayPaymentState === "pending") &&
+      Boolean(payWayTransactionId);
+
+    if (hasPendingPayWay && payWayTransactionId) {
+      const shouldCancel = window.confirm(
+        t(
+          "Cancel this ABA transaction and leave checkout? TENH will close the pending payment before you leave.",
+          "បោះបង់ប្រតិបត្តិការ ABA នេះ ហើយចាកចេញពីការទូទាត់ឬ? TENH នឹងបិទការទូទាត់ដែលកំពុងរង់ចាំ មុនពេលអ្នកចាកចេញ។",
+        ),
+      );
+      if (!shouldCancel) return;
+
+      setCheckoutLoading(true);
+      setCheckoutError(null);
+
+      try {
+        const response = await fetch("/api/payway/cancel-return", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transactionId: payWayTransactionId }),
+        });
+        const result = (await response.json()) as {
+          success?: boolean;
+          paymentState?: string;
+          error?: string;
+        };
+
+        if (!response.ok || !result.success) {
+          throw new Error(
+            result.error ||
+              t(
+                "TENH could not safely close the ABA transaction. Please try Cancel again.",
+                "TENH មិនអាចបិទប្រតិបត្តិការ ABA ដោយសុវត្ថិភាពបានទេ។ សូមព្យាយាមបោះបង់ម្តងទៀត។",
+              ),
+          );
+        }
+
+        document.getElementById("aba_merchant_request")?.remove();
+
+        if (result.paymentState === "approved") {
+          window.location.replace(
+            `/dashboard/subscription?payway=approved&tran_id=${encodeURIComponent(
+              payWayTransactionId,
+            )}`,
+          );
+          return;
+        }
+
+        window.location.replace(
+          `/dashboard/subscription?payway=cancelled&tran_id=${encodeURIComponent(
+            payWayTransactionId,
+          )}`,
+        );
+        return;
+      } catch (error) {
+        setCheckoutError(
+          error instanceof Error
+            ? error.message
+            : t(
+                "TENH could not safely close the ABA transaction. Please try Cancel again.",
+                "TENH មិនអាចបិទប្រតិបត្តិការ ABA ដោយសុវត្ថិភាពបានទេ។ សូមព្យាយាមបោះបង់ម្តងទៀត។",
+              ),
+        );
+        setCheckoutLoading(false);
+        return;
+      }
+    }
+
+    if (manualPaymentRequest?.status === "submitted") {
+      const shouldLeave = window.confirm(
+        t(
+          "Your bank-transfer proof was already submitted and will stay pending for review. Leave checkout?",
+          "ភស្តុតាងផ្ទេរប្រាក់របស់អ្នកត្រូវបានដាក់ស្នើរួចហើយ ហើយនឹងនៅរង់ចាំការត្រួតពិនិត្យ។ ចាកចេញពីការទូទាត់ឬ?",
+        ),
+      );
+      if (!shouldLeave) return;
+    }
+
+    // Remove checkout-only browser state, then replace the history entry so
+    // Back cannot reopen an old upgrade amount for another subscription.
+    document.getElementById("aba_merchant_request")?.remove();
+    setCheckoutError(null);
+    setPayWayStatusText(null);
+    setPayWayInvoiceId(null);
+    setPayWayTransactionId(null);
+    setPayWayPaymentState("idle");
+    window.location.replace("/dashboard/subscription");
+  }
+
+  function finishApprovedPayWayPayment(includeStatus = true) {
+    const transactionSuffix =
+      includeStatus && payWayTransactionId
+        ? `?payway=approved&tran_id=${encodeURIComponent(payWayTransactionId)}`
+        : "";
+
+    window.location.replace(`/dashboard/subscription${transactionSuffix}`);
+  }
+
+  async function downloadApprovedReceipt() {
+    let invoiceId = payWayInvoiceId;
+
+    if (!invoiceId && payWayTransactionId) {
+      try {
+        const response = await fetch(
+          `/api/payway/status?tran_id=${encodeURIComponent(payWayTransactionId)}`,
+          { cache: "no-store" },
+        );
+        const result = (await response.json()) as {
+          success?: boolean;
+          invoiceId?: string | null;
+        };
+
+        if (response.ok && result.success && result.invoiceId) {
+          invoiceId = result.invoiceId;
+          setPayWayInvoiceId(result.invoiceId);
+        }
+      } catch {
+        // Keep the approved state; the receipt can be opened later.
+      }
+    }
+
+    if (!invoiceId) {
+      setPayWayStatusText(
+        t(
+          "Your payment is approved, but the receipt is still being prepared. Use Continue now or open Billing history in a moment.",
+          "ការទូទាត់របស់អ្នកត្រូវបានអនុម័ត ប៉ុន្តែបង្កាន់ដៃកំពុងត្រូវបានរៀបចំ។ អ្នកអាចចុច បន្ត ឥឡូវនេះ ឬបើកប្រវត្តិការទូទាត់បន្តិចទៀត។",
+        ),
+      );
+      return;
+    }
+
+    const returnTo = `/dashboard/subscription${
+      payWayTransactionId
+        ? `?payway=approved&tran_id=${encodeURIComponent(payWayTransactionId)}`
+        : ""
+    }`;
+
+    window.location.assign(
+      `/dashboard/subscription/invoices/${encodeURIComponent(invoiceId)}` +
+        `?autoprint=1&return_to=${encodeURIComponent(returnTo)}`,
+    );
   }
 
   if (!plan || !cycle || totalCents === null) {
@@ -833,7 +1149,7 @@ export function SubscriptionPaymentView({
     manualPaymentRequest?.status === "approved";
 
   return (
-    <div className="min-h-full bg-slate-100 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-full bg-white px-4 py-6 sm:px-6 lg:px-8">
       <Script
         id="tenh-payway-classic-bridge-payment-page"
         strategy="afterInteractive"
@@ -858,7 +1174,7 @@ export function SubscriptionPaymentView({
                 typeof AbaPayway.checkout !== "function"
               ) {
                 throw new Error(
-                  "ABA PayWay checkout plugin is not ready."
+                  t("ABA PayWay checkout plugin is not ready.", "កម្មវិធីទូទាត់ ABA PayWay មិនទាន់រួចរាល់ទេ។")
                 );
               }
 
@@ -879,166 +1195,321 @@ export function SubscriptionPaymentView({
         onError={() => {
           setPayWayPluginReady(false);
           setCheckoutError(
-            "Unable to load PayWay secure checkout. Refresh the page and try again.",
+            t("Unable to load PayWay secure checkout. Refresh the page and try again.", "មិនអាចផ្ទុកការទូទាត់សុវត្ថិភាព PayWay បានទេ។ សូមផ្ទុកទំព័រឡើងវិញ ហើយព្យាយាមម្ដងទៀត។"),
           );
         }}
       />
 
-      <div className="mx-auto w-full max-w-6xl">
-        <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <button
-              type="button"
-              onClick={() => void returnToSubscription()}
-              className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-blue-600"
-            >
-              <span aria-hidden="true">←</span>
-              Back to plans
-            </button>
-            <p className="mt-4 text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
-              Secure payment
+      <div className="mx-auto w-full max-w-[1040px]">
+        <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="inline-flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-blue-600">
+              <PaymentLockIcon className="h-3.5 w-3.5" />
+              {t("Secure payment", "ការទូទាត់មានសុវត្ថិភាព")}
             </p>
-            <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-              {customUpgrade || upgradeTotalCents !== null ? "Complete your upgrade" : "Complete your subscription"}
+
+            <h1 className="mt-1.5 text-[28px] font-extrabold tracking-[-0.035em] text-slate-950 sm:text-[32px]">
+              {checkoutKind === "upgrade"
+                ? t("Complete your upgrade", "បញ្ចប់ការអាប់ក្រេដរបស់អ្នក")
+                : checkoutKind === "reactivate"
+                  ? t("Reactivate your subscription", "ធ្វើឲ្យការជាវរបស់អ្នកសកម្មឡើងវិញ")
+                  : t("Complete your new subscription", "បញ្ចប់ការជាវថ្មីរបស់អ្នក")}
             </h1>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Choose how you want to pay. TENH verifies the selected plan and amount on the server before activation.
+
+            <p className="mt-1.5 max-w-4xl text-xs leading-5 text-slate-500 sm:text-sm">
+              {checkoutKind === "upgrade"
+                ? t(
+                    "Review exactly what is changing, then choose how you want to pay. No upgrade is applied until payment is approved.",
+                    "ពិនិត្យមើលអ្វីដែលកំពុងផ្លាស់ប្តូរ រួចជ្រើសរើសវិធីទូទាត់។ ការអាប់ក្រេដនឹងមិនត្រូវបានអនុវត្តរហូតដល់ការទូទាត់ត្រូវបានអនុម័ត។",
+                  )
+                : t(
+                    "Review your selected subscription, then choose how you want to pay. TENH verifies the amount before activation.",
+                    "ពិនិត្យការជាវដែលបានជ្រើស រួចជ្រើសរើសវិធីទូទាត់។ TENH នឹងផ្ទៀងផ្ទាត់ចំនួនទឹកប្រាក់មុនពេលបើកដំណើរការ។",
+                  )}
             </p>
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (payWayPaymentState === "approved") {
+                finishApprovedPayWayPayment(false);
+                return;
+              }
+              void leaveCheckoutSafely();
+            }}
+            className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+          >
+            <span aria-hidden="true" className="text-base leading-none">←</span>
+            {payWayPaymentState === "approved"
+              ? t("Close", "បិទ")
+              : checkoutKind === "upgrade"
+                ? t("Cancel upgrade", "បោះបង់ការអាប់ក្រេដ")
+                : t("Cancel checkout", "បោះបង់ការទូទាត់")}
+          </button>
         </div>
 
-        <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_18px_55px_rgba(15,23,42,0.08)]">
-          <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
-            <aside className="border-b border-blue-800 bg-gradient-to-b from-blue-700 via-blue-800 to-blue-950 p-6 text-white sm:p-8 lg:border-b-0 lg:border-r lg:border-blue-800">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-300">
-                Order summary
+        <section className="grid gap-5 lg:grid-cols-[390px_minmax(0,1fr)]">
+          <aside className="relative overflow-hidden rounded-[24px] border border-[#0B3A82] bg-[#012A72] p-4 text-white shadow-[0_18px_55px_rgba(1,42,114,0.22)] sm:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-extrabold uppercase tracking-[0.20em] text-blue-100">
+                {summaryHeading}
               </p>
+              <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-blue-100">
+                {summaryBadge}
+              </span>
+            </div>
 
-              <div className="mt-5 rounded-2xl border border-white/15 bg-white/[0.10] p-5 shadow-sm backdrop-blur-sm">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-2xl font-bold">
-                      {plan.name}
-                    </p>
-                    <p className="mt-1 text-sm text-blue-100/75">
-                      {cycle.label}
-                    </p>
-                  </div>
-                  <span className="rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs font-bold text-blue-200">
-                    TENH Chat
-                  </span>
+            <div className="mt-4 rounded-[20px] border border-white/20 bg-white/[0.08] p-4 shadow-sm backdrop-blur-sm">
+              <div className="flex items-start gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/95 shadow-sm">
+                  {planCode === "custom" ? (
+                    <img
+                      src="/images/custom.png"
+                      alt={t("Custom plan", "គម្រោងផ្ទាល់ខ្លួន")}
+                      className="h-11 w-11 object-contain"
+                      draggable={false}
+                    />
+                  ) : (
+                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-100 text-xl font-black text-blue-700">
+                      {plan.name.slice(0, 2).toUpperCase()}
+                    </span>
+                  )}
                 </div>
-
-                <div className="mt-6 border-t border-white/10 pt-5">
-                  <div className="flex items-end justify-between gap-4">
-                    <p className="text-sm font-medium text-blue-100/75">
-                      {customUpgrade || upgradeTotalCents !== null ? "Upgrade price" : "Total to pay"}
-                    </p>
-                    <p className="text-3xl font-black tracking-tight">
-                      {formatUsdFromCents(totalCents)}
-                    </p>
-                  </div>
-                  <p className="mt-2 text-right text-xs text-blue-100/65">
-                    {upgradeTotalCents !== null
-                      ? "USD · You pay only the difference for this prepaid period"
-                      : "USD · Automatically calculated from your selected package"}
+                <div className="min-w-0 flex-1">
+                  <p className="text-lg font-extrabold leading-6">{summaryPlanTitle}</p>
+                  <p className="mt-1 text-sm font-semibold text-blue-100/85">
+                    {checkoutKind === "upgrade" && currentDurationLabel
+                      ? `${currentDurationLabel} → ${targetDurationLabel}`
+                      : targetDurationLabel}
                   </p>
+                  {customUpgradeRemainingDays !== null && checkoutKind === "upgrade" ? (
+                    <p className="mt-1 text-xs text-blue-100/65">
+                      {isKhmer
+                        ? `នៅសល់ ${customUpgradeRemainingDays} ថ្ងៃក្នុងរយៈពេលបច្ចុប្បន្ន`
+                        : `${customUpgradeRemainingDays} day${customUpgradeRemainingDays === 1 ? "" : "s"} remaining in the current period`}
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
-            
+              <div className="mt-4 border-t border-white/15 pt-4">
+                <div className="flex items-end justify-between gap-4">
+                  <p className="text-sm font-medium text-blue-100/75">
+                    {checkoutKind === "upgrade"
+                      ? t("Upgrade amount", "តម្លៃអាប់ក្រេដ")
+                      : t("Total to pay", "សរុបត្រូវបង់")}
+                  </p>
+                  <p className="text-2xl font-black tracking-tight">
+                    {formatUsdFromCents(totalCents)}
+                  </p>
+                </div>
+                <p className="mt-2 text-right text-xs text-blue-100/65">
+                  {checkoutKind === "upgrade"
+                    ? t(
+                        "Only the selected upgrade changes are charged.",
+                        "គិតថ្លៃតែការផ្លាស់ប្តូរអាប់ក្រេដដែលបានជ្រើសប៉ុណ្ណោះ។",
+                      )
+                    : t(
+                        "USD · Based on your selected subscription",
+                        "USD · គណនាតាមការជាវដែលអ្នកបានជ្រើស",
+                      )}
+                </p>
+              </div>
+            </div>
 
-              {upgradeTotalCents !== null && upgradeFromPlanCode ? (
-                <div className="mt-4 rounded-2xl border border-blue-300/20 bg-blue-400/10 p-4 text-sm text-blue-100">
-                  Upgrade keeps this subscription ID and starts the selected higher-plan period after approved payment.
+            <dl className="mt-4 grid gap-2.5">
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.08] p-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-500/30 text-blue-100">
+                    <PaymentLinkIcon />
+                  </span>
+                  <dt className="text-sm font-medium text-blue-100/80">
+                    {t("Connections", "ការតភ្ជាប់")}
+                  </dt>
+                </div>
+                <dd className="text-right text-sm font-extrabold">
+                  {checkoutKind === "upgrade" && summaryConnectionsBefore !== null
+                    ? `${summaryConnectionsBefore} → ${summaryConnectionsAfter}`
+                    : summaryConnectionsAfter}
+                  {checkoutKind === "upgrade" && connectionsDelta !== null && connectionsDelta > 0 ? (
+                    <span className="ml-2 rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-extrabold text-emerald-100">+{connectionsDelta}</span>
+                  ) : null}
+                </dd>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.08] p-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-500/30 text-violet-100">
+                    <PaymentUsersIcon />
+                  </span>
+                  <dt className="text-sm font-medium text-blue-100/80">
+                    {t("Team users", "អ្នកប្រើប្រាស់ក្នុងក្រុម")}
+                  </dt>
+                </div>
+                <dd className="text-right text-sm font-extrabold">
+                  {checkoutKind === "upgrade" && summaryUsersBefore !== null
+                    ? `${summaryUsersBefore} → ${summaryUsersAfter}`
+                    : summaryUsersAfter}
+                  {checkoutKind === "upgrade" && usersDelta !== null && usersDelta > 0 ? (
+                    <span className="ml-2 rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-extrabold text-emerald-100">+{usersDelta}</span>
+                  ) : null}
+                </dd>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.08] p-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-500/25 text-cyan-100">
+                    <PaymentClockIcon />
+                  </span>
+                  <dt className="text-sm font-medium text-blue-100/80">
+                    {t("Billing duration", "រយៈពេលការជាវ")}
+                  </dt>
+                </div>
+                <dd className="text-right text-sm font-extrabold">
+                  {checkoutKind === "upgrade" && currentDurationLabel
+                    ? `${currentDurationLabel} → ${targetDurationLabel}`
+                    : targetDurationLabel}
+                  {checkoutKind === "upgrade" && customUpgradeExtensionMonths !== null && customUpgradeExtensionMonths > 0 ? (
+                    <span className="ml-2 rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-extrabold text-emerald-100">+{customUpgradeExtensionMonths} mo</span>
+                  ) : null}
+                </dd>
+              </div>
+
+              {checkoutKind === "upgrade" && currentExpiryLabel && newExpiryLabel ? (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.08] p-4">
+                  <dt className="text-xs font-medium text-blue-100/70">
+                    {t("Subscription expiry", "ថ្ងៃផុតកំណត់ការជាវ")}
+                  </dt>
+                  <dd className="mt-1 text-sm font-extrabold">
+                    {currentExpiryLabel === newExpiryLabel
+                      ? `${currentExpiryLabel} · ${t("No change", "មិនប្រែប្រួល")}`
+                      : `${currentExpiryLabel} → ${newExpiryLabel}`}
+                  </dd>
                 </div>
               ) : null}
+            </dl>
 
-              <dl className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                <div className="rounded-2xl border border-white/15 bg-white/[0.08] p-4">
-                  <dt className="text-xs font-medium text-blue-100/65">
-                    Social connections
-                  </dt>
-                  <dd className="mt-1 text-base font-bold">
-                    {plan.channels}
-                  </dd>
-                </div>
-                <div className="rounded-2xl border border-white/15 bg-white/[0.08] p-4">
-                  <dt className="text-xs font-medium text-blue-100/65">
-                    Team members
-                  </dt>
-                  <dd className="mt-1 text-base font-bold">
-                    {plan.users}
-                  </dd>
-                </div>
-              </dl>
-
+            {payWayPaymentState !== "approved" ? (
               <button
                 type="button"
-                onClick={() => void returnToSubscription()}
-                className="mt-5 inline-flex text-sm font-semibold text-blue-300 hover:text-blue-200"
+                onClick={() => void leaveCheckoutSafely()}
+                className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-blue-300 hover:text-blue-200"
               >
-                Change package
+                {checkoutKind === "upgrade"
+                  ? t("Edit upgrade", "កែការអាប់ក្រេដ")
+                  : t("Change selection", "ប្តូរការជ្រើសរើស")}
+                <PaymentEditIcon />
               </button>
+            ) : null}
 
-              {checkoutMethod === "manual" ? (
-                <div className="mt-7 border-t border-white/15 pt-6">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-200">
-                        Scan to pay
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-white">
-                        ABA KHQR bank transfer
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-blue-100/75">
-                        Scan the QR code, complete the transfer, then upload your receipt on the right.
-                      </p>
+            <p className="mt-3 text-xs leading-5 text-blue-100/65">
+              {t(
+                "Safe to go back: your subscription changes only after payment is approved.",
+                "អាចត្រឡប់ក្រោយដោយសុវត្ថិភាព៖ ការជាវរបស់អ្នកនឹងផ្លាស់ប្តូរតែបន្ទាប់ពីការទូទាត់ត្រូវបានអនុម័តប៉ុណ្ណោះ។",
+              )}
+            </p>
+          </aside>
+
+          <div className="relative overflow-hidden rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_18px_55px_rgba(15,23,42,0.07)] sm:p-4 lg:p-6">
+              {payWayPaymentState === "approved" ? (
+                <div className="absolute inset-0 z-20 flex min-h-[520px] items-center justify-center bg-white p-5 sm:p-7">
+                  <div className="w-full max-w-[560px] text-center">
+                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                      <PaymentCheckIcon className="h-8 w-8" />
                     </div>
-                  </div>
+                    <p className="mt-5 text-xs font-extrabold uppercase tracking-[0.16em] text-emerald-600">
+                      {t("Payment successful", "ការទូទាត់ជោគជ័យ")}
+                    </p>
+                    <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-950">
+                      {checkoutKind === "upgrade"
+                        ? t("Your upgrade is active", "ការអាប់ក្រេដរបស់អ្នកសកម្មហើយ")
+                        : checkoutKind === "reactivate"
+                          ? t("Your subscription is active again", "ការជាវរបស់អ្នកសកម្មឡើងវិញហើយ")
+                          : t("Your subscription is active", "ការជាវរបស់អ្នកសកម្មហើយ")}
+                    </h2>
+                    <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+                      {t(
+                        "Nothing will redirect automatically. Download your receipt, close this checkout, or continue when you are ready.",
+                        "ទំព័រនេះនឹងមិនបញ្ជូនអ្នកចេញដោយស្វ័យប្រវត្តិទេ។ អ្នកអាចទាញយកបង្កាន់ដៃ បិទការទូទាត់ ឬបន្តនៅពេលរួចរាល់។",
+                      )}
+                    </p>
 
-                  {manualPaymentConfig?.enabled ? (
-                    manualPaymentConfig.qrImageUrl ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setManualQrPreviewOpen(true)}
-                          className="mt-4 block w-full cursor-zoom-in rounded-[24px] border border-white/20 bg-white p-3 text-left shadow-xl transition hover:-translate-y-0.5 hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-white/25"
-                          aria-label="View payment QR larger"
-                        >
-                          <img
-                            src={manualPaymentConfig.qrImageUrl}
-                            alt="TENH manual payment QR"
-                            className="mx-auto h-auto w-full max-w-[390px] rounded-2xl object-contain"
-                          />
-                        </button>
-                        <p className="mt-3 text-center text-xs leading-5 text-blue-100/80">
-                          Click the QR code to view it larger.
+                    {payWayTransactionId ? (
+                      <div className="mx-auto mt-5 max-w-md rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                          {t("Transaction", "ប្រតិបត្តិការ")}
                         </p>
-                      </>
-                    ) : (
-                      <div className="mt-4 rounded-2xl border border-dashed border-white/30 bg-white/10 p-5 text-center text-sm text-blue-100">
-                        Payment QR is not available right now.
+                        <p className="mt-1 break-all font-mono text-xs font-semibold text-slate-700">
+                          {payWayTransactionId}
+                        </p>
                       </div>
-                    )
-                  ) : (
-                    <div className="mt-4 rounded-2xl border border-amber-200/30 bg-amber-300/10 p-4 text-sm text-amber-100">
-                      Manual payment is not configured yet.
+                    ) : null}
+
+                    {payWayStatusText ? (
+                      <p className="mx-auto mt-3 max-w-md text-xs leading-5 text-slate-500">
+                        {payWayStatusText}
+                      </p>
+                    ) : null}
+
+                    <div className="mt-6 grid gap-2.5 sm:grid-cols-3">
+                      <button
+                        type="button"
+                        onClick={() => void downloadApprovedReceipt()}
+                        className="inline-flex items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 transition hover:bg-blue-100"
+                      >
+                        {t("Download receipt", "ទាញយកបង្កាន់ដៃ")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => finishApprovedPayWayPayment(false)}
+                        className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                      >
+                        {t("Close", "បិទ")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => finishApprovedPayWayPayment(true)}
+                        className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-700"
+                      >
+                        {t("Continue", "បន្ត")}
+                      </button>
                     </div>
-                  )}
+
+                    {!payWayInvoiceId ? (
+                      <p className="mt-3 text-xs text-amber-700">
+                        {t(
+                          "Receipt is being prepared. You can continue now and download it later from Billing history.",
+                          "បង្កាន់ដៃកំពុងត្រូវបានរៀបចំ។ អ្នកអាចបន្តឥឡូវនេះ ហើយទាញយកវាពេលក្រោយពីប្រវត្តិការទូទាត់។",
+                        )}
+                      </p>
+                    ) : (
+                      <p className="mt-3 text-xs text-slate-400">
+                        {t(
+                          "After the receipt print/download window closes, TENH returns you to Subscription.",
+                          "បន្ទាប់ពីបង្អួចបោះពុម្ព/ទាញយកបង្កាន់ដៃត្រូវបានបិទ TENH នឹងត្រឡប់អ្នកទៅទំព័រការជាវ។",
+                        )}
+                      </p>
+                    )}
+                  </div>
                 </div>
               ) : null}
-            </aside>
 
-            <div className="p-5 sm:p-7 lg:p-8">
               <p className="text-sm font-bold text-slate-950">
-                Payment method
+                {t("Payment method", "វិធីទូទាត់")}
               </p>
               <p className="mt-1 text-sm text-slate-500">
-                Select ABA KHQR or submit a manual bank-transfer receipt.
+                {t(
+                  checkoutKind === "upgrade"
+                    ? "Select a payment method to complete this upgrade."
+                    : "Select a payment method to complete your subscription.",
+                  checkoutKind === "upgrade"
+                    ? "ជ្រើសរើសវិធីទូទាត់ ដើម្បីបញ្ចប់ការអាប់ក្រេដនេះ។"
+                    : "ជ្រើសរើសវិធីទូទាត់ ដើម្បីបញ្ចប់ការជាវរបស់អ្នក។",
+                )}
               </p>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="mt-4 grid gap-2.5">
                 <button
                   type="button"
                   onClick={() => {
@@ -1047,24 +1518,34 @@ export function SubscriptionPaymentView({
                   }}
                   className={`rounded-2xl border p-4 text-left transition ${
                     checkoutMethod === "payway"
-                      ? "border-blue-500 bg-blue-50 ring-4 ring-blue-100"
+                      ? "border-blue-500 bg-blue-50/45 ring-1 ring-blue-100"
                       : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
                   }`}
                 >
                   <div className="flex items-center gap-4">
-                    <img
-                      src="/images/aba-khqr.png"
-                      alt="ABA KHQR"
-                      className="h-11 w-11 shrink-2 rounded-xl object-contain"
-                    />
-                    <div className="min-w-0">
-                      <p className="text-base font-bold text-slate-950">
+                    <div className="relative flex h-14 w-14 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                      <div className="flex flex-1 items-center justify-center bg-[#0C5967] text-sm font-black tracking-[0.18em] text-white">
+                        ABA
+                      </div>
+                      <div className="flex h-5 items-center justify-center bg-red-600 text-[8px] font-black uppercase tracking-wide text-white">
+                        KHQR
+                      </div>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-base font-extrabold text-slate-950">
                         ABA KHQR
                       </p>
-                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                        Scan to pay with any banking app
+                      <p className="mt-1 text-sm leading-5 text-slate-500">
+                        {t("Scan to pay with any banking app.", "ស្កេនដើម្បីទូទាត់ជាមួយកម្មវិធីធនាគារណាមួយ។")}
                       </p>
                     </div>
+                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
+                      checkoutMethod === "payway"
+                        ? "border-blue-600 bg-blue-600 text-white"
+                        : "border-slate-300 bg-white text-transparent"
+                    }`}>
+                      <PaymentCheckIcon />
+                    </span>
                   </div>
                 </button>
 
@@ -1080,49 +1561,66 @@ export function SubscriptionPaymentView({
                   }}
                   className={`rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     checkoutMethod === "manual"
-                      ? "border-emerald-500 bg-emerald-50 ring-4 ring-emerald-100"
+                      ? "border-blue-500 bg-blue-50/45 ring-1 ring-blue-100"
                       : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        className="h-6 w-6"
-                        aria-hidden="true"
-                      >
-                        <path d="M4 7h12" strokeLinecap="round" />
-                        <path d="m13 4 3 3-3 3" strokeLinecap="round" strokeLinejoin="round" />
-                        <path d="M20 17H8" strokeLinecap="round" />
-                        <path d="m11 14-3 3 3 3" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm">
+                      <PaymentBankIcon />
                     </div>
-                    <div>
-                      <p className="font-bold text-slate-950">
-                        Manual bank transfer
+                    <div className="min-w-0 flex-1">
+                      <p className="text-base font-extrabold text-slate-950">
+                        {t("Manual bank transfer", "ផ្ទេរប្រាក់តាមធនាគារដោយដៃ")}
                       </p>
-                      <p className="mt-0.5 text-xs leading-5 text-slate-500">
-                        Transfer, upload receipt, and wait for review.
+                      <p className="mt-1 text-sm leading-5 text-slate-500">
+                        {t(
+                          "Transfer, upload receipt, and wait for review.",
+                          "ផ្ទេរប្រាក់ ផ្ទុកបង្កាន់ដៃ ហើយរង់ចាំការត្រួតពិនិត្យ។",
+                        )}
                       </p>
                     </div>
+                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
+                      checkoutMethod === "manual"
+                        ? "border-blue-600 bg-blue-600 text-white"
+                        : "border-slate-300 bg-white text-transparent"
+                    }`}>
+                      <PaymentCheckIcon />
+                    </span>
                   </div>
                 </button>
               </div>
 
+              <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                  <PaymentShieldIcon />
+                </span>
+                <div>
+                  <p className="font-extrabold text-blue-700">
+                    {t("Secure & Verified", "មានសុវត្ថិភាព និងបានផ្ទៀងផ្ទាត់")}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    {t(
+                      "TENH verifies your plan and payment before activation. This is a one-time payment for the selected subscription period.",
+                      "TENH ផ្ទៀងផ្ទាត់គម្រោង និងការទូទាត់របស់អ្នក មុនពេលបើកដំណើរការ។ នេះជាការទូទាត់តែម្តងសម្រាប់រយៈពេលការជាវដែលបានជ្រើស។",
+                    )}
+                  </p>
+                </div>
+              </div>
+
               {checkoutMethod === "payway" ? (
-                <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50 p-5 sm:p-6">
+                <div className="mt-5 rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="text-xs font-bold uppercase tracking-[0.14em] text-blue-600">
                         ABA PayWay
                       </p>
-                      <p className="mt-1 text-lg font-bold text-slate-950">
-                        Total {formatUsdFromCents(totalCents)} 
+                      <p className="mt-1 text-sm font-medium text-slate-500">
+                        {t("Total", "សរុប")}
                       </p>
-                     
+                      <p className="mt-1 text-2xl font-black tracking-tight text-slate-950">
+                        {formatUsdFromCents(totalCents)}
+                      </p>
                     </div>
 
                     <button
@@ -1134,25 +1632,19 @@ export function SubscriptionPaymentView({
                         checkoutLoading ||
                         !payWayPluginReady
                       }
-                      className="inline-flex min-w-[210px] items-center justify-center rounded-2xl bg-blue-600 px-5 py-3.5 text-sm font-bold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+                      className="inline-flex min-w-[230px] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-4 text-base font-extrabold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
                     >
+                      <PaymentLockIcon />
                       {checkoutLoading
-                        ? "Opening ABA PayWay..."
+                        ? t("Opening ABA PayWay...", "កំពុងបើក ABA PayWay...")
                         : !payWayPluginReady
-                          ? "Loading PayWay..."
-                          : "Checkout"}
+                          ? t("Loading PayWay...", "កំពុងផ្ទុក PayWay...")
+                          : t("Checkout", "ទូទាត់")}
                     </button>
                   </div>
 
-                    {customUpgrade ? (
-                <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-                  <p className="font-bold">Custom Upgrade</p>
-                  <p className="mt-1">Your same Subscription ID stays active. Current expiry {formatSubscriptionDate(customUpgradeCurrentPeriodEnd)}{customUpgradeNewPeriodEnd && customUpgradeNewPeriodEnd !== customUpgradeCurrentPeriodEnd ? ` → ${formatSubscriptionDate(customUpgradeNewPeriodEnd)}` : ""}.</p>
-                </div>
-              ) : null}
-
                   {checkoutError ? (
-                    <div className="mt-4 whitespace-pre-wrap rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                       {checkoutError}
                     </div>
                   ) : null}
@@ -1164,69 +1656,50 @@ export function SubscriptionPaymentView({
                       )}`}
                     >
                       <p className="font-semibold">
-                        {payWayStateLabel(payWayPaymentState)}
+                        {payWayStateLabel(payWayPaymentState, isKhmer)}
                       </p>
                       <p className="mt-1 text-xs opacity-80">
                         {payWayTransactionId
-                          ? `Transaction ${payWayTransactionId}`
-                          : "No payment was applied."}
+                          ? isKhmer
+                            ? `ប្រតិបត្តិការ ${payWayTransactionId}`
+                            : `Transaction ${payWayTransactionId}`
+                          : t("No payment was applied.", "មិនមានការទូទាត់ត្រូវបានអនុវត្តទេ។")}
                         {payWayStatusText
                           ? ` · ${payWayStatusText}`
                           : ""}
                       </p>
-
-                      {payWayPaymentState === "approved" ? (
-                        <div className="mt-3 border-t border-emerald-200 pt-3">
-                          <p className="text-xs leading-5 text-emerald-800">
-                            Payment is complete. TENH will not redirect you automatically. The official ABA success window can stay open until you choose what to do next.
-                          </p>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <Link
-                              href="/dashboard/subscription"
-                              className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700"
-                            >
-                              Back to subscription
-                            </Link>
-                            <Link
-                              href="/dashboard/subscription/billing-history"
-                              className="inline-flex items-center justify-center rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-50"
-                            >
-                              View TENH receipt
-                            </Link>
-                          </div>
-                        </div>
-                      ) : null}
                     </div>
                   ) : null}
                 </div>
               ) : null}
 
               {checkoutMethod === "manual" ? (
-                <div className="mt-6 rounded-[26px] border border-slate-200 bg-slate-50/70 p-5 shadow-sm sm:p-6">
+                <div className="mt-4">
                   {hasSubmittedManual ? (
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                       <div className="flex items-start gap-3">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-lg font-bold">
                           ✓
                         </div>
                         <div className="min-w-0">
-                          <p className="text-base font-bold">
-                            Payment submitted
-                          </p>
+                          <p className="text-base font-bold">{t("Payment submitted", "បានដាក់ស្នើការទូទាត់")}</p>
                           <p className="mt-1 leading-6 text-amber-700">
-                            TENH billing is reviewing your transfer. Approval typically takes 1-2 business days. This page checks the status automatically.
+                            {t(
+                              "TENH billing is reviewing your transfer. Approval typically takes 1-2 business days. This page checks the status automatically.",
+                              "ក្រុមទូទាត់ TENH កំពុងត្រួតពិនិត្យការផ្ទេររបស់អ្នក។ ជាធម្មតាការអនុម័តចំណាយពេល 1-2 ថ្ងៃធ្វើការ ហើយទំព័រនេះនឹងពិនិត្យស្ថានភាពដោយស្វ័យប្រវត្តិ។",
+                            )}
                           </p>
                         </div>
                       </div>
                       <div className="mt-4 rounded-xl border border-amber-100 bg-white/80 p-3">
                         <p className="break-all font-mono text-xs">
-                          Request {manualPaymentRequest.id}
+                          {t("Request", "សំណើ")} {manualPaymentRequest.id}
                         </p>
                         <p className="mt-2 text-xs">
-                          {manualPaymentRequest.planCode.toUpperCase()} · {manualPaymentRequest.billingCycle} · {new Intl.NumberFormat("en-US", { style: "currency", currency: manualPaymentRequest.currency }).format(manualPaymentRequest.amount)}
+                          {manualPaymentRequest.planCode.toUpperCase()} · {billingCycleText(manualPaymentRequest.billingCycle)} · {new Intl.NumberFormat("en-US", { style: "currency", currency: manualPaymentRequest.currency }).format(manualPaymentRequest.amount)}
                         </p>
                         <p className="mt-1 text-xs">
-                          Receipt: {manualPaymentRequest.proofFileName}
+                          {t("Receipt", "បង្កាន់ដៃ")}: {manualPaymentRequest.proofFileName}
                         </p>
                       </div>
                     </div>
@@ -1239,12 +1712,10 @@ export function SubscriptionPaymentView({
                               !
                             </div>
                             <div>
-                              <p className="font-bold">
-                                Previous payment was rejected
-                              </p>
+                              <p className="font-bold">{t("Previous payment was rejected", "ការទូទាត់មុនត្រូវបានបដិសេធ")}</p>
                               <p className="mt-1 text-xs leading-5">
                                 {manualPaymentRequest.reviewNote ||
-                                  "Check the transfer details and submit a new receipt."}
+                                  t("Check the transfer details and submit a new receipt.", "សូមពិនិត្យព័ត៌មានផ្ទេរប្រាក់ ហើយដាក់ស្នើបង្កាន់ដៃថ្មី។")}
                               </p>
                             </div>
                           </div>
@@ -1258,92 +1729,168 @@ export function SubscriptionPaymentView({
                               ✓
                             </div>
                             <div>
-                              <p className="font-bold">
-                                Last manual payment was approved
-                              </p>
+                              <p className="font-bold">{t("Last manual payment was approved", "ការទូទាត់តាមធនាគារចុងក្រោយត្រូវបានអនុម័ត")}</p>
                               <p className="mt-1 text-xs leading-5 text-emerald-700">
-                                You can submit a new payment here if you are purchasing another billing period.
+                                {t(
+                                  "You can submit a new payment here if you are purchasing another billing period.",
+                                  "អ្នកអាចដាក់ស្នើការទូទាត់ថ្មីនៅទីនេះ ប្រសិនបើអ្នកកំពុងទិញរយៈពេលការជាវថ្មីមួយទៀត។",
+                                )}
                               </p>
                             </div>
                           </div>
                         </div>
                       ) : null}
-                      
 
-                      <div className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                          <div>
-                            <p className="text-xs font-bold uppercase tracking-[0.13em] text-blue-600">
-                              Payment amount
-                            </p>
-                            <p className="mt-1 text-3xl font-black tracking-tight text-slate-950">
-                              {formatUsdFromCents(totalCents)}
-                            </p>
-                          </div>
-                          <div className="rounded-xl bg-blue-50 px-3 py-2 text-xs leading-5 text-slate-600">
-                            Automatically generated.
-                            <br />Customer cannot edit it.
-                          </div>
-                        </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                          <h3 className="text-base font-extrabold text-slate-950">
+                            {t("Transfer details", "ព័ត៌មានផ្ទេរប្រាក់")}
+                          </h3>
+
+                          <dl className="mt-3 divide-y divide-dashed divide-slate-200">
+                            <div className="flex items-center justify-between gap-4 py-3">
+                              <dt className="text-sm text-slate-500">{t("Payment amount", "ចំនួនទឹកប្រាក់ទូទាត់")}</dt>
+                              <dd className="text-base font-extrabold text-slate-950">
+                                {formatUsdFromCents(totalCents)}
+                              </dd>
+                            </div>
+                            <div className="flex items-center justify-between gap-4 py-3">
+                              <dt className="text-sm text-slate-500">{t("Bank", "ធនាគារ")}</dt>
+                              <dd className="text-right text-sm font-bold text-slate-950">
+                                {manualPaymentConfig?.bankName || "—"}
+                              </dd>
+                            </div>
+                            <div className="flex items-center justify-between gap-4 py-3">
+                              <dt className="text-sm text-slate-500">{t("Account name", "ឈ្មោះគណនី")}</dt>
+                              <dd className="text-right text-sm font-bold text-slate-950">
+                                {manualPaymentConfig?.accountName || "—"}
+                              </dd>
+                            </div>
+                            <div className="flex items-center justify-between gap-4 py-3">
+                              <dt className="text-sm text-slate-500">{t("Account number", "លេខគណនី")}</dt>
+                              <dd className="text-right text-sm font-bold text-slate-950">
+                                {manualPaymentConfig?.accountNumber || "—"}
+                              </dd>
+                            </div>
+                            <div className="flex items-center justify-between gap-4 py-3">
+                              <dt className="text-sm text-slate-500">{t("Currency", "រូបិយប័ណ្ណ")}</dt>
+                              <dd className="text-sm font-bold text-slate-950">USD</dd>
+                            </div>
+                          </dl>
+                        </section>
+
+                        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                          <h3 className="text-base font-extrabold text-slate-950">
+                            {t("Scan ABA KHQR", "ស្កេន ABA KHQR")}
+                          </h3>
+
+                          {manualPaymentConfig?.enabled && manualPaymentConfig.qrImageUrl ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setManualQrPreviewOpen(true)}
+                                className="mx-auto mt-3 block rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-300 hover:shadow-md"
+                                aria-label={t("View payment QR larger", "មើល QR ទូទាត់ឱ្យធំ")}
+                              >
+                                <img
+                                  src={manualPaymentConfig.qrImageUrl}
+                                  alt={t("TENH manual payment QR", "QR ទូទាត់ TENH")}
+                                  className="mx-auto h-[122px] w-[122px] rounded-xl object-contain"
+                                />
+                              </button>
+
+                              <p className="mt-3 text-center text-sm font-medium text-slate-600">
+                                {t("Scan to pay", "ស្កេនដើម្បីទូទាត់")}{" "}
+                                <span className="text-xl font-extrabold text-blue-600">
+                                  {formatUsdFromCents(totalCents)}
+                                </span>
+                              </p>
+                              <p className="mt-1 text-center text-xs text-slate-500">
+                                {t("After payment, upload your receipt below.", "បន្ទាប់ពីទូទាត់ សូមផ្ទុកបង្កាន់ដៃរបស់អ្នកខាងក្រោម។")}
+                              </p>
+                            </>
+                          ) : (
+                            <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                              {t("Payment QR is not available right now.", "QR សម្រាប់ទូទាត់មិនអាចប្រើបាននៅពេលនេះទេ។")}
+                            </div>
+                          )}
+                        </section>
                       </div>
 
-                      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <label className="block text-sm font-semibold text-slate-900">
-                          Payment receipt
-                          <span className="ml-1 text-red-500">*</span>
-                          <span className="mt-1 block text-xs font-normal leading-5 text-slate-500">
-                            Upload a clear JPG, PNG, WEBP, or PDF showing the completed transfer.
+                      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <h3 className="text-base font-extrabold text-slate-950">
+                          {t("Upload payment receipt", "ផ្ទុកបង្កាន់ដៃទូទាត់")}
+                        </h3>
+
+                        <label className="relative mt-3 flex min-h-[108px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-blue-50/20 px-4 py-4 text-center transition hover:border-blue-400 hover:bg-blue-50/40">
+                          <span className="text-blue-600">
+                            <PaymentUploadIcon />
                           </span>
+                          <span className="mt-2 text-sm font-semibold text-slate-700">
+                            {manualProof ? manualProof.name : t("Upload your receipt here", "ផ្ទុកបង្កាន់ដៃរបស់អ្នកនៅទីនេះ")}
+                          </span>
+                          <span className="mt-1 text-sm text-slate-500">
+                            {t("or", "ឬ")} <span className="font-semibold text-blue-600">{t("click to browse", "ចុចដើម្បីជ្រើសឯកសារ")}</span>
+                          </span>
+                          <span className="mt-2 text-xs text-slate-400">
+                            {t("PNG, JPG, WEBP or PDF (Max. 10MB)", "PNG, JPG, WEBP ឬ PDF (អតិបរមា 10MB)")}
+                          </span>
+
                           <input
                             type="file"
                             accept="image/jpeg,image/png,image/webp,application/pdf"
                             onChange={(event) =>
-                              setManualProof(
-                                event.target.files?.[0] ?? null,
-                              )
+                              setManualProof(event.target.files?.[0] ?? null)
                             }
-                            className="mt-3 block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 p-2 text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2.5 file:font-semibold file:text-white hover:file:bg-blue-500"
+                            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                            aria-label={t("Upload payment receipt", "ផ្ទុកបង្កាន់ដៃទូទាត់")}
                           />
                         </label>
 
-                        <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-700">
-                          Please ensure the transaction details match your order. Approval typically takes 1-2 business days.
-                        </p>
+                        <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-700">
+                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-amber-400 font-bold">
+                            !
+                          </span>
+                          <p>
+                            {t(
+                              "Make sure the transfer amount and transaction details match your order. Approval usually takes 1-2 business days.",
+                              "សូមប្រាកដថាចំនួនទឹកប្រាក់ផ្ទេរ និងព័ត៌មានប្រតិបត្តិការ ត្រូវគ្នានឹងការបញ្ជាទិញរបស់អ្នក។ ជាធម្មតាការអនុម័តចំណាយពេល 1-2 ថ្ងៃធ្វើការ។",
+                            )}
+                          </p>
+                        </div>
 
                         <label className="mt-4 block text-sm font-semibold text-slate-900">
-                          Note
-                          <span className="ml-1 text-xs font-normal text-slate-500">
-                            (optional)
-                          </span>
+                          {t("Note", "ចំណាំ")}
+                          <span className="ml-1 text-xs font-normal text-slate-500">{t("(optional)", "(មិនចាំបាច់)")}</span>
+
                           <textarea
-                            rows={4}
+                            rows={2}
                             maxLength={1000}
                             value={manualCustomerNote}
-                            onChange={(event) =>
-                              setManualCustomerNote(event.target.value)
-                            }
-                            placeholder="Add any information TENH billing should know"
+                            onChange={(event) => setManualCustomerNote(event.target.value)}
+                            placeholder={t("Add any information TENH billing should know", "បន្ថែមព័ត៌មានណាមួយដែលក្រុមទូទាត់ TENH គួរដឹង")}
                             className="mt-2 w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                           />
                         </label>
-                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void submitManualPayment();
-                        }}
-                        disabled={
-                          !manualPaymentConfig?.enabled ||
-                          manualPaymentSubmitting ||
-                          !manualProof
-                        }
-                        className="inline-flex w-full items-center justify-center rounded-2xl bg-blue-600 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
-                      >
-                        {manualPaymentSubmitting
-                          ? "Submitting payment..."
-                          : "Submit payment"}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => void submitManualPayment()}
+                          disabled={
+                            !manualPaymentConfig?.enabled ||
+                            manualPaymentSubmitting ||
+                            !manualProof
+                          }
+                          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+                        >
+                          <PaymentLockIcon />
+                          {manualPaymentSubmitting
+                            ? t("Submitting payment...", "កំពុងដាក់ស្នើការទូទាត់...")
+                            : isKhmer
+                              ? `ដាក់ស្នើការទូទាត់ · ${formatUsdFromCents(totalCents)}`
+                              : `Submit payment · ${formatUsdFromCents(totalCents)}`}
+                        </button>
+                      </section>
 
                       {manualPaymentError ? (
                         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
@@ -1354,9 +1901,52 @@ export function SubscriptionPaymentView({
                   )}
                 </div>
               ) : null}
-            </div>
           </div>
         </section>
+
+        <div className="mt-5 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-3">
+          <div className="flex items-start gap-3 px-2">
+            <span className="mt-0.5 text-emerald-600">
+              <PaymentShieldIcon />
+            </span>
+            <div>
+              <p className="text-sm font-extrabold text-slate-900">
+                {t("Secure payment", "ការទូទាត់មានសុវត្ថិភាព")}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                {t("Your payment is protected and verified.", "ការទូទាត់របស់អ្នកត្រូវបានការពារ និងផ្ទៀងផ្ទាត់។")}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 border-slate-200 px-2 sm:border-l sm:pl-5">
+            <span className="mt-0.5 text-amber-500">
+              <PaymentClockIcon />
+            </span>
+            <div>
+              <p className="text-sm font-extrabold text-slate-900">
+                {t("One-time payment", "ការទូទាត់តែម្តង")}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                {t("Pay once for this selected subscription period.", "បង់តែម្តងសម្រាប់រយៈពេលការជាវដែលបានជ្រើសនេះ។")}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 border-slate-200 px-2 sm:border-l sm:pl-5">
+            <span className="mt-0.5 text-violet-600">
+              <PaymentHeadsetIcon />
+            </span>
+            <div>
+              <p className="text-sm font-extrabold text-slate-900">
+                {t("Need help?", "ត្រូវការជំនួយ?")}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                {t("Contact TENH support if you need payment assistance.", "ទាក់ទងក្រុមជំនួយ TENH ប្រសិនបើអ្នកត្រូវការជំនួយអំពីការទូទាត់។")}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {manualQrPreviewOpen && manualPaymentConfig?.qrImageUrl ? (
@@ -1373,18 +1963,21 @@ export function SubscriptionPaymentView({
               type="button"
               onClick={() => setManualQrPreviewOpen(false)}
               className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-xl font-semibold text-slate-600 shadow-sm hover:bg-slate-50"
-              aria-label="Close QR preview"
+              aria-label={t("Close QR preview", "បិទការមើល QR")}
             >
               ×
             </button>
 
             <img
               src={manualPaymentConfig.qrImageUrl}
-              alt="Payment QR enlarged"
+              alt={t("Payment QR enlarged", "QR ទូទាត់ទំហំធំ")}
               className="mx-auto max-h-[78vh] w-auto max-w-full rounded-2xl object-contain"
             />
             <p className="mt-4 text-center text-sm font-medium text-slate-600">
-              Scan this QR code with your banking app to complete the payment.
+              {t(
+                "Scan this QR code with your banking app to complete the payment.",
+                "ស្កេន QR នេះជាមួយកម្មវិធីធនាគាររបស់អ្នក ដើម្បីបញ្ចប់ការទូទាត់។",
+              )}
             </p>
           </div>
         </div>
