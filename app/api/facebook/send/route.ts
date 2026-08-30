@@ -4,8 +4,12 @@ import {
 } from "next/server";
 
 import {
-  getCurrentMember,
-} from "@/lib/auth/get-current-member";
+  getInboxConversationAccess,
+} from "@/lib/inbox/get-inbox-resource-access";
+import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
 import {
   getFacebookPageAccessToken,
   isFacebookAccessTokenError,
@@ -44,24 +48,6 @@ export async function POST(
    * Authenticate the Tenh team member who is actually
    * sending this customer reply.
    */
-  const authResult =
-    await getCurrentMember();
-
-  if (!authResult.success) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: authResult.error,
-      },
-      {
-        status: authResult.status,
-      },
-    );
-  }
-
-  const currentMember =
-    authResult.member;
-
   let body: SendMessageBody;
 
   try {
@@ -97,6 +83,26 @@ export async function POST(
       {
         status: 400,
       },
+    );
+  }
+
+  const inboxAccess =
+    await getInboxConversationAccess(conversationId);
+
+  if (!inboxAccess.success) {
+    return NextResponse.json(
+      { success: false, error: inboxAccess.error },
+      { status: inboxAccess.status },
+    );
+  }
+
+  const currentMember = inboxAccess.member;
+
+  if (
+    !(await memberHasPermission(currentMember, "conversations", "manage"))
+  ) {
+    return permissionDenied(
+      "You do not have permission to reply in this workspace.",
     );
   }
 

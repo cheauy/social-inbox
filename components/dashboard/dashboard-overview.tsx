@@ -1586,46 +1586,7 @@ export function DashboardOverview() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-base font-bold text-slate-950">
-                Quick actions
-              </h2>
-
-              <p className="mt-1 text-xs text-slate-500">
-                Jump directly to the area that needs work.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href="/dashboard/inbox"
-                className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
-              >
-                Open Inbox
-              </Link>
-
-              <Link
-                href="/dashboard/customers"
-                className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                Customers
-              </Link>
-
-              <Link
-                href="/dashboard/analytics"
-                className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                Analytics
-              </Link>
-            </div>
-          </div>
-
-          <p className="mt-4 text-[11px] leading-5 text-slate-400">
-            Dashboard data refreshes automatically every 30 seconds and whenever this browser window regains focus.
-          </p>
-        </section>
+     
       </div>
     </main>
   );

@@ -23,6 +23,7 @@ const CYCLE_LABELS: Record<string, string> = {
   "12-months": "1 Year",
 };
 
+const PAGE_SIZE = 10;
 
 type WorkspaceRow = {
   businessId: string;
@@ -76,6 +77,7 @@ type WorkspaceDetail = {
   channels: Array<{
     id: string;
     platform: string;
+    accountName: string | null;
     platformAccountId: string | null;
     active: boolean;
     createdAt: string;
@@ -155,10 +157,24 @@ type WorkspaceDetail = {
   }>;
 };
 
+type BillingSummary = {
+  workspaces: number;
+  managed: number;
+  legacy: number;
+  active: number;
+  trialing: number;
+  expired: number;
+  suspended: number;
+  pastDue: number;
+  pendingManual: number;
+  paidInvoices: number;
+};
+
 type ListResponse = {
   success?: boolean;
   error?: string;
   details?: string;
+  summary?: BillingSummary;
   workspaces?: WorkspaceRow[];
 };
 
@@ -232,6 +248,54 @@ function statusLabel(status: string | null, managed = true) {
   return status.replaceAll("_", " ");
 }
 
+function compactStatusClasses(status: string | null, managed = true) {
+  if (!managed) return "bg-slate-100 text-slate-600";
+
+  switch (status) {
+    case "active":
+      return "bg-emerald-100 text-emerald-700";
+    case "trialing":
+      return "bg-blue-100 text-blue-700";
+    case "expired":
+      return "bg-slate-100 text-slate-600";
+    case "past_due":
+      return "bg-orange-100 text-orange-700";
+    case "suspended":
+      return "bg-red-100 text-red-700";
+    default:
+      return "bg-slate-100 text-slate-600";
+  }
+}
+
+function compactPlanLabel(value: string | null | undefined, managed = true) {
+  if (!managed) return "Legacy";
+  const label = planLabel(value);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function formatCreatedCompact(value: string | null | undefined) {
+  if (!value) return "created —";
+
+  const date = new Date(value);
+  const time = date.getTime();
+  if (!Number.isFinite(time)) return "created —";
+
+  const diffMs = Math.max(0, Date.now() - time);
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 60) return `created ${Math.max(1, minutes)}m ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `created ${hours}h ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `created ${days}d ago`;
+
+  return `created ${new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(date)}`;
+}
+
 function Section({
   title,
   helper,
@@ -285,7 +349,9 @@ export function AdminBillingManagement() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
+  const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceRow[]>([]);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -295,6 +361,9 @@ export function AdminBillingManagement() {
   const [detail, setDetail] = useState<WorkspaceDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailPaymentFilter, setDetailPaymentFilter] = useState<
+    "all" | "review" | "payway"
+  >("all");
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -303,7 +372,9 @@ export function AdminBillingManagement() {
     try {
       const params = new URLSearchParams();
       if (search) params.set("q", search);
-      if (status !== "all") params.set("status", status);
+      if (status !== "all" && status !== "needs_review") {
+        params.set("status", status);
+      }
 
       const response = await fetch(
         `/api/tenh-admin/billing${params.size ? `?${params.toString()}` : ""}`,
@@ -319,6 +390,7 @@ export function AdminBillingManagement() {
         );
       }
 
+      setSummary(result.summary ?? null);
       setWorkspaces(result.workspaces ?? []);
     } catch (loadError) {
       setError(
@@ -333,8 +405,10 @@ export function AdminBillingManagement() {
 
   const loadDetail = useCallback(async (businessId: string) => {
     setSelectedBusinessId(businessId);
+    setDetail(null);
     setDetailLoading(true);
     setDetailError(null);
+    setDetailPaymentFilter("all");
 
     try {
       const response = await fetch(
@@ -378,9 +452,63 @@ export function AdminBillingManagement() {
     [selectedBusinessId, workspaces],
   );
 
+  const visibleWorkspaces = useMemo(() => {
+    if (status === "needs_review") {
+      return workspaces.filter((workspace) => workspace.pendingManual > 0);
+    }
+    return workspaces;
+  }, [status, workspaces]);
+
+  const pageCount = Math.max(
+    1,
+    Math.ceil(visibleWorkspaces.length / PAGE_SIZE),
+  );
+  const currentPage = Math.min(page, pageCount);
+
+  const paginatedWorkspaces = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return visibleWorkspaces.slice(start, start + PAGE_SIZE);
+  }, [currentPage, visibleWorkspaces]);
+
+  useEffect(() => {
+    if (page > pageCount) {
+      setPage(pageCount);
+    }
+  }, [page, pageCount]);
+
+  useEffect(() => {
+    if (!selectedBusinessId) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedBusinessId(null);
+        setDetail(null);
+        setDetailError(null);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [selectedBusinessId]);
+
+  function closeDetail() {
+    setSelectedBusinessId(null);
+    setDetail(null);
+    setDetailError(null);
+    setDetailLoading(false);
+  }
+
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSearch(searchInput.trim());
+    setPage(1);
     setSelectedBusinessId(null);
     setDetail(null);
   }
@@ -389,590 +517,765 @@ export function AdminBillingManagement() {
     setSearchInput("");
     setSearch("");
     setStatus("all");
+    setPage(1);
     setSelectedBusinessId(null);
     setDetail(null);
   }
 
   return (
     <div className="space-y-5">
-      <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-slate-950">
-              Billing management
-            </h2>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-              Search TENH workspaces and inspect current subscription state,
-              capacity, payments, paid receipts, lifecycle events, and admin
-              billing history. This screen is read-only; payment approval stays
-              in Manual payment review.
-            </p>
+      <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+        <div className="px-5 pb-4 pt-5 sm:px-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                Admin
+              </p>
+              <h2 className="mt-1 text-xl font-bold text-slate-950">
+                Billing management
+              </h2>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void loadList()}
+              disabled={loading}
+              className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+            >
+              <span aria-hidden="true">↻</span>
+              {loading ? "Refreshing..." : "Refresh"}
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => void loadList()}
-            disabled={loading}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
-          >
-            {loading ? "Refreshing..." : "Refresh billing"}
-          </button>
+          <form onSubmit={submitSearch} className="mt-4">
+            <div className="relative">
+              <span
+                className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-sm text-slate-400"
+                aria-hidden="true"
+              >
+                ⌕
+              </span>
+              <input
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Workspace, email, invoice or transaction ID"
+                maxLength={120}
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-12 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+              />
+              {searchInput || search ? (
+                <button
+                  type="button"
+                  onClick={clearSearch}
+                  className="absolute inset-y-0 right-2 flex items-center px-2 text-sm font-semibold text-slate-400 transition hover:text-slate-700"
+                  aria-label="Clear billing search"
+                >
+                  ×
+                </button>
+              ) : (
+                <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                  <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
+                    /
+                  </kbd>
+                </span>
+              )}
+            </div>
+          </form>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {[
+              ["all", "All", summary?.workspaces ?? workspaces.length],
+              ["active", "Active", summary?.active ?? 0],
+              ["trialing", "Trialing", summary?.trialing ?? 0],
+              ["expired", "Expired", summary?.expired ?? 0],
+              ["needs_review", "Needs review", summary?.pendingManual ?? 0],
+            ].map(([value, label, count]) => {
+              const active = status === value;
+              const needsReview = value === "needs_review";
+              return (
+                <button
+                  key={String(value)}
+                  type="button"
+                  onClick={() => {
+                    setStatus(String(value));
+                    setPage(1);
+                    setSelectedBusinessId(null);
+                    setDetail(null);
+                  }}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                    active
+                      ? needsReview
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-slate-200 text-slate-900"
+                      : needsReview
+                        ? "bg-amber-50 text-amber-800 hover:bg-amber-100"
+                        : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  {needsReview ? <span aria-hidden="true">⚠</span> : null}
+                  <span>{String(label)}</span>
+                  <span className="font-bold">{Number(count)}</span>
+                </button>
+              );
+            })}
+
+            <select
+              value={
+                ["past_due", "suspended", "legacy"].includes(status)
+                  ? status
+                  : ""
+              }
+              onChange={(event) => {
+                if (!event.target.value) return;
+                setStatus(event.target.value);
+                setPage(1);
+                setSelectedBusinessId(null);
+                setDetail(null);
+              }}
+              className="ml-auto rounded-lg border border-transparent bg-white px-2 py-1.5 text-xs font-medium text-slate-500 outline-none transition hover:bg-slate-50 focus:border-slate-200"
+              aria-label="More billing status filters"
+            >
+              <option value="">More</option>
+              <option value="past_due">Past due {summary?.pastDue ?? 0}</option>
+              <option value="suspended">Suspended {summary?.suspended ?? 0}</option>
+              <option value="legacy">Legacy {summary?.legacy ?? 0}</option>
+            </select>
+          </div>
         </div>
 
-        <form
-          onSubmit={submitSearch}
-          className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_auto_auto]"
-        >
-          <input
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Workspace, owner email, invoice, transaction ID, UUID..."
-            maxLength={120}
-            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-          />
+        {error ? (
+          <div className="mx-5 mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:mx-6">
+            {error}
+          </div>
+        ) : null}
 
-          <select
-            value={status}
-            onChange={(event) => {
-              setStatus(event.target.value);
-              setSelectedBusinessId(null);
-              setDetail(null);
-            }}
-            className="rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-          >
-            <option value="all">All states</option>
-            <option value="active">Active</option>
-            <option value="trialing">Trialing</option>
-            <option value="expired">Expired</option>
-            <option value="past_due">Past due</option>
-            <option value="suspended">Suspended</option>
-            <option value="legacy">Legacy / unmanaged</option>
-          </select>
+        <div className="border-t border-slate-100 px-5 pb-5 pt-3 sm:px-6">
+          <div className="mb-2 flex items-center justify-between gap-4 px-1 text-xs text-slate-500">
+            <span className="font-medium">
+              {status === "needs_review"
+                ? `${visibleWorkspaces.length} workspace${visibleWorkspaces.length === 1 ? "" : "s"} needing review`
+                : search
+                  ? `${visibleWorkspaces.length} matching workspace${visibleWorkspaces.length === 1 ? "" : "s"}`
+                  : `${summary?.workspaces ?? visibleWorkspaces.length} workspaces`}
+            </span>
+            <span className="font-medium">Newest first⌄</span>
+          </div>
 
-          <button
-            type="submit"
-            className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
-          >
-            Search
-          </button>
-
-          <button
-            type="button"
-            onClick={clearSearch}
-            className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
-          >
-            Clear
-          </button>
-        </form>
-      </section>
-
-      {error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error}
-        </div>
-      ) : null}
-
-      <Section
-        title="Workspaces"
-        helper={
-          search
-            ? `Showing matches for “${search}”.`
-            : "Newest TENH workspaces. Search to locate an older workspace or payment."
-        }
-      >
-        {loading ? (
-          <EmptyState>Loading billing workspaces...</EmptyState>
-        ) : workspaces.length === 0 ? (
-          <EmptyState>No workspace matches this billing search.</EmptyState>
-        ) : (
-          <div className="overflow-x-auto rounded-2xl border border-slate-200">
-            <table className="min-w-[1120px] w-full border-collapse text-left">
-              <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">
-                <tr>
-                  <th className="px-4 py-3">Workspace</th>
-                  <th className="px-4 py-3">Plan</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Usage</th>
-                  <th className="px-4 py-3">Period end</th>
-                  <th className="px-4 py-3">Billing</th>
-                  <th className="px-4 py-3 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {workspaces.map((workspace) => {
+          {loading ? (
+            <EmptyState>Loading billing workspaces...</EmptyState>
+          ) : visibleWorkspaces.length === 0 ? (
+            <EmptyState>No workspace matches this billing view.</EmptyState>
+          ) : (
+            <>
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                {paginatedWorkspaces.map((workspace, index) => {
                   const selected = selectedBusinessId === workspace.businessId;
+                  const owner =
+                    workspace.ownerEmail ??
+                    workspace.ownerName ??
+                    "No active owner found";
 
                   return (
-                    <tr
+                    <button
                       key={workspace.businessId}
-                      className={selected ? "bg-blue-50/60" : "hover:bg-slate-50/70"}
+                      type="button"
+                      onClick={() => void loadDetail(workspace.businessId)}
+                      className={`grid w-full grid-cols-[minmax(0,1fr)_86px_86px_24px] items-center gap-3 px-3 py-3 text-left transition sm:grid-cols-[minmax(0,1fr)_120px_110px_28px] sm:px-4 ${
+                        index > 0 ? "border-t border-slate-100" : ""
+                      } ${
+                        selected
+                          ? "bg-blue-50/50"
+                          : "bg-white hover:bg-slate-50"
+                      }`}
                     >
-                      <td className="px-4 py-4 align-top">
-                        <p className="font-bold text-slate-900">
-                          {workspace.businessName}
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                          <span className="truncate text-sm font-bold text-slate-950">
+                            {workspace.businessName}
+                          </span>
+                          {workspace.pendingManual > 0 ? (
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                              <span aria-hidden="true">⚠</span>
+                              {workspace.pendingManual} review waiting
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-0.5 truncate text-[11px] text-slate-500 sm:text-xs">
+                          {owner} · {formatCreatedCompact(workspace.createdAt)}
                         </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {workspace.ownerEmail ?? workspace.ownerName ?? "No active owner found"}
-                        </p>
-                        <p className="mt-1 font-mono text-[10px] text-slate-400">
-                          {workspace.businessId}
-                        </p>
-                      </td>
-                      <td className="px-4 py-4 align-top text-sm font-semibold text-slate-800">
-                        {planLabel(workspace.planCode)}
-                        {workspace.pendingPlanCode ? (
-                          <p className="mt-1 text-xs font-medium text-violet-700">
-                            Next: {planLabel(workspace.pendingPlanCode)} · {cycleLabel(workspace.pendingBillingCycle)}
-                          </p>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-4 align-top">
+                      </div>
+
+                      <div className="truncate text-xs font-medium text-slate-600 sm:text-sm">
+                        {compactPlanLabel(workspace.planCode, workspace.managed)}
+                      </div>
+
+                      <div>
                         <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold capitalize ${statusClasses(
+                          className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold capitalize sm:text-xs ${compactStatusClasses(
                             workspace.status,
                             workspace.managed,
                           )}`}
                         >
                           {statusLabel(workspace.status, workspace.managed)}
                         </span>
-                      </td>
-                      <td className="px-4 py-4 align-top text-sm text-slate-700">
-                        <p>
-                          {workspace.activeMembers}
-                          {workspace.memberLimit !== null
-                            ? ` / ${workspace.memberLimit}`
-                            : ""}{" "}
-                          members
-                        </p>
-                        <p className="mt-1">
-                          {workspace.activeChannels}
-                          {workspace.channelLimit !== null
-                            ? ` / ${workspace.channelLimit}`
-                            : ""}{" "}
-                          channels
-                        </p>
-                      </td>
-                      <td className="px-4 py-4 align-top text-sm text-slate-600">
-                        {workspace.managed
-                          ? formatDate(
-                              workspace.status === "trialing"
-                                ? workspace.trialEndsAt
-                                : workspace.currentPeriodEnd,
-                            )
-                          : "No managed period"}
-                      </td>
-                      <td className="px-4 py-4 align-top text-sm text-slate-700">
-                        <p>{workspace.invoiceCount} paid receipt{workspace.invoiceCount === 1 ? "" : "s"}</p>
-                        {workspace.pendingManual > 0 ? (
-                          <p className="mt-1 font-semibold text-amber-700">
-                            {workspace.pendingManual} manual review waiting
-                          </p>
-                        ) : (
-                          <p className="mt-1 text-xs text-slate-400">
-                            Last paid: {formatDate(workspace.lastPaidAt)}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-4 py-4 text-right align-top">
-                        <button
-                          type="button"
-                          onClick={() => void loadDetail(workspace.businessId)}
-                          className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                        >
-                          {selected && detailLoading ? "Loading..." : "View billing"}
-                        </button>
-                      </td>
-                    </tr>
+                      </div>
+
+                      <span
+                        className="text-right text-xl leading-none text-slate-400"
+                        aria-hidden="true"
+                      >
+                        {selected && detailLoading ? "…" : "›"}
+                      </span>
+                    </button>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Section>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between px-1 text-xs text-slate-500">
+                <span>
+                  Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(
+                    currentPage * PAGE_SIZE,
+                    visibleWorkspaces.length,
+                  )} of {
+                    status === "all" && !search
+                      ? summary?.workspaces ?? visibleWorkspaces.length
+                      : visibleWorkspaces.length
+                  }
+                </span>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPage((value) => Math.max(1, value - 1))
+                    }
+                    disabled={currentPage === 1}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-base text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
+                    aria-label="Previous billing page"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPage((value) => Math.min(pageCount, value + 1))
+                    }
+                    disabled={currentPage === pageCount}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-base text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
+                    aria-label="Next billing page"
+                  >
+                    ›
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
 
       {selectedBusinessId ? (
-        <div className="space-y-5" id="tenh-admin-billing-detail">
-          {detailLoading ? (
-            <Section title="Workspace billing">
-              <EmptyState>Loading workspace billing details...</EmptyState>
-            </Section>
-          ) : detailError ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              {detailError}
-            </div>
-          ) : detail ? (
-            <>
-              <Section
-                title={detail.business.name}
-                helper="Global billing state visible only to the protected TENH administrator session."
-              >
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <KeyValue label="Workspace ID" value={<span className="font-mono text-xs">{detail.business.id}</span>} />
-                  <KeyValue
-                    label="Owner"
-                    value={
-                      detail.business.ownerEmail ??
-                      detail.business.ownerName ??
-                      "No active owner found"
-                    }
-                  />
-                  <KeyValue
-                    label="Subscription"
-                    value={
-                      detail.subscription ? (
-                        <span className="capitalize">
-                          {planLabel(detail.subscription.plan_code)} · {String(detail.subscription.status).replaceAll("_", " ")}
-                        </span>
-                      ) : (
-                        "Legacy / unmanaged"
-                      )
-                    }
-                  />
-                  <KeyValue
-                    label="Usage"
-                    value={`${detail.usage.activeMembers}${
-                      detail.subscription
-                        ? ` / ${detail.subscription.member_limit}`
-                        : ""
-                    } members · ${detail.usage.activeChannels}${
-                      detail.subscription
-                        ? ` / ${detail.subscription.channel_limit}`
-                        : ""
-                    } channels`}
-                  />
-                  <KeyValue
-                    label="Current period"
-                    value={
-                      detail.subscription
-                        ? `${formatDate(
-                            detail.subscription.current_period_start,
-                          )} → ${formatDate(
-                            detail.subscription.status === "trialing"
-                              ? detail.subscription.trial_ends_at
-                              : detail.subscription.current_period_end,
-                          )}`
-                        : "No managed billing period"
-                    }
-                  />
-                  <KeyValue
-                    label="Payment provider"
-                    value={detail.subscription?.payment_provider ?? "—"}
-                  />
-                  <KeyValue
-                    label="Scheduled next plan"
-                    value={
-                      detail.subscription?.pending_plan_code
-                        ? `${planLabel(
-                            detail.subscription.pending_plan_code,
-                          )} · ${cycleLabel(
-                            detail.subscription.pending_billing_cycle,
-                          )} · effective ${formatDate(
-                            detail.subscription.pending_plan_effective_at,
-                          )}`
-                        : "None"
-                    }
-                  />
-                  <KeyValue
-                    label="Workspace created"
-                    value={formatDate(detail.business.createdAt)}
-                  />
+        <div
+          className="fixed inset-0 z-[120] flex items-start justify-center bg-slate-950/45 p-3 backdrop-blur-[2px] sm:p-5"
+          role="dialog"
+          aria-modal="true"
+          aria-label="TENH workspace billing details"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeDetail();
+            }
+          }}
+        >
+          <div
+            id="tenh-admin-billing-detail"
+            className="flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-2xl"
+          >
+            {detailLoading ? (
+              <div className="p-5 sm:p-6">
+                <EmptyState>Loading workspace billing details...</EmptyState>
+              </div>
+            ) : detailError ? (
+              <div className="p-5 sm:p-6">
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                  {detailError}
                 </div>
-
-                {selectedRow?.pendingManual ? (
-                  <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="font-bold text-amber-950">
-                        Manual payment waiting for review
-                      </p>
-                      <p className="mt-1 text-sm text-amber-800/75">
-                        Approve or reject it only through the existing protected manual payment review flow.
-                      </p>
-                    </div>
-                    <a
-                      href="/dashboard/admin?tab=manual-payments"
-                      className="rounded-xl bg-amber-900 px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-amber-800"
-                    >
-                      Open manual payment review
-                    </a>
-                  </div>
-                ) : null}
-              </Section>
-
-              <Section
-                title="Paid invoices / receipts"
-                helper="Immutable V3.10.4 snapshots. This admin page does not rewrite historical receipts."
-              >
-                {detail.invoices.length === 0 ? (
-                  <EmptyState>No paid TENH receipt has been issued for this workspace.</EmptyState>
-                ) : (
-                  <div className="space-y-3">
-                    {detail.invoices.map((invoice) => (
-                      <div
-                        key={invoice.id}
-                        className="rounded-2xl border border-slate-200 p-4"
-                      >
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="font-bold text-slate-950">
-                                {invoice.invoiceNumber}
-                              </p>
-                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold uppercase text-emerald-700">
-                                Paid
-                              </span>
-                            </div>
-                            <p className="mt-1 text-sm text-slate-600">
-                              {invoice.planName} · {invoice.billingCycleLabel} · {invoice.paymentMethod}
-                            </p>
-                            <p className="mt-1 font-mono text-[11px] text-slate-400">
-                              {invoice.transactionId}
-                            </p>
-                          </div>
-                          <p className="text-lg font-black text-slate-950">
-                            {formatMoney(invoice.amount, invoice.currency)}
-                          </p>
-                        </div>
-
-                        <div className="mt-4 grid gap-2 md:grid-cols-3">
-                          <KeyValue label="Paid at" value={formatDate(invoice.paidAt)} />
-                          <KeyValue
-                            label="Coverage"
-                            value={`${formatDate(invoice.periodStart)} → ${formatDate(invoice.periodEnd)}`}
-                          />
-                          <KeyValue
-                            label="Billing email"
-                            value={invoice.billingEmail ?? "—"}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Section>
-
-              <div className="grid gap-5 xl:grid-cols-2">
-                <Section
-                  title="PayWay transactions"
-                  helper="Provider state is informational here. Admin cannot manually mark PayWay as approved from this screen."
-                >
-                  {detail.payWayTransactions.length === 0 ? (
-                    <EmptyState>No PayWay transaction for this workspace.</EmptyState>
-                  ) : (
-                    <div className="space-y-3">
-                      {detail.payWayTransactions.map((payment) => (
-                        <div
-                          key={payment.id}
-                          className="rounded-2xl border border-slate-200 p-4"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="font-semibold text-slate-900">
-                                {planLabel(payment.planCode)} · {cycleLabel(payment.billingCycle)}
-                              </p>
-                              <p className="mt-1 font-mono text-[11px] text-slate-400">
-                                {payment.transactionId}
-                              </p>
-                            </div>
-                            <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold uppercase text-slate-600">
-                              {payment.status}
-                            </span>
-                          </div>
-                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
-                            <span className="font-bold text-slate-900">
-                              {formatMoney(payment.amount, payment.currency)}
-                            </span>
-                            <span className="text-slate-500">
-                              {payment.providerStatus ?? "No provider status"} · {formatDate(payment.verifiedAt ?? payment.createdAt)}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </Section>
-
-                <Section
-                  title="Manual payments"
-                  helper="Submitted payments must still be reviewed from Manual payment review."
-                >
-                  {detail.manualPayments.length === 0 ? (
-                    <EmptyState>No manual payment request for this workspace.</EmptyState>
-                  ) : (
-                    <div className="space-y-3">
-                      {detail.manualPayments.map((payment) => (
-                        <div
-                          key={payment.id}
-                          className="rounded-2xl border border-slate-200 p-4"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="font-semibold text-slate-900">
-                                {planLabel(payment.planCode)} · {cycleLabel(payment.billingCycle)}
-                              </p>
-                              <p className="mt-1 font-mono text-[11px] text-slate-400">
-                                MAN-{payment.id.slice(0, 8).toUpperCase()}
-                              </p>
-                            </div>
-                            <span
-                              className={`rounded-full px-2 py-1 text-[11px] font-bold uppercase ${
-                                payment.status === "approved"
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : payment.status === "submitted"
-                                    ? "bg-amber-100 text-amber-700"
-                                    : "bg-slate-100 text-slate-600"
-                              }`}
-                            >
-                              {payment.status}
-                            </span>
-                          </div>
-                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
-                            <span className="font-bold text-slate-900">
-                              {formatMoney(payment.amount, payment.currency)}
-                            </span>
-                            <span className="text-slate-500">
-                              {formatDate(payment.approvedAt ?? payment.reviewedAt ?? payment.createdAt)}
-                            </span>
-                          </div>
-                          {payment.reviewNote ? (
-                            <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
-                              Review note: {payment.reviewNote}
-                            </p>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </Section>
               </div>
+            ) : detail ? (
+              (() => {
+                const subscription = detail.subscription;
+                const periodStart = subscription?.current_period_start ?? null;
+                const periodEnd = subscription
+                  ? subscription.status === "trialing"
+                    ? subscription.trial_ends_at
+                    : subscription.current_period_end
+                  : null;
 
-              <div className="grid gap-5 xl:grid-cols-2">
-                <Section
-                  title="Subscription lifecycle"
-                  helper="Prepaid expiry / renewal history. Historical cancellation experiment events can still appear if they were recorded before V3.10.3 was replaced."
-                >
-                  {detail.lifecycleEvents.length === 0 ? (
-                    <EmptyState>No subscription lifecycle event has been recorded yet.</EmptyState>
-                  ) : (
-                    <div className="space-y-3">
-                      {detail.lifecycleEvents.map((event) => (
-                        <div
-                          key={event.id}
-                          className="rounded-2xl border border-slate-200 px-4 py-3"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="font-semibold capitalize text-slate-900">
-                              {event.event_type.replaceAll("_", " ")}
-                            </p>
-                            <p className="text-xs text-slate-400">
-                              {formatDate(event.created_at)}
-                            </p>
-                          </div>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {event.previous_status ?? "—"} → {event.new_status ?? "—"}
-                            {event.plan_code ? ` · ${planLabel(event.plan_code)}` : ""}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </Section>
+                const startMs = periodStart ? new Date(periodStart).getTime() : NaN;
+                const endMs = periodEnd ? new Date(periodEnd).getTime() : NaN;
+                const nowMs = Date.now();
+                const periodProgress =
+                  Number.isFinite(startMs) &&
+                  Number.isFinite(endMs) &&
+                  endMs > startMs
+                    ? Math.max(
+                        0,
+                        Math.min(
+                          100,
+                          ((nowMs - startMs) / (endMs - startMs)) * 100,
+                        ),
+                      )
+                    : 0;
+                const daysLeft = Number.isFinite(endMs)
+                  ? Math.max(0, Math.ceil((endMs - nowMs) / 86_400_000))
+                  : null;
+                const periodHeadline =
+                  daysLeft === null
+                    ? "No managed billing period"
+                    : daysLeft <= 0
+                      ? "Period ended"
+                      : daysLeft >= 60
+                        ? `Renews in ${Math.max(1, Math.ceil(daysLeft / 30))} months`
+                        : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`;
 
-                <Section
-                  title="Admin billing audit"
-                  helper="Sensitive TENH admin actions associated with this workspace."
-                >
-                  {detail.adminAudit.length === 0 ? (
-                    <EmptyState>No matching admin billing action has been logged for this workspace.</EmptyState>
-                  ) : (
-                    <div className="space-y-3">
-                      {detail.adminAudit.map((event) => (
-                        <div
-                          key={event.id}
-                          className="rounded-2xl border border-slate-200 px-4 py-3"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="font-semibold text-slate-900">
-                              {event.action.replaceAll("_", " ")}
-                            </p>
-                            <p className="text-xs text-slate-400">
-                              {formatDate(event.created_at)}
-                            </p>
-                          </div>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {event.admin_email} · {event.resource_type}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </Section>
-              </div>
+                const memberLimit = Number(subscription?.member_limit ?? 0);
+                const channelLimit = Number(subscription?.channel_limit ?? 0);
+                const memberProgress = memberLimit > 0
+                  ? Math.min(100, (detail.usage.activeMembers / memberLimit) * 100)
+                  : 0;
+                const channelProgress = channelLimit > 0
+                  ? Math.min(100, (detail.usage.activeChannels / channelLimit) * 100)
+                  : 0;
 
-              <Section
-                title="Workspace capacity context"
-                helper="Read-only context for understanding downgrade/payment blocks. Deactivate members or disconnect channels through normal workspace management, not from billing admin."
-              >
-                <div className="grid gap-5 lg:grid-cols-2">
-                  <div>
-                    <p className="mb-3 text-sm font-bold text-slate-800">
-                      Team members
-                    </p>
-                    <div className="space-y-2">
-                      {detail.members.map((member) => (
-                        <div
-                          key={member.id}
-                          className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5 text-sm"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold text-slate-800">
-                              {member.fullName ?? member.email ?? "Team member"}
-                            </p>
-                            <p className="truncate text-xs text-slate-400">
-                              {member.email ?? "No email"} · {member.role}
-                            </p>
-                          </div>
-                          <span className={member.active ? "text-emerald-600" : "text-slate-400"}>
-                            {member.active ? "Active" : "Inactive"}
+                const submittedManual = detail.manualPayments.filter(
+                  (payment) => payment.status === "submitted",
+                );
+                const pendingManualAmount = submittedManual.reduce(
+                  (sum, payment) => sum + Number(payment.amount || 0),
+                  0,
+                );
+                const pendingCurrency = submittedManual[0]?.currency ?? "USD";
+
+                const payments = [
+                  ...detail.manualPayments.map((payment) => ({
+                    key: `manual-${payment.id}`,
+                    kind: "manual" as const,
+                    id: payment.id,
+                    amount: payment.amount,
+                    currency: payment.currency,
+                    planCode: payment.planCode,
+                    billingCycle: payment.billingCycle,
+                    status: payment.status,
+                    providerStatus: null as string | null,
+                    transactionId: `MAN-${payment.id.slice(0, 8).toUpperCase()}`,
+                    date:
+                      payment.approvedAt ??
+                      payment.reviewedAt ??
+                      payment.createdAt,
+                  })),
+                  ...detail.payWayTransactions.map((payment) => ({
+                    key: `payway-${payment.id}`,
+                    kind: "payway" as const,
+                    id: payment.id,
+                    amount: payment.amount,
+                    currency: payment.currency,
+                    planCode: payment.planCode,
+                    billingCycle: payment.billingCycle,
+                    status: payment.status,
+                    providerStatus: payment.providerStatus,
+                    transactionId: payment.transactionId,
+                    date: payment.verifiedAt ?? payment.createdAt,
+                  })),
+                ].sort(
+                  (a, b) =>
+                    new Date(b.date).getTime() - new Date(a.date).getTime(),
+                );
+
+                const filteredPayments = payments.filter((payment) => {
+                  if (detailPaymentFilter === "review") {
+                    return payment.kind === "manual" && payment.status === "submitted";
+                  }
+                  if (detailPaymentFilter === "payway") {
+                    return payment.kind === "payway";
+                  }
+                  return true;
+                });
+
+                const activity = [
+                  ...detail.lifecycleEvents.map((event) => ({
+                    key: `life-${event.id}`,
+                    title:
+                      event.event_type === "reactivated"
+                        ? `Renewed to ${planLabel(event.plan_code)}`
+                        : event.event_type.replaceAll("_", " "),
+                    subtitle: `${event.previous_status ?? "—"} → ${event.new_status ?? "—"}${
+                      event.plan_code ? ` · ${planLabel(event.plan_code)}` : ""
+                    }`,
+                    createdAt: event.created_at,
+                    tone: "normal" as const,
+                  })),
+                  ...detail.adminAudit.map((event) => ({
+                    key: `audit-${event.id}`,
+                    title: event.action.replaceAll("_", " "),
+                    subtitle: `${event.admin_email} · ${event.resource_type}`,
+                    createdAt: event.created_at,
+                    tone: "admin" as const,
+                  })),
+                ].sort(
+                  (a, b) =>
+                    new Date(b.createdAt).getTime() -
+                    new Date(a.createdAt).getTime(),
+                );
+
+                return (
+                  <>
+                    <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+                          Workspace
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <h2 className="truncate text-xl font-bold text-slate-950">
+                            {detail.business.name}
+                          </h2>
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${statusClasses(
+                              subscription?.status ?? null,
+                              Boolean(subscription),
+                            )}`}
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+                            {subscription
+                              ? `${planLabel(subscription.plan_code)} · ${statusLabel(
+                                  subscription.status,
+                                )}`
+                              : "Legacy / unmanaged"}
                           </span>
                         </div>
-                      ))}
-                    </div>
-                  </div>
+                        <p className="mt-1 truncate text-sm text-slate-600">
+                          {detail.business.ownerEmail ??
+                            detail.business.ownerName ??
+                            "No active owner found"}
+                          <span className="text-slate-300"> · </span>
+                          <span className="font-mono text-xs text-slate-500">
+                            {detail.business.id.slice(0, 8)}…{detail.business.id.slice(-4)}
+                          </span>
+                        </p>
+                      </div>
 
-                  <div>
-                    <p className="mb-3 text-sm font-bold text-slate-800">
-                      Social connections
-                    </p>
-                    {detail.channels.length === 0 ? (
-                      <EmptyState>No social connection saved.</EmptyState>
-                    ) : (
-                      <div className="space-y-2">
-                        {detail.channels.map((channel) => (
-                          <div
-                            key={channel.id}
-                            className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5 text-sm"
+                      <div className="flex shrink-0 items-start gap-2">
+                        
+                        <button
+                          type="button"
+                          onClick={closeDetail}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                          aria-label="Close workspace details"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="min-h-0 flex-1 overflow-y-auto">
+                      {submittedManual.length > 0 ? (
+                        <div className="flex flex-col gap-3 border-b border-amber-300 bg-amber-100 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                          <div className="flex items-center gap-3 text-amber-950">
+                            <span className="text-lg" aria-hidden="true">⚠</span>
+                            <p className="text-sm font-semibold">
+                              {submittedManual.length} manual payment
+                              {submittedManual.length === 1 ? "" : "s"} waiting for review · {formatMoney(
+                                pendingManualAmount,
+                                pendingCurrency,
+                              )}
+                            </p>
+                          </div>
+                          <a
+                            href="/dashboard/admin?tab=manual-payments"
+                            className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-center text-sm font-semibold text-amber-950 transition hover:bg-amber-200"
                           >
-                            <div className="min-w-0">
-                              <p className="font-semibold capitalize text-slate-800">
-                                {channel.platform}
-                              </p>
-                              <p className="truncate font-mono text-[10px] text-slate-400">
-                                {channel.platformAccountId ?? channel.id}
-                              </p>
-                            </div>
-                            <span className={channel.active ? "text-emerald-600" : "text-slate-400"}>
-                              {channel.active ? "Active" : "Inactive"}
+                            Review payment →
+                          </a>
+                        </div>
+                      ) : null}
+
+                      <div className="space-y-0 px-5 py-4 sm:px-6">
+                        <section className="border-b border-slate-200 pb-5">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                            <span className="font-medium text-slate-700">Billing period</span>
+                            <span className="font-semibold text-slate-950">
+                              {periodHeadline}
+                              {periodEnd ? (
+                                <span className="font-normal text-slate-500"> · {formatDate(periodEnd)}</span>
+                              ) : null}
                             </span>
                           </div>
-                        ))}
+                          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                            <div
+                              className="h-full rounded-full bg-slate-950 transition-all"
+                              style={{ width: `${periodProgress}%` }}
+                            />
+                          </div>
+                          <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                            <span>{formatDate(periodStart)}</span>
+                            <span>{daysLeft === null ? "—" : `${daysLeft} days left`}</span>
+                          </div>
+
+                          <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                            <div>
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="font-medium text-slate-700">Members</span>
+                                <span className="font-semibold text-slate-950">
+                                  {detail.usage.activeMembers} / {memberLimit || "—"}
+                                </span>
+                              </div>
+                              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                                <div
+                                  className="h-full rounded-full bg-slate-950"
+                                  style={{ width: `${memberProgress}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="font-medium text-slate-700">Channels</span>
+                                <span className="font-semibold text-slate-950">
+                                  {detail.usage.activeChannels} / {channelLimit || "—"}
+                                </span>
+                              </div>
+                              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                                <div
+                                  className="h-full rounded-full bg-slate-950"
+                                  style={{ width: `${channelProgress}%` }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </section>
+
+                        <section className="border-b border-slate-200 py-5">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <h3 className="text-base font-bold text-slate-950">Payments</h3>
+                            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                              {([
+                                ["all", `All ${payments.length}`],
+                                ["review", `Needs review ${submittedManual.length}`],
+                                ["payway", `PayWay ${detail.payWayTransactions.length}`],
+                              ] as const).map(([value, label]) => (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  onClick={() => setDetailPaymentFilter(value)}
+                                  className={`rounded-full px-3 py-1.5 font-medium transition ${
+                                    detailPaymentFilter === value
+                                      ? "bg-slate-950 text-white"
+                                      : "text-slate-600 hover:bg-slate-100"
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
+                            {filteredPayments.length === 0 ? (
+                              <div className="px-4 py-7 text-center text-sm text-slate-500">
+                                No payment record in this view.
+                              </div>
+                            ) : (
+                              filteredPayments.map((payment, index) => {
+                                const invoice = detail.invoices.find(
+                                  (item) =>
+                                    item.sourcePaymentId === payment.id ||
+                                    item.transactionId === payment.transactionId,
+                                );
+                                const isPaid =
+                                  payment.status === "approved" ||
+                                  payment.providerStatus === "APPROVED";
+                                const isSubmitted =
+                                  payment.kind === "manual" &&
+                                  payment.status === "submitted";
+
+                                return (
+                                  <div
+                                    key={payment.key}
+                                    className={`grid gap-2 px-4 py-3 sm:grid-cols-[110px_1fr_auto_auto] sm:items-center ${
+                                      index > 0 ? "border-t border-slate-200" : ""
+                                    }`}
+                                  >
+                                    <p className="font-bold text-slate-950">
+                                      {formatMoney(payment.amount, payment.currency)}
+                                    </p>
+                                    <div className="min-w-0">
+                                      <p className="truncate text-sm text-slate-700">
+                                        {planLabel(payment.planCode)} · {cycleLabel(payment.billingCycle)} · {payment.kind === "payway" ? "ABA PayWay" : "manual KHQR"}
+                                      </p>
+                                      <p className="truncate font-mono text-[11px] text-slate-400">
+                                        {invoice?.invoiceNumber
+                                          ? `${invoice.invoiceNumber} · `
+                                          : ""}
+                                        {payment.transactionId}
+                                      </p>
+                                    </div>
+                                    <span
+                                      className={`w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                        isPaid
+                                          ? "bg-emerald-100 text-emerald-700"
+                                          : isSubmitted
+                                            ? "bg-amber-100 text-amber-700"
+                                            : "bg-slate-100 text-slate-600"
+                                      }`}
+                                    >
+                                      {isPaid ? "Paid" : isSubmitted ? "Submitted" : payment.status}
+                                    </span>
+                                    <span className="text-xs text-slate-500 sm:text-right">
+                                      {formatDate(payment.date)}
+                                    </span>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+
+                          <p className="mt-2 text-xs text-slate-500">
+                            Receipts can’t be edited. PayWay approval still comes only from verified PayWay status, and manual payments still use the protected review flow.
+                          </p>
+                        </section>
+
+                        <section className="border-b border-slate-200 py-5">
+                          <h3 className="text-base font-bold text-slate-950">Activity</h3>
+                          {activity.length === 0 ? (
+                            <p className="mt-3 text-sm text-slate-500">
+                              No billing or admin activity recorded yet.
+                            </p>
+                          ) : (
+                            <div className="mt-3 space-y-4">
+                              {activity.slice(0, 8).map((event) => (
+                                <div
+                                  key={event.key}
+                                  className="grid grid-cols-[10px_1fr_auto] items-start gap-3"
+                                >
+                                  <span className={`mt-2 h-2 w-2 rounded-full ${event.tone === "admin" ? "bg-blue-500" : "bg-slate-950"}`} />
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold capitalize text-slate-950">
+                                      {event.title}
+                                    </p>
+                                    <p className="mt-0.5 text-xs text-slate-500">
+                                      {event.subtitle}
+                                    </p>
+                                  </div>
+                                  <span className="text-xs text-slate-500">
+                                    {formatDate(event.createdAt)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </section>
+
+                        <details className="group py-5">
+                          <summary className="flex cursor-pointer list-none items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 transition hover:bg-slate-50">
+                            <span>
+                              <span className="font-semibold text-slate-950">Capacity detail</span>
+                              <span className="text-slate-500"> — {detail.usage.activeMembers} member{detail.usage.activeMembers === 1 ? "" : "s"}, {detail.usage.activeChannels === 0 ? "no" : detail.usage.activeChannels} channel{detail.usage.activeChannels === 1 ? "" : "s"} connected</span>
+                            </span>
+                            <span className="text-lg text-slate-400 transition group-open:rotate-180">⌄</span>
+                          </summary>
+
+                          <div className="mt-4 space-y-5 rounded-xl bg-slate-50 p-4">
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                              <KeyValue label="Workspace ID" value={<span className="font-mono text-xs">{detail.business.id}</span>} />
+                              <KeyValue label="Workspace created" value={formatDate(detail.business.createdAt)} />
+                              <KeyValue label="Payment provider" value={subscription?.payment_provider ?? "—"} />
+                              <KeyValue label="Paid receipts" value={`${detail.invoices.length}`} />
+                            </div>
+
+                            {subscription?.pending_plan_code ? (
+                              <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                                Scheduled next plan: <strong>{planLabel(subscription.pending_plan_code)}</strong> · {cycleLabel(subscription.pending_billing_cycle)} · effective {formatDate(subscription.pending_plan_effective_at)}
+                              </div>
+                            ) : null}
+
+                            <div className="grid gap-5 lg:grid-cols-2">
+                              <div>
+                                <p className="mb-2 text-sm font-bold text-slate-800">Team members</p>
+                                <div className="space-y-2">
+                                  {detail.members.map((member) => (
+                                    <div key={member.id} className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2.5 text-sm">
+                                      <div className="min-w-0">
+                                        <p className="truncate font-semibold text-slate-800">{member.fullName ?? member.email ?? "Team member"}</p>
+                                        <p className="truncate text-xs text-slate-400">{member.email ?? "No email"} · {member.role}</p>
+                                      </div>
+                                      <span className={member.active ? "text-emerald-600" : "text-slate-400"}>{member.active ? "Active" : "Inactive"}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div>
+                                <p className="mb-2 text-sm font-bold text-slate-800">Social connections</p>
+                                {detail.channels.length === 0 ? (
+                                  <div className="rounded-xl bg-white px-4 py-6 text-center text-sm text-slate-500">No social connection saved.</div>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {detail.channels.map((channel) => {
+                                      const platformLabel =
+                                        channel.platform === "facebook"
+                                          ? "Facebook"
+                                          : channel.platform === "telegram"
+                                            ? "Telegram"
+                                            : channel.platform.charAt(0).toUpperCase() + channel.platform.slice(1);
+                                      const fallbackName =
+                                        channel.platform === "facebook"
+                                          ? "Facebook Page"
+                                          : channel.platform === "telegram"
+                                            ? "Telegram Bot"
+                                            : "Customer channel";
+                                      const channelName = channel.accountName?.trim() || fallbackName;
+
+                                      return (
+                                        <div key={channel.id} className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2.5 text-sm">
+                                          <div className="min-w-0">
+                                            <p className="truncate font-semibold text-slate-800">{channelName}</p>
+                                            <p className="truncate text-xs text-slate-400">
+                                              {platformLabel} · <span className="font-mono text-[10px]">{channel.platformAccountId ?? channel.id}</span>
+                                            </p>
+                                          </div>
+                                          <span className={channel.active ? "text-emerald-600" : "text-slate-400"}>{channel.active ? "Active" : "Inactive"}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {detail.invoices.length > 0 ? (
+                              <div>
+                                <p className="mb-2 text-sm font-bold text-slate-800">Receipt records</p>
+                                <div className="space-y-2">
+                                  {detail.invoices.map((invoice) => (
+                                    <div key={invoice.id} className="flex flex-col gap-1 rounded-xl bg-white px-3 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between">
+                                      <div>
+                                        <p className="font-semibold text-slate-800">{invoice.invoiceNumber} · {invoice.planName}</p>
+                                        <p className="text-xs text-slate-400">{invoice.paymentMethod} · {invoice.transactionId}</p>
+                                      </div>
+                                      <div className="text-left sm:text-right">
+                                        <p className="font-semibold text-slate-800">{formatMoney(invoice.amount, invoice.currency)}</p>
+                                        <p className="text-xs text-slate-400">{formatDate(invoice.paidAt)}</p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        </details>
                       </div>
-                    )}
-                  </div>
-                </div>
-              </Section>
-            </>
-          ) : null}
+                    </div>
+                  </>
+                );
+              })()
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>

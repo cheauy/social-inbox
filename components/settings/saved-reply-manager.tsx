@@ -6,6 +6,28 @@ import {
 } from "react";
 
 import {
+  CheckCircle2,
+  ChevronDown,
+  CirclePause,
+  Copy,
+  Folder,
+  MessageSquareText,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
+
+import {
+  WorkspaceLanguageText,
+  useWorkspaceLanguageId,
+} from "@/components/display/workspace-language-text";
+import { useWorkspacePermissions } from "@/lib/auth/use-workspace-permissions";
+import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog";
+
+import {
   SavedReplyFormModal,
   type SavedReplyFormValue,
 } from "@/components/settings/saved-reply-form-modal";
@@ -64,6 +86,12 @@ export function SavedReplyManager({
   businessId,
   initialSavedReplies,
 }: SavedReplyManagerProps) {
+  // Usage is always allowed; this only gates create / edit / delete.
+  const { can } = useWorkspacePermissions();
+  const canManageContent = can("tags_quick_replies");
+  const languageId = useWorkspaceLanguageId();
+  const isKhmer = languageId === "km";
+
   const [savedReplies, setSavedReplies] =
     useState<SavedReply[]>(
       initialSavedReplies,
@@ -71,6 +99,15 @@ export function SavedReplyManager({
 
   const [search, setSearch] =
     useState("");
+
+  const [statusFilter, setStatusFilter] =
+    useState<"all" | "active" | "inactive">("all");
+
+  const [categoryFilter, setCategoryFilter] =
+    useState<string>("all");
+
+  const [sortMode, setSortMode] =
+    useState<"order" | "name" | "status">("order");
 
   const [modalMode, setModalMode] =
     useState<"create" | "edit" | null>(
@@ -93,52 +130,123 @@ export function SavedReplyManager({
   const [error, setError] =
     useState<string | null>(null);
 
+  const [deleteTarget, setDeleteTarget] =
+    useState<SavedReply | null>(null);
+
+  const [deletingReplyId, setDeletingReplyId] =
+    useState<string | null>(null);
+
+  const categories = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          savedReplies
+            .map((reply) => reply.category?.trim())
+            .filter(
+              (category): category is string =>
+                Boolean(category),
+            ),
+        ),
+      ).sort((first, second) =>
+        first.localeCompare(second),
+      ),
+    [savedReplies],
+  );
+
+  const totalCount = savedReplies.length;
+
+  const activeCount = savedReplies.filter(
+    (reply) => reply.is_active,
+  ).length;
+
+  const inactiveCount =
+    totalCount - activeCount;
+
   const filteredReplies = useMemo(() => {
     const query = search
       .trim()
       .toLowerCase();
 
-    if (!query) {
-      return savedReplies;
-    }
+    return savedReplies.filter((reply) => {
+      const matchesSearch =
+        !query ||
+        [
+          reply.title,
+          reply.shortcut ?? "",
+          reply.category ?? "",
+          reply.message_text,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(query);
 
-    return savedReplies.filter((reply) =>
-      [
-        reply.title,
-        reply.shortcut ?? "",
-        reply.category ?? "",
-        reply.message_text,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(query),
-    );
-  }, [savedReplies, search]);
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "active" &&
+          reply.is_active) ||
+        (statusFilter === "inactive" &&
+          !reply.is_active);
 
-  const sortedReplies = useMemo(
-    () =>
-      [...filteredReplies].sort(
-        (first, second) => {
-          if (
-            first.is_active !==
-            second.is_active
-          ) {
-            return first.is_active
-              ? -1
-              : 1;
-          }
+      const matchesCategory =
+        categoryFilter === "all" ||
+        (reply.category ?? "Uncategorized") ===
+          categoryFilter;
 
-          return (
-            first.sort_index -
-              second.sort_index ||
-            first.title.localeCompare(
-              second.title,
-            )
-          );
-        },
-      ),
-    [filteredReplies],
-  );
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesCategory
+      );
+    });
+  }, [
+    savedReplies,
+    search,
+    statusFilter,
+    categoryFilter,
+  ]);
+
+  const sortedReplies = useMemo(() => {
+    const replies = [...filteredReplies];
+
+    replies.sort((first, second) => {
+      if (sortMode === "name") {
+        return first.title.localeCompare(
+          second.title,
+        );
+      }
+
+      if (sortMode === "status") {
+        if (
+          first.is_active !==
+          second.is_active
+        ) {
+          return first.is_active ? -1 : 1;
+        }
+
+        return (
+          first.sort_index -
+          second.sort_index
+        );
+      }
+
+      if (
+        first.is_active !==
+        second.is_active
+      ) {
+        return first.is_active ? -1 : 1;
+      }
+
+      return (
+        first.sort_index -
+          second.sort_index ||
+        first.title.localeCompare(
+          second.title,
+        )
+      );
+    });
+
+    return replies;
+  }, [filteredReplies, sortMode]);
 
   function openCreate() {
     const nextIndex =
@@ -323,14 +431,7 @@ export function SavedReplyManager({
   async function deleteReply(
     reply: SavedReply,
   ) {
-    const confirmed =
-      window.confirm(
-        `Delete "${reply.title}"?`,
-      );
-
-    if (!confirmed) {
-      return;
-    }
+    setDeletingReplyId(reply.id);
 
     try {
       const response = await fetch(
@@ -359,179 +460,559 @@ export function SavedReplyManager({
             item.id !== reply.id,
         ),
       );
+      setDeleteTarget(null);
     } catch (deleteError) {
       window.alert(
         deleteError instanceof Error
           ? deleteError.message
           : "Unable to delete quick reply.",
       );
+    } finally {
+      setDeletingReplyId(null);
     }
   }
 
   return (
     <>
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-4 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
-          <input
-            type="search"
-            value={search}
-            onChange={(event) =>
-              setSearch(
-                event.target.value,
-              )
-            }
-            placeholder="Search quick replies..."
-            className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:max-w-md"
-          />
+      <div className="space-y-5">
+        {/* Summary */}
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="flex min-h-[112px] items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+              <MessageSquareText
+                className="h-7 w-7"
+                strokeWidth={1.9}
+              />
+            </div>
 
-          <button
-            type="button"
-            onClick={openCreate}
-            className="rounded-xl bg-blue-600 px-5 py-3 font-medium text-white hover:bg-blue-700"
-          >
-            + New quick reply
-          </button>
+            <div>
+              <p className="text-sm text-slate-500">
+                <WorkspaceLanguageText en="Total replies" km="ការឆ្លើយតបសរុប" />
+              </p>
+              <p className="mt-1 text-[30px] font-extrabold leading-none tracking-[-0.04em] text-slate-950">
+                {totalCount}
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                <WorkspaceLanguageText en="All quick replies in your workspace" km="ការឆ្លើយតបរហ័សទាំងអស់ក្នុងកន្លែងធ្វើការរបស់អ្នក" />
+              </p>
+            </div>
+          </div>
+
+          <div className="flex min-h-[112px] items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+              <CheckCircle2
+                className="h-7 w-7"
+                strokeWidth={1.9}
+              />
+            </div>
+
+            <div>
+              <p className="text-sm text-slate-500">
+                <WorkspaceLanguageText en="Active" km="កំពុងប្រើ" />
+              </p>
+              <p className="mt-1 text-[30px] font-extrabold leading-none tracking-[-0.04em] text-slate-950">
+                {activeCount}
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                <WorkspaceLanguageText en="Active quick replies" km="ការឆ្លើយតបរហ័សដែលកំពុងប្រើ" />
+              </p>
+            </div>
+          </div>
+
+          <div className="flex min-h-[112px] items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-600">
+              <Folder
+                className="h-7 w-7"
+                strokeWidth={1.9}
+              />
+            </div>
+
+            <div>
+              <p className="text-sm text-slate-500">
+                <WorkspaceLanguageText en="Categories" km="ប្រភេទ" />
+              </p>
+              <p className="mt-1 text-[30px] font-extrabold leading-none tracking-[-0.04em] text-slate-950">
+                {categories.length}
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                <WorkspaceLanguageText en="Organized reply categories" km="ប្រភេទការឆ្លើយតបដែលបានរៀបចំ" />
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Index
-                </th>
+        {!canManageContent ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+            {isKhmer
+              ? "មានតែម្ចាស់ ឬសមាជិកដែលបានផ្តល់សិទ្ធិប៉ុណ្ណោះ ដែលអាចផ្លាស់ប្តូរស្លាក និងការឆ្លើយតបរហ័សបាន។ អ្នកនៅតែអាចមើល និងប្រើវាក្នុងប្រអប់សារបាន។"
+              : "Only an Owner, or a member given permission, can change tags and quick replies. You can still view them and use them in the inbox."}
+          </div>
+        ) : null}
 
-                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Quick reply
-                </th>
+        {/* Main manager */}
+        <section className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-4 py-4 sm:px-5">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="relative w-full lg:max-w-[460px]">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(event) =>
+                    setSearch(event.target.value)
+                  }
+                  placeholder={isKhmer ? "ស្វែងរកការឆ្លើយតបរហ័ស..." : "Search quick replies..."}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-14 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-slate-400">
+                  ⌘ K
+                </span>
+              </div>
 
-                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Category
-                </th>
+              <button
+                type="button"
+                onClick={openCreate}
+                disabled={!canManageContent}
+                className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+              >
+                <Plus
+                  className="h-4 w-4"
+                  strokeWidth={2.2}
+                />
+                <WorkspaceLanguageText en="New quick reply" km="ការឆ្លើយតបរហ័សថ្មី" />
+              </button>
+            </div>
 
-                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Message
-                </th>
+            <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                {(
+                  [
+                    ["all", isKhmer ? "ទាំងអស់" : "All", totalCount],
+                    ["active", isKhmer ? "កំពុងប្រើ" : "Active", activeCount],
+                    ["inactive", isKhmer ? "បានបិទ" : "Inactive", inactiveCount],
+                  ] as const
+                ).map(([value, label, count]) => {
+                  const selected =
+                    statusFilter === value;
 
-                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Status
-                </th>
-
-                <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-100">
-              {sortedReplies.length ===
-              0 ? (
-                <tr>
-                  <td
-                    colSpan={6}
-                    className="px-5 py-12 text-center text-sm text-slate-500"
-                  >
-                    No quick replies found.
-                  </td>
-                </tr>
-              ) : (
-                sortedReplies.map(
-                  (reply) => (
-                    <tr
-                      key={reply.id}
-                      className={
-                        reply.is_active
-                          ? ""
-                          : "bg-slate-50 opacity-70"
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() =>
+                        setStatusFilter(value)
                       }
+                      className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3.5 text-sm font-semibold transition ${
+                        selected
+                          ? "border-blue-500 bg-blue-50 text-blue-700"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
                     >
-                      <td className="px-5 py-4 text-sm text-slate-600">
-                        {
-                          reply.sort_index
+                      {label}
+                      <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+
+                {categories
+                  .slice(0, 3)
+                  .map((category) => (
+                    <button
+                      key={category}
+                      type="button"
+                      onClick={() =>
+                        setCategoryFilter(
+                          categoryFilter === category
+                            ? "all"
+                            : category,
+                        )
+                      }
+                      className={`h-9 rounded-xl border px-3.5 text-sm font-medium transition ${
+                        categoryFilter === category
+                          ? "border-violet-300 bg-violet-50 text-violet-700"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      {category}
+                    </button>
+                  ))}
+
+                {categories.length > 3 ? (
+                  <div className="relative">
+                    <SlidersHorizontal className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <select
+                      value={categoryFilter}
+                      onChange={(event) =>
+                        setCategoryFilter(
+                          event.target.value,
+                        )
+                      }
+                      className="h-9 appearance-none rounded-xl border border-slate-200 bg-white pl-9 pr-8 text-sm font-medium text-slate-600 outline-none hover:bg-slate-50"
+                      aria-label={isKhmer ? "តម្រងតាមប្រភេទ" : "Filter by category"}
+                    >
+                      <option value="all">
+                        {isKhmer ? "តម្រងបន្ថែម" : "More filters"}
+                      </option>
+                      {categories.map(
+                        (category) => (
+                          <option
+                            key={category}
+                            value={category}
+                          >
+                            {category}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="relative w-fit">
+                <select
+                  value={sortMode}
+                  onChange={(event) =>
+                    setSortMode(
+                      event.target.value as
+                        | "order"
+                        | "name"
+                        | "status",
+                    )
+                  }
+                  className="h-9 appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-9 text-sm font-medium text-slate-600 outline-none hover:bg-slate-50"
+                  aria-label={isKhmer ? "តម្រៀបការឆ្លើយតបរហ័ស" : "Sort quick replies"}
+                >
+                  <option value="order">
+                    {isKhmer ? "តម្រៀបតាម៖ លំដាប់" : "Sort by: Order"}
+                  </option>
+                  <option value="name">
+                    {isKhmer ? "តម្រៀបតាម៖ ឈ្មោះ" : "Sort by: Name"}
+                  </option>
+                  <option value="status">
+                    {isKhmer ? "តម្រៀបតាម៖ ស្ថានភាព" : "Sort by: Status"}
+                  </option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden lg:block">
+            <div className="sticky top-0 z-10 grid grid-cols-[70px_minmax(160px,0.95fr)_130px_130px_minmax(220px,1.25fr)_110px_150px] border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400">
+              <div>{isKhmer ? "លំដាប់" : "Order"}</div>
+              <div>{isKhmer ? "ការឆ្លើយតបរហ័ស" : "Quick reply"}</div>
+              <div>{isKhmer ? "ផ្លូវកាត់" : "Shortcut"}</div>
+              <div>{isKhmer ? "ប្រភេទ" : "Category"}</div>
+              <div>{isKhmer ? "មើលសារជាមុន" : "Message preview"}</div>
+              <div>{isKhmer ? "ស្ថានភាព" : "Status"}</div>
+              <div className="text-right">
+                {isKhmer ? "សកម្មភាព" : "Actions"}
+              </div>
+            </div>
+
+            <div className="max-h-[560px] overflow-y-auto overscroll-contain">
+              <div className="divide-y divide-slate-100">
+              {sortedReplies.length === 0 ? (
+                <div className="px-5 py-12 text-center text-sm text-slate-500">
+                  <WorkspaceLanguageText en="No quick replies found." km="រកមិនឃើញការឆ្លើយតបរហ័ស។" />
+                </div>
+              ) : (
+                sortedReplies.map((reply) => (
+                  <div
+                    key={reply.id}
+                    className={`grid grid-cols-[70px_minmax(160px,0.95fr)_130px_130px_minmax(220px,1.25fr)_110px_150px] items-center px-4 py-4 transition ${
+                      reply.is_active
+                        ? "bg-white hover:bg-slate-50/60"
+                        : "bg-slate-50/70 text-slate-500"
+                    }`}
+                  >
+                    <div className="text-sm font-semibold text-slate-600">
+                      {reply.sort_index}
+                    </div>
+
+                    <div className="min-w-0 pr-3">
+                      <p className="truncate text-sm font-bold text-slate-900">
+                        {reply.title}
+                      </p>
+                    </div>
+
+                    <div>
+                      {reply.shortcut ? (
+                        <span className="inline-flex max-w-[110px] truncate rounded-lg bg-slate-100 px-2.5 py-1.5 font-mono text-xs text-slate-600">
+                          {reply.shortcut}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-slate-400">
+                          —
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <span className="inline-flex max-w-[110px] truncate rounded-lg bg-violet-50 px-2.5 py-1.5 text-xs font-semibold text-violet-700">
+                        {reply.category ??
+                          (isKhmer ? "គ្មានប្រភេទ" : "Uncategorized")}
+                      </span>
+                    </div>
+
+                    <div className="min-w-0 pr-4">
+                      <p className="truncate text-sm text-slate-600">
+                        {reply.message_text}
+                      </p>
+                    </div>
+
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void toggleActive(reply)
                         }
-                      </td>
+                        disabled={!canManageContent}
+                        className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                          reply.is_active
+                            ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+                        }`}
+                      >
+                        <span
+                          className={`h-2 w-2 rounded-full ${
+                            reply.is_active
+                              ? "bg-emerald-500"
+                              : "bg-slate-400"
+                          }`}
+                        />
+                        {reply.is_active
+                          ? (isKhmer ? "កំពុងប្រើ" : "Active")
+                          : (isKhmer ? "បានបិទ" : "Inactive")}
+                      </button>
+                    </div>
 
-                      <td className="px-5 py-4">
-                        <p className="font-semibold text-slate-900">
-                          {reply.title}
-                        </p>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openEdit(reply)
+                        }
+                        disabled={!canManageContent}
+                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                        aria-label={`${isKhmer ? "កែសម្រួល" : "Edit"} ${reply.title}`}
+                        title={isKhmer ? "កែសម្រួល" : "Edit"}
+                      >
+                        <Pencil
+                          className="h-4 w-4"
+                          strokeWidth={2}
+                        />
+                      </button>
 
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void navigator.clipboard?.writeText(
+                            reply.message_text,
+                          );
+                        }}
+                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                        aria-label={`${isKhmer ? "ចម្លង" : "Copy"} ${reply.title}`}
+                        title={isKhmer ? "ចម្លងអត្ថបទការឆ្លើយតប" : "Copy reply text"}
+                      >
+                        <Copy
+                          className="h-4 w-4"
+                          strokeWidth={2}
+                        />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void toggleActive(reply)
+                        }
+                        disabled={!canManageContent}
+                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50"
+                        aria-label={
+                          reply.is_active
+                            ? `${isKhmer ? "បិទ" : "Disable"} ${reply.title}`
+                            : `${isKhmer ? "បើក" : "Enable"} ${reply.title}`
+                        }
+                        title={
+                          reply.is_active
+                            ? (isKhmer ? "បិទ" : "Disable")
+                            : (isKhmer ? "បើក" : "Enable")
+                        }
+                      >
+                        {reply.is_active ? (
+                          <CirclePause
+                            className="h-4 w-4"
+                            strokeWidth={2}
+                          />
+                        ) : (
+                          <CheckCircle2
+                            className="h-4 w-4"
+                            strokeWidth={2}
+                          />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDeleteTarget(reply)
+                        }
+                        disabled={!canManageContent}
+                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-500 transition hover:bg-rose-50"
+                        aria-label={`${isKhmer ? "លុប" : "Delete"} ${reply.title}`}
+                        title={isKhmer ? "លុប" : "Delete"}
+                      >
+                        <Trash2
+                          className="h-4 w-4"
+                          strokeWidth={2}
+                        />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+              </div>
+            </div>
+          </div>
+
+          {/* Responsive cards */}
+          <div className="max-h-[560px] divide-y divide-slate-100 overflow-y-auto overscroll-contain lg:hidden">
+            {sortedReplies.length === 0 ? (
+              <div className="px-5 py-10 text-center text-sm text-slate-500">
+                <WorkspaceLanguageText en="No quick replies found." km="រកមិនឃើញការឆ្លើយតបរហ័ស។" />
+              </div>
+            ) : (
+              sortedReplies.map((reply) => (
+                <div
+                  key={reply.id}
+                  className={`p-4 ${
+                    reply.is_active
+                      ? "bg-white"
+                      : "bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-slate-900">
+                        {reply.title}
+                      </p>
+
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
                         {reply.shortcut ? (
-                          <span className="mt-1 inline-flex rounded-md bg-slate-100 px-2 py-1 font-mono text-xs text-slate-600">
-                            {
-                              reply.shortcut
-                            }
+                          <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs text-slate-600">
+                            {reply.shortcut}
                           </span>
                         ) : null}
-                      </td>
 
-                      <td className="px-5 py-4 text-sm text-slate-600">
-                        {reply.category ??
-                          "Uncategorized"}
-                      </td>
+                        <span className="rounded-md bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">
+                          {reply.category ??
+                            (isKhmer ? "គ្មានប្រភេទ" : "Uncategorized")}
+                        </span>
+                      </div>
+                    </div>
 
-                      <td className="max-w-md px-5 py-4">
-                        <p className="line-clamp-2 text-sm leading-6 text-slate-600">
-                          {
-                            reply.message_text
-                          }
-                        </p>
-                      </td>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void toggleActive(reply)
+                      }
+                      disabled={!canManageContent}
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        reply.is_active
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-slate-200 text-slate-600"
+                      }`}
+                    >
+                      {reply.is_active
+                        ? (isKhmer ? "កំពុងប្រើ" : "Active")
+                        : (isKhmer ? "បានបិទ" : "Inactive")}
+                    </button>
+                  </div>
 
-                      <td className="px-5 py-4">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void toggleActive(
-                              reply,
-                            )
-                          }
-                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                            reply.is_active
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-slate-200 text-slate-600"
-                          }`}
-                        >
-                          {reply.is_active
-                            ? "Active"
-                            : "Disabled"}
-                        </button>
-                      </td>
+                  <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-500">
+                    {reply.message_text}
+                  </p>
 
-                      <td className="px-5 py-4">
-                        <div className="flex justify-end gap-3">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openEdit(
-                                reply,
-                              )
-                            }
-                            className="text-sm font-medium text-blue-700 hover:underline"
-                          >
-                            Edit
-                          </button>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openEdit(reply)
+                      }
+                      disabled={!canManageContent}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600"
+                      aria-label={`${isKhmer ? "កែសម្រួល" : "Edit"} ${reply.title}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
 
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void deleteReply(
-                                reply,
-                              )
-                            }
-                            className="text-sm font-medium text-red-600 hover:underline"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ),
-                )
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(
+                          reply.message_text,
+                        );
+                      }}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600"
+                      aria-label={`${isKhmer ? "ចម្លង" : "Copy"} ${reply.title}`}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDeleteTarget(reply)
+                      }
+                      disabled={!canManageContent}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200 text-rose-500"
+                      aria-label={`${isKhmer ? "លុប" : "Delete"} ${reply.title}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              {isKhmer ? (
+                <>
+                  កំពុងបង្ហាញ {sortedReplies.length} ក្នុងចំណោម{" "}
+                  {savedReplies.length} លទ្ធផល
+                  {savedReplies.length > 8 ? " · រមូរបញ្ជីដើម្បីមើលបន្ថែម" : ""}
+                </>
+              ) : (
+                <>
+                  Showing {sortedReplies.length} of{" "}
+                  {savedReplies.length} result
+                  {savedReplies.length === 1 ? "" : "s"}
+                  {savedReplies.length > 8 ? " · scroll the list to see more" : ""}
+                </>
               )}
-            </tbody>
-          </table>
-        </div>
+            </p>
+
+            <div className="flex items-center gap-2">
+              <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-600">
+                {Math.max(
+                  10,
+                  sortedReplies.length,
+                )}{" "}
+                {isKhmer ? "ក្នុងមួយទំព័រ" : "per page"}
+              </span>
+
+              <span className="flex h-8 min-w-8 items-center justify-center rounded-lg bg-blue-50 px-2 font-semibold text-blue-700">
+                1
+              </span>
+            </div>
+          </div>
+        </section>
       </div>
 
       {modalMode ? (
@@ -547,6 +1028,37 @@ export function SavedReplyManager({
           }
         />
       ) : null}
+
+      <DeleteConfirmDialog
+        open={Boolean(deleteTarget)}
+        title={isKhmer ? "លុប Quick Reply?" : "Delete quick reply?"}
+        description={
+          deleteTarget
+            ? isKhmer
+              ? `Quick Reply "${deleteTarget.title}" នឹងត្រូវបានលុបជាអចិន្ត្រៃយ៍។ សកម្មភាពនេះមិនអាចត្រឡប់វិញបានទេ។`
+              : `The quick reply "${deleteTarget.title}" will be permanently deleted. This action cannot be undone.`
+            : ""
+        }
+        confirmLabel={isKhmer ? "លុប" : "Delete"}
+        cancelLabel={isKhmer ? "បោះបង់" : "Cancel"}
+        loadingLabel={isKhmer ? "កំពុងលុប..." : "Deleting..."}
+        loading={
+          Boolean(
+            deleteTarget &&
+              deletingReplyId === deleteTarget.id,
+          )
+        }
+        onCancel={() => {
+          if (!deletingReplyId) {
+            setDeleteTarget(null);
+          }
+        }}
+        onConfirm={() => {
+          if (deleteTarget && !deletingReplyId) {
+            void deleteReply(deleteTarget);
+          }
+        }}
+      />
     </>
   );
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { loadActiveBusinessMembers } from "@/lib/team/team-chat-server";
 
 export const runtime = "nodejs";
@@ -14,6 +15,12 @@ export async function GET() {
       { success: false, error: authResult.error },
       { status: authResult.status },
     );
+  }
+  const permissionGuard =
+    await requirePermission("team_members", "view");
+
+  if (!permissionGuard.success) {
+    return permissionGuard.response;
   }
 
   try {

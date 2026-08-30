@@ -7,6 +7,10 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   decryptFacebookToken,
 } from "@/lib/facebook/facebook-token-crypto";
 import {
@@ -62,19 +66,16 @@ export async function POST(
   const currentMember =
     authResult.member;
 
-  if (currentMember.role !== "owner") {
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Only the subscription Owner can disconnect Facebook Pages.",
-        code: "OWNER_REQUIRED",
-      },
-      {
-        status: 403,
-      },
+  // Was owner-only. The channels permission makes the
+  // Roles & permissions setting meaningful; Owners always pass.
+  if (
+    !(await memberHasPermission(currentMember, "channels", "manage"))
+  ) {
+    return permissionDenied(
+      "You do not have permission to manage channels in this workspace.",
     );
   }
+
 
   const { socialAccountId } =
     await context.params;

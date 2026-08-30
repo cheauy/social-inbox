@@ -6,7 +6,9 @@ import {
 import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
+import { DEFAULT_SAVED_REPLY_SEED_MARKER } from "@/lib/settings/ensure-workspace-default-content";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { requirePermission } from "@/lib/auth/require-permission";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,6 +59,12 @@ export async function PATCH(
         status: authResult.status,
       },
     );
+  }
+  const permissionGuard =
+    await requirePermission("tags_quick_replies", "manage");
+
+  if (!permissionGuard.success) {
+    return permissionGuard.response;
   }
 
   const currentMember =
@@ -216,6 +224,7 @@ export async function PATCH(
         "business_id",
         currentMember.business_id,
       )
+      .neq("title", DEFAULT_SAVED_REPLY_SEED_MARKER)
       .select(
         "id,business_id,title,shortcut,message_text,category,sort_index,is_active,created_at,updated_at",
       )
@@ -276,6 +285,12 @@ export async function DELETE(
       },
     );
   }
+  const permissionGuard =
+    await requirePermission("tags_quick_replies", "manage");
+
+  if (!permissionGuard.success) {
+    return permissionGuard.response;
+  }
 
   const currentMember =
     authResult.member;
@@ -311,6 +326,7 @@ export async function DELETE(
       "business_id",
       currentMember.business_id,
     )
+    .neq("title", DEFAULT_SAVED_REPLY_SEED_MARKER)
     .select("id")
     .maybeSingle();
 

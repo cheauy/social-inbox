@@ -1,17 +1,81 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
+
+import { WorkspaceFontRuntime } from "@/components/display/workspace-font-runtime";
+import {
+  DEFAULT_WORKSPACE_ENGLISH_FONT_ID,
+  DEFAULT_WORKSPACE_KHMER_FONT_ID,
+  WORKSPACE_ENGLISH_FONT_STORAGE_KEY,
+  WORKSPACE_KHMER_FONT_STORAGE_KEY,
+  workspaceEnglishFonts,
+  workspaceKhmerFonts,
+} from "@/lib/display/workspace-fonts";
+import {
+  DEFAULT_WORKSPACE_LANGUAGE_ID,
+  WORKSPACE_LANGUAGE_STORAGE_KEY,
+} from "@/lib/display/workspace-language";
 
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
+
+const workspaceFontBootstrap = `
+(function () {
+  try {
+    var languageKey = ${JSON.stringify(WORKSPACE_LANGUAGE_STORAGE_KEY)};
+    var englishKey = ${JSON.stringify(WORKSPACE_ENGLISH_FONT_STORAGE_KEY)};
+    var khmerKey = ${JSON.stringify(WORKSPACE_KHMER_FONT_STORAGE_KEY)};
+    var defaultLanguage = ${JSON.stringify(DEFAULT_WORKSPACE_LANGUAGE_ID)};
+    var defaultEnglish = ${JSON.stringify(DEFAULT_WORKSPACE_ENGLISH_FONT_ID)};
+    var defaultKhmer = ${JSON.stringify(DEFAULT_WORKSPACE_KHMER_FONT_ID)};
+    var englishFonts = ${JSON.stringify(
+      Object.fromEntries(
+        workspaceEnglishFonts.map((font) => [font.id, font.family]),
+      ),
+    )};
+    var khmerFonts = ${JSON.stringify(
+      Object.fromEntries(
+        workspaceKhmerFonts.map((font) => [font.id, font.family]),
+      ),
+    )};
+
+    var storedLanguage = window.localStorage.getItem(languageKey);
+    var language = storedLanguage === "km" || storedLanguage === "en"
+      ? storedLanguage
+      : defaultLanguage;
+
+    var storedFontId = window.localStorage.getItem(
+      language === "km" ? khmerKey : englishKey
+    );
+    var fontMap = language === "km" ? khmerFonts : englishFonts;
+    var defaultFontId = language === "km" ? defaultKhmer : defaultEnglish;
+    var fontId = storedFontId && fontMap[storedFontId]
+      ? storedFontId
+      : defaultFontId;
+    var family = fontMap[fontId] || englishFonts[defaultEnglish];
+    var root = document.documentElement;
+
+    root.lang = language === "km" ? "km" : "en";
+    root.dir = "ltr";
+    root.dataset.tenhLanguage = language;
+    root.dataset.tenhActiveFontLanguage = language;
+    root.style.setProperty("--tenh-workspace-font", family);
+    root.style.setProperty("--font-sans", family);
+    root.style.setProperty("--default-font-family", family);
+
+    if (language === "km") {
+      root.dataset.tenhKhmerFont = fontId;
+    } else {
+      root.dataset.tenhEnglishFont = fontId;
+    }
+  } catch (_) {
+    // Storage can be unavailable in restricted/private contexts.
+  }
+})();
+`;
 
 export const metadata: Metadata = {
   title: "Social Inbox",
@@ -25,10 +89,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{ __html: workspaceFontBootstrap }}
+        />
+      </head>
+      <body className={`${geistMono.variable} antialiased`}>
+        <WorkspaceFontRuntime />
         {children}
       </body>
     </html>

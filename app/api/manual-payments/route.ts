@@ -3,7 +3,12 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
+import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
 import { getManualPaymentConfig } from "@/lib/billing/manual-payment-config";
+import { getManualPaymentPayWaySafety } from "@/lib/billing/manual-payment-payway-safety";
 import {
   calculatePlanTotalCents,
   calculateUpgradeTotalCents,
@@ -12,6 +17,7 @@ import {
 } from "@/lib/subscription/plan-catalog";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { buildCustomUpgradeQuote } from "@/lib/subscription/custom-upgrade";
+import { syncBusinessSubscriptionLifecycle } from "@/lib/subscription/sync-subscription-lifecycle";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +45,7 @@ type ManualPaymentBody = {
   users?: unknown;
   renewSame?: unknown;
   customUpgrade?: unknown;
+  purchaseBusinessId?: unknown;
 };
 
 function clean(value: unknown) {
@@ -84,7 +91,7 @@ function requestDto(row: {
   };
 }
 
-async function requireOwner() {
+async function requireOwner(requestedBusinessId: string | null = null) {
   const authResult = await getCurrentMember();
 
   if (!authResult.success) {
@@ -100,13 +107,52 @@ async function requireOwner() {
     };
   }
 
-  if (authResult.member.role !== "owner") {
+  let billingMember = authResult.member;
+
+  if (
+    requestedBusinessId &&
+    requestedBusinessId !== authResult.member.business_id
+  ) {
+    const { data: targetMember, error: targetMemberError } =
+      await supabaseAdmin
+        .from("team_members")
+        .select(
+          "id,user_id,business_id,full_name,email,role,profile_picture_url,is_active",
+        )
+        .eq("business_id", requestedBusinessId)
+        .eq("user_id", authResult.user.id)
+        .eq("is_active", true)
+        .maybeSingle();
+
+    if (targetMemberError || !targetMember) {
+      return {
+        response: NextResponse.json(
+          {
+            success: false,
+            error: "You do not have access to this subscription.",
+          },
+          { status: 403 },
+        ),
+        member: null,
+      };
+    }
+
+    billingMember = targetMember as typeof authResult.member;
+  }
+
+  if (
+    !(await memberHasPermission(
+      billingMember,
+      "billing",
+      "manage",
+    ))
+  ) {
     return {
       response: NextResponse.json(
         {
           success: false,
           error:
-            "Only the workspace owner can submit a subscription payment.",
+            "You do not have Subscription & billing Manage permission for this workspace.",
         },
         { status: 403 },
       ),
@@ -116,13 +162,29 @@ async function requireOwner() {
 
   return {
     response: null,
-    member: authResult.member,
+    member: billingMember,
   };
 }
 
 async function verifyManualPaymentAvailable(
   businessId: string,
 ) {
+  try {
+    await syncBusinessSubscriptionLifecycle(businessId);
+  } catch (error) {
+    console.error("[TENH Manual Payment] Subscription lifecycle sync failed:", error);
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        {
+          success: false,
+          error: "Unable to verify the subscription status before payment.",
+        },
+        { status: 503 },
+      ),
+    };
+  }
+
   const config = getManualPaymentConfig();
 
   if (!config.enabled) {
@@ -141,7 +203,7 @@ async function verifyManualPaymentAvailable(
   const { data: subscription, error: subscriptionError } =
     await supabaseAdmin
       .from("business_subscriptions")
-      .select("id,status,plan_code,billing_cycle,last_paid_amount,last_paid_currency,member_limit,channel_limit,pricing_version,pricing_snapshot,current_period_start,current_period_end")
+      .select("id,status,plan_code,billing_cycle,last_paid_amount,last_paid_currency,member_limit,channel_limit,pricing_version,pricing_snapshot,current_period_start,current_period_end,payment_provider")
       .eq("business_id", businessId)
       .maybeSingle();
 
@@ -239,6 +301,7 @@ type SubscriptionForQuote = {
   pricing_snapshot: unknown;
   current_period_start: string | null;
   current_period_end: string | null;
+  payment_provider: string | null;
 };
 
 function getTrustedPlan(
@@ -310,10 +373,16 @@ function getTrustedPlan(
     const savedCycle = getBillingCycleDefinition(
       subscription.billing_cycle ?? "",
     );
+    const currentPeriodEnd = subscription.current_period_end
+      ? Date.parse(subscription.current_period_end)
+      : Number.NaN;
     const eligibleStatus =
       subscription.status === "expired" ||
       subscription.status === "past_due" ||
-      subscription.status === "cancelled";
+      subscription.status === "cancelled" ||
+      (subscription.status === "active" &&
+        Number.isFinite(currentPeriodEnd) &&
+        currentPeriodEnd <= Date.now());
 
     if (
       !eligibleStatus ||
@@ -401,8 +470,78 @@ function getTrustedPlan(
   };
 }
 
-export async function GET() {
-  const owner = await requireOwner();
+function activePayWayPurchaseAlreadyApplied(
+  subscription: SubscriptionForQuote,
+  trustedPlan: ReturnType<typeof getTrustedPlan>,
+) {
+  if (!trustedPlan) return false;
+
+  const periodEnd = subscription.current_period_end
+    ? new Date(subscription.current_period_end).getTime()
+    : null;
+  const paidPeriodActive =
+    subscription.status === "active" &&
+    (periodEnd === null ||
+      (Number.isFinite(periodEnd) && periodEnd > Date.now()));
+
+  return (
+    paidPeriodActive &&
+    subscription.payment_provider === "payway" &&
+    subscription.plan_code === trustedPlan.plan.id &&
+    subscription.billing_cycle === trustedPlan.cycle.id
+  );
+}
+
+async function guardAgainstDuplicatePayWayPurchase(
+  businessId: string,
+  subscription: SubscriptionForQuote,
+  trustedPlan: NonNullable<ReturnType<typeof getTrustedPlan>>,
+  manualCreatedAt?: string | null,
+) {
+  if (activePayWayPurchaseAlreadyApplied(subscription, trustedPlan)) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "This purchase is already active from a verified ABA PayWay payment. Do not upload the ABA receipt again as a manual bank-transfer payment.",
+        code: "TENH_MANUAL_DUPLICATE_PAYWAY_ACTIVE",
+      },
+      { status: 409 },
+    );
+  }
+
+  const safety = await getManualPaymentPayWaySafety({
+    businessId,
+    planCode: trustedPlan.plan.id,
+    billingCycle: trustedPlan.cycle.id,
+    amount: Number(trustedPlan.amount),
+    targetMemberLimit: trustedPlan.quote.users,
+    targetChannelLimit: trustedPlan.quote.channels,
+    manualCreatedAt,
+  });
+
+  if (safety.blocked) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: safety.message,
+        code:
+          safety.kind === "approved"
+            ? "TENH_MANUAL_DUPLICATE_PAYWAY_APPROVED"
+            : "TENH_MANUAL_PAYWAY_STILL_PENDING",
+      },
+      { status: 409 },
+    );
+  }
+
+  return null;
+}
+
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const owner = await requireOwner(
+    url.searchParams.get("purchase_business")?.trim() || null,
+  );
 
   if (owner.response || !owner.member) {
     return owner.response;
@@ -451,12 +590,6 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const owner = await requireOwner();
-
-  if (owner.response || !owner.member) {
-    return owner.response;
-  }
-
   let body: ManualPaymentBody;
 
   try {
@@ -468,6 +601,24 @@ export async function POST(request: Request) {
         error: "Manual payment request must be valid JSON.",
       },
       { status: 400 },
+    );
+  }
+
+  const owner = await requireOwner(
+    clean(body.purchaseBusinessId) || null,
+  );
+
+  if (owner.response || !owner.member) {
+    return owner.response;
+  }
+
+  const requestedRenewSame =
+    body.renewSame === true ||
+    clean(body.renewSame).toLowerCase() === "true";
+
+  if (requestedRenewSame && owner.member.role !== "owner") {
+    return permissionDenied(
+      "Only the workspace Owner can reactivate this preserved subscription.",
     );
   }
 
@@ -511,6 +662,26 @@ export async function POST(request: Request) {
         },
         { status: 400 },
       );
+    }
+
+    if (
+      owner.member.role !== "owner" &&
+      trustedPlan.purchaseType !== "upgrade" &&
+      trustedPlan.purchaseType !== "custom-upgrade"
+    ) {
+      return permissionDenied(
+        "Subscription & billing Manage allows upgrades only. Buy new subscription creates your own workspace.",
+      );
+    }
+
+    const payWayConflict = await guardAgainstDuplicatePayWayPurchase(
+      owner.member.business_id,
+      availability.subscription as SubscriptionForQuote,
+      trustedPlan,
+    );
+
+    if (payWayConflict) {
+      return payWayConflict;
     }
 
     if (
@@ -609,6 +780,28 @@ export async function POST(request: Request) {
         },
         { status: 400 },
       );
+    }
+
+    if (
+      owner.member.role !== "owner" &&
+      trustedPlan.purchaseType !== "upgrade" &&
+      trustedPlan.purchaseType !== "custom-upgrade"
+    ) {
+      return permissionDenied(
+        "Subscription & billing Manage allows upgrades only. Buy new subscription creates your own workspace.",
+      );
+    }
+
+    // Re-check here because an ABA payment can finish after the signed upload
+    // URL was created but before the customer finalizes the manual proof.
+    const payWayConflict = await guardAgainstDuplicatePayWayPurchase(
+      owner.member.business_id,
+      availability.subscription as SubscriptionForQuote,
+      trustedPlan,
+    );
+
+    if (payWayConflict) {
+      return payWayConflict;
     }
 
     const expectedPrefix =

@@ -6,7 +6,12 @@ import {
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createTeamMentions } from "@/lib/team/create-team-mentions";
-import { getAccessibleRoom } from "@/lib/team/team-chat-server";
+import {
+  getAccessibleRoom,
+  getRoomAudienceMemberIds,
+  loadAttachmentsForMessages,
+  safeDetails,
+} from "@/lib/team/team-chat-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,10 +30,9 @@ function serverError(
     {
       success: false,
       error: message,
-      details:
-        error instanceof Error
-          ? error.message
-          : "Unknown server error.",
+      ...safeDetails(
+        error instanceof Error ? error.message : undefined,
+      ),
     },
     { status: 500 },
   );
@@ -109,16 +113,26 @@ export async function GET(
         {
           success: false,
           error: "Unable to load team messages.",
-          details: error.message,
+          ...safeDetails(error.message),
         },
         { status: 500 },
       );
     }
 
+    const ordered = [...(data ?? [])].reverse();
+
+    const attachmentsByMessage = await loadAttachmentsForMessages(
+      ordered.map((message) => message.id as string),
+    );
+
     return NextResponse.json({
       success: true,
       room,
-      messages: [...(data ?? [])].reverse(),
+      messages: ordered.map((message) => ({
+        ...message,
+        attachments:
+          attachmentsByMessage.get(message.id as string) ?? [],
+      })),
       hasMore: (data?.length ?? 0) === limit,
     });
   } catch (error) {
@@ -164,6 +178,7 @@ export async function POST(
       messageText?: string;
       mentionedMemberIds?: string[];
       mentionEveryone?: boolean;
+      attachmentIds?: unknown;
     };
 
     try {
@@ -178,13 +193,30 @@ export async function POST(
       );
     }
 
-    const messageText = body.messageText?.trim();
+    const messageText = body.messageText?.trim() ?? "";
 
-    if (!messageText) {
+    const attachmentIds = Array.isArray(body.attachmentIds)
+      ? body.attachmentIds.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [];
+
+    // A message may be text only, attachments only, or both.
+    if (!messageText && attachmentIds.length === 0) {
       return NextResponse.json(
         {
           success: false,
           error: "Message cannot be empty.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (attachmentIds.length > 10) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "You can attach up to 10 files per message.",
         },
         { status: 400 },
       );
@@ -230,19 +262,102 @@ export async function POST(
         .single();
 
     if (error || !message) {
+      // Surface the real database reason. The most common cause is a
+      // NOT NULL or length CHECK on message_text rejecting an
+      // attachment-only message — see
+      // supabase/sql/fix-attachment-only-messages.sql
+      console.error(
+        "[TENH Team Chat] Message insert failed.",
+        {
+          message: error?.message,
+          details: error?.details,
+          hint: error?.hint,
+          code: error?.code,
+          hadText: messageText.length > 0,
+          attachmentCount: attachmentIds.length,
+        },
+      );
+
+      const looksLikeEmptyTextRule =
+        !messageText &&
+        (error?.code === "23502" || error?.code === "23514");
+
       return NextResponse.json(
         {
           success: false,
-          error: "Unable to send team message.",
-          details: error?.message,
+          error: looksLikeEmptyTextRule
+            ? "Your database does not allow a message with no text yet. Run supabase/sql/fix-attachment-only-messages.sql to enable attachment-only messages."
+            : "Unable to send team message.",
+          ...safeDetails(error?.message),
         },
         { status: 500 },
       );
     }
 
+    // Bind uploads to this message. Scoping by room, uploader and
+    // message_id is null means a caller cannot steal someone else's
+    // upload or re-attach a file that was already sent.
+    let attachments: Awaited<
+      ReturnType<typeof loadAttachmentsForMessages>
+    > extends Map<string, infer V>
+      ? V
+      : never = [] as never;
+
+    if (attachmentIds.length > 0) {
+      const { error: bindError } = await supabaseAdmin
+        .from("team_chat_attachments")
+        .update({ message_id: message.id })
+        .in("id", attachmentIds)
+        .eq("business_id", currentMember.business_id)
+        .eq("room_id", room.id)
+        .eq("uploaded_by_member_id", currentMember.id)
+        .is("message_id", null);
+
+      if (bindError) {
+        console.error(
+          "[TENH Team Chat] Unable to bind attachments.",
+          bindError,
+        );
+      }
+
+      const bound = await loadAttachmentsForMessages([
+        message.id as string,
+      ]);
+
+      attachments = (bound.get(message.id as string) ?? []) as never;
+    }
+
     let notificationsCreated = 0;
 
     try {
+      // A mention notification carries the message text in its body, so
+      // notifying someone who is not in this room would leak a private
+      // conversation to a person who cannot open it. Intersect the
+      // requested mentions with the room's actual audience, and scope
+      // @everyone to the room rather than the whole business.
+      const audience = new Set(
+        await getRoomAudienceMemberIds(room),
+      );
+
+      const requestedMentions = Array.isArray(
+        body.mentionedMemberIds,
+      )
+        ? body.mentionedMemberIds.filter(
+            (memberId): memberId is string =>
+              typeof memberId === "string",
+          )
+        : [];
+
+      const scopedMentions = requestedMentions.filter(
+        (memberId) => audience.has(memberId),
+      );
+
+      const wantsEveryone = body.mentionEveryone === true;
+
+      const mentionTargets = wantsEveryone
+        ? Array.from(audience)
+        : scopedMentions;
+
       const mentionResult =
         await createTeamMentions({
           businessId: currentMember.business_id,
@@ -250,14 +365,18 @@ export async function POST(
           actorName: currentMember.full_name,
           sourceType: "team_message",
           sourceId: message.id,
-          mentionedMemberIds:
-            body.mentionedMemberIds ?? [],
-          mentionEveryone:
-            body.mentionEveryone === true,
+          mentionedMemberIds: mentionTargets,
+          // Already resolved to this room's audience above. Never let
+          // createTeamMentions expand to the whole business.
+          mentionEveryone: false,
           roomId: room.id,
           notificationType: "team_chat_mention",
           title: `${currentMember.full_name} mentioned you in #${room.name}`,
-          body: messageText.slice(0, 500),
+          body:
+            messageText.slice(0, 500) ||
+            `Sent ${attachmentIds.length} attachment${
+              attachmentIds.length === 1 ? "" : "s"
+            }`,
           link: `/dashboard/group-chat?room=${encodeURIComponent(
             room.id,
           )}`,
@@ -286,7 +405,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message,
+      message: { ...message, attachments },
       notificationsCreated,
     });
   } catch (error) {

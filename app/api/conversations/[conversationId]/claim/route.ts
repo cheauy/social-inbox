@@ -3,7 +3,7 @@ import {
   NextResponse,
 } from "next/server";
 
-import { getCurrentMember } from "@/lib/auth/get-current-member";
+import { getInboxConversationAccess } from "@/lib/inbox/get-inbox-resource-access";
 import { createConversationActivity } from "@/lib/inbox/create-conversation-activity";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -28,21 +28,6 @@ export async function PATCH(
   _request: NextRequest,
   context: RouteContext,
 ) {
-  const authResult = await getCurrentMember();
-
-  if (!authResult.success) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: authResult.error,
-      },
-      {
-        status: authResult.status,
-      },
-    );
-  }
-
-  const currentMember = authResult.member;
   const { conversationId } =
     await context.params;
 
@@ -58,6 +43,18 @@ export async function PATCH(
       { status: 400 },
     );
   }
+
+  const access =
+    await getInboxConversationAccess(normalizedConversationId);
+
+  if (!access.success) {
+    return NextResponse.json(
+      { success: false, error: access.error },
+      { status: access.status },
+    );
+  }
+
+  const currentMember = access.member;
 
   const {
     data: conversationData,

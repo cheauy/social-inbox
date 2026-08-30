@@ -1,18 +1,14 @@
 import Link from "next/link";
-import {
-  cookies,
-} from "next/headers";
+import { cookies } from "next/headers";
 
-import {
-  getCurrentMember,
-} from "@/lib/auth/get-current-member";
+import { WorkspaceLanguageText } from "@/components/display/workspace-language-text";
+import { FacebookPageSelectUi } from "@/components/integrations/facebook-page-select-ui";
+import { getCurrentMember } from "@/lib/auth/get-current-member";
 import {
   decodeFacebookOAuthSession,
   FACEBOOK_OAUTH_SESSION_COOKIE,
 } from "@/lib/facebook/facebook-oauth-session";
-import {
-  getFacebookAuthorizedPages,
-} from "@/lib/facebook/facebook-authorized-pages";
+import { getFacebookAuthorizedPages } from "@/lib/facebook/facebook-authorized-pages";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +17,8 @@ export default async function FacebookPageSelectPage() {
 
   if (!authResult.success) {
     return (
-      <main className="p-6">
-        <div className="mx-auto max-w-3xl rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+      <main className="min-h-screen bg-white px-4 py-8 sm:px-6">
+        <div className="mx-auto max-w-4xl rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
           {authResult.error}
         </div>
       </main>
@@ -37,16 +33,22 @@ export default async function FacebookPageSelectPage() {
 
   if (!encryptedSession) {
     return (
-      <main className="p-6">
+      <main className="min-h-screen bg-white px-4 py-8 sm:px-6">
         <div className="mx-auto max-w-4xl">
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-            Your Facebook connection session expired. Start again from Integrations.
+            <WorkspaceLanguageText
+              en="Your Facebook connection session expired. Start again from Integrations."
+              km="សម័យភ្ជាប់ Facebook របស់អ្នកបានផុតកំណត់។ សូមចាប់ផ្តើមម្តងទៀតពី Integrations។"
+            />
           </div>
           <Link
             href="/dashboard/integrations"
             className="mt-4 inline-flex rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
-            Back to Integrations
+            <WorkspaceLanguageText
+              en="Back to Integrations"
+              km="ត្រឡប់ទៅ Integrations"
+            />
           </Link>
         </div>
       </main>
@@ -61,9 +63,12 @@ export default async function FacebookPageSelectPage() {
     );
   } catch {
     return (
-      <main className="p-6">
-        <div className="mx-auto max-w-3xl rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
-          The Facebook connection session is invalid. Start again from Integrations.
+      <main className="min-h-screen bg-white px-4 py-8 sm:px-6">
+        <div className="mx-auto max-w-4xl rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+          <WorkspaceLanguageText
+            en="The Facebook connection session is invalid. Start again from Integrations."
+            km="សម័យភ្ជាប់ Facebook នេះមិនត្រឹមត្រូវទេ។ សូមចាប់ផ្តើមម្តងទៀតពី Integrations។"
+          />
         </div>
       </main>
     );
@@ -74,9 +79,12 @@ export default async function FacebookPageSelectPage() {
     session.memberId !== currentMember.id
   ) {
     return (
-      <main className="p-6">
-        <div className="mx-auto max-w-3xl rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
-          This Facebook connection session belongs to a different TENH workspace or member.
+      <main className="min-h-screen bg-white px-4 py-8 sm:px-6">
+        <div className="mx-auto max-w-4xl rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+          <WorkspaceLanguageText
+            en="This Facebook connection session belongs to a different TENH workspace or member."
+            km="សម័យភ្ជាប់ Facebook នេះជារបស់ TENH workspace ឬសមាជិកផ្សេង។"
+          />
         </div>
       </main>
     );
@@ -101,115 +109,134 @@ export default async function FacebookPageSelectPage() {
         : "Unable to load Facebook Pages.";
   }
 
+  const safePages = pages.map((page) => ({
+    id: page.id,
+    name: page.name || "Facebook Page",
+    ready: Boolean(page.access_token),
+  }));
+
   return (
-    <main className="p-6">
-      <div className="mx-auto max-w-4xl">
-        <div className="mb-6">
-          <p className="text-sm font-semibold text-blue-600">
-            Facebook integration
-          </p>
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">
-            Choose Pages for this TENH workspace
-          </h1>
-          <p className="mt-2 text-sm text-slate-500">
-            Select one or more Facebook Pages to connect to this TENH workspace.
-          </p>
-        </div>
-
-        {pageLoadError ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
-            {pageLoadError}
-          </div>
-        ) : pages.length === 0 ? (
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-              Facebook returned no Pages authorized for TENH. Reconnect Page access and select at least one Page in Facebook.
-            </div>
-            <Link
-              href="/api/facebook/oauth/connect"
-              className="inline-flex rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
-            >
-              Reconnect Page access
-            </Link>
-          </div>
-        ) : (
-          <form
-            action="/api/facebook/oauth/select"
-            method="post"
-            className="space-y-4"
-          >
-            {unresolvedTargetIds.length > 0 ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                Facebook authorized {unresolvedTargetIds.length} additional Page{unresolvedTargetIds.length === 1 ? "" : "s"}, but Meta did not allow TENH to resolve the Page details yet. Reconnect Page access and verify the required Facebook permissions.
-              </div>
-            ) : null}
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-              <div className="max-h-[300px] overflow-y-auto overscroll-contain pr-1">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {pages.map((page) => (
-                    <label
-                      key={page.id}
-                      className="relative block cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        name="pageId"
-                        value={page.id}
-                        className="peer absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 cursor-pointer accent-blue-600"
-                      />
-
-                      <div className="flex min-h-[88px] items-center gap-3 rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-3 transition hover:border-blue-300 hover:bg-blue-50/30 peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-checked:ring-1 peer-checked:ring-blue-500">
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-lg font-bold text-white shadow-sm">
-                          f
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-bold text-slate-900">
-                            {page.name || "Facebook Page"}
-                          </p>
-                          <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-slate-500">
-                            <span className="flex h-4 w-4 items-center justify-center rounded bg-blue-600 text-[10px] font-bold text-white">
-                              f
-                            </span>
-                            <span>Facebook</span>
-                          </div>
-                          <p className="mt-1 truncate text-xs text-slate-400">
-                            Page ID: {page.id}
-                          </p>
-                        </div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+    <main className="h-[100dvh] overflow-y-auto bg-white px-4 py-4 sm:px-5 lg:px-6">
+      <div className="mx-auto max-w-[1380px]">
+        <header className="border-b border-slate-200 pb-4">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               <Link
-                href="/api/facebook/oauth/connect"
-                className="text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+                href="/dashboard/integrations"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-blue-600 transition hover:bg-blue-50"
+                aria-label="Back to Integrations"
               >
-                Reconnect Page access
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="m15 18-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </Link>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <Link
-                  href="/dashboard/integrations"
-                  className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  Cancel
-                </Link>
-                <button
-                  type="submit"
-                  className="rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
-                >
-                  Connect
-                </button>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-blue-600">
+                  <WorkspaceLanguageText
+                    en="Facebook integration"
+                    km="ការភ្ជាប់ Facebook"
+                  />
+                </p>
               </div>
             </div>
-          </form>
-        )}
+
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 xl:absolute xl:left-1/2 xl:-translate-x-1/2">
+              <div className="flex items-center gap-2 text-slate-500">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 bg-white text-blue-600">
+                  <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path d="m3.5 8.3 2.6 2.7 6-6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+                <span className="text-sm font-semibold">
+                  <WorkspaceLanguageText
+                    en="Authorize"
+                    km="អនុញ្ញាត"
+                  />
+                </span>
+              </div>
+
+              <span className="hidden h-px w-5 bg-slate-300 sm:block" />
+
+              <div className="flex items-center gap-2 text-blue-700">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+                  2
+                </span>
+                <span className="text-sm font-bold">
+                  <WorkspaceLanguageText
+                    en="Choose Pages"
+                    km="ជ្រើសរើស Page"
+                  />
+                </span>
+              </div>
+
+              <span className="hidden h-px w-5 bg-slate-300 sm:block" />
+
+              <div className="flex items-center gap-2 text-slate-500">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 bg-white text-xs font-bold">
+                  3
+                </span>
+                <span className="text-sm font-semibold">
+                  <WorkspaceLanguageText
+                    en="Review & Connect"
+                    km="ពិនិត្យ និងភ្ជាប់"
+                  />
+                </span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <section className="pt-5">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
+            <div>
+              <h1 className="text-[26px] font-bold tracking-[-0.03em] text-slate-950 sm:text-[30px]">
+                <WorkspaceLanguageText
+                  en="Choose Pages to connect"
+                  km="ជ្រើសរើស Page ដើម្បីភ្ជាប់"
+                />
+              </h1>
+              <p className="mt-1 text-sm text-slate-500 sm:text-base">
+                <WorkspaceLanguageText
+                  en="Each Page gets its own Messenger inbox and comment sync."
+                  km="Page នីមួយៗមានប្រអប់សារ Messenger និងការធ្វើសមកាលកម្មមតិយោបល់ផ្ទាល់ខ្លួន។"
+                />
+
+              </p>
+            </div>
+
+          
+          </div>
+
+          {pageLoadError ? (
+            <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              {pageLoadError}
+            </div>
+          ) : safePages.length === 0 ? (
+            <div className="mt-5 space-y-3">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+                <WorkspaceLanguageText
+                  en="Facebook returned no Pages authorized for TENH. Reconnect Page access and select at least one Page in Facebook."
+                  km="Facebook មិនបានត្រឡប់ Page ណាមួយដែលអនុញ្ញាតសម្រាប់ TENH ទេ។ សូមភ្ជាប់សិទ្ធិ Page ម្តងទៀត ហើយជ្រើសរើសយ៉ាងហោចណាស់មួយ Page នៅក្នុង Facebook។"
+                />
+              </div>
+              <Link
+                href="/api/facebook/oauth/connect"
+                className="inline-flex rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+              >
+                <WorkspaceLanguageText
+                  en="Reconnect Page access"
+                  km="ភ្ជាប់សិទ្ធិ Page ម្តងទៀត"
+                />
+              </Link>
+            </div>
+          ) : (
+            <FacebookPageSelectUi
+              pages={safePages}
+              unresolvedCount={unresolvedTargetIds.length}
+            />
+          )}
+        </section>
       </div>
     </main>
   );

@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { PendingInvitationsBanner } from "@/components/dashboard/pending-invitations-banner";
+import { WorkspacePermissionsProvider } from "@/lib/auth/use-workspace-permissions";
 import { RemovedWorkspaceAccessBoundary } from "@/components/dashboard/removed-workspace-access-boundary";
 import { WorkspaceSetupRecovery } from "@/components/dashboard/workspace-setup-recovery";
 import { SubscriptionAccessGate } from "@/components/subscription/subscription-access-gate";
@@ -11,6 +13,8 @@ import {
   getBusinessSubscriptionAccess,
   type BusinessSubscriptionAccess,
 } from "@/lib/subscription/get-business-subscription-access";
+
+
 
 type DashboardLayoutProps = {
   children: ReactNode;
@@ -123,14 +127,18 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100">
-      <DashboardHeader />
+    <WorkspacePermissionsProvider>
+      <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100">
+        <DashboardHeader />
 
-      <main className="min-h-0 flex-1 overflow-hidden">
-        <SubscriptionAccessGate access={subscriptionAccess}>
-          {children}
-        </SubscriptionAccessGate>
-      </main>
-    </div>
+        <PendingInvitationsBanner />
+
+        <main className="min-h-0 flex-1 overflow-hidden">
+          <SubscriptionAccessGate access={subscriptionAccess}>
+            {children}
+          </SubscriptionAccessGate>
+        </main>
+      </div>
+    </WorkspacePermissionsProvider>
   );
 }

@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { getAccessibleRoom } from "@/lib/team/team-chat-server";
+import {
+  getAccessibleRoom,
+  safeDetails,
+} from "@/lib/team/team-chat-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +41,8 @@ export async function POST(
     );
   }
 
+  const readAt = new Date().toISOString();
+
   const { error } = await supabaseAdmin
     .from("team_chat_room_members")
     .upsert(
@@ -45,7 +50,7 @@ export async function POST(
         room_id: room.id,
         business_id: currentMember.business_id,
         member_id: currentMember.id,
-        last_read_at: new Date().toISOString(),
+        last_read_at: readAt,
       },
       { onConflict: "room_id,member_id" },
     );
@@ -55,9 +60,27 @@ export async function POST(
       {
         success: false,
         error: "Unable to update read status.",
-        details: error.message,
+        ...safeDetails(error.message),
       },
       { status: 500 },
+    );
+  }
+
+  // Opening the room also consumes unread group-chat mentions in that room.
+  // This keeps the top Group Chat badge in sync for muted rooms, where the
+  // badge is mention-only instead of ordinary unread-message count.
+  const { error: mentionReadError } = await supabaseAdmin
+    .from("team_notifications")
+    .update({ is_read: true })
+    .eq("business_id", currentMember.business_id)
+    .eq("recipient_member_id", currentMember.id)
+    .eq("room_id", room.id)
+    .eq("is_read", false);
+
+  if (mentionReadError) {
+    console.warn(
+      "[TENH Team Chat] Unable to clear room mention badge.",
+      mentionReadError.message,
     );
   }
 

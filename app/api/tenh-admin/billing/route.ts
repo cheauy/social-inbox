@@ -526,7 +526,7 @@ async function loadWorkspaceDetail(businessId: string) {
       .order("created_at", { ascending: true }),
     supabaseAdmin
       .from("social_accounts")
-      .select("id,platform,platform_account_id,is_active,created_at")
+      .select("id,platform,platform_account_id,account_name,is_active,created_at")
       .eq("business_id", businessId)
       .order("created_at", { ascending: true }),
     supabaseAdmin
@@ -698,6 +698,7 @@ async function loadWorkspaceDetail(businessId: string) {
     channels: channels.map((channel) => ({
       id: channel.id,
       platform: channel.platform,
+      accountName: channel.account_name,
       platformAccountId: channel.platform_account_id,
       active: channel.is_active,
       createdAt: channel.created_at,

@@ -3,9 +3,11 @@ import {
   NextResponse,
 } from "next/server";
 
+import { getInboxContactAccess } from "@/lib/inbox/get-inbox-resource-access";
 import {
-  getCurrentMember,
-} from "@/lib/auth/get-current-member";
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
 import {
   createConversationActivity,
 } from "@/lib/inbox/create-conversation-activity";
@@ -30,7 +32,7 @@ export async function DELETE(
   context: RouteContext,
 ) {
   const authResult =
-    await getCurrentMember();
+    await getInboxContactAccess((await context.params).contactId);
 
   if (!authResult.success) {
     return NextResponse.json(
@@ -48,6 +50,14 @@ export async function DELETE(
 
   const currentMember =
     authResult.member;
+
+  if (
+    !(await memberHasPermission(currentMember, "customers", "manage"))
+  ) {
+    return permissionDenied(
+      "You do not have permission to change customer tags.",
+    );
+  }
 
   const {
     contactId,

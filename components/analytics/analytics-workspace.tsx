@@ -10,6 +10,7 @@ import { AgentPerformancePanel } from "@/components/analytics/agent-performance-
 import { CustomerInsightsPanel } from "@/components/analytics/customer-insights-panel";
 import { DashboardOverviewPanel } from "@/components/analytics/dashboard-overview-panel";
 import { ConversationReportsPanel } from "@/components/analytics/conversation-reports-panel";
+import { ChannelPerformancePanel } from "@/components/analytics/channel-performance-panel";
 import { SlaAnalyticsPanel } from "@/components/analytics/sla-analytics-panel";
 import { AgentWorkloadPanel } from "@/components/inbox/agent-workload-panel";
 
@@ -19,7 +20,8 @@ type AnalyticsView =
   | "agent-performance"
   | "team-workload"
   | "customer-insights"
-  | "conversation-reports";
+  | "conversation-reports"
+  | "channel-performance";
 
 type MenuItem = {
   id: string;
@@ -31,7 +33,8 @@ type MenuItem = {
     | "workload"
     | "agent"
     | "customer"
-    | "report";
+    | "report"
+    | "channel";
   view?: AnalyticsView;
   badge?: "Next" | "Soon";
 };
@@ -72,6 +75,14 @@ const menuSections: Array<{
           "Per-agent response results",
         icon: "agent",
       },
+      {
+        id: "channel-performance",
+        view: "channel-performance",
+        label: "Channel performance",
+        description:
+          "Compare Messenger, comments and Telegram",
+        icon: "channel",
+      },
     ],
   },
   {
@@ -84,28 +95,6 @@ const menuSections: Array<{
         description:
           "Queue and agent load",
         icon: "workload",
-      },
-      {
-        id: "customer-insights",
-        view: "customer-insights",
-        label: "Customer insights",
-        description:
-          "Growth and customer activity",
-        icon: "customer",
-      },
-    ],
-  },
-  {
-    label: "Reports",
-    items: [
-      {
-        id: "conversation-reports",
-        view: "conversation-reports",
-        label:
-          "Conversation reports",
-        description:
-          "Volume, status and busy hours",
-        icon: "report",
       },
     ],
   },
@@ -236,6 +225,31 @@ function AnalyticsIcon({
           r="3.5"
         />
         <path d="M5 20a7 7 0 0 1 14 0" />
+      </svg>
+    );
+  }
+
+  if (
+    icon ===
+    "channel"
+  ) {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        className="h-5 w-5"
+        aria-hidden="true"
+      >
+        <path
+          d="M20 15a2 2 0 0 1-2 2H8l-4 3V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2Z"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M8 9h8M8 12.5h5"
+          strokeLinecap="round"
+        />
       </svg>
     );
   }
@@ -401,6 +415,20 @@ export function AnalyticsWorkspace() {
 
       if (
         activeView ===
+        "channel-performance"
+      ) {
+        return {
+          eyebrow:
+            "Performance",
+          title:
+            "Channel performance",
+          description:
+            "Compare conversation volume, response speed, SLA performance, and customer activity by channel.",
+        };
+      }
+
+      if (
+        activeView ===
         "agent-performance"
       ) {
         return {
@@ -448,9 +476,6 @@ export function AnalyticsWorkspace() {
               Insights & reports
             </h2>
 
-            <p className="mt-1 text-xs leading-5 text-slate-500">
-              Performance and operations in one place.
-            </p>
           </div>
 
           <nav className="space-y-5 p-3">
@@ -498,7 +523,7 @@ export function AnalyticsWorkspace() {
                             disabled={
                               !isAvailable
                             }
-                            className={`group flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition ${
+                            className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
                               isActive
                                 ? "bg-blue-50 text-blue-700"
                                 : isAvailable
@@ -507,7 +532,7 @@ export function AnalyticsWorkspace() {
                             }`}
                           >
                             <span
-                              className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${
+                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${
                                 isActive
                                   ? "border-blue-200 bg-white text-blue-600"
                                   : "border-slate-200 bg-white"
@@ -544,11 +569,6 @@ export function AnalyticsWorkspace() {
                                 ) : null}
                               </span>
 
-                              <span className="mt-0.5 block text-[11px] leading-4 text-slate-500 group-disabled:text-slate-400">
-                                {
-                                  item.description
-                                }
-                              </span>
                             </span>
                           </button>
                         );
@@ -561,34 +581,42 @@ export function AnalyticsWorkspace() {
           </nav>
         </aside>
 
-        <section className="min-h-0 overflow-y-auto p-4 sm:p-6">
-          <div className="mx-auto w-full max-w-7xl">
-            <div className="mb-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">
-                {
-                  pageCopy.eyebrow
-                }
-              </p>
+        <section className="min-h-0 overflow-y-auto">
+          <div className="mx-auto w-full max-w-[1500px] space-y-5 px-[clamp(18px,4vw,72px)] pt-[clamp(18px,4vh,56px)]">
+            {activeView !== "dashboard" &&
+            activeView !== "team-workload" ? (
+              <div className="mb-6">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">
+                  {
+                    pageCopy.eyebrow
+                  }
+                </p>
 
-              <h1 className="mt-1 text-2xl font-bold text-slate-950">
-                {
-                  pageCopy.title
-                }
-              </h1>
+                <h1 className="mt-1 text-2xl font-bold text-slate-950">
+                  {
+                    pageCopy.title
+                  }
+                </h1>
 
-              <p className="mt-1 text-sm text-slate-500">
-                {
-                  pageCopy.description
-                }
-              </p>
-            </div>
+                <p className="mt-1 text-sm text-slate-500">
+                  {
+                    pageCopy.description
+                  }
+                </p>
+              </div>
+            ) : null}
 
             {activeView ===
             "dashboard" ? (
-              <DashboardOverviewPanel />
+              <DashboardOverviewPanel
+                onOpenChannelPerformance={() => selectView("channel-performance")}
+              />
             ) : activeView ===
             "team-performance" ? (
               <SlaAnalyticsPanel />
+            ) : activeView ===
+              "channel-performance" ? (
+              <ChannelPerformancePanel />
             ) : activeView ===
               "agent-performance" ? (
               <AgentPerformancePanel />
@@ -599,9 +627,7 @@ export function AnalyticsWorkspace() {
               "conversation-reports" ? (
               <ConversationReportsPanel />
             ) : (
-              <section className="min-h-[650px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <AgentWorkloadPanel />
-              </section>
+              <AgentWorkloadPanel />
             )}
           </div>
         </section>

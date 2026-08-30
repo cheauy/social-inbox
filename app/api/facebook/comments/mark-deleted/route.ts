@@ -3,17 +3,18 @@ import {
   NextResponse,
 } from "next/server";
 
-import {
-  getCurrentMember,
-} from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
 import {
   markFacebookCommentThreadDeleted,
 } from "@/lib/facebook/mark-comment-thread-deleted";
 
 import {
   FacebookCommentContextError,
-  loadLocalFacebookCommentContext,
+  loadAuthorizedLocalFacebookCommentContext,
 } from "../_shared";
 
 export const runtime = "nodejs";
@@ -29,24 +30,6 @@ type MarkDeletedBody = {
 export async function POST(
   request: NextRequest,
 ) {
-  const authResult =
-    await getCurrentMember();
-
-  if (!authResult.success) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: authResult.error,
-      },
-      {
-        status: authResult.status,
-      },
-    );
-  }
-
-  const currentMember =
-    authResult.member;
-
   try {
     let body: MarkDeletedBody;
 
@@ -91,11 +74,19 @@ export async function POST(
       "Message deleted by commenter or Page";
 
     const context =
-      await loadLocalFacebookCommentContext({
-        businessId:
-          currentMember.business_id,
+      await loadAuthorizedLocalFacebookCommentContext({
         commentId,
       });
+
+    const currentMember = context.member;
+
+    if (
+      !(await memberHasPermission(currentMember, "conversations", "manage"))
+    ) {
+      return permissionDenied(
+        "You do not have permission to reply in this workspace.",
+      );
+    }
 
     await markFacebookCommentThreadDeleted({
       businessId:

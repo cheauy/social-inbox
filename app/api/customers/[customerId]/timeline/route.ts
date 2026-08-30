@@ -3,8 +3,8 @@ import {
 } from "next/server";
 
 import {
-  getCurrentMember,
-} from "@/lib/auth/get-current-member";
+  getInboxContactAccess,
+} from "@/lib/inbox/get-inbox-resource-access";
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
@@ -104,6 +104,8 @@ const ACTIVITY_TYPES = [
   "status_changed",
   "assigned",
   "unassigned",
+  "pinned",
+  "unpinned",
   "tag_added",
   "tag_removed",
   "note_added",
@@ -268,6 +270,20 @@ function buildActivityPresentation(
     };
   }
 
+  if (activity.activity_type === "pinned") {
+    return {
+      title: "Conversation pinned",
+      detail: null,
+    };
+  }
+
+  if (activity.activity_type === "unpinned") {
+    return {
+      title: "Conversation unpinned",
+      detail: null,
+    };
+  }
+
   if (
     activity.activity_type === "tag_added" ||
     activity.activity_type === "tag_removed"
@@ -351,23 +367,6 @@ export async function GET(
   _request: Request,
   context: RouteContext,
 ) {
-  const authResult =
-    await getCurrentMember();
-
-  if (!authResult.success) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: authResult.error,
-      },
-      {
-        status: authResult.status,
-      },
-    );
-  }
-
-  const currentMember =
-    authResult.member;
   const { customerId } =
     await context.params;
   const normalizedContactId =
@@ -385,6 +384,18 @@ export async function GET(
       },
     );
   }
+
+  const access =
+    await getInboxContactAccess(normalizedContactId);
+
+  if (!access.success) {
+    return NextResponse.json(
+      { success: false, error: access.error },
+      { status: access.status },
+    );
+  }
+
+  const currentMember = access.member;
 
   const {
     data: contactData,

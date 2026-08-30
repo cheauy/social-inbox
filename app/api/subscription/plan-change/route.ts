@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   isBillingCycle,
   isPaidPlan,
   loadPlanChangeState,
@@ -54,6 +58,7 @@ function publicPlanChangeState(state: PlanChangeState) {
   return {
     mode: state.mode,
     canManage: state.canManage,
+    isOwner: state.isOwner,
     currentPlan: state.currentPlan,
     currentRank: state.currentRank,
     usage: state.usage,
@@ -73,7 +78,15 @@ export async function GET() {
     }
 
     const member = authResult.member;
-    const state = await loadPlanChangeState(member.business_id, member.role);
+    const canManageBilling = await memberHasPermission(
+      member,
+      "billing",
+      "manage",
+    );
+    const state = await loadPlanChangeState(member.business_id, {
+      canManage: canManageBilling,
+      isOwner: member.role === "owner",
+    });
     return noStoreJson({ success: true, ...publicPlanChangeState(state) });
   } catch (error) {
     console.error("[TENH] Unable to load plan-change state:", error);
@@ -129,13 +142,12 @@ export async function POST(request: Request) {
 
     const member = authResult.member;
 
+    // Billing Manage is intentionally limited to PAID UPGRADES. Owner-only
+    // plan administration (such as downgrade scheduling/cancellation) stays
+    // Owner-only and cannot be granted through Roles & permissions.
     if (member.role !== "owner") {
-      return noStoreJson(
-        {
-          success: false,
-          error: "Only the workspace owner can change the subscription plan.",
-        },
-        { status: 403 },
+      return permissionDenied(
+        "Only the workspace Owner can change subscription administration settings.",
       );
     }
 
@@ -158,7 +170,7 @@ export async function POST(request: Request) {
         );
       }
 
-      const state = await loadPlanChangeState(member.business_id, member.role);
+      const state = await loadPlanChangeState(member.business_id, { canManage: true, isOwner: true });
       return noStoreJson({ success: true, ...publicPlanChangeState(state) });
     }
 
@@ -191,7 +203,7 @@ export async function POST(request: Request) {
 
     // Friendly precheck only. The service-role-only SQL RPC repeats the
     // identity/state/rank/usage checks while holding a transaction lock.
-    const before = await loadPlanChangeState(member.business_id, member.role);
+    const before = await loadPlanChangeState(member.business_id, { canManage: true, isOwner: true });
 
     if (before.mode !== "active-paid" || !before.currentPlan) {
       return noStoreJson(
@@ -231,7 +243,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const state = await loadPlanChangeState(member.business_id, member.role);
+    const state = await loadPlanChangeState(member.business_id, { canManage: true, isOwner: true });
     return noStoreJson({ success: true, ...publicPlanChangeState(state) });
   } catch (error) {
     console.error("[TENH] Subscription plan-change failed:", error);

@@ -8,6 +8,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
   canManageTeamChat,
   getAccessibleRoom,
+  safeDetails,
 } from "@/lib/team/team-chat-server";
 
 export const runtime = "nodejs";
@@ -147,7 +148,7 @@ export async function PATCH(
       {
         success: false,
         error: "Unable to edit team message.",
-        details: error.message,
+        ...safeDetails(error.message),
       },
       { status: 500 },
     );
@@ -222,7 +223,7 @@ export async function DELETE(
       {
         success: false,
         error: "Unable to delete team message.",
-        details: error.message,
+        ...safeDetails(error.message),
       },
       { status: 500 },
     );

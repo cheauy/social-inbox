@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { hasPermission, resolvePermissions } from "@/lib/auth/permissions";
+import { syncBusinessSubscriptionLifecycle } from "@/lib/subscription/sync-subscription-lifecycle";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +13,7 @@ type MembershipRow = {
   business_id: string;
   role: string;
   is_active: boolean;
+  permissions: unknown;
 };
 
 type OwnerRow = {
@@ -38,11 +41,39 @@ type SubscriptionRow = {
   member_limit: number;
   channel_limit: number;
   current_period_end: string | null;
+  trial_ends_at: string | null;
   billing_cycle: string | null;
   last_paid_amount: number | string | null;
   last_paid_currency: string | null;
   pricing_snapshot: Record<string, unknown> | null;
+  created_at: string | null;
 };
+
+const OPERATIONAL_SUBSCRIPTION_STATUSES = new Set(["active", "trialing"]);
+
+function isPeriodEnded(value: string | null | undefined) {
+  if (!value) return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && timestamp <= Date.now();
+}
+
+function isOperationalSubscription(subscription: SubscriptionRow | null) {
+  if (!subscription) {
+    // Preserve legacy/unmanaged workspaces until they are migrated.
+    return true;
+  }
+
+  if (!OPERATIONAL_SUBSCRIPTION_STATUSES.has(subscription.status)) {
+    return false;
+  }
+
+  const end =
+    subscription.status === "trialing"
+      ? subscription.trial_ends_at ?? subscription.current_period_end
+      : subscription.current_period_end;
+
+  return !isPeriodEnded(end);
+}
 
 export async function GET() {
   const authResult = await getCurrentMember();
@@ -57,7 +88,7 @@ export async function GET() {
   const userId = authResult.user.id;
   const { data: memberships, error: membershipError } = await supabaseAdmin
     .from("team_members")
-    .select("id,business_id,role,is_active")
+    .select("id,business_id,role,is_active,permissions")
     .eq("user_id", userId)
     .eq("is_active", true)
     .order("created_at", { ascending: true });
@@ -76,6 +107,22 @@ export async function GET() {
     return NextResponse.json({ success: true, currentBusinessId: null, workspaces: [] });
   }
 
+  // Keep the subscription list current before deciding whether a workspace is
+  // active or eligible for reactivation. A lifecycle sync failure must not
+  // hide every workspace, so fall back to the stored row and let the client
+  // still treat an ended paid period as expired.
+  const lifecycleResults = await Promise.allSettled(
+    businessIds.map((businessId) => syncBusinessSubscriptionLifecycle(businessId)),
+  );
+  lifecycleResults.forEach((result, index) => {
+    if (result.status === "rejected") {
+      console.error(
+        `[TENH] Unable to synchronize subscription lifecycle for ${businessIds[index]}:`,
+        result.reason,
+      );
+    }
+  });
+
   const [
     businessResult,
     subscriptionResult,
@@ -89,8 +136,9 @@ export async function GET() {
       .in("id", businessIds),
     supabaseAdmin
       .from("business_subscriptions")
-      .select("id,business_id,plan_code,status,member_limit,channel_limit,current_period_end,billing_cycle,last_paid_amount,last_paid_currency,pricing_snapshot")
-      .in("business_id", businessIds),
+      .select("id,business_id,plan_code,status,member_limit,channel_limit,current_period_end,trial_ends_at,billing_cycle,last_paid_amount,last_paid_currency,pricing_snapshot,created_at")
+      .in("business_id", businessIds)
+      .order("created_at", { ascending: false }),
     supabaseAdmin
       .from("team_members")
       .select("business_id,full_name,email,is_active")
@@ -135,9 +183,13 @@ export async function GET() {
   const businesses = new Map<string, BusinessRow>(
     businessRows.map((row) => [row.id, row]),
   );
-  const subscriptions = new Map<string, SubscriptionRow>(
-    subscriptionRows.map((row) => [row.business_id, row]),
-  );
+  const subscriptions = new Map<string, SubscriptionRow>();
+  for (const row of subscriptionRows) {
+    // Query is newest-first, so keep only the latest subscription per workspace.
+    if (!subscriptions.has(row.business_id)) {
+      subscriptions.set(row.business_id, row);
+    }
+  }
 
   const ownerRows = (ownerResult.data ?? []) as unknown as OwnerRow[];
   const owners = new Map<string, OwnerRow>();
@@ -182,11 +234,17 @@ export async function GET() {
       ownerName,
       slug: business?.slug ?? null,
       role: membership.role,
+      canManageBilling: hasPermission(
+        resolvePermissions(membership.role, membership.permissions),
+        "billing",
+        "manage",
+      ),
       usage: {
         members: activeMemberCounts.get(membership.business_id) ?? 0,
         channels: activeChannelCounts.get(membership.business_id) ?? 0,
       },
       subscription,
+      subscriptionOperational: isOperationalSubscription(subscription),
     };
   });
 
@@ -194,5 +252,77 @@ export async function GET() {
     success: true,
     currentBusinessId: authResult.member.business_id,
     workspaces,
+  });
+}
+
+export async function PATCH(request: Request) {
+  const authResult = await getCurrentMember();
+
+  if (!authResult.success) {
+    return NextResponse.json(
+      { success: false, error: authResult.error },
+      { status: authResult.status },
+    );
+  }
+
+  if (authResult.member.role !== "owner" && authResult.member.role !== "admin") {
+    return NextResponse.json(
+      { success: false, error: "Only an Owner can rename this workspace." },
+      { status: 403 },
+    );
+  }
+
+  let body: { businessName?: unknown };
+  try {
+    body = (await request.json()) as { businessName?: unknown };
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Invalid request." },
+      { status: 400 },
+    );
+  }
+
+  const businessName =
+    typeof body.businessName === "string" ? body.businessName.trim() : "";
+
+  if (!businessName) {
+    return NextResponse.json(
+      { success: false, error: "Workspace name is required." },
+      { status: 400 },
+    );
+  }
+
+  if (businessName.length > 120) {
+    return NextResponse.json(
+      { success: false, error: "Workspace name must be 120 characters or fewer." },
+      { status: 400 },
+    );
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("businesses")
+    .update({ name: businessName })
+    .eq("id", authResult.member.business_id)
+    .select("id,name")
+    .maybeSingle();
+
+  if (error) {
+    return NextResponse.json(
+      { success: false, error: "Unable to save workspace name.", details: error.message },
+      { status: 500 },
+    );
+  }
+
+  if (!data) {
+    return NextResponse.json(
+      { success: false, error: "Workspace was not found." },
+      { status: 404 },
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+    businessId: data.id,
+    businessName: data.name,
   });
 }

@@ -3,9 +3,7 @@ import {
   NextResponse,
 } from "next/server";
 
-import {
-  getCurrentMember,
-} from "@/lib/auth/get-current-member";
+import { getInboxContactAccess } from "@/lib/inbox/get-inbox-resource-access";
 import {
   getFacebookCustomerProfile,
 } from "@/lib/facebook/get-facebook-customer-profile";
@@ -277,7 +275,7 @@ export async function POST(
   context: RouteContext,
 ) {
   const authResult =
-    await getCurrentMember();
+    await getInboxContactAccess((await context.params).contactId);
 
   if (!authResult.success) {
     return NextResponse.json(

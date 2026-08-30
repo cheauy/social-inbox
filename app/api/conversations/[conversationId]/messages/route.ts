@@ -4,8 +4,8 @@ import {
 } from "next/server";
 
 import {
-  getCurrentMember,
-} from "@/lib/auth/get-current-member";
+  getInboxConversationAccess,
+} from "@/lib/inbox/get-inbox-resource-access";
 
 import {
   getMessagePage,
@@ -58,26 +58,6 @@ export async function GET(
   request: NextRequest,
   context: RouteContext,
 ) {
-  const authResult =
-    await getCurrentMember();
-
-  if (!authResult.success) {
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          authResult.error,
-      },
-      {
-        status:
-          authResult.status,
-      },
-    );
-  }
-
-  const currentMember =
-    authResult.member;
-
   const {
     conversationId,
   } = await context.params;
@@ -97,6 +77,18 @@ export async function GET(
       },
     );
   }
+
+  const access =
+    await getInboxConversationAccess(normalizedConversationId);
+
+  if (!access.success) {
+    return NextResponse.json(
+      { success: false, error: access.error },
+      { status: access.status },
+    );
+  }
+
+  const currentMember = access.member;
 
   /*
    * Never trust a business id from the browser.

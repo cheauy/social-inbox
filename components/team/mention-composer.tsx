@@ -1,9 +1,13 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
+
+import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 
 type MentionMember = {
   id: string;
@@ -29,6 +33,7 @@ type MentionComposerProps = {
   maxLength?: number;
   disabled?: boolean;
   tone?: "default" | "note";
+  compact?: boolean;
 };
 
 function getInitial(name: string) {
@@ -48,9 +53,35 @@ export function MentionComposer({
   maxLength = 10000,
   disabled = false,
   tone = "default",
+  compact = false,
 }: MentionComposerProps) {
+  const languageId = useWorkspaceLanguageId();
+  const isKhmer = languageId === "km";
+  const t = (en: string, km: string) => (isKhmer ? km : en);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        !triggerRef.current?.contains(target) &&
+        !popoverRef.current?.contains(target)
+      ) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [open]);
 
   const selectedSet = useMemo(
     () => new Set(mentionedMemberIds),
@@ -150,69 +181,114 @@ export function MentionComposer({
   }
 
   return (
-    <div className="relative">
+    <div
+      className={
+        compact
+          ? "relative flex min-w-0 flex-1 items-center gap-1.5"
+          : "relative"
+      }
+    >
+      {compact ? (
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          disabled={disabled}
+          className={`flex min-w-[56px] shrink-0 flex-col items-center gap-1 rounded-xl px-1.5 py-1.5 text-[10px] font-medium transition ${
+            open
+              ? "bg-blue-50 text-blue-600"
+              : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+          } disabled:opacity-40`}
+          aria-label={t("Mention", "លើកឡើង")}
+          aria-expanded={open}
+        >
+          <span className="flex h-5 w-5 items-center justify-center text-[16px] font-semibold leading-none">
+            @
+          </span>
+          <span>{t("Mention", "លើកឡើង")}</span>
+        </button>
+      ) : null}
+
       <textarea
         value={value}
         onChange={(event) =>
           handleTextChange(event.target.value)
         }
-        rows={rows}
+        rows={compact ? 1 : rows}
         maxLength={maxLength}
-        placeholder={placeholder}
+        placeholder={
+          isKhmer && placeholder === "Write a message..."
+            ? "សរសេរសារ..."
+            : placeholder
+        }
         disabled={disabled}
-        className={`w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none transition focus:ring-2 disabled:bg-slate-100 ${
-          tone === "note"
-            ? "border-amber-200 bg-amber-50/40 focus:border-amber-500 focus:ring-amber-100"
-            : "border-slate-300 bg-white focus:border-blue-500 focus:ring-blue-100"
-        }`}
+        className={
+          compact
+            ? "block h-12 max-h-32 min-h-12 min-w-0 flex-1 resize-none overflow-y-auto rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-300 focus:ring-2 focus:ring-violet-100 disabled:bg-slate-50"
+            : `w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none transition focus:ring-2 disabled:bg-slate-100 ${
+                tone === "note"
+                  ? "border-amber-200 bg-amber-50/40 focus:border-amber-500 focus:ring-amber-100"
+                  : "border-slate-300 bg-white focus:border-blue-500 focus:ring-blue-100"
+              }`
+        }
       />
 
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setOpen((current) => !current)}
-          disabled={disabled}
-          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
-        >
-          <span className="text-blue-600">@</span>
-          Mention
-        </button>
+      {!compact ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            ref={triggerRef}
+            type="button"
+            onClick={() => setOpen((current) => !current)}
+            disabled={disabled}
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            <span className="text-blue-600">@</span>
+            {t("Mention", "លើកឡើង")}
+          </button>
 
-        {mentionEveryone ? (
-          <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-semibold text-violet-700">
-            @everyone
-          </span>
-        ) : null}
-
-        {mentionedMemberIds.map((memberId) => {
-          const member = members.find(
-            (item) => item.id === memberId,
-          );
-
-          if (!member) {
-            return null;
-          }
-
-          return (
-            <span
-              key={member.id}
-              className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700"
-            >
-              @{member.full_name}
+          {mentionEveryone ? (
+            <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-semibold text-violet-700">
+              @everyone
             </span>
-          );
-        })}
-      </div>
+          ) : null}
+
+          {mentionedMemberIds.map((memberId) => {
+            const member = members.find(
+              (item) => item.id === memberId,
+            );
+
+            if (!member) {
+              return null;
+            }
+
+            return (
+              <span
+                key={member.id}
+                className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700"
+              >
+                @{member.full_name}
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
 
       {open ? (
-        <div className="absolute bottom-full left-0 z-50 mb-2 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+        <div
+          ref={popoverRef}
+          className={`absolute z-50 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl ${
+            compact
+              ? "bottom-[calc(100%+10px)] left-0"
+              : "bottom-full left-0 mb-2"
+          }`}
+        >
           <div className="border-b border-slate-100 p-2">
             <input
               value={search}
               onChange={(event) =>
                 setSearch(event.target.value)
               }
-              placeholder="Search team member..."
+              placeholder={t("Search team member...", "ស្វែងរកសមាជិកក្រុម...")}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500"
               autoFocus
             />
@@ -233,10 +309,10 @@ export function MentionComposer({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block font-semibold">
-                  everyone
+                  {t("everyone", "គ្រប់គ្នា")}
                 </span>
                 <span className="block text-xs text-slate-400">
-                  Notify all active team members
+                  {t("Notify all active team members", "ជូនដំណឹងដល់សមាជិកក្រុមដែលកំពុងប្រើទាំងអស់")}
                 </span>
               </span>
               {mentionEveryone ? (
@@ -275,7 +351,13 @@ export function MentionComposer({
                       {member.full_name}
                     </span>
                     <span className="block truncate text-xs capitalize text-slate-400">
-                      {member.role ?? "team member"}
+                      {isKhmer
+                        ? (member.role?.toLowerCase() === "owner"
+                            ? "ម្ចាស់"
+                            : member.role?.toLowerCase() === "agent"
+                              ? "ភ្នាក់ងារ"
+                              : "សមាជិកក្រុម")
+                        : (member.role ?? "team member")}
                     </span>
                   </span>
 
@@ -293,7 +375,7 @@ export function MentionComposer({
               onClick={() => setOpen(false)}
               className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100"
             >
-              Done
+              {t("Done", "រួចរាល់")}
             </button>
           </div>
         </div>

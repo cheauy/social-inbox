@@ -14,12 +14,15 @@ import Script from "next/script";
 import { useSearchParams } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
+import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 
 import {
   UsageManagementModal,
 } from "@/components/subscription/usage-management-modal";
 import {
   SubscriptionMembershipList,
+  isWorkspaceSubscriptionExpired,
+  sameSubscriptionRenewalUrl,
   type WorkspaceItem,
 } from "@/components/subscription/subscription-membership-list";
 import {
@@ -124,6 +127,7 @@ type PendingPlanChange = {
 type PlanChangeState = {
   mode: PlanChangeMode;
   canManage: boolean;
+  isOwner: boolean;
   currentPlan: PlanCode | null;
   currentRank: number;
   usage: {
@@ -149,7 +153,7 @@ declare global {
   }
 }
 
-function formatDate(value: string | null) {
+function formatDate(value: string | null, isKhmer = false) {
   if (!value) {
     return "—";
   }
@@ -160,7 +164,7 @@ function formatDate(value: string | null) {
     return "—";
   }
 
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat(isKhmer ? "km-KH" : "en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -195,7 +199,7 @@ function getPlanAction(
   state: PlanChangeState | null,
   planCode: PlanCode,
 ): PlanAction {
-  if (!state || !state.canManage) {
+  if (!state) {
     return "blocked";
   }
 
@@ -210,6 +214,10 @@ function getPlanAction(
   }
 
   if (state.mode === "subscribe" || !state.currentPlan) {
+    // Reactivating/replacing a preserved workspace is Owner-only. Team
+    // members can always use Buy new subscription to create their own.
+    if (!state.isOwner) return "blocked";
+
     return state.usage.members <= targetPlan.users &&
       state.usage.channels <= targetPlan.channels
       ? "subscribe"
@@ -224,9 +232,13 @@ function getPlanAction(
   }
 
   if (targetRank < currentRank) {
-    // TENH no longer downgrades an active subscription in place.
-    // Choosing a smaller package creates another independent subscription ID.
+    // This does NOT change the joined workspace. It opens Buy New, which
+    // creates a separate workspace owned by the buyer.
     return "buy-new";
+  }
+
+  if (!state.canManage) {
+    return "blocked";
   }
 
   return state.usage.members <= targetPlan.users &&
@@ -385,7 +397,37 @@ function UsersIcon({
   );
 }
 
+
+function usagePercent(used: number, limit: number) {
+  if (!Number.isFinite(limit) || limit <= 0) return 0;
+  return Math.min(100, Math.max(0, Math.round((used / limit) * 100)));
+}
+
+function daysUntil(value: string | null) {
+  if (!value) return null;
+  const target = new Date(value).getTime();
+  if (!Number.isFinite(target)) return null;
+  const days = Math.ceil((target - Date.now()) / 86_400_000);
+  return days >= 0 ? days : null;
+}
+
 export function SubscriptionView() {
+  const languageId = useWorkspaceLanguageId();
+  const isKhmer = languageId === "km";
+  const t = (en: string, km: string) => (isKhmer ? km : en);
+
+  function statusText(status: string) {
+    if (!isKhmer) return status;
+    switch (status) {
+      case "active": return "សកម្ម";
+      case "trialing": return "កំពុងសាកល្បង";
+      case "past_due": return "ហួសកាលកំណត់បង់ប្រាក់";
+      case "expired": return "ផុតកំណត់";
+      case "cancelled": return "បានលុបចោល";
+      case "suspended": return "បានផ្អាក";
+      default: return status;
+    }
+  }
   const searchParams = useSearchParams();
   const [selectedListItem, setSelectedListItem] =
     useState<WorkspaceItem | null>(null);
@@ -402,8 +444,6 @@ export function SubscriptionView() {
     channels: 0,
   });
   const [modalOpen, setModalOpen] =
-    useState(false);
-  const [upgradeSwitching, setUpgradeSwitching] =
     useState(false);
   const [usageManagerOpen, setUsageManagerOpen] =
     useState(false);
@@ -469,6 +509,7 @@ export function SubscriptionView() {
           error?: string;
           mode?: PlanChangeMode;
           canManage?: boolean;
+          isOwner?: boolean;
           currentPlan?: PlanCode | null;
           currentRank?: number;
           usage?: { members: number; channels: number };
@@ -485,6 +526,7 @@ export function SubscriptionView() {
         setPlanChangeState({
           mode: result.mode,
           canManage: result.canManage === true,
+          isOwner: result.isOwner === true,
           currentPlan: result.currentPlan ?? null,
           currentRank: result.currentRank ?? 0,
           usage: result.usage ?? { members: 0, channels: 0 },
@@ -945,59 +987,23 @@ export function SubscriptionView() {
     setModalOpen(true);
   }
 
-  async function openUpgradeForSelectedSubscription() {
-    if (upgradeSwitching || !selectedListItem) return;
+  function openUpgradeForSelectedSubscription() {
+    if (!selectedListItem) return;
 
     if (
-      selectedListItem.role !== "owner" ||
+      selectedListItem.canManageBilling !== true ||
       selectedListItem.subscription?.status !== "active"
     ) {
       return;
     }
 
-    // Current workspace already targets the correct subscription, so open
-    // the floating Custom Upgrade modal immediately with no navigation.
-    if (selectedListItemIsCurrent) {
-      setModalOpen(true);
-      return;
-    }
-
-    // For another owned subscription, billing APIs still resolve the active
-    // business from the authenticated workspace context. Switch that target
-    // silently, then open the modal in-place. Do NOT reload or navigate the
-    // Subscription page. The row selection itself remains local-only.
-    setUpgradeSwitching(true);
+    // Do not switch TENH's active workspace just to preview an upgrade.
+    // The modal, quote API, payment page, and checkout now carry the exact
+    // target business ID. Cancelling an upgrade therefore leaves the
+    // customer's current workspace untouched and cannot reuse another
+    // subscription's old quote/price.
     setError(null);
-
-    try {
-      const response = await fetch("/api/workspaces/switch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ businessId: selectedListItem.businessId }),
-      });
-
-      const result = (await response.json()) as {
-        success?: boolean;
-        error?: string;
-      };
-
-      if (!response.ok || !result.success) {
-        throw new Error(
-          result.error ??
-            "Unable to select this subscription for upgrade.",
-        );
-      }
-
-      setModalOpen(true);
-    } catch (upgradeError) {
-      setError(
-        upgradeError instanceof Error
-          ? upgradeError.message
-          : "Unable to open this subscription upgrade.",
-      );
-    } finally {
-      setUpgradeSwitching(false);
-    }
+    setModalOpen(true);
   }
 
   function continueSelectedPlan() {
@@ -1360,9 +1366,9 @@ export function SubscriptionView() {
   }
 
   const currentPlanLabel = isTrialPlan
-    ? "Free Trial"
+    ? t("Free Trial", "សាកល្បងឥតគិតថ្លៃ")
     : subscription?.plan_code === "custom"
-      ? "Custom"
+      ? t("Custom", "ផ្ទាល់ខ្លួន")
       : plans.find((plan) => plan.id === subscription?.plan_code)?.name ??
         (subscription?.plan_code
           ? subscription.plan_code
@@ -1371,9 +1377,18 @@ export function SubscriptionView() {
           : "—");
 
   const selectedListSubscription = selectedListItem?.subscription ?? null;
+  const selectedListExpired = selectedListItem
+    ? isWorkspaceSubscriptionExpired(selectedListItem)
+    : false;
+  const selectedListRenewalUrl = selectedListItem
+    ? sameSubscriptionRenewalUrl(selectedListItem)
+    : null;
+  const selectedListEffectiveStatus = selectedListExpired
+    ? "expired"
+    : selectedListSubscription?.status ?? "";
   const selectedListPlanLabel = selectedListSubscription
     ? selectedListSubscription.plan_code === "custom"
-      ? "Custom"
+      ? t("Custom", "ផ្ទាល់ខ្លួន")
       : plans.find((plan) => plan.id === selectedListSubscription.plan_code)?.name ??
         selectedListSubscription.plan_code
           .charAt(0)
@@ -1384,9 +1399,29 @@ export function SubscriptionView() {
     : selectedListItem
       ? selectedListItem.businessId.slice(0, 8).toUpperCase()
       : null;
+  const selectedConnectionPercent = selectedListSubscription && selectedListItem
+    ? usagePercent(
+        selectedListItem.usage.channels,
+        selectedListSubscription.channel_limit,
+      )
+    : 0;
+  const selectedMemberPercent = selectedListSubscription && selectedListItem
+    ? usagePercent(
+        selectedListItem.usage.members,
+        selectedListSubscription.member_limit,
+      )
+    : 0;
+  const selectedDaysLeft = daysUntil(
+    selectedListSubscription?.current_period_end ?? null,
+  );
+  const selectedCycleLabel = selectedListSubscription?.billing_cycle
+    ? selectedListSubscription.billing_cycle
+        .replaceAll("_", " ")
+        .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    : "—";
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-5 py-7 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-[1500px] px-5 py-6 sm:px-6 lg:px-8">
       <Script
         id="tenh-payway-classic-bridge"
         strategy="afterInteractive"
@@ -1441,13 +1476,16 @@ export function SubscriptionView() {
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">
-            Billing & workspace
+            {t("Billing & workspace", "ការទូទាត់ និងកន្លែងធ្វើការ")}
           </p>
           <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-            Subscription
+            {t("Subscription", "ការជាវ")}
           </h1>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            Manage your TENH Chat prepaid plan, workspace capacity, billing period, renewal, and channel access.
+            {t(
+              "Manage your TENH Chat prepaid plan, workspace capacity, billing period, renewal, and channel access.",
+              "គ្រប់គ្រងគម្រោងបង់ប្រាក់ជាមុនរបស់ TENH Chat សមត្ថភាពកន្លែងធ្វើការ រយៈពេលទូទាត់ ការបន្ត និងការចូលប្រើឆានែល។",
+            )}
           </p>
         </div>
 
@@ -1457,7 +1495,7 @@ export function SubscriptionView() {
             className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
           >
             <CardIcon className="h-4 w-4" />
-            Billing history
+            {t("Billing history", "ប្រវត្តិការទូទាត់")}
           </Link>
 
           <Link
@@ -1465,7 +1503,7 @@ export function SubscriptionView() {
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
           >
             <PlanIcon className="h-4 w-4" />
-            Buy new subscription
+            {t("Buy new subscription", "ទិញការជាវថ្មី")}
           </Link>
         </div>
       </div>
@@ -1478,27 +1516,31 @@ export function SubscriptionView() {
 
       {payWayReturnState === "approved" ? (
         <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm font-medium text-emerald-800">
-          Payment verified successfully{payWayReturnTransaction ? ` · Transaction ${payWayReturnTransaction}` : ""}. Your TENH workspace subscription is active.
+          {t("Payment verified successfully", "បានផ្ទៀងផ្ទាត់ការទូទាត់ដោយជោគជ័យ")}{payWayReturnTransaction ? ` · ${t("Transaction", "ប្រតិបត្តិការ")} ${payWayReturnTransaction}` : ""}. {t("Your TENH workspace subscription is active.", "ការជាវកន្លែងធ្វើការ TENH របស់អ្នកសកម្មហើយ។")}
         </div>
       ) : payWayReturnState === "cancelled" ? (
         <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-          ABA PayWay checkout was cancelled. No TENH plan change has been applied.
+          {t("ABA PayWay checkout was cancelled and the pending transaction was closed. No TENH plan change has been applied.", "ការទូទាត់ ABA PayWay ត្រូវបានលុបចោល ហើយប្រតិបត្តិការដែលកំពុងរង់ចាំត្រូវបានបិទ។ មិនមានការផ្លាស់ប្តូរគម្រោង TENH ត្រូវបានអនុវត្តទេ។")}
+        </div>
+      ) : payWayReturnState === "cancel_failed" ? (
+        <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">
+          {t("TENH could not confirm that ABA closed the pending transaction. No subscription change was applied. Please check the transaction before starting another payment.", "TENH មិនអាចបញ្ជាក់ថា ABA បានបិទប្រតិបត្តិការដែលកំពុងរង់ចាំបានទេ។ មិនមានការផ្លាស់ប្តូរការជាវត្រូវបានអនុវត្តទេ។ សូមពិនិត្យប្រតិបត្តិការមុនពេលចាប់ផ្តើមការទូទាត់ថ្មី។")}
         </div>
       ) : payWayReturnState === "returned" ? (
         <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-800">
-          Returned from ABA PayWay{payWayReturnTransaction ? ` · Transaction ${payWayReturnTransaction}` : ""}. TENH is verifying the payment with PayWay before changing workspace access.
+          {t("Returned from ABA PayWay", "បានត្រឡប់ពី ABA PayWay")}{payWayReturnTransaction ? ` · ${t("Transaction", "ប្រតិបត្តិការ")} ${payWayReturnTransaction}` : ""}. {t("TENH is verifying the payment with PayWay before changing workspace access.", "TENH កំពុងផ្ទៀងផ្ទាត់ការទូទាត់ជាមួយ PayWay មុនពេលផ្លាស់ប្តូរសិទ្ធិចូលប្រើកន្លែងធ្វើការ។")}
         </div>
       ) : null}
 
       {manualReturnState === "approved" ? (
         <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm font-medium text-emerald-800">
-          Manual payment approved. Your TENH workspace subscription is active.
+          {t("Manual payment approved. Your TENH workspace subscription is active.", "ការទូទាត់ដោយដៃត្រូវបានអនុម័ត។ ការជាវកន្លែងធ្វើការ TENH របស់អ្នកសកម្មហើយ។")}
         </div>
       ) : null}
 
       {blockedPlanChangeMessage(planChangeBlockedReason) ? (
         <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-          <p className="font-bold text-amber-900">Payment path blocked</p>
+          <p className="font-bold text-amber-900">{t("Payment path blocked", "ផ្លូវបង់ប្រាក់ត្រូវបានរារាំង")}</p>
           <p className="mt-1 leading-6">
             {blockedPlanChangeMessage(planChangeBlockedReason)}
           </p>
@@ -1517,7 +1559,7 @@ export function SubscriptionView() {
         </div>
       ) : null}
 
-      <div className="mt-7 grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+      <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_430px] xl:items-start">
         <div className="space-y-6">
           <SubscriptionMembershipList
             onSelectSubscription={(item, isCurrent) => {
@@ -1528,159 +1570,216 @@ export function SubscriptionView() {
             }}
           />
 
-          {planChangeState && !planChangeState.canManage ? (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-              You can view subscription details, but only the subscription Owner can manage billing or purchase changes for this subscription.
-            </div>
-          ) : null}
 
           {planChangeState?.mode === "suspended" ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              Self-service plan changes are disabled while this subscription is suspended. Contact TENH support.
+              {t("Self-service plan changes are disabled while this subscription is suspended. Contact TENH support.", "ការផ្លាស់ប្តូរគម្រោងដោយខ្លួនឯងត្រូវបានបិទ ខណៈការជាវនេះត្រូវបានផ្អាក។ សូមទាក់ទងជំនួយ TENH។")}
             </div>
           ) : null}
         </div>
 
-        <aside className="lg:sticky lg:top-6">
+        <aside className="space-y-4 xl:sticky xl:top-5">
+          {((selectedListItem &&
+              selectedListItem.role !== "owner" &&
+              selectedListItem.canManageBilling !== true) ||
+            (!selectedListItem &&
+              planChangeState &&
+              !planChangeState.isOwner &&
+              !planChangeState.canManage)) ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+              {t(
+                "Only an Owner can change subscription access, Owner permissions, or channel capacity. You can still review the current settings.",
+                "មានតែម្ចាស់ប៉ុណ្ណោះដែលអាចផ្លាស់ប្តូរសិទ្ធិចូលការជាវ សិទ្ធិម្ចាស់ ឬចំណុះឆានែល។ អ្នកនៅតែអាចពិនិត្យការកំណត់បច្ចុប្បន្នបាន។",
+              )}
+            </div>
+          ) : null}
+
           {!selectedListItem ? (
-            <section className="rounded-[26px] border border-slate-200 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.06)]">
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">
-                Subscription information
-              </p>
-              <h2 className="mt-2 text-xl font-bold text-slate-950">
-                Select a subscription
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                Choose a subscription from the list to view its plan, expiry date, connected channels, and team usage.
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="border-l-2 border-blue-500 pl-3">
+                <p className="text-sm font-bold text-slate-950">
+                  {t("Subscription information", "ព័ត៌មានការជាវ")}
+                </p>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-slate-500">
+                {t(
+                  "Select a subscription from the list to view its plan, expiry date, connected channels, team usage, and available actions.",
+                  "ជ្រើសរើសការជាវពីបញ្ជី ដើម្បីមើលគម្រោង កាលបរិច្ឆេទផុតកំណត់ ឆានែលដែលបានភ្ជាប់ ការប្រើប្រាស់ក្រុម និងសកម្មភាពដែលអាចប្រើបាន។",
+                )}
               </p>
             </section>
           ) : selectedListSubscription ? (
-            <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.06)]">
-              <div className="border-b border-slate-200 bg-slate-50/70 px-5 py-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">
-                      Subscription information
-                    </p>
-                    <h2 className="mt-1 text-xl font-bold text-slate-950">
-                      {selectedListShortId ? `Subscription #${selectedListShortId}` : "Subscription"}
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="border-l-2 border-blue-500 pl-3">
+                <p className="text-sm font-bold text-slate-950">
+                  {t("Subscription information", "ព័ត៌មានការជាវ")}
+                </p>
+              </div>
+
+              <div className="mt-5 flex items-center gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-lg font-black text-white shadow-sm">
+                  {selectedListShortId?.slice(0, 2) ?? "—"}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="truncate text-lg font-bold text-slate-950">
+                      {selectedListShortId
+                        ? `${t("Subscription", "ការជាវ")} #${selectedListShortId}`
+                        : t("Subscription", "ការជាវ")}
                     </h2>
+                    <span
+                      className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold capitalize ${getStatusClasses(
+                        selectedListEffectiveStatus,
+                      )}`}
+                    >
+                      {statusText(selectedListEffectiveStatus)}
+                    </span>
                   </div>
-                  <span
-                    className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold capitalize ${getStatusClasses(
-                      selectedListSubscription.status,
-                    )}`}
-                  >
-                    {selectedListSubscription.status}
-                  </span>
+                  <p className="mt-1 truncate text-xs text-slate-500">
+                    {selectedListItem.businessName}
+                  </p>
                 </div>
               </div>
 
-              <div className="space-y-4 p-5">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white">
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white">
                       <PlanIcon className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="text-[10px] font-medium text-slate-500">{t("Plan", "គម្រោង")}</p>
+                      <p className="mt-0.5 text-sm font-bold text-slate-950">
+                        {selectedListPlanLabel}
+                      </p>
                     </div>
-                    <p className="mt-3 text-xs font-medium text-slate-500">Plan</p>
-                    <p className="mt-1 font-bold text-slate-950">{selectedListPlanLabel}</p>
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white">
-                      <CalendarIcon className="h-4 w-4" />
-                    </div>
-                    <p className="mt-3 text-xs font-medium text-slate-500">
-                      {selectedListSubscription.status === "cancelled"
-                        ? "Payment"
-                        : selectedListSubscription.status === "expired"
-                          ? "Expired on"
-                          : selectedListSubscription.status === "trialing"
-                            ? "Trial ends"
-                            : "Expires on"}
-                    </p>
-                    <p className="mt-1 font-bold text-slate-950">
-                      {selectedListSubscription.status === "cancelled"
-                        ? "Cancelled"
-                        : formatDate(selectedListSubscription.current_period_end)}
-                    </p>
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 p-4">
-                  <div className="flex items-center justify-between gap-3">
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white">
+                      <CalendarIcon className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-medium text-slate-500">
+                        {selectedListExpired
+                          ? t("Expired on", "បានផុតកំណត់នៅ")
+                          : t("Expires on", "ផុតកំណត់នៅ")}
+                      </p>
+                      <p className="mt-0.5 truncate text-sm font-bold text-slate-950">
+                        {formatDate(selectedListSubscription.current_period_end, isKhmer)}
+                      </p>
+                      {selectedDaysLeft !== null ? (
+                        <p className="mt-0.5 text-[9px] text-slate-400">
+                          {isKhmer
+                            ? `នៅសល់ ${selectedDaysLeft} ថ្ងៃ`
+                            : `in ${selectedDaysLeft} days`}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
-                        <ChannelIcon className="h-5 w-5" />
-                      </div>
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                        <ChannelIcon className="h-4 w-4" />
+                      </span>
                       <div>
-                        <p className="text-sm font-semibold text-slate-900">Connected channels</p>
-                        <p className="text-xs text-slate-500">Your Social</p>
+                        <p className="text-xs font-semibold text-slate-900">
+                          {t("Connected channels", "ឆានែលដែលបានភ្ជាប់")}
+                        </p>
+                        <p className="text-[10px] text-slate-400">{t("Your Social", "បណ្តាញសង្គមរបស់អ្នក")}</p>
                       </div>
                     </div>
-                    <span className="shrink-0 text-lg font-bold text-slate-950">
+                    <span className="text-sm font-bold text-slate-950">
                       {selectedListItem.usage.channels} / {selectedListSubscription.channel_limit}
                     </span>
                   </div>
-                  {selectedListItemIsCurrent ? (
-                    <button
-                      type="button"
-                      onClick={() => openUsageManager("connections")}
-                      className="mt-3 text-xs font-bold text-blue-700 hover:underline"
-                    >
-                      Manage channels
-                    </button>
-                  ) : null}
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full bg-blue-600"
+                      style={{ width: `${selectedConnectionPercent}%` }}
+                    />
+                  </div>
+                  <div className="mt-1 flex justify-end text-[9px] text-slate-400">
+                    {selectedConnectionPercent}%
+                  </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 p-4">
-                  <div className="flex items-center justify-between gap-3">
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
-                        <UsersIcon className="h-5 w-5" />
-                      </div>
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                        <UsersIcon className="h-4 w-4" />
+                      </span>
                       <div>
-                        <p className="text-sm font-semibold text-slate-900">Active team members</p>
-                        <p className="text-xs text-slate-500">Owner + Agents</p>
+                        <p className="text-xs font-semibold text-slate-900">
+                          {t("Active team members", "សមាជិកក្រុមកំពុងប្រើ")}
+                        </p>
+                        <p className="text-[10px] text-slate-400">{t("Owner + Agents", "ម្ចាស់ + ភ្នាក់ងារ")}</p>
                       </div>
                     </div>
-                    <span className="shrink-0 text-lg font-bold text-slate-950">
+                    <span className="text-sm font-bold text-slate-950">
                       {selectedListItem.usage.members} / {selectedListSubscription.member_limit}
                     </span>
                   </div>
-                  {selectedListItemIsCurrent ? (
-                    <button
-                      type="button"
-                      onClick={() => openUsageManager("members")}
-                      className="mt-3 text-xs font-bold text-blue-700 hover:underline"
-                    >
-                      Manage users
-                    </button>
-                  ) : null}
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full bg-blue-600"
+                      style={{ width: `${selectedMemberPercent}%` }}
+                    />
+                  </div>
+                  <div className="mt-1 flex justify-end text-[9px] text-slate-400">
+                    {selectedMemberPercent}%
+                  </div>
                 </div>
+              </div>
 
-                {selectedListItem.role === "owner" &&
-                selectedListSubscription.status === "active" ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void openUpgradeForSelectedSubscription();
-                    }}
-                    disabled={upgradeSwitching}
-                    className="w-full rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 transition hover:bg-blue-100 disabled:cursor-wait disabled:opacity-60"
-                  >
-                    Upgrade plan
-                  </button>
-                ) : null}
+             
+              {selectedListItem.role === "owner" && selectedListRenewalUrl ? (
+                <button
+                  type="button"
+                  onClick={() => window.location.assign(selectedListRenewalUrl)}
+                  className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"
+                >
+                  {t("Reactivate subscription", "ធ្វើឲ្យការជាវសកម្មឡើងវិញ")}
+                </button>
+              ) : selectedListItem.canManageBilling &&
+                selectedListSubscription.status === "active" &&
+                !selectedListExpired ? (
+                <button
+                  type="button"
+                  onClick={openUpgradeForSelectedSubscription}
+                  className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"
+                >
+                  {t("Upgrade plan", "ដំឡើងគម្រោង")}
+                </button>
+              ) : null}
+
+              <div className="mt-4 flex gap-2 border-t border-slate-100 pt-4 text-[10px] leading-4 text-slate-500">
+                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-slate-300 text-[9px]">
+                  i
+                </span>
+                <p>
+                  {t(
+                    "When reactivating an expired subscription, TENH keeps the existing subscription history and related workspace records.",
+                    "នៅពេលធ្វើឲ្យការជាវដែលផុតកំណត់សកម្មឡើងវិញ TENH នឹងរក្សាប្រវត្តិការជាវដែលមានស្រាប់ និងកំណត់ត្រាកន្លែងធ្វើការដែលពាក់ព័ន្ធ។",
+                  )}
+                </p>
               </div>
             </section>
           ) : (
-            <div className="rounded-[26px] border border-amber-200 bg-amber-50 p-6">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
               <h2 className="font-bold text-amber-900">
-                No subscription information
+                {t("No subscription information", "គ្មានព័ត៌មានការជាវ")}
               </h2>
               <p className="mt-2 text-sm leading-6 text-amber-800">
-                This subscription does not have a managed billing record available.
+                {t("This subscription does not have a managed billing record available.", "ការជាវនេះមិនមានកំណត់ត្រាការទូទាត់ដែលអាចគ្រប់គ្រងបានទេ។")}
               </p>
             </div>
           )}
@@ -1695,7 +1794,9 @@ export function SubscriptionView() {
       />
 
       <CustomUpgradeModal
+        key={selectedListItem?.businessId ?? "current-subscription-upgrade"}
         open={modalOpen}
+        targetBusinessId={selectedListItem?.businessId ?? null}
         currentConnections={
           selectedListSubscription?.channel_limit ??
           subscription?.channel_limit ??

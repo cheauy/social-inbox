@@ -6,6 +6,8 @@ import {
   useState,
 } from "react";
 
+import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
+
 type ActivityType =
   | "status_changed"
   | "assigned"
@@ -335,6 +337,9 @@ function ActivityMetadata({
 }
 
 export function SettingsHistoryView() {
+  const languageId = useWorkspaceLanguageId();
+  const isKhmer = languageId === "km";
+  const t = (en: string, km: string) => (isKhmer ? km : en);
   const [activities, setActivities] =
     useState<ActivityRecord[]>([]);
 
@@ -540,29 +545,31 @@ function changeActivityType(
   setHasMore(false);
 }
 return (
-<div className="min-h-screen bg-slate-100">    
-    <div className="w-full space-y-4 p-4">
-     {/* Fixed page header */}
-      <div className="shrink-0 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-bold text-slate-950">
-          History
+  <div className="min-h-screen bg-slate-100">
+    <div className="mx-auto w-full max-w-[1500px] space-y-5 px-[clamp(18px,4vw,72px)] pt-[clamp(18px,4vh,56px)] pb-10">
+      <header>
+        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-blue-600">
+          {t("Workspace activity", "សកម្មភាពកន្លែងធ្វើការ")}
+        </p>
+
+        <h1 className="mt-2 text-[30px] font-extrabold tracking-[-0.035em] text-slate-950 sm:text-[34px]">
+          {t("Activity history", "ប្រវត្តិសកម្មភាព")}
         </h1>
 
-        <p className="mt-2 text-sm text-slate-500">
-          Review recent changes and activity logs across your workspace.
+        <p className="mt-1.5 text-sm leading-6 text-slate-600">
+          {t("Review recent changes and activity logs across your workspace.", "ពិនិត្យមើលការផ្លាស់ប្តូរថ្មីៗ និងកំណត់ហេតុសកម្មភាពនៅទូទាំងកន្លែងធ្វើការរបស់អ្នក។")}
         </p>
-      </div>
+      </header>
 
-      {/* Main activity card */}
-<div className="mt-4 flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">        {/* Fixed toolbar */}
-        <div className="flex shrink-0 flex-col gap-4 border-b border-slate-200 p-5 lg:flex-row lg:items-center lg:justify-between">
+      <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_8px_28px_rgba(15,23,42,0.05)] sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="font-bold text-slate-950">
-              Workspace activity
+            <h2 className="text-lg font-bold text-slate-950">
+              {t("Workspace activity", "សកម្មភាពកន្លែងធ្វើការ")}
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              {total} recorded activities
+              {total} {t("recorded activities", "សកម្មភាពដែលបានកត់ត្រា")}
             </p>
           </div>
 
@@ -574,8 +581,8 @@ return (
                 setSearch(event.target.value);
                 setPage(1);
               }}
-              placeholder="Search actor, customer or action..."
-              className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:w-72"
+              placeholder={t("Search actor, customer or action...", "ស្វែងរកអ្នកធ្វើសកម្មភាព អតិថិជន ឬសកម្មភាព...")}
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:w-72"
             />
 
             <select
@@ -587,165 +594,234 @@ return (
                     | ActivityType,
                 )
               }
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
             >
               {filters.map((filter) => (
                 <option
                   key={filter.value}
                   value={filter.value}
                 >
-                  {filter.label}
+                  {isKhmer ? ({ all: "សកម្មភាពទាំងអស់", status_changed: "ស្ថានភាព", assigned: "បានចាត់តាំង", unassigned: "បានដកការចាត់តាំង", tag_added: "បានបន្ថែមស្លាក", tag_removed: "បានដកស្លាក", note_added: "បានបន្ថែមចំណាំ", note_updated: "បានកែប្រែចំណាំ", note_deleted: "បានលុបចំណាំ", customer_updated: "បានកែប្រែអតិថិជន" } as const)[filter.value] : filter.label}
                 </option>
               ))}
             </select>
           </div>
         </div>
+      </section>
 
-        {/* Scrollable content */}
-<div className="divide-y divide-slate-100">  
-            {loading ? (
-            <div className="flex min-h-full items-center justify-center p-8">
-              <div className="flex items-center gap-3 text-sm text-slate-500">
-                <span className="h-5 w-5 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
-
-                Loading history...
-              </div>
-            </div>
-          ) : error ? (
-            <div className="p-6">
-              <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                {error}
-              </div>
-            </div>
-          ) : activities.length === 0 ? (
-            <div className="flex min-h-full flex-col items-center justify-center p-8 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-2xl text-slate-500">
-                ◷
-              </div>
-
-              <h3 className="mt-4 font-bold text-slate-900">
-                No history found
-              </h3>
-
-              <p className="mt-2 max-w-sm text-sm text-slate-500">
-                Activity records will appear here when team members update conversations and customers.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-  {activities.map(
-    (activity) => {
-      const style =
-        getActivityStyle(
-          activity.activity_type,
-        );
-
-      return (
-        <article
-          key={activity.id}
-          className="flex gap-3 px-4 py-3 transition hover:bg-slate-50"
-        >
-          <div
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${style.iconClass}`}
-          >
-            {style.icon}
+      {loading ? (
+        <section className="rounded-[22px] border border-slate-200 bg-white p-10 shadow-sm">
+          <div className="flex items-center justify-center gap-3 text-sm text-slate-500">
+            <span className="h-5 w-5 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
+            {t("Loading history...", "កំពុងផ្ទុកប្រវត្តិ...")}
+          </div>
+        </section>
+      ) : error ? (
+        <section className="rounded-[22px] border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+          {error}
+        </section>
+      ) : activities.length === 0 ? (
+        <section className="rounded-[22px] border border-slate-200 bg-white p-10 text-center shadow-sm">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-2xl text-slate-500">
+            ◷
           </div>
 
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-semibold text-slate-950">
-                    {
-                      activity.actor_name
-                    }
-                  </p>
+          <h3 className="mt-4 font-bold text-slate-900">
+            {t("No history found", "រកមិនឃើញប្រវត្តិ")}
+          </h3>
 
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${style.badgeClass}`}
-                  >
-                    {style.label}
-                  </span>
-                </div>
+          <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">
+            {t("Activity records will appear here when team members update conversations and customers.", "កំណត់ត្រាសកម្មភាពនឹងបង្ហាញនៅទីនេះ នៅពេលសមាជិកក្រុមកែប្រែការសន្ទនា និងព័ត៌មានអតិថិជន។")}
+          </p>
+        </section>
+      ) : (
+        <section className="relative">
+          <div className="pointer-events-none absolute bottom-4 left-[22px] top-4 hidden w-px bg-slate-200 sm:block" />
 
-                {activity.description ? (
-                  <p className="mt-1 text-sm leading-5 text-slate-600">
-                    {
-                      activity.description
-                    }
-                  </p>
-                ) : null}
-              </div>
+          <div className="space-y-2.5">
+            {activities.map((activity) => {
+              const style = getActivityStyle(
+                activity.activity_type,
+              );
 
-              <time className="shrink-0 text-[11px] text-slate-400">
-                {formatDateTime(
-                  activity.created_at,
-                )}
-              </time>
-            </div>
+              const metadata = activity.metadata;
 
-            <ActivityMetadata
-              activity={activity}
-            />
+              const tagName =
+                (activity.activity_type ===
+                  "tag_added" ||
+                  activity.activity_type ===
+                    "tag_removed") &&
+                metadata &&
+                typeof metadata === "object" &&
+                "tag" in metadata &&
+                metadata.tag &&
+                typeof metadata.tag === "object" &&
+                "name" in metadata.tag &&
+                typeof metadata.tag.name === "string"
+                  ? metadata.tag.name
+                  : null;
 
-            <div className="mt-2 text-xs text-slate-400">
-              Customer:{" "}
-              <strong className="font-medium text-slate-600">
-                {
-                  activity.customer_name
+              const isTagActivity =
+                activity.activity_type ===
+                  "tag_added" ||
+                activity.activity_type ===
+                  "tag_removed";
+
+              const isAssignment =
+                activity.activity_type ===
+                  "assigned" ||
+                activity.activity_type ===
+                  "unassigned";
+
+              return (
+                <article
+                  key={activity.id}
+                  className="relative grid gap-3 rounded-[18px] border border-slate-200 bg-white px-4 py-3.5 shadow-[0_3px_12px_rgba(15,23,42,0.035)] transition hover:border-slate-300 hover:shadow-[0_5px_18px_rgba(15,23,42,0.06)] sm:grid-cols-[52px_minmax(0,1fr)_auto] sm:items-start"
+                >
+                  <div className="relative z-10 flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-white ring-4 ring-slate-100">
+                    {activity.actor_profile_picture_url ? (
+                      <img
+                        src={
+                          activity.actor_profile_picture_url
+                        }
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : isTagActivity ? (
+                      <div className="flex h-full w-full items-center justify-center bg-emerald-50 text-emerald-600">
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          className="h-5 w-5"
+                          aria-hidden="true"
+                        >
+                          <path
+                            d="M20.59 13.41 11 3.83V3H4v7h.83l9.58 9.59a2 2 0 0 0 2.82 0l3.36-3.36a2 2 0 0 0 0-2.82Z"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <circle
+                            cx="8.5"
+                            cy="7.5"
+                            r="1"
+                            fill="currentColor"
+                            stroke="none"
+                          />
+                        </svg>
+                      </div>
+                    ) : isAssignment ? (
+                      <div className="flex h-full w-full items-center justify-center bg-violet-50 text-sm font-bold text-violet-700">
+                        {getInitial(
+                          activity.actor_name,
+                        )}
+                      </div>
+                    ) : (
+                      <div
+                        className={`flex h-full w-full items-center justify-center text-sm font-bold ${style.iconClass}`}
+                      >
+                        {style.icon}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-bold text-slate-950">
+                        {activity.actor_name}
+                      </p>
+
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${style.badgeClass}`}
+                      >
+                        {isKhmer ? ({ status_changed: "ស្ថានភាព", assigned: "បានចាត់តាំង", unassigned: "បានដកការចាត់តាំង", tag_added: "បានបន្ថែមស្លាក", tag_removed: "បានដកស្លាក", note_added: "បានបន្ថែមចំណាំ", note_updated: "បានកែប្រែចំណាំ", note_deleted: "បានលុបចំណាំ", customer_updated: "បានកែប្រែអតិថិជន" } as const)[activity.activity_type] : style.label}
+                      </span>
+                    </div>
+
+                    {activity.description ? (
+                      <p className="mt-1 text-sm leading-5 text-slate-600">
+                        {activity.description}
+                      </p>
+                    ) : null}
+
+                    {!isTagActivity ? (
+                      <ActivityMetadata
+                        activity={activity}
+                      />
+                    ) : null}
+
+                    <p className="mt-1.5 text-xs text-blue-600">
+                      {t("Customer:", "អតិថិជន៖")}{" "}
+                      <span className="font-medium">
+                        {activity.customer_name}
+                      </span>
+                    </p>
+                  </div>
+
+                  <div className="flex min-w-[150px] flex-row items-center justify-between gap-3 sm:flex-col sm:items-end sm:justify-start">
+                    {tagName ? (
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                          tagName.toLowerCase() === "vip"
+                            ? "bg-blue-50 text-blue-600"
+                            : tagName.toLowerCase() === "cod"
+                              ? "bg-orange-50 text-orange-600"
+                              : "bg-emerald-50 text-emerald-700"
+                        }`}
+                      >
+                        {tagName}
+                      </span>
+                    ) : (
+                      <span />
+                    )}
+
+                    <time className="whitespace-nowrap text-[11px] text-slate-400">
+                      {formatDateTime(
+                        activity.created_at,
+                      )}
+                    </time>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3 rounded-[18px] border border-slate-200 bg-white px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-500">
+              {t("Showing", "កំពុងបង្ហាញ")} {activities.length} {t("of", "ក្នុងចំណោម")} {total} {t("activities", "សកម្មភាព")}
+            </p>
+
+            {hasMore ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setPage(
+                    (current) =>
+                      current + 1,
+                  )
                 }
-              </strong>
-            </div>
+                disabled={loadingMore}
+                className="inline-flex min-w-36 items-center justify-center rounded-xl border border-blue-200 bg-white px-5 py-2.5 text-sm font-semibold text-blue-600 transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
+              >
+                {loadingMore ? (
+                  <>
+                    <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
+                    {t("Loading...", "កំពុងផ្ទុក...")}
+                  </>
+                ) : (
+                  t("Load more", "ផ្ទុកបន្ថែម")
+                )}
+              </button>
+            ) : (
+              <span className="text-sm text-slate-400">
+                {t("All activities loaded", "បានផ្ទុកសកម្មភាពទាំងអស់")}
+              </span>
+            )}
           </div>
-        </article>
-      );
-    },
-  )}
-</div>
-          )}
-        </div>
-
-{!loading &&
-!error &&
-activities.length > 0 ? (
-  <div className="flex shrink-0 items-center justify-between border-t border-slate-200 bg-white px-5 py-3">
-    <p className="text-sm text-slate-500">
-      Showing{" "}
-      {activities.length} of{" "}
-      {total} activities
-    </p>
-
-    {hasMore ? (
-      <button
-        type="button"
-        onClick={() =>
-          setPage(
-            (current) =>
-              current + 1,
-          )
-        }
-        disabled={loadingMore}
-        className="inline-flex min-w-36 items-center justify-center rounded-lg border border-blue-200 bg-white px-5 py-2 text-sm font-semibold text-blue-600 transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
-      >
-        {loadingMore ? (
-          <>
-            <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
-
-            Loading...
-          </>
-        ) : (
-          "Load more"
-        )}
-      </button>
-    ) : (
-      <span className="text-sm text-slate-400">
-        All activities loaded
-      </span>
-    )}
-  </div>
-) : null}
-      </div>
+        </section>
+      )}
     </div>
   </div>
-)
+);
 };

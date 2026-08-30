@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   decryptChannelCredential,
   encryptChannelCredential,
 } from "@/lib/channels/channel-token-crypto";
@@ -501,22 +505,16 @@ export async function POST(request: NextRequest) {
 
     // Agents can use Bots already connected to this subscription, but only an
     // Owner may save/replace credentials or reconnect a disconnected Bot.
-    if (currentMember.role !== "owner") {
-      if (existing?.telegram_token_status === "verified") {
-        return NextResponse.json({
-          success: true,
-          alreadyConnected: true,
-          connection: toPublicConnection(existing),
-          message: "This Telegram Bot is already connected to this subscription.",
-        });
-      }
-
-      return jsonError(
-        "Only the subscription Owner can connect or reconnect Telegram Bots. Ask an Owner to connect the Bot or invite you to the correct workspace.",
-        403,
-        "OWNER_REQUIRED",
+    // Was owner-only. The channels permission makes the
+    // Roles & permissions setting meaningful; Owners always pass.
+    if (
+      !(await memberHasPermission(currentMember, "channels", "manage"))
+    ) {
+      return permissionDenied(
+        "You do not have permission to manage channels in this workspace.",
       );
     }
+
 
     const wasVerified = existing?.telegram_token_status === "verified";
     const nextIsActive = wasVerified ? Boolean(existing?.is_active) : true;
@@ -681,13 +679,16 @@ export async function DELETE(request: NextRequest) {
 
   const currentMember = authResult.member;
 
-  if (currentMember.role !== "owner") {
-    return jsonError(
-      "Only the subscription Owner can disconnect Telegram Bots.",
-      403,
-      "OWNER_REQUIRED",
+  // Was owner-only. The channels permission makes the
+  // Roles & permissions setting meaningful; Owners always pass.
+  if (
+    !(await memberHasPermission(currentMember, "channels", "manage"))
+  ) {
+    return permissionDenied(
+      "You do not have permission to manage channels in this workspace.",
     );
   }
+
 
   const connectionId =
     request.nextUrl.searchParams.get("connectionId")?.trim() ?? "";

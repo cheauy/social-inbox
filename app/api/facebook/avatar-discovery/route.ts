@@ -7,6 +7,10 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   discoverFacebookAvatar,
 } from "@/lib/facebook/discover-facebook-avatar";
 import {
@@ -62,6 +66,14 @@ export async function GET(request: NextRequest) {
   }
 
   const currentMember = authResult.member;
+
+  if (
+    !(await memberHasPermission(currentMember, "channels", "view"))
+  ) {
+    return permissionDenied(
+      "You do not have permission to view channels in this workspace.",
+    );
+  }
   const contactId = request.nextUrl.searchParams.get("contactId")?.trim() ?? "";
   const conversationIdInput =
     request.nextUrl.searchParams.get("conversationId")?.trim() ?? "";

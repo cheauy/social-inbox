@@ -29,6 +29,16 @@ export function canManageTeamChat(
   return role === "owner" || role === "admin";
 }
 
+/**
+ * Never send raw Postgres messages to a browser in production — they leak
+ * table, column and constraint names.
+ */
+export function safeDetails(message: string | undefined) {
+  return process.env.NODE_ENV !== "production" && message
+    ? { details: message }
+    : {};
+}
+
 export async function ensureGeneralRoom(
   businessId: string,
 ): Promise<TeamChatRoomRow> {
@@ -146,6 +156,41 @@ export async function getAccessibleRoom(
   return membership ? typedRoom : null;
 }
 
+/**
+ * Who is allowed to receive notifications about this room.
+ *
+ * General implicitly contains every active member. A private room
+ * contains only its membership rows. This is the list that mention
+ * targets MUST be filtered against — a mention notification carries the
+ * message text, so notifying a non-member leaks the private room's
+ * contents to someone who cannot open it.
+ */
+export async function getRoomAudienceMemberIds(
+  room: TeamChatRoomRow,
+): Promise<string[]> {
+  if (room.is_general) {
+    const members = await loadActiveBusinessMembers(
+      room.business_id,
+    );
+
+    return members.map((member) => member.id);
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("team_chat_room_members")
+    .select("member_id")
+    .eq("room_id", room.id)
+    .eq("business_id", room.business_id);
+
+  if (error) {
+    throw new Error(
+      `Unable to load room audience: ${error.message}`,
+    );
+  }
+
+  return (data ?? []).map((row) => row.member_id as string);
+}
+
 export function slugifyRoomName(name: string): string {
   const slug = name
     .trim()
@@ -155,4 +200,147 @@ export function slugifyRoomName(name: string): string {
     .slice(0, 60);
 
   return slug || `group-${Date.now()}`;
+}
+
+
+/* ------------------------------------------------------------------ *
+ * Attachments
+ * ------------------------------------------------------------------ */
+
+export const TEAM_CHAT_BUCKET = "team-chat";
+
+export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25 MB
+
+/**
+ * Allow-list, not a block-list. Anything not named here is rejected,
+ * so a new dangerous type can never slip through by default.
+ */
+const ALLOWED_MIME: Record<string, "image" | "video" | "audio" | "file"> = {
+  "image/png": "image",
+  "image/jpeg": "image",
+  "image/gif": "image",
+  "image/webp": "image",
+  "image/heic": "image",
+  "video/mp4": "video",
+  "video/webm": "video",
+  "video/quicktime": "video",
+  "audio/mpeg": "audio",
+  "audio/mp4": "audio",
+  "audio/webm": "audio",
+  "audio/ogg": "audio",
+  "audio/wav": "audio",
+  "application/pdf": "file",
+  "text/plain": "file",
+  "text/csv": "file",
+  "application/zip": "file",
+  "application/msword": "file",
+  "application/vnd.ms-excel": "file",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+    "file",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "file",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+    "file",
+};
+
+export function classifyAttachment(mimeType: string) {
+  return ALLOWED_MIME[mimeType.toLowerCase()] ?? null;
+}
+
+/**
+ * Strip anything that could escape the storage prefix or confuse a
+ * Content-Disposition header.
+ */
+export function safeFileName(name: string) {
+  const cleaned = name
+    .replace(/[\\/]/g, "-")
+    .replace(/[\u0000-\u001f\u007f"']/g, "")
+    .trim()
+    .slice(0, 120);
+
+  return cleaned || "file";
+}
+
+export type AttachmentRow = {
+  id: string;
+  message_id: string | null;
+  room_id: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  byte_size: number;
+  kind: "image" | "video" | "audio" | "file";
+  width: number | null;
+  height: number | null;
+  created_at: string;
+};
+
+/**
+ * Attach short-lived signed URLs. The bucket is private, so this is the
+ * only way a browser can read a file — and the caller has already been
+ * checked against room membership before we get here.
+ */
+export async function withSignedUrls(
+  rows: AttachmentRow[],
+  expiresInSeconds = 60 * 30,
+) {
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabaseAdmin.storage
+    .from(TEAM_CHAT_BUCKET)
+    .createSignedUrls(
+      rows.map((row) => row.storage_path),
+      expiresInSeconds,
+    );
+
+  if (error) {
+    // A missing URL degrades to "no preview", never to a broken page.
+    return rows.map((row) => ({ ...row, url: null as string | null }));
+  }
+
+  const urlByPath = new Map(
+    (data ?? []).map((entry) => [entry.path, entry.signedUrl]),
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    url: urlByPath.get(row.storage_path) ?? null,
+  }));
+}
+
+export async function loadAttachmentsForMessages(
+  messageIds: string[],
+) {
+  if (messageIds.length === 0) {
+    return new Map<string, Awaited<ReturnType<typeof withSignedUrls>>>();
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("team_chat_attachments")
+    .select("*")
+    .in("message_id", messageIds)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(
+      `Unable to load attachments: ${error.message}`,
+    );
+  }
+
+  const signed = await withSignedUrls((data ?? []) as AttachmentRow[]);
+
+  const byMessage = new Map<string, typeof signed>();
+
+  for (const row of signed) {
+    if (!row.message_id) {
+      continue;
+    }
+
+    const list = byMessage.get(row.message_id) ?? [];
+    list.push(row);
+    byMessage.set(row.message_id, list);
+  }
+
+  return byMessage;
 }

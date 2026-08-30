@@ -8,8 +8,12 @@ import {
 } from "next/server";
 
 import {
-  getCurrentMember,
-} from "@/lib/auth/get-current-member";
+  getInboxConversationAccess,
+} from "@/lib/inbox/get-inbox-resource-access";
+import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
 import {
   decryptChannelCredential,
 } from "@/lib/channels/channel-token-crypto";
@@ -85,24 +89,6 @@ function isSupportedPhotoType(
 export async function POST(
   request: NextRequest,
 ) {
-  const authResult =
-    await getCurrentMember();
-
-  if (!authResult.success) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: authResult.error,
-      },
-      {
-        status: authResult.status,
-      },
-    );
-  }
-
-  const currentMember =
-    authResult.member;
-
   let formData: FormData;
 
   try {
@@ -140,6 +126,26 @@ export async function POST(
           "Conversation ID is required.",
       },
       { status: 400 },
+    );
+  }
+
+  const inboxAccess =
+    await getInboxConversationAccess(conversationId);
+
+  if (!inboxAccess.success) {
+    return NextResponse.json(
+      { success: false, error: inboxAccess.error },
+      { status: inboxAccess.status },
+    );
+  }
+
+  const currentMember = inboxAccess.member;
+
+  if (
+    !(await memberHasPermission(currentMember, "conversations", "manage"))
+  ) {
+    return permissionDenied(
+      "You do not have permission to reply in this workspace.",
     );
   }
 

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 import { ProfileForm } from "@/components/profile/profile-form";
-import { DeleteAccountSection } from "@/components/profile/delete-account-section";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function ProfilePage() {
@@ -54,7 +54,17 @@ export default async function ProfilePage() {
           />
         </div>
 
-        <DeleteAccountSection email={user.email ?? ""} />
+        <p className="mt-6 text-sm text-slate-500">
+          Password, connected sign-in methods and account deletion have moved
+          to{" "}
+          <Link
+            href="/dashboard/settings/security"
+            className="font-semibold text-blue-600 hover:text-blue-700"
+          >
+            Login &amp; security
+          </Link>
+          .
+        </p>
       </div>
     </div>
   );

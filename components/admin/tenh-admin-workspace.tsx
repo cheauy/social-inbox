@@ -9,7 +9,7 @@ import {
 import { AdminBillingAnalytics } from "@/components/admin/admin-billing-analytics";
 import { AdminBillingManagement } from "@/components/admin/admin-billing-management";
 import { AdminChannelHealth } from "@/components/admin/admin-channel-health";
-import { AdminSecurityPanel } from "@/components/admin/admin-security-panel";
+import { AdminSecurityCenter } from "@/components/admin/admin-security-center";
 import { CustomerReportReview } from "@/components/admin/customer-report-review";
 import { SystemAnnouncementAdmin } from "@/components/admin/system-announcement-admin";
 import { ManualPaymentAdmin } from "@/components/billing/manual-payment-admin";
@@ -90,8 +90,8 @@ const tabs: Array<{
   },
   {
     id: "security",
-    label: "Security",
-    description: "Admin identity and two-factor authentication",
+    label: "Security center",
+    description: "Platform security, sessions, RLS, webhooks, and audit logs",
   },
 ];
 
@@ -307,138 +307,59 @@ export function TenhAdminWorkspace({
             </div>
 
             {activeTab === "overview" ? (
-              <div className="space-y-5">
-                <AdminBillingAnalytics />
-
+              <div className="space-y-4">
                 {summaryError ? (
-                  <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                     {summaryError}
                   </div>
                 ) : null}
 
-                <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
-                        Admin attention
-                      </p>
-                      <h2 className="mt-1 text-lg font-bold text-slate-950">
-                        Operations queue
-                      </h2>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Only actionable admin counts are kept here. Historical billing and report totals stay in their dedicated tabs.
-                      </p>
+                {summary.manualSubmitted > 0 ? (
+                  <div className="flex flex-col gap-3 rounded-xl border border-amber-400 bg-amber-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-amber-950">
+                      <span aria-hidden="true">⚠</span>
+                      <span>
+                        {summary.manualSubmitted} manual payment{summary.manualSubmitted === 1 ? "" : "s"} waiting for review
+                      </span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => void loadSummary()}
-                      disabled={summaryLoading}
-                      className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      {summaryLoading ? "Refreshing..." : "Refresh queues"}
-                    </button>
-                  </div>
-
-                  <div className="mt-5 grid gap-3 md:grid-cols-3">
-                    <button
-                      type="button"
                       onClick={() => chooseTab("manual-payments")}
-                      className="relative rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left transition hover:bg-amber-100"
+                      className="self-start rounded-lg border border-amber-500/40 bg-amber-50 px-4 py-2 text-xs font-bold text-amber-950 transition hover:bg-white sm:self-auto"
                     >
-                      {summary.manualSubmitted > 0 ? (
-                        <span className="absolute right-3 top-3 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-black text-white">
-                          {summary.manualSubmitted}
-                        </span>
-                      ) : null}
-                      <p className="pr-8 text-sm font-bold text-amber-950">
-                        Manual payments waiting
-                      </p>
-                      <p className="mt-2 text-3xl font-black text-amber-950">
-                        {summary.manualSubmitted}
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-amber-800/70">
-                        Submitted transfer proofs waiting for approval or rejection
-                      </p>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => chooseTab("customer-reports")}
-                      className="relative rounded-2xl border border-blue-200 bg-blue-50 p-4 text-left transition hover:bg-blue-100"
-                    >
-                      {summary.reportActionable > 0 ? (
-                        <span className="absolute right-3 top-3 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-black text-white">
-                          {summary.reportActionable}
-                        </span>
-                      ) : null}
-                      <p className="pr-8 text-sm font-bold text-blue-950">
-                        Customer reports needing attention
-                      </p>
-                      <p className="mt-2 text-3xl font-black text-blue-950">
-                        {summary.reportActionable}
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-blue-800/70">
-                        {summary.reportsOpen} open · {summary.reportsReviewing} under review
-                      </p>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => chooseTab("announcements")}
-                      className="relative rounded-2xl border border-violet-200 bg-violet-50 p-4 text-left transition hover:bg-violet-100"
-                    >
-                      {summary.activeAnnouncements > 0 ? (
-                        <span className="absolute right-3 top-3 rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-black text-white">
-                          {summary.activeAnnouncements}
-                        </span>
-                      ) : null}
-                      <p className="pr-8 text-sm font-bold text-violet-950">
-                        Active user update alerts
-                      </p>
-                      <p className="mt-2 text-3xl font-black text-violet-950">
-                        {summary.activeAnnouncements}
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-violet-800/70">
-                        TENH announcements currently visible to users
-                      </p>
+                      Review →
                     </button>
                   </div>
-                </section>
+                ) : null}
 
-                <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <button
-                    type="button"
-                    onClick={() => chooseTab("billing")}
-                    className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
-                  >
-                    <p className="font-bold text-slate-950">Billing management</p>
-                    <p className="mt-1 text-sm text-slate-500">Search workspace subscriptions, receipts, transactions, and lifecycle history.</p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => chooseTab("manual-payments")}
-                    className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-amber-200 hover:bg-amber-50"
-                  >
-                    <p className="font-bold text-slate-950">Manual payment review</p>
-                    <p className="mt-1 text-sm text-slate-500">Approve or reject submitted bank-transfer payment proofs.</p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => chooseTab("customer-reports")}
-                    className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
-                  >
-                    <p className="font-bold text-slate-950">Customer reports</p>
-                    <p className="mt-1 text-sm text-slate-500">Review customer-reported conversations and support issues.</p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => chooseTab("security")}
-                    className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-                  >
-                    <p className="font-bold text-slate-950">Admin security</p>
-                    <p className="mt-1 text-sm text-slate-500">Review protected admin identity and MFA requirements.</p>
-                  </button>
-                </section>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                  {summary.reportActionable === 0 && summary.activeAnnouncements === 0 ? (
+                    <span>No customer reports or user alerts open.</span>
+                  ) : (
+                    <>
+                      {summary.reportActionable > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => chooseTab("customer-reports")}
+                          className="font-semibold text-blue-700 hover:underline"
+                        >
+                          {summary.reportActionable} customer report{summary.reportActionable === 1 ? "" : "s"} need attention
+                        </button>
+                      ) : null}
+                      {summary.activeAnnouncements > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => chooseTab("announcements")}
+                          className="font-semibold text-violet-700 hover:underline"
+                        >
+                          {summary.activeAnnouncements} active user alert{summary.activeAnnouncements === 1 ? "" : "s"}
+                        </button>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+
+                <AdminBillingAnalytics />
               </div>
             ) : activeTab === "billing" ? (
               <AdminBillingManagement />
@@ -451,7 +372,7 @@ export function TenhAdminWorkspace({
             ) : activeTab === "channel-health" ? (
               <AdminChannelHealth />
             ) : (
-              <AdminSecurityPanel
+              <AdminSecurityCenter
                 adminMfaRequired={adminMfaRequired}
               />
             )}

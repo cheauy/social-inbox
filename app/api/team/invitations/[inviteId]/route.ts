@@ -9,6 +9,7 @@ import {
   type SubscriptionInvitationRole,
 } from "@/lib/team/subscription-invitations";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { requirePermission } from "@/lib/auth/require-permission";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,14 +55,13 @@ export async function PATCH(
       authResult.code,
     );
   }
+  const permissionGuard =
+    await requirePermission("team_members", "manage");
 
-  if (authResult.member.role !== "owner") {
-    return responseError(
-      "Only an Owner can manage invitations.",
-      403,
-      "OWNER_REQUIRED",
-    );
+  if (!permissionGuard.success) {
+    return permissionGuard.response;
   }
+
 
   const { inviteId } = await context.params;
   const cleanInviteId = inviteId?.trim();
@@ -125,6 +125,14 @@ export async function PATCH(
       "Invitation was not found in this subscription.",
       404,
       "INVITE_NOT_FOUND",
+    );
+  }
+
+  if (invitation.role === "owner" && authResult.member.role !== "owner") {
+    return responseError(
+      "Only an Owner can manage an Owner invitation.",
+      403,
+      "OWNER_REQUIRED",
     );
   }
 

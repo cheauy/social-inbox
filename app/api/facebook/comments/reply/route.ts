@@ -4,17 +4,18 @@ import {
 } from "next/server";
 
 import {
-  getCurrentMember,
-} from "@/lib/auth/get-current-member";
-import {
   isFacebookAccessTokenError,
   refreshFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
 
 import {
   FacebookCommentContextError,
-  loadFacebookCommentActionContext,
+  loadAuthorizedFacebookCommentActionContext,
 } from "../_shared";
 
 export const runtime = "nodejs";
@@ -37,24 +38,6 @@ type GraphReplyResult = {
 export async function POST(
   request: NextRequest,
 ) {
-  const authResult =
-    await getCurrentMember();
-
-  if (!authResult.success) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: authResult.error,
-      },
-      {
-        status: authResult.status,
-      },
-    );
-  }
-
-  const currentMember =
-    authResult.member;
-
   try {
     let body: ReplyBody;
 
@@ -117,12 +100,20 @@ export async function POST(
      * conversation. That was unsafe and could reply through the wrong Page.
      */
     const context =
-      await loadFacebookCommentActionContext({
-        businessId:
-          currentMember.business_id,
+      await loadAuthorizedFacebookCommentActionContext({
         commentId,
         conversationId,
       });
+
+    const currentMember = context.member;
+
+    if (
+      !(await memberHasPermission(currentMember, "conversations", "manage"))
+    ) {
+      return permissionDenied(
+        "You do not have permission to reply in this workspace.",
+      );
+    }
 
     const graphVersion =
       process.env

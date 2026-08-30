@@ -7,6 +7,10 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
+import {
   decryptChannelCredential,
 } from "@/lib/channels/channel-token-crypto";
 import {
@@ -269,6 +273,19 @@ export async function PATCH(
     );
   }
 
+  if (
+    !(await memberHasPermission(
+      authResult.member,
+      "conversations",
+      "manage",
+    ))
+  ) {
+    return jsonError(
+      "You do not have permission to reply in this workspace.",
+      403,
+    );
+  }
+
   const { messageId } =
     await context.params;
 
@@ -497,6 +514,19 @@ export async function DELETE(
     return jsonError(
       authResult.error,
       authResult.status,
+    );
+  }
+
+  if (
+    !(await memberHasPermission(
+      authResult.member,
+      "conversations",
+      "manage",
+    ))
+  ) {
+    return jsonError(
+      "You do not have permission to reply in this workspace.",
+      403,
     );
   }
 

@@ -3,7 +3,7 @@ import {
   NextResponse,
 } from "next/server";
 
-import { getCurrentMember } from "@/lib/auth/get-current-member";
+import { getInboxConversationAccess } from "@/lib/inbox/get-inbox-resource-access";
 import { createConversationActivity } from "@/lib/inbox/create-conversation-activity";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -64,28 +64,6 @@ export async function PATCH(
   request: NextRequest,
   context: RouteContext,
 ) {
-  /*
-   * 1. Authenticate the user and resolve
-   * the matching team member on the server.
-   */
-  const authResult =
-    await getCurrentMember();
-
-  if (!authResult.success) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: authResult.error,
-      },
-      {
-        status: authResult.status,
-      },
-    );
-  }
-
-  const currentMember =
-    authResult.member;
-
   const { conversationId } =
     await context.params;
 
@@ -100,6 +78,18 @@ export async function PATCH(
       },
     );
   }
+
+  const access =
+    await getInboxConversationAccess(conversationId);
+
+  if (!access.success) {
+    return NextResponse.json(
+      { success: false, error: access.error },
+      { status: access.status },
+    );
+  }
+
+  const currentMember = access.member;
 
   /*
    * 2. Parse request body.

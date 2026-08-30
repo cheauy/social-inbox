@@ -3,9 +3,7 @@ import {
   NextResponse,
 } from "next/server";
 
-import {
-  getCurrentMember,
-} from "@/lib/auth/get-current-member";
+import { getInboxContactAccess } from "@/lib/inbox/get-inbox-resource-access";
 import {
   TELEGRAM_AVATAR_BUCKET,
   telegramAvatarStoragePath,
@@ -28,7 +26,7 @@ export async function GET(
   context: RouteContext,
 ) {
   const authResult =
-    await getCurrentMember();
+    await getInboxContactAccess((await context.params).contactId);
 
   if (!authResult.success) {
     return NextResponse.json(

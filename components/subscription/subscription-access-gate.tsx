@@ -78,9 +78,9 @@ function getLockedCopy(
         eyebrow: wasTrial ? "Free trial completed" : "Subscription expired",
         title: wasTrial
           ? "Your 7-day trial has ended"
-          : "Your TENH Chat subscription has expired",
+          : "This subscription is expired",
         message:
-          "Choose Mini, Standard, or Pro and select Monthly, 3 Months, 6 Months, or 1 Year. Access restores only after the new payment is approved.",
+          "Please switch to an active workspace from the workspace switcher in the header, or buy a new subscription to continue.",
         statusLabel: "Expired",
         noticeTitle: "Your workspace is safe",
         noticeText:

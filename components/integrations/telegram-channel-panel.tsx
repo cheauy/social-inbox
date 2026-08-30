@@ -50,7 +50,10 @@ type WebhookResponse = {
   details?: string;
 };
 
-type Props = { onConnectionChanged?: (summary: { active: number; total: number }) => void };
+type Props = {
+  onConnectionChanged?: (summary: { active: number; total: number }) => void;
+  openAddBotSignal?: number;
+};
 
 type Working = "connect" | "activate" | "disable" | "disconnect" | null;
 
@@ -72,11 +75,15 @@ function withConnection(path: string, id: string | null) {
   return `${path}${path.includes("?") ? "&" : "?"}connectionId=${encodeURIComponent(id)}`;
 }
 
-export function TelegramChannelPanel({ onConnectionChanged }: Props) {
+export function TelegramChannelPanel({
+  onConnectionChanged,
+  openAddBotSignal = 0,
+}: Props) {
   const [loading, setLoading] = useState(true);
   const [canManage, setCanManage] = useState(false);
   const [connections, setConnections] = useState<TelegramConnection[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [token, setToken] = useState("");
   const [showAddBot, setShowAddBot] = useState(false);
   const [working, setWorking] = useState<Working>(null);
@@ -142,6 +149,12 @@ export function TelegramChannelPanel({ onConnectionChanged }: Props) {
   }, [loadWebhook, onConnectionChanged]);
 
   useEffect(() => { void loadConnections(); }, [loadConnections]);
+
+  useEffect(() => {
+    if (openAddBotSignal > 0) {
+      setShowAddBot(true);
+    }
+  }, [openAddBotSignal]);
 
   async function selectBot(id: string) {
     setSelectedId(id);
@@ -251,193 +264,381 @@ export function TelegramChannelPanel({ onConnectionChanged }: Props) {
 
 
 
-  return (
-    <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.05)]">
-      <div className="border-b border-slate-200 bg-slate-50/70 px-6 py-5 sm:px-7">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl shadow-sm">
-              <img
-                src="/images/channels/telegram.png"
-                alt="Telegram"
-                className="h-full w-full object-cover"
-                draggable={false}
-              />
-            </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-600">Customer channel</p>
-              <h2 className="mt-1 text-xl font-bold text-slate-950">Telegram Bots</h2>
-              <p className="mt-1 text-xs text-slate-500">Multiple Bots can share one TENH subscription.</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
+  function connectionState(item: TelegramConnection) {
+    const itemSelected = item.id === selected?.id;
+    const webhookStatus = itemSelected
+      ? webhook?.status ?? item.webhookStatus ?? null
+      : item.webhookStatus ?? null;
+    const webhookError = itemSelected
+      ? webhook?.lastError ?? remote?.lastErrorMessage ?? item.lastError ?? null
+      : item.lastError ?? null;
+
+    const hasError =
+      Boolean(webhookError) ||
+      webhookStatus === "error" ||
+      webhookStatus === "failed";
+    const live =
+      item.status === "verified" &&
+      item.isActive &&
+      webhookStatus === "active" &&
+      !hasError;
+    const inboxOff =
+      item.status === "verified" &&
+      item.isActive &&
+      !live &&
+      !hasError;
+    const channelOff = item.status === "verified" && !item.isActive;
+
+    return {
+      webhookStatus,
+      webhookError,
+      hasError,
+      live,
+      inboxOff,
+      channelOff,
+    };
+  }
+
+  function botInitials(item: TelegramConnection) {
+    return (
+      (item.botName ?? item.username ?? "TB")
+        .replace(/[^a-zA-Z0-9 ]/g, " ")
+        .trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map((part) => part.charAt(0).toUpperCase())
+        .join("") || "TB"
+    );
+  }
+
+  function avatarClasses(item: TelegramConnection) {
+    const seed = (item.botName ?? item.username ?? item.id)
+      .split("")
+      .reduce((total, char) => total + char.charCodeAt(0), 0);
+    const choices = [
+      "bg-emerald-100 text-emerald-700",
+      "bg-amber-100 text-amber-700",
+      "bg-sky-100 text-sky-700",
+      "bg-rose-100 text-rose-700",
+      "bg-violet-100 text-violet-700",
+    ];
+    return choices[seed % choices.length];
+  }
+
+  async function toggleBot(id: string) {
+    if (expandedId === id) {
+      setExpandedId(null);
+      return;
+    }
+
+    setExpandedId(id);
+    await selectBot(id);
+  }
+
+  const attentionConnections = connections.filter(
+    (item) => !connectionState(item).live,
+  );
+  const healthyConnections = connections.filter(
+    (item) => connectionState(item).live,
+  );
+
+  function renderBot(item: TelegramConnection) {
+    const state = connectionState(item);
+    const expanded = expandedId === item.id;
+    const isSelected = item.id === selected?.id;
+
+    const borderClass = state.hasError
+      ? "border-red-300"
+      : state.live
+        ? "border-slate-300"
+        : "border-amber-400";
+
+    const statusClass = state.hasError
+      ? "bg-red-100 text-red-700"
+      : state.live
+        ? "bg-emerald-100 text-emerald-700"
+        : "bg-amber-100 text-amber-800";
+
+    const statusText = state.hasError
+      ? "Webhook error"
+      : state.live
+        ? "Live"
+        : state.channelOff
+          ? "Disabled"
+          : "Inbox off";
+
+    return (
+      <article
+        key={item.id}
+        className={`overflow-hidden rounded-2xl border bg-white ${borderClass}`}
+      >
+        <button
+          type="button"
+          onClick={() => void toggleBot(item.id)}
+          className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition hover:bg-slate-50/70"
+          aria-expanded={expanded}
+        >
+          <span className="flex min-w-0 items-center gap-3">
             <span
-              className={`rounded-full border px-2.5 py-1 text-xs font-bold ${
-                connections.some((item) => item.isActive)
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : connections.length > 0
-                    ? "border-amber-200 bg-amber-50 text-amber-700"
-                    : "border-slate-200 bg-white text-slate-600"
-              }`}
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold ${avatarClasses(item)}`}
             >
-              {connections.some((item) => item.isActive)
-                ? "Connected"
-                : connections.length > 0
-                  ? "Disabled"
-                  : "Not connected"}
+              {botInitials(item)}
             </span>
-            {canManage ? (
-              <button type="button" onClick={() => setShowAddBot((v) => !v)} className="rounded-xl bg-sky-600 px-3 py-2 text-xs font-bold text-white hover:bg-sky-700">
-                + Add Bot
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </div>
 
-      <div className="p-6 sm:p-7">
-        <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm leading-6 text-blue-900">
-          Each Telegram Bot uses one connection. Customer messages from that Bot will appear in TENH Inbox, and your team can reply from the same Bot. Only the workspace Owner can connect or disconnect Bots.
-        </div>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold text-slate-950">
+                {item.botName ?? "Telegram bot"}
+              </span>
+              <span className="mt-0.5 block truncate text-xs text-slate-500">
+                {item.username ? `@${item.username}` : item.botId ?? "No username"}
+              </span>
+            </span>
+          </span>
 
-        {error ? (
-          <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            <p>{error}</p>
-            {errorCode === "SUBSCRIPTION_LOCKED" ? (
-              <a
-                href="/dashboard/subscription"
-                className="mt-2 inline-flex font-semibold underline underline-offset-2"
-              >
-                Open Subscription
-              </a>
-            ) : null}
-          </div>
-        ) : null}
-        {notice ? <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div> : null}
+          <span className="flex shrink-0 items-center gap-3">
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass}`}
+            >
+              {state.hasError ? "⌁" : state.live ? "" : "⚠"}
+              {statusText}
+            </span>
+            <span
+              className={`text-lg leading-none text-slate-400 transition-transform ${
+                expanded ? "rotate-180" : ""
+              }`}
+              aria-hidden="true"
+            >
+              ⌄
+            </span>
+          </span>
+        </button>
 
-        {showAddBot && canManage ? (
-          <div className="mb-6 rounded-2xl border border-sky-200 bg-sky-50 p-5">
-            <p className="font-bold text-slate-900">
-              Connect another Telegram Bot
-            </p>
-            <p className="mt-1 text-xs text-slate-600">
-              Create your Bot in @BotFather, copy the Bot Token, then paste it here. A Bot already claimed by another TENH workspace cannot be used to join or take over that workspace.
-            </p>
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <input type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="123456789:AA..." autoComplete="off" spellCheck={false} className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100" />
-              <button type="button" disabled={Boolean(working) || !token.trim()} onClick={() => void connectTelegram()} className="rounded-xl bg-sky-600 px-5 py-3 text-sm font-bold text-white hover:bg-sky-700 disabled:opacity-50">
-                {working === "connect" ? "Verifying..." : "Connect Bot"}
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {loading ? (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-sm font-medium text-slate-500">Loading Telegram Bots...</div>
-        ) : connections.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-7 text-center">
-            <p className="font-bold text-slate-900">No Telegram Bot connected</p>
-            <p className="mt-2 text-sm text-slate-500">Connect the first Bot to start using Telegram in this subscription.</p>
-            {!canManage ? <p className="mt-4 text-sm font-medium text-amber-700">Only the subscription Owner can connect a Telegram Bot. Ask an Owner to invite you to the workspace if you need access.</p> : null}
-            {canManage && !showAddBot ? <button type="button" onClick={() => setShowAddBot(true)} className="mt-4 rounded-xl bg-sky-600 px-5 py-3 text-sm font-bold text-white">Connect Telegram Bot</button> : null}
-          </div>
-        ) : (
-          <div className="grid gap-6 xl:grid-cols-[280px_1fr]">
-            <div className="min-h-0">
-              <p className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Connected Bots</p>
-              <div className="max-h-[220px] space-y-2 overflow-y-auto overscroll-contain pr-1">
-                {connections.map((item) => (
-                  <button key={item.id} type="button" onClick={() => void selectBot(item.id)} className={`w-full rounded-2xl border p-4 text-left transition ${item.id === selected?.id ? "border-sky-400 bg-sky-50 ring-2 ring-sky-100" : "border-slate-200 bg-white hover:border-slate-300"}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-bold text-slate-900">{item.botName ?? "Telegram Bot"}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${item.isActive ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
-                        {item.isActive ? "Active" : "Disabled"}
-                      </span>
-                    </div>
-                    <p className="mt-1 truncate text-xs font-medium text-sky-700">{item.username ? `@${item.username}` : item.botId}</p>
-                  </button>
-                ))}
+        {expanded ? (
+          <div className="border-t border-slate-200 px-4 pb-4 pt-3">
+            {!isSelected ? (
+              <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                Loading bot details…
               </div>
-            </div>
-
-            {selected ? (
-              <div>
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-2xl border border-slate-200 p-5">
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Selected Bot</p>
-                    <p className="mt-2 text-lg font-bold text-slate-950">{selected.botName ?? "Telegram Bot"}</p>
-                    <p className="mt-1 text-sm font-medium text-sky-700">{selected.username ? `@${selected.username}` : "No public username"}</p>
-                    <p className="mt-2 break-all text-xs text-slate-500">Bot ID: {selected.botId}</p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 p-5">
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Connection</p>
-                    <p className={`mt-2 font-semibold ${channelEnabled ? "text-emerald-700" : verified ? "text-amber-700" : "text-slate-500"}`}>
-                      {channelEnabled ? "Connected" : verified ? "Disabled" : selected.status}
+            ) : (
+              <div className="space-y-3">
+                {state.hasError ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <p className="font-semibold">Telegram webhook needs attention</p>
+                    <p className="mt-1 text-xs leading-5">
+                      {state.webhookError ??
+                        "TENH could not confirm that this bot webhook is working."}
                     </p>
-                    <p className="mt-2 text-sm text-slate-500">Connected: {formatDate(selected.connectedAt)}</p>
-                    {verified && !selected.isActive ? (
-                      <p className="mt-2 text-xs font-medium text-amber-700">This Bot is disabled in subscription usage and cannot be opened in Inbox.</p>
+                  </div>
+                ) : state.channelOff ? (
+                  <div className="flex flex-col gap-3 rounded-xl bg-amber-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-amber-950">
+                        This Telegram channel is disabled
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-amber-900">
+                        The bot stays connected and its history is kept, but it does not use a channel slot while disabled.
+                      </p>
+                    </div>
+                    {canManage ? (
+                      <a
+                        href="/dashboard/settings/users?tab=channels"
+                        className="shrink-0 rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-50"
+                      >
+                        Enable channel
+                      </a>
                     ) : null}
+                  </div>
+                ) : state.inboxOff ? (
+                  <div className="flex flex-col gap-3 rounded-xl bg-[#f8dca2] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium leading-5 text-[#76500f]">
+                        The bot token is verified, but the webhook is off — no messages will reach your inbox until you activate it.
+                      </p>
+                    </div>
+                    {canManage ? (
+                      <button
+                        type="button"
+                        disabled={Boolean(working)}
+                        onClick={() => void activate()}
+                        className="shrink-0 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-400 disabled:opacity-50"
+                      >
+                        {working === "activate" ? "Activating…" : "Activate Inbox"}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl bg-slate-50 px-4 py-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                      Webhook
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-950">
+                      {webhook?.status === "active"
+                        ? "Active"
+                        : webhook?.status === "disabled"
+                          ? "Disabled"
+                          : webhook?.status ?? "Unknown"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-slate-50 px-4 py-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                      Pending updates
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-950">
+                      {remote?.pendingUpdateCount ?? 0}
+                    </p>
                   </div>
                 </div>
 
-                {channelEnabled && !inboxActive && canManage ? (
-                  <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="font-semibold text-amber-900">Activate Inbox to receive messages</p>
-                      <p className="mt-1 text-sm text-amber-800">Your Bot is connected. Activate Inbox so new Telegram customer messages can appear in TENH Chat.</p>
-                    </div>
+                {canManage ? (
+                  <div className="flex flex-wrap justify-end gap-2 pt-1">
                     <button
                       type="button"
                       disabled={Boolean(working)}
-                      onClick={() => void activate()}
-                      className="shrink-0 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+                      onClick={() => void disconnect()}
+                      className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
                     >
-                      {working === "activate" ? "Activating..." : "Activate Inbox"}
+                      {working === "disconnect" ? "Disconnecting…" : "Disconnect"}
                     </button>
-                  </div>
-                ) : null}
 
-                {verified && !selected.isActive ? (
-                  <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="font-semibold text-amber-900">Channel disabled</p>
-                      <p className="mt-1 text-sm text-amber-800">This Bot stays connected, but it does not use a channel slot and TENH blocks it from Inbox until an Owner enables it again.</p>
-                    </div>
-                    <a href="/dashboard/settings/users?tab=channels" className="shrink-0 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-800 hover:bg-amber-50">
-                      Enable channel
-                    </a>
-                  </div>
-                ) : null}
-
-                {remote?.lastErrorMessage || webhook?.lastError ? <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{webhook?.lastError ?? remote?.lastErrorMessage}</div> : null}
-
-                {canManage ? (
-                  <div className="mt-5 rounded-2xl border border-slate-200 p-5">
-                    <div>
-                      <p className="font-bold text-slate-900">Bot controls</p>
-                      <p className="mt-1 text-xs text-slate-500">Manage Inbox access or disconnect this Bot.</p>
-                    </div>
-
-                    <div className="mt-5 flex flex-wrap gap-2">
-                      {selected.isActive ? (
-                        inboxActive ? (
-                          <button type="button" disabled={Boolean(working)} onClick={() => void disable()} className="rounded-xl border border-amber-200 px-4 py-2.5 text-sm font-semibold text-amber-800">{working === "disable" ? "Disabling..." : "Disable Inbox"}</button>
-                        ) : (
-                          <button type="button" disabled={Boolean(working) || !verified} onClick={() => void activate()} className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{working === "activate" ? "Activating..." : "Activate Inbox"}</button>
-                        )
-                      ) : null}
-                      <button type="button" disabled={Boolean(working)} onClick={() => void disconnect()} className="rounded-xl border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-700">{working === "disconnect" ? "Disconnecting..." : "Disconnect Bot"}</button>
-                    </div>
+                    {selected?.isActive ? (
+                      inboxActive ? (
+                        <button
+                          type="button"
+                          disabled={Boolean(working)}
+                          onClick={() => void disable()}
+                          className="rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                        >
+                          {working === "disable" ? "Disabling…" : "Disable Inbox"}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={Boolean(working) || !verified}
+                          onClick={() => void activate()}
+                          className="rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-600 disabled:opacity-50"
+                        >
+                          {working === "activate" ? "Activating…" : "Activate Inbox"}
+                        </button>
+                      )
+                    ) : null}
                   </div>
                 ) : (
-                  <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">You are an Agent in this subscription. You can use its Telegram conversations in Inbox; only the Owner can change Bot connections.</div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    You are an Agent in this workspace. Only the Owner can change bot connections.
+                  </div>
                 )}
               </div>
-            ) : null}
+            )}
           </div>
-        )}
+        ) : null}
+      </article>
+    );
+  }
+
+  return (
+    <section className="min-w-0 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-slate-950">Telegram bots</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Manage your connected Telegram bots and inbox webhooks.
+          </p>
+        </div>
       </div>
+
+      {error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <p>{error}</p>
+          {errorCode === "SUBSCRIPTION_LOCKED" ? (
+            <a
+              href="/dashboard/subscription"
+              className="mt-2 inline-flex font-semibold underline underline-offset-2"
+            >
+              Open Subscription
+            </a>
+          ) : null}
+        </div>
+      ) : null}
+
+      {notice ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          {notice}
+        </div>
+      ) : null}
+
+      {showAddBot && canManage ? (
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+          <p className="font-semibold text-slate-900">Connect another Telegram bot</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Create the bot in @BotFather, copy the Bot Token, then paste it here.
+          </p>
+
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <input
+              type="password"
+              value={token}
+              onChange={(event) => setToken(event.target.value)}
+              placeholder="123456789:AA..."
+              autoComplete="off"
+              spellCheck={false}
+              className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+            />
+            <button
+              type="button"
+              disabled={Boolean(working) || !token.trim()}
+              onClick={() => void connectTelegram()}
+              className="rounded-xl bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+            >
+              {working === "connect" ? "Verifying..." : "Connect bot"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {loading ? (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-sm font-medium text-slate-500">
+          Loading Telegram bots...
+        </div>
+      ) : connections.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-7 text-center">
+          <p className="font-bold text-slate-900">No Telegram bot connected</p>
+          <p className="mt-2 text-sm text-slate-500">
+            Connect the first bot to start using Telegram in this workspace.
+          </p>
+          {!canManage ? (
+            <p className="mt-4 text-sm font-medium text-amber-700">
+              Only the workspace Owner can connect a Telegram bot.
+            </p>
+          ) : null}
+          {canManage && !showAddBot ? (
+            <p className="mt-4 text-sm text-slate-500">
+              Use <span className="font-semibold text-slate-700">+ Add Connection</span> above to connect a Telegram bot.
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {attentionConnections.length > 0 ? (
+            <div className="space-y-2">
+              {attentionConnections.map((item) => renderBot(item))}
+            </div>
+          ) : null}
+
+          {healthyConnections.length > 0 ? (
+            <div>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                Healthy
+              </p>
+              <div className="space-y-1">
+                {healthyConnections.map((item) => renderBot(item))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
     </section>
   );
 }

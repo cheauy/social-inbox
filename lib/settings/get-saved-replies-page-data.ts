@@ -1,45 +1,55 @@
 import "server-only";
 
+import { getCurrentMember } from "@/lib/auth/get-current-member";
+import {
+  DEFAULT_SAVED_REPLY_SEED_MARKER,
+  ensureWorkspaceDefaultContent,
+} from "@/lib/settings/ensure-workspace-default-content";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { SavedReply } from "@/types/inbox";
 
 export async function getSavedRepliesPageData() {
-  const configuredBusinessId =
-    process.env.DEFAULT_BUSINESS_ID?.trim();
+  const authResult = await getCurrentMember();
 
-  let businessQuery = supabaseAdmin
-    .from("businesses")
-    .select("id,name")
-    .limit(1);
-
-  if (configuredBusinessId) {
-    businessQuery = businessQuery.eq("id", configuredBusinessId);
-  } else {
-    businessQuery = businessQuery.order("created_at", { ascending: true });
+  if (!authResult.success) {
+    throw new Error(authResult.error);
   }
 
-  const { data: business, error } =
-    await businessQuery.maybeSingle();
+  const businessId = authResult.member.business_id;
 
-  if (error || !business) {
-    throw new Error("A business is required.");
-  }
+  await ensureWorkspaceDefaultContent(businessId);
 
-  const { data: savedReplies, error: repliesError } =
-    await supabaseAdmin
+  const [
+    { data: business, error: businessError },
+    { data: savedReplies, error: repliesError },
+  ] = await Promise.all([
+    supabaseAdmin
+      .from("businesses")
+      .select("id,name")
+      .eq("id", businessId)
+      .maybeSingle(),
+    supabaseAdmin
       .from("saved_replies")
-      .select("id,business_id,title,shortcut,message_text,category,sort_index,is_active,created_at,updated_at")
-      .eq("business_id", business.id)
+      .select(
+        "id,business_id,title,shortcut,message_text,category,sort_index,is_active,created_at,updated_at",
+      )
+      .eq("business_id", businessId)
+      .neq("title", DEFAULT_SAVED_REPLY_SEED_MARKER)
       .order("is_active", { ascending: false })
-      .order("sort_index", { ascending: true });
+      .order("sort_index", { ascending: true }),
+  ]);
+
+  if (businessError || !business) {
+    throw new Error("A workspace is required.");
+  }
 
   if (repliesError) {
     throw new Error("Unable to load quick replies.");
   }
 
   return {
-    businessId: business.id,
-    businessName: business.name ?? "Current business",
+    businessId,
+    businessName: business.name ?? "Current workspace",
     savedReplies: (savedReplies ?? []) as SavedReply[],
   };
 }

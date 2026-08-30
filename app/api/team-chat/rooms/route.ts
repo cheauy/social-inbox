@@ -9,11 +9,42 @@ import {
   canManageTeamChat,
   ensureGeneralRoom,
   loadActiveBusinessMembers,
+  safeDetails,
   slugifyRoomName,
 } from "@/lib/team/team-chat-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function readAuthProfilePicture(
+  metadata: Record<string, unknown> | undefined,
+): { hasExplicitAvatar: boolean; url: string | null } {
+  if (!metadata) {
+    return { hasExplicitAvatar: false, url: null };
+  }
+
+  if (Object.prototype.hasOwnProperty.call(metadata, "avatar_url")) {
+    const avatar = metadata.avatar_url;
+
+    return {
+      hasExplicitAvatar: true,
+      url:
+        typeof avatar === "string" && avatar.trim()
+          ? avatar.trim()
+          : null,
+    };
+  }
+
+  const picture = metadata.picture;
+
+  return {
+    hasExplicitAvatar: false,
+    url:
+      typeof picture === "string" && picture.trim()
+        ? picture.trim()
+        : null,
+  };
+}
 
 export async function GET() {
   const authResult = await getCurrentMember();
@@ -28,6 +59,38 @@ export async function GET() {
   const currentMember = authResult.member;
 
   try {
+    // Profile settings store the real user photo in Supabase Auth metadata.
+    // Keep the current team_members row in sync so Group Chat headers and
+    // message avatars use the same real profile photo as the main TENH header.
+    const authAvatar = readAuthProfilePicture(
+      authResult.user.user_metadata as Record<string, unknown> | undefined,
+    );
+    const shouldSyncAvatar =
+      authAvatar.hasExplicitAvatar
+        ? authAvatar.url !== currentMember.profile_picture_url
+        : Boolean(
+            authAvatar.url &&
+              !currentMember.profile_picture_url,
+          );
+
+    if (shouldSyncAvatar) {
+      const { error: profileSyncError } = await supabaseAdmin
+        .from("team_members")
+        .update({ profile_picture_url: authAvatar.url })
+        .eq("id", currentMember.id)
+        .eq("user_id", authResult.user.id)
+        .eq("business_id", currentMember.business_id);
+
+      if (profileSyncError) {
+        console.warn(
+          "[TENH Team Chat] Unable to sync profile picture.",
+          profileSyncError.message,
+        );
+      } else {
+        currentMember.profile_picture_url = authAvatar.url;
+      }
+    }
+
     await ensureGeneralRoom(currentMember.business_id);
 
     const [roomsResult, membershipsResult, members] =
@@ -41,7 +104,7 @@ export async function GET() {
           .order("name", { ascending: true }),
         supabaseAdmin
           .from("team_chat_room_members")
-          .select("room_id,member_id,last_read_at")
+          .select("room_id,member_id,last_read_at,muted_at")
           .eq("business_id", currentMember.business_id),
         loadActiveBusinessMembers(currentMember.business_id),
       ]);
@@ -89,35 +152,65 @@ export async function GET() {
         const myMembership = myMemberships.get(room.id);
         let unreadCount = 0;
 
-        if (myMembership?.last_read_at) {
-          const { count, error: countError } =
-            await supabaseAdmin
-              .from("team_chat_messages")
-              .select("id", {
-                head: true,
-                count: "exact",
-              })
-              .eq("room_id", room.id)
-              .neq("sender_member_id", currentMember.id)
-              .gt("created_at", myMembership.last_read_at);
+        // A member who has never opened the room has no last_read_at.
+        // Previously that produced a permanent 0, so new members — and
+        // General, which has no membership row until you post or read —
+        // never showed an unread badge at all.
+        let unreadQuery = supabaseAdmin
+          .from("team_chat_messages")
+          .select("id", { head: true, count: "exact" })
+          .eq("business_id", currentMember.business_id)
+          .eq("room_id", room.id)
+          .neq("sender_member_id", currentMember.id);
 
-          if (!countError) {
-            unreadCount = count ?? 0;
-          }
+        if (myMembership?.last_read_at) {
+          unreadQuery = unreadQuery.gt(
+            "created_at",
+            myMembership.last_read_at,
+          );
         }
+
+        const { count, error: countError } = await unreadQuery;
+
+        if (!countError) {
+          unreadCount = count ?? 0;
+        }
+
+        const isMuted = Boolean(myMembership?.muted_at);
+
+        // Mentions are counted separately and deliberately IGNORE mute:
+        // muting a busy group must not mean missing a direct @you.
+        const { count: mentionCount } = await supabaseAdmin
+          .from("team_notifications")
+          .select("id", { head: true, count: "exact" })
+          .eq("business_id", currentMember.business_id)
+          .eq("recipient_member_id", currentMember.id)
+          .eq("room_id", room.id)
+          .eq("is_read", false);
 
         return {
           ...room,
           member_ids: roomMemberIds,
           member_count: roomMemberIds.length,
           unread_count: unreadCount,
+          // What the badge shows. A muted room contributes nothing
+          // unless an unread mention is waiting in it.
+          badge_count: isMuted ? mentionCount ?? 0 : unreadCount,
+          mention_count: mentionCount ?? 0,
+          is_muted: isMuted,
         };
       }),
+    );
+
+    const totalBadgeCount = rooms.reduce(
+      (sum, room) => sum + (room.badge_count ?? 0),
+      0,
     );
 
     return NextResponse.json({
       success: true,
       rooms,
+      totalBadgeCount,
       members,
       currentMember: {
         id: currentMember.id,
@@ -130,13 +223,15 @@ export async function GET() {
       canManage: admin,
     });
   } catch (error) {
+    console.error("[TENH Team Chat] Unable to load rooms.", error);
+
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to load team chat rooms.",
+        error: "Unable to load team chat rooms.",
+        ...safeDetails(
+          error instanceof Error ? error.message : undefined,
+        ),
       },
       { status: 500 },
     );
@@ -168,7 +263,7 @@ export async function POST(request: NextRequest) {
   let body: {
     name?: string;
     description?: string | null;
-    memberIds?: string[];
+    memberIds?: unknown;
   };
 
   try {
@@ -199,11 +294,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const submittedMemberIds = Array.isArray(body.memberIds)
+    ? body.memberIds.filter(
+        (memberId): memberId is string =>
+          typeof memberId === "string",
+      )
+    : [];
+
   const requestedMemberIds = Array.from(
-    new Set([
-      currentMember.id,
-      ...(body.memberIds ?? []),
-    ]),
+    new Set([currentMember.id, ...submittedMemberIds]),
   );
 
   const { data: validMembers, error: membersError } =
@@ -219,7 +318,7 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         error: "Unable to validate team members.",
-        details: membersError.message,
+        ...safeDetails(membersError.message),
       },
       { status: 500 },
     );
@@ -247,7 +346,7 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         error: "Unable to create team group.",
-        details: roomError?.message,
+        ...safeDetails(roomError?.message),
       },
       { status: 500 },
     );
@@ -281,7 +380,7 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: "Unable to add members to the group.",
-          details: membershipError.message,
+          ...safeDetails(membershipError.message),
         },
         { status: 500 },
       );

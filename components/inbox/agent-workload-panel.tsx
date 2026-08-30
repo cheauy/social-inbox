@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import {
   useCallback,
   useEffect,
@@ -7,6 +8,18 @@ import {
   useRef,
   useState,
 } from "react";
+import Link from "next/link";
+import {
+  ArrowRight,
+  ChevronDown,
+  Clock3,
+  Inbox,
+  Mail,
+  MessageCircleMore,
+  RefreshCw,
+  Star,
+  UsersRound,
+} from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 
@@ -33,33 +46,87 @@ type WorkloadResponse = {
   members?: AgentWorkload[];
 };
 
+type WorkloadFilter =
+  | "all"
+  | "active"
+  | "idle"
+  | "overdue";
+
 function getInitial(value: string) {
   return value.trim().charAt(0).toUpperCase() || "T";
 }
 
-function Metric({
+function formatRole(role: string) {
+  if (!role) {
+    return "Team member";
+  }
+
+  return role
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (character) =>
+      character.toUpperCase(),
+    );
+}
+
+function SummaryCard({
   label,
   value,
-  danger = false,
+  helper,
+  tone,
+  icon,
 }: {
   label: string;
   value: number;
-  danger?: boolean;
+  helper: string;
+  tone: "amber" | "blue" | "violet" | "red";
+  icon: ReactNode;
 }) {
+  const styles = {
+    amber: {
+      accent: "border-l-amber-400",
+      iconWrap: "bg-amber-50 text-amber-500",
+      label: "text-amber-600",
+    },
+    blue: {
+      accent: "border-l-blue-400",
+      iconWrap: "bg-blue-50 text-blue-500",
+      label: "text-blue-600",
+    },
+    violet: {
+      accent: "border-l-violet-400",
+      iconWrap: "bg-violet-50 text-violet-500",
+      label: "text-violet-600",
+    },
+    red: {
+      accent: "border-l-red-400",
+      iconWrap: "bg-red-50 text-red-500",
+      label: "text-red-600",
+    },
+  }[tone];
+
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-      <p
-        className={`text-lg font-bold ${
-          danger && value > 0
-            ? "text-red-600"
-            : "text-slate-900"
-        }`}
-      >
-        {value}
-      </p>
-      <p className="text-[11px] font-medium text-slate-500">
-        {label}
-      </p>
+    <div
+      className={`relative overflow-hidden rounded-2xl border border-slate-200 border-l-[3px] ${styles.accent} bg-white px-5 py-5 shadow-sm`}
+    >
+      <div className="flex items-center gap-4">
+        <div
+          className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full ${styles.iconWrap}`}
+        >
+          {icon}
+        </div>
+
+        <div className="min-w-0">
+          <p className={`text-sm font-bold ${styles.label}`}>
+            {label}
+          </p>
+          <p className="mt-0.5 text-3xl font-bold tracking-tight text-slate-950">
+            {value}
+          </p>
+          <p className="mt-1 text-sm text-slate-500">
+            {helper}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -78,6 +145,8 @@ export function AgentWorkloadPanel() {
     useState(false);
   const [error, setError] =
     useState<string | null>(null);
+  const [statusFilter, setStatusFilter] =
+    useState<WorkloadFilter>("all");
 
   const refreshTimerRef =
     useRef<ReturnType<typeof setTimeout> | null>(
@@ -118,10 +187,7 @@ export function AgentWorkloadPanel() {
           }
         }
 
-        if (
-          !response.ok ||
-          !result?.success
-        ) {
+        if (!response.ok || !result?.success) {
           throw new Error(
             result?.error ??
               "Unable to load team workload.",
@@ -129,17 +195,12 @@ export function AgentWorkloadPanel() {
         }
 
         setMembers(result.members ?? []);
-        setBusinessId(
-          result.businessId ?? null,
-        );
+        setBusinessId(result.businessId ?? null);
         setCurrentMemberId(
           result.currentMemberId ?? null,
         );
         setUnassignedCount(
-          Math.max(
-            0,
-            result.unassignedCount ?? 0,
-          ),
+          Math.max(0, result.unassignedCount ?? 0),
         );
       } catch (loadError) {
         setError(
@@ -162,18 +223,13 @@ export function AgentWorkloadPanel() {
   useEffect(() => {
     function scheduleRefresh() {
       if (refreshTimerRef.current) {
-        clearTimeout(
-          refreshTimerRef.current,
-        );
+        clearTimeout(refreshTimerRef.current);
       }
 
-      refreshTimerRef.current = setTimeout(
-        () => {
-          refreshTimerRef.current = null;
-          void loadWorkload(true);
-        },
-        150,
-      );
+      refreshTimerRef.current = setTimeout(() => {
+        refreshTimerRef.current = null;
+        void loadWorkload(true);
+      }, 150);
     }
 
     window.addEventListener(
@@ -193,8 +249,8 @@ export function AgentWorkloadPanel() {
     const supabase = createClient();
     let cancelled = false;
     let channel:
-      ReturnType<typeof supabase.channel> | null =
-      null;
+      | ReturnType<typeof supabase.channel>
+      | null = null;
 
     void supabase.auth
       .getSession()
@@ -257,9 +313,7 @@ export function AgentWorkloadPanel() {
       );
 
       if (refreshTimerRef.current) {
-        clearTimeout(
-          refreshTimerRef.current,
-        );
+        clearTimeout(refreshTimerRef.current);
         refreshTimerRef.current = null;
       }
 
@@ -269,225 +323,445 @@ export function AgentWorkloadPanel() {
     };
   }, [businessId, loadWorkload]);
 
-  const recommendedMember = useMemo(
-    () => {
-      if (members.length === 0) {
-        return null;
+  const recommendedMember = useMemo(() => {
+    if (members.length === 0) {
+      return null;
+    }
+
+    return [...members].sort((first, second) => {
+      if (first.activeCount !== second.activeCount) {
+        return first.activeCount - second.activeCount;
       }
 
-      return [...members].sort(
-        (first, second) => {
-          if (
-            first.activeCount !==
-            second.activeCount
-          ) {
-            return (
-              first.activeCount -
-              second.activeCount
-            );
-          }
+      if (
+        first.overdueReminders !==
+        second.overdueReminders
+      ) {
+        return (
+          first.overdueReminders -
+          second.overdueReminders
+        );
+      }
 
-          if (
-            first.overdueReminders !==
-            second.overdueReminders
-          ) {
-            return (
-              first.overdueReminders -
-              second.overdueReminders
-            );
-          }
+      return first.unreadCount - second.unreadCount;
+    })[0];
+  }, [members]);
 
-          return (
-            first.unreadCount -
-            second.unreadCount
-          );
+  const totals = useMemo(
+    () =>
+      members.reduce(
+        (result, member) => ({
+          open: result.open + member.openCount,
+          unread:
+            result.unread + member.unreadCount,
+          overdue:
+            result.overdue + member.overdueReminders,
+          active:
+            result.active + member.activeCount,
+        }),
+        {
+          open: 0,
+          unread: 0,
+          overdue: 0,
+          active: 0,
         },
-      )[0];
-    },
+      ),
     [members],
   );
 
-  return (
-    <div className="flex h-full min-h-0 flex-col bg-white">
-      <div className="shrink-0 border-b border-slate-200 px-4 py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-base font-bold text-slate-900">
-              Team workload
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              Active conversations and follow-up pressure.
-            </p>
-          </div>
+  const filteredMembers = useMemo(() => {
+    if (statusFilter === "active") {
+      return members.filter(
+        (member) => member.activeCount > 0,
+      );
+    }
 
-          <button
-            type="button"
-            onClick={() =>
-              void loadWorkload(true)
-            }
-            disabled={refreshing}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-50"
-          >
-            {refreshing ? "Refreshing…" : "Refresh"}
-          </button>
+    if (statusFilter === "idle") {
+      return members.filter(
+        (member) => member.activeCount === 0,
+      );
+    }
+
+    if (statusFilter === "overdue") {
+      return members.filter(
+        (member) => member.overdueReminders > 0,
+      );
+    }
+
+    return members;
+  }, [members, statusFilter]);
+
+  return (
+    <div className="w-full">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-blue-600">
+            Operations
+          </p>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950 sm:text-[34px]">
+            Team workload
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-slate-500 sm:text-base">
+            Monitor active conversations, unread pressure,
+            unassigned work, and overdue follow-ups.
+          </p>
         </div>
 
-        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-                Unassigned queue
-              </p>
-              <p className="mt-1 text-sm text-amber-900">
-                Conversations waiting for an agent
-              </p>
+        <button
+          type="button"
+          onClick={() => void loadWorkload(true)}
+          disabled={refreshing}
+          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-blue-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-50"
+        >
+          <RefreshCw
+            className={`h-4 w-4 ${
+              refreshing ? "animate-spin" : ""
+            }`}
+          />
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
+
+      <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard
+          label="Unassigned"
+          value={unassignedCount}
+          helper="Conversations waiting"
+          tone="amber"
+          icon={<UsersRound className="h-7 w-7" />}
+        />
+        <SummaryCard
+          label="Open"
+          value={totals.open}
+          helper="Active conversations"
+          tone="blue"
+          icon={
+            <MessageCircleMore className="h-7 w-7" />
+          }
+        />
+        <SummaryCard
+          label="Unread"
+          value={totals.unread}
+          helper="Conversations"
+          tone="violet"
+          icon={<Mail className="h-7 w-7" />}
+        />
+        <SummaryCard
+          label="Overdue"
+          value={totals.overdue}
+          helper="Require attention"
+          tone="red"
+          icon={<Clock3 className="h-7 w-7" />}
+        />
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div className="relative overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 via-orange-50/70 to-white p-5 shadow-sm sm:p-6">
+          <div
+            className="pointer-events-none absolute inset-y-0 left-0 w-28 opacity-40"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle, rgba(245,158,11,0.28) 1.6px, transparent 1.6px)",
+              backgroundSize: "14px 14px",
+            }}
+          />
+
+          <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-4 sm:gap-5">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-amber-100 bg-amber-100/80 text-amber-500 shadow-sm">
+                <UsersRound className="h-7 w-7" />
+              </div>
+
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-wide text-amber-600 sm:text-sm">
+                  Unassigned queue
+                </p>
+                <p className="mt-2 text-lg font-bold text-slate-950 sm:text-xl">
+                  {unassignedCount} conversation
+                  {unassignedCount === 1 ? "" : "s"} waiting
+                  for an agent
+                </p>
+                <p className="mt-2 text-sm text-slate-500">
+                  These conversations are not yet assigned.
+                </p>
+              </div>
             </div>
 
-            <span className="flex h-9 min-w-9 items-center justify-center rounded-full bg-amber-500 px-2 text-sm font-bold text-white">
-              {unassignedCount}
-            </span>
+            <Link
+              href="/dashboard/inbox?assigned=unassigned"
+              className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600"
+            >
+              Assign now
+              <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
         </div>
 
         {recommendedMember ? (
-          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-              Recommended next agent
-            </p>
-            <p className="mt-1 text-sm font-semibold text-emerald-900">
-              {recommendedMember.fullName}
-            </p>
-            <p className="mt-0.5 text-xs text-emerald-700">
-              {recommendedMember.activeCount} active · {recommendedMember.overdueReminders} overdue
-            </p>
-          </div>
-        ) : null}
-      </div>
+          <div className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-emerald-50/60 to-white p-5 shadow-sm sm:p-6">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-4 sm:gap-5">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-white/90 text-emerald-500 shadow-sm">
+                  <Star className="h-7 w-7 fill-current" />
+                </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        {loading ? (
-          <div className="space-y-3">
-            {[0, 1].map((item) => (
-              <div
-                key={item}
-                className="animate-pulse rounded-2xl border border-slate-200 p-4"
-              >
-                <div className="h-4 w-32 rounded bg-slate-200" />
-                <div className="mt-3 grid grid-cols-4 gap-2">
-                  {[0, 1, 2, 3].map(
-                    (metric) => (
-                      <div
-                        key={metric}
-                        className="h-14 rounded-xl bg-slate-100"
-                      />
-                    ),
-                  )}
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-wide text-emerald-600 sm:text-sm">
+                    Recommended next agent
+                  </p>
+                  <p className="mt-2 truncate text-lg font-bold text-slate-950 sm:text-xl">
+                    {recommendedMember.fullName}
+                  </p>
+                  <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
+                    <span className="text-emerald-700">
+                      {recommendedMember.activeCount} active
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 text-slate-500">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      {recommendedMember.overdueReminders} overdue
+                    </span>
+                  </p>
                 </div>
               </div>
-            ))}
-          </div>
-        ) : error ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {error}
-          </div>
-        ) : members.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            No active team members found.
+
+              <Link
+                href={
+                  recommendedMember.memberId ===
+                  currentMemberId
+                    ? "/dashboard/profile"
+                    : "/dashboard/settings/users"
+                }
+                className="inline-flex h-11 shrink-0 items-center justify-center rounded-xl border border-emerald-300 bg-white px-5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
+              >
+                View profile
+              </Link>
+            </div>
           </div>
         ) : (
-          <div className="space-y-3">
-            {members.map((member, index) => {
-              const isCurrent =
-                member.memberId === currentMemberId;
-              const isRecommended =
-                recommendedMember?.memberId ===
-                member.memberId;
-
-              return (
-                <div
-                  key={member.memberId}
-                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-                >
-                  <div className="flex items-center gap-3">
-                    {member.profilePictureUrl ? (
-                      <img
-                        src={member.profilePictureUrl}
-                        alt=""
-                        className="h-10 w-10 shrink-0 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
-                        {getInitial(
-                          member.fullName,
-                        )}
-                      </div>
-                    )}
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate text-sm font-semibold text-slate-900">
-                          {member.fullName}
-                        </p>
-
-                        {isCurrent ? (
-                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
-                            You
-                          </span>
-                        ) : null}
-
-                        {isRecommended ? (
-                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                            Least busy
-                          </span>
-                        ) : null}
-                      </div>
-
-                      <p className="mt-0.5 truncate text-xs capitalize text-slate-500">
-                        {member.role}
-                      </p>
-                    </div>
-
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                      #{index + 1}
-                    </span>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-4 gap-2">
-                    <Metric
-                      label="Open"
-                      value={member.openCount}
-                    />
-                    <Metric
-                      label="Pending"
-                      value={member.pendingCount}
-                    />
-                    <Metric
-                      label="Unread"
-                      value={member.unreadCount}
-                    />
-                    <Metric
-                      label="Overdue"
-                      value={
-                        member.overdueReminders
-                      }
-                      danger
-                    />
-                  </div>
-
-                  <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-                    <span>
-                      Active workload
-                    </span>
-                    <span className="font-semibold text-slate-700">
-                      {member.activeCount} conversation{member.activeCount === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="flex items-center gap-4">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                <Star className="h-7 w-7" />
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500 sm:text-sm">
+                  Recommended next agent
+                </p>
+                <p className="mt-2 text-lg font-bold text-slate-900">
+                  No agent available
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </div>
+
+      <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div>
+            <h2 className="text-lg font-bold text-slate-950">
+              Agent workload
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Overview of conversation load by agent.
+            </p>
+          </div>
+
+          <div className="relative w-full sm:w-44">
+            <select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(
+                  event.target.value as WorkloadFilter,
+                )
+              }
+              className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-4 pr-10 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="all">All statuses</option>
+              <option value="active">Active workload</option>
+              <option value="idle">No workload</option>
+              <option value="overdue">Overdue</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="space-y-3 p-5 sm:p-6">
+            {[0, 1, 2].map((item) => (
+              <div
+                key={item}
+                className="h-16 animate-pulse rounded-xl bg-slate-100"
+              />
+            ))}
+          </div>
+        ) : error ? (
+          <div className="p-5 sm:p-6">
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              {error}
+            </div>
+          </div>
+        ) : members.length === 0 ? (
+          <div className="px-5 py-14 text-center sm:px-6">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+              <UsersRound className="h-6 w-6" />
+            </div>
+            <p className="mt-4 text-sm font-semibold text-slate-800">
+              No active team members found.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="min-w-[900px] w-full border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs font-semibold text-slate-500">
+                    <th className="px-6 py-4">Agent</th>
+                    <th className="px-4 py-4">Status</th>
+                    <th className="px-4 py-4 text-center">
+                      Open
+                    </th>
+                    <th className="px-4 py-4 text-center">
+                      Pending
+                    </th>
+                    <th className="px-4 py-4 text-center">
+                      Unread
+                    </th>
+                    <th className="px-4 py-4 text-center">
+                      Overdue
+                    </th>
+                    <th className="px-6 py-4 text-center">
+                      Total conversations
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredMembers.map((member) => {
+                    const isCurrent =
+                      member.memberId === currentMemberId;
+                    const isRecommended =
+                      recommendedMember?.memberId ===
+                      member.memberId;
+                    const hasWork = member.activeCount > 0;
+
+                    return (
+                      <tr
+                        key={member.memberId}
+                        className="border-b border-slate-100 last:border-b-0"
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            {member.profilePictureUrl ? (
+                              <img
+                                src={member.profilePictureUrl}
+                                alt=""
+                                className="h-11 w-11 shrink-0 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
+                                {getInitial(member.fullName)}
+                              </div>
+                            )}
+
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-slate-950">
+                                {member.fullName}
+                              </p>
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                  {formatRole(member.role)}
+                                </span>
+                                {isCurrent ? (
+                                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                                    You
+                                  </span>
+                                ) : null}
+                                {isRecommended ? (
+                                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                                    Least busy
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <span
+                            className={`inline-flex items-center gap-2 text-sm font-medium ${
+                              hasWork
+                                ? "text-amber-600"
+                                : "text-emerald-600"
+                            }`}
+                          >
+                            <span
+                              className={`h-2 w-2 rounded-full ${
+                                hasWork
+                                  ? "bg-amber-500"
+                                  : "bg-emerald-500"
+                              }`}
+                            />
+                            {hasWork ? "Working" : "Available"}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-4 text-center text-sm font-semibold text-slate-800">
+                          {member.openCount}
+                        </td>
+                        <td className="px-4 py-4 text-center text-sm font-semibold text-slate-800">
+                          {member.pendingCount}
+                        </td>
+                        <td className="px-4 py-4 text-center text-sm font-semibold text-slate-800">
+                          {member.unreadCount}
+                        </td>
+                        <td
+                          className={`px-4 py-4 text-center text-sm font-semibold ${
+                            member.overdueReminders > 0
+                              ? "text-red-600"
+                              : "text-slate-800"
+                          }`}
+                        >
+                          {member.overdueReminders}
+                        </td>
+                        <td className="px-6 py-4 text-center text-sm font-semibold text-slate-800">
+                          {member.activeCount}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {filteredMembers.length === 0 ? (
+              <div className="border-t border-slate-100 px-5 py-10 text-center sm:px-6">
+                <p className="text-sm font-semibold text-slate-800">
+                  No agents match this filter.
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Choose another status to see more agents.
+                </p>
+              </div>
+            ) : totals.active === 0 &&
+              statusFilter === "all" ? (
+              <div className="flex items-center justify-center gap-4 border-t border-slate-100 px-5 py-9 sm:px-6">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-200">
+                  <Inbox className="h-7 w-7" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">
+                    No active workload right now
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Great job! There are no open or pending
+                    conversations.
+                  </p>
+                </div>
+              </div>
+            ) : null}
+          </>
+        )}
+      </section>
     </div>
   );
 }

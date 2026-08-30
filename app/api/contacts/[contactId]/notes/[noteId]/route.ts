@@ -3,7 +3,7 @@ import {
   NextResponse,
 } from "next/server";
 
-import { getCurrentMember } from "@/lib/auth/get-current-member";
+import { getInboxContactAccess } from "@/lib/inbox/get-inbox-resource-access";
 import { createConversationActivity } from "@/lib/inbox/create-conversation-activity";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -162,7 +162,7 @@ export async function PATCH(
   context: RouteContext,
 ) {
   const authResult =
-    await getCurrentMember();
+    await getInboxContactAccess((await context.params).contactId);
 
   if (!authResult.success) {
     return NextResponse.json(
@@ -448,7 +448,7 @@ export async function DELETE(
   context: RouteContext,
 ) {
   const authResult =
-    await getCurrentMember();
+    await getInboxContactAccess((await context.params).contactId);
 
   if (!authResult.success) {
     return NextResponse.json(

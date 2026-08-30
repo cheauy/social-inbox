@@ -37,6 +37,7 @@ export type PlanChangeState = {
   } | null;
   mode: PlanChangeMode;
   canManage: boolean;
+  isOwner: boolean;
   currentPlan: PaidPlanCode | null;
   currentRank: number;
   usage: {
@@ -91,7 +92,7 @@ export function isBillingCycle(value: string): value is BillingCycle {
 
 export async function loadPlanChangeState(
   businessId: string,
-  memberRole: string,
+  access: string | { canManage: boolean; isOwner: boolean },
 ): Promise<PlanChangeState> {
   await syncBusinessSubscriptionLifecycle(businessId);
 
@@ -195,10 +196,16 @@ export async function loadPlanChangeState(
   const pendingCycle =
     subscriptionData?.pending_billing_cycle ?? null;
 
+  const isOwner =
+    typeof access === "string" ? access === "owner" : access.isOwner;
+  const canManage =
+    typeof access === "string" ? access === "owner" : access.canManage;
+
   return {
     subscription: subscriptionData ?? null,
     mode,
-    canManage: memberRole === "owner",
+    canManage,
+    isOwner,
     currentPlan,
     currentRank,
     usage: {
@@ -225,15 +232,6 @@ export function getPlanPurchaseEligibility(
   state: PlanChangeState,
   targetPlan: PaidPlanCode,
 ): PurchaseEligibility {
-  if (!state.canManage) {
-    return {
-      allowed: false,
-      action: "blocked",
-      reason: "owner-only",
-      message: "Only the workspace owner can purchase or change the subscription plan.",
-    };
-  }
-
   if (state.mode === "unmanaged") {
     return {
       allowed: false,
@@ -267,6 +265,16 @@ export function getPlanPurchaseEligibility(
   }
 
   if (state.mode === "subscribe" || !state.currentPlan) {
+    if (!state.isOwner) {
+      return {
+        allowed: false,
+        action: "blocked",
+        reason: "owner-only",
+        message:
+          "Only the workspace Owner can reactivate or replace this workspace subscription. Team members can still buy a new subscription for their own workspace.",
+      };
+    }
+
     return {
       allowed: true,
       action: "subscribe",
@@ -295,6 +303,16 @@ export function getPlanPurchaseEligibility(
       reason: "schedule-downgrade",
       message:
         "A lower plan cannot replace an active paid plan immediately. Schedule the downgrade from Subscription instead.",
+    };
+  }
+
+  if (!state.canManage) {
+    return {
+      allowed: false,
+      action: "blocked",
+      reason: "owner-only",
+      message:
+        "Subscription & billing Manage permission is required to upgrade this workspace subscription.",
     };
   }
 

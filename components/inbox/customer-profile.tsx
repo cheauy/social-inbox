@@ -2,19 +2,28 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { CustomerTagSelector } from "@/components/inbox/customer-tag-selector";
 import { CustomerNotes } from "@/components/inbox/customer-notes";
 import { CustomerFilesModal } from "@/components/inbox/customer-files-modal";
 import { ReminderModal } from "@/components/inbox/reminder-modal";
+import { ConversationReminderSummary } from "@/components/inbox/conversation-reminder-summary";
 import {
   getInitial,
   getStatusClasses,
   getStatusLabel,
 } from "@/components/inbox/inbox-utils";
 import type { InboxConversation } from "@/types/inbox";
+import {
+  useWorkspaceLanguageId,
+} from "@/components/display/workspace-language-text";
 
 type CustomerProfileProps = {
   activeConversation: InboxConversation | null;
+  assigning?: boolean;
+  onAssignToMe?: () => void;
+  onContactTagsChange?: (
+    contactId: string,
+    tags: NonNullable<InboxConversation["contact"]>["tags"],
+  ) => void;
 };
 
 type CustomerForm = {
@@ -84,10 +93,37 @@ function formatProfileDate(
   }).format(new Date(value));
 }
 
+function getReadableTagTextColor(
+  color: string,
+) {
+  const match = color
+    .trim()
+    .match(/^#([0-9a-f]{6})$/i);
+
+  if (!match) {
+    return "#ffffff";
+  }
+
+  const hex = match[1];
+  const red = parseInt(hex.slice(0, 2), 16);
+  const green = parseInt(hex.slice(2, 4), 16);
+  const blue = parseInt(hex.slice(4, 6), 16);
+  const brightness =
+    (red * 299 + green * 587 + blue * 114) / 1000;
+
+  return brightness > 170
+    ? "#0f172a"
+    : "#ffffff";
+}
+
 export function CustomerProfile({
   activeConversation,
+  assigning = false,
+  onAssignToMe,
+  onContactTagsChange,
 }: CustomerProfileProps) {
   const router = useRouter();
+  const isKhmer = useWorkspaceLanguageId() === "km";
 
   const [editing, setEditing] =
     useState(false);
@@ -107,6 +143,10 @@ export function CustomerProfile({
     useState(false);
 
   const contact = activeConversation?.contact ?? null;
+  const customerTags =
+    contact && Array.isArray(contact.tags)
+      ? contact.tags
+      : [];
 
   const liveConflictDetected =
     editing &&
@@ -309,8 +349,9 @@ async function saveProfile() {
       <aside className="border-l border-slate-200 bg-white">
         <div className="flex h-full items-center justify-center p-6">
           <p className="text-center text-sm text-slate-500">
-            Select a conversation to view the
-            customer profile.
+            {isKhmer
+              ? "ជ្រើសរើសការសន្ទនា ដើម្បីមើលប្រវត្តិរូបអតិថិជន។"
+              : "Select a conversation to view the customer profile."}
           </p>
         </div>
       </aside>
@@ -338,7 +379,7 @@ async function saveProfile() {
           <div className="min-w-0">
             <h2 className="truncate text-lg font-semibold text-slate-900">
               {contact.full_name ??
-                "Facebook customer"}
+                (isKhmer ? "អតិថិជន Facebook" : "Facebook customer")}
             </h2>
 
             <p className="mt-1 break-all text-sm text-slate-500">
@@ -354,7 +395,7 @@ async function saveProfile() {
       onClick={startEditing}
       className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
     >
-      Edit
+      {isKhmer ? "កែសម្រួល" : "Edit"}
     </button>
   ) : null}
 </div>
@@ -374,18 +415,20 @@ async function saveProfile() {
 
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-amber-900">
-                    Customer information changed
+                    {isKhmer ? "ព័ត៌មានអតិថិជនបានផ្លាស់ប្តូរ" : "Customer information changed"}
                   </p>
 
                   <p className="mt-1 text-sm leading-5 text-amber-800">
                     {conflict?.message ??
-                      "Another agent changed this customer while you were editing. Load the latest values before saving so their changes are not overwritten."}
+                      (isKhmer
+                        ? "ភ្នាក់ងារផ្សេងបានផ្លាស់ប្តូរព័ត៌មានអតិថិជននេះ ខណៈអ្នកកំពុងកែសម្រួល។ សូមផ្ទុកតម្លៃចុងក្រោយ មុនពេលរក្សាទុក ដើម្បីកុំឲ្យការផ្លាស់ប្តូររបស់ពួកគេត្រូវបានសរសេរជាន់។"
+                        : "Another agent changed this customer while you were editing. Load the latest values before saving so their changes are not overwritten.")}
                   </p>
 
                   {conflict?.conflictingFields
                     .length ? (
                     <p className="mt-2 text-xs font-medium text-amber-700">
-                      Changed: {conflict.conflictingFields.join(", ")}
+                      {isKhmer ? "បានផ្លាស់ប្តូរ៖" : "Changed:"} {conflict.conflictingFields.join(", ")}
                     </p>
                   ) : null}
 
@@ -394,7 +437,7 @@ async function saveProfile() {
                     onClick={loadLatestValues}
                     className="mt-3 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
                   >
-                    Load latest values
+                    {isKhmer ? "ផ្ទុកតម្លៃចុងក្រោយ" : "Load latest values"}
                   </button>
                 </div>
               </div>
@@ -402,7 +445,7 @@ async function saveProfile() {
           ) : null}
 
           <ProfileInput
-            label="Phone"
+            label={isKhmer ? "លេខទូរស័ព្ទ" : "Phone"}
             value={form.phone}
             placeholder="+855..."
             type="tel"
@@ -417,7 +460,7 @@ async function saveProfile() {
         
           <div>
             <label className="text-sm font-medium text-slate-700">
-              Customer Notes
+              {isKhmer ? "កំណត់ចំណាំអតិថិជន" : "Customer Notes"}
             </label>
 
             <textarea
@@ -430,7 +473,7 @@ async function saveProfile() {
                 }))
               }
               rows={5}
-              placeholder="Add  customer information..."
+              placeholder={isKhmer ? "បន្ថែមព័ត៌មានអតិថិជន..." : "Add  customer information..."}
               className="mt-1 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>
@@ -453,8 +496,8 @@ async function saveProfile() {
               className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {saving
-                ? "Saving..."
-                : "Save profile"}
+                ? isKhmer ? "កំពុងរក្សាទុក..." : "Saving..."
+                : isKhmer ? "រក្សាទុកប្រវត្តិរូប" : "Save profile"}
             </button>
 
             <button
@@ -468,35 +511,63 @@ async function saveProfile() {
               disabled={saving}
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
-              Cancel
+              {isKhmer ? "បោះបង់" : "Cancel"}
             </button>
           </div>
         </div>
       ) : (
         <div className="space-y-6 p-5">
-       <ProfileSection title="Contact information">
+       <ProfileSection title={isKhmer ? "ព័ត៌មានទំនាក់ទំនង" : "Contact information"}>
   <CopyableProfileValue
-    label="Customer name"
+    label={isKhmer ? "ឈ្មោះអតិថិជន" : "Customer name"}
     value={
       contact.full_name ??
-      "Facebook customer"
+      (isKhmer ? "អតិថិជន Facebook" : "Facebook customer")
     }
   />
 
   <CopyableProfileValue
-    label="Phone"
+    label={isKhmer ? "លេខទូរស័ព្ទ" : "Phone"}
     value={contact.phone}
-    emptyText="Not added"
+    emptyText={isKhmer ? "មិនទាន់បន្ថែម" : "Not added"}
   />
 </ProfileSection>
 
-  <ProfileSection title="Customer note">
+  <ProfileSection title={isKhmer ? "កំណត់ចំណាំអតិថិជន" : "Customer note"}>
   <CopyableProfileValue
-    label="Note"
+    label={isKhmer ? "កំណត់ចំណាំ" : "Note"}
     value={contact.customer_note}
-    emptyText="No customer note has been added."
+    emptyText={isKhmer ? "មិនទាន់មានកំណត់ចំណាំអតិថិជនទេ។" : "No customer note has been added."}
   />
 </ProfileSection>
+
+          <ConversationReminderSummary
+            conversationId={activeConversation.id}
+            onCreate={() => setReminderOpen(true)}
+          />
+
+          <section className="border-t border-slate-200 pt-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              {isKhmer ? "ផ្សេងៗ" : "Other"}
+            </p>
+
+            <div className="mt-3 space-y-2">
+              <button
+                type="button"
+                onClick={() => setFilesOpen(true)}
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+              >
+                {isKhmer ? "ឯកសារ ឯកសារផ្សេងៗ និងតំណ" : "Files, documents & links"}
+              </button>
+
+              <button
+                type="button"
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+              >
+                {isKhmer ? "រាយការណ៍សារឥតបានការ" : "Report spam"}
+              </button>
+            </div>
+          </section>
 
 <CustomerNotes
   contactId={contact.id}
@@ -511,27 +582,27 @@ async function saveProfile() {
       ?.full_name ?? null
   }
 />
-          <ProfileSection title="Facebook information">
+          <ProfileSection title={isKhmer ? "ព័ត៌មាន Facebook" : "Facebook information"}>
             <ProfileValue
-              label="Customer ID"
+              label={isKhmer ? "លេខសម្គាល់អតិថិជន" : "Customer ID"}
               value={contact.platform_user_id}
               breakAll
             />
 
             <ProfileValue
-              label="Page"
+              label={isKhmer ? "ទំព័រ" : "Page"}
               value={
                 activeConversation.social_account
                   ?.account_name ??
-                "Facebook Page"
+                (isKhmer ? "ទំព័រ Facebook" : "Facebook Page")
               }
             />
           </ProfileSection>
 
-          <ProfileSection title="Conversation">
+          <ProfileSection title={isKhmer ? "ការសន្ទនា" : "Conversation"}>
             <div>
               <p className="text-xs text-slate-500">
-                Status
+                {isKhmer ? "ស្ថានភាព" : "Status"}
               </p>
 
               <span
@@ -539,65 +610,92 @@ async function saveProfile() {
                   activeConversation.status,
                 )}`}
               >
-                {getStatusLabel(
-                  activeConversation.status,
-                )}
+                {isKhmer
+                  ? ({
+                      open: "បើក",
+                      pending: "កំពុងរង់ចាំ",
+                      resolved: "បានដោះស្រាយ",
+                      closed: "បានបិទ",
+                      spam: "សារឥតបានការ",
+                    } as const)[activeConversation.status]
+                  : getStatusLabel(activeConversation.status)}
               </span>
             </div>
 
-            <ProfileValue
-              label="Assigned to"
-              value={
-                activeConversation.assigned_member
-                  ?.full_name ??
-                "Unassigned"
-              }
-            />
+            <div>
+              <p className="text-xs text-slate-500">
+                {isKhmer ? "បានចាត់តាំងទៅ" : "Assigned to"}
+              </p>
+
+              {activeConversation.assigned_to ? (
+                <p className="mt-1 text-sm font-medium text-slate-900">
+                  {activeConversation.assigned_member?.full_name ??
+                    (isKhmer ? "បានចាត់តាំង" : "Assigned")}
+                </p>
+              ) : (
+                <div className="mt-1 flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-slate-500">
+                    {isKhmer ? "មិនទាន់ចាត់តាំង" : "Unassigned"}
+                  </p>
+
+                  {onAssignToMe ? (
+                    <button
+                      type="button"
+                      onClick={onAssignToMe}
+                      disabled={assigning}
+                      className="shrink-0 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {assigning
+                        ? isKhmer ? "កំពុងចាត់តាំង..." : "Assigning..."
+                        : isKhmer ? "ចាត់តាំងឲ្យខ្ញុំ" : "Assign to me"}
+                    </button>
+                  ) : null}
+                </div>
+              )}
+            </div>
 
             <ProfileValue
-              label="Customer since"
+              label={isKhmer ? "ជាអតិថិជនតាំងពី" : "Customer since"}
               value={formatProfileDate(
                 contact.created_at,
               )}
             />
 
             <ProfileValue
-              label="Last active"
+              label={isKhmer ? "សកម្មចុងក្រោយ" : "Last active"}
               value={formatProfileDate(
                 contact.last_contact_at,
               )}
             />
           </ProfileSection>
-          <section className="border-t border-slate-200 pt-5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Other
-            </p>
 
-            <div className="mt-3 space-y-2">
-              <button
-                type="button"
-                onClick={() => setReminderOpen(true)}
-                className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-              >
-                Create reminder
-              </button>
+          <ProfileSection title={isKhmer ? "ស្លាក" : "Tags"}>
+            {customerTags.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {customerTags.map((tag) => (
+                  <span
+                    key={tag.id}
+                    className="inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-semibold shadow-sm"
+                    style={{
+                      backgroundColor: tag.color,
+                      color: getReadableTagTextColor(tag.color),
+                    }}
+                    title={tag.name}
+                  >
+                    <span className="max-w-[150px] truncate">
+                      {tag.name}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">
+                {isKhmer ? "មិនទាន់មានស្លាក" : "No tags yet"}
+              </p>
+            )}
+          </ProfileSection>
 
-              <button
-                type="button"
-                onClick={() => setFilesOpen(true)}
-                className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-              >
-                Files, documents & links
-              </button>
 
-              <button
-                type="button"
-                className="w-full rounded-lg px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-              >
-                Report spam
-              </button>
-            </div>
-          </section>
         </div>
       )}
     </div>
@@ -607,7 +705,7 @@ async function saveProfile() {
         conversationId={activeConversation.id}
         contactId={contact.id}
         customerName={
-          contact.full_name ?? "Facebook customer"
+          contact.full_name ?? (isKhmer ? "អតិថិជន Facebook" : "Facebook customer")
         }
         defaultAssignedTo={
           activeConversation.assigned_to
@@ -627,7 +725,7 @@ async function saveProfile() {
         contactId={contact.id}
         conversationId={activeConversation.id}
         customerName={
-          contact.full_name ?? "Facebook customer"
+          contact.full_name ?? (isKhmer ? "អតិថិជន Facebook" : "Facebook customer")
         }
         onClose={() => setFilesOpen(false)}
       />

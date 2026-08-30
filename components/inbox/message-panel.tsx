@@ -18,9 +18,13 @@ import {
   ReplyBox,
   type ReplyAttachment,
 } from "@/components/inbox/reply-box";
+import {
+  useWorkspaceLanguageId,
+} from "@/components/display/workspace-language-text";
 
 import type {
   ConversationStatus,
+  CustomerTag,
   InboxConversation,
   InboxMessage,
   TeamMember,
@@ -29,7 +33,60 @@ import type {
 import type {
   AgentPresence,
   AgentPresenceStatus,
+  TeamAgentPresence,
 } from "@/lib/inbox/use-agent-presence";
+import {
+  TENH_ACTIVE_WORKSPACE_UI_CHANGE_EVENT,
+  readWorkspaceStorage,
+} from "@/lib/display/workspace-storage";
+
+const CHAT_BACKGROUND_STORAGE_KEY = "tenh-chat-background-theme";
+const CHAT_BACKGROUND_SRC_STORAGE_KEY = `${CHAT_BACKGROUND_STORAGE_KEY}:src`;
+const CHAT_BACKGROUND_CHANGE_EVENT = "tenh:chat-background-theme-change";
+const DEFAULT_CHAT_BACKGROUND_SRC = "/images/chat-bg.png";
+
+const CHAT_BACKGROUND_PRESET_SRC: Record<string, string> = {
+  "theme-1": "/images/bg-theme1.png",
+  "theme-2": "/images/bg-theme2.png",
+  "theme-3": "/images/bg-theme3.png",
+  "theme-4": "/images/bg-theme4.png",
+  "theme-5": "/images/bg-theme5.png",
+};
+
+function isSafeChatBackgroundSrc(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    Object.values(CHAT_BACKGROUND_PRESET_SRC).includes(value)
+  );
+}
+
+function readStoredChatBackgroundSrc() {
+  if (typeof window === "undefined") {
+    return DEFAULT_CHAT_BACKGROUND_SRC;
+  }
+
+  try {
+    const storedSrc = readWorkspaceStorage(
+      CHAT_BACKGROUND_SRC_STORAGE_KEY,
+    );
+
+    if (isSafeChatBackgroundSrc(storedSrc)) {
+      return storedSrc;
+    }
+
+    const storedId = readWorkspaceStorage(
+      CHAT_BACKGROUND_STORAGE_KEY,
+    );
+
+    if (storedId && CHAT_BACKGROUND_PRESET_SRC[storedId]) {
+      return CHAT_BACKGROUND_PRESET_SRC[storedId];
+    }
+  } catch {
+    // Keep the Inbox usable if browser storage is unavailable.
+  }
+
+  return DEFAULT_CHAT_BACKGROUND_SRC;
+}
 
 type MessagePanelProps = {
   activeConversation:
@@ -63,6 +120,8 @@ type MessagePanelProps = {
   viewingAgents: AgentPresence[];
 
   typingAgents: AgentPresence[];
+
+  teamPresence: TeamAgentPresence[];
 
   agentPresenceStatus:
     AgentPresenceStatus;
@@ -100,6 +159,11 @@ type MessagePanelProps = {
 
   onReplyChange: (
     value: string,
+  ) => void;
+
+  onContactTagsChange?: (
+    contactId: string,
+    tags: CustomerTag[],
   ) => void;
 
   onSendMessage: (
@@ -936,6 +1000,7 @@ export function MessagePanel({
   onLoadOlderMessages,
   viewingAgents,
   typingAgents,
+  teamPresence,
   agentPresenceStatus,
   reply,
   sending,
@@ -953,6 +1018,7 @@ export function MessagePanel({
   onTogglePin,
 
   onReplyChange,
+  onContactTagsChange,
   onSendMessage,
   onSendAttachments,
   onStatusChange,
@@ -974,6 +1040,8 @@ export function MessagePanel({
   onDeleteComment,
   onRetryMessage,
 }: MessagePanelProps) {
+  const isKhmer = useWorkspaceLanguageId() === "km";
+
   /*
    * V3.11.25 — snapshot unread_count exactly when a conversation opens.
    * The parent may immediately mark the conversation read, but this snapshot
@@ -1033,6 +1101,67 @@ export function MessagePanel({
 
   const [actionNotice, setActionNotice] =
     useState<string | null>(null);
+
+  const [chatBackgroundSrc, setChatBackgroundSrc] =
+    useState(DEFAULT_CHAT_BACKGROUND_SRC);
+
+  useEffect(() => {
+    function syncStoredBackground() {
+      setChatBackgroundSrc(readStoredChatBackgroundSrc());
+    }
+
+    function handleBackgroundChange(event: Event) {
+      const customEvent = event as CustomEvent<{
+        src?: string;
+      }>;
+      const nextSrc = customEvent.detail?.src;
+
+      if (isSafeChatBackgroundSrc(nextSrc)) {
+        setChatBackgroundSrc(nextSrc);
+        return;
+      }
+
+      syncStoredBackground();
+    }
+
+    function handleBackgroundStorage(event: StorageEvent) {
+      if (
+        event.key === CHAT_BACKGROUND_STORAGE_KEY ||
+        event.key?.startsWith(`${CHAT_BACKGROUND_STORAGE_KEY}:`) ||
+        event.key === CHAT_BACKGROUND_SRC_STORAGE_KEY ||
+        event.key?.startsWith(`${CHAT_BACKGROUND_SRC_STORAGE_KEY}:`)
+      ) {
+        syncStoredBackground();
+      }
+    }
+
+    syncStoredBackground();
+
+    window.addEventListener(
+      CHAT_BACKGROUND_CHANGE_EVENT,
+      handleBackgroundChange,
+    );
+    window.addEventListener("storage", handleBackgroundStorage);
+    window.addEventListener(
+      TENH_ACTIVE_WORKSPACE_UI_CHANGE_EVENT,
+      syncStoredBackground,
+    );
+
+    return () => {
+      window.removeEventListener(
+        CHAT_BACKGROUND_CHANGE_EVENT,
+        handleBackgroundChange,
+      );
+      window.removeEventListener(
+        "storage",
+        handleBackgroundStorage,
+      );
+      window.removeEventListener(
+        TENH_ACTIVE_WORKSPACE_UI_CHANGE_EVENT,
+        syncStoredBackground,
+      );
+    };
+  }, []);
 
   const [
     telegramContextMenu,
@@ -1839,11 +1968,11 @@ export function MessagePanel({
             </div>
 
             <p className="mt-4 font-semibold text-slate-900">
-              Select a conversation
+              {isKhmer ? "ជ្រើសរើសការសន្ទនា" : "Select a conversation"}
             </p>
 
             <p className="mt-1 text-sm text-slate-500">
-              Choose a customer from the inbox.
+              {isKhmer ? "ជ្រើសរើសអតិថិជនពីប្រអប់សារ។" : "Choose a customer from the inbox."}
             </p>
           </div>
         </div>
@@ -1907,7 +2036,6 @@ export function MessagePanel({
     (headerChannelPlatform === "telegram"
       ? "Telegram Bot"
       : "Facebook Page");
-
 
   return (
     <section className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
@@ -2011,6 +2139,18 @@ export function MessagePanel({
         teamMembers={
           teamMembers
         }
+        viewingAgents={
+          viewingAgents
+        }
+        typingAgents={
+          typingAgents
+        }
+        teamPresence={
+          teamPresence
+        }
+        agentPresenceStatus={
+          agentPresenceStatus
+        }
         updatingStatus={
           updatingStatus
         }
@@ -2049,17 +2189,6 @@ export function MessagePanel({
         }
       />
 
-      <AgentPresenceStrip
-        viewingAgents={
-          viewingAgents
-        }
-        typingAgents={
-          typingAgents
-        }
-        status={
-          agentPresenceStatus
-        }
-      />
 
       {statusError ? (
         <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">
@@ -2126,17 +2255,20 @@ export function MessagePanel({
           }
           className="h-full space-y-4 overflow-y-auto p-6"
           style={{
-            backgroundColor:
-              "#EEF2F6",
-
-            backgroundImage:
-              "url('/images/chat-bg.png')",
-
+            backgroundColor: "#EEF2F6",
+            backgroundImage: `url("${chatBackgroundSrc}")`,
             backgroundRepeat:
-              "repeat",
-
+              chatBackgroundSrc === DEFAULT_CHAT_BACKGROUND_SRC
+                ? "repeat"
+                : "no-repeat",
             backgroundSize:
-              "320px",
+              chatBackgroundSrc === DEFAULT_CHAT_BACKGROUND_SRC
+                ? "320px"
+                : "cover",
+            backgroundPosition:
+              chatBackgroundSrc === DEFAULT_CHAT_BACKGROUND_SRC
+                ? "left top"
+                : "center",
           }}
         >
           <div className="mb-3 flex min-h-8 items-center justify-center">
@@ -2625,6 +2757,37 @@ export function MessagePanel({
                     ) ?? null
                   : null;
 
+              // UI only: replies to Facebook comments are rendered as a
+              // compact nested card directly beneath the parent comment.
+              // This does not change reply IDs, actions, API calls, or data.
+              const isNestedFacebookCommentReply = Boolean(
+                facebookReplyParentId && facebookReplyParentMessage,
+              );
+
+              // UI only: collect direct Page replies so they can be rendered
+              // inside the same visual comment container as their parent.
+              // Message IDs and all existing APIs stay unchanged.
+              const facebookChildReplies =
+                !facebookReplyParentId &&
+                message.platform_message_id
+                  ? messages.filter((candidate) => {
+                      const candidatePayload =
+                        candidate.raw_payload as {
+                          source?: string;
+                          parent_comment_id?: string;
+                        } | null;
+
+                      return (
+                        candidatePayload?.source ===
+                          "facebook_comment_reply" &&
+                        typeof candidatePayload.parent_comment_id ===
+                          "string" &&
+                        candidatePayload.parent_comment_id.trim() ===
+                          message.platform_message_id
+                      );
+                    })
+                  : [];
+
               const facebookReplyPreviewText =
                 facebookReplyParentMessage
                   ?.comment_is_deleted
@@ -2858,6 +3021,699 @@ export function MessagePanel({
                 );
               }
 
+              const hasEarlierPreviewForPost =
+                Boolean(
+                  postId &&
+                    messages
+                      .slice(0, messageIndex)
+                      .some((candidate) => {
+                        const candidatePayload =
+                          candidate.raw_payload as
+                            | { post_id?: string }
+                            | null;
+
+                        return (
+                          candidatePayload?.post_id ===
+                          postId
+                        );
+                      }),
+                );
+
+              const showFacebookPostPreview =
+                Boolean(
+                  postPreview &&
+                    postId &&
+                    !hasEarlierPreviewForPost &&
+                    !commentState.deleted,
+                );
+
+              const facebookCommentActorName =
+                isOutgoing
+                  ? headerChannelAccountName
+                  : replyingToName;
+
+              const facebookCommentActorPhoto =
+                isOutgoing
+                  ? null
+                  : activeConversation.contact
+                      ?.profile_picture_url ?? null;
+
+              const facebookCommentActorInitial =
+                facebookCommentActorName
+                  .trim()
+                  .charAt(0)
+                  .toUpperCase() || "?";
+
+              /*
+               * UI only: Facebook comment replies use a compact nested
+               * thread layout. IDs, actions, API calls, and reply behavior
+               * stay unchanged.
+               */
+
+              if (isFacebookCommentMessage) {
+                // A reply that has a local parent is rendered inside that
+                // parent below. Skip the old standalone reply card.
+                if (isNestedFacebookCommentReply) {
+                  return null;
+                }
+
+                // Deleted Facebook comments collapse to one safe status row:
+                // no avatar, name, post preview, actions, or child replies.
+                if (commentState.deleted) {
+                  const deletedByPage =
+                    commentState.deletedBy === "page" ||
+                    (commentState.deletedBy === null && isOutgoing);
+
+                  return (
+                    <Fragment key={message.id}>
+                      {showMessageDay ? (
+                        <div className="flex items-center gap-3 py-1">
+                          <div className="h-px flex-1 bg-blue-200/70" />
+                          <span className="rounded-full border border-blue-200 bg-white/90 px-3 py-1 text-[11px] font-semibold text-blue-700 shadow-sm">
+                            <HydrationSafeMessageDay
+                              value={messageTimestamp}
+                            />
+                          </span>
+                          <div className="h-px flex-1 bg-blue-200/70" />
+                        </div>
+                      ) : null}
+
+                      <div
+                        ref={(node) => {
+                          if (node) {
+                            messageElementRefs.current.set(
+                              message.id,
+                              node,
+                            );
+                          } else {
+                            messageElementRefs.current.delete(
+                              message.id,
+                            );
+                          }
+                        }}
+                        className="w-fit max-w-[680px] rounded-[16px] border border-slate-200 bg-white px-4 py-3 text-sm italic text-slate-500 shadow-[0_3px_12px_rgba(15,23,42,0.04)]"
+                      >
+                        {deletedByPage
+                          ? isKhmer
+                            ? "សារត្រូវបានលុបដោយទំព័រ"
+                            : "Message deleted by Page"
+                          : isKhmer
+                            ? "សារត្រូវបានលុបដោយអ្នកបញ្ចេញមតិ"
+                            : "Message deleted by commenter"}
+                      </div>
+                    </Fragment>
+                  );
+                }
+
+                return (
+                  <Fragment key={message.id}>
+                    {showMessageDay ? (
+                      <div className="flex items-center gap-3 py-1">
+                        <div className="h-px flex-1 bg-blue-200/70" />
+                        <span className="rounded-full border border-blue-200 bg-white/90 px-3 py-1 text-[11px] font-semibold text-blue-700 shadow-sm">
+                          <HydrationSafeMessageDay
+                            value={messageTimestamp}
+                          />
+                        </span>
+                        <div className="h-px flex-1 bg-blue-200/70" />
+                      </div>
+                    ) : null}
+
+                    <div
+                      ref={(node) => {
+                        if (node) {
+                          messageElementRefs.current.set(
+                            message.id,
+                            node,
+                          );
+                        } else {
+                          messageElementRefs.current.delete(
+                            message.id,
+                          );
+                        }
+                      }}
+                      className={`${
+                        isNestedFacebookCommentReply
+                          ? "!mt-0 ml-[52px] w-fit max-w-[680px] rounded-[16px] bg-white px-2 py-1 shadow-none sm:ml-[64px]"
+                          : "w-fit max-w-[860px] rounded-[20px] border border-slate-200 bg-white p-2 shadow-[0_4px_16px_rgba(15,23,42,0.05)]"
+                      } transition ${
+                        isJumpHighlighted
+                          ? "rounded-[18px] ring-2 ring-amber-300/70 ring-offset-2"
+                          : isReplyTarget
+                            ? "rounded-[18px] ring-2 ring-blue-300/70 ring-offset-2"
+                            : ""
+                      }`}
+                    >
+                      {showFacebookPostPreview &&
+                      postPreview ? (
+                        <div className="max-w-[860px] p-1 sm:p-2">
+                          <div className="flex min-w-0 items-stretch gap-3 rounded-[18px] border border-slate-200 bg-white p-3 shadow-[0_3px_14px_rgba(15,23,42,0.04)] sm:gap-4">
+                            {postPreview.full_picture ? (
+                              <a
+                                href={postUrl ?? undefined}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="h-[112px] w-[112px] shrink-0 overflow-hidden rounded-[15px] bg-slate-100 sm:h-[132px] sm:w-[132px]"
+                              >
+                                <img
+                                  src={
+                                    postPreview.full_picture
+                                  }
+                                  alt="Facebook post"
+                                  className="h-full w-full object-cover"
+                                  loading="lazy"
+                                />
+                              </a>
+                            ) : (
+                              <div className="flex h-[112px] w-[112px] shrink-0 items-center justify-center rounded-[15px] bg-blue-50 text-blue-600 sm:h-[132px] sm:w-[132px]">
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  fill="currentColor"
+                                  className="h-10 w-10"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M13.6 22v-9h3l.5-3.5h-3.5V7.3c0-1 .3-1.7 1.8-1.7h1.9V2.5c-.3 0-1.5-.1-2.8-.1-2.8 0-4.7 1.7-4.7 4.8v2.3H6.7V13h3.1v9h3.8Z" />
+                                </svg>
+                              </div>
+                            )}
+
+                            <div className="min-w-0 flex-1 py-1">
+                              <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-500 sm:text-base">
+                                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#1877F2] text-white">
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    fill="currentColor"
+                                    className="h-4 w-4"
+                                    aria-hidden="true"
+                                  >
+                                    <path d="M13.6 22v-9h3l.5-3.5h-3.5V7.3c0-1 .3-1.7 1.8-1.7h1.9V2.5c-.3 0-1.5-.1-2.8-.1-2.8 0-4.7 1.7-4.7 4.8v2.3H6.7V13h3.1v9h3.8Z" />
+                                  </svg>
+                                </span>
+                                <span>
+                                  {isKhmer
+                                    ? "មតិយោបល់លើការបង្ហោះ"
+                                    : "Comment on post"}{" "}
+                                  <span className="font-semibold text-slate-400">
+                                    #{
+                                      postId
+                                        ?.replace(/[^A-Za-z0-9]/g, "")
+                                        .slice(-8) || "Facebook"
+                                    }
+                                  </span>
+                                </span>
+                              </div>
+
+                              <div className="mt-2 text-[22px] font-bold tracking-[-0.02em] text-slate-950 sm:text-[25px]">
+                                {headerChannelAccountName}
+                              </div>
+
+                              {postPreview.message ? (
+                                <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-slate-500 sm:text-base">
+                                  {postPreview.message}
+                                </p>
+                              ) : null}
+
+                              {postUrl ? (
+                                <a
+                                  href={postUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"
+                                >
+                                  {isKhmer
+                                    ? "មើលការបង្ហោះ"
+                                    : "View Post"}
+                                  <span aria-hidden="true">↗</span>
+                                </a>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div
+                        className={`relative flex gap-2.5 ${
+                          isNestedFacebookCommentReply
+                            ? "px-0 py-1.5 sm:gap-3"
+                            : showFacebookPostPreview
+                              ? "mt-3 px-1 py-2 sm:px-2"
+                              : "px-1 py-2 sm:px-2"
+                        }`}
+                      >
+                        <div className="shrink-0">
+                          {facebookCommentActorPhoto ? (
+                            <img
+                              src={facebookCommentActorPhoto}
+                              alt={facebookCommentActorName}
+                              className={`${
+                                isNestedFacebookCommentReply
+                                  ? "h-8 w-8"
+                                  : "h-10 w-10 sm:h-11 sm:w-11"
+                              } rounded-full object-cover ring-1 ring-slate-200`}
+                            />
+                          ) : (
+                            <div
+                              className={`flex items-center justify-center rounded-full font-bold ${
+                                isNestedFacebookCommentReply
+                                  ? "h-8 w-8 text-xs"
+                                  : "h-10 w-10 text-sm sm:h-11 sm:w-11 sm:text-base"
+                              } ${
+                                isOutgoing
+                                  ? "bg-blue-600 text-white shadow-[0_6px_18px_rgba(37,99,235,0.22)]"
+                                  : "bg-blue-50 text-blue-700"
+                              }`}
+                            >
+                              {facebookCommentActorInitial}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pr-8">
+                            <span className="text-[15px] font-bold text-slate-950 sm:text-base">
+                              {facebookCommentActorName}
+                            </span>
+
+                            {isOutgoing ? (
+                              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-600">
+                                {isKhmer ? "អ្នក" : "You"}
+                              </span>
+                            ) : null}
+
+                            <span className="text-sm text-slate-400">
+                              <HydrationSafeMessageTime
+                                value={messageTimestamp}
+                              />
+                            </span>
+
+                            {isOutgoing &&
+                            !commentState.deleted ? (
+                              <span className="text-[11px] font-medium text-slate-400">
+                                {optimisticStatus ===
+                                "sending"
+                                  ? "Sending..."
+                                  : optimisticStatus ===
+                                      "failed"
+                                    ? "Failed to send"
+                                    : persistedDeliveryStatus ===
+                                        "seen"
+                                      ? "✓✓ Seen"
+                                      : persistedDeliveryStatus ===
+                                          "delivered"
+                                        ? "✓✓ Delivered"
+                                        : "✓ Sent"}
+                              </span>
+                            ) : null}
+                          </div>
+
+                          <span
+                            aria-hidden="true"
+                            className="absolute right-0 top-0 select-none text-lg leading-none tracking-[2px] text-slate-400"
+                          >
+                            ⋮
+                          </span>
+
+                          {facebookReplyParentId &&
+                          !isNestedFacebookCommentReply &&
+                          !commentState.deleted ? (
+                            <div className="mt-3 max-w-[560px] rounded-xl border-l-[3px] border-blue-400 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                              <div className="flex items-center gap-1.5 font-semibold text-slate-600">
+                                <ReplyIcon />
+                                <span>
+                                  {isKhmer
+                                    ? "ឆ្លើយតបទៅមតិយោបល់"
+                                    : "Reply to comment"}
+                                </span>
+                              </div>
+                              <div className="mt-1 truncate">
+                                {facebookReplyPreviewText}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {commentState.deleted ? (
+                            <div className="mt-3 inline-flex items-center gap-2 rounded-[14px] bg-slate-50 px-3.5 py-2.5 text-sm italic text-slate-400">
+                              <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                className="h-4 w-4 shrink-0"
+                                aria-hidden="true"
+                              >
+                                <path d="M4 7h16" strokeLinecap="round" />
+                                <path d="M9 7V4h6v3" strokeLinecap="round" />
+                                <path
+                                  d="M6 7l1 13h10l1-13"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                              <span>
+                                Message deleted by commenter or Page
+                              </span>
+                            </div>
+                          ) : (
+                            <div
+                              className={`mt-0.5 max-w-[680px] whitespace-pre-wrap text-[15px] leading-5 sm:text-base ${
+                                isOutgoing
+                                  ? "text-slate-900"
+                                  : "text-slate-900"
+                              }`}
+                            >
+                              {message.message_text ??
+                                "Facebook comment"}
+                            </div>
+                          )}
+
+                          {showCommentActions ? (
+                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] font-medium">
+                              {!isOutgoing ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    disabled={commentState.deleted}
+                                    onClick={() =>
+                                      onReplyToComment(
+                                        message.platform_message_id,
+                                      )
+                                    }
+                                    className={`inline-flex items-center gap-1.5 transition disabled:cursor-not-allowed disabled:opacity-30 ${
+                                      isReplyTarget
+                                        ? "text-blue-600"
+                                        : "text-slate-500 hover:text-blue-600"
+                                    }`}
+                                  >
+                                    <ReplyIcon />
+                                    <span>
+                                      {isReplyTarget
+                                        ? isKhmer
+                                          ? "បានជ្រើស"
+                                          : "Selected"
+                                        : isKhmer
+                                          ? "ឆ្លើយតប"
+                                          : "Reply"}
+                                    </span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    disabled={commentState.deleted}
+                                    onClick={() => void toggleLike()}
+                                    className={`inline-flex items-center gap-1.5 transition disabled:cursor-not-allowed disabled:opacity-30 ${
+                                      commentState.liked
+                                        ? "text-blue-600"
+                                        : "text-slate-500 hover:text-blue-600"
+                                    }`}
+                                  >
+                                    <LikeIcon />
+                                    <span>
+                                      {commentState.liked
+                                        ? isKhmer
+                                          ? "ដកការចូលចិត្ត"
+                                          : "Unlike"
+                                        : isKhmer
+                                          ? "ចូលចិត្ត"
+                                          : "Like"}
+                                    </span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    disabled={commentState.deleted}
+                                    onClick={() => void toggleHide()}
+                                    className={`inline-flex items-center gap-1.5 transition disabled:cursor-not-allowed disabled:opacity-30 ${
+                                      commentState.hidden
+                                        ? "text-amber-600"
+                                        : "text-slate-500 hover:text-amber-600"
+                                    }`}
+                                  >
+                                    <HideIcon />
+                                    <span>
+                                      {commentState.hidden
+                                        ? isKhmer
+                                          ? "បង្ហាញវិញ"
+                                          : "Unhide"
+                                        : isKhmer
+                                          ? "លាក់"
+                                          : "Hide"}
+                                    </span>
+                                  </button>
+                                </>
+                              ) : null}
+
+                              <button
+                                type="button"
+                                disabled={commentState.deleted}
+                                onClick={() => void deleteComment()}
+                                className="inline-flex items-center gap-1.5 text-slate-500 transition hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
+                              >
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.8"
+                                  className="h-4 w-4"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M4 7h16" strokeLinecap="round" />
+                                  <path d="M9 7V4h6v3" strokeLinecap="round" />
+                                  <path
+                                    d="M6 7l1 13h10l1-13"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                                <span>
+                                  {isKhmer ? "លុប" : "Delete"}
+                                </span>
+                              </button>
+
+                              {optimisticStatus === "failed" &&
+                              onRetryMessage ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onRetryMessage(message.id)
+                                  }
+                                  className="font-semibold text-red-600 hover:underline"
+                                >
+                                  Retry
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
+
+                          {facebookChildReplies.length > 0 ? (
+                            <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+                              {facebookChildReplies.map((reply) => {
+                                const replyServerState = {
+                                  liked:
+                                    reply.comment_is_liked ?? false,
+                                  hidden:
+                                    reply.comment_is_hidden ?? false,
+                                  deleted:
+                                    reply.comment_is_deleted ?? false,
+                                  deletedBy:
+                                    reply.comment_deleted_by ?? null,
+                                };
+
+                                const replyState =
+                                  optimisticCommentState[reply.id] ??
+                                  replyServerState;
+
+                                const replyTimestamp =
+                                  reply.platform_created_at ??
+                                  reply.created_at;
+
+                                const replyStatus = reply as InboxMessage & {
+                                  __optimistic_status?:
+                                    | "sending"
+                                    | "sent"
+                                    | "failed";
+                                  delivery_status?:
+                                    | "sent"
+                                    | "delivered"
+                                    | "seen"
+                                    | null;
+                                };
+
+                                const replyDeletedByPage =
+                                  replyState.deletedBy === "page" ||
+                                  replyState.deletedBy === null;
+
+                                if (replyState.deleted) {
+                                  return (
+                                    <div
+                                      key={reply.id}
+                                      ref={(node) => {
+                                        if (node) {
+                                          messageElementRefs.current.set(
+                                            reply.id,
+                                            node,
+                                          );
+                                        } else {
+                                          messageElementRefs.current.delete(
+                                            reply.id,
+                                          );
+                                        }
+                                      }}
+                                      className="ml-11 w-fit rounded-xl bg-slate-50 px-3 py-2 text-[13px] italic text-slate-400 sm:ml-14"
+                                    >
+                                      {replyDeletedByPage
+                                        ? isKhmer
+                                          ? "សារត្រូវបានលុបដោយទំព័រ"
+                                          : "Message deleted by Page"
+                                        : isKhmer
+                                          ? "សារត្រូវបានលុបដោយអ្នកបញ្ចេញមតិ"
+                                          : "Message deleted by commenter"}
+                                    </div>
+                                  );
+                                }
+
+                                return (
+                                  <div
+                                    key={reply.id}
+                                    ref={(node) => {
+                                      if (node) {
+                                        messageElementRefs.current.set(
+                                          reply.id,
+                                          node,
+                                        );
+                                      } else {
+                                        messageElementRefs.current.delete(
+                                          reply.id,
+                                        );
+                                      }
+                                    }}
+                                    className="ml-7 flex gap-2.5 sm:ml-10"
+                                  >
+                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shadow-[0_4px_12px_rgba(37,99,235,0.18)]">
+                                      {headerChannelAccountName
+                                        .trim()
+                                        .charAt(0)
+                                        .toUpperCase() || "?"}
+                                    </div>
+
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                        <span className="text-[14px] font-bold text-slate-950">
+                                          {headerChannelAccountName}
+                                        </span>
+                                        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600">
+                                          {isKhmer ? "អ្នក" : "You"}
+                                        </span>
+                                        <span className="text-xs text-slate-400">
+                                          <HydrationSafeMessageTime
+                                            value={replyTimestamp}
+                                          />
+                                        </span>
+                                        <span className="text-[10px] font-medium text-slate-400">
+                                          {replyStatus.__optimistic_status ===
+                                          "sending"
+                                            ? "Sending..."
+                                            : replyStatus.__optimistic_status ===
+                                                "failed"
+                                              ? "Failed to send"
+                                              : replyStatus.delivery_status ===
+                                                  "seen"
+                                                ? "✓✓ Seen"
+                                                : replyStatus.delivery_status ===
+                                                    "delivered"
+                                                  ? "✓✓ Delivered"
+                                                  : "✓ Sent"}
+                                        </span>
+                                      </div>
+
+                                      <div className="mt-0.5 max-w-[620px] whitespace-pre-wrap text-[15px] leading-5 text-slate-900">
+                                        {reply.message_text ??
+                                          "Facebook comment reply"}
+                                      </div>
+
+                                      {reply.platform_message_id &&
+                                      !reply.id.startsWith(
+                                        "optimistic:",
+                                      ) ? (
+                                        <div className="mt-1.5 flex items-center gap-3 text-[12px] font-medium">
+                                          <button
+                                            type="button"
+                                            onClick={async () => {
+                                              const previous = replyState;
+
+                                              setOptimisticCommentState(
+                                                (current) => ({
+                                                  ...current,
+                                                  [reply.id]: {
+                                                    ...replyState,
+                                                    deleted: true,
+                                                    deletedBy: "page",
+                                                  },
+                                                }),
+                                              );
+
+                                              const result =
+                                                await onDeleteComment(
+                                                  reply.platform_message_id,
+                                                );
+
+                                              if (!result.success &&
+                                                  !result.deleted) {
+                                                setOptimisticCommentState(
+                                                  (current) => ({
+                                                    ...current,
+                                                    [reply.id]: previous,
+                                                  }),
+                                                );
+                                                return;
+                                              }
+
+                                              showActionNotice(
+                                                "Comment deleted successfully",
+                                              );
+                                            }}
+                                            className="inline-flex items-center gap-1.5 text-slate-500 transition hover:text-red-600"
+                                          >
+                                            <svg
+                                              viewBox="0 0 24 24"
+                                              fill="none"
+                                              stroke="currentColor"
+                                              strokeWidth="1.8"
+                                              className="h-3.5 w-3.5"
+                                              aria-hidden="true"
+                                            >
+                                              <path
+                                                d="M4 7h16"
+                                                strokeLinecap="round"
+                                              />
+                                              <path
+                                                d="M9 7V4h6v3"
+                                                strokeLinecap="round"
+                                              />
+                                              <path
+                                                d="M6 7l1 13h10l1-13"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                              />
+                                            </svg>
+                                            <span>
+                                              {isKhmer ? "លុប" : "Delete"}
+                                            </span>
+                                          </button>
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  </Fragment>
+                );
+              }
+
               return (
                 <Fragment key={message.id}>
                   {showMessageDay ? (
@@ -2933,7 +3789,7 @@ export function MessagePanel({
                     <div
                       className={`overflow-hidden border text-sm shadow-[0_2px_8px_rgba(15,23,42,0.06)] transition ${
                         isOutgoing
-                          ? "rounded-[18px] rounded-br-[5px] border-emerald-200/70 bg-emerald-50/95 text-slate-900"
+                          ? "rounded-[18px] rounded-br-[5px] text-white"
                           : "rounded-[18px] rounded-bl-[5px] border-slate-200/90 bg-white text-slate-900"
                       } ${
                         isJumpHighlighted
@@ -2943,6 +3799,17 @@ export function MessagePanel({
                             ? "ring-2 ring-blue-400 ring-offset-2"
                             : ""
                       }`}
+                      style={
+                        isOutgoing
+                          ? {
+                              backgroundColor:
+                                "var(--tenh-primary, #2563EB)",
+                              borderColor:
+                                "var(--tenh-primary, #2563EB)",
+                              color: "#FFFFFF",
+                            }
+                          : undefined
+                      }
                     >
                       {/* Message content */}
                       <div className="px-4 pb-2 pt-3">
@@ -3074,7 +3941,7 @@ export function MessagePanel({
                                 {postPreview.message ? (
                                   <div className="px-3 py-2.5">
                                     <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                                      Facebook Post
+                                      {isKhmer ? "Facebook Post" : "Facebook Post"}
                                     </div>
 
                                     <p className="whitespace-pre-wrap text-sm leading-5 text-slate-700">
@@ -3090,7 +3957,7 @@ export function MessagePanel({
                             {/* Customer comment */}
                             <div className="border-t border-slate-100 px-3 py-2.5">
                               <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-600">
-                                Facebook Comment
+                                {isKhmer ? "Facebook comments" : "Facebook Comment"}
                               </div>
 
                               <div className="mt-1 whitespace-pre-wrap text-sm font-medium text-slate-900">
@@ -3107,7 +3974,7 @@ export function MessagePanel({
                                   rel="noreferrer"
                                   className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline"
                                 >
-                                  View Post
+                                  {isKhmer ? "View Post" : "View Post"}
                                   <span
                                     aria-hidden="true"
                                   >
@@ -3365,7 +4232,13 @@ export function MessagePanel({
                               : "justify-start"
                           }`}
                         >
-                          <span className="text-slate-500">
+                          <span
+                            className={
+                              isOutgoing
+                                ? "text-white/75"
+                                : "text-slate-500"
+                            }
+                          >
                             <HydrationSafeMessageTime
                               value={messageTimestamp}
                             />
@@ -3373,7 +4246,13 @@ export function MessagePanel({
 
                           {telegramEdited &&
                           !telegramDeleted ? (
-                            <span className="text-slate-400">
+                            <span
+                              className={
+                                isOutgoing
+                                  ? "text-white/70"
+                                  : "text-slate-400"
+                              }
+                            >
                               Edited
                             </span>
                           ) : null}
@@ -3382,14 +4261,14 @@ export function MessagePanel({
                           !telegramDeleted ? (
                             optimisticStatus ===
                             "sending" ? (
-                              <span className="inline-flex items-center gap-1 text-slate-500">
-                                <span className="h-2.5 w-2.5 animate-spin rounded-full border border-slate-400 border-t-transparent" />
+                              <span className="inline-flex items-center gap-1 text-white/80">
+                                <span className="h-2.5 w-2.5 animate-spin rounded-full border border-white/60 border-t-transparent" />
                                 Sending...
                               </span>
                             ) : optimisticStatus ===
                               "failed" ? (
                               <>
-                                <span className="font-medium text-red-600">
+                                <span className="font-medium text-white">
                                   Failed to send
                                 </span>
 
@@ -3401,7 +4280,7 @@ export function MessagePanel({
                                         message.id,
                                       )
                                     }
-                                    className="font-semibold text-blue-600 hover:underline"
+                                    className="font-semibold text-white underline underline-offset-2 hover:opacity-90"
                                   >
                                     Retry
                                   </button>
@@ -3409,7 +4288,7 @@ export function MessagePanel({
                               </>
                             ) : isTelegramMessage ? (
                               <span
-                                className="font-medium text-emerald-600"
+                                className="font-medium text-white/85"
                                 title="Accepted by Telegram Bot API. Telegram does not provide delivery/read receipts for this private bot chat."
                               >
                                 ✓ Sent
@@ -3417,7 +4296,7 @@ export function MessagePanel({
                             ) : persistedDeliveryStatus ===
                               "seen" ? (
                               <span
-                                className="font-semibold text-blue-600"
+                                className="font-semibold text-white"
                                 title="Seen"
                               >
                                 ✓✓ Seen
@@ -3425,13 +4304,13 @@ export function MessagePanel({
                             ) : persistedDeliveryStatus ===
                               "delivered" ? (
                               <span
-                                className="font-medium text-emerald-600"
+                                className="font-medium text-white/85"
                                 title="Delivered"
                               >
                                 ✓✓ Delivered
                               </span>
                             ) : (
-                              <span className="font-medium text-emerald-600">
+                              <span className="font-medium text-white/85">
                                 ✓ Sent
                               </span>
                             )
@@ -3480,8 +4359,8 @@ export function MessagePanel({
                           <ActionTooltip
                             label={
                               commentState.liked
-                                ? "Unlike"
-                                : "Like"
+                                ? isKhmer ? "ដកការចូលចិត្ត" : "Unlike"
+                                : isKhmer ? "ចូលចិត្ត" : "Like"
                             }
                           />
                           </div>
@@ -3519,8 +4398,8 @@ export function MessagePanel({
                           <ActionTooltip
                             label={
                               isReplyTarget
-                                ? "Selected"
-                                : "Reply"
+                                ? isKhmer ? "បានជ្រើស" : "Selected"
+                                : isKhmer ? "ឆ្លើយតប" : "Reply"
                             }
                           />
                           </div>
@@ -3556,8 +4435,8 @@ export function MessagePanel({
                           <ActionTooltip
                             label={
                               commentState.hidden
-                                ? "Unhide"
-                                : "Hide"
+                                ? isKhmer ? "បង្ហាញវិញ" : "Unhide"
+                                : isKhmer ? "លាក់" : "Hide"
                             }
                           />
                           </div>
@@ -3612,8 +4491,8 @@ export function MessagePanel({
                           <ActionTooltip
                             label={
                               isOutgoing
-                                ? "Delete reply"
-                                : "Delete"
+                                ? isKhmer ? "លុបការឆ្លើយតប" : "Delete reply"
+                                : isKhmer ? "លុប" : "Delete"
                             }
                           />
                           </div>
@@ -3647,8 +4526,8 @@ export function MessagePanel({
 
               <span>
                 {newMessageCount === 1
-                  ? "New message"
-                  : "New messages"}
+                  ? isKhmer ? "សារថ្មី" : "New message"
+                  : isKhmer ? "សារថ្មី" : "New messages"}
               </span>
 
               <svg
@@ -3723,7 +4602,7 @@ export function MessagePanel({
             </div>
 
             <span className="hidden text-[11px] font-medium text-slate-400 sm:inline">
-              Send to save
+              {isKhmer ? "ផ្ញើដើម្បីរក្សាទុក" : "Send to save"}
             </span>
 
             <button
@@ -3739,20 +4618,20 @@ export function MessagePanel({
         </div>
       ) : null}
 
-      {/* Facebook comment reply target */}
+      {/* Facebook comment reply target — UI only. Keep reply behavior unchanged. */}
       {replyingToCommentId ? (
-        <div className="shrink-0 border-t border-blue-100 bg-blue-50/80 px-4 py-2">
-          <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-white px-3 py-2 shadow-sm">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+        <div className="shrink-0 bg-white px-3 pt-3 sm:px-5 sm:pt-4">
+          <div className="flex min-h-[76px] items-center gap-4 rounded-[20px] border border-blue-100 bg-gradient-to-r from-blue-50/90 via-white to-blue-50/45 px-4 py-3 shadow-[0_1px_5px_rgba(37,99,235,0.08)] sm:px-5">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-blue-600 sm:h-14 sm:w-14">
               <ReplyIcon />
             </div>
 
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-blue-700">
-                Replying to {replyingToName}
+              <p className="truncate text-[15px] font-bold leading-5 text-blue-600 sm:text-base">
+                {isKhmer ? "កំពុងឆ្លើយតបទៅ" : "Replying to"} {replyingToName}
               </p>
 
-              <p className="mt-0.5 truncate text-sm text-slate-600">
+              <p className="mt-1 truncate text-[15px] leading-5 text-slate-700 sm:text-base">
                 {replyingToMessage
                   ?.message_text ??
                   "Selected Facebook comment"}
@@ -3761,10 +4640,8 @@ export function MessagePanel({
 
             <button
               type="button"
-              onClick={
-                onCancelCommentReply
-              }
-              className="group/action relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              onClick={onCancelCommentReply}
+              className="group/action relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/90 hover:text-slate-700"
               title="Cancel reply"
               aria-label="Cancel reply"
             >
@@ -3772,8 +4649,8 @@ export function MessagePanel({
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="2"
-                className="h-4 w-4"
+                strokeWidth="1.9"
+                className="h-6 w-6"
                 aria-hidden="true"
               >
                 <path
@@ -3782,9 +4659,7 @@ export function MessagePanel({
                 />
               </svg>
 
-              <ActionTooltip
-                label="Cancel reply"
-              />
+              <ActionTooltip label="Cancel reply" />
             </button>
           </div>
         </div>
@@ -3812,6 +4687,15 @@ export function MessagePanel({
           initialTags={
             activeConversation.contact
               .tags ?? []
+          }
+          onTagsChange={(tags) =>
+            onContactTagsChange?.(
+              activeConversation.contact!.id,
+              tags,
+            )
+          }
+          typingAgents={
+            typingAgents
           }
 
           reply={reply}

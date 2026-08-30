@@ -5,6 +5,9 @@ import { useEffect, useState } from "react";
 import { NoteItem } from "@/components/inbox/note-item";
 import { MentionComposer } from "@/components/team/mention-composer";
 import type { ContactNote } from "@/types/inbox";
+import {
+  useWorkspaceLanguageId,
+} from "@/components/display/workspace-language-text";
 
 type CustomerNotesProps = {
   contactId: string;
@@ -59,6 +62,8 @@ export function CustomerNotes({
   currentMemberId,
   currentMemberName,
 }: CustomerNotesProps) {
+  const isKhmer = useWorkspaceLanguageId() === "km";
+
   const [notes, setNotes] = useState<ContactNote[]>([]);
   const [newNote, setNewNote] = useState("");
   const [loading, setLoading] = useState(true);
@@ -326,12 +331,13 @@ export function CustomerNotes({
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Internal notes
+            {isKhmer ? "កំណត់ចំណាំផ្ទៃក្នុង" : "Internal notes"}
           </p>
 
           <p className="mt-1 text-xs text-slate-500">
-            Private. Customers cannot see these notes.
-            Use @ to notify a teammate.
+            {isKhmer
+              ? "ឯកជន។ អតិថិជនមិនអាចមើលឃើញកំណត់ចំណាំទាំងនេះទេ។ ប្រើ @ ដើម្បីជូនដំណឹងដល់សមាជិកក្រុម។"
+              : "Private. Customers cannot see these notes. Use @ to notify a teammate."}
           </p>
         </div>
 
@@ -342,8 +348,9 @@ export function CustomerNotes({
 
       {!currentMemberId ? (
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          Assign this conversation to a staff member
-          before adding notes.
+          {isKhmer
+            ? "ចាត់តាំងការសន្ទនានេះទៅសមាជិកបុគ្គលិក មុនពេលបន្ថែមកំណត់ចំណាំ។"
+            : "Assign this conversation to a staff member before adding notes."}
         </div>
       ) : (
         <div className="mt-3">
@@ -364,9 +371,11 @@ export function CustomerNotes({
             }
             rows={4}
             maxLength={5000}
-            placeholder={`Add a private note as ${
-              currentMemberName ?? "assigned staff"
-            }...`}
+            placeholder={
+              isKhmer
+                ? `បន្ថែមកំណត់ចំណាំឯកជនក្នុងនាម ${currentMemberName ?? "បុគ្គលិកដែលបានចាត់តាំង"}...`
+                : `Add a private note as ${currentMemberName ?? "assigned staff"}...`
+            }
             disabled={busy}
             tone="note"
           />
@@ -377,7 +386,9 @@ export function CustomerNotes({
             disabled={busy || !newNote.trim()}
             className="mt-2 w-full rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600 disabled:bg-slate-300"
           >
-            {busy ? "Saving..." : "Add internal note"}
+            {busy
+              ? isKhmer ? "កំពុងរក្សាទុក..." : "Saving..."
+              : isKhmer ? "បន្ថែមកំណត់ចំណាំផ្ទៃក្នុង" : "Add internal note"}
           </button>
         </div>
       )}
@@ -391,11 +402,11 @@ export function CustomerNotes({
       <div className="mt-4 space-y-3">
         {loading ? (
           <p className="text-sm text-slate-500">
-            Loading notes...
+            {isKhmer ? "កំពុងផ្ទុកកំណត់ចំណាំ..." : "Loading notes..."}
           </p>
         ) : notes.length === 0 ? (
           <p className="text-sm text-slate-500">
-            No internal notes yet.
+            {isKhmer ? "មិនទាន់មានកំណត់ចំណាំផ្ទៃក្នុងទេ។" : "No internal notes yet."}
           </p>
         ) : (
           notes.map((note) => (

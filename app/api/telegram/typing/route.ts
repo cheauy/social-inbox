@@ -4,8 +4,12 @@ import {
 } from "next/server";
 
 import {
-  getCurrentMember,
-} from "@/lib/auth/get-current-member";
+  getInboxConversationAccess,
+} from "@/lib/inbox/get-inbox-resource-access";
+import {
+  memberHasPermission,
+  permissionDenied,
+} from "@/lib/auth/require-permission";
 import {
   decryptChannelCredential,
 } from "@/lib/channels/channel-token-crypto";
@@ -22,22 +26,6 @@ export const dynamic = "force-dynamic";
 export async function POST(
   request: NextRequest,
 ) {
-  const authResult =
-    await getCurrentMember();
-
-  if (!authResult.success) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: authResult.error,
-      },
-      {
-        status:
-          authResult.status,
-      },
-    );
-  }
-
   let body: {
     conversationId?: string;
   };
@@ -73,6 +61,26 @@ export async function POST(
     );
   }
 
+  const inboxAccess =
+    await getInboxConversationAccess(conversationId);
+
+  if (!inboxAccess.success) {
+    return NextResponse.json(
+      { success: false, error: inboxAccess.error },
+      { status: inboxAccess.status },
+    );
+  }
+
+  const currentMember = inboxAccess.member;
+
+  if (
+    !(await memberHasPermission(currentMember, "conversations", "manage"))
+  ) {
+    return permissionDenied(
+      "You do not have permission to reply in this workspace.",
+    );
+  }
+
   const {
     data: conversationData,
     error: conversationError,
@@ -88,8 +96,7 @@ export async function POST(
       )
       .eq(
         "business_id",
-        authResult.member
-          .business_id,
+        currentMember.business_id,
       )
       .maybeSingle();
 
@@ -151,8 +158,7 @@ export async function POST(
       )
       .eq(
         "business_id",
-        authResult.member
-          .business_id,
+        currentMember.business_id,
       )
       .maybeSingle(),
 
@@ -167,8 +173,7 @@ export async function POST(
       )
       .eq(
         "business_id",
-        authResult.member
-          .business_id,
+        currentMember.business_id,
       )
       .maybeSingle(),
   ]);
