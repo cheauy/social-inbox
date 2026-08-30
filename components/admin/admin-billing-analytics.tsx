@@ -62,7 +62,6 @@ type AnalyticsResponse = {
     expired: number;
     pastDue: number;
     suspended: number;
-    scheduledDowngrades: number;
     planDistribution: Array<{
       planCode: string;
       count: number;

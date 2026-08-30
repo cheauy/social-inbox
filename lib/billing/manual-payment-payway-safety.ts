@@ -111,10 +111,30 @@ export async function getManualPaymentPayWaySafety(
     );
   }
 
+  /*
+   * The select string above is built with array.join(","), so Supabase's
+   * generated types widen the result to GenericStringError even though the
+   * query returns the selected billing_transactions rows at runtime.
+   * Normalise the row shape once here, same as plan-change-security.ts.
+   */
+  const rows = (data ?? []) as unknown as Array<{
+    id: string;
+    provider_transaction_id: string;
+    plan_code: string;
+    billing_cycle: string;
+    amount: number | string;
+    currency: string;
+    status: string;
+    target_member_limit: number | null;
+    target_channel_limit: number | null;
+    verified_at: string | null;
+    created_at: string;
+  }>;
+
   const now = Date.now();
   const manualCreatedAt = timestamp(target.manualCreatedAt);
 
-  const matching = (data ?? []).filter((row) => {
+  const matching = rows.filter((row) => {
     if (row.plan_code !== target.planCode) return false;
     if (row.billing_cycle !== target.billingCycle) return false;
     if (!sameAmount(row.amount, target.amount)) return false;

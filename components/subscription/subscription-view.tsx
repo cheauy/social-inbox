@@ -116,14 +116,6 @@ type PlanChangeMode =
   | "suspended"
   | "unmanaged";
 
-type PendingPlanChange = {
-  type: "downgrade";
-  planCode: string;
-  billingCycle: string | null;
-  requestedAt: string | null;
-  effectiveAt: string | null;
-};
-
 type PlanChangeState = {
   mode: PlanChangeMode;
   canManage: boolean;
@@ -134,7 +126,6 @@ type PlanChangeState = {
     members: number;
     channels: number;
   };
-  pendingChange: PendingPlanChange | null;
 };
 
 type PlanAction =
@@ -513,7 +504,6 @@ export function SubscriptionView() {
           currentPlan?: PlanCode | null;
           currentRank?: number;
           usage?: { members: number; channels: number };
-          pendingChange?: PendingPlanChange | null;
         };
 
         if (!response.ok || !result.success || !result.mode) {
@@ -530,7 +520,6 @@ export function SubscriptionView() {
           currentPlan: result.currentPlan ?? null,
           currentRank: result.currentRank ?? 0,
           usage: result.usage ?? { members: 0, channels: 0 },
-          pendingChange: result.pendingChange ?? null,
         });
         setPlanChangeError(null);
       } catch (loadError) {

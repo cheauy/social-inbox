@@ -181,7 +181,13 @@ export function useAgentPresence({
     staleText: string;
   } | null>(null);
 
-  typingTextRef.current = typingText;
+  /*
+   * Read only inside callbacks that run after commit, so updating it in an
+   * effect avoids writing to a ref during render.
+   */
+  useEffect(() => {
+    typingTextRef.current = typingText;
+  }, [typingText]);
 
   /*
    * A Presence key must be unique per browser tab. If the same user opens
@@ -255,7 +261,7 @@ export function useAgentPresence({
               type: "broadcast",
               event: PRESENCE_BROADCAST_EVENT,
               payload: {
-                presence_key: presenceClientKeyRef.current,
+                presence_key: presenceClientKeyRef.current ?? undefined,
                 agent: nextPresence,
               } satisfies PresenceBroadcastPayload,
             });

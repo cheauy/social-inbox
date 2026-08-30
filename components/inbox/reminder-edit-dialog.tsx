@@ -59,6 +59,8 @@ export function ReminderEditDialog({
 
   if (!reminder) return null;
 
+  const activeReminder = reminder;
+
   async function save() {
     if (!canSave) return;
 
@@ -66,7 +68,7 @@ export function ReminderEditDialog({
     setError(null);
 
     try {
-      const response = await fetch(`/api/reminders/manage/${reminder.id}`, {
+      const response = await fetch(`/api/reminders/manage/${activeReminder.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

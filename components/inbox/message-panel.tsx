@@ -1047,33 +1047,46 @@ export function MessagePanel({
    * The parent may immediately mark the conversation read, but this snapshot
    * remains stable long enough to position the viewport at the first unread.
    */
-  const openedUnreadStateRef =
-    useRef<{
-      conversationId: string | null;
-      unreadCount: number;
-    }>({
-      conversationId: null,
-      unreadCount: 0,
-    });
+  const [
+    openedUnreadState,
+    setOpenedUnreadState,
+  ] = useState<{
+    conversationId: string | null;
+    unreadCount: number;
+  }>({
+    conversationId: null,
+    unreadCount: 0,
+  });
 
   const currentConversationId =
     activeConversation?.id ?? null;
 
+  /*
+   * Adjusting state during render is the supported React pattern for deriving
+   * a value from a changed prop. React discards this render and re-runs it
+   * immediately, so the snapshot can never come from a render that was thrown
+   * away — which is exactly what mutating a ref here used to risk.
+   */
   if (
-    openedUnreadStateRef.current.conversationId !==
+    openedUnreadState.conversationId !==
     currentConversationId
   ) {
-    openedUnreadStateRef.current = {
+    setOpenedUnreadState({
       conversationId: currentConversationId,
       unreadCount: Math.max(
         0,
         activeConversation?.unread_count ?? 0,
       ),
-    };
+    });
   }
 
   const openingUnreadCount =
-    openedUnreadStateRef.current.unreadCount;
+    openedUnreadState.conversationId === currentConversationId
+      ? openedUnreadState.unreadCount
+      : Math.max(
+          0,
+          activeConversation?.unread_count ?? 0,
+        );
 
   const firstUnreadMessageId =
     getFirstUnreadMessageId(
@@ -1198,11 +1211,20 @@ export function MessagePanel({
   const hasMoreOlderMessagesRef =
     useRef(hasMoreOlderMessages);
 
-  latestMessagesRef.current =
-    messages;
+  /*
+   * These refs only ever get read inside async callbacks that run after
+   * commit, so updating them in an effect keeps the same behaviour without
+   * writing to a ref during render.
+   */
+  useEffect(() => {
+    latestMessagesRef.current =
+      messages;
+  }, [messages]);
 
-  hasMoreOlderMessagesRef.current =
-    hasMoreOlderMessages;
+  useEffect(() => {
+    hasMoreOlderMessagesRef.current =
+      hasMoreOlderMessages;
+  }, [hasMoreOlderMessages]);
 
   /*
    * =========================================================

@@ -41,9 +41,6 @@ type WorkspaceRow = {
   memberLimit: number | null;
   channelLimit: number | null;
   paymentProvider: string | null;
-  pendingPlanCode: string | null;
-  pendingBillingCycle: string | null;
-  pendingEffectiveAt: string | null;
   activeMembers: number;
   activeChannels: number;
   pendingManual: number;
@@ -1187,12 +1184,6 @@ export function AdminBillingManagement() {
                               <KeyValue label="Payment provider" value={subscription?.payment_provider ?? "—"} />
                               <KeyValue label="Paid receipts" value={`${detail.invoices.length}`} />
                             </div>
-
-                            {subscription?.pending_plan_code ? (
-                              <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-                                Scheduled next plan: <strong>{planLabel(subscription.pending_plan_code)}</strong> · {cycleLabel(subscription.pending_billing_cycle)} · effective {formatDate(subscription.pending_plan_effective_at)}
-                              </div>
-                            ) : null}
 
                             <div className="grid gap-5 lg:grid-cols-2">
                               <div>
