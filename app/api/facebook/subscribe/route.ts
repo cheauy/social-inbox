@@ -162,6 +162,7 @@ export async function POST(
 
   const subscribedFields = [
     "messages",
+    "message_echoes",
     "feed",
     "messaging_postbacks",
     "message_deliveries",

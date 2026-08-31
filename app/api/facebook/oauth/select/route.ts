@@ -122,6 +122,7 @@ async function subscribePage({
     "subscribed_fields",
     [
       "messages",
+      "message_echoes",
       "feed",
       "messaging_postbacks",
       "message_reads",
