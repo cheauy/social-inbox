@@ -2465,6 +2465,16 @@ export function MessagePanel({
                     reply_to_message?:
                       | Record<string, unknown>
                       | null;
+                    attachments?: Array<{
+                      type?: string | null;
+                      payload?: {
+                        url?: string | null;
+                        sticker_id?:
+                          | number
+                          | string
+                          | null;
+                      } | null;
+                    }> | null;
                   } | null;
 
                   reply_to_message?:
@@ -2519,6 +2529,34 @@ export function MessagePanel({
 
               const stickerMeta =
                 rawPayload?.tenh_sticker ??
+                null;
+
+              /*
+               * Facebook Messenger stickers arrive as image attachments with
+               * payload.sticker_id. They do not include Telegram's
+               * tenh_sticker metadata, so detect them from the original
+               * Messenger webhook payload instead of rendering the Telegram
+               * sticker fallback card.
+               */
+              const facebookStickerAttachment =
+                rawPayload?.message
+                  ?.attachments?.find(
+                    (attachment) =>
+                      attachment?.type ===
+                        "image" &&
+                      attachment?.payload
+                        ?.sticker_id != null,
+                  ) ?? null;
+
+              const isFacebookSticker =
+                Boolean(
+                  facebookStickerAttachment,
+                );
+
+              const facebookStickerUrl =
+                facebookStickerAttachment
+                  ?.payload?.url ??
+                message.attachment_url ??
                 null;
 
               const animationMeta =
@@ -4099,10 +4137,18 @@ export function MessagePanel({
                           </a>
                         ) : isStickerMessage ? (
                           <div className="min-w-[180px]">
-                            {attachmentUrl &&
-                            stickerMeta
-                              ?.preview_kind ===
-                              "video" ? (
+                            {isFacebookSticker &&
+                            facebookStickerUrl ? (
+                              <img
+                                src={facebookStickerUrl}
+                                alt="Facebook sticker"
+                                className="max-h-56 max-w-[240px] rounded-xl object-contain"
+                                loading="lazy"
+                              />
+                            ) : attachmentUrl &&
+                              stickerMeta
+                                ?.preview_kind ===
+                                "video" ? (
                               <video
                                 src={attachmentUrl}
                                 autoPlay
@@ -4132,15 +4178,18 @@ export function MessagePanel({
                                     "✨"}
                                 </span>
                                 <span className="mt-2 text-xs font-medium text-slate-500">
-                                  {stickerMeta?.format ===
-                                  "animated"
-                                    ? "Animated sticker"
-                                    : "Telegram sticker"}
+                                  {isFacebookSticker
+                                    ? "Facebook sticker"
+                                    : stickerMeta?.format ===
+                                        "animated"
+                                      ? "Animated sticker"
+                                      : "Telegram sticker"}
                                 </span>
                               </div>
                             )}
 
-                            {stickerMeta?.emoji ? (
+                            {!isFacebookSticker &&
+                            stickerMeta?.emoji ? (
                               <p className="mt-1 text-center text-xs text-slate-500">
                                 {stickerMeta.emoji}
                               </p>
