@@ -1565,6 +1565,7 @@ type CollaborativeInboxConversationState = {
   status: ConversationStatus;
   status_updated_at: string | null;
   unread_count: number;
+  last_message_text: string | null;
   last_message_at: string | null;
   updated_at: string | null;
   tags: CustomerTag[];
@@ -2833,6 +2834,36 @@ useEffect(() => {
             let nextConversation: InboxConversation = {
               ...conversation,
             };
+
+            /*
+             * Realtime is the fast path, but this server-authoritative fallback
+             * must also advance the conversation preview/time when a message
+             * INSERT event is missed. Without this, the left list appears stale
+             * until a manual browser refresh. Never roll a newer local preview
+             * backwards.
+             */
+            const localPreviewTime = conversation.last_message_at
+              ? new Date(conversation.last_message_at).getTime()
+              : 0;
+            const serverPreviewTime = state.last_message_at
+              ? new Date(state.last_message_at).getTime()
+              : 0;
+
+            if (
+              Number.isFinite(serverPreviewTime) &&
+              serverPreviewTime > 0 &&
+              (!Number.isFinite(localPreviewTime) ||
+                localPreviewTime === 0 ||
+                serverPreviewTime >= localPreviewTime)
+            ) {
+              nextConversation = {
+                ...nextConversation,
+                last_message_text:
+                  state.last_message_text ??
+                  nextConversation.last_message_text,
+                last_message_at: state.last_message_at,
+              };
+            }
 
             /*
              * V3.11.32 fallback for shared read/unread state. Realtime remains
@@ -4173,6 +4204,189 @@ useEffect(() => {
   loadingConversationMessages,
   resolvedActiveConversationId,
   setCachedConversationPage,
+]);
+
+/*
+ * Active-thread live safety net.
+ *
+ * Supabase Realtime remains the fast path. In production, a publication/RLS
+ * delay or a transient websocket disconnect can occasionally cause a message
+ * INSERT event to be missed. Previously the open chat then stayed stale until
+ * the user refreshed the browser. Quietly fetch only the newest message page
+ * while a thread is open and merge it into local state. Older loaded pages and
+ * optimistic outgoing messages are preserved.
+ */
+useEffect(() => {
+  const conversationId =
+    resolvedActiveConversationId;
+
+  if (!conversationId) {
+    return;
+  }
+
+  let cancelled = false;
+  let timer: number | null = null;
+  let inFlight = false;
+
+  const mergeNewestPage = (
+    current: InboxMessage[],
+    serverMessages: InboxMessage[],
+  ) => {
+    const merged = new Map<string, InboxMessage>();
+
+    for (const message of current) {
+      merged.set(message.id, message);
+    }
+
+    for (const message of serverMessages) {
+      const existing = merged.get(message.id);
+      const localAttachmentUrl =
+        existing?.attachment_url?.startsWith("blob:")
+          ? existing.attachment_url
+          : null;
+
+      merged.set(message.id, {
+        ...existing,
+        ...message,
+        attachment_url:
+          message.attachment_url ??
+          localAttachmentUrl,
+      } as InboxMessage);
+    }
+
+    return Array.from(merged.values()).sort(
+      (first, second) => {
+        const timeDifference =
+          new Date(first.created_at).getTime() -
+          new Date(second.created_at).getTime();
+
+        return timeDifference !== 0
+          ? timeDifference
+          : first.id.localeCompare(second.id);
+      },
+    );
+  };
+
+  async function syncNewestMessages() {
+    if (
+      cancelled ||
+      inFlight ||
+      document.visibilityState === "hidden" ||
+      !navigator.onLine
+    ) {
+      return;
+    }
+
+    inFlight = true;
+
+    try {
+      const params = new URLSearchParams({
+        limit: String(MESSAGE_PAGE_SIZE),
+      });
+      const response = await fetch(
+        `/api/conversations/${conversationId}/messages?${params.toString()}`,
+        {
+          method: "GET",
+          cache: "no-store",
+          headers: {
+            Accept: "application/json",
+          },
+        },
+      );
+      const responseText = await response.text();
+      const result = responseText.trim()
+        ? (JSON.parse(responseText) as {
+            success?: boolean;
+            error?: string;
+            messages?: InboxMessage[];
+          })
+        : { success: response.ok };
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.error ??
+            "Unable to synchronize live messages.",
+        );
+      }
+
+      const newestMessages = Array.isArray(result.messages)
+        ? result.messages.filter(
+            (message) =>
+              message.conversation_id === conversationId,
+          )
+        : [];
+
+      if (
+        cancelled ||
+        desiredConversationIdRef.current !==
+          conversationId
+      ) {
+        return;
+      }
+
+      setLiveMessages((current) =>
+        mergeNewestPage(
+          current.filter(
+            (message) =>
+              message.conversation_id ===
+              conversationId,
+          ),
+          newestMessages,
+        ),
+      );
+    } catch (error) {
+      if (!isAbortError(error)) {
+        console.warn(
+          "Unable to run active-thread live message fallback:",
+          error,
+        );
+      }
+    } finally {
+      inFlight = false;
+    }
+  }
+
+  function scheduleNext() {
+    if (cancelled) {
+      return;
+    }
+
+    timer = window.setTimeout(async () => {
+      await syncNewestMessages();
+      scheduleNext();
+    }, 2500);
+  }
+
+  function syncWhenVisible() {
+    if (document.visibilityState === "visible") {
+      void syncNewestMessages();
+    }
+  }
+
+  scheduleNext();
+  window.addEventListener("focus", syncWhenVisible);
+  window.addEventListener("online", syncWhenVisible);
+  document.addEventListener(
+    "visibilitychange",
+    syncWhenVisible,
+  );
+
+  return () => {
+    cancelled = true;
+
+    if (timer !== null) {
+      window.clearTimeout(timer);
+    }
+
+    window.removeEventListener("focus", syncWhenVisible);
+    window.removeEventListener("online", syncWhenVisible);
+    document.removeEventListener(
+      "visibilitychange",
+      syncWhenVisible,
+    );
+  };
+}, [
+  resolvedActiveConversationId,
 ]);
 
 /*

@@ -59,6 +59,7 @@ type ConversationRow = {
   status: ConversationStatus;
   status_updated_at: string | null;
   unread_count: number;
+  last_message_text: string | null;
   last_message_at: string | null;
   updated_at: string | null;
   assigned_member:
@@ -186,6 +187,7 @@ export async function POST(
       status,
       status_updated_at,
       unread_count,
+      last_message_text,
       last_message_at,
       updated_at,
       assigned_member:team_members!conversations_assigned_to_fkey (
@@ -351,6 +353,8 @@ export async function POST(
           conversation.status_updated_at,
         unread_count:
           Math.max(0, conversation.unread_count ?? 0),
+        last_message_text:
+          conversation.last_message_text,
         last_message_at:
           conversation.last_message_at,
         assigned_member:

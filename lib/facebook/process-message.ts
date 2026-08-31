@@ -1,8 +1,8 @@
 import "server-only";
 
 import {
-  getFacebookPageAccessToken,
-} from "@/lib/facebook/get-facebook-page-access-token";
+  getFacebookCustomerProfile,
+} from "@/lib/facebook/get-facebook-customer-profile";
 import { getFacebookMessageContent } from "@/lib/facebook/get-message-content";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { FacebookMessagingEvent } from "@/types/facebook";
@@ -11,147 +11,6 @@ function toIso(timestamp?: number) {
   return timestamp
     ? new Date(timestamp).toISOString()
     : new Date().toISOString();
-}
-
-type FacebookMessengerProfile = {
-  id?: string;
-  first_name?: string;
-  last_name?: string;
-  profile_pic?: string;
-  error?: {
-    message?: string;
-    code?: number;
-    type?: string;
-    fbtrace_id?: string;
-  };
-};
-
-async function getFacebookMessengerCustomerProfile({
-  pageId,
-  customerId,
-}: {
-  pageId: string;
-  customerId: string;
-}) {
-  let pageAccessToken: string | null = null;
-
-  try {
-    pageAccessToken =
-      await getFacebookPageAccessToken(
-        pageId,
-      );
-  } catch (error) {
-    console.warn(
-      "[Tenh Facebook Message] No OAuth Page token for Messenger profile enrichment.",
-      error,
-    );
-
-    return null;
-  }
-
-  try {
-    const graphVersion =
-      process.env
-        .FACEBOOK_GRAPH_API_VERSION ??
-      "v26.0";
-
-    const url =
-      new URL(
-        `https://graph.facebook.com/${graphVersion}/${customerId}`,
-      );
-
-    url.searchParams.set(
-      "fields",
-      "first_name,last_name,profile_pic",
-    );
-
-    const response =
-      await fetch(
-        url,
-        {
-          method: "GET",
-          cache: "no-store",
-          headers: {
-            Authorization:
-              `Bearer ${pageAccessToken}`,
-          },
-        },
-      );
-
-    const text =
-      await response.text();
-
-    let result:
-      FacebookMessengerProfile = {};
-
-    if (text.trim()) {
-      try {
-        result =
-          JSON.parse(
-            text,
-          ) as FacebookMessengerProfile;
-      } catch {
-        console.warn(
-          "[Tenh Facebook Message] Messenger profile enrichment returned invalid JSON.",
-        );
-      }
-    }
-
-    if (
-      !response.ok ||
-      result.error
-    ) {
-      console.warn(
-        "[Tenh Facebook Message] Messenger profile enrichment failed but message will still be saved.",
-        {
-          status:
-            response.status,
-          error:
-            result.error,
-          pageId,
-          customerId,
-        },
-      );
-
-      return null;
-    }
-
-    const fullName =
-      [
-        result.first_name
-          ?.trim(),
-        result.last_name
-          ?.trim(),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .trim();
-
-    const profilePictureUrl =
-      result.profile_pic
-        ?.trim() ||
-      null;
-
-    if (
-      !fullName &&
-      !profilePictureUrl
-    ) {
-      return null;
-    }
-
-    return {
-      fullName:
-        fullName || null,
-      profilePictureUrl,
-    };
-  } catch (error) {
-    console.warn(
-      "[Tenh Facebook Message] Messenger profile enrichment request failed but message will still be saved.",
-      error,
-    );
-
-    return null;
-  }
 }
 
 export async function processFacebookMessage(
@@ -226,18 +85,19 @@ export async function processFacebookMessage(
   const messageTime = toIso(event.timestamp);
 
   /*
-   * Messenger webhook payloads normally contain the customer's PSID,
-   * but not the customer's display name. Enrich incoming messages
-   * with the Messenger User Profile API using this Page's access token.
+   * Messenger webhook payloads normally contain the customer's PSID but not
+   * a reliable display profile. The direct /{PSID} profile endpoint is not
+   * available for every Meta app/customer combination, so use TENH's existing
+   * Page-accessible message/conversation enrichment helper instead.
    *
-   * Best-effort only: a profile lookup failure must never block
-   * the message from being saved.
+   * Best-effort only: profile enrichment must never block message delivery.
    */
   const customerProfile =
     !isEcho
-      ? await getFacebookMessengerCustomerProfile({
+      ? await getFacebookCustomerProfile({
           pageId,
           customerId,
+          latestMessageId: messageId,
         })
       : null;
 
