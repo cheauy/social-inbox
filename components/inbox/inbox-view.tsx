@@ -4232,12 +4232,12 @@ useEffect(() => {
  * optimistic outgoing messages are preserved.
  */
 useEffect(() => {
-  const conversationId =
-    resolvedActiveConversationId;
-
-  if (!conversationId) {
+  if (!resolvedActiveConversationId) {
     return;
   }
+
+  const conversationId: string =
+    resolvedActiveConversationId;
 
   let cancelled = false;
   let timer: number | null = null;
