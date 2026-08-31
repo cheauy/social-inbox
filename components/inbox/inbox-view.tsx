@@ -4263,29 +4263,116 @@ useEffect(() => {
     current: InboxMessage[],
     serverMessages: InboxMessage[],
   ) => {
-    const merged = new Map<string, InboxMessage>();
+    /*
+     * The polling fallback can discover the real outgoing row before the
+     * Supabase INSERT event reaches this browser. Reconcile that row with the
+     * optimistic bubble exactly like the Realtime path does; otherwise the
+     * temporary bubble and the real row are both rendered.
+     */
+    const merged = [...current];
 
-    for (const message of current) {
-      merged.set(message.id, message);
+    for (const serverMessage of serverMessages) {
+      const existingIndex = merged.findIndex(
+        (message) =>
+          message.id === serverMessage.id,
+      );
+
+      if (existingIndex >= 0) {
+        const existing = merged[existingIndex];
+        const localAttachmentUrl =
+          existing.attachment_url?.startsWith("blob:")
+            ? existing.attachment_url
+            : null;
+
+        merged[existingIndex] = {
+          ...existing,
+          ...serverMessage,
+          attachment_url:
+            serverMessage.attachment_url ??
+            localAttachmentUrl,
+        } as InboxMessage;
+
+        continue;
+      }
+
+      let optimisticIndex = -1;
+
+      if (
+        serverMessage.direction === "outgoing" &&
+        serverMessage.message_text
+      ) {
+        const serverCreatedAt =
+          new Date(serverMessage.created_at).getTime();
+        let closestDifference =
+          Number.POSITIVE_INFINITY;
+
+        for (let index = 0; index < merged.length; index += 1) {
+          const candidate = merged[index];
+          const optimistic =
+            candidate as OptimisticInboxMessage;
+
+          if (
+            !optimistic.__optimistic_status ||
+            candidate.conversation_id !== conversationId ||
+            candidate.direction !== "outgoing" ||
+            candidate.message_text !==
+              serverMessage.message_text ||
+            (candidate.message_type ?? "text") !==
+              (serverMessage.message_type ?? "text") ||
+            (!pendingSendsRef.current[candidate.id] &&
+              !pendingAttachmentSendsRef.current[candidate.id])
+          ) {
+            continue;
+          }
+
+          const optimisticCreatedAt =
+            optimistic.__optimistic_created_at ??
+            new Date(candidate.created_at).getTime();
+          const difference = Math.abs(
+            serverCreatedAt - optimisticCreatedAt,
+          );
+
+          if (
+            difference < 120_000 &&
+            difference < closestDifference
+          ) {
+            optimisticIndex = index;
+            closestDifference = difference;
+          }
+        }
+      }
+
+      if (optimisticIndex >= 0) {
+        const optimisticMessage =
+          merged[optimisticIndex];
+        const optimisticId =
+          optimisticMessage.id;
+        const localAttachmentUrl =
+          optimisticMessage.attachment_url?.startsWith("blob:")
+            ? optimisticMessage.attachment_url
+            : null;
+
+        delete pendingSendsRef.current[
+          optimisticId
+        ];
+        delete pendingAttachmentSendsRef.current[
+          optimisticId
+        ];
+
+        merged[optimisticIndex] = {
+          ...serverMessage,
+          attachment_url:
+            serverMessage.attachment_url ??
+            localAttachmentUrl,
+        } as InboxMessage;
+
+        continue;
+      }
+
+      merged.push(serverMessage);
     }
 
-    for (const message of serverMessages) {
-      const existing = merged.get(message.id);
-      const localAttachmentUrl =
-        existing?.attachment_url?.startsWith("blob:")
-          ? existing.attachment_url
-          : null;
-
-      merged.set(message.id, {
-        ...existing,
-        ...message,
-        attachment_url:
-          message.attachment_url ??
-          localAttachmentUrl,
-      } as InboxMessage);
-    }
-
-    return Array.from(merged.values()).sort(
+    return merged.sort(
       (first, second) => {
         const timeDifference =
           new Date(first.created_at).getTime() -

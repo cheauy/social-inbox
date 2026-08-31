@@ -731,6 +731,15 @@ export async function processFacebookComment({
             true,
           raw_payload: {
             ...value,
+            // Keep the same metadata shape used by TENH's native
+            // Facebook comment-reply route so the current MessagePanel
+            // renders this Business Suite reply nested under its parent.
+            source:
+              "facebook_comment_reply",
+            parent_comment_id:
+              parentCommentId,
+            reply_comment_id:
+              commentId,
             tenh_source:
               "facebook_page_reply",
             post_preview:

@@ -2059,6 +2059,21 @@ export function MessagePanel({
       ? "Telegram Bot"
       : "Facebook Page");
 
+  /*
+   * Use the connected Facebook Page's public profile picture for Page-authored
+   * comment replies. This is UI-only and keeps the current Inbox data model,
+   * webhook processing, and nested-comment behavior unchanged.
+   */
+  const facebookPageProfilePictureUrl =
+    headerChannelPlatform === "messenger" &&
+    activeConversation.social_account
+      ?.platform_account_id
+      ?.trim()
+      ? `https://graph.facebook.com/${encodeURIComponent(
+          activeConversation.social_account.platform_account_id.trim(),
+        )}/picture?type=large&width=96&height=96`
+      : null;
+
   return (
     <section className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
 
@@ -2388,6 +2403,7 @@ export function MessagePanel({
                   parent_id?: string;
                   item?: string;
                   source?: string;
+                  tenh_source?: string;
                   parent_comment_id?: string;
                   reply_comment_id?: string;
 
@@ -2757,17 +2773,32 @@ export function MessagePanel({
                   rawPayload?.item === "comment" ||
                   rawPayload?.source ===
                     "facebook_comment_reply" ||
+                  rawPayload?.tenh_source ===
+                    "facebook_page_reply" ||
                   rawPayload?.parent_comment_id ||
                   rawPayload?.reply_comment_id,
                 );
 
+              /*
+               * Keep the current nested-comment UI compatible with both:
+               * - TENH-native replies: source + parent_comment_id
+               * - older Business Suite rows: tenh_source + Meta parent_id
+               *
+               * This is UI-only and lets replies already saved before the
+               * metadata normalization render inside their parent card too.
+               */
               const facebookReplyParentId =
                 rawPayload?.source ===
-                  "facebook_comment_reply" &&
-                typeof rawPayload
-                  ?.parent_comment_id ===
-                  "string"
-                  ? rawPayload.parent_comment_id.trim()
+                  "facebook_comment_reply" ||
+                rawPayload?.tenh_source ===
+                  "facebook_page_reply"
+                  ? typeof rawPayload.parent_comment_id ===
+                    "string"
+                    ? rawPayload.parent_comment_id.trim()
+                    : typeof rawPayload.parent_id ===
+                        "string"
+                      ? rawPayload.parent_id.trim()
+                      : null
                   : null;
 
               const facebookReplyParentMessage =
@@ -2796,15 +2827,30 @@ export function MessagePanel({
                       const candidatePayload =
                         candidate.raw_payload as {
                           source?: string;
+                          tenh_source?: string;
+                          parent_id?: string;
                           parent_comment_id?: string;
                         } | null;
 
-                      return (
+                      const isFacebookReply =
                         candidatePayload?.source ===
-                          "facebook_comment_reply" &&
-                        typeof candidatePayload.parent_comment_id ===
-                          "string" &&
-                        candidatePayload.parent_comment_id.trim() ===
+                          "facebook_comment_reply" ||
+                        candidatePayload?.tenh_source ===
+                          "facebook_page_reply";
+
+                      const candidateParentId =
+                        typeof candidatePayload?.parent_comment_id ===
+                        "string"
+                          ? candidatePayload.parent_comment_id.trim()
+                          : typeof candidatePayload?.parent_id ===
+                              "string"
+                            ? candidatePayload.parent_id.trim()
+                            : null;
+
+                      return (
+                        isFacebookReply &&
+                        Boolean(candidateParentId) &&
+                        candidateParentId ===
                           message.platform_message_id
                       );
                     })
@@ -3076,7 +3122,7 @@ export function MessagePanel({
 
               const facebookCommentActorPhoto =
                 isOutgoing
-                  ? null
+                  ? facebookPageProfilePictureUrl
                   : activeConversation.contact
                       ?.profile_picture_url ?? null;
 
@@ -3610,12 +3656,23 @@ export function MessagePanel({
                                     }}
                                     className="ml-7 flex gap-2.5 sm:ml-10"
                                   >
-                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shadow-[0_4px_12px_rgba(37,99,235,0.18)]">
-                                      {headerChannelAccountName
-                                        .trim()
-                                        .charAt(0)
-                                        .toUpperCase() || "?"}
-                                    </div>
+                                    {facebookPageProfilePictureUrl ? (
+                                      <img
+                                        src={facebookPageProfilePictureUrl}
+                                        alt={headerChannelAccountName}
+                                        className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-slate-200"
+                                        loading="lazy"
+                                        referrerPolicy="no-referrer"
+                                        draggable={false}
+                                      />
+                                    ) : (
+                                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shadow-[0_4px_12px_rgba(37,99,235,0.18)]">
+                                        {headerChannelAccountName
+                                          .trim()
+                                          .charAt(0)
+                                          .toUpperCase() || "?"}
+                                      </div>
+                                    )}
 
                                     <div className="min-w-0">
                                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
