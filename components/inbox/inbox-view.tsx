@@ -4399,6 +4399,7 @@ useEffect(() => {
     try {
       const params = new URLSearchParams({
         limit: String(MESSAGE_PAGE_SIZE),
+        live: String(Date.now()),
       });
       const response = await fetch(
         `/api/conversations/${conversationId}/messages?${params.toString()}`,
@@ -4433,11 +4434,7 @@ useEffect(() => {
           )
         : [];
 
-      if (
-        cancelled ||
-        desiredConversationIdRef.current !==
-          conversationId
-      ) {
+      if (cancelled) {
         return;
       }
 
@@ -4496,6 +4493,54 @@ useEffect(() => {
         liveMessagesRef.current = nextMessages;
         return nextMessages;
       });
+
+      /*
+       * If Supabase Realtime missed the INSERT, keep the conversation row in
+       * sync from the same server-authoritative message page. This prevents the
+       * left list preview/time from remaining stale until a browser refresh.
+       */
+      const latestServerMessage =
+        newestMessages[newestMessages.length - 1] ?? null;
+
+      if (latestServerMessage) {
+        const latestMessageAt =
+          latestServerMessage.platform_created_at ??
+          latestServerMessage.created_at;
+        const latestMessageTime = new Date(
+          latestMessageAt,
+        ).getTime();
+        const latestPreview = getRealtimeMessagePreview(
+          latestServerMessage as unknown as Record<string, unknown>,
+        );
+
+        setLiveConversations((current) =>
+          sortLiveConversations(
+            current.map((conversation) => {
+              if (conversation.id !== conversationId) {
+                return conversation;
+              }
+
+              const currentMessageTime = conversation.last_message_at
+                ? new Date(conversation.last_message_at).getTime()
+                : 0;
+
+              if (
+                Number.isFinite(currentMessageTime) &&
+                Number.isFinite(latestMessageTime) &&
+                currentMessageTime > latestMessageTime + 1000
+              ) {
+                return conversation;
+              }
+
+              return {
+                ...conversation,
+                last_message_text: latestPreview,
+                last_message_at: latestMessageAt,
+              };
+            }),
+          ),
+        );
+      }
     } catch (error) {
       if (!isAbortError(error)) {
         console.warn(
@@ -4516,7 +4561,7 @@ useEffect(() => {
     timer = window.setTimeout(async () => {
       await syncNewestMessages();
       scheduleNext();
-    }, 2500);
+    }, 2000);
   }
 
   function syncWhenVisible() {
@@ -4525,6 +4570,12 @@ useEffect(() => {
     }
   }
 
+  /*
+   * Do not wait for the first timer tick. If the websocket was disconnected
+   * before this thread opened, fetch the latest page immediately and then keep
+   * the lightweight safety-net poll running in the background.
+   */
+  void syncNewestMessages();
   scheduleNext();
   window.addEventListener("focus", syncWhenVisible);
   window.addEventListener("online", syncWhenVisible);
