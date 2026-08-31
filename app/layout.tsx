@@ -78,7 +78,7 @@ const workspaceFontBootstrap = `
 `;
 
 export const metadata: Metadata = {
-  title: "Social Inbox",
+  title: "Tenh Chat",
   description:
     "Receive and reply to Facebook customer messages.",
 };
