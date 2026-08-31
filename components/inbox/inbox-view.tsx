@@ -655,6 +655,21 @@ const previousActiveConversationIdRef =
   ] = useState(messages);
 
   /*
+   * Keep current live data available to long-running fallback timers without
+   * restarting those timers on every message/conversation state update.
+   */
+  const liveMessagesRef = useRef(liveMessages);
+  const liveConversationsRef = useRef(liveConversations);
+
+  useEffect(() => {
+    liveMessagesRef.current = liveMessages;
+  }, [liveMessages]);
+
+  useEffect(() => {
+    liveConversationsRef.current = liveConversations;
+  }, [liveConversations]);
+
+  /*
    * Keep quick-tag changes visible immediately across the Inbox.
    * CustomerTagSelector dispatches this event after the API confirms an add/remove,
    * so the conversation list/profile/composer update without router.refresh().
@@ -4228,6 +4243,22 @@ useEffect(() => {
   let timer: number | null = null;
   let inFlight = false;
 
+  /*
+   * Seed the fallback with messages already loaded for this thread. If the
+   * thread has not loaded yet, the first successful fetch becomes the baseline
+   * so old history never triggers a burst of alert sounds.
+   */
+  const fallbackKnownMessageIds = new Set(
+    liveMessagesRef.current
+      .filter(
+        (message) =>
+          message.conversation_id === conversationId,
+      )
+      .map((message) => message.id),
+  );
+  let fallbackBaselineReady =
+    fallbackKnownMessageIds.size > 0;
+
   const mergeNewestPage = (
     current: InboxMessage[],
     serverMessages: InboxMessage[],
@@ -4271,7 +4302,6 @@ useEffect(() => {
     if (
       cancelled ||
       inFlight ||
-      document.visibilityState === "hidden" ||
       !navigator.onLine
     ) {
       return;
@@ -4324,16 +4354,61 @@ useEffect(() => {
         return;
       }
 
-      setLiveMessages((current) =>
-        mergeNewestPage(
+      const newlyDiscoveredIncoming =
+        fallbackBaselineReady
+          ? newestMessages.filter(
+              (message) =>
+                message.direction === "incoming" &&
+                !fallbackKnownMessageIds.has(message.id) &&
+                !handledIncomingMessageIdsRef.current.has(
+                  message.id,
+                ),
+            )
+          : [];
+
+      for (const message of newestMessages) {
+        fallbackKnownMessageIds.add(message.id);
+      }
+      fallbackBaselineReady = true;
+
+      for (const message of newlyDiscoveredIncoming) {
+        handledIncomingMessageIdsRef.current.add(message.id);
+        recentIncomingConversationAtRef.current.set(
+          conversationId,
+          Date.now(),
+        );
+
+        const notificationConversation =
+          liveConversationsRef.current.find(
+            (conversation) =>
+              conversation.id === conversationId,
+          );
+
+        notifyIncomingMessage({
+          messageId: message.id,
+          conversationId,
+          customerName:
+            notificationConversation?.contact?.full_name?.trim() ||
+            "Facebook customer",
+          body: getRealtimeMessagePreview(
+            message as unknown as Record<string, unknown>,
+          ),
+        });
+      }
+
+      setLiveMessages((current) => {
+        const nextMessages = mergeNewestPage(
           current.filter(
             (message) =>
               message.conversation_id ===
               conversationId,
           ),
           newestMessages,
-        ),
-      );
+        );
+
+        liveMessagesRef.current = nextMessages;
+        return nextMessages;
+      });
     } catch (error) {
       if (!isAbortError(error)) {
         console.warn(
@@ -4386,6 +4461,7 @@ useEffect(() => {
     );
   };
 }, [
+  notifyIncomingMessage,
   resolvedActiveConversationId,
 ]);
 

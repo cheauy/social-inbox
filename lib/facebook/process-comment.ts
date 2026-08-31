@@ -427,15 +427,15 @@ export async function processFacebookComment({
     return;
   }
 
-  /*
-   * Ignore Page's own comment so it does not become a customer.
-   */
-  if (
-    authorId === pageId
-  ) {
-    return;
-  }
+  const isPageAuthored =
+    authorId === pageId;
 
+  /*
+   * Duplicate protection must run BEFORE Page-reply handling.
+   * TENH already saves replies it sends itself. Meta can later echo the same
+   * reply through the Page feed webhook, so an existing platform_message_id
+   * means there is nothing else to save.
+   */
   const {
     data:
       existingMessage,
@@ -503,6 +503,301 @@ export async function processFacebookComment({
 
   const commentTime =
     toIso(createdTime);
+
+  /*
+   * V3.11.33 — Page replies created outside TENH (for example Meta Business
+   * Suite) must still appear in the existing customer comment thread.
+   *
+   * Do NOT create the Facebook Page itself as a contact. Instead, resolve the
+   * customer conversation from the reply's parent comment, save the new
+   * comment as outgoing, keep unread_count unchanged, and return.
+   */
+  if (isPageAuthored) {
+    const parentCommentId =
+      value.parent_id
+        ?.trim() ??
+      null;
+
+    if (!parentCommentId) {
+      console.log(
+        "[Tenh Facebook Comment] Page-authored top-level comment ignored because it is not a reply to a TENH customer thread.",
+        {
+          pageId,
+          commentId,
+        },
+      );
+      return;
+    }
+
+    const {
+      data:
+        parentMessage,
+      error:
+        parentMessageError,
+    } =
+      await supabaseAdmin
+        .from("messages")
+        .select(`
+          conversation_id
+        `)
+        .eq(
+          "platform_message_id",
+          parentCommentId,
+        )
+        .maybeSingle();
+
+    if (parentMessageError) {
+      throw new Error(
+        parentMessageError.message,
+      );
+    }
+
+    let targetConversationId =
+      parentMessage
+        ?.conversation_id ??
+      null;
+
+    /*
+     * Fallback for an older/root comment that has a TENH conversation but no
+     * local message row available anymore.
+     */
+    if (!targetConversationId) {
+      const {
+        data:
+          rootConversation,
+        error:
+          rootConversationError,
+      } =
+        await supabaseAdmin
+          .from("conversations")
+          .select("id")
+          .eq(
+            "social_account_id",
+            socialAccount.id,
+          )
+          .eq(
+            "facebook_comment_id",
+            parentCommentId,
+          )
+          .maybeSingle();
+
+      if (rootConversationError) {
+        throw new Error(
+          rootConversationError.message,
+        );
+      }
+
+      targetConversationId =
+        rootConversation?.id ??
+        null;
+    }
+
+    if (!targetConversationId) {
+      console.warn(
+        "[Tenh Facebook Comment] Page reply could not be matched to an existing customer thread.",
+        {
+          pageId,
+          commentId,
+          parentCommentId,
+        },
+      );
+      return;
+    }
+
+    const {
+      data:
+        targetConversation,
+      error:
+        targetConversationError,
+    } =
+      await supabaseAdmin
+        .from("conversations")
+        .select(`
+          id,
+          business_id,
+          social_account_id,
+          contact_id,
+          unread_count
+        `)
+        .eq(
+          "id",
+          targetConversationId,
+        )
+        .eq(
+          "social_account_id",
+          socialAccount.id,
+        )
+        .maybeSingle();
+
+    if (targetConversationError) {
+      throw new Error(
+        targetConversationError.message,
+      );
+    }
+
+    if (
+      !targetConversation ||
+      !targetConversation.contact_id
+    ) {
+      console.warn(
+        "[Tenh Facebook Comment] Page reply matched a conversation without a customer contact.",
+        {
+          pageId,
+          commentId,
+          parentCommentId,
+          targetConversationId,
+        },
+      );
+      return;
+    }
+
+    const {
+      data:
+        recipientContact,
+      error:
+        recipientContactError,
+    } =
+      await supabaseAdmin
+        .from("contacts")
+        .select(`
+          platform_user_id
+        `)
+        .eq(
+          "id",
+          targetConversation.contact_id,
+        )
+        .eq(
+          "business_id",
+          socialAccount.business_id,
+        )
+        .maybeSingle();
+
+    if (recipientContactError) {
+      throw new Error(
+        recipientContactError.message,
+      );
+    }
+
+    const recipientId =
+      recipientContact
+        ?.platform_user_id ??
+      null;
+
+    let pageReplyPostPreview =
+      null;
+
+    if (postId) {
+      try {
+        pageReplyPostPreview =
+          await getFacebookPostPreview(
+            postId,
+            pageId,
+          );
+      } catch (error) {
+        console.warn(
+          "[Tenh Facebook Comment] Page reply post preview failed; saving reply without preview.",
+          error,
+        );
+      }
+    }
+
+    const {
+      error:
+        pageReplyMessageError,
+    } =
+      await supabaseAdmin
+        .from("messages")
+        .insert({
+          business_id:
+            socialAccount
+              .business_id,
+          conversation_id:
+            targetConversation.id,
+          platform_message_id:
+            commentId,
+          sender_platform_id:
+            pageId,
+          recipient_platform_id:
+            recipientId,
+          direction:
+            "outgoing",
+          message_type:
+            "text",
+          message_text:
+            message,
+          attachment_url:
+            null,
+          is_echo:
+            true,
+          raw_payload: {
+            ...value,
+            tenh_source:
+              "facebook_page_reply",
+            post_preview:
+              pageReplyPostPreview,
+          },
+          platform_created_at:
+            commentTime,
+        });
+
+    if (pageReplyMessageError) {
+      throw new Error(
+        pageReplyMessageError.message,
+      );
+    }
+
+    const {
+      error:
+        pageReplyConversationError,
+    } =
+      await supabaseAdmin
+        .from("conversations")
+        .update({
+          source_type:
+            "comment",
+          last_message_text:
+            message,
+          last_message_at:
+            commentTime,
+          /*
+           * A Page/agent reply is outgoing, so it must not create unread work
+           * for TENH agents. Preserve the existing unread count exactly.
+           */
+          unread_count:
+            targetConversation
+              .unread_count ??
+            0,
+          status:
+            "open",
+          updated_at:
+            new Date()
+              .toISOString(),
+        })
+        .eq(
+          "id",
+          targetConversation.id,
+        );
+
+    if (pageReplyConversationError) {
+      throw new Error(
+        pageReplyConversationError.message,
+      );
+    }
+
+    console.log(
+      "[Tenh Facebook Comment] ✅ PAGE REPLY SAVED",
+      {
+        conversationId:
+          targetConversation.id,
+        commentId,
+        parentCommentId,
+        recipientId,
+        message,
+      },
+    );
+
+    return;
+  }
 
   /*
    * IMPORTANT:
