@@ -369,6 +369,20 @@ function sortLiveConversations(
   );
 }
 
+function isFacebookCommentRealtimeRow(
+  row: Record<string, unknown>,
+) {
+  const rawPayload = isRecord(row.raw_payload)
+    ? row.raw_payload
+    : null;
+
+  return (
+    rawPayload?.item === "comment" ||
+    rawPayload?.source === "facebook_comment_reply" ||
+    rawPayload?.tenh_source === "facebook_page_reply"
+  );
+}
+
 function getRealtimeMessagePreview(
   row: Record<string, unknown>,
 ) {
@@ -1833,6 +1847,30 @@ useInboxRealtime({
         !conversationId
       ) {
         return;
+      }
+
+      const conversationKnown =
+        liveConversations.some(
+          (conversation) =>
+            conversation.id === conversationId,
+        );
+
+      const isFacebookCommentEvent =
+        isFacebookCommentRealtimeRow(row);
+
+      /*
+       * A comment webhook can update the contact (name/avatar) and create a
+       * brand-new joined conversation at the same time as the message row.
+       * Realtime message rows do not contain the joined contact/social account
+       * objects, and on an occasional websocket miss the conversation INSERT
+       * can arrive late or not at all. Refresh only for comment INSERTs or an
+       * unknown conversation; normal Messenger/Telegram traffic stays local.
+       */
+      if (
+        event.eventType === "INSERT" &&
+        (isFacebookCommentEvent || !conversationKnown)
+      ) {
+        scheduleMultiAgentRefresh();
       }
 
       const messageDirection =

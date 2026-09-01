@@ -23,6 +23,12 @@ export type FacebookFeedCommentValue = {
   from?: {
     id?: string;
     name?: string;
+    profile_pic?: string;
+    picture?: {
+      data?: {
+        url?: string;
+      };
+    };
   };
   [key: string]:
     unknown;
@@ -33,6 +39,142 @@ type ProcessFacebookCommentInput = {
   value:
     FacebookFeedCommentValue;
 };
+
+function cleanHttpUrl(
+  value: unknown,
+) {
+  if (
+    typeof value !== "string" ||
+    !value.trim()
+  ) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value.trim());
+
+    return parsed.protocol === "https:" ||
+      parsed.protocol === "http:"
+      ? parsed.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function getWebhookCommenterPicture(
+  from: FacebookFeedCommentValue["from"],
+) {
+  return (
+    cleanHttpUrl(from?.profile_pic) ??
+    cleanHttpUrl(from?.picture?.data?.url)
+  );
+}
+
+async function getBusinessAssetCommenterProfile({
+  commenterId,
+  pageAccessToken,
+}: {
+  commenterId: string;
+  pageAccessToken: string;
+}) {
+  const graphVersion =
+    process.env.FACEBOOK_GRAPH_API_VERSION ??
+    "v26.0";
+
+  const url = new URL(
+    `https://graph.facebook.com/${graphVersion}/${commenterId}`,
+  );
+
+  /*
+   * Business Asset User Profile Access can expose the engaging user's name
+   * and picture. This lookup is best-effort only: comment delivery must never
+   * fail if Meta omits the fields or rejects this particular user.
+   */
+  url.searchParams.set(
+    "fields",
+    "id,name,picture",
+  );
+  url.searchParams.set(
+    "access_token",
+    pageAccessToken,
+  );
+
+  const controller =
+    new AbortController();
+  const timeout =
+    setTimeout(
+      () => controller.abort(),
+      1500,
+    );
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    const text = await response.text();
+
+    let result: {
+      name?: string;
+      picture?: {
+        data?: {
+          url?: string;
+        };
+      };
+      error?: {
+        message?: string;
+      };
+    } = {};
+
+    if (text.trim()) {
+      try {
+        result = JSON.parse(text) as typeof result;
+      } catch {
+        return {
+          fullName: null,
+          profilePictureUrl: null,
+        };
+      }
+    }
+
+    if (!response.ok || result.error) {
+      console.warn(
+        "[Tenh Facebook Comment] Business Asset commenter profile lookup was unavailable; keeping the avatar fallback.",
+        {
+          commenterId,
+          status: response.status,
+          error: result.error?.message ?? null,
+        },
+      );
+
+      return {
+        fullName: null,
+        profilePictureUrl: null,
+      };
+    }
+
+    return {
+      fullName:
+        result.name?.trim() || null,
+      profilePictureUrl:
+        cleanHttpUrl(result.picture?.data?.url),
+    };
+  } catch (error) {
+    console.warn(
+      "[Tenh Facebook Comment] Business Asset commenter profile request failed; keeping the avatar fallback.",
+      error,
+    );
+
+    return {
+      fullName: null,
+      profilePictureUrl: null,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 function toIso(
   value?:
@@ -273,6 +415,11 @@ export async function processFacebookComment({
     value.from?.name
       ?.trim() ??
     null;
+
+  let authorProfilePictureUrl =
+    getWebhookCommenterPicture(
+      value.from,
+    );
 
   let createdTime =
     value.created_time;
@@ -838,6 +985,12 @@ export async function processFacebookComment({
       authorName;
   }
 
+  if (authorProfilePictureUrl) {
+    contactPayload
+      .profile_picture_url =
+      authorProfilePictureUrl;
+  }
+
   const {
     data: contact,
     error:
@@ -852,7 +1005,11 @@ export async function processFacebookComment({
             "business_id,platform,platform_user_id",
         },
       )
-      .select("id")
+      .select(`
+        id,
+        full_name,
+        profile_picture_url
+      `)
       .single();
 
   if (
@@ -864,6 +1021,67 @@ export async function processFacebookComment({
         ?.message ??
         "Unable to create Facebook comment contact.",
     );
+  }
+
+  /*
+   * If the webhook did not include an avatar and TENH has not already saved
+   * one for this commenter, try the approved Business Asset User Profile
+   * surface once for this new comment. Failure is non-fatal and the initials
+   * fallback remains intact.
+   */
+  if (
+    !authorProfilePictureUrl &&
+    !contact.profile_picture_url &&
+    pageAccessToken
+  ) {
+    const businessAssetProfile =
+      await getBusinessAssetCommenterProfile({
+        commenterId: authorId,
+        pageAccessToken,
+      });
+
+    authorName =
+      businessAssetProfile.fullName ??
+      authorName;
+    authorProfilePictureUrl =
+      businessAssetProfile.profilePictureUrl;
+
+    const profileUpdate: Record<string, unknown> = {};
+
+    if (
+      businessAssetProfile.fullName &&
+      businessAssetProfile.fullName !== contact.full_name
+    ) {
+      profileUpdate.full_name =
+        businessAssetProfile.fullName;
+    }
+
+    if (businessAssetProfile.profilePictureUrl) {
+      profileUpdate.profile_picture_url =
+        businessAssetProfile.profilePictureUrl;
+    }
+
+    if (Object.keys(profileUpdate).length > 0) {
+      profileUpdate.updated_at =
+        new Date().toISOString();
+
+      const { error: profileUpdateError } =
+        await supabaseAdmin
+          .from("contacts")
+          .update(profileUpdate)
+          .eq("id", contact.id)
+          .eq(
+            "business_id",
+            socialAccount.business_id,
+          );
+
+      if (profileUpdateError) {
+        console.warn(
+          "[Tenh Facebook Comment] Commenter profile was discovered but could not be saved.",
+          profileUpdateError.message,
+        );
+      }
+    }
   }
 
   const {

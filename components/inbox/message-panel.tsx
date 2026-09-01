@@ -1471,13 +1471,13 @@ export function MessagePanel({
      */
     void previousConversationId;
 
+    /*
+     * Opening/selecting a customer always starts at the newest message. Do not
+     * restore an older per-thread viewport or jump to the first unread marker;
+     * those behaviours made a freshly opened thread stop around "Today".
+     */
     pendingScrollRestoreRef.current =
-      nextConversationId
-        ? conversationScrollPositionsRef
-            .current[
-              nextConversationId
-            ] ?? null
-        : null;
+      null;
 
     previousConversationIdRef.current =
       nextConversationId;
@@ -1496,16 +1496,10 @@ export function MessagePanel({
       0;
 
     userNearBottomRef.current =
-      pendingScrollRestoreRef.current
-        ?.nearBottom ??
       true;
 
     setShowScrollToLatest(
-      Boolean(
-        pendingScrollRestoreRef.current &&
-        !pendingScrollRestoreRef.current
-          .nearBottom,
-      ),
+      false,
     );
 
     prependScrollSnapshotRef.current =
@@ -1737,44 +1731,6 @@ export function MessagePanel({
     if (
       !initialScrollDoneRef.current
     ) {
-      const savedPosition =
-        pendingScrollRestoreRef
-          .current;
-
-      if (
-        !savedPosition &&
-        openingUnreadCount > 0 &&
-        !firstUnreadMessageId &&
-        hasMoreOlderMessages &&
-        !initialUnreadAutoLoadStoppedRef.current
-      ) {
-        if (
-          !loadingOlderMessages &&
-          !initialUnreadLoadInFlightRef.current
-        ) {
-          initialUnreadLoadInFlightRef.current =
-            true;
-
-          void onLoadOlderMessages()
-            .then((loaded) => {
-              if (!loaded) {
-                initialUnreadAutoLoadStoppedRef.current =
-                  true;
-              }
-            })
-            .catch(() => {
-              initialUnreadAutoLoadStoppedRef.current =
-                true;
-            })
-            .finally(() => {
-              initialUnreadLoadInFlightRef.current =
-                false;
-            });
-        }
-
-        return;
-      }
-
       initialScrollDoneRef.current =
         true;
 
@@ -1787,86 +1743,13 @@ export function MessagePanel({
       pendingScrollRestoreRef.current =
         null;
 
+      /*
+       * Always finish an explicit conversation open at the real bottom. The
+       * next animation frame runs after the newest page has painted, avoiding
+       * the previous first-unread/Today positioning.
+       */
       window.requestAnimationFrame(
         () => {
-          const container =
-            messagesContainerRef.current;
-
-          if (
-            container &&
-            savedPosition &&
-            !savedPosition.nearBottom
-          ) {
-            const maxScrollTop =
-              Math.max(
-                0,
-                container.scrollHeight -
-                  container.clientHeight,
-              );
-
-            container.scrollTop =
-              Math.min(
-                savedPosition.scrollTop,
-                maxScrollTop,
-              );
-
-            userNearBottomRef.current =
-              false;
-            setShowScrollToLatest(
-              true,
-            );
-            return;
-          }
-
-          if (
-            openingUnreadCount > 0 &&
-            firstUnreadMessageId
-          ) {
-            const targetElement =
-              messageElementRefs.current.get(
-                firstUnreadMessageId,
-              );
-
-            if (targetElement) {
-              targetElement.scrollIntoView({
-                behavior: "auto",
-                block: "center",
-              });
-
-              const distanceFromBottom =
-                container
-                  ? container.scrollHeight -
-                    container.scrollTop -
-                    container.clientHeight
-                  : 0;
-
-              const nearBottom =
-                distanceFromBottom <= 120;
-
-              userNearBottomRef.current =
-                nearBottom;
-              setShowScrollToLatest(
-                !nearBottom,
-              );
-
-              if (
-                container &&
-                activeConversation?.id
-              ) {
-                conversationScrollPositionsRef
-                  .current[
-                    activeConversation.id
-                  ] = {
-                  scrollTop:
-                    container.scrollTop,
-                  nearBottom,
-                };
-              }
-
-              return;
-            }
-          }
-
           scrollToNewest("auto");
         },
       );
