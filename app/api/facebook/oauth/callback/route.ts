@@ -46,6 +46,15 @@ type TokenResult = {
   };
 };
 
+type FacebookMeResult = {
+  id?: string;
+  error?: {
+    message?: string;
+    type?: string;
+    code?: number;
+  };
+};
+
 async function readJson<T>(
   response: Response,
 ): Promise<T> {
@@ -253,6 +262,42 @@ export async function GET(
           ).toISOString()
         : null;
 
+    // Capture Meta's app-scoped Facebook user id while authorization is valid.
+    // It stays encrypted inside TENH's OAuth/session and stored user-token
+    // envelope; it is never exposed to the browser. This gives the
+    // deauthorization callback an exact local match later without a DB change.
+    let facebookUserId: string | null = null;
+
+    try {
+      const meUrl = new URL(
+        `https://graph.facebook.com/${graphVersion}/me`,
+      );
+      meUrl.searchParams.set("fields", "id");
+
+      const meResponse = await fetch(meUrl, {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${longTokenResult.access_token}`,
+        },
+      });
+      const meResult = await readJson<FacebookMeResult>(meResponse);
+
+      if (meResponse.ok && !meResult.error && meResult.id?.trim()) {
+        facebookUserId = meResult.id.trim();
+      } else {
+        console.warn(
+          "[Tenh Facebook OAuth] Could not capture app-scoped Facebook user id; deauthorization will fall back to token debugging.",
+          meResult.error?.message ?? `HTTP ${meResponse.status}`,
+        );
+      }
+    } catch (error) {
+      console.warn(
+        "[Tenh Facebook OAuth] Facebook user-id lookup failed; continuing connection safely.",
+        error instanceof Error ? error.message : "Unknown error",
+      );
+    }
+
     // Keep the User token only in an encrypted, httpOnly, short-lived cookie.
     // The browser never receives the raw token in HTML or JavaScript.
     const encryptedSession =
@@ -262,6 +307,7 @@ export async function GET(
         userAccessToken:
           longTokenResult.access_token,
         userTokenExpiresAt,
+        facebookUserId,
       });
 
     const response = NextResponse.redirect(

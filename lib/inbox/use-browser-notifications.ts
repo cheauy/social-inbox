@@ -71,6 +71,9 @@ export function useBrowserNotifications() {
   const activeAudioRef =
     useRef<HTMLAudioElement | null>(null);
 
+  const preparedSoundKeyRef =
+    useRef<NotificationSoundKey | null>(null);
+
   const syncSoundPreferences =
     useCallback(() => {
       const nextSound =
@@ -163,12 +166,52 @@ export function useBrowserNotifications() {
     };
   }, [syncSoundPreferences]);
 
+  /*
+   * Keep the selected Inbox alert preloaded. Realtime message INSERTs can then
+   * play the sound immediately even when that customer conversation is not
+   * open. Browser autoplay rules still apply until the user has interacted
+   * with TENH at least once.
+   */
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const sound =
+      getNotificationSound(soundKey);
+
+    if (activeAudioRef.current) {
+      activeAudioRef.current.pause();
+      activeAudioRef.current = null;
+    }
+
+    preparedSoundKeyRef.current = null;
+
+    if (!sound.src) {
+      return;
+    }
+
+    const audio = new Audio(sound.src);
+    audio.preload = "auto";
+    audio.volume =
+      clampNotificationVolume(volume);
+
+    // Hint the browser to fetch/decode the configured sound before a message
+    // arrives instead of waiting until the realtime event fires.
+    audio.load();
+
+    activeAudioRef.current = audio;
+    preparedSoundKeyRef.current = soundKey;
+  }, [soundKey, volume]);
+
   useEffect(() => {
     return () => {
       if (activeAudioRef.current) {
         activeAudioRef.current.pause();
         activeAudioRef.current = null;
       }
+
+      preparedSoundKeyRef.current = null;
     };
   }, []);
 
@@ -346,22 +389,31 @@ export function useBrowserNotifications() {
         }
 
         try {
-          if (activeAudioRef.current) {
-            activeAudioRef.current.pause();
+          let audio =
+            activeAudioRef.current;
+
+          if (
+            !audio ||
+            preparedSoundKeyRef.current !== requestedSound
+          ) {
+            if (audio) {
+              audio.pause();
+            }
+
+            audio = new Audio(sound.src);
+            audio.preload = "auto";
+            audio.load();
+
+            activeAudioRef.current = audio;
+            preparedSoundKeyRef.current = requestedSound;
           }
 
-          const audio = new Audio(
-            sound.src,
-          );
-
-          audio.preload = "auto";
+          audio.pause();
+          audio.currentTime = 0;
           audio.volume =
             clampNotificationVolume(
               requestedVolume,
             );
-
-          activeAudioRef.current =
-            audio;
 
           await audio.play();
 

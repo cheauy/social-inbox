@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { PendingInvitationsBanner } from "@/components/dashboard/pending-invitations-banner";
+import { FacebookConnectionAttentionBanner } from "@/components/dashboard/facebook-connection-attention-banner";
 import { WorkspacePermissionsProvider } from "@/lib/auth/use-workspace-permissions";
 import { RemovedWorkspaceAccessBoundary } from "@/components/dashboard/removed-workspace-access-boundary";
 import { WorkspaceSetupRecovery } from "@/components/dashboard/workspace-setup-recovery";
@@ -132,6 +133,7 @@ export default async function DashboardLayout({
         <DashboardHeader />
 
         <PendingInvitationsBanner />
+        <FacebookConnectionAttentionBanner />
 
         <main className="min-h-0 flex-1 overflow-hidden">
           <SubscriptionAccessGate access={subscriptionAccess}>

@@ -33,6 +33,10 @@ import {
 } from "@/lib/inbox/use-browser-notifications";
 
 import {
+  getConversationMessagePreview,
+} from "@/lib/inbox/conversation-preview";
+
+import {
   useAgentPresence,
 } from "@/lib/inbox/use-agent-presence";
 
@@ -386,39 +390,23 @@ function getRealtimeMessagePreview(
   const messageType =
     typeof row.message_type === "string"
       ? row.message_type
-      : "message";
+      : "unknown";
 
   if (messageType === "sticker") {
     return "Sent a sticker";
   }
 
-  if (
-    typeof row.message_text === "string" &&
-    row.message_text.trim()
-  ) {
-    return row.message_text.trim();
-  }
+  const direction =
+    row.direction === "incoming" ||
+    row.direction === "outgoing"
+      ? row.direction
+      : null;
 
-  if (messageType === "image") {
-    return "Sent a photo";
-  }
-
-  if (messageType === "video") {
-    return "Sent a video";
-  }
-
-  if (messageType === "audio") {
-    return "Sent a voice message";
-  }
-
-  if (
-    messageType === "file" ||
-    messageType === "document"
-  ) {
-    return "Sent a file";
-  }
-
-  return "New message";
+  return getConversationMessagePreview({
+    direction,
+    messageType,
+    messageText: row.message_text,
+  });
 }
 
 export function InboxView({
@@ -970,6 +958,17 @@ const previousActiveConversationIdRef =
   const handledIncomingMessageIdsRef =
     useRef<Set<string>>(
       new Set(),
+    );
+
+  /*
+   * Sound dedupe across the three live paths: message INSERT Realtime,
+   * conversation UPDATE fallback, and active-thread polling. A conversation
+   * UPDATE can arrive before its message INSERT, so message id alone cannot
+   * prevent a double alert. The platform-created/latest-message timestamp can.
+   */
+  const lastSoundedIncomingMessageTimeRef =
+    useRef<Map<string, number>>(
+      new Map(),
     );
 
   /*
@@ -1916,18 +1915,6 @@ useInboxRealtime({
               conversationId,
           );
 
-        notifyIncomingMessage({
-          messageId,
-          conversationId,
-          customerName:
-            notificationConversation
-              ?.contact
-              ?.full_name
-              ?.trim() ||
-            "Facebook customer",
-          body: preview,
-        });
-
         const lastMessageAt =
           typeof row.platform_created_at ===
           "string"
@@ -1939,6 +1926,41 @@ useInboxRealtime({
 
         const incomingMessageTime =
           new Date(lastMessageAt).getTime();
+        const lastSoundedIncomingTime =
+          lastSoundedIncomingMessageTimeRef.current.get(
+            conversationId,
+          ) ?? 0;
+        const alreadySoundedThisIncoming =
+          Number.isFinite(incomingMessageTime) &&
+          incomingMessageTime > 0 &&
+          lastSoundedIncomingTime > 0 &&
+          Math.abs(
+            incomingMessageTime - lastSoundedIncomingTime,
+          ) <= 1000;
+
+        if (!alreadySoundedThisIncoming) {
+          notifyIncomingMessage({
+            messageId,
+            conversationId,
+            customerName:
+              notificationConversation
+                ?.contact
+                ?.full_name
+                ?.trim() ||
+              "Facebook customer",
+            body: preview,
+          });
+
+          if (
+            Number.isFinite(incomingMessageTime) &&
+            incomingMessageTime > 0
+          ) {
+            lastSoundedIncomingMessageTimeRef.current.set(
+              conversationId,
+              incomingMessageTime,
+            );
+          }
+        }
         const existingReadBarrier =
           readBarrierMessageTimeRef.current.get(
             conversationId,
@@ -2499,6 +2521,54 @@ useInboxRealtime({
         rowUnreadCount !== null &&
         rowUnreadCount > 0 &&
         !unreadComesFromNewMessage;
+
+      /*
+       * Supabase can occasionally deliver the conversations UPDATE while the
+       * messages INSERT is delayed/missed in this browser. That used to update
+       * the unread badge without playing the Inbox sound for an unselected
+       * customer. When the latest message advances and unread rises without a
+       * recent message signal, use this authoritative conversation row as a
+       * safe sound fallback. Outgoing messages do not increase unread_count,
+       * and manual Mark as unread does not advance last_message_at.
+       */
+      if (
+        unreadComesFromNewMessage &&
+        !hasRecentIncomingSignal &&
+        rowLastMessageValue
+      ) {
+        const lastSoundedIncomingTime =
+          lastSoundedIncomingMessageTimeRef.current.get(
+            conversationId,
+          ) ?? 0;
+        const alreadySoundedThisIncoming =
+          rowLastMessageTime > 0 &&
+          lastSoundedIncomingTime > 0 &&
+          Math.abs(
+            rowLastMessageTime - lastSoundedIncomingTime,
+          ) <= 1000;
+
+        if (!alreadySoundedThisIncoming) {
+          notifyIncomingMessage({
+            messageId: `conversation-${conversationId}-${rowLastMessageValue}`,
+            conversationId,
+            customerName:
+              existingConversation?.contact?.full_name?.trim() ||
+              "Facebook customer",
+            body:
+              typeof row.last_message_text === "string" &&
+              row.last_message_text.trim()
+                ? row.last_message_text.trim()
+                : "New message",
+          });
+
+          if (rowLastMessageTime > 0) {
+            lastSoundedIncomingMessageTimeRef.current.set(
+              conversationId,
+              rowLastMessageTime,
+            );
+          }
+        }
+      }
 
       if (unreadComesFromNewMessage && hasRecentIncomingSignal) {
         recentIncomingConversationAtRef.current.delete(conversationId);
@@ -4464,16 +4534,44 @@ useEffect(() => {
               conversation.id === conversationId,
           );
 
-        notifyIncomingMessage({
-          messageId: message.id,
-          conversationId,
-          customerName:
-            notificationConversation?.contact?.full_name?.trim() ||
-            "Facebook customer",
-          body: getRealtimeMessagePreview(
-            message as unknown as Record<string, unknown>,
-          ),
-        });
+        const incomingMessageAt =
+          message.platform_created_at ??
+          message.created_at ??
+          null;
+        const incomingMessageTime =
+          incomingMessageAt
+            ? new Date(incomingMessageAt).getTime()
+            : 0;
+        const lastSoundedIncomingTime =
+          lastSoundedIncomingMessageTimeRef.current.get(
+            conversationId,
+          ) ?? 0;
+        const alreadySoundedThisIncoming =
+          incomingMessageTime > 0 &&
+          lastSoundedIncomingTime > 0 &&
+          Math.abs(
+            incomingMessageTime - lastSoundedIncomingTime,
+          ) <= 1000;
+
+        if (!alreadySoundedThisIncoming) {
+          notifyIncomingMessage({
+            messageId: message.id,
+            conversationId,
+            customerName:
+              notificationConversation?.contact?.full_name?.trim() ||
+              "Facebook customer",
+            body: getRealtimeMessagePreview(
+              message as unknown as Record<string, unknown>,
+            ),
+          });
+
+          if (incomingMessageTime > 0) {
+            lastSoundedIncomingMessageTimeRef.current.set(
+              conversationId,
+              incomingMessageTime,
+            );
+          }
+        }
       }
 
       setLiveMessages((current) => {

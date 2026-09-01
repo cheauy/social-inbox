@@ -5,6 +5,9 @@ import {
 } from "crypto";
 
 import {
+  getConversationMessagePreview,
+} from "@/lib/inbox/conversation-preview";
+import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 import {
@@ -1106,7 +1109,12 @@ export async function processTelegramIncomingText({
     .from("conversations")
     .update({
       last_message_text:
-        messageText,
+        getConversationMessagePreview({
+          direction: "incoming",
+          messageType:
+            media?.messageType ?? "text",
+          messageText,
+        }),
       last_message_at:
         messageTime,
       unread_count:

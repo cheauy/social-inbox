@@ -14,6 +14,9 @@ import {
   decryptChannelCredential,
 } from "@/lib/channels/channel-token-crypto";
 import {
+  getConversationMessagePreview,
+} from "@/lib/inbox/conversation-preview";
+import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 import {
@@ -640,7 +643,11 @@ export async function POST(
       .from("conversations")
       .update({
         last_message_text:
-          message,
+          getConversationMessagePreview({
+            direction: "outgoing",
+            messageType: "text",
+            messageText: message,
+          }),
         last_message_at:
           sentAt,
         updated_at:

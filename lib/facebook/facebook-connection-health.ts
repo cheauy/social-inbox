@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  ensureStoredFacebookUserAuthorizationIdentity,
   getFacebookPageAccessToken,
   isFacebookAccessTokenError,
   refreshFacebookPageAccessToken,
@@ -651,6 +652,15 @@ export async function ensureFacebookPageConnectionHealthy({
     tokenRepaired = tokenRepaired || subscription.tokenRepaired;
 
     const healthy = conversationsHealthy && subscription.healthy;
+
+    if (healthy) {
+      // One-time backward-compatible enrichment for connections created before
+      // TENH stored Meta's app-scoped user id inside the encrypted User auth
+      // envelope. Failure is non-fatal; the connection is still healthy and the
+      // deauthorization callback retains its bounded debug-token fallback.
+      await ensureStoredFacebookUserAuthorizationIdentity(normalizedPageId);
+    }
+
     const error = !conversationsHealthy
       ? graphErrorMessage(
           conversations.payload,

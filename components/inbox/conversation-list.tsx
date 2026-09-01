@@ -35,6 +35,9 @@ import {
   useWorkspaceLanguageId,
 } from "@/components/display/workspace-language-text";
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog";
+import {
+  normalizeLegacyConversationPreview,
+} from "@/lib/inbox/conversation-preview";
 
 type SearchAwareContact =
   NonNullable<InboxConversation["contact"]> & {
@@ -4441,8 +4444,9 @@ export function ConversationList({
 
                       <div className="mt-1 flex items-center gap-2">
                         <p className="min-w-0 flex-1 truncate text-sm text-slate-500">
-                          {conversation.last_message_text ??
-                            "No messages"}
+                          {normalizeLegacyConversationPreview(
+                            conversation.last_message_text,
+                          )}
                         </p>
 
                         {conversation.unread_count >

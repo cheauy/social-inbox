@@ -265,11 +265,90 @@ async function fetchCommentAuthorProfile({
       ? responseResult.result.from
       : null;
 
+  let profilePictureUrl =
+    profilePictureFromValue(from);
+
+  /*
+   * Business Asset User Profile Access can expose a commenter's picture via
+   * the profile picture edge even when the nested `from.picture` field is
+   * omitted. Keep this as a short, optional fallback so a rejected/private
+   * picture request can never delay or break Facebook comment ingestion.
+   */
+  const fromId =
+    cleanString(from?.id);
+
+  if (!profilePictureUrl && fromId) {
+    const pictureController =
+      new AbortController();
+    const pictureTimeout =
+      setTimeout(
+        () => pictureController.abort(),
+        900,
+      );
+
+    try {
+      const pictureUrl =
+        new URL(
+          `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(fromId)}/picture`,
+        );
+
+      pictureUrl.searchParams.set(
+        "redirect",
+        "false",
+      );
+      pictureUrl.searchParams.set(
+        "type",
+        "normal",
+      );
+      pictureUrl.searchParams.set(
+        "access_token",
+        currentToken,
+      );
+
+      const pictureResponse =
+        await fetch(
+          pictureUrl,
+          {
+            method: "GET",
+            cache: "no-store",
+            signal:
+              pictureController.signal,
+          },
+        );
+      const pictureText =
+        await pictureResponse.text();
+
+      if (pictureResponse.ok && pictureText.trim()) {
+        try {
+          const pictureResult =
+            JSON.parse(pictureText) as Record<string, unknown>;
+          const pictureData =
+            isRecord(pictureResult.data)
+              ? pictureResult.data
+              : null;
+          const isSilhouette =
+            pictureData?.is_silhouette === true;
+
+          if (!isSilhouette) {
+            profilePictureUrl =
+              cleanString(pictureData?.url) ??
+              profilePictureUrl;
+          }
+        } catch {
+          // Optional avatar fallback only; keep the comment flow healthy.
+        }
+      }
+    } catch {
+      // Optional avatar fallback only; initials remain the safe fallback.
+    } finally {
+      clearTimeout(pictureTimeout);
+    }
+  }
+
   return {
     name:
       cleanString(from?.name),
-    profilePictureUrl:
-      profilePictureFromValue(from),
+    profilePictureUrl,
     accessToken:
       currentToken,
   };
@@ -501,7 +580,7 @@ export async function processFacebookComment({
       ? value.post
       : null;
 
-  const postId =
+  let postId =
     cleanString(value.post_id) ??
     cleanString(webhookPost?.id);
 
@@ -571,7 +650,7 @@ export async function processFacebookComment({
 
       url.searchParams.set(
         "fields",
-        "id,message,from,created_time,parent",
+        "id,message,from,created_time,parent,object",
       );
       url.searchParams.set(
         "access_token",
@@ -584,6 +663,9 @@ export async function processFacebookComment({
         from?: {
           id?: string;
           name?: string;
+        };
+        object?: {
+          id?: string;
         };
         error?: {
           message?: string;
@@ -691,6 +773,18 @@ export async function processFacebookComment({
           result.from?.name
             ?.trim() ||
           authorName;
+
+        /*
+         * Some feed webhook variants can omit post_id. The Comment Graph
+         * object exposes the object the comment belongs to, so recover the
+         * Page post ID here before building the post content card. This is
+         * best-effort only and never blocks saving the customer comment.
+         */
+        postId =
+          postId ??
+          result.object?.id
+            ?.trim() ??
+          null;
 
         if (
           result.created_time

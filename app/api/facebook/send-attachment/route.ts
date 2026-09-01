@@ -18,6 +18,9 @@ import {
 } from "@/lib/facebook/get-facebook-page-access-token";
 
 import {
+  getConversationMessagePreview,
+} from "@/lib/inbox/conversation-preview";
+import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 
@@ -990,7 +993,11 @@ export async function POST(
     .from("conversations")
     .update({
       last_message_text:
-        messageText,
+        getConversationMessagePreview({
+          direction: "outgoing",
+          messageType: kind,
+          messageText,
+        }),
       last_message_at:
         now,
       updated_at:

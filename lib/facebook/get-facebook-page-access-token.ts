@@ -2,7 +2,9 @@ import "server-only";
 
 import {
   decryptFacebookToken,
+  decryptFacebookUserAuthorization,
   encryptFacebookToken,
+  encryptFacebookUserAuthorization,
 } from "@/lib/facebook/facebook-token-crypto";
 import {
   supabaseAdmin,
@@ -156,7 +158,6 @@ function facebookStatusNeedsAttention(status: string | null) {
   return [
     "expired",
     "invalid",
-    "error",
     "revoked",
   ].some((value) => normalized.includes(value));
 }
@@ -282,6 +283,151 @@ async function markFacebookAuthorizationNeedsAttention({
   }
 }
 
+export async function markFacebookSocialAccountAuthorizationNeedsAttention({
+  socialAccountId,
+  status,
+  message,
+}: {
+  socialAccountId: string;
+  status: "expired" | "invalid" | "revoked";
+  message: string;
+}) {
+  const { data, error } = await supabaseAdmin
+    .from("social_accounts")
+    .select(`
+      id,
+      business_id,
+      account_name,
+      is_active,
+      facebook_page_access_token_encrypted,
+      facebook_user_access_token_encrypted,
+      facebook_user_token_expires_at,
+      facebook_token_status
+    `)
+    .eq("id", socialAccountId)
+    .eq("platform", "facebook")
+    .maybeSingle<FacebookTokenRow>();
+
+  if (error || !data) {
+    if (error) {
+      console.warn(
+        "[TENH Facebook Token] Unable to load Facebook connection for authorization status update:",
+        error.message,
+      );
+    }
+    return false;
+  }
+
+  if (data.facebook_token_status === "disconnected") {
+    return false;
+  }
+
+  await markFacebookAuthorizationNeedsAttention({
+    socialAccount: data,
+    status,
+    message,
+  });
+  return true;
+}
+
+export async function ensureStoredFacebookUserAuthorizationIdentity(
+  pageIdInput?: string,
+): Promise<string | null> {
+  const pageId = getPageId(pageIdInput);
+  const socialAccount = await loadFacebookTokenRow(pageId);
+
+  if (
+    !socialAccount ||
+    !socialAccount.is_active ||
+    socialAccount.facebook_token_status === "disconnected" ||
+    !socialAccount.facebook_user_access_token_encrypted
+  ) {
+    return null;
+  }
+
+  let authorization;
+  try {
+    authorization = decryptFacebookUserAuthorization(
+      socialAccount.facebook_user_access_token_encrypted,
+    );
+  } catch {
+    return null;
+  }
+
+  if (authorization.userId) {
+    return authorization.userId;
+  }
+
+  const appId = process.env.FACEBOOK_APP_ID?.trim();
+  const appSecret = process.env.FACEBOOK_APP_SECRET?.trim();
+  if (!appId || !appSecret) {
+    return null;
+  }
+
+  const graphVersion =
+    process.env.FACEBOOK_GRAPH_API_VERSION?.trim() || "v26.0";
+  const appAccessToken =
+    process.env.FACEBOOK_APP_ACCESS_TOKEN?.trim() || `${appId}|${appSecret}`;
+  const url = new URL(
+    `https://graph.facebook.com/${graphVersion}/debug_token`,
+  );
+  url.searchParams.set("input_token", authorization.accessToken);
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${appAccessToken}`,
+      },
+    });
+    const payload = await readGraphJson<{
+      data?: {
+        app_id?: string;
+        user_id?: string;
+      };
+      error?: FacebookTokenError;
+    }>(response);
+    const userId = payload.data?.user_id?.trim() || null;
+    const tokenAppId = payload.data?.app_id?.trim() || null;
+
+    if (
+      !userId ||
+      (tokenAppId && tokenAppId !== appId)
+    ) {
+      return null;
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from("social_accounts")
+      .update({
+        facebook_user_access_token_encrypted:
+          encryptFacebookUserAuthorization({
+            accessToken: authorization.accessToken,
+            userId,
+          }),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", socialAccount.id);
+
+    if (updateError) {
+      console.warn(
+        "[TENH Facebook Token] Unable to enrich encrypted Facebook User authorization identity:",
+        updateError.message,
+      );
+      return null;
+    }
+
+    return userId;
+  } catch (error) {
+    console.warn(
+      "[TENH Facebook Token] Facebook User authorization identity enrichment failed:",
+      error instanceof Error ? error.message : "Unknown error",
+    );
+    return null;
+  }
+}
+
 export function isFacebookAccessTokenError(
   error?: {
     code?: number;
@@ -365,10 +511,10 @@ export async function refreshFacebookPageAccessToken(
 
   try {
     userAccessToken =
-      decryptFacebookToken(
+      decryptFacebookUserAuthorization(
         socialAccount
           .facebook_user_access_token_encrypted,
-      ).trim();
+      ).accessToken;
   } catch (error) {
     console.error(
       "[TENH Facebook Token] Unable to decrypt stored Facebook User token:",
@@ -536,6 +682,17 @@ export async function getFacebookPageAccessToken(
     await loadFacebookTokenRow(
       pageId,
     );
+
+  if (
+    socialAccount &&
+    ["expired", "invalid", "revoked"].some((status) =>
+      socialAccount.facebook_token_status?.trim().toLowerCase().includes(status),
+    )
+  ) {
+    throw new Error(
+      "Facebook authorization needs reconnection. Reconnect Facebook from Integrations.",
+    );
+  }
 
   if (
     socialAccount

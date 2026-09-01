@@ -1036,6 +1036,34 @@ export function MessagePanel({
   const [actionNotice, setActionNotice] =
     useState<string | null>(null);
 
+  const [imagePreview, setImagePreview] =
+    useState<{
+      src: string;
+      alt: string;
+    } | null>(null);
+
+  useEffect(() => {
+    if (!imagePreview) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setImagePreview(null);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [imagePreview]);
+
+  useEffect(() => {
+    setImagePreview(null);
+  }, [activeConversation?.id]);
+
   const [chatBackgroundSrc, setChatBackgroundSrc] =
     useState(DEFAULT_CHAT_BACKGROUND_SRC);
 
@@ -2091,6 +2119,9 @@ export function MessagePanel({
               const rawPayload =
                 message.raw_payload as {
                   post_id?: string;
+                  post?: {
+                    id?: string;
+                  } | null;
                   comment_id?: string;
                   parent_id?: string;
                   item?: string;
@@ -2215,12 +2246,25 @@ export function MessagePanel({
                 rawPayload?.post_preview ??
                 null;
 
+              const isCurrentConversationRootComment =
+                Boolean(
+                  activeConversation.facebook_comment_id &&
+                    (message.platform_message_id ===
+                      activeConversation.facebook_comment_id ||
+                      rawPayload?.comment_id ===
+                        activeConversation.facebook_comment_id),
+                );
+
               const postId =
                 rawPayload?.post_id
                   ?.trim() ||
+                rawPayload?.post?.id
+                  ?.trim() ||
                 savedPostPreview?.id
                   ?.trim() ||
-                null;
+                (isCurrentConversationRootComment
+                  ? activeConversation.facebook_post_id?.trim() || null
+                  : null);
 
               /*
                * Even if Meta's optional post-detail lookup temporarily fails,
@@ -3013,21 +3057,26 @@ export function MessagePanel({
                         <div className="max-w-[860px] p-1 sm:p-2">
                           <div className="flex min-w-0 items-stretch gap-3 rounded-[18px] border border-slate-200 bg-white p-3 shadow-[0_3px_14px_rgba(15,23,42,0.04)] sm:gap-4">
                             {postPreview.full_picture ? (
-                              <a
-                                href={postUrl ?? undefined}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="h-[112px] w-[112px] shrink-0 overflow-hidden rounded-[15px] bg-slate-100 sm:h-[132px] sm:w-[132px]"
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setImagePreview({
+                                    src: postPreview.full_picture!,
+                                    alt: "Facebook post",
+                                  })
+                                }
+                                className="h-[112px] w-[112px] shrink-0 overflow-hidden rounded-[15px] bg-slate-100 text-left sm:h-[132px] sm:w-[132px]"
+                                aria-label="Open Facebook post image"
                               >
                                 <img
                                   src={
                                     postPreview.full_picture
                                   }
                                   alt="Facebook post"
-                                  className="h-full w-full object-cover"
+                                  className="h-full w-full object-cover transition duration-200 hover:scale-[1.02]"
                                   loading="lazy"
                                 />
-                              </a>
+                              </button>
                             ) : (
                               <div className="flex h-[112px] w-[112px] shrink-0 items-center justify-center rounded-[15px] bg-blue-50 text-blue-600 sm:h-[132px] sm:w-[132px]">
                                 <svg
@@ -3936,11 +3985,16 @@ export function MessagePanel({
                         ) : isImageMessage ? (
                           <div className="w-[300px] max-w-full overflow-hidden rounded-[22px] bg-slate-100 ring-1 ring-slate-200/70">
                             {attachmentUrl ? (
-                              <a
-                                href={attachmentUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="group/media block"
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setImagePreview({
+                                    src: attachmentUrl,
+                                    alt: attachmentName,
+                                  })
+                                }
+                                className="group/media block w-full cursor-zoom-in text-left"
+                                aria-label={`Open ${attachmentName}`}
                               >
                                 <img
                                   src={attachmentUrl}
@@ -3949,7 +4003,7 @@ export function MessagePanel({
                                   loading="lazy"
                                   decoding="async"
                                 />
-                              </a>
+                              </button>
                             ) : (
                               <div className="flex h-40 w-full items-center justify-center rounded-[22px] border border-dashed border-slate-300 bg-slate-50 text-sm font-medium text-slate-500">
                                 Photo unavailable
@@ -4581,6 +4635,41 @@ export function MessagePanel({
             !replyingToCommentId
           }
         />
+      ) : null}
+
+      {imagePreview ? (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-[2px] sm:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Image preview"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setImagePreview(null);
+            }
+          }}
+        >
+          <div
+            className="relative flex max-h-[92vh] max-w-[94vw] items-center justify-center"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <img
+              src={imagePreview.src}
+              alt={imagePreview.alt}
+              className="max-h-[92vh] max-w-[94vw] rounded-2xl object-contain shadow-2xl"
+            />
+
+            <button
+              type="button"
+              onClick={() => setImagePreview(null)}
+              className="absolute right-2 top-2 flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-2xl leading-none text-white shadow-lg transition hover:bg-black/75"
+              aria-label="Close image preview"
+              title="Close"
+            >
+              ×
+            </button>
+          </div>
+        </div>
       ) : null}
 
     </section>

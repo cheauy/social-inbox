@@ -4,6 +4,9 @@ import {
   getFacebookCustomerProfile,
 } from "@/lib/facebook/get-facebook-customer-profile";
 import { getFacebookMessageContent } from "@/lib/facebook/get-message-content";
+import {
+  getConversationMessagePreview,
+} from "@/lib/inbox/conversation-preview";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { FacebookMessagingEvent } from "@/types/facebook";
 
@@ -85,36 +88,31 @@ export async function processFacebookMessage(
   const messageTime = toIso(event.timestamp);
 
   /*
-   * Messenger webhook payloads normally contain the customer's PSID but not
-   * a reliable display profile. The direct /{PSID} profile endpoint is not
-   * available for every Meta app/customer combination, so use TENH's existing
-   * Page-accessible message/conversation enrichment helper instead.
-   *
-   * Best-effort only: profile enrichment must never block message delivery.
+   * Start customer profile enrichment immediately, but do not wait for Meta
+   * before saving the message. The messages INSERT is the Realtime fast path
+   * for the Inbox and alert sound, so profile lookup must never block it.
    */
-  const customerProfile =
+  const customerProfilePromise =
     !isEcho
-      ? await getFacebookCustomerProfile({
+      ? getFacebookCustomerProfile({
           pageId,
           customerId,
           latestMessageId: messageId,
+        }).catch((error) => {
+          console.warn(
+            "[Tenh Facebook Message] Customer profile enrichment failed; message delivery continues.",
+            error instanceof Error
+              ? error.message
+              : "Unknown profile enrichment error",
+          );
+
+          return null;
         })
-      : null;
-
-  const customerName =
-    customerProfile
-      ?.fullName ??
-    null;
-
-  const customerProfilePictureUrl =
-    customerProfile
-      ?.profilePictureUrl ??
-    null;
+      : Promise.resolve(null);
 
   /*
-   * Match the working Facebook comment flow:
-   * only write full_name when we actually have a real name.
-   * This avoids overwriting an existing real customer name with null.
+   * Upsert only the stable identity now. Existing name/photo values are not
+   * overwritten because those optional columns are intentionally omitted.
    */
   const contactPayload:
     Record<
@@ -132,16 +130,6 @@ export async function processFacebookMessage(
     updated_at:
       new Date().toISOString(),
   };
-
-  if (customerName) {
-    contactPayload.full_name =
-      customerName;
-  }
-
-  if (customerProfilePictureUrl) {
-    contactPayload.profile_picture_url =
-      customerProfilePictureUrl;
-  }
 
   const { data: contact, error: contactError } =
     await supabaseAdmin
@@ -163,23 +151,7 @@ export async function processFacebookMessage(
     );
   }
 
-  if (
-    customerName ||
-    customerProfilePictureUrl
-  ) {
-    console.log(
-      "[Tenh Facebook Message] Messenger customer profile enriched.",
-      {
-        pageId,
-        customerId,
-        customerName,
-        hasProfilePicture:
-          Boolean(
-            customerProfilePictureUrl,
-          ),
-      },
-    );
-  }
+
 
   const { data: conversation, error: conversationError } =
     await supabaseAdmin
@@ -239,7 +211,16 @@ export async function processFacebookMessage(
     await supabaseAdmin
       .from("conversations")
       .update({
-        last_message_text: content.messageText,
+        last_message_text:
+          getConversationMessagePreview({
+            direction: isEcho
+              ? "outgoing"
+              : "incoming",
+            messageType:
+              content.messageType,
+            messageText:
+              content.messageText,
+          }),
         last_message_at: messageTime,
         unread_count: unreadCount,
         updated_at: new Date().toISOString(),
@@ -248,5 +229,54 @@ export async function processFacebookMessage(
 
   if (updateError) {
     throw new Error(updateError.message);
+  }
+
+  const customerProfile =
+    await customerProfilePromise;
+
+  const customerName =
+    customerProfile?.fullName ?? null;
+  const customerProfilePictureUrl =
+    customerProfile?.profilePictureUrl ?? null;
+
+  if (customerName || customerProfilePictureUrl) {
+    const profileUpdate:
+      Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (customerName) {
+      profileUpdate.full_name = customerName;
+    }
+
+    if (customerProfilePictureUrl) {
+      profileUpdate.profile_picture_url =
+        customerProfilePictureUrl;
+    }
+
+    const { error: profileUpdateError } =
+      await supabaseAdmin
+        .from("contacts")
+        .update(profileUpdate)
+        .eq("id", contact.id);
+
+    if (profileUpdateError) {
+      console.warn(
+        "[Tenh Facebook Message] Message was saved, but customer profile update failed:",
+        profileUpdateError.message,
+      );
+    } else {
+      console.log(
+        "[Tenh Facebook Message] Messenger customer profile enriched after Realtime message save.",
+        {
+          pageId,
+          customerId,
+          customerName,
+          hasProfilePicture: Boolean(
+            customerProfilePictureUrl,
+          ),
+        },
+      );
+    }
   }
 }

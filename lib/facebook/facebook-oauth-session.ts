@@ -16,6 +16,7 @@ export type FacebookOAuthSession = {
   memberId: string;
   userAccessToken: string;
   userTokenExpiresAt: string | null;
+  facebookUserId: string | null;
 };
 
 function cleanString(value: unknown) {
@@ -49,6 +50,9 @@ export function decodeFacebookOAuthSession(
   const userTokenExpiresAt = cleanString(
     parsed.userTokenExpiresAt,
   );
+  const facebookUserId = cleanString(
+    parsed.facebookUserId,
+  );
 
   if (!businessId || !memberId || !userAccessToken) {
     throw new Error(
@@ -61,5 +65,6 @@ export function decodeFacebookOAuthSession(
     memberId,
     userAccessToken,
     userTokenExpiresAt,
+    facebookUserId,
   };
 }

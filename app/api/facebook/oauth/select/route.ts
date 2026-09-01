@@ -19,11 +19,18 @@ import {
 } from "@/lib/facebook/facebook-authorized-pages";
 import {
   encryptFacebookToken,
+  encryptFacebookUserAuthorization,
 } from "@/lib/facebook/facebook-token-crypto";
 import {
   decodeFacebookOAuthSession,
   FACEBOOK_OAUTH_SESSION_COOKIE,
 } from "@/lib/facebook/facebook-oauth-session";
+import {
+  ensureFacebookPageConnectionHealthy,
+} from "@/lib/facebook/facebook-connection-health";
+import {
+  recoverRecentFacebookData,
+} from "@/lib/facebook/recover-facebook-missed-data";
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
@@ -102,43 +109,6 @@ function redirectToIntegrations(
   }
 
   return NextResponse.redirect(url, 303);
-}
-
-async function subscribePage({
-  pageId,
-  pageAccessToken,
-}: {
-  pageId: string;
-  pageAccessToken: string;
-}) {
-  const graphVersion =
-    process.env.FACEBOOK_GRAPH_API_VERSION?.trim() ||
-    "v26.0";
-
-  const url = new URL(
-    `https://graph.facebook.com/${graphVersion}/${pageId}/subscribed_apps`,
-  );
-  url.searchParams.set(
-    "subscribed_fields",
-    [
-      "messages",
-      "message_echoes",
-      "feed",
-      "messaging_postbacks",
-      "message_reads",
-      "message_deliveries",
-    ].join(","),
-  );
-
-  const response = await fetch(url, {
-    method: "POST",
-    cache: "no-store",
-    headers: {
-      Authorization: `Bearer ${pageAccessToken}`,
-    },
-  });
-
-  return response.ok;
 }
 
 export async function POST(
@@ -401,7 +371,7 @@ export async function POST(
     }
 
     const now = new Date().toISOString();
-    const webhookWarnings: string[] = [];
+    const connectionWarnings: string[] = [];
 
     for (const selectedPage of selectedPages) {
       const existingPage = existingByPageId.get(
@@ -421,9 +391,10 @@ export async function POST(
             selectedPage.access_token!,
           ),
         facebook_user_access_token_encrypted:
-          encryptFacebookToken(
-            session.userAccessToken,
-          ),
+          encryptFacebookUserAuthorization({
+            accessToken: session.userAccessToken,
+            userId: session.facebookUserId,
+          }),
         facebook_user_token_expires_at:
           session.userTokenExpiresAt,
         facebook_connected_at: now,
@@ -477,23 +448,49 @@ export async function POST(
         savedAccountId = insertedAccount.id;
       }
 
-      const subscribed = await subscribePage({
+      // A reconnect is not complete until TENH verifies the Page identity,
+      // Messenger Conversations access and webhook subscription. The health
+      // helper repairs a stale Page token/webhook automatically and also clears
+      // any old "reconnect Facebook" notifications when the Page is healthy.
+      const health = await ensureFacebookPageConnectionHealthy({
         pageId: selectedPage.id,
-        pageAccessToken:
-          selectedPage.access_token!,
+        socialAccountId: savedAccountId,
       });
 
-      if (!subscribed) {
-        await supabaseAdmin
-          .from("social_accounts")
-          .update({
-            facebook_token_last_error:
-              "Facebook connected, but the webhook subscription could not be refreshed.",
-          })
-          .eq("id", savedAccountId);
+      if (!health.healthy || !health.accessToken) {
+        connectionWarnings.push(
+          `${selectedPage.name || selectedPage.id}: ${
+            health.error || "Facebook connected, but TENH could not fully verify the connection."
+          }`,
+        );
+        continue;
+      }
 
-        webhookWarnings.push(
-          selectedPage.name || selectedPage.id,
+      // Immediately recover a wider window after authorization is restored.
+      // This is intentionally deeper than the hourly watchdog, but still
+      // bounded/idempotent so reconnect cannot duplicate existing messages.
+      const reconnectLookback = Number(
+        process.env.FACEBOOK_RECONNECT_RECOVERY_LOOKBACK_MINUTES?.trim() ||
+          "10080",
+      );
+      const recovery = await recoverRecentFacebookData({
+        pageId: selectedPage.id,
+        socialAccountId: savedAccountId,
+        accessToken: health.accessToken,
+        lookbackMinutes: Number.isFinite(reconnectLookback)
+          ? reconnectLookback
+          : 10_080,
+        mode: "reconnect",
+      });
+
+      if (
+        recovery.messenger.failed > 0 ||
+        recovery.comments.failed > 0 ||
+        recovery.messenger.truncated ||
+        recovery.comments.truncated
+      ) {
+        connectionWarnings.push(
+          `${selectedPage.name || selectedPage.id}: connected successfully, but some missed-data recovery checks could not finish. TENH's watchdog will continue checking automatically.`,
         );
       }
     }
@@ -506,8 +503,8 @@ export async function POST(
             ? "Facebook Page connected successfully."
             : `${selectedPages.length} Facebook Pages connected successfully.`,
         warning:
-          webhookWarnings.length > 0
-            ? `Connected, but webhook subscription could not be refreshed for: ${webhookWarnings.join(", ")}.`
+          connectionWarnings.length > 0
+            ? connectionWarnings.join(" ")
             : undefined,
       }),
     );

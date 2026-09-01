@@ -17,7 +17,7 @@ import {
   getFacebookAuthorizedPages,
 } from "@/lib/facebook/facebook-authorized-pages";
 import {
-  decryptFacebookToken,
+  decryptFacebookUserAuthorization,
 } from "@/lib/facebook/facebook-token-crypto";
 import {
   decodeFacebookOAuthSession,
@@ -114,17 +114,20 @@ function setFacebookSelectionSession({
   memberId,
   userAccessToken,
   userTokenExpiresAt,
+  facebookUserId,
 }: {
   businessId: string;
   memberId: string;
   userAccessToken: string;
   userTokenExpiresAt: string | null;
+  facebookUserId: string | null;
 }) {
   return encodeFacebookOAuthSession({
     businessId,
     memberId,
     userAccessToken,
     userTokenExpiresAt,
+    facebookUserId,
   });
 }
 
@@ -213,6 +216,7 @@ export async function GET(request: NextRequest) {
         token: string;
         expiresAt: string | null;
         pageCount: number;
+        facebookUserId: string | null;
       }
     | null = null;
 
@@ -226,11 +230,14 @@ export async function GET(request: NextRequest) {
     }
 
     let userAccessToken: string;
+    let facebookUserId: string | null = null;
 
     try {
-      userAccessToken = decryptFacebookToken(
+      const storedAuthorization = decryptFacebookUserAuthorization(
         row.facebook_user_access_token_encrypted,
-      ).trim();
+      );
+      userAccessToken = storedAuthorization.accessToken;
+      facebookUserId = storedAuthorization.userId;
     } catch {
       continue;
     }
@@ -258,6 +265,7 @@ export async function GET(request: NextRequest) {
           token: userAccessToken,
           expiresAt: row.facebook_user_token_expires_at,
           pageCount,
+          facebookUserId,
         };
       }
     } catch (error) {
@@ -281,6 +289,7 @@ export async function GET(request: NextRequest) {
     memberId: currentMember.id,
     userAccessToken: bestToken.token,
     userTokenExpiresAt: bestToken.expiresAt,
+    facebookUserId: bestToken.facebookUserId,
   });
 
   return redirectToSelector(

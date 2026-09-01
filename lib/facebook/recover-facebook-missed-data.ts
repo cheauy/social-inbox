@@ -107,16 +107,20 @@ type GraphCommentList = GraphPayload & {
   data?: GraphComment[];
 };
 
+export type FacebookRecoveryMode = "watchdog" | "reconnect";
+
 export type FacebookRecoveryResult = {
   messenger: {
     candidates: number;
     recovered: number;
     failed: number;
+    truncated: boolean;
   };
   comments: {
     candidates: number;
     recovered: number;
     failed: number;
+    truncated: boolean;
   };
   tokenRepaired: boolean;
 };
@@ -143,12 +147,18 @@ function toUnixSeconds(value?: string | null) {
     : Math.floor(parsed / 1000);
 }
 
-function clampLookbackMinutes(value?: number) {
+function clampLookbackMinutes(
+  value?: number,
+  mode: FacebookRecoveryMode = "watchdog",
+) {
+  const fallback = mode === "reconnect" ? 10_080 : 180;
+  const maximum = mode === "reconnect" ? 10_080 : 1_440;
+
   if (!Number.isFinite(value)) {
-    return 180;
+    return fallback;
   }
 
-  return Math.min(1440, Math.max(60, Math.round(value as number)));
+  return Math.min(maximum, Math.max(60, Math.round(value as number)));
 }
 
 function normalizeGraphAttachment(
@@ -229,11 +239,18 @@ async function recoverMessenger({
   pageId,
   accessToken,
   cutoffMs,
+  mode,
 }: {
   pageId: string;
   accessToken: string;
   cutoffMs: number;
+  mode: FacebookRecoveryMode;
 }) {
+  const reconnect = mode === "reconnect";
+  const conversationLimit = reconnect ? 100 : 20;
+  const messagesPerConversation = reconnect ? 100 : 20;
+  const maxMessageRefs = reconnect ? 500 : 80;
+  const maxMessageDetails = reconnect ? 250 : 60;
   let token = accessToken;
   let tokenRepaired = false;
 
@@ -242,8 +259,8 @@ async function recoverMessenger({
       pageId,
       path: `${encodeURIComponent(pageId)}/conversations`,
       params: {
-        fields: "id,updated_time,messages.limit(20){id,created_time}",
-        limit: 20,
+        fields: `id,updated_time,messages.limit(${messagesPerConversation}){id,created_time}`,
+        limit: conversationLimit,
       },
       accessToken: token,
     });
@@ -276,12 +293,12 @@ async function recoverMessenger({
       }
 
       refs.set(id, message);
-      if (refs.size >= 80) {
+      if (refs.size >= maxMessageRefs) {
         break;
       }
     }
 
-    if (refs.size >= 80) {
+    if (refs.size >= maxMessageRefs) {
       break;
     }
   }
@@ -295,7 +312,7 @@ async function recoverMessenger({
 
   // Fetch details only for IDs TENH does not already have. This keeps the
   // hourly recovery bounded and avoids unnecessary Graph calls.
-  for (const messageId of missingIds.slice(0, 60)) {
+  for (const messageId of missingIds.slice(0, maxMessageDetails)) {
     try {
       let detail =
         await facebookGraphJsonWithTokenRecovery<GraphMessageDetail>({
@@ -395,6 +412,8 @@ async function recoverMessenger({
     candidates: missingIds.length,
     recovered,
     failed,
+    truncated:
+      refs.size >= maxMessageRefs || missingIds.length > maxMessageDetails,
     accessToken: token,
     tokenRepaired,
   };
@@ -435,12 +454,18 @@ async function recoverComments({
   socialAccountId,
   accessToken,
   cutoffMs,
+  mode,
 }: {
   pageId: string;
   socialAccountId: string;
   accessToken: string;
   cutoffMs: number;
+  mode: FacebookRecoveryMode;
 }) {
+  const reconnect = mode === "reconnect";
+  const feedPostLimit = reconnect ? 100 : 20;
+  const maxPostIds = reconnect ? 100 : 50;
+  const maxCommentCandidates = reconnect ? 400 : 120;
   let token = accessToken;
   let tokenRepaired = false;
 
@@ -449,7 +474,7 @@ async function recoverComments({
     path: `${encodeURIComponent(pageId)}/feed`,
     params: {
       fields: "id,created_time",
-      limit: 20,
+      limit: feedPostLimit,
     },
     accessToken: token,
   });
@@ -474,7 +499,7 @@ async function recoverComments({
         .filter((id): id is string => Boolean(id)),
       ...knownPostIds,
     ]),
-  ).slice(0, 50);
+  ).slice(0, maxPostIds);
 
   let candidates = 0;
   let recovered = 0;
@@ -538,11 +563,10 @@ async function recoverComments({
           continue;
         }
 
-        candidates += 1;
-
-        if (candidates > 120) {
+        if (candidates >= maxCommentCandidates) {
           break;
         }
+        candidates += 1;
 
         const value: FacebookFeedCommentValue = {
           item: "comment",
@@ -593,7 +617,7 @@ async function recoverComments({
       );
     }
 
-    if (candidates > 120) {
+    if (candidates >= maxCommentCandidates) {
       break;
     }
   }
@@ -602,6 +626,10 @@ async function recoverComments({
     candidates,
     recovered,
     failed,
+    truncated:
+      candidates >= maxCommentCandidates ||
+      postIds.length >= maxPostIds ||
+      (posts.payload.data?.length ?? 0) >= feedPostLimit,
     accessToken: token,
     tokenRepaired,
   };
@@ -618,19 +646,22 @@ export async function recoverRecentFacebookData({
   socialAccountId,
   accessToken,
   lookbackMinutes,
+  mode = "watchdog",
 }: {
   pageId: string;
   socialAccountId: string;
   accessToken: string;
   lookbackMinutes?: number;
+  mode?: FacebookRecoveryMode;
 }): Promise<FacebookRecoveryResult> {
-  const lookback = clampLookbackMinutes(lookbackMinutes);
+  const lookback = clampLookbackMinutes(lookbackMinutes, mode);
   const cutoffMs = Date.now() - lookback * 60_000;
 
   let messenger = {
     candidates: 0,
     recovered: 0,
     failed: 0,
+    truncated: false,
     accessToken,
     tokenRepaired: false,
   };
@@ -640,6 +671,7 @@ export async function recoverRecentFacebookData({
       pageId,
       accessToken,
       cutoffMs,
+      mode,
     });
   } catch (error) {
     messenger.failed += 1;
@@ -656,6 +688,7 @@ export async function recoverRecentFacebookData({
     candidates: 0,
     recovered: 0,
     failed: 0,
+    truncated: false,
     accessToken: messenger.accessToken,
     tokenRepaired: false,
   };
@@ -666,6 +699,7 @@ export async function recoverRecentFacebookData({
       socialAccountId,
       accessToken: messenger.accessToken,
       cutoffMs,
+      mode,
     });
   } catch (error) {
     comments.failed += 1;
@@ -683,11 +717,13 @@ export async function recoverRecentFacebookData({
       candidates: messenger.candidates,
       recovered: messenger.recovered,
       failed: messenger.failed,
+      truncated: messenger.truncated,
     },
     comments: {
       candidates: comments.candidates,
       recovered: comments.recovered,
       failed: comments.failed,
+      truncated: comments.truncated,
     },
     tokenRepaired: messenger.tokenRepaired || comments.tokenRepaired,
   };
