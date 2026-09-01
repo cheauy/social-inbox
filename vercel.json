@@ -6,8 +6,8 @@
       "schedule": "0 1 * * *"
     },
     {
-      "path": "/api/cron/facebook-connection-health",
-      "schedule": "0 * * * *"
-    }
+  "path": "/api/cron/facebook-connection-health",
+  "schedule": "0 0 * * *"
+}
   ]
 }
