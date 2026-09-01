@@ -387,9 +387,22 @@ function getRealtimeMessagePreview(
     return "Sent a GIF";
   }
 
-  const messageType =
+  const rawMessageType =
     typeof row.message_type === "string"
       ? row.message_type
+      : "unknown";
+
+  const messageType =
+    rawMessageType === "text" ||
+    rawMessageType === "image" ||
+    rawMessageType === "video" ||
+    rawMessageType === "audio" ||
+    rawMessageType === "voice" ||
+    rawMessageType === "file" ||
+    rawMessageType === "document" ||
+    rawMessageType === "sticker" ||
+    rawMessageType === "unknown"
+      ? rawMessageType
       : "unknown";
 
   if (messageType === "sticker") {
