@@ -1911,6 +1911,32 @@ export function ReplyBox({
                 name="message"
                 value={reply}
                 onChange={(event) => onReplyChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (
+                    event.key !== "Enter" ||
+                    event.shiftKey ||
+                    event.nativeEvent.isComposing
+                  ) {
+                    return;
+                  }
+
+                  event.preventDefault();
+
+                  if (
+                    isSending ||
+                    (!reply.trim() && attachments.length === 0)
+                  ) {
+                    return;
+                  }
+
+                  /*
+                   * Use the form's real submit path so Enter behaves exactly
+                   * like the Send button, including attachments and Send &
+                   * close/pending modes. Shift + Enter keeps the normal
+                   * textarea newline behavior.
+                   */
+                  event.currentTarget.form?.requestSubmit();
+                }}
                 placeholder={isKhmer ? "សរសេរការឆ្លើយតប..." : "Write a reply..."}
                 disabled={isSending}
                 rows={1}

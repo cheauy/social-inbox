@@ -5,6 +5,10 @@ import {
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
+  isFacebookAccessTokenError,
+  refreshFacebookPageAccessToken,
+} from "@/lib/facebook/get-facebook-page-access-token";
+import {
   memberHasPermission,
   permissionDenied,
 } from "@/lib/auth/require-permission";
@@ -26,6 +30,8 @@ type GraphResult = {
   success?: boolean;
   error?: {
     message?: string;
+    code?: number;
+    error_subcode?: number;
   };
 };
 
@@ -111,33 +117,58 @@ export async function POST(
     const endpoint =
       `https://graph.facebook.com/${graphVersion}/${commentId}/likes`;
 
-    const response =
-      await fetch(endpoint, {
-        method: liked
-          ? "POST"
-          : "DELETE",
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify({
-          access_token:
-            context.pageAccessToken,
-        }),
-        cache: "no-store",
-      });
+    async function updateLike(pageAccessToken: string) {
+      const response =
+        await fetch(endpoint, {
+          method: liked
+            ? "POST"
+            : "DELETE",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            access_token:
+              pageAccessToken,
+          }),
+          cache: "no-store",
+        });
 
-    const result =
-      await readGraphResult(
-        response,
+      const result =
+        await readGraphResult(
+          response,
+        );
+
+      return { response, result };
+    }
+
+    let attempt =
+      await updateLike(
+        context.pageAccessToken,
       );
+
+    if (
+      (!attempt.response.ok || attempt.result.error) &&
+      isFacebookAccessTokenError(attempt.result.error)
+    ) {
+      const refreshedToken =
+        await refreshFacebookPageAccessToken(
+          context.pageId,
+        );
+      attempt =
+        await updateLike(
+          refreshedToken,
+        );
+    }
+
+    const { response, result } = attempt;
 
     /*
      * V3.11.30: only change TENH local state after Meta confirms the
      * operation. The old route updated the DB before checking response.ok,
      * which could display a Like that Facebook had rejected.
      */
-    if (!response.ok) {
+    if (!response.ok || result.error) {
       return NextResponse.json(
         {
           success: false,

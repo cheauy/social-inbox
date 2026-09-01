@@ -392,7 +392,28 @@ export function useBrowserNotifications() {
       }: NotifyIncomingMessageInput) => {
         if (
           typeof window ===
-            "undefined" ||
+            "undefined"
+        ) {
+          return;
+        }
+
+        /*
+         * The notification sound is an Inbox alert, not a desktop-only
+         * notification. Play it for every newly received customer message
+         * even while TENH is focused. Selecting "No sound" still keeps this
+         * silent through previewSound().
+         */
+        void previewSound(
+          soundKeyRef.current,
+          volumeRef.current,
+        );
+
+        /*
+         * Native browser notifications stay opt-in and background-only.
+         * They require the browser Notification permission, but the Inbox
+         * sound above does not.
+         */
+        if (
           !("Notification" in window) ||
           !enabledRef.current ||
           Notification.permission !==
@@ -400,16 +421,6 @@ export function useBrowserNotifications() {
         ) {
           return;
         }
-
-        /*
-         * Play the selected Tenh Chat alert sound for every
-         * incoming message. Native desktop notifications remain
-         * background-only so the foreground inbox is not duplicated.
-         */
-        void previewSound(
-          soundKeyRef.current,
-          volumeRef.current,
-        );
 
         const isForeground =
           document.visibilityState ===

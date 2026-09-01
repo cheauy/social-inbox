@@ -5,6 +5,10 @@ import {
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
+  isFacebookAccessTokenError,
+  refreshFacebookPageAccessToken,
+} from "@/lib/facebook/get-facebook-page-access-token";
+import {
   memberHasPermission,
   permissionDenied,
 } from "@/lib/auth/require-permission";
@@ -28,6 +32,8 @@ type GraphResult = {
   success?: boolean;
   error?: {
     message?: string;
+    code?: number;
+    error_subcode?: number;
   };
 };
 
@@ -108,30 +114,56 @@ export async function POST(
         .FACEBOOK_GRAPH_API_VERSION
         ?.trim() || "v26.0";
 
-    const url = new URL(
-      `https://graph.facebook.com/${graphVersion}/${commentId}`,
-    );
+    async function deleteComment(pageAccessToken: string) {
+      const url = new URL(
+        `https://graph.facebook.com/${graphVersion}/${commentId}`,
+      );
 
-    /* Preserve the existing Meta request style while routing the exact Page. */
-    url.searchParams.set(
-      "access_token",
-      context.pageAccessToken,
-    );
+      /* Preserve the existing Meta request style while routing the exact Page. */
+      url.searchParams.set(
+        "access_token",
+        pageAccessToken,
+      );
 
-    const response =
-      await fetch(url, {
-        method: "DELETE",
-        cache: "no-store",
-      });
+      const response =
+        await fetch(url, {
+          method: "DELETE",
+          cache: "no-store",
+        });
 
-    const result =
-      await readGraphResult(
-        response,
+      const result =
+        await readGraphResult(
+          response,
+        );
+
+      return { response, result };
+    }
+
+    let attempt =
+      await deleteComment(
+        context.pageAccessToken,
       );
 
     if (
+      (!attempt.response.ok || attempt.result.error) &&
+      isFacebookAccessTokenError(attempt.result.error)
+    ) {
+      const refreshedToken =
+        await refreshFacebookPageAccessToken(
+          context.pageId,
+        );
+      attempt =
+        await deleteComment(
+          refreshedToken,
+        );
+    }
+
+    const { response, result } = attempt;
+
+    if (
       !response.ok ||
-      result.success === false
+      result.success === false ||
+      result.error
     ) {
       return NextResponse.json(
         {

@@ -2,9 +2,12 @@ import "server-only";
 
 import {
   getFacebookPageAccessToken,
+  isFacebookAccessTokenError,
+  refreshFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
 import {
   getFacebookPostPreview,
+  type FacebookPostPreview,
 } from "@/lib/facebook/get-post-preview";
 import {
   supabaseAdmin,
@@ -23,6 +26,9 @@ export type FacebookFeedCommentValue = {
   from?: {
     id?: string;
     name?: string;
+    picture?: unknown;
+    profile_pic?: string;
+    profile_picture_url?: string;
   };
   [key: string]:
     unknown;
@@ -33,6 +39,241 @@ type ProcessFacebookCommentInput = {
   value:
     FacebookFeedCommentValue;
 };
+
+function cleanString(
+  value: unknown,
+) {
+  return typeof value === "string" &&
+    value.trim()
+    ? value.trim()
+    : null;
+}
+
+function isRecord(
+  value: unknown,
+): value is Record<string, unknown> {
+  return Boolean(value) &&
+    typeof value === "object" &&
+    !Array.isArray(value);
+}
+
+function profilePictureFromValue(
+  value: unknown,
+): string | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const direct =
+    cleanString(value.profile_pic) ??
+    cleanString(value.profile_picture_url);
+
+  if (direct) {
+    return direct;
+  }
+
+  if (isRecord(value.picture)) {
+    const directPicture =
+      cleanString(value.picture.url);
+
+    if (directPicture) {
+      return directPicture;
+    }
+
+    if (isRecord(value.picture.data)) {
+      return cleanString(
+        value.picture.data.url,
+      );
+    }
+  }
+
+  return null;
+}
+
+function webhookPostPreviewFromValue(
+  value: FacebookFeedCommentValue,
+  postId: string | null,
+): FacebookPostPreview | null {
+  if (!postId) {
+    return null;
+  }
+
+  const post =
+    isRecord(value.post)
+      ? value.post
+      : null;
+
+  const message =
+    cleanString(post?.message) ??
+    cleanString(value.post_message) ??
+    cleanString(value.post_description);
+
+  const fullPicture =
+    cleanString(post?.full_picture) ??
+    cleanString(post?.picture) ??
+    cleanString(value.full_picture);
+
+  const permalinkUrl =
+    cleanString(post?.permalink_url) ??
+    cleanString(value.permalink_url);
+
+  const createdTime =
+    cleanString(post?.created_time);
+
+  return {
+    id:
+      cleanString(post?.id) ??
+      postId,
+    message,
+    full_picture:
+      fullPicture,
+    permalink_url:
+      permalinkUrl,
+    created_time:
+      createdTime,
+  };
+}
+
+type CommentAuthorProfileResult = {
+  name: string | null;
+  profilePictureUrl: string | null;
+  accessToken: string;
+};
+
+async function fetchCommentAuthorProfile({
+  commentId,
+  pageId,
+  accessToken,
+}: {
+  commentId: string;
+  pageId: string;
+  accessToken: string;
+}): Promise<CommentAuthorProfileResult> {
+  const graphVersion =
+    process.env
+      .FACEBOOK_GRAPH_API_VERSION ??
+    "v26.0";
+
+  async function request(token: string) {
+    const url =
+      new URL(
+        `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(commentId)}`,
+      );
+
+    /*
+     * Keep this optional request separate from the core comment lookup. Some
+     * Meta account/privacy combinations omit nested picture data. If that
+     * happens, the comment itself must still be saved normally.
+     */
+    url.searchParams.set(
+      "fields",
+      "from{id,name,picture}",
+    );
+    url.searchParams.set(
+      "access_token",
+      token,
+    );
+
+    const controller =
+      new AbortController();
+    const timeout =
+      setTimeout(
+        () => controller.abort(),
+        1200,
+      );
+
+    try {
+      const response =
+        await fetch(
+          url,
+          {
+            method: "GET",
+            cache: "no-store",
+            signal:
+              controller.signal,
+          },
+        );
+      const text =
+        await response.text();
+
+      let result:
+        Record<string, unknown> = {};
+
+      if (text.trim()) {
+        try {
+          result =
+            JSON.parse(text) as Record<string, unknown>;
+        } catch {
+          result = {};
+        }
+      }
+
+      return {
+        response,
+        result,
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  let currentToken =
+    accessToken;
+  let responseResult =
+    await request(currentToken);
+  const firstError =
+    isRecord(responseResult.result.error)
+      ? responseResult.result.error
+      : null;
+
+  if (
+    (
+      !responseResult.response.ok ||
+      firstError
+    ) &&
+    isFacebookAccessTokenError(
+      firstError as { code?: number } | null,
+    )
+  ) {
+    try {
+      currentToken =
+        await refreshFacebookPageAccessToken(
+          pageId,
+        );
+      responseResult =
+        await request(currentToken);
+    } catch (error) {
+      console.warn(
+        "[Tenh Facebook Comment] Optional commenter profile token recovery failed.",
+        error,
+      );
+    }
+  }
+
+  if (!responseResult.response.ok) {
+    return {
+      name: null,
+      profilePictureUrl:
+        null,
+      accessToken:
+        currentToken,
+    };
+  }
+
+  const from =
+    isRecord(responseResult.result.from)
+      ? responseResult.result.from
+      : null;
+
+  return {
+    name:
+      cleanString(from?.name),
+    profilePictureUrl:
+      profilePictureFromValue(from),
+    accessToken:
+      currentToken,
+  };
+}
 
 function toIso(
   value?:
@@ -255,9 +496,14 @@ export async function processFacebookComment({
    * validated against the active social_accounts record below.
    */
 
+  const webhookPost =
+    isRecord(value.post)
+      ? value.post
+      : null;
+
   const postId =
-    value.post_id
-      ?.trim();
+    cleanString(value.post_id) ??
+    cleanString(webhookPost?.id);
 
   let message =
     value.message
@@ -273,6 +519,11 @@ export async function processFacebookComment({
     value.from?.name
       ?.trim() ??
     null;
+
+  let authorProfilePictureUrl =
+    profilePictureFromValue(
+      value.from,
+    );
 
   let createdTime =
     value.created_time;
@@ -327,19 +578,7 @@ export async function processFacebookComment({
         pageAccessToken,
       );
 
-      const response =
-        await fetch(
-          url,
-          {
-            method: "GET",
-            cache: "no-store",
-          },
-        );
-
-      const text =
-        await response.text();
-
-      let result: {
+      type CommentGraphResult = {
         message?: string;
         created_time?: string;
         from?: {
@@ -350,17 +589,86 @@ export async function processFacebookComment({
           message?: string;
           code?: number;
         };
-      } = {};
+      };
 
-      if (text.trim()) {
+      const requestComment =
+        async (token: string) => {
+          url.searchParams.set(
+            "access_token",
+            token,
+          );
+
+          const response =
+            await fetch(
+              url,
+              {
+                method: "GET",
+                cache: "no-store",
+              },
+            );
+
+          const text =
+            await response.text();
+
+          let result:
+            CommentGraphResult = {};
+
+          if (text.trim()) {
+            try {
+              result =
+                JSON.parse(
+                  text,
+                ) as CommentGraphResult;
+            } catch {
+              console.warn(
+                "[Tenh Facebook Comment] Graph enrichment returned invalid JSON.",
+              );
+            }
+          }
+
+          return {
+            response,
+            result,
+          };
+        };
+
+      let {
+        response,
+        result,
+      } = await requestComment(
+        pageAccessToken,
+      );
+
+      /*
+       * If only the stored Page token went stale, recover it once from TENH's
+       * already-authorized encrypted User token and retry. Revoked Facebook
+       * authorization still fails safely and requires a real reconnect.
+       */
+      if (
+        (
+          !response.ok ||
+          result.error
+        ) &&
+        isFacebookAccessTokenError(
+          result.error,
+        )
+      ) {
         try {
-          result =
-            JSON.parse(
-              text,
-            ) as typeof result;
-        } catch {
+          pageAccessToken =
+            await refreshFacebookPageAccessToken(
+              pageId,
+            );
+
+          ({
+            response,
+            result,
+          } = await requestComment(
+            pageAccessToken,
+          ));
+        } catch (refreshError) {
           console.warn(
-            "[Tenh Facebook Comment] Graph enrichment returned invalid JSON.",
+            "[Tenh Facebook Comment] Automatic Page-token recovery failed during comment enrichment.",
+            refreshError,
           );
         }
       }
@@ -429,6 +737,42 @@ export async function processFacebookComment({
 
   const isPageAuthored =
     authorId === pageId;
+
+  /*
+   * Best-effort commenter identity enrichment. Keep the profile request
+   * separate from the core comment request so a missing/private Facebook
+   * picture can never block comment ingestion. When Meta exposes the real
+   * picture, save it on the contact and on this message payload so the Inbox
+   * can render it immediately without waiting for a contact-list refresh.
+   */
+  if (
+    !isPageAuthored &&
+    pageAccessToken
+  ) {
+    try {
+      const profile =
+        await fetchCommentAuthorProfile({
+          commentId,
+          pageId,
+          accessToken:
+            pageAccessToken,
+        });
+
+      pageAccessToken =
+        profile.accessToken;
+      authorName =
+        profile.name ??
+        authorName;
+      authorProfilePictureUrl =
+        profile.profilePictureUrl ??
+        authorProfilePictureUrl;
+    } catch (error) {
+      console.warn(
+        "[Tenh Facebook Comment] Optional commenter profile lookup failed; keeping webhook identity.",
+        error,
+      );
+    }
+  }
 
   /*
    * Duplicate protection must run BEFORE Page-reply handling.
@@ -683,19 +1027,26 @@ export async function processFacebookComment({
         ?.platform_user_id ??
       null;
 
-    let pageReplyPostPreview =
-      null;
+    let pageReplyPostPreview:
+      FacebookPostPreview | null =
+      webhookPostPreviewFromValue(
+        value,
+        postId,
+      );
 
     if (postId) {
       try {
         pageReplyPostPreview =
-          await getFacebookPostPreview(
-            postId,
-            pageId,
-          );
+          (
+            await getFacebookPostPreview(
+              postId,
+              pageId,
+            )
+          ) ??
+          pageReplyPostPreview;
       } catch (error) {
         console.warn(
-          "[Tenh Facebook Comment] Page reply post preview failed; saving reply without preview.",
+          "[Tenh Facebook Comment] Page reply post preview failed; keeping webhook preview when available.",
           error,
         );
       }
@@ -838,6 +1189,12 @@ export async function processFacebookComment({
       authorName;
   }
 
+  if (authorProfilePictureUrl) {
+    contactPayload
+      .profile_picture_url =
+      authorProfilePictureUrl;
+  }
+
   const {
     data: contact,
     error:
@@ -926,19 +1283,26 @@ export async function processFacebookComment({
     );
   }
 
-  let postPreview =
-    null;
+  let postPreview:
+    FacebookPostPreview | null =
+    webhookPostPreviewFromValue(
+      value,
+      postId,
+    );
 
   if (postId) {
     try {
       postPreview =
-        await getFacebookPostPreview(
-          postId,
-          pageId,
-        );
+        (
+          await getFacebookPostPreview(
+            postId,
+            pageId,
+          )
+        ) ??
+        postPreview;
     } catch (error) {
       console.warn(
-        "[Tenh Facebook Comment] Post preview failed; saving comment without preview.",
+        "[Tenh Facebook Comment] Post preview failed; keeping webhook preview when available.",
         error,
       );
     }
@@ -974,6 +1338,8 @@ export async function processFacebookComment({
           false,
         raw_payload: {
           ...value,
+          commenter_profile_picture_url:
+            authorProfilePictureUrl,
           post_preview:
             postPreview,
         },

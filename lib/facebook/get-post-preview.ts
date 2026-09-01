@@ -2,6 +2,8 @@ import "server-only";
 
 import {
   getFacebookPageAccessToken,
+  isFacebookAccessTokenError,
+  refreshFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
 
 export type FacebookPostPreview = {
@@ -31,6 +33,77 @@ type GraphPostResult = {
     code?: number;
   };
 };
+
+type GraphPostRequestResult = {
+  response: Response;
+  result: GraphPostResult;
+};
+
+async function requestFacebookPostPreview({
+  graphVersion,
+  postId,
+  accessToken,
+}: {
+  graphVersion: string;
+  postId: string;
+  accessToken: string;
+}): Promise<GraphPostRequestResult> {
+  const url =
+    new URL(
+      `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(postId)}`,
+    );
+
+  url.searchParams.set(
+    "fields",
+    [
+      "id",
+      "message",
+      "full_picture",
+      "permalink_url",
+      "created_time",
+    ].join(","),
+  );
+
+  url.searchParams.set(
+    "access_token",
+    accessToken,
+  );
+
+  const response =
+    await fetch(
+      url,
+      {
+        method: "GET",
+        cache: "no-store",
+      },
+    );
+
+  const responseText =
+    await response.text();
+
+  let result:
+    GraphPostResult = {};
+
+  if (
+    responseText.trim()
+  ) {
+    try {
+      result =
+        JSON.parse(
+          responseText,
+        ) as GraphPostResult;
+    } catch {
+      console.warn(
+        "[Tenh Facebook Post Preview] Invalid JSON.",
+      );
+    }
+  }
+
+  return {
+    response,
+    result,
+  };
+}
 
 export async function getFacebookPostPreview(
   postId: string,
@@ -64,58 +137,57 @@ export async function getFacebookPostPreview(
       .FACEBOOK_GRAPH_API_VERSION ??
     "v26.0";
 
-  const url =
-    new URL(
-      `https://graph.facebook.com/${graphVersion}/${normalizedPostId}`,
-    );
-
-  url.searchParams.set(
-    "fields",
-    [
-      "id",
-      "message",
-      "full_picture",
-      "permalink_url",
-      "created_time",
-    ].join(","),
-  );
-
-  url.searchParams.set(
-    "access_token",
-    pageAccessToken,
-  );
-
   try {
-    const response =
-      await fetch(
-        url,
-        {
-          method: "GET",
-          cache: "no-store",
-        },
-      );
+    let requestResult =
+      await requestFacebookPostPreview({
+        graphVersion,
+        postId: normalizedPostId,
+        accessToken:
+          pageAccessToken,
+      });
 
-    const responseText =
-      await response.text();
-
-    let result:
-      GraphPostResult = {};
-
+    /*
+     * A stale Page token must not silently remove the Facebook content card.
+     * TENH already stores the authorized User token, so if Meta reports a
+     * normal token error, re-derive the Page token once and retry the same
+     * read. This never bypasses Meta authorization; revoked access still
+     * falls through safely and requires reconnecting.
+     */
     if (
-      responseText.trim()
+      (
+        !requestResult.response.ok ||
+        requestResult.result.error
+      ) &&
+      isFacebookAccessTokenError(
+        requestResult.result.error,
+      )
     ) {
       try {
-        result =
-          JSON.parse(
-            responseText,
-          ) as GraphPostResult;
-      } catch {
+        pageAccessToken =
+          await refreshFacebookPageAccessToken(
+            pageId,
+          );
+
+        requestResult =
+          await requestFacebookPostPreview({
+            graphVersion,
+            postId:
+              normalizedPostId,
+            accessToken:
+              pageAccessToken,
+          });
+      } catch (refreshError) {
         console.warn(
-          "[Tenh Facebook Post Preview] Invalid JSON.",
+          "[Tenh Facebook Post Preview] Automatic Page-token recovery failed.",
+          refreshError,
         );
-        return null;
       }
     }
+
+    const {
+      response,
+      result,
+    } = requestResult;
 
     if (
       !response.ok ||

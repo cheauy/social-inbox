@@ -25,6 +25,8 @@ type FacebookPageTokenResult = {
 
 type FacebookTokenRow = {
   id: string;
+  business_id: string;
+  account_name: string | null;
   is_active: boolean | null;
   facebook_page_access_token_encrypted: string | null;
   facebook_user_access_token_encrypted: string | null;
@@ -92,6 +94,8 @@ async function loadFacebookTokenRow(
     .from("social_accounts")
     .select(`
       id,
+      business_id,
+      account_name,
       is_active,
       facebook_page_access_token_encrypted,
       facebook_user_access_token_encrypted,
@@ -146,6 +150,138 @@ async function saveFacebookTokenError({
   }
 }
 
+function facebookStatusNeedsAttention(status: string | null) {
+  const normalized = status?.trim().toLowerCase() ?? "";
+
+  return [
+    "expired",
+    "invalid",
+    "error",
+    "revoked",
+  ].some((value) => normalized.includes(value));
+}
+
+async function notifyFacebookReauthorizationRequired({
+  socialAccount,
+  message,
+}: {
+  socialAccount: FacebookTokenRow;
+  message: string;
+}) {
+  // Notify only on the transition from a healthy-looking connection to a
+  // real reauthorization problem. The hourly watchdog can run repeatedly
+  // without spamming Owners with the same alert.
+  if (facebookStatusNeedsAttention(socialAccount.facebook_token_status)) {
+    return;
+  }
+
+  const { data: owners, error: ownerError } = await supabaseAdmin
+    .from("team_members")
+    .select("id")
+    .eq("business_id", socialAccount.business_id)
+    .eq("role", "owner")
+    .eq("is_active", true);
+
+  if (ownerError) {
+    console.warn(
+      "[TENH Facebook Token] Unable to load Owners for reauthorization notification:",
+      ownerError.message,
+    );
+    return;
+  }
+
+  const pageName = socialAccount.account_name?.trim() || "Facebook Page";
+  const rows = (owners ?? []).map((owner) => ({
+    business_id: socialAccount.business_id,
+    recipient_member_id: owner.id,
+    actor_member_id: null,
+    notification_type: "facebook_reauthorization_required",
+    title: "Facebook needs reconnection",
+    body: `${pageName} needs Facebook authorization again. ${message}`.slice(0, 1500),
+    link: `/dashboard/integrations?facebookPage=${encodeURIComponent(
+      socialAccount.id,
+    )}`,
+    room_id: null,
+    conversation_id: null,
+    contact_id: null,
+    is_read: false,
+    read_at: null,
+  }));
+
+  if (rows.length === 0) {
+    return;
+  }
+
+  const { error: notificationError } = await supabaseAdmin
+    .from("team_notifications")
+    .insert(rows);
+
+  if (notificationError) {
+    console.warn(
+      "[TENH Facebook Token] Unable to notify Owners about Facebook reauthorization:",
+      notificationError.message,
+    );
+  }
+}
+
+async function resolveFacebookReauthorizationNotifications(
+  socialAccount: FacebookTokenRow,
+) {
+  const now = new Date().toISOString();
+  const link = `/dashboard/integrations?facebookPage=${encodeURIComponent(
+    socialAccount.id,
+  )}`;
+
+  const { error } = await supabaseAdmin
+    .from("team_notifications")
+    .update({
+      is_read: true,
+      read_at: now,
+    })
+    .eq("business_id", socialAccount.business_id)
+    .eq("notification_type", "facebook_reauthorization_required")
+    .eq("link", link)
+    .eq("is_read", false);
+
+  if (error) {
+    console.warn(
+      "[TENH Facebook Token] Unable to resolve Facebook reauthorization notification:",
+      error.message,
+    );
+  }
+}
+
+async function markFacebookAuthorizationNeedsAttention({
+  socialAccount,
+  status,
+  message,
+}: {
+  socialAccount: FacebookTokenRow;
+  status: "expired" | "invalid" | "revoked";
+  message: string;
+}) {
+  await notifyFacebookReauthorizationRequired({
+    socialAccount,
+    message,
+  });
+
+  const { error } = await supabaseAdmin
+    .from("social_accounts")
+    .update({
+      facebook_token_status: status,
+      facebook_token_last_error: message,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", socialAccount.id);
+
+  if (error) {
+    console.warn(
+      "[TENH Facebook Token] Unable to mark Facebook authorization for attention:",
+      error.message,
+    );
+  }
+}
+
 export function isFacebookAccessTokenError(
   error?: {
     code?: number;
@@ -195,6 +331,13 @@ export async function refreshFacebookPageAccessToken(
     !socialAccount
       .facebook_user_access_token_encrypted
   ) {
+    await markFacebookAuthorizationNeedsAttention({
+      socialAccount,
+      status: "invalid",
+      message:
+        "Stored Facebook User authorization is missing. Facebook reconnection is required.",
+    });
+
     throw new Error(
       "Facebook authorization cannot be refreshed automatically. Reconnect Facebook from Integrations.",
     );
@@ -206,9 +349,9 @@ export async function refreshFacebookPageAccessToken(
         .facebook_user_token_expires_at,
     )
   ) {
-    await saveFacebookTokenError({
-      socialAccountId:
-        socialAccount.id,
+    await markFacebookAuthorizationNeedsAttention({
+      socialAccount,
+      status: "expired",
       message:
         "Stored Facebook User authorization expired. Facebook reconnection is required.",
     });
@@ -232,12 +375,26 @@ export async function refreshFacebookPageAccessToken(
       error,
     );
 
+    await markFacebookAuthorizationNeedsAttention({
+      socialAccount,
+      status: "invalid",
+      message:
+        "Stored Facebook User authorization cannot be read. Facebook reconnection is required.",
+    });
+
     throw new Error(
       "Facebook authorization cannot be refreshed automatically. Reconnect Facebook from Integrations.",
     );
   }
 
   if (!userAccessToken) {
+    await markFacebookAuthorizationNeedsAttention({
+      socialAccount,
+      status: "invalid",
+      message:
+        "Stored Facebook User authorization is empty. Facebook reconnection is required.",
+    });
+
     throw new Error(
       "Facebook authorization cannot be refreshed automatically. Reconnect Facebook from Integrations.",
     );
@@ -300,11 +457,22 @@ export async function refreshFacebookPageAccessToken(
       result.error?.message ??
       "Meta did not return a valid Page Access Token during automatic recovery.";
 
-    await saveFacebookTokenError({
-      socialAccountId:
-        socialAccount.id,
-      message,
-    });
+    if (
+      isFacebookAccessTokenError(result.error) ||
+      (returnedPageId && returnedPageId !== pageId)
+    ) {
+      await markFacebookAuthorizationNeedsAttention({
+        socialAccount,
+        status: "invalid",
+        message,
+      });
+    } else {
+      await saveFacebookTokenError({
+        socialAccountId:
+          socialAccount.id,
+        message,
+      });
+    }
 
     throw new Error(
       isFacebookAccessTokenError(
@@ -342,6 +510,10 @@ export async function refreshFacebookPageAccessToken(
       `Facebook returned a refreshed Page token, but TENH could not save it: ${updateError.message}`,
     );
   }
+
+  await resolveFacebookReauthorizationNotifications(
+    socialAccount,
+  );
 
   console.log(
     "[TENH Facebook Token] Page Access Token recovered automatically.",

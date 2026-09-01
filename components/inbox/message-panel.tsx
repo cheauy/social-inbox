@@ -960,33 +960,6 @@ function HydrationSafeMessageDay({
   );
 }
 
-function getFirstUnreadMessageId(
-  messages: InboxMessage[],
-  unreadCount: number,
-): string | null {
-  if (unreadCount <= 0) {
-    return null;
-  }
-
-  let remaining = unreadCount;
-
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-
-    if (message.direction !== "incoming") {
-      continue;
-    }
-
-    remaining -= 1;
-
-    if (remaining === 0) {
-      return message.id;
-    }
-  }
-
-  return null;
-}
-
 export function MessagePanel({
   activeConversation,
   messages,
@@ -1041,58 +1014,6 @@ export function MessagePanel({
   onRetryMessage,
 }: MessagePanelProps) {
   const isKhmer = useWorkspaceLanguageId() === "km";
-
-  /*
-   * V3.11.25 — snapshot unread_count exactly when a conversation opens.
-   * The parent may immediately mark the conversation read, but this snapshot
-   * remains stable long enough to position the viewport at the first unread.
-   */
-  const [
-    openedUnreadState,
-    setOpenedUnreadState,
-  ] = useState<{
-    conversationId: string | null;
-    unreadCount: number;
-  }>({
-    conversationId: null,
-    unreadCount: 0,
-  });
-
-  const currentConversationId =
-    activeConversation?.id ?? null;
-
-  /*
-   * Adjusting state during render is the supported React pattern for deriving
-   * a value from a changed prop. React discards this render and re-runs it
-   * immediately, so the snapshot can never come from a render that was thrown
-   * away — which is exactly what mutating a ref here used to risk.
-   */
-  if (
-    openedUnreadState.conversationId !==
-    currentConversationId
-  ) {
-    setOpenedUnreadState({
-      conversationId: currentConversationId,
-      unreadCount: Math.max(
-        0,
-        activeConversation?.unread_count ?? 0,
-      ),
-    });
-  }
-
-  const openingUnreadCount =
-    openedUnreadState.conversationId === currentConversationId
-      ? openedUnreadState.unreadCount
-      : Math.max(
-          0,
-          activeConversation?.unread_count ?? 0,
-        );
-
-  const firstUnreadMessageId =
-    getFirstUnreadMessageId(
-      messages,
-      openingUnreadCount,
-    );
 
   const [
     optimisticCommentState,
@@ -1265,38 +1186,8 @@ export function MessagePanel({
   const initialScrollDoneRef =
     useRef(false);
 
-  const initialUnreadLoadInFlightRef =
-    useRef(false);
-
-  const initialUnreadAutoLoadStoppedRef =
-    useRef(false);
-
   const userNearBottomRef =
     useRef(true);
-
-  type ConversationScrollPosition = {
-    scrollTop: number;
-    nearBottom: boolean;
-  };
-
-  const conversationScrollPositionsRef =
-    useRef<
-      Record<
-        string,
-        ConversationScrollPosition | undefined
-      >
-    >({});
-
-  const previousConversationIdRef =
-    useRef<string | null>(
-      activeConversation?.id ??
-      null,
-    );
-
-  const pendingScrollRestoreRef =
-    useRef<
-      ConversationScrollPosition | null
-    >(null);
 
   /*
    * V2.7 — preserve the visible viewport while older messages
@@ -1338,16 +1229,6 @@ export function MessagePanel({
 
         setNewMessageCount(0);
 
-        if (activeConversation?.id) {
-          conversationScrollPositionsRef
-            .current[
-              activeConversation.id
-            ] = {
-            scrollTop:
-              container.scrollHeight,
-            nearBottom: true,
-          };
-        }
       },
       [activeConversation?.id],
     );
@@ -1411,18 +1292,6 @@ export function MessagePanel({
     userNearBottomRef.current =
       isNearBottom;
 
-    if (activeConversation?.id) {
-      conversationScrollPositionsRef
-        .current[
-          activeConversation.id
-        ] = {
-        scrollTop:
-          container.scrollTop,
-        nearBottom:
-          isNearBottom,
-      };
-    }
-
     setShowScrollToLatest(
       !isNearBottom,
     );
@@ -1456,64 +1325,19 @@ export function MessagePanel({
   }
 
   useEffect(() => {
-    const nextConversationId =
-      activeConversation?.id ??
-      null;
-
-    const previousConversationId =
-      previousConversationIdRef
-        .current;
-
     /*
-     * Scroll positions are persisted continuously by handleMessagesScroll
-     * and scrollToNewest. Do not read the DOM here because React may already
-     * have painted the destination conversation when this effect runs.
+     * Every explicit conversation open starts at the newest message. Do not
+     * restore a previous scroll position and do not jump to the first unread
+     * marker. This also makes reopening a thread after switching conversations
+     * deterministic on the first click.
      */
-    void previousConversationId;
-
-    pendingScrollRestoreRef.current =
-      nextConversationId
-        ? conversationScrollPositionsRef
-            .current[
-              nextConversationId
-            ] ?? null
-        : null;
-
-    previousConversationIdRef.current =
-      nextConversationId;
-
-    initialScrollDoneRef.current =
-      false;
-    initialUnreadLoadInFlightRef.current =
-      false;
-    initialUnreadAutoLoadStoppedRef.current =
-      false;
-
-    lastMessageIdRef.current =
-      null;
-
-    previousMessageCountRef.current =
-      0;
-
-    userNearBottomRef.current =
-      pendingScrollRestoreRef.current
-        ?.nearBottom ??
-      true;
-
-    setShowScrollToLatest(
-      Boolean(
-        pendingScrollRestoreRef.current &&
-        !pendingScrollRestoreRef.current
-          .nearBottom,
-      ),
-    );
-
-    prependScrollSnapshotRef.current =
-      null;
-
-    olderLoadRequestedRef.current =
-      false;
-
+    initialScrollDoneRef.current = false;
+    lastMessageIdRef.current = null;
+    previousMessageCountRef.current = 0;
+    userNearBottomRef.current = true;
+    setShowScrollToLatest(false);
+    prependScrollSnapshotRef.current = null;
+    olderLoadRequestedRef.current = false;
     setNewMessageCount(0);
   }, [activeConversation?.id]);
 
@@ -1729,147 +1553,21 @@ export function MessagePanel({
       latestMessage?.id ?? null;
 
     /*
-     * First render for this conversation:
-     * 1) restore an intentional previous scroll position; otherwise
-     * 2) if it opened unread, position at the FIRST unread incoming message;
-     * 3) otherwise jump to newest.
+     * First committed message page for this conversation always opens at the
+     * true newest message, regardless of unread markers or who sent it. Run on
+     * two animation frames so the message DOM is fully painted before reading
+     * scrollHeight; this removes the old first-click / second-click behavior.
      */
-    if (
-      !initialScrollDoneRef.current
-    ) {
-      const savedPosition =
-        pendingScrollRestoreRef
-          .current;
+    if (!initialScrollDoneRef.current) {
+      initialScrollDoneRef.current = true;
+      lastMessageIdRef.current = latestMessageId;
+      previousMessageCountRef.current = messages.length;
 
-      if (
-        !savedPosition &&
-        openingUnreadCount > 0 &&
-        !firstUnreadMessageId &&
-        hasMoreOlderMessages &&
-        !initialUnreadAutoLoadStoppedRef.current
-      ) {
-        if (
-          !loadingOlderMessages &&
-          !initialUnreadLoadInFlightRef.current
-        ) {
-          initialUnreadLoadInFlightRef.current =
-            true;
-
-          void onLoadOlderMessages()
-            .then((loaded) => {
-              if (!loaded) {
-                initialUnreadAutoLoadStoppedRef.current =
-                  true;
-              }
-            })
-            .catch(() => {
-              initialUnreadAutoLoadStoppedRef.current =
-                true;
-            })
-            .finally(() => {
-              initialUnreadLoadInFlightRef.current =
-                false;
-            });
-        }
-
-        return;
-      }
-
-      initialScrollDoneRef.current =
-        true;
-
-      lastMessageIdRef.current =
-        latestMessageId;
-
-      previousMessageCountRef.current =
-        messages.length;
-
-      pendingScrollRestoreRef.current =
-        null;
-
-      window.requestAnimationFrame(
-        () => {
-          const container =
-            messagesContainerRef.current;
-
-          if (
-            container &&
-            savedPosition &&
-            !savedPosition.nearBottom
-          ) {
-            const maxScrollTop =
-              Math.max(
-                0,
-                container.scrollHeight -
-                  container.clientHeight,
-              );
-
-            container.scrollTop =
-              Math.min(
-                savedPosition.scrollTop,
-                maxScrollTop,
-              );
-
-            userNearBottomRef.current =
-              false;
-            setShowScrollToLatest(
-              true,
-            );
-            return;
-          }
-
-          if (
-            openingUnreadCount > 0 &&
-            firstUnreadMessageId
-          ) {
-            const targetElement =
-              messageElementRefs.current.get(
-                firstUnreadMessageId,
-              );
-
-            if (targetElement) {
-              targetElement.scrollIntoView({
-                behavior: "auto",
-                block: "center",
-              });
-
-              const distanceFromBottom =
-                container
-                  ? container.scrollHeight -
-                    container.scrollTop -
-                    container.clientHeight
-                  : 0;
-
-              const nearBottom =
-                distanceFromBottom <= 120;
-
-              userNearBottomRef.current =
-                nearBottom;
-              setShowScrollToLatest(
-                !nearBottom,
-              );
-
-              if (
-                container &&
-                activeConversation?.id
-              ) {
-                conversationScrollPositionsRef
-                  .current[
-                    activeConversation.id
-                  ] = {
-                  scrollTop:
-                    container.scrollTop,
-                  nearBottom,
-                };
-              }
-
-              return;
-            }
-          }
-
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
           scrollToNewest("auto");
-        },
-      );
+        });
+      });
 
       return;
     }
@@ -1933,14 +1631,8 @@ export function MessagePanel({
         current + addedCount,
     );
   }, [
-    activeConversation?.id,
-    firstUnreadMessageId,
-    hasMoreOlderMessages,
     loadingConversationMessages,
-    loadingOlderMessages,
     messages,
-    onLoadOlderMessages,
-    openingUnreadCount,
     scrollToNewest,
   ]);
 
@@ -2406,6 +2098,9 @@ export function MessagePanel({
                   tenh_source?: string;
                   parent_comment_id?: string;
                   reply_comment_id?: string;
+                  commenter_profile_picture_url?:
+                    | string
+                    | null;
 
                   tenh_attachment?: {
                     type?:
@@ -2516,12 +2211,35 @@ export function MessagePanel({
                   } | null;
                 } | null;
 
-              const postId =
-                rawPayload?.post_id;
-
-              const postPreview =
+              const savedPostPreview =
                 rawPayload?.post_preview ??
                 null;
+
+              const postId =
+                rawPayload?.post_id
+                  ?.trim() ||
+                savedPostPreview?.id
+                  ?.trim() ||
+                null;
+
+              /*
+               * Even if Meta's optional post-detail lookup temporarily fails,
+               * a real Facebook comment still has a post ID. Keep the content
+               * card visible with its ID + View Post link instead of collapsing
+               * to the small standalone comment card. New webhook rows normally
+               * include the richer saved preview from process-comment.ts.
+               */
+              const postPreview =
+                savedPostPreview ??
+                (postId
+                  ? {
+                      id: postId,
+                      message: null,
+                      full_picture: null,
+                      permalink_url: null,
+                      created_time: null,
+                    }
+                  : null);
 
               const attachmentMeta =
                 rawPayload?.tenh_attachment ??
@@ -3135,11 +2853,23 @@ export function MessagePanel({
                       .some((candidate) => {
                         const candidatePayload =
                           candidate.raw_payload as
-                            | { post_id?: string }
+                            | {
+                                post_id?: string;
+                                post_preview?: {
+                                  id?: string;
+                                } | null;
+                              }
                             | null;
 
+                        const candidatePostId =
+                          candidatePayload?.post_id
+                            ?.trim() ||
+                          candidatePayload?.post_preview
+                            ?.id?.trim() ||
+                          null;
+
                         return (
-                          candidatePayload?.post_id ===
+                          candidatePostId ===
                           postId
                         );
                       }),
@@ -3158,11 +2888,19 @@ export function MessagePanel({
                   ? headerChannelAccountName
                   : replyingToName;
 
+              const savedCommenterProfilePictureUrl =
+                rawPayload
+                  ?.commenter_profile_picture_url
+                  ?.trim() ||
+                null;
+
               const facebookCommentActorPhoto =
                 isOutgoing
                   ? facebookPageProfilePictureUrl
-                  : activeConversation.contact
-                      ?.profile_picture_url ?? null;
+                  : savedCommenterProfilePictureUrl ??
+                    activeConversation.contact
+                      ?.profile_picture_url ??
+                    null;
 
               const facebookCommentActorInitial =
                 facebookCommentActorName

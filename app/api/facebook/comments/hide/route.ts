@@ -5,6 +5,10 @@ import {
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
+  isFacebookAccessTokenError,
+  refreshFacebookPageAccessToken,
+} from "@/lib/facebook/get-facebook-page-access-token";
+import {
   memberHasPermission,
   permissionDenied,
 } from "@/lib/auth/require-permission";
@@ -120,33 +124,59 @@ export async function POST(
      * historically parameter/form based and some Graph versions do not apply
      * the JSON field reliably.
      */
-    const form = new URLSearchParams();
-    form.set(
-      "is_hidden",
-      hidden ? "true" : "false",
-    );
-    form.set(
-      "access_token",
-      context.pageAccessToken,
-    );
-
-    const response = await fetch(
-      `https://graph.facebook.com/${graphVersion}/${commentId}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type":
-            "application/x-www-form-urlencoded;charset=UTF-8",
-        },
-        body: form.toString(),
-        cache: "no-store",
-      },
-    );
-
-    const result =
-      await readGraphResult(
-        response,
+    async function updateVisibility(pageAccessToken: string) {
+      const form = new URLSearchParams();
+      form.set(
+        "is_hidden",
+        hidden ? "true" : "false",
       );
+      form.set(
+        "access_token",
+        pageAccessToken,
+      );
+
+      const response = await fetch(
+        `https://graph.facebook.com/${graphVersion}/${commentId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/x-www-form-urlencoded;charset=UTF-8",
+          },
+          body: form.toString(),
+          cache: "no-store",
+        },
+      );
+
+      const result =
+        await readGraphResult(
+          response,
+        );
+
+      return { response, result, pageAccessToken };
+    }
+
+    let attempt =
+      await updateVisibility(
+        context.pageAccessToken,
+      );
+
+    if (
+      (!attempt.response.ok || attempt.result.error) &&
+      isFacebookAccessTokenError(attempt.result.error)
+    ) {
+      const refreshedToken =
+        await refreshFacebookPageAccessToken(
+          context.pageId,
+        );
+      attempt =
+        await updateVisibility(
+          refreshedToken,
+        );
+    }
+
+    const { response, result } = attempt;
+    const activePageAccessToken = attempt.pageAccessToken;
 
     if (
       !response.ok ||
@@ -183,7 +213,7 @@ export async function POST(
       );
       verifyUrl.searchParams.set(
         "access_token",
-        context.pageAccessToken,
+        activePageAccessToken,
       );
 
       const verifyResponse =

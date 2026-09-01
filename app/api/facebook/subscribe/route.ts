@@ -8,8 +8,9 @@ import {
   permissionDenied,
 } from "@/lib/auth/require-permission";
 import {
-  getFacebookPageAccessToken,
-} from "@/lib/facebook/get-facebook-page-access-token";
+  FACEBOOK_REQUIRED_WEBHOOK_FIELDS,
+  ensureFacebookPageWebhookSubscription,
+} from "@/lib/facebook/facebook-connection-health";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -24,31 +25,6 @@ type FacebookAccountRow = {
   platform_account_id: string | null;
   account_name: string | null;
 };
-
-type GraphResult = {
-  success?: boolean;
-  error?: {
-    message?: string;
-    code?: number;
-    error_subcode?: number;
-  };
-};
-
-async function readGraphResult(
-  response: Response,
-): Promise<GraphResult> {
-  const text = await response.text();
-
-  if (!text.trim()) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(text) as GraphResult;
-  } catch {
-    return {};
-  }
-}
 
 export async function POST(
   request: NextRequest,
@@ -68,8 +44,6 @@ export async function POST(
     );
   }
 
-  // Was owner-only. The channels permission makes the
-  // Roles & permissions setting meaningful; Owners always pass.
   if (
     !(await memberHasPermission(authResult.member, "channels", "manage"))
   ) {
@@ -77,7 +51,6 @@ export async function POST(
       "You do not have permission to manage channels in this workspace.",
     );
   }
-
 
   let body: SubscribeBody = {};
 
@@ -113,7 +86,8 @@ export async function POST(
       authResult.member.business_id,
     )
     .eq("platform", "facebook")
-    .eq("is_active", true);
+    .eq("is_active", true)
+    .or("facebook_token_status.is.null,facebook_token_status.neq.disconnected");
 
   if (requestedSocialAccountId) {
     query = query.eq(
@@ -156,19 +130,6 @@ export async function POST(
     );
   }
 
-  const graphVersion =
-    process.env.FACEBOOK_GRAPH_API_VERSION
-      ?.trim() || "v26.0";
-
-  const subscribedFields = [
-    "messages",
-    "message_echoes",
-    "feed",
-    "messaging_postbacks",
-    "message_deliveries",
-    "message_reads",
-  ];
-
   const results = [];
 
   for (const account of accounts) {
@@ -191,43 +152,28 @@ export async function POST(
     }
 
     try {
-      const pageAccessToken =
-        await getFacebookPageAccessToken(
+      const repair =
+        await ensureFacebookPageWebhookSubscription({
           pageId,
-        );
-
-      const url = new URL(
-        `https://graph.facebook.com/${graphVersion}/${pageId}/subscribed_apps`,
-      );
-      url.searchParams.set(
-        "subscribed_fields",
-        subscribedFields.join(","),
-      );
-      url.searchParams.set(
-        "access_token",
-        pageAccessToken,
-      );
-
-      const response = await fetch(url, {
-        method: "POST",
-        cache: "no-store",
-      });
-      const result =
-        await readGraphResult(response);
-
-      const success =
-        response.ok &&
-        result.success !== false;
-      const errorMessage = success
+        });
+      const errorMessage = repair.healthy
         ? null
-        : result.error?.message ??
-          `Meta returned HTTP ${response.status}.`;
+        : repair.error ??
+          "TENH could not verify all required Facebook webhook fields.";
 
       await supabaseAdmin
         .from("social_accounts")
         .update({
           facebook_token_last_error:
             errorMessage,
+          ...(repair.healthy
+            ? {
+                facebook_token_status:
+                  "connected",
+              }
+            : {}),
+          updated_at:
+            new Date().toISOString(),
         })
         .eq("id", account.id)
         .eq(
@@ -239,10 +185,17 @@ export async function POST(
         socialAccountId: account.id,
         pageId,
         pageName,
-        success,
-        subscribedFields,
+        success: repair.healthy,
+        repaired: repair.repaired,
+        tokenRepaired:
+          repair.tokenRepaired,
+        subscribedFields:
+          repair.subscribedFields,
+        missingFields:
+          repair.missingFields,
+        requiredFields:
+          FACEBOOK_REQUIRED_WEBHOOK_FIELDS,
         error: errorMessage,
-        details: result.error ?? null,
       });
     } catch (error) {
       const errorMessage =
@@ -255,6 +208,8 @@ export async function POST(
         .update({
           facebook_token_last_error:
             errorMessage,
+          updated_at:
+            new Date().toISOString(),
         })
         .eq("id", account.id)
         .eq(
@@ -281,7 +236,8 @@ export async function POST(
     repairedCount:
       results.length - failed.length,
     failedCount: failed.length,
-    subscribedFields,
+    subscribedFields:
+      FACEBOOK_REQUIRED_WEBHOOK_FIELDS,
     pages: results,
     ...(failed.length > 0
       ? {
