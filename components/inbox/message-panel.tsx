@@ -1471,13 +1471,13 @@ export function MessagePanel({
      */
     void previousConversationId;
 
-    /*
-     * Opening/selecting a customer always starts at the newest message. Do not
-     * restore an older per-thread viewport or jump to the first unread marker;
-     * those behaviours made a freshly opened thread stop around "Today".
-     */
     pendingScrollRestoreRef.current =
-      null;
+      nextConversationId
+        ? conversationScrollPositionsRef
+            .current[
+              nextConversationId
+            ] ?? null
+        : null;
 
     previousConversationIdRef.current =
       nextConversationId;
@@ -1496,10 +1496,16 @@ export function MessagePanel({
       0;
 
     userNearBottomRef.current =
+      pendingScrollRestoreRef.current
+        ?.nearBottom ??
       true;
 
     setShowScrollToLatest(
-      false,
+      Boolean(
+        pendingScrollRestoreRef.current &&
+        !pendingScrollRestoreRef.current
+          .nearBottom,
+      ),
     );
 
     prependScrollSnapshotRef.current =
@@ -1707,7 +1713,10 @@ export function MessagePanel({
   }, [messages]);
 
   useEffect(() => {
-    if (loadingConversationMessages) {
+    if (
+      loadingConversationMessages &&
+      messages.length === 0
+    ) {
       return;
     }
 
@@ -1728,6 +1737,44 @@ export function MessagePanel({
     if (
       !initialScrollDoneRef.current
     ) {
+      const savedPosition =
+        pendingScrollRestoreRef
+          .current;
+
+      if (
+        !savedPosition &&
+        openingUnreadCount > 0 &&
+        !firstUnreadMessageId &&
+        hasMoreOlderMessages &&
+        !initialUnreadAutoLoadStoppedRef.current
+      ) {
+        if (
+          !loadingOlderMessages &&
+          !initialUnreadLoadInFlightRef.current
+        ) {
+          initialUnreadLoadInFlightRef.current =
+            true;
+
+          void onLoadOlderMessages()
+            .then((loaded) => {
+              if (!loaded) {
+                initialUnreadAutoLoadStoppedRef.current =
+                  true;
+              }
+            })
+            .catch(() => {
+              initialUnreadAutoLoadStoppedRef.current =
+                true;
+            })
+            .finally(() => {
+              initialUnreadLoadInFlightRef.current =
+                false;
+            });
+        }
+
+        return;
+      }
+
       initialScrollDoneRef.current =
         true;
 
@@ -1740,18 +1787,87 @@ export function MessagePanel({
       pendingScrollRestoreRef.current =
         null;
 
-      /*
-       * Always finish an explicit conversation open at the real bottom. The
-       * next animation frame runs after the newest page has painted, avoiding
-       * the previous first-unread/Today positioning.
-       */
       window.requestAnimationFrame(
         () => {
-          window.requestAnimationFrame(
-            () => {
-              scrollToNewest("auto");
-            },
-          );
+          const container =
+            messagesContainerRef.current;
+
+          if (
+            container &&
+            savedPosition &&
+            !savedPosition.nearBottom
+          ) {
+            const maxScrollTop =
+              Math.max(
+                0,
+                container.scrollHeight -
+                  container.clientHeight,
+              );
+
+            container.scrollTop =
+              Math.min(
+                savedPosition.scrollTop,
+                maxScrollTop,
+              );
+
+            userNearBottomRef.current =
+              false;
+            setShowScrollToLatest(
+              true,
+            );
+            return;
+          }
+
+          if (
+            openingUnreadCount > 0 &&
+            firstUnreadMessageId
+          ) {
+            const targetElement =
+              messageElementRefs.current.get(
+                firstUnreadMessageId,
+              );
+
+            if (targetElement) {
+              targetElement.scrollIntoView({
+                behavior: "auto",
+                block: "center",
+              });
+
+              const distanceFromBottom =
+                container
+                  ? container.scrollHeight -
+                    container.scrollTop -
+                    container.clientHeight
+                  : 0;
+
+              const nearBottom =
+                distanceFromBottom <= 120;
+
+              userNearBottomRef.current =
+                nearBottom;
+              setShowScrollToLatest(
+                !nearBottom,
+              );
+
+              if (
+                container &&
+                activeConversation?.id
+              ) {
+                conversationScrollPositionsRef
+                  .current[
+                    activeConversation.id
+                  ] = {
+                  scrollTop:
+                    container.scrollTop,
+                  nearBottom,
+                };
+              }
+
+              return;
+            }
+          }
+
+          scrollToNewest("auto");
         },
       );
 
@@ -2290,16 +2406,6 @@ export function MessagePanel({
                   tenh_source?: string;
                   parent_comment_id?: string;
                   reply_comment_id?: string;
-                  tenh_commenter_profile_picture?: string | null;
-                  post?: {
-                    id?: string | null;
-                    message?: string | null;
-                    full_picture?: string | null;
-                    picture?: string | null;
-                    permalink_url?: string | null;
-                    created_time?: string | null;
-                  } | null;
-                  permalink_url?: string | null;
 
                   tenh_attachment?: {
                     type?:
@@ -2410,67 +2516,11 @@ export function MessagePanel({
                   } | null;
                 } | null;
 
-              const inlinePost = rawPayload?.post ?? null;
-              const inlinePostPreview =
-                inlinePost &&
-                (inlinePost.message ||
-                  inlinePost.full_picture ||
-                  inlinePost.picture ||
-                  inlinePost.permalink_url ||
-                  rawPayload?.permalink_url)
-                  ? {
-                      id:
-                        inlinePost.id ??
-                        rawPayload?.post_id ??
-                        activeConversation.facebook_post_id ??
-                        undefined,
-                      message: inlinePost.message ?? null,
-                      full_picture:
-                        inlinePost.full_picture ??
-                        inlinePost.picture ??
-                        null,
-                      permalink_url:
-                        inlinePost.permalink_url ??
-                        rawPayload?.permalink_url ??
-                        null,
-                      created_time: inlinePost.created_time ?? null,
-                    }
-                  : null;
-
               const postId =
-                rawPayload?.post_id ??
-                inlinePost?.id ??
-                rawPayload?.post_preview?.id ??
-                activeConversation.facebook_post_id ??
-                undefined;
-
-              const earlierPostPreviewPayload =
-                postId
-                  ? messages
-                      .slice(0, messageIndex)
-                      .reverse()
-                      .map(
-                        (candidate) =>
-                          candidate.raw_payload as typeof rawPayload,
-                      )
-                      .find((candidatePayload) => {
-                        const candidatePostId =
-                          candidatePayload?.post_id ??
-                          candidatePayload?.post?.id ??
-                          candidatePayload?.post_preview?.id ??
-                          null;
-
-                        return (
-                          candidatePostId === postId &&
-                          Boolean(candidatePayload?.post_preview)
-                        );
-                      }) ?? null
-                  : null;
+                rawPayload?.post_id;
 
               const postPreview =
                 rawPayload?.post_preview ??
-                inlinePostPreview ??
-                earlierPostPreviewPayload?.post_preview ??
                 null;
 
               const attachmentMeta =
@@ -3077,10 +3127,29 @@ export function MessagePanel({
                 );
               }
 
+              const hasEarlierPreviewForPost =
+                Boolean(
+                  postId &&
+                    messages
+                      .slice(0, messageIndex)
+                      .some((candidate) => {
+                        const candidatePayload =
+                          candidate.raw_payload as
+                            | { post_id?: string }
+                            | null;
+
+                        return (
+                          candidatePayload?.post_id ===
+                          postId
+                        );
+                      }),
+                );
+
               const showFacebookPostPreview =
                 Boolean(
                   postPreview &&
-                    !isNestedFacebookCommentReply &&
+                    postId &&
+                    !hasEarlierPreviewForPost &&
                     !commentState.deleted,
                 );
 
@@ -3092,8 +3161,7 @@ export function MessagePanel({
               const facebookCommentActorPhoto =
                 isOutgoing
                   ? facebookPageProfilePictureUrl
-                  : rawPayload?.tenh_commenter_profile_picture ??
-                    activeConversation.contact
+                  : activeConversation.contact
                       ?.profile_picture_url ?? null;
 
               const facebookCommentActorInitial =

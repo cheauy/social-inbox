@@ -17,27 +17,12 @@ export type FacebookFeedCommentValue = {
   post_id?: string;
   parent_id?: string;
   message?: string;
-  permalink_url?: string;
-  post?: {
-    id?: string;
-    message?: string;
-    full_picture?: string;
-    picture?: string;
-    permalink_url?: string;
-    created_time?: string;
-  };
   created_time?:
     | number
     | string;
   from?: {
     id?: string;
     name?: string;
-    profile_pic?: string;
-    picture?: {
-      data?: {
-        url?: string;
-      };
-    };
   };
   [key: string]:
     unknown;
@@ -48,73 +33,6 @@ type ProcessFacebookCommentInput = {
   value:
     FacebookFeedCommentValue;
 };
-
-function cleanHttpUrl(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) {
-    return null;
-  }
-
-  try {
-    const parsed = new URL(value.trim());
-    return parsed.protocol === "https:" || parsed.protocol === "http:"
-      ? parsed.toString()
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function getCommenterPicture(
-  from: FacebookFeedCommentValue["from"],
-) {
-  return (
-    cleanHttpUrl(from?.profile_pic) ??
-    cleanHttpUrl(from?.picture?.data?.url)
-  );
-}
-
-function getWebhookPostPreview(
-  value: FacebookFeedCommentValue,
-  postId: string | null,
-) {
-  const post = value.post;
-
-  if (!postId || !post) {
-    return null;
-  }
-
-  const message =
-    typeof post.message === "string" && post.message.trim()
-      ? post.message.trim()
-      : null;
-
-  const fullPicture =
-    cleanHttpUrl(post.full_picture) ??
-    cleanHttpUrl(post.picture);
-
-  const permalinkUrl =
-    cleanHttpUrl(post.permalink_url) ??
-    cleanHttpUrl(value.permalink_url);
-
-  const createdTime =
-    typeof post.created_time === "string" && post.created_time.trim()
-      ? post.created_time.trim()
-      : null;
-
-  // Only treat the webhook object as a real preview when Meta actually
-  // supplied some post context. The Graph preview remains the preferred path.
-  if (!message && !fullPicture && !permalinkUrl && !createdTime) {
-    return null;
-  }
-
-  return {
-    id: postId,
-    message,
-    full_picture: fullPicture,
-    permalink_url: permalinkUrl,
-    created_time: createdTime,
-  };
-}
 
 function toIso(
   value?:
@@ -338,9 +256,8 @@ export async function processFacebookComment({
    */
 
   const postId =
-    value.post_id?.trim() ||
-    value.post?.id?.trim() ||
-    null;
+    value.post_id
+      ?.trim();
 
   let message =
     value.message
@@ -356,10 +273,6 @@ export async function processFacebookComment({
     value.from?.name
       ?.trim() ??
     null;
-
-  let authorProfilePictureUrl =
-    getCommenterPicture(value.from);
-
 
   let createdTime =
     value.created_time;
@@ -493,60 +406,6 @@ export async function processFacebookComment({
         "[Tenh Facebook Comment] Graph enrichment request failed but webhook data will still be saved.",
         error,
       );
-    }
-  }
-
-  if (
-    !authorProfilePictureUrl &&
-    pageAccessToken
-  ) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 900);
-
-    try {
-      const graphVersion =
-        process.env.FACEBOOK_GRAPH_API_VERSION ?? "v26.0";
-      const url = new URL(
-        `https://graph.facebook.com/${graphVersion}/${commentId}`,
-      );
-      url.searchParams.set(
-        "fields",
-        "from{id,name,picture}",
-      );
-      url.searchParams.set(
-        "access_token",
-        pageAccessToken,
-      );
-
-      const response = await fetch(url, {
-        method: "GET",
-        cache: "no-store",
-        signal: controller.signal,
-      });
-      const text = await response.text();
-      const result = text.trim()
-        ? (JSON.parse(text) as {
-            from?: {
-              name?: string;
-              picture?: { data?: { url?: string } };
-            };
-            error?: { message?: string };
-          })
-        : {};
-
-      if (response.ok && !result.error) {
-        authorName = result.from?.name?.trim() || authorName;
-        authorProfilePictureUrl =
-          cleanHttpUrl(result.from?.picture?.data?.url) ??
-          authorProfilePictureUrl;
-      }
-    } catch (error) {
-      console.warn(
-        "[Tenh Facebook Comment] Optional commenter picture lookup failed; keeping initials fallback.",
-        error,
-      );
-    } finally {
-      clearTimeout(timeout);
     }
   }
 
@@ -825,15 +684,15 @@ export async function processFacebookComment({
       null;
 
     let pageReplyPostPreview =
-      getWebhookPostPreview(value, postId);
+      null;
 
     if (postId) {
       try {
         pageReplyPostPreview =
-          (await getFacebookPostPreview(
+          await getFacebookPostPreview(
             postId,
             pageId,
-          )) ?? pageReplyPostPreview;
+          );
       } catch (error) {
         console.warn(
           "[Tenh Facebook Comment] Page reply post preview failed; saving reply without preview.",
@@ -979,12 +838,6 @@ export async function processFacebookComment({
       authorName;
   }
 
-  if (authorProfilePictureUrl) {
-    contactPayload
-      .profile_picture_url =
-      authorProfilePictureUrl;
-  }
-
   const {
     data: contact,
     error:
@@ -1074,15 +927,15 @@ export async function processFacebookComment({
   }
 
   let postPreview =
-    getWebhookPostPreview(value, postId);
+    null;
 
   if (postId) {
     try {
       postPreview =
-        (await getFacebookPostPreview(
+        await getFacebookPostPreview(
           postId,
           pageId,
-        )) ?? postPreview;
+        );
     } catch (error) {
       console.warn(
         "[Tenh Facebook Comment] Post preview failed; saving comment without preview.",
@@ -1121,8 +974,6 @@ export async function processFacebookComment({
           false,
         raw_payload: {
           ...value,
-          tenh_commenter_profile_picture:
-            authorProfilePictureUrl,
           post_preview:
             postPreview,
         },

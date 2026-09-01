@@ -30,10 +30,10 @@ export async function DashboardHeader() {
   return (
     <header className="flex h-[72px] shrink-0 items-center border-b border-slate-200 bg-white px-5">
       <div className="flex w-full min-w-0 items-center">
-        <a
+        <Link
           href="/dashboard/inbox"
           className="flex shrink-0 items-center gap-3"
-          aria-label="Refresh inbox"
+          aria-label="Go to inbox"
         >
           <Image
             src="/images/tenh_logo.png"
@@ -52,7 +52,7 @@ export async function DashboardHeader() {
               Customer messaging
             </p>
           </div>
-        </a>
+        </Link>
 
         <nav className="ml-8 hidden items-center gap-1 md:flex">
           {navigation.map((item) => {
@@ -60,37 +60,23 @@ export async function DashboardHeader() {
 
             // Integrations disappears entirely when the member has no
             // channel access. Everything else is always shown.
-            const linkClassName = adminItem
-              ? "relative rounded-lg border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-              : "relative rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950";
+            const link = (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={
+                  adminItem
+                    ? "relative rounded-lg border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                    : "relative rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
+                }
+              >
+                <DashboardNavigationLabel label={item.label} />
 
-            /*
-             * Inbox deliberately uses a native anchor. Clicking Inbox while
-             * already on Inbox performs a real browser navigation so the user
-             * can refresh back to the canonical /dashboard/inbox state.
-             */
-            const link =
-              item.href === "/dashboard/inbox" ? (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  className={linkClassName}
-                >
-                  <DashboardNavigationLabel label={item.label} />
-                </a>
-              ) : (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={linkClassName}
-                >
-                  <DashboardNavigationLabel label={item.label} />
-
-                  {item.href === "/dashboard/group-chat" ? (
-                    <GroupChatNavBadge />
-                  ) : null}
-                </Link>
-              );
+                {item.href === "/dashboard/group-chat" ? (
+                  <GroupChatNavBadge />
+                ) : null}
+              </Link>
+            );
 
             if (item.href === "/dashboard/integrations") {
               return (

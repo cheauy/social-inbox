@@ -392,28 +392,7 @@ export function useBrowserNotifications() {
       }: NotifyIncomingMessageInput) => {
         if (
           typeof window ===
-            "undefined"
-        ) {
-          return;
-        }
-
-        /*
-         * Alert sound and desktop notifications are intentionally separate.
-         * The selected TENH sound must still play while the agent is actively
-         * working in Inbox, even when browser desktop notifications are off or
-         * permission has not been granted. The browser may still block audio
-         * until the user has interacted with the page; previewSound already
-         * handles that failure safely.
-         */
-        void previewSound(
-          soundKeyRef.current,
-          volumeRef.current,
-        );
-
-        /*
-         * Native browser notifications remain opt-in and background-only.
-         */
-        if (
+            "undefined" ||
           !("Notification" in window) ||
           !enabledRef.current ||
           Notification.permission !==
@@ -421,6 +400,16 @@ export function useBrowserNotifications() {
         ) {
           return;
         }
+
+        /*
+         * Play the selected Tenh Chat alert sound for every
+         * incoming message. Native desktop notifications remain
+         * background-only so the foreground inbox is not duplicated.
+         */
+        void previewSound(
+          soundKeyRef.current,
+          volumeRef.current,
+        );
 
         const isForeground =
           document.visibilityState ===
