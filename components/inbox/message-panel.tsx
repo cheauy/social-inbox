@@ -1707,10 +1707,7 @@ export function MessagePanel({
   }, [messages]);
 
   useEffect(() => {
-    if (
-      loadingConversationMessages &&
-      messages.length === 0
-    ) {
+    if (loadingConversationMessages) {
       return;
     }
 
@@ -1750,7 +1747,11 @@ export function MessagePanel({
        */
       window.requestAnimationFrame(
         () => {
-          scrollToNewest("auto");
+          window.requestAnimationFrame(
+            () => {
+              scrollToNewest("auto");
+            },
+          );
         },
       );
 
@@ -2289,6 +2290,16 @@ export function MessagePanel({
                   tenh_source?: string;
                   parent_comment_id?: string;
                   reply_comment_id?: string;
+                  tenh_commenter_profile_picture?: string | null;
+                  post?: {
+                    id?: string | null;
+                    message?: string | null;
+                    full_picture?: string | null;
+                    picture?: string | null;
+                    permalink_url?: string | null;
+                    created_time?: string | null;
+                  } | null;
+                  permalink_url?: string | null;
 
                   tenh_attachment?: {
                     type?:
@@ -2399,11 +2410,67 @@ export function MessagePanel({
                   } | null;
                 } | null;
 
+              const inlinePost = rawPayload?.post ?? null;
+              const inlinePostPreview =
+                inlinePost &&
+                (inlinePost.message ||
+                  inlinePost.full_picture ||
+                  inlinePost.picture ||
+                  inlinePost.permalink_url ||
+                  rawPayload?.permalink_url)
+                  ? {
+                      id:
+                        inlinePost.id ??
+                        rawPayload?.post_id ??
+                        activeConversation.facebook_post_id ??
+                        undefined,
+                      message: inlinePost.message ?? null,
+                      full_picture:
+                        inlinePost.full_picture ??
+                        inlinePost.picture ??
+                        null,
+                      permalink_url:
+                        inlinePost.permalink_url ??
+                        rawPayload?.permalink_url ??
+                        null,
+                      created_time: inlinePost.created_time ?? null,
+                    }
+                  : null;
+
               const postId =
-                rawPayload?.post_id;
+                rawPayload?.post_id ??
+                inlinePost?.id ??
+                rawPayload?.post_preview?.id ??
+                activeConversation.facebook_post_id ??
+                undefined;
+
+              const earlierPostPreviewPayload =
+                postId
+                  ? messages
+                      .slice(0, messageIndex)
+                      .reverse()
+                      .map(
+                        (candidate) =>
+                          candidate.raw_payload as typeof rawPayload,
+                      )
+                      .find((candidatePayload) => {
+                        const candidatePostId =
+                          candidatePayload?.post_id ??
+                          candidatePayload?.post?.id ??
+                          candidatePayload?.post_preview?.id ??
+                          null;
+
+                        return (
+                          candidatePostId === postId &&
+                          Boolean(candidatePayload?.post_preview)
+                        );
+                      }) ?? null
+                  : null;
 
               const postPreview =
                 rawPayload?.post_preview ??
+                inlinePostPreview ??
+                earlierPostPreviewPayload?.post_preview ??
                 null;
 
               const attachmentMeta =
@@ -3010,29 +3077,10 @@ export function MessagePanel({
                 );
               }
 
-              const hasEarlierPreviewForPost =
-                Boolean(
-                  postId &&
-                    messages
-                      .slice(0, messageIndex)
-                      .some((candidate) => {
-                        const candidatePayload =
-                          candidate.raw_payload as
-                            | { post_id?: string }
-                            | null;
-
-                        return (
-                          candidatePayload?.post_id ===
-                          postId
-                        );
-                      }),
-                );
-
               const showFacebookPostPreview =
                 Boolean(
                   postPreview &&
-                    postId &&
-                    !hasEarlierPreviewForPost &&
+                    !isNestedFacebookCommentReply &&
                     !commentState.deleted,
                 );
 
@@ -3044,7 +3092,8 @@ export function MessagePanel({
               const facebookCommentActorPhoto =
                 isOutgoing
                   ? facebookPageProfilePictureUrl
-                  : activeConversation.contact
+                  : rawPayload?.tenh_commenter_profile_picture ??
+                    activeConversation.contact
                       ?.profile_picture_url ?? null;
 
               const facebookCommentActorInitial =

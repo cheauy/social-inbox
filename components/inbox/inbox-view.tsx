@@ -3841,126 +3841,134 @@ const selectConversationSmoothly =
         setHasMoreOlderMessages(
           cached.hasMore,
         );
-        setLoadingConversationMessages(
-          false,
-        );
 
         /*
-         * Show warm cache immediately, then quietly refresh stale data.
-         * No loading flash is shown for a conversation the agent has opened.
+         * A cached thread can be a few seconds behind the database. Show the
+         * warm cache immediately, but always verify the newest page before the
+         * initial open-scroll is considered complete. This avoids needing a
+         * second click to see the newest message and also recovers cleanly when
+         * a Realtime event was missed while the thread was closed.
          */
-        if (
-          Date.now() -
-            cached.fetchedAt >
-          MESSAGE_CACHE_STALE_MS
-        ) {
-          void loadConversationMessagePage(
-            conversationId,
-            {
-              forceRefresh: true,
-            },
-          )
-            .then((page) => {
-              if (
-                desiredConversationIdRef
-                  .current !==
-                conversationId
-              ) {
-                return;
-              }
+        setLoadingConversationMessages(
+          true,
+        );
 
-              setLiveMessages(
-                (current) => {
-                  const currentById =
-                    new Map(
-                      current.map(
-                        (message) => [
+        void loadConversationMessagePage(
+          conversationId,
+          {
+            forceRefresh: true,
+          },
+        )
+          .then((page) => {
+            if (
+              desiredConversationIdRef
+                .current !==
+              conversationId
+            ) {
+              return;
+            }
+
+            setLiveMessages(
+              (current) => {
+                const currentById =
+                  new Map(
+                    current.map(
+                      (message) => [
+                        message.id,
+                        message,
+                      ],
+                    ),
+                  );
+
+                const merged =
+                  page.messages.map(
+                    (message) => {
+                      const existing =
+                        currentById.get(
                           message.id,
-                          message,
-                        ],
-                      ),
-                    );
+                        );
 
-                  const merged =
-                    page.messages.map(
-                      (message) => {
-                        const existing =
-                          currentById.get(
-                            message.id,
-                          );
+                      const localAttachmentUrl =
+                        existing?.attachment_url?.startsWith(
+                          "blob:",
+                        )
+                          ? existing.attachment_url
+                          : null;
 
-                        const localAttachmentUrl =
-                          existing?.attachment_url?.startsWith(
-                            "blob:",
-                          )
-                            ? existing.attachment_url
-                            : null;
-
-                        return {
-                          ...existing,
-                          ...message,
-                          attachment_url:
-                            message.attachment_url ??
-                            localAttachmentUrl,
-                        } as InboxMessage;
-                      },
-                    );
-
-                  for (
-                    const message of current
-                  ) {
-                    if (
-                      message.id.startsWith(
-                        "optimistic:",
-                      ) &&
-                      !merged.some(
-                        (candidate) =>
-                          candidate.id ===
-                          message.id,
-                      )
-                    ) {
-                      merged.push(message);
-                    }
-                  }
-
-                  return merged.sort(
-                    (first, second) => {
-                      const timeDifference =
-                        new Date(
-                          first.created_at,
-                        ).getTime() -
-                        new Date(
-                          second.created_at,
-                        ).getTime();
-
-                      return timeDifference !== 0
-                        ? timeDifference
-                        : first.id.localeCompare(
-                            second.id,
-                          );
+                      return {
+                        ...existing,
+                        ...message,
+                        attachment_url:
+                          message.attachment_url ??
+                          localAttachmentUrl,
+                      } as InboxMessage;
                     },
                   );
-                },
-              );
 
-              setHasMoreOlderMessages(
-                page.hasMore,
-              );
-            })
-            .catch((error) => {
-              if (
-                isAbortError(error)
-              ) {
-                return;
-              }
+                for (
+                  const message of current
+                ) {
+                  if (
+                    message.id.startsWith(
+                      "optimistic:",
+                    ) &&
+                    !merged.some(
+                      (candidate) =>
+                        candidate.id ===
+                        message.id,
+                    )
+                  ) {
+                    merged.push(message);
+                  }
+                }
 
-              // Cached data remains usable if the quiet refresh fails.
-              console.warn(
-                "Unable to refresh cached conversation messages:",
-                error,
+                return merged.sort(
+                  (first, second) => {
+                    const timeDifference =
+                      new Date(
+                        first.created_at,
+                      ).getTime() -
+                      new Date(
+                        second.created_at,
+                      ).getTime();
+
+                    return timeDifference !== 0
+                      ? timeDifference
+                      : first.id.localeCompare(
+                          second.id,
+                        );
+                  },
+                );
+              },
+            );
+
+            setHasMoreOlderMessages(
+              page.hasMore,
+            );
+          })
+          .catch((error) => {
+            if (
+              isAbortError(error)
+            ) {
+              return;
+            }
+
+            console.warn(
+              "Unable to refresh cached conversation messages:",
+              error,
+            );
+          })
+          .finally(() => {
+            if (
+              desiredConversationIdRef
+                .current ===
+              conversationId
+            ) {
+              setLoadingConversationMessages(
+                false,
               );
-            });
-        }
+            }
+          });
       } else {
         setLiveMessages([]);
         setHasMoreOlderMessages(

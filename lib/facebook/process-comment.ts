@@ -17,6 +17,15 @@ export type FacebookFeedCommentValue = {
   post_id?: string;
   parent_id?: string;
   message?: string;
+  permalink_url?: string;
+  post?: {
+    id?: string;
+    message?: string;
+    full_picture?: string;
+    picture?: string;
+    permalink_url?: string;
+    created_time?: string;
+  };
   created_time?:
     | number
     | string;
@@ -40,21 +49,14 @@ type ProcessFacebookCommentInput = {
     FacebookFeedCommentValue;
 };
 
-function cleanHttpUrl(
-  value: unknown,
-) {
-  if (
-    typeof value !== "string" ||
-    !value.trim()
-  ) {
+function cleanHttpUrl(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) {
     return null;
   }
 
   try {
     const parsed = new URL(value.trim());
-
-    return parsed.protocol === "https:" ||
-      parsed.protocol === "http:"
+    return parsed.protocol === "https:" || parsed.protocol === "http:"
       ? parsed.toString()
       : null;
   } catch {
@@ -62,7 +64,7 @@ function cleanHttpUrl(
   }
 }
 
-function getWebhookCommenterPicture(
+function getCommenterPicture(
   from: FacebookFeedCommentValue["from"],
 ) {
   return (
@@ -71,109 +73,47 @@ function getWebhookCommenterPicture(
   );
 }
 
-async function getBusinessAssetCommenterProfile({
-  commenterId,
-  pageAccessToken,
-}: {
-  commenterId: string;
-  pageAccessToken: string;
-}) {
-  const graphVersion =
-    process.env.FACEBOOK_GRAPH_API_VERSION ??
-    "v26.0";
+function getWebhookPostPreview(
+  value: FacebookFeedCommentValue,
+  postId: string | null,
+) {
+  const post = value.post;
 
-  const url = new URL(
-    `https://graph.facebook.com/${graphVersion}/${commenterId}`,
-  );
-
-  /*
-   * Business Asset User Profile Access can expose the engaging user's name
-   * and picture. This lookup is best-effort only: comment delivery must never
-   * fail if Meta omits the fields or rejects this particular user.
-   */
-  url.searchParams.set(
-    "fields",
-    "id,name,picture",
-  );
-  url.searchParams.set(
-    "access_token",
-    pageAccessToken,
-  );
-
-  const controller =
-    new AbortController();
-  const timeout =
-    setTimeout(
-      () => controller.abort(),
-      1500,
-    );
-
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    const text = await response.text();
-
-    let result: {
-      name?: string;
-      picture?: {
-        data?: {
-          url?: string;
-        };
-      };
-      error?: {
-        message?: string;
-      };
-    } = {};
-
-    if (text.trim()) {
-      try {
-        result = JSON.parse(text) as typeof result;
-      } catch {
-        return {
-          fullName: null,
-          profilePictureUrl: null,
-        };
-      }
-    }
-
-    if (!response.ok || result.error) {
-      console.warn(
-        "[Tenh Facebook Comment] Business Asset commenter profile lookup was unavailable; keeping the avatar fallback.",
-        {
-          commenterId,
-          status: response.status,
-          error: result.error?.message ?? null,
-        },
-      );
-
-      return {
-        fullName: null,
-        profilePictureUrl: null,
-      };
-    }
-
-    return {
-      fullName:
-        result.name?.trim() || null,
-      profilePictureUrl:
-        cleanHttpUrl(result.picture?.data?.url),
-    };
-  } catch (error) {
-    console.warn(
-      "[Tenh Facebook Comment] Business Asset commenter profile request failed; keeping the avatar fallback.",
-      error,
-    );
-
-    return {
-      fullName: null,
-      profilePictureUrl: null,
-    };
-  } finally {
-    clearTimeout(timeout);
+  if (!postId || !post) {
+    return null;
   }
+
+  const message =
+    typeof post.message === "string" && post.message.trim()
+      ? post.message.trim()
+      : null;
+
+  const fullPicture =
+    cleanHttpUrl(post.full_picture) ??
+    cleanHttpUrl(post.picture);
+
+  const permalinkUrl =
+    cleanHttpUrl(post.permalink_url) ??
+    cleanHttpUrl(value.permalink_url);
+
+  const createdTime =
+    typeof post.created_time === "string" && post.created_time.trim()
+      ? post.created_time.trim()
+      : null;
+
+  // Only treat the webhook object as a real preview when Meta actually
+  // supplied some post context. The Graph preview remains the preferred path.
+  if (!message && !fullPicture && !permalinkUrl && !createdTime) {
+    return null;
+  }
+
+  return {
+    id: postId,
+    message,
+    full_picture: fullPicture,
+    permalink_url: permalinkUrl,
+    created_time: createdTime,
+  };
 }
 
 function toIso(
@@ -398,8 +338,9 @@ export async function processFacebookComment({
    */
 
   const postId =
-    value.post_id
-      ?.trim();
+    value.post_id?.trim() ||
+    value.post?.id?.trim() ||
+    null;
 
   let message =
     value.message
@@ -417,9 +358,8 @@ export async function processFacebookComment({
     null;
 
   let authorProfilePictureUrl =
-    getWebhookCommenterPicture(
-      value.from,
-    );
+    getCommenterPicture(value.from);
+
 
   let createdTime =
     value.created_time;
@@ -553,6 +493,60 @@ export async function processFacebookComment({
         "[Tenh Facebook Comment] Graph enrichment request failed but webhook data will still be saved.",
         error,
       );
+    }
+  }
+
+  if (
+    !authorProfilePictureUrl &&
+    pageAccessToken
+  ) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 900);
+
+    try {
+      const graphVersion =
+        process.env.FACEBOOK_GRAPH_API_VERSION ?? "v26.0";
+      const url = new URL(
+        `https://graph.facebook.com/${graphVersion}/${commentId}`,
+      );
+      url.searchParams.set(
+        "fields",
+        "from{id,name,picture}",
+      );
+      url.searchParams.set(
+        "access_token",
+        pageAccessToken,
+      );
+
+      const response = await fetch(url, {
+        method: "GET",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const text = await response.text();
+      const result = text.trim()
+        ? (JSON.parse(text) as {
+            from?: {
+              name?: string;
+              picture?: { data?: { url?: string } };
+            };
+            error?: { message?: string };
+          })
+        : {};
+
+      if (response.ok && !result.error) {
+        authorName = result.from?.name?.trim() || authorName;
+        authorProfilePictureUrl =
+          cleanHttpUrl(result.from?.picture?.data?.url) ??
+          authorProfilePictureUrl;
+      }
+    } catch (error) {
+      console.warn(
+        "[Tenh Facebook Comment] Optional commenter picture lookup failed; keeping initials fallback.",
+        error,
+      );
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
@@ -831,15 +825,15 @@ export async function processFacebookComment({
       null;
 
     let pageReplyPostPreview =
-      null;
+      getWebhookPostPreview(value, postId);
 
     if (postId) {
       try {
         pageReplyPostPreview =
-          await getFacebookPostPreview(
+          (await getFacebookPostPreview(
             postId,
             pageId,
-          );
+          )) ?? pageReplyPostPreview;
       } catch (error) {
         console.warn(
           "[Tenh Facebook Comment] Page reply post preview failed; saving reply without preview.",
@@ -1005,11 +999,7 @@ export async function processFacebookComment({
             "business_id,platform,platform_user_id",
         },
       )
-      .select(`
-        id,
-        full_name,
-        profile_picture_url
-      `)
+      .select("id")
       .single();
 
   if (
@@ -1021,67 +1011,6 @@ export async function processFacebookComment({
         ?.message ??
         "Unable to create Facebook comment contact.",
     );
-  }
-
-  /*
-   * If the webhook did not include an avatar and TENH has not already saved
-   * one for this commenter, try the approved Business Asset User Profile
-   * surface once for this new comment. Failure is non-fatal and the initials
-   * fallback remains intact.
-   */
-  if (
-    !authorProfilePictureUrl &&
-    !contact.profile_picture_url &&
-    pageAccessToken
-  ) {
-    const businessAssetProfile =
-      await getBusinessAssetCommenterProfile({
-        commenterId: authorId,
-        pageAccessToken,
-      });
-
-    authorName =
-      businessAssetProfile.fullName ??
-      authorName;
-    authorProfilePictureUrl =
-      businessAssetProfile.profilePictureUrl;
-
-    const profileUpdate: Record<string, unknown> = {};
-
-    if (
-      businessAssetProfile.fullName &&
-      businessAssetProfile.fullName !== contact.full_name
-    ) {
-      profileUpdate.full_name =
-        businessAssetProfile.fullName;
-    }
-
-    if (businessAssetProfile.profilePictureUrl) {
-      profileUpdate.profile_picture_url =
-        businessAssetProfile.profilePictureUrl;
-    }
-
-    if (Object.keys(profileUpdate).length > 0) {
-      profileUpdate.updated_at =
-        new Date().toISOString();
-
-      const { error: profileUpdateError } =
-        await supabaseAdmin
-          .from("contacts")
-          .update(profileUpdate)
-          .eq("id", contact.id)
-          .eq(
-            "business_id",
-            socialAccount.business_id,
-          );
-
-      if (profileUpdateError) {
-        console.warn(
-          "[Tenh Facebook Comment] Commenter profile was discovered but could not be saved.",
-          profileUpdateError.message,
-        );
-      }
-    }
   }
 
   const {
@@ -1145,15 +1074,15 @@ export async function processFacebookComment({
   }
 
   let postPreview =
-    null;
+    getWebhookPostPreview(value, postId);
 
   if (postId) {
     try {
       postPreview =
-        await getFacebookPostPreview(
+        (await getFacebookPostPreview(
           postId,
           pageId,
-        );
+        )) ?? postPreview;
     } catch (error) {
       console.warn(
         "[Tenh Facebook Comment] Post preview failed; saving comment without preview.",
@@ -1192,6 +1121,8 @@ export async function processFacebookComment({
           false,
         raw_payload: {
           ...value,
+          tenh_commenter_profile_picture:
+            authorProfilePictureUrl,
           post_preview:
             postPreview,
         },
