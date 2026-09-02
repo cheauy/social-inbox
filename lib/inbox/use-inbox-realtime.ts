@@ -107,6 +107,33 @@ export function useInboxRealtime({
       >
     > = [];
 
+    /*
+     * V3.11.32.1 — one safe resync for transient Realtime failures.
+     *
+     * Every Inbox view (All / Unread / Pinned / Smart View) is derived from
+     * the same live conversation state. If a Supabase channel briefly times
+     * out, ask the server for one enriched refresh after the realtime client
+     * starts recovering. Debounce across workspaces so a network hiccup does
+     * not cause a refresh storm.
+     */
+    let recoveryRefreshTimer:
+      | ReturnType<typeof setTimeout>
+      | null = null;
+
+    function scheduleRecoveryRefresh() {
+      if (cancelled || recoveryRefreshTimer) {
+        return;
+      }
+
+      recoveryRefreshTimer = setTimeout(() => {
+        recoveryRefreshTimer = null;
+
+        if (!cancelled) {
+          fallbackRefreshRef.current?.();
+        }
+      }, 750);
+    }
+
     async function startRealtime() {
       const {
         data: sessionData,
@@ -359,6 +386,13 @@ export function useInboxRealtime({
                     businessId,
                   );
                 }
+
+                if (
+                  status === "CHANNEL_ERROR" ||
+                  status === "TIMED_OUT"
+                ) {
+                  scheduleRecoveryRefresh();
+                }
               },
             );
 
@@ -406,6 +440,11 @@ export function useInboxRealtime({
     return () => {
       cancelled =
         true;
+
+      if (recoveryRefreshTimer) {
+        clearTimeout(recoveryRefreshTimer);
+        recoveryRefreshTimer = null;
+      }
 
       authSubscriptionData
         .subscription

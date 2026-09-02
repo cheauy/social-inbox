@@ -3041,6 +3041,18 @@ export function ConversationList({
                   </span>
                 ) : null}
 
+                {view.value ===
+                  "pinned" &&
+                view.count >
+                  0 ? (
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-slate-50 bg-blue-600 px-1 text-[10px] font-bold leading-none text-white">
+                    {view.count >
+                    99
+                      ? "99+"
+                      : view.count}
+                  </span>
+                ) : null}
+
                 <span className="pointer-events-none absolute left-[58px] top-1/2 z-[100] hidden -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-950 px-3 py-2 text-xs font-medium text-white shadow-xl group-hover:block">
                   {
                     view.label

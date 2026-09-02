@@ -21,6 +21,9 @@ import {
   getConversationMessagePreview,
 } from "@/lib/inbox/conversation-preview";
 import {
+  getFacebookMessengerReplyPolicy,
+} from "@/lib/facebook/messenger-reply-policy";
+import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 
@@ -507,6 +510,48 @@ export async function POST(
 
   const pageId =
     socialAccount.platform_account_id;
+
+  /*
+   * Keep attachment sending under the exact same Facebook private-reply
+   * policy as text. A second photo/file/voice message must not bypass the
+   * "wait for customer reply" lock.
+   */
+  try {
+    const messengerPolicy =
+      await getFacebookMessengerReplyPolicy(
+        conversationId,
+      );
+
+    if (
+      messengerPolicy.waitingForCustomerReply
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "WAITING_FOR_CUSTOMER_REPLY",
+          error:
+            "Waiting for customer reply. Meta allows only one private Messenger reply after a Facebook comment. You can send again as soon as the customer replies in Messenger.",
+          waitingForCustomerReply: true,
+        },
+        { status: 409 },
+      );
+    }
+  } catch (policyError) {
+    console.warn(
+      "Unable to inspect the Facebook Messenger reply policy before attachment send:",
+      policyError,
+    );
+
+    return NextResponse.json(
+      {
+        success: false,
+        code: "MESSENGER_POLICY_CHECK_FAILED",
+        error:
+          "TENH could not safely verify whether Facebook allows another message. Please try again.",
+      },
+      { status: 503 },
+    );
+  }
 
   let pageAccessToken: string;
 

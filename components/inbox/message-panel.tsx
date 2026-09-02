@@ -45,6 +45,154 @@ const CHAT_BACKGROUND_SRC_STORAGE_KEY = `${CHAT_BACKGROUND_STORAGE_KEY}:src`;
 const CHAT_BACKGROUND_CHANGE_EVENT = "tenh:chat-background-theme-change";
 const DEFAULT_CHAT_BACKGROUND_SRC = "/images/chat-bg.png";
 
+
+function isMessengerPolicyRecord(
+  value: unknown,
+): value is Record<string, unknown> {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      !Array.isArray(value),
+  );
+}
+
+function messengerPolicyString(
+  value: unknown,
+) {
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : null;
+}
+
+function isFacebookCommentInboxMessage(
+  message: InboxMessage,
+) {
+  const payload = message.raw_payload;
+
+  if (!isMessengerPolicyRecord(payload)) {
+    return false;
+  }
+
+  const source =
+    messengerPolicyString(payload.source)?.toLowerCase() ?? "";
+  const tenhSource =
+    messengerPolicyString(payload.tenh_source)?.toLowerCase() ?? "";
+
+  return (
+    messengerPolicyString(payload.item)?.toLowerCase() === "comment" ||
+    Boolean(messengerPolicyString(payload.comment_id)) ||
+    source === "facebook_comment_reply" ||
+    tenhSource.includes("comment_reply") ||
+    tenhSource === "facebook_page_reply"
+  );
+}
+
+function isDirectFacebookMessengerInboundMessage(
+  message: InboxMessage,
+) {
+  if (message.direction !== "incoming") {
+    return false;
+  }
+
+  const payload = message.raw_payload;
+
+  if (!isMessengerPolicyRecord(payload)) {
+    return false;
+  }
+
+  const messengerMessage = payload.message;
+
+  if (!isMessengerPolicyRecord(messengerMessage)) {
+    return false;
+  }
+
+  return (
+    Boolean(messengerPolicyString(messengerMessage.mid)) &&
+    messengerMessage.is_echo !== true
+  );
+}
+
+function isDirectFacebookMessengerOutgoingMessage(
+  message: InboxMessage,
+) {
+  if (message.direction !== "outgoing") {
+    return false;
+  }
+
+  const optimisticStatus =
+    (message as InboxMessage & {
+      __optimistic_status?: string;
+    }).__optimistic_status;
+
+  if (optimisticStatus === "failed") {
+    return false;
+  }
+
+  return !isFacebookCommentInboxMessage(message);
+}
+
+function inboxMessageTimestampMs(
+  message: InboxMessage,
+) {
+  const value =
+    message.platform_created_at ?? message.created_at;
+
+  return value ? Date.parse(value) : Number.NaN;
+}
+
+function isWaitingForFacebookCustomerReply(
+  messages: InboxMessage[],
+) {
+  let latestDirectIncomingMs = Number.NaN;
+  let latestIncomingCommentMs = Number.NaN;
+  let latestDirectOutgoingMs = Number.NaN;
+
+  for (const message of messages) {
+    const timestamp = inboxMessageTimestampMs(message);
+
+    if (!Number.isFinite(timestamp)) {
+      continue;
+    }
+
+    if (
+      isDirectFacebookMessengerInboundMessage(message) &&
+      (!Number.isFinite(latestDirectIncomingMs) ||
+        timestamp > latestDirectIncomingMs)
+    ) {
+      latestDirectIncomingMs = timestamp;
+    }
+
+    if (
+      message.direction === "incoming" &&
+      isFacebookCommentInboxMessage(message) &&
+      (!Number.isFinite(latestIncomingCommentMs) ||
+        timestamp > latestIncomingCommentMs)
+    ) {
+      latestIncomingCommentMs = timestamp;
+    }
+
+    if (
+      isDirectFacebookMessengerOutgoingMessage(message) &&
+      (!Number.isFinite(latestDirectOutgoingMs) ||
+        timestamp > latestDirectOutgoingMs)
+    ) {
+      latestDirectOutgoingMs = timestamp;
+    }
+  }
+
+  const hasRecentDirectCustomerMessage =
+    Number.isFinite(latestDirectIncomingMs) &&
+    Date.now() - latestDirectIncomingMs >= 0 &&
+    Date.now() - latestDirectIncomingMs < 24 * 60 * 60 * 1000;
+
+  return (
+    !hasRecentDirectCustomerMessage &&
+    Number.isFinite(latestIncomingCommentMs) &&
+    Number.isFinite(latestDirectOutgoingMs) &&
+    latestDirectOutgoingMs >= latestIncomingCommentMs
+  );
+}
+
 const CHAT_BACKGROUND_PRESET_SRC: Record<string, string> = {
   "theme-1": "/images/bg-theme1.png",
   "theme-2": "/images/bg-theme2.png",
@@ -926,6 +1074,177 @@ function HydrationSafeMessageTime({
   );
 }
 
+type FacebookCommentGroupPayload = {
+  item?: string;
+  source?: string;
+  tenh_source?: string;
+  post_id?: string;
+  post?: { id?: string } | null;
+  post_preview?: { id?: string } | null;
+  comment_id?: string;
+  parent_id?: string;
+  parent_comment_id?: string;
+  reply_comment_id?: string;
+};
+
+function getSafeFacebookCommentGroupInfo(
+  message: InboxMessage,
+) {
+  const payload =
+    message.raw_payload as FacebookCommentGroupPayload | null;
+
+  const postId =
+    payload?.post_id?.trim() ||
+    payload?.post?.id?.trim() ||
+    payload?.post_preview?.id?.trim() ||
+    null;
+
+  const isFacebookComment = Boolean(
+    payload?.comment_id ||
+      payload?.post_id ||
+      payload?.item === "comment" ||
+      payload?.source === "facebook_comment_reply" ||
+      payload?.tenh_source === "facebook_page_reply" ||
+      payload?.parent_comment_id ||
+      payload?.reply_comment_id,
+  );
+
+  const rawParentId =
+    typeof payload?.parent_comment_id === "string"
+      ? payload.parent_comment_id.trim()
+      : typeof payload?.parent_id === "string"
+        ? payload.parent_id.trim()
+        : null;
+
+  // Meta may set parent_id to the post itself for a top-level comment.
+  // Only a different ID is a real nested comment parent.
+  const parentCommentId =
+    rawParentId && rawParentId !== postId
+      ? rawParentId
+      : null;
+
+  const senderId =
+    typeof message.sender_platform_id === "string"
+      ? message.sender_platform_id.trim()
+      : null;
+
+  const isDeleted =
+    message.comment_is_deleted === true;
+
+  /*
+   * Safety rule for visual grouping:
+   * - exact Facebook post ID
+   * - exact incoming customer sender ID
+   * - top-level comment only
+   * - deleted roots never keep a future comment attached to an old card
+   *
+   * If any identity is missing, do not group. This intentionally prefers
+   * separate cards over ever mixing two customers or two posts. Excluding
+   * deleted roots also means that after an old thread is fully deleted, the
+   * next real comment becomes a fresh group start and shows the post preview
+   * again.
+   */
+  const groupKey =
+    isFacebookComment &&
+    message.direction === "incoming" &&
+    postId &&
+    senderId &&
+    !parentCommentId &&
+    !isDeleted
+      ? `${postId}::${senderId}`
+      : null;
+
+  return {
+    isFacebookComment,
+    parentCommentId,
+    groupKey,
+  };
+}
+
+
+
+type FacebookThreadReply = {
+  reply: InboxMessage;
+  depth: number;
+};
+
+function collectFacebookCommentDescendants(
+  messages: InboxMessage[],
+  rootPlatformMessageId: string,
+): FacebookThreadReply[] {
+  const childrenByParent = new Map<string, InboxMessage[]>();
+
+  for (const candidate of messages) {
+    const info = getSafeFacebookCommentGroupInfo(candidate);
+
+    if (!info.isFacebookComment || !info.parentCommentId) {
+      continue;
+    }
+
+    const existing = childrenByParent.get(info.parentCommentId) ?? [];
+    existing.push(candidate);
+    childrenByParent.set(info.parentCommentId, existing);
+  }
+
+  const result: FacebookThreadReply[] = [];
+  const visited = new Set<string>();
+
+  const visit = (parentId: string, depth: number) => {
+    const children = childrenByParent.get(parentId) ?? [];
+
+    for (const child of children) {
+      const visitKey =
+        child.platform_message_id?.trim() ||
+        child.id;
+
+      if (visited.has(visitKey)) {
+        continue;
+      }
+
+      visited.add(visitKey);
+      result.push({
+        reply: child,
+        depth,
+      });
+
+      const childPlatformId = child.platform_message_id?.trim();
+      if (childPlatformId) {
+        visit(childPlatformId, Math.min(depth + 1, 6));
+      }
+    }
+  };
+
+  visit(rootPlatformMessageId, 1);
+  return result;
+}
+
+function findNeighborFacebookRootGroupKey(
+  messages: InboxMessage[],
+  startIndex: number,
+  step: -1 | 1,
+) {
+  for (
+    let index = startIndex;
+    index >= 0 && index < messages.length;
+    index += step
+  ) {
+    const info =
+      getSafeFacebookCommentGroupInfo(messages[index]);
+
+    // Nested replies belong to their exact parent and do not break a post group.
+    if (info.isFacebookComment && info.parentCommentId) {
+      continue;
+    }
+
+    // A DM/Telegram/system item or another root comment is a real boundary.
+    return info.isFacebookComment
+      ? info.groupKey
+      : null;
+  }
+
+  return null;
+}
+
 function HydrationSafeMessageDay({
   value,
 }: {
@@ -1015,6 +1334,20 @@ export function MessagePanel({
 }: MessagePanelProps) {
   const isKhmer = useWorkspaceLanguageId() === "km";
 
+  const facebookWaitingForCustomerReply =
+    activeConversation !== null &&
+    activeConversation !== undefined &&
+    activeConversation.social_account?.platform === "facebook" &&
+    !replyingToCommentId &&
+    isWaitingForFacebookCustomerReply(messages);
+
+  const facebookMessengerBlockedReason =
+    facebookWaitingForCustomerReply
+      ? isKhmer
+        ? "Meta អនុញ្ញាតឱ្យផ្ញើសារឯកជនតែមួយប៉ុណ្ណោះបន្ទាប់ពីមតិយោបល់ Facebook។ សូមរង់ចាំអតិថិជនឆ្លើយតបក្នុង Messenger មុនពេលផ្ញើសារបន្ទាប់។"
+        : "Meta allows only one private Messenger reply after a Facebook comment. Wait for the customer to reply in Messenger before sending another message."
+      : null;
+
   const [
     optimisticCommentState,
     setOptimisticCommentState,
@@ -1035,6 +1368,32 @@ export function MessagePanel({
 
   const [actionNotice, setActionNotice] =
     useState<string | null>(null);
+
+  const [
+    commentConfirmTarget,
+    setCommentConfirmTarget,
+  ] = useState<
+    | {
+        kind: "delete" | "hide" | "unhide";
+        messageId: string;
+        platformMessageId: string;
+        previous: {
+          liked: boolean;
+          hidden: boolean;
+          deleted: boolean;
+          deletedBy:
+            | "customer"
+            | "page"
+            | null;
+        };
+      }
+    | null
+  >(null);
+
+  const [
+    commentConfirmLoading,
+    setCommentConfirmLoading,
+  ] = useState(false);
 
   const [imagePreview, setImagePreview] =
     useState<{
@@ -1063,6 +1422,43 @@ export function MessagePanel({
   useEffect(() => {
     setImagePreview(null);
   }, [activeConversation?.id]);
+
+  useEffect(() => {
+    setCommentConfirmTarget(null);
+    setCommentConfirmLoading(false);
+  }, [activeConversation?.id]);
+
+  useEffect(() => {
+    if (!commentConfirmTarget) {
+      return;
+    }
+
+    function handleCommentConfirmKeyDown(
+      event: KeyboardEvent,
+    ) {
+      if (
+        event.key === "Escape" &&
+        !commentConfirmLoading
+      ) {
+        setCommentConfirmTarget(null);
+      }
+    }
+
+    window.addEventListener(
+      "keydown",
+      handleCommentConfirmKeyDown,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleCommentConfirmKeyDown,
+      );
+    };
+  }, [
+    commentConfirmLoading,
+    commentConfirmTarget,
+  ]);
 
   const [chatBackgroundSrc, setChatBackgroundSrc] =
     useState(DEFAULT_CHAT_BACKGROUND_SRC);
@@ -1352,6 +1748,133 @@ export function MessagePanel({
     }, 1800);
   }
 
+  async function confirmCommentAction() {
+    if (
+      !commentConfirmTarget ||
+      commentConfirmLoading
+    ) {
+      return;
+    }
+
+    const target = commentConfirmTarget;
+    const previous = target.previous;
+
+    setCommentConfirmLoading(true);
+    setCommentConfirmTarget(null);
+
+    try {
+      if (target.kind === "delete") {
+        setOptimisticCommentState(
+          (current) => ({
+            ...current,
+            [target.messageId]: {
+              ...previous,
+              deleted: true,
+              deletedBy: "page",
+            },
+          }),
+        );
+
+        const result =
+          await onDeleteComment(
+            target.platformMessageId,
+          );
+
+        if (result.deleted) {
+          setOptimisticCommentState(
+            (current) => ({
+              ...current,
+              [target.messageId]: {
+                ...previous,
+                liked: false,
+                hidden: false,
+                deleted: true,
+                deletedBy: "customer",
+              },
+            }),
+          );
+
+          showActionNotice(
+            "Message deleted by commenter or Page",
+          );
+          return;
+        }
+
+        if (!result.success) {
+          setOptimisticCommentState(
+            (current) => ({
+              ...current,
+              [target.messageId]: previous,
+            }),
+          );
+          return;
+        }
+
+        showActionNotice(
+          "Comment deleted successfully",
+        );
+        return;
+      }
+
+      const nextHidden =
+        target.kind === "hide";
+
+      setOptimisticCommentState(
+        (current) => ({
+          ...current,
+          [target.messageId]: {
+            ...previous,
+            hidden: nextHidden,
+          },
+        }),
+      );
+
+      const result =
+        await onHideComment(
+          target.platformMessageId,
+          nextHidden,
+        );
+
+      if (result.deleted) {
+        setOptimisticCommentState(
+          (current) => ({
+            ...current,
+            [target.messageId]: {
+              ...previous,
+              liked: false,
+              hidden: false,
+              deleted: true,
+              deletedBy: "customer",
+            },
+          }),
+        );
+
+        showActionNotice(
+          "Message deleted by commenter or Page",
+        );
+        return;
+      }
+
+      if (!result.success) {
+        setOptimisticCommentState(
+          (current) => ({
+            ...current,
+            [target.messageId]: previous,
+          }),
+        );
+        return;
+      }
+
+      showActionNotice(
+        nextHidden
+          ? "Comment hidden"
+          : "Comment unhidden",
+      );
+    } finally {
+      setCommentConfirmLoading(false);
+    }
+  }
+
   useEffect(() => {
     /*
      * Every explicit conversation open starts at the newest message. Do not
@@ -1368,6 +1891,52 @@ export function MessagePanel({
     olderLoadRequestedRef.current = false;
     setNewMessageCount(0);
   }, [activeConversation?.id]);
+
+  /*
+   * V3.11.33 — selecting/opening a conversation must land on the newest
+   * rendered message on the first try. Wait until the newest page has finished
+   * loading, then scroll after paint. The short follow-up covers image/media
+   * layout that can finish a moment after the message DOM is committed.
+   */
+  useEffect(() => {
+    if (
+      !activeConversation ||
+      loadingConversationMessages
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    let followUpTimer: number | null = null;
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (cancelled) {
+          return;
+        }
+
+        scrollToNewest("auto");
+
+        followUpTimer = window.setTimeout(() => {
+          if (!cancelled) {
+            scrollToNewest("auto");
+          }
+        }, 120);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+
+      if (followUpTimer !== null) {
+        window.clearTimeout(followUpTimer);
+      }
+    };
+  }, [
+    activeConversation?.id,
+    loadingConversationMessages,
+    scrollToNewest,
+  ]);
 
   /*
    * Older pages are inserted before the currently visible messages.
@@ -1603,9 +2172,6 @@ export function MessagePanel({
     const previousMessageId =
       lastMessageIdRef.current;
 
-    const previousMessageCount =
-      previousMessageCountRef.current;
-
     lastMessageIdRef.current =
       latestMessageId;
 
@@ -1625,39 +2191,17 @@ export function MessagePanel({
       return;
     }
 
-    const addedCount =
-      messages.length >
-      previousMessageCount
-        ? messages.length -
-          previousMessageCount
-        : 1;
-
-    const isOutgoing =
-      latestMessage.direction ===
-      "outgoing";
-
     /*
-     * Keep outgoing/optimistic sends visible.
-     * Incoming messages auto-scroll only when the agent has not
-     * intentionally scrolled away from the bottom.
+     * V3.11.33 — keep the open conversation pinned to its newest message for
+     * every genuinely new message, including customer/incoming messages.
+     * Delivery/seen-only updates are filtered above because the latest message
+     * id does not change, so ordinary status updates do not cause a jump.
      */
-    if (
-      isOutgoing ||
-      userNearBottomRef.current
-    ) {
-      window.requestAnimationFrame(
-        () => {
-          scrollToNewest("smooth");
-        },
-      );
-
-      return;
-    }
-
-    setNewMessageCount(
-      (current) =>
-        current + addedCount,
-    );
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        scrollToNewest("smooth");
+      });
+    });
   }, [
     loadingConversationMessages,
     messages,
@@ -1805,6 +2349,161 @@ export function MessagePanel({
           </span>
           {telegramActionNotice ??
             actionNotice}
+        </div>
+      ) : null}
+
+      {commentConfirmTarget ? (
+        <div
+          className="fixed inset-0 z-[240] flex items-center justify-center bg-slate-950/30 p-4 backdrop-blur-[1px]"
+          onMouseDown={(event) => {
+            if (
+              event.target ===
+                event.currentTarget &&
+              !commentConfirmLoading
+            ) {
+              setCommentConfirmTarget(null);
+            }
+          }}
+          role="presentation"
+        >
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="facebook-comment-confirm-title"
+            aria-describedby="facebook-comment-confirm-description"
+            className="w-full max-w-[470px] overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-2xl"
+            onMouseDown={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-4">
+              <span
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                  commentConfirmTarget.kind ===
+                  "delete"
+                    ? "bg-red-50 text-red-500"
+                    : "bg-amber-50 text-amber-600"
+                }`}
+              >
+                {commentConfirmTarget.kind ===
+                "delete" ? (
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.9"
+                    className="h-5 w-5"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M4 7h16"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M9 7V4h6v3"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M6 7l1 13h10l1-13"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                ) : (
+                  <HideIcon />
+                )}
+              </span>
+
+              <h2
+                id="facebook-comment-confirm-title"
+                className="min-w-0 flex-1 text-[17px] font-extrabold text-slate-950"
+              >
+                {commentConfirmTarget.kind ===
+                "delete"
+                  ? "Delete comment?"
+                  : commentConfirmTarget.kind ===
+                      "hide"
+                    ? "Hide comment?"
+                    : "Unhide comment?"}
+              </h2>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setCommentConfirmTarget(null)
+                }
+                disabled={commentConfirmLoading}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Close confirmation"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  className="h-5 w-5"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M6 6l12 12M18 6 6 18"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="px-5 py-6">
+              <p
+                id="facebook-comment-confirm-description"
+                className="text-[15px] leading-6 text-slate-600"
+              >
+                {commentConfirmTarget.kind ===
+                "delete"
+                  ? "This Facebook comment will be permanently deleted. This action cannot be undone."
+                  : commentConfirmTarget.kind ===
+                      "hide"
+                    ? "This Facebook comment will be hidden on Facebook. You can unhide it later."
+                    : "This Facebook comment will be visible on Facebook again."}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/80 px-5 py-4">
+              <button
+                type="button"
+                onClick={() =>
+                  setCommentConfirmTarget(null)
+                }
+                disabled={commentConfirmLoading}
+                className="inline-flex h-10 items-center justify-center rounded-[10px] border border-slate-300 bg-white px-4 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  void confirmCommentAction()
+                }
+                disabled={commentConfirmLoading}
+                className={`inline-flex h-10 min-w-[82px] items-center justify-center rounded-[10px] px-4 text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  commentConfirmTarget.kind ===
+                  "delete"
+                    ? "bg-red-500 hover:bg-red-600"
+                    : "bg-amber-500 hover:bg-amber-600"
+                }`}
+              >
+                {commentConfirmLoading
+                  ? "Please wait..."
+                  : commentConfirmTarget.kind ===
+                      "delete"
+                    ? "Delete"
+                    : commentConfirmTarget.kind ===
+                        "hide"
+                      ? "Hide"
+                      : "Unhide"}
+              </button>
+            </div>
+          </section>
         </div>
       ) : null}
 
@@ -2587,18 +3286,26 @@ export function MessagePanel({
                * This is UI-only and lets replies already saved before the
                * metadata normalization render inside their parent card too.
                */
+              const rawFacebookReplyParentId =
+                typeof rawPayload?.parent_comment_id ===
+                "string"
+                  ? rawPayload.parent_comment_id.trim()
+                  : typeof rawPayload?.parent_id ===
+                      "string"
+                    ? rawPayload.parent_id.trim()
+                    : null;
+
+              /*
+               * Meta can send parent_id for both real comment replies and
+               * top-level comments (where it may equal the post ID). Only a
+               * different ID is a real nested comment parent. This keeps old
+               * customer replies nested without hiding the post card from a
+               * new top-level customer comment.
+               */
               const facebookReplyParentId =
-                rawPayload?.source ===
-                  "facebook_comment_reply" ||
-                rawPayload?.tenh_source ===
-                  "facebook_page_reply"
-                  ? typeof rawPayload.parent_comment_id ===
-                    "string"
-                    ? rawPayload.parent_comment_id.trim()
-                    : typeof rawPayload.parent_id ===
-                        "string"
-                      ? rawPayload.parent_id.trim()
-                      : null
+                rawFacebookReplyParentId &&
+                rawFacebookReplyParentId !== postId
+                  ? rawFacebookReplyParentId
                   : null;
 
               const facebookReplyParentMessage =
@@ -2610,6 +3317,37 @@ export function MessagePanel({
                     ) ?? null
                   : null;
 
+              const safeFacebookGroupInfo =
+                getSafeFacebookCommentGroupInfo(message);
+
+              const previousFacebookRootGroupKey =
+                findNeighborFacebookRootGroupKey(
+                  messages,
+                  messageIndex - 1,
+                  -1,
+                );
+
+              const nextFacebookRootGroupKey =
+                findNeighborFacebookRootGroupKey(
+                  messages,
+                  messageIndex + 1,
+                  1,
+                );
+
+              const isFacebookPostGroupContinuation =
+                Boolean(
+                  safeFacebookGroupInfo.groupKey &&
+                    previousFacebookRootGroupKey ===
+                      safeFacebookGroupInfo.groupKey,
+                );
+
+              const hasNextFacebookRootInSamePostGroup =
+                Boolean(
+                  safeFacebookGroupInfo.groupKey &&
+                    nextFacebookRootGroupKey ===
+                      safeFacebookGroupInfo.groupKey,
+                );
+
               // UI only: replies to Facebook comments are rendered as a
               // compact nested card directly beneath the parent comment.
               // This does not change reply IDs, actions, API calls, or data.
@@ -2617,43 +3355,17 @@ export function MessagePanel({
                 facebookReplyParentId && facebookReplyParentMessage,
               );
 
-              // UI only: collect direct Page replies so they can be rendered
-              // inside the same visual comment container as their parent.
-              // Message IDs and all existing APIs stay unchanged.
+              // UI only: collect the full Facebook reply tree beneath this
+              // root comment. This includes customer replies, Page/TENH
+              // replies, and replies-to-replies. Exact Meta parent IDs drive
+              // the tree; no customer/post guessing is used here.
               const facebookChildReplies =
                 !facebookReplyParentId &&
                 message.platform_message_id
-                  ? messages.filter((candidate) => {
-                      const candidatePayload =
-                        candidate.raw_payload as {
-                          source?: string;
-                          tenh_source?: string;
-                          parent_id?: string;
-                          parent_comment_id?: string;
-                        } | null;
-
-                      const isFacebookReply =
-                        candidatePayload?.source ===
-                          "facebook_comment_reply" ||
-                        candidatePayload?.tenh_source ===
-                          "facebook_page_reply";
-
-                      const candidateParentId =
-                        typeof candidatePayload?.parent_comment_id ===
-                        "string"
-                          ? candidatePayload.parent_comment_id.trim()
-                          : typeof candidatePayload?.parent_id ===
-                              "string"
-                            ? candidatePayload.parent_id.trim()
-                            : null;
-
-                      return (
-                        isFacebookReply &&
-                        Boolean(candidateParentId) &&
-                        candidateParentId ===
-                          message.platform_message_id
-                      );
-                    })
+                  ? collectFacebookCommentDescendants(
+                      messages,
+                      message.platform_message_id,
+                    )
                   : [];
 
               const facebookReplyPreviewText =
@@ -2752,178 +3464,20 @@ export function MessagePanel({
                 );
               }
 
-              async function toggleHide() {
-                const previous =
-                  commentState.hidden;
-
-                const next =
-                  !previous;
-
-                setOptimisticCommentState(
-                  (current) => ({
-                    ...current,
-
-                    [message.id]: {
-                      ...commentState,
-                      hidden: next,
-                    },
-                  }),
-                );
-
-                const result =
-                  await onHideComment(
-                    message.platform_message_id,
-                    next,
-                  );
-
-                if (result.deleted) {
-                  setOptimisticCommentState(
-                    (current) => ({
-                      ...current,
-
-                      [message.id]: {
-                        ...commentState,
-                        liked: false,
-                        hidden: false,
-                        deleted: true,
-                        deletedBy:
-                          "customer",
-                      },
-                    }),
-                  );
-
-                  showActionNotice(
-                    "Message deleted by commenter or Page",
-                  );
-
-                  return;
-                }
-
-                if (!result.success) {
-                  setOptimisticCommentState(
-                    (current) => ({
-                      ...current,
-
-                      [message.id]: {
-                        ...commentState,
-                        hidden:
-                          previous,
-                      },
-                    }),
-                  );
-
-                  return;
-                }
-
-                showActionNotice(
-                  next
-                    ? "Comment hidden"
-                    : "Comment unhidden",
-                );
-              }
-
-              async function deleteComment() {
-                const previous =
-                  commentState;
-
-                /*
-                 * Show deleted state immediately.
-                 * If the user cancels or Meta fails,
-                 * restore the previous state.
-                 */
-                setOptimisticCommentState(
-                  (current) => ({
-                    ...current,
-
-                    [message.id]: {
-                      ...commentState,
-                      deleted: true,
-                      deletedBy: "page",
-                    },
-                  }),
-                );
-
-                const result =
-                  await onDeleteComment(
-                    message.platform_message_id,
-                  );
-
-                if (result.deleted) {
-                  setOptimisticCommentState(
-                    (current) => ({
-                      ...current,
-
-                      [message.id]: {
-                        ...commentState,
-                        liked: false,
-                        hidden: false,
-                        deleted: true,
-                        deletedBy:
-                          "customer",
-                      },
-                    }),
-                  );
-
-                  showActionNotice(
-                    "Message deleted by commenter or Page",
-                  );
-
-                  return;
-                }
-
-                if (!result.success) {
-                  setOptimisticCommentState(
-                    (current) => ({
-                      ...current,
-
-                      [message.id]:
-                        previous,
-                    }),
-                  );
-
-                  return;
-                }
-
-                showActionNotice(
-                  "Comment deleted successfully",
-                );
-              }
-
-              const hasEarlierPreviewForPost =
-                Boolean(
-                  postId &&
-                    messages
-                      .slice(0, messageIndex)
-                      .some((candidate) => {
-                        const candidatePayload =
-                          candidate.raw_payload as
-                            | {
-                                post_id?: string;
-                                post_preview?: {
-                                  id?: string;
-                                } | null;
-                              }
-                            | null;
-
-                        const candidatePostId =
-                          candidatePayload?.post_id
-                            ?.trim() ||
-                          candidatePayload?.post_preview
-                            ?.id?.trim() ||
-                          null;
-
-                        return (
-                          candidatePostId ===
-                          postId
-                        );
-                      }),
-                );
-
+              /*
+               * Locked Facebook Comment UI rule:
+               * every top-level Facebook comment gets its own post context
+               * card. Nested customer/Page replies never render another post
+               * card. Do not suppress a card just because the same post was
+               * shown earlier in this customer conversation.
+               */
               const showFacebookPostPreview =
                 Boolean(
-                  postPreview &&
+                  isFacebookCommentMessage &&
+                    postPreview &&
                     postId &&
-                    !hasEarlierPreviewForPost &&
+                    !facebookReplyParentId &&
+                    !isFacebookPostGroupContinuation &&
                     !commentState.deleted,
                 );
 
@@ -2974,7 +3528,7 @@ export function MessagePanel({
 
                   return (
                     <Fragment key={message.id}>
-                      {showMessageDay ? (
+                      {showMessageDay && !isFacebookPostGroupContinuation ? (
                         <div className="flex items-center gap-3 py-1">
                           <div className="h-px flex-1 bg-blue-200/70" />
                           <span className="rounded-full border border-blue-200 bg-white/90 px-3 py-1 text-[11px] font-semibold text-blue-700 shadow-sm">
@@ -2999,7 +3553,7 @@ export function MessagePanel({
                             );
                           }
                         }}
-                        className="w-fit max-w-[680px] rounded-[16px] border border-slate-200 bg-white px-4 py-3 text-sm italic text-slate-500 shadow-[0_3px_12px_rgba(15,23,42,0.04)]"
+                        className="ml-[52px] w-fit max-w-[680px] rounded-xl bg-slate-50 px-3 py-2 text-[13px] italic text-slate-400 sm:ml-[64px]"
                       >
                         {deletedByPage
                           ? isKhmer
@@ -3015,7 +3569,7 @@ export function MessagePanel({
 
                 return (
                   <Fragment key={message.id}>
-                    {showMessageDay ? (
+                    {showMessageDay && !isFacebookPostGroupContinuation ? (
                       <div className="flex items-center gap-3 py-1">
                         <div className="h-px flex-1 bg-blue-200/70" />
                         <span className="rounded-full border border-blue-200 bg-white/90 px-3 py-1 text-[11px] font-semibold text-blue-700 shadow-sm">
@@ -3040,10 +3594,43 @@ export function MessagePanel({
                           );
                         }
                       }}
+                      style={
+                        isFacebookPostGroupContinuation ||
+                        hasNextFacebookRootInSamePostGroup
+                          ? {
+                              // Tailwind 4 `space-y-4` adds logical block-end
+                              // margin to the PREVIOUS direct child. Remove that
+                              // spacing on every member of the same safe Facebook
+                              // post/customer group so it renders as one card.
+                              ...(isFacebookPostGroupContinuation
+                                ? {
+                                    marginBlockStart: 0,
+                                    marginTop: 0,
+                                  }
+                                : {}),
+                              ...(hasNextFacebookRootInSamePostGroup
+                                ? {
+                                    marginBlockEnd: 0,
+                                    marginBottom: 0,
+                                  }
+                                : {}),
+                            }
+                          : undefined
+                      }
                       className={`${
                         isNestedFacebookCommentReply
                           ? "!mt-0 ml-[52px] w-fit max-w-[680px] rounded-[16px] bg-white px-2 py-1 shadow-none sm:ml-[64px]"
-                          : "w-fit max-w-[860px] rounded-[20px] border border-slate-200 bg-white p-2 shadow-[0_4px_16px_rgba(15,23,42,0.05)]"
+                          : isFacebookPostGroupContinuation
+                            ? `!mt-0 w-full max-w-[860px] rounded-t-none ${
+                                hasNextFacebookRootInSamePostGroup
+                                  ? "rounded-b-none border-b-0"
+                                  : "rounded-b-[20px]"
+                              } border-x border-b border-slate-200 bg-white p-2 shadow-[0_4px_16px_rgba(15,23,42,0.05)]`
+                            : `${
+                                hasNextFacebookRootInSamePostGroup
+                                  ? "w-full rounded-t-[20px] rounded-b-none border-b-0"
+                                  : "w-fit rounded-[20px]"
+                              } max-w-[860px] border border-slate-200 bg-white p-2 shadow-[0_4px_16px_rgba(15,23,42,0.05)]`
                       } transition ${
                         isJumpHighlighted
                           ? "rounded-[18px] ring-2 ring-amber-300/70 ring-offset-2"
@@ -3065,7 +3652,7 @@ export function MessagePanel({
                                     alt: "Facebook post",
                                   })
                                 }
-                                className="h-[112px] w-[112px] shrink-0 overflow-hidden rounded-[15px] bg-slate-100 text-left sm:h-[132px] sm:w-[132px]"
+                                className="h-[112px] w-[112px] shrink-0 overflow-hidden rounded-[15px] bg-white text-left sm:h-[132px] sm:w-[132px]"
                                 aria-label="Open Facebook post image"
                               >
                                 <img
@@ -3148,9 +3735,11 @@ export function MessagePanel({
                         className={`relative flex gap-2.5 ${
                           isNestedFacebookCommentReply
                             ? "px-0 py-1.5 sm:gap-3"
-                            : showFacebookPostPreview
-                              ? "mt-3 px-1 py-2 sm:px-2"
-                              : "px-1 py-2 sm:px-2"
+                            : isFacebookPostGroupContinuation
+                              ? "px-1 py-3 sm:px-2"
+                              : showFacebookPostPreview
+                                ? "mt-3 px-1 py-2 sm:px-2"
+                                : "px-1 py-2 sm:px-2"
                         }`}
                       >
                         <div className="shrink-0">
@@ -3182,7 +3771,11 @@ export function MessagePanel({
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pr-8">
+                          <div className="mb-1 text-[11px] font-extrabold uppercase tracking-[0.04em] text-blue-600">
+                            Facebook Comment
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                             <span className="text-[15px] font-bold text-slate-950 sm:text-base">
                               {facebookCommentActorName}
                             </span>
@@ -3218,13 +3811,6 @@ export function MessagePanel({
                               </span>
                             ) : null}
                           </div>
-
-                          <span
-                            aria-hidden="true"
-                            className="absolute right-0 top-0 select-none text-lg leading-none tracking-[2px] text-slate-400"
-                          >
-                            ⋮
-                          </span>
 
                           {facebookReplyParentId &&
                           !isNestedFacebookCommentReply &&
@@ -3286,11 +3872,14 @@ export function MessagePanel({
                                   <button
                                     type="button"
                                     disabled={commentState.deleted}
-                                    onClick={() =>
+                                    onClick={() => {
                                       onReplyToComment(
                                         message.platform_message_id,
-                                      )
-                                    }
+                                      );
+                                      showActionNotice(
+                                        "Replying to Facebook Comment",
+                                      );
+                                    }}
                                     className={`inline-flex items-center gap-1.5 transition disabled:cursor-not-allowed disabled:opacity-30 ${
                                       isReplyTarget
                                         ? "text-blue-600"
@@ -3334,7 +3923,19 @@ export function MessagePanel({
                                   <button
                                     type="button"
                                     disabled={commentState.deleted}
-                                    onClick={() => void toggleHide()}
+                                    onClick={() =>
+                                      setCommentConfirmTarget({
+                                        kind: commentState.hidden
+                                          ? "unhide"
+                                          : "hide",
+                                        messageId: message.id,
+                                        platformMessageId:
+                                          message.platform_message_id,
+                                        previous: {
+                                          ...commentState,
+                                        },
+                                      })
+                                    }
                                     className={`inline-flex items-center gap-1.5 transition disabled:cursor-not-allowed disabled:opacity-30 ${
                                       commentState.hidden
                                         ? "text-amber-600"
@@ -3358,7 +3959,17 @@ export function MessagePanel({
                               <button
                                 type="button"
                                 disabled={commentState.deleted}
-                                onClick={() => void deleteComment()}
+                                onClick={() =>
+                                  setCommentConfirmTarget({
+                                    kind: "delete",
+                                    messageId: message.id,
+                                    platformMessageId:
+                                      message.platform_message_id,
+                                    previous: {
+                                      ...commentState,
+                                    },
+                                  })
+                                }
                                 className="inline-flex items-center gap-1.5 text-slate-500 transition hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
                               >
                                 <svg
@@ -3399,7 +4010,7 @@ export function MessagePanel({
 
                           {facebookChildReplies.length > 0 ? (
                             <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
-                              {facebookChildReplies.map((reply) => {
+                              {facebookChildReplies.map(({ reply, depth }) => {
                                 const replyServerState = {
                                   liked:
                                     reply.comment_is_liked ?? false,
@@ -3430,6 +4041,39 @@ export function MessagePanel({
                                     | "seen"
                                     | null;
                                 };
+
+                                const replyIsOutgoing =
+                                  reply.direction === "outgoing";
+
+                                const replyPayload =
+                                  reply.raw_payload as {
+                                    commenter_profile_picture_url?:
+                                      | string
+                                      | null;
+                                  } | null;
+
+                                const replyActorName =
+                                  replyIsOutgoing
+                                    ? headerChannelAccountName
+                                    : activeConversation.contact
+                                        ?.full_name ??
+                                      replyingToName;
+
+                                const replyActorPhoto =
+                                  replyIsOutgoing
+                                    ? facebookPageProfilePictureUrl
+                                    : replyPayload
+                                        ?.commenter_profile_picture_url
+                                        ?.trim() ||
+                                      activeConversation.contact
+                                        ?.profile_picture_url ||
+                                      null;
+
+                                const replyActorInitial =
+                                  replyActorName
+                                    .trim()
+                                    .charAt(0)
+                                    .toUpperCase() || "?";
 
                                 const replyDeletedByPage =
                                   replyState.deletedBy === "page" ||
@@ -3479,54 +4123,62 @@ export function MessagePanel({
                                         );
                                       }
                                     }}
-                                    className="ml-7 flex gap-2.5 sm:ml-10"
+                                    className="flex gap-2.5"
+                                    style={{
+                                      marginLeft: `${Math.min(depth, 5) * 24}px`,
+                                    }}
                                   >
-                                    {facebookPageProfilePictureUrl ? (
+                                    {replyActorPhoto ? (
                                       <img
-                                        src={facebookPageProfilePictureUrl}
-                                        alt={headerChannelAccountName}
+                                        src={replyActorPhoto}
+                                        alt={replyActorName}
                                         className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-slate-200"
                                         loading="lazy"
                                         referrerPolicy="no-referrer"
                                         draggable={false}
                                       />
                                     ) : (
-                                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shadow-[0_4px_12px_rgba(37,99,235,0.18)]">
-                                        {headerChannelAccountName
-                                          .trim()
-                                          .charAt(0)
-                                          .toUpperCase() || "?"}
+                                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold shadow-[0_4px_12px_rgba(37,99,235,0.12)] ${
+                                        replyIsOutgoing
+                                          ? "bg-blue-600 text-white"
+                                          : "bg-indigo-50 text-indigo-600"
+                                      }`}>
+                                        {replyActorInitial}
                                       </div>
                                     )}
 
                                     <div className="min-w-0">
                                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                                         <span className="text-[14px] font-bold text-slate-950">
-                                          {headerChannelAccountName}
+                                          {replyActorName}
                                         </span>
-                                        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600">
-                                          {isKhmer ? "អ្នក" : "You"}
-                                        </span>
+                                        {replyIsOutgoing ? (
+                                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600">
+                                            {isKhmer ? "អ្នក" : "You"}
+                                          </span>
+                                        ) : null}
                                         <span className="text-xs text-slate-400">
                                           <HydrationSafeMessageTime
                                             value={replyTimestamp}
                                           />
                                         </span>
-                                        <span className="text-[10px] font-medium text-slate-400">
-                                          {replyStatus.__optimistic_status ===
-                                          "sending"
-                                            ? "Sending..."
-                                            : replyStatus.__optimistic_status ===
-                                                "failed"
-                                              ? "Failed to send"
-                                              : replyStatus.delivery_status ===
-                                                  "seen"
-                                                ? "✓✓ Seen"
+                                        {replyIsOutgoing ? (
+                                          <span className="text-[10px] font-medium text-slate-400">
+                                            {replyStatus.__optimistic_status ===
+                                            "sending"
+                                              ? "Sending..."
+                                              : replyStatus.__optimistic_status ===
+                                                  "failed"
+                                                ? "Failed to send"
                                                 : replyStatus.delivery_status ===
-                                                    "delivered"
-                                                  ? "✓✓ Delivered"
-                                                  : "✓ Sent"}
-                                        </span>
+                                                    "seen"
+                                                  ? "✓✓ Seen"
+                                                  : replyStatus.delivery_status ===
+                                                      "delivered"
+                                                    ? "✓✓ Delivered"
+                                                    : "✓ Sent"}
+                                          </span>
+                                        ) : null}
                                       </div>
 
                                       <div className="mt-0.5 max-w-[620px] whitespace-pre-wrap text-[15px] leading-5 text-slate-900">
@@ -3538,43 +4190,144 @@ export function MessagePanel({
                                       !reply.id.startsWith(
                                         "optimistic:",
                                       ) ? (
-                                        <div className="mt-1.5 flex items-center gap-3 text-[12px] font-medium">
+                                        <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[12px] font-medium">
+                                          {!replyIsOutgoing ? (
+                                            <>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  onReplyToComment(
+                                                    reply.platform_message_id,
+                                                  );
+                                                  showActionNotice(
+                                                    "Replying to Facebook Comment",
+                                                  );
+                                                }}
+                                                className="inline-flex items-center gap-1.5 text-slate-500 transition hover:text-blue-600"
+                                              >
+                                                <ReplyIcon />
+                                                <span>
+                                                  {isKhmer ? "ឆ្លើយតប" : "Reply"}
+                                                </span>
+                                              </button>
+
+                                              <button
+                                                type="button"
+                                                onClick={async () => {
+                                                  const previous =
+                                                    replyState.liked;
+                                                  const next = !previous;
+
+                                                  setOptimisticCommentState(
+                                                    (current) => ({
+                                                      ...current,
+                                                      [reply.id]: {
+                                                        ...replyState,
+                                                        liked: next,
+                                                      },
+                                                    }),
+                                                  );
+
+                                                  const result =
+                                                    await onLikeComment(
+                                                      reply.platform_message_id!,
+                                                      next,
+                                                    );
+
+                                                  if (result.deleted) {
+                                                    setOptimisticCommentState(
+                                                      (current) => ({
+                                                        ...current,
+                                                        [reply.id]: {
+                                                          ...replyState,
+                                                          liked: false,
+                                                          hidden: false,
+                                                          deleted: true,
+                                                          deletedBy: "customer",
+                                                        },
+                                                      }),
+                                                    );
+                                                    return;
+                                                  }
+
+                                                  if (!result.success) {
+                                                    setOptimisticCommentState(
+                                                      (current) => ({
+                                                        ...current,
+                                                        [reply.id]: {
+                                                          ...replyState,
+                                                          liked: previous,
+                                                        },
+                                                      }),
+                                                    );
+                                                  }
+                                                }}
+                                                className={`inline-flex items-center gap-1.5 transition ${
+                                                  replyState.liked
+                                                    ? "text-blue-600"
+                                                    : "text-slate-500 hover:text-blue-600"
+                                                }`}
+                                              >
+                                                <LikeIcon />
+                                                <span>
+                                                  {replyState.liked
+                                                    ? isKhmer
+                                                      ? "ដកការចូលចិត្ត"
+                                                      : "Unlike"
+                                                    : isKhmer
+                                                      ? "ចូលចិត្ត"
+                                                      : "Like"}
+                                                </span>
+                                              </button>
+
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  setCommentConfirmTarget({
+                                                    kind: replyState.hidden
+                                                      ? "unhide"
+                                                      : "hide",
+                                                    messageId: reply.id,
+                                                    platformMessageId:
+                                                      reply.platform_message_id!,
+                                                    previous: {
+                                                      ...replyState,
+                                                    },
+                                                  })
+                                                }
+                                                className={`inline-flex items-center gap-1.5 transition ${
+                                                  replyState.hidden
+                                                    ? "text-amber-600"
+                                                    : "text-slate-500 hover:text-amber-600"
+                                                }`}
+                                              >
+                                                <HideIcon />
+                                                <span>
+                                                  {replyState.hidden
+                                                    ? isKhmer
+                                                      ? "បង្ហាញវិញ"
+                                                      : "Unhide"
+                                                    : isKhmer
+                                                      ? "លាក់"
+                                                      : "Hide"}
+                                                </span>
+                                              </button>
+                                            </>
+                                          ) : null}
+
                                           <button
                                             type="button"
-                                            onClick={async () => {
-                                              const previous = replyState;
-
-                                              setOptimisticCommentState(
-                                                (current) => ({
-                                                  ...current,
-                                                  [reply.id]: {
-                                                    ...replyState,
-                                                    deleted: true,
-                                                    deletedBy: "page",
-                                                  },
-                                                }),
-                                              );
-
-                                              const result =
-                                                await onDeleteComment(
-                                                  reply.platform_message_id,
-                                                );
-
-                                              if (!result.success &&
-                                                  !result.deleted) {
-                                                setOptimisticCommentState(
-                                                  (current) => ({
-                                                    ...current,
-                                                    [reply.id]: previous,
-                                                  }),
-                                                );
-                                                return;
-                                              }
-
-                                              showActionNotice(
-                                                "Comment deleted successfully",
-                                              );
-                                            }}
+                                            onClick={() =>
+                                              setCommentConfirmTarget({
+                                                kind: "delete",
+                                                messageId: reply.id,
+                                                platformMessageId:
+                                                  reply.platform_message_id!,
+                                                previous: {
+                                                  ...replyState,
+                                                },
+                                              })
+                                            }
                                             className="inline-flex items-center gap-1.5 text-slate-500 transition hover:text-red-600"
                                           >
                                             <svg
@@ -4292,11 +5045,14 @@ export function MessagePanel({
                             disabled={
                               commentState.deleted
                             }
-                            onClick={() =>
+                            onClick={() => {
                               onReplyToComment(
                                 message.platform_message_id,
-                              )
-                            }
+                              );
+                              showActionNotice(
+                                "Replying to Facebook Comment",
+                              );
+                            }}
                             className={`flex h-7 w-7 items-center justify-center rounded-md transition active:scale-90 disabled:cursor-not-allowed disabled:opacity-30 ${
                               isReplyTarget
                                 ? "bg-blue-50 text-blue-600"
@@ -4332,7 +5088,17 @@ export function MessagePanel({
                               commentState.deleted
                             }
                             onClick={() =>
-                              void toggleHide()
+                              setCommentConfirmTarget({
+                                kind: commentState.hidden
+                                  ? "unhide"
+                                  : "hide",
+                                messageId: message.id,
+                                platformMessageId:
+                                  message.platform_message_id,
+                                previous: {
+                                  ...commentState,
+                                },
+                              })
                             }
                             className={`flex h-7 w-7 items-center justify-center rounded-md transition active:scale-90 ${
                               commentState.hidden
@@ -4371,7 +5137,15 @@ export function MessagePanel({
                               commentState.deleted
                             }
                             onClick={() =>
-                              void deleteComment()
+                              setCommentConfirmTarget({
+                                kind: "delete",
+                                messageId: message.id,
+                                platformMessageId:
+                                  message.platform_message_id,
+                                previous: {
+                                  ...commentState,
+                                },
+                              })
                             }
                             className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-red-50 hover:text-red-600 active:scale-90 disabled:cursor-not-allowed disabled:opacity-30"
                             title={
@@ -4547,7 +5321,11 @@ export function MessagePanel({
             </div>
 
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[15px] font-bold leading-5 text-blue-600 sm:text-base">
+              <p className="text-[11px] font-extrabold uppercase tracking-[0.04em] text-blue-600">
+                Facebook Comment
+              </p>
+
+              <p className="mt-0.5 truncate text-[15px] font-bold leading-5 text-slate-900 sm:text-base">
                 {isKhmer ? "កំពុងឆ្លើយតបទៅ" : "Replying to"} {replyingToName}
               </p>
 
@@ -4556,6 +5334,7 @@ export function MessagePanel({
                   ?.message_text ??
                   "Selected Facebook comment"}
               </p>
+
             </div>
 
             <button
@@ -4621,6 +5400,7 @@ export function MessagePanel({
           reply={reply}
           sending={sending}
           error={sendError}
+          blockedReason={facebookMessengerBlockedReason}
 
           onReplyChange={
             onReplyChange

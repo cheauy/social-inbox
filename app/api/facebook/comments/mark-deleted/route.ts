@@ -3,7 +3,6 @@ import {
   NextResponse,
 } from "next/server";
 
-import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
   memberHasPermission,
   permissionDenied,
@@ -70,9 +69,6 @@ export async function POST(
         ? "page"
         : "customer";
 
-    const deletedText =
-      "Message deleted by commenter or Page";
-
     const context =
       await loadAuthorizedLocalFacebookCommentContext({
         commentId,
@@ -94,32 +90,6 @@ export async function POST(
       commentId,
       deletedBy,
     });
-
-    const {
-      error: conversationUpdateError,
-    } = await supabaseAdmin
-      .from("conversations")
-      .update({
-        last_message_text:
-          deletedText,
-        updated_at:
-          new Date().toISOString(),
-      })
-      .eq(
-        "id",
-        context.conversation.id,
-      )
-      .eq(
-        "business_id",
-        currentMember.business_id,
-      );
-
-    if (conversationUpdateError) {
-      console.warn(
-        "Unable to update conversation preview after marking comment deleted:",
-        conversationUpdateError,
-      );
-    }
 
     return NextResponse.json({
       success: true,

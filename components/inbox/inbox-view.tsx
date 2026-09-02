@@ -375,6 +375,31 @@ function sortLiveConversations(
 function getRealtimeMessagePreview(
   row: Record<string, unknown>,
 ) {
+  /*
+   * Facebook comment deletion is a state change on the existing message row,
+   * not a new chat message. Prefer the deletion state over the old comment
+   * text so the left conversation preview immediately reflects what happened.
+   */
+  if (row.comment_is_deleted === true) {
+    const deletedBy =
+      row.comment_deleted_by === "page"
+        ? "page"
+        : row.comment_deleted_by === "customer"
+          ? "customer"
+          : null;
+
+    const direction =
+      row.direction === "incoming" ||
+      row.direction === "outgoing"
+        ? row.direction
+        : null;
+
+    return deletedBy === "page" ||
+      (deletedBy === null && direction === "outgoing")
+      ? "Message deleted by Page"
+      : "Message deleted by Commenter";
+  }
+
   const rawPayload = isRecord(row.raw_payload)
     ? row.raw_payload
     : null;
@@ -580,6 +605,26 @@ const statusOverrideRef =
     Map<
       string,
       { status: ConversationStatus; expiresAt: number }
+    >
+  >(new Map());
+
+/*
+ * A Facebook comment deletion updates the message row and conversation row in
+ * separate database writes. Realtime/fallback can briefly observe the deleted
+ * message together with the older conversation preview. Protect the confirmed
+ * deleted preview for a short window so stale same-message state cannot make
+ * the left conversation row flicker back to the old comment text. A genuinely
+ * newer message always releases the protection immediately.
+ */
+const deletedPreviewOverrideRef =
+  useRef<
+    Map<
+      string,
+      {
+        text: string;
+        lastMessageTime: number;
+        expiresAt: number;
+      }
     >
   >(new Map());
 
@@ -962,6 +1007,45 @@ const previousActiveConversationIdRef =
         InboxConversationPlatform
       >
     >({});
+
+  /*
+   * Keep alert identity channel-aware without making sound delivery depend on
+   * the currently selected Inbox row/view. The conversation may be hidden by
+   * Unread/Pinned/Smart View filters, so use the loaded row when available and
+   * fall back to the platform cache only for the notification label.
+   */
+  const getIncomingNotificationCustomerName =
+    useCallback(
+      (
+        conversationId: string,
+        conversation: InboxConversation | null | undefined,
+      ) => {
+        const loadedName =
+          conversation?.contact?.full_name?.trim();
+
+        if (loadedName) {
+          return loadedName;
+        }
+
+        const platform =
+          (conversation
+            ? getLoadedConversationPlatform(conversation)
+            : null) ??
+          conversationPlatformCacheRef.current[conversationId] ??
+          null;
+
+        if (platform === "telegram") {
+          return "Telegram customer";
+        }
+
+        if (platform === "facebook") {
+          return "Facebook customer";
+        }
+
+        return "Customer";
+      },
+      [],
+    );
 
   /*
    * V2.5.1
@@ -1922,7 +2006,7 @@ useInboxRealtime({
          * enables notifications.
          */
         const notificationConversation =
-          liveConversations.find(
+          liveConversationsRef.current.find(
             (conversation) =>
               conversation.id ===
               conversationId,
@@ -1949,18 +2033,17 @@ useInboxRealtime({
           lastSoundedIncomingTime > 0 &&
           Math.abs(
             incomingMessageTime - lastSoundedIncomingTime,
-          ) <= 1000;
+          ) <= 100;
 
         if (!alreadySoundedThisIncoming) {
           notifyIncomingMessage({
             messageId,
             conversationId,
             customerName:
-              notificationConversation
-                ?.contact
-                ?.full_name
-                ?.trim() ||
-              "Facebook customer",
+              getIncomingNotificationCustomerName(
+                conversationId,
+                notificationConversation,
+              ),
             body: preview,
           });
 
@@ -2040,10 +2123,61 @@ useInboxRealtime({
         const eventTimestamp = eventTimestampValue
           ? new Date(eventTimestampValue).getTime()
           : Date.now();
-        const eventPreview =
+        let eventPreview =
           event.eventType === "DELETE"
             ? "Message deleted"
             : getRealtimeMessagePreview(row);
+
+        const commentWasDeleted =
+          row.comment_is_deleted === true;
+        const existingConversationForPreview =
+          liveConversationsRef.current.find(
+            (conversation) => conversation.id === conversationId,
+          ) ?? null;
+        const existingPreviewTime =
+          existingConversationForPreview?.last_message_at
+            ? new Date(
+                existingConversationForPreview.last_message_at,
+              ).getTime()
+            : 0;
+        const deletionAffectsLatestPreview =
+          commentWasDeleted &&
+          Number.isFinite(eventTimestamp) &&
+          eventTimestamp > 0 &&
+          (
+            !Number.isFinite(existingPreviewTime) ||
+            existingPreviewTime === 0 ||
+            eventTimestamp + 1000 >= existingPreviewTime
+          );
+
+        if (deletionAffectsLatestPreview) {
+          deletedPreviewOverrideRef.current.set(
+            conversationId,
+            {
+              text: eventPreview,
+              lastMessageTime: eventTimestamp,
+              expiresAt: Date.now() + 20_000,
+            },
+          );
+        } else {
+          const previewOverride =
+            deletedPreviewOverrideRef.current.get(conversationId);
+
+          if (previewOverride) {
+            if (previewOverride.expiresAt <= Date.now()) {
+              deletedPreviewOverrideRef.current.delete(conversationId);
+            } else if (
+              Number.isFinite(eventTimestamp) &&
+              eventTimestamp > previewOverride.lastMessageTime + 1000
+            ) {
+              deletedPreviewOverrideRef.current.delete(conversationId);
+            } else if (
+              eventTimestamp <= previewOverride.lastMessageTime + 1000
+            ) {
+              eventPreview = previewOverride.text;
+            }
+          }
+        }
 
         setLiveConversations((current) =>
           sortLiveConversations(
@@ -2495,7 +2629,7 @@ useInboxRealtime({
       }
 
       const existingConversation =
-        liveConversations.find(
+        liveConversationsRef.current.find(
           (conversation) =>
             conversation.id === conversationId,
         ) ?? null;
@@ -2504,6 +2638,10 @@ useInboxRealtime({
         typeof row.unread_count === "number"
           ? row.unread_count
           : null;
+      const existingUnreadCount = Math.max(
+        0,
+        existingConversation?.unread_count ?? 0,
+      );
       const existingLastMessageTime =
         existingConversation?.last_message_at
           ? new Date(existingConversation.last_message_at).getTime()
@@ -2515,6 +2653,26 @@ useInboxRealtime({
       const rowLastMessageTime = rowLastMessageValue
         ? new Date(rowLastMessageValue).getTime()
         : 0;
+
+      const deletedPreviewOverride =
+        deletedPreviewOverrideRef.current.get(conversationId) ?? null;
+      let activeDeletedPreviewOverride = deletedPreviewOverride;
+
+      if (activeDeletedPreviewOverride) {
+        if (activeDeletedPreviewOverride.expiresAt <= Date.now()) {
+          deletedPreviewOverrideRef.current.delete(conversationId);
+          activeDeletedPreviewOverride = null;
+        } else if (
+          Number.isFinite(rowLastMessageTime) &&
+          rowLastMessageTime >
+            activeDeletedPreviewOverride.lastMessageTime + 1000
+        ) {
+          // A real newer message must replace the deleted preview immediately.
+          deletedPreviewOverrideRef.current.delete(conversationId);
+          activeDeletedPreviewOverride = null;
+        }
+      }
+
       const recentIncomingAt =
         recentIncomingConversationAtRef.current.get(conversationId) ?? 0;
       const hasRecentIncomingSignal =
@@ -2525,11 +2683,17 @@ useInboxRealtime({
         Number.isFinite(existingLastMessageTime) &&
         rowLastMessageTime > 0 &&
         (existingLastMessageTime === 0 ||
-          rowLastMessageTime > existingLastMessageTime + 1_000);
+          rowLastMessageTime > existingLastMessageTime);
       const unreadComesFromNewMessage =
         rowUnreadCount !== null &&
         rowUnreadCount > 0 &&
-        (hasRecentIncomingSignal || rowAdvancesMessage);
+        (
+          hasRecentIncomingSignal ||
+          (
+            rowAdvancesMessage &&
+            rowUnreadCount > existingUnreadCount
+          )
+        );
       const isSharedManualUnreadUpdate =
         rowUnreadCount !== null &&
         rowUnreadCount > 0 &&
@@ -2558,15 +2722,17 @@ useInboxRealtime({
           lastSoundedIncomingTime > 0 &&
           Math.abs(
             rowLastMessageTime - lastSoundedIncomingTime,
-          ) <= 1000;
+          ) <= 100;
 
         if (!alreadySoundedThisIncoming) {
           notifyIncomingMessage({
             messageId: `conversation-${conversationId}-${rowLastMessageValue}`,
             conversationId,
             customerName:
-              existingConversation?.contact?.full_name?.trim() ||
-              "Facebook customer",
+              getIncomingNotificationCustomerName(
+                conversationId,
+                existingConversation,
+              ),
             body:
               typeof row.last_message_text === "string" &&
               row.last_message_text.trim()
@@ -2719,6 +2885,18 @@ useInboxRealtime({
                       }
                     : {}),
                 } as unknown as typeof conversation;
+
+                if (activeDeletedPreviewOverride) {
+                  merged = {
+                    ...merged,
+                    last_message_text:
+                      activeDeletedPreviewOverride.text,
+                    last_message_at:
+                      conversation.last_message_at ??
+                      rowLastMessageValue ??
+                      merged.last_message_at,
+                  };
+                }
 
                 if (rowHasAssignment && !protectAssignedMember) {
                   merged = {
@@ -2919,6 +3097,89 @@ useEffect(() => {
         result.conversations.map((state) => [state.id, state]),
       );
 
+      /*
+       * V3.11.33 — global incoming-message alert safety net.
+       *
+       * The active thread already has a message-page poll, but inactive
+       * conversations previously relied only on the messages Realtime INSERT
+       * for their sound. If that INSERT was delayed/missed while the
+       * conversations row still advanced, the left list updated but TENH was
+       * silent. Compare the server-authoritative preview/unread state with the
+       * current local snapshot and alert only when BOTH the message timestamp
+       * and unread count advance. That excludes outgoing replies and manual
+       * Mark as unread changes. Realtime remains the fast path; this is only a
+       * deduplicated safety net for every customer conversation.
+       */
+      const currentConversationById = new Map(
+        liveConversationsRef.current.map((conversation) => [
+          conversation.id,
+          conversation,
+        ]),
+      );
+
+      for (const state of result.conversations) {
+        const currentConversation =
+          currentConversationById.get(state.id);
+
+        if (!currentConversation || !state.last_message_at) {
+          continue;
+        }
+
+        const localUnreadCount = Math.max(
+          0,
+          currentConversation.unread_count ?? 0,
+        );
+        const serverUnreadCount = Math.max(
+          0,
+          state.unread_count ?? 0,
+        );
+        const localLastMessageTime = currentConversation.last_message_at
+          ? new Date(currentConversation.last_message_at).getTime()
+          : 0;
+        const serverLastMessageTime = new Date(
+          state.last_message_at,
+        ).getTime();
+        const isNewIncomingFallback =
+          serverUnreadCount > localUnreadCount &&
+          Number.isFinite(serverLastMessageTime) &&
+          serverLastMessageTime > 0 &&
+          Number.isFinite(localLastMessageTime) &&
+          localLastMessageTime > 0 &&
+          serverLastMessageTime > localLastMessageTime;
+
+        if (!isNewIncomingFallback) {
+          continue;
+        }
+
+        const lastSoundedIncomingTime =
+          lastSoundedIncomingMessageTimeRef.current.get(state.id) ?? 0;
+        const alreadySoundedThisIncoming =
+          lastSoundedIncomingTime > 0 &&
+          Math.abs(
+            serverLastMessageTime - lastSoundedIncomingTime,
+          ) <= 100;
+
+        if (alreadySoundedThisIncoming) {
+          continue;
+        }
+
+        notifyIncomingMessage({
+          messageId: `fallback-${state.id}-${state.last_message_at}`,
+          conversationId: state.id,
+          customerName:
+            currentConversation.contact?.full_name?.trim() ||
+            "Facebook customer",
+          body:
+            state.last_message_text?.trim() ||
+            "New message",
+        });
+
+        lastSoundedIncomingMessageTimeRef.current.set(
+          state.id,
+          serverLastMessageTime,
+        );
+      }
+
       setLiveConversations((current) =>
         sortLiveConversations(
           current.map((conversation) => {
@@ -2946,7 +3207,29 @@ useEffect(() => {
               ? new Date(state.last_message_at).getTime()
               : 0;
 
-            if (
+            let deletedPreviewOverride =
+              deletedPreviewOverrideRef.current.get(conversation.id) ?? null;
+
+            if (deletedPreviewOverride) {
+              if (deletedPreviewOverride.expiresAt <= Date.now()) {
+                deletedPreviewOverrideRef.current.delete(conversation.id);
+                deletedPreviewOverride = null;
+              } else if (
+                Number.isFinite(serverPreviewTime) &&
+                serverPreviewTime >
+                  deletedPreviewOverride.lastMessageTime + 1000
+              ) {
+                deletedPreviewOverrideRef.current.delete(conversation.id);
+                deletedPreviewOverride = null;
+              }
+            }
+
+            if (deletedPreviewOverride) {
+              nextConversation = {
+                ...nextConversation,
+                last_message_text: deletedPreviewOverride.text,
+              };
+            } else if (
               Number.isFinite(serverPreviewTime) &&
               serverPreviewTime > 0 &&
               (!Number.isFinite(localPreviewTime) ||
@@ -2967,11 +3250,15 @@ useEffect(() => {
              * the fast path, while this 3-second authoritative sync guarantees
              * that every teammate still converges if a realtime UPDATE is lost.
              */
+            const localUnreadCount = Math.max(
+              0,
+              conversation.unread_count ?? 0,
+            );
             const serverUnreadCount = Math.max(
               0,
               typeof state.unread_count === "number"
                 ? state.unread_count
-                : conversation.unread_count ?? 0,
+                : localUnreadCount,
             );
             const localLastMessageTime = conversation.last_message_at
               ? new Date(conversation.last_message_at).getTime()
@@ -2989,10 +3276,16 @@ useEffect(() => {
               Number.isFinite(localLastMessageTime) &&
               serverLastMessageTime > 0 &&
               (localLastMessageTime === 0 ||
-                serverLastMessageTime > localLastMessageTime + 1_000);
+                serverLastMessageTime > localLastMessageTime);
             const fallbackUnreadFromMessage =
               serverUnreadCount > 0 &&
-              (fallbackHasRecentIncoming || fallbackMessageAdvanced);
+              (
+                fallbackHasRecentIncoming ||
+                (
+                  fallbackMessageAdvanced &&
+                  serverUnreadCount > localUnreadCount
+                )
+              );
             const fallbackManualUnread =
               serverUnreadCount > 0 &&
               !fallbackUnreadFromMessage;
@@ -3196,6 +3489,7 @@ useEffect(() => {
   };
 }, [
   collaborationConversationIdsKey,
+  notifyIncomingMessage,
 ]);
 
 useEffect(() => {
@@ -4564,7 +4858,7 @@ useEffect(() => {
           lastSoundedIncomingTime > 0 &&
           Math.abs(
             incomingMessageTime - lastSoundedIncomingTime,
-          ) <= 1000;
+          ) <= 100;
 
         if (!alreadySoundedThisIncoming) {
           notifyIncomingMessage({
@@ -5582,6 +5876,203 @@ function handleCancelCommentReply() {
   );
 }
 
+function getFacebookCommentParentId(
+  message: InboxMessage,
+) {
+  const rawPayload =
+    message.raw_payload &&
+    typeof message.raw_payload ===
+      "object"
+      ? (message.raw_payload as Record<
+          string,
+          unknown
+        >)
+      : null;
+
+  const parentCommentId =
+    typeof rawPayload?.parent_comment_id ===
+    "string"
+      ? rawPayload.parent_comment_id.trim()
+      : typeof rawPayload?.parent_id ===
+          "string"
+        ? rawPayload.parent_id.trim()
+        : "";
+
+  return parentCommentId || null;
+}
+
+function patchLiveFacebookCommentState(
+  commentId: string,
+  patch: Partial<InboxMessage>,
+  includeDescendants = false,
+) {
+  const collectAffectedPlatformIds = (
+    current: InboxMessage[],
+  ) => {
+    const affectedPlatformIds =
+      new Set<string>([commentId]);
+
+    if (includeDescendants) {
+      let foundMore = true;
+
+      while (foundMore) {
+        foundMore = false;
+
+        for (const message of current) {
+          const platformMessageId =
+            message.platform_message_id
+              ?.trim();
+          const parentCommentId =
+            getFacebookCommentParentId(
+              message,
+            );
+
+          if (
+            !platformMessageId ||
+            !parentCommentId ||
+            affectedPlatformIds.has(
+              platformMessageId,
+            ) ||
+            !affectedPlatformIds.has(
+              parentCommentId,
+            )
+          ) {
+            continue;
+          }
+
+          affectedPlatformIds.add(
+            platformMessageId,
+          );
+          foundMore = true;
+        }
+      }
+    }
+
+    return affectedPlatformIds;
+  };
+
+  setLiveMessages((current) => {
+    const affectedPlatformIds =
+      collectAffectedPlatformIds(current);
+
+    return current.map((message) =>
+      message.platform_message_id &&
+      affectedPlatformIds.has(
+        message.platform_message_id,
+      )
+        ? ({
+            ...message,
+            ...patch,
+          } as InboxMessage)
+        : message,
+    );
+  });
+
+  /*
+   * Keep the left conversation preview responsive when the latest visible
+   * Facebook comment is deleted locally. The server also persists the exact
+   * preview, but this avoids waiting for the round-trip/realtime echo. Never
+   * overwrite a newer message: only patch a conversation when its latest
+   * cached message is one of the affected comment IDs.
+   */
+  if (patch.comment_is_deleted === true) {
+    const snapshot = liveMessagesRef.current;
+    const affectedPlatformIds =
+      collectAffectedPlatformIds(snapshot);
+
+    const affectedConversationIds =
+      new Set(
+        snapshot
+          .filter(
+            (message) =>
+              Boolean(
+                message.platform_message_id &&
+                  affectedPlatformIds.has(
+                    message.platform_message_id,
+                  ) &&
+                  message.conversation_id,
+              ),
+          )
+          .map((message) => message.conversation_id),
+      );
+
+    const messageTime = (message: InboxMessage) => {
+      const value =
+        message.platform_created_at ??
+        message.created_at;
+      const parsed = value
+        ? new Date(value).getTime()
+        : 0;
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    setLiveConversations((current) =>
+      sortLiveConversations(
+        current.map((conversation) => {
+          if (!affectedConversationIds.has(conversation.id)) {
+            return conversation;
+          }
+
+          const latestMessage = snapshot
+            .filter(
+              (message) =>
+                message.conversation_id === conversation.id,
+            )
+            .reduce<InboxMessage | null>(
+              (latest, candidate) =>
+                !latest ||
+                messageTime(candidate) >= messageTime(latest)
+                  ? candidate
+                  : latest,
+              null,
+            );
+
+          if (
+            !latestMessage?.platform_message_id ||
+            !affectedPlatformIds.has(
+              latestMessage.platform_message_id,
+            )
+          ) {
+            return conversation;
+          }
+
+          const deletedBy =
+            patch.comment_deleted_by === "page" ||
+            patch.comment_deleted_by === "customer"
+              ? patch.comment_deleted_by
+              : latestMessage.direction === "outgoing"
+                ? "page"
+                : "customer";
+          const deletedPreview =
+            deletedBy === "page"
+              ? "Message deleted by Page"
+              : "Message deleted by Commenter";
+          const latestMessageTime = messageTime(latestMessage);
+
+          deletedPreviewOverrideRef.current.set(
+            conversation.id,
+            {
+              text: deletedPreview,
+              lastMessageTime:
+                latestMessageTime > 0
+                  ? latestMessageTime
+                  : conversation.last_message_at
+                    ? new Date(conversation.last_message_at).getTime()
+                    : Date.now(),
+              expiresAt: Date.now() + 20_000,
+            },
+          );
+
+          return {
+            ...conversation,
+            last_message_text: deletedPreview,
+          };
+        }),
+      ),
+    );
+  }
+}
+
 
 async function markCommentDeletedLocally(
   commentId: string,
@@ -5700,7 +6191,17 @@ async function handleLikeComment(
           commentId,
         );
 
-        router.refresh();
+        patchLiveFacebookCommentState(
+          commentId,
+          {
+            comment_is_liked: false,
+            comment_is_hidden: false,
+            comment_is_deleted: true,
+            comment_deleted_by:
+              "customer",
+          },
+          true,
+        );
 
         return {
           success: false,
@@ -5718,7 +6219,12 @@ async function handleLikeComment(
       };
     }
 
-    router.refresh();
+    patchLiveFacebookCommentState(
+      commentId,
+      {
+        comment_is_liked: liked,
+      },
+    );
 
     return {
       success: true,
@@ -5742,17 +6248,6 @@ async function handleDeleteComment(
   success: boolean;
   deleted?: boolean;
 }> {
-  const confirmed =
-    window.confirm(
-      "Delete this Facebook comment?",
-    );
-
-  if (!confirmed) {
-    return {
-      success: false,
-    };
-  }
-
   try {
     const response =
       await fetch(
@@ -5807,7 +6302,17 @@ async function handleDeleteComment(
           commentId,
         );
 
-        router.refresh();
+        patchLiveFacebookCommentState(
+          commentId,
+          {
+            comment_is_liked: false,
+            comment_is_hidden: false,
+            comment_is_deleted: true,
+            comment_deleted_by:
+              "customer",
+          },
+          true,
+        );
 
         return {
           success: false,
@@ -5825,7 +6330,16 @@ async function handleDeleteComment(
       };
     }
 
-    router.refresh();
+    patchLiveFacebookCommentState(
+      commentId,
+      {
+        comment_is_liked: false,
+        comment_is_hidden: false,
+        comment_is_deleted: true,
+        comment_deleted_by: "page",
+      },
+      true,
+    );
 
     return {
       success: true,
@@ -5905,7 +6419,17 @@ async function handleHideComment(
           commentId,
         );
 
-        router.refresh();
+        patchLiveFacebookCommentState(
+          commentId,
+          {
+            comment_is_liked: false,
+            comment_is_hidden: false,
+            comment_is_deleted: true,
+            comment_deleted_by:
+              "customer",
+          },
+          true,
+        );
 
         return {
           success: false,
@@ -5923,7 +6447,12 @@ async function handleHideComment(
       };
     }
 
-    router.refresh();
+    patchLiveFacebookCommentState(
+      commentId,
+      {
+        comment_is_hidden: hidden,
+      },
+    );
 
     return {
       success: true,
@@ -5966,11 +6495,13 @@ function createOptimisticMessage({
   conversationId,
   message,
   recipientPlatformId,
+  commentReplyParentId = null,
 }: {
   tempId: string;
   conversationId: string;
   message: string;
   recipientPlatformId: string;
+  commentReplyParentId?: string | null;
 }): InboxMessage {
   const now =
     new Date().toISOString();
@@ -6005,9 +6536,20 @@ function createOptimisticMessage({
     attachment_url:
       null,
     is_echo:
-      false,
+      Boolean(commentReplyParentId),
     raw_payload:
-      null,
+      commentReplyParentId
+        ? {
+            source:
+              "facebook_comment_reply",
+            tenh_source:
+              "tenh_comment_optimistic",
+            parent_comment_id:
+              commentReplyParentId,
+            reply_comment_id:
+              tempId,
+          }
+        : null,
     platform_created_at:
       now,
     created_at:
@@ -6377,6 +6919,7 @@ async function performOptimisticSend(
     let result: {
       success: boolean;
       error?: string;
+      code?: string;
     };
 
     if (
@@ -6389,6 +6932,7 @@ async function performOptimisticSend(
           ) as {
             success: boolean;
             error?: string;
+            code?: string;
           };
       } catch {
         result = {
@@ -6412,6 +6956,30 @@ async function performOptimisticSend(
       !response.ok ||
       !result.success
     ) {
+      if (
+        result.code ===
+        "WAITING_FOR_CUSTOMER_REPLY"
+      ) {
+        setLiveMessages(
+          (current) =>
+            current.filter(
+              (message) =>
+                message.id !==
+                pending.tempId,
+            ),
+        );
+
+        delete pendingSendsRef
+          .current[pending.tempId];
+
+        setSendError(
+          result.error ??
+            "Waiting for customer reply before another Messenger message can be sent.",
+        );
+
+        return;
+      }
+
       throw new Error(
         result.error ??
           "Unable to send the message.",
@@ -6515,6 +7083,7 @@ async function performOptimisticAttachmentSend(
     let result: {
       success: boolean;
       error?: string;
+      code?: string;
       message?: InboxMessage;
     };
 
@@ -6526,6 +7095,7 @@ async function performOptimisticAttachmentSend(
           ) as {
             success: boolean;
             error?: string;
+            code?: string;
             message?: InboxMessage;
           };
       } catch {
@@ -6549,6 +7119,30 @@ async function performOptimisticAttachmentSend(
       !response.ok ||
       !result.success
     ) {
+      if (
+        result.code ===
+        "WAITING_FOR_CUSTOMER_REPLY"
+      ) {
+        setLiveMessages(
+          (current) =>
+            current.filter(
+              (message) =>
+                message.id !==
+                pending.tempId,
+            ),
+        );
+
+        delete pendingAttachmentSendsRef
+          .current[pending.tempId];
+
+        setSendError(
+          result.error ??
+            "Waiting for customer reply before another Messenger message can be sent.",
+        );
+
+        return false;
+      }
+
       throw new Error(
         result.error ??
           "Unable to send the attachment.",
@@ -7153,6 +7747,10 @@ async function handleSendMessage(
         activeConversation
           .contact
           .platform_user_id,
+      commentReplyParentId:
+        isCommentReply
+          ? commentId
+          : null,
     });
 
   setLiveMessages(

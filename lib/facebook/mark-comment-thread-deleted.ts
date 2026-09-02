@@ -22,9 +22,12 @@ function getParentCommentId(
     return null;
   }
 
-  const value = (
-    rawPayload as Record<string, unknown>
-  ).parent_comment_id;
+  const payload =
+    rawPayload as Record<string, unknown>;
+
+  const value =
+    payload.parent_comment_id ??
+    payload.parent_id;
 
   return typeof value === "string" &&
     value.trim()
@@ -222,6 +225,11 @@ export async function markFacebookCommentThreadDeleted({
         candidate.id,
       );
 
+  const deletedText =
+    deletedBy === "page"
+      ? "Message deleted by Page"
+      : "Message deleted by Commenter";
+
   if (affectedMessageIds.length > 0) {
     const { error: updateError } =
       await supabaseAdmin
@@ -233,7 +241,7 @@ export async function markFacebookCommentThreadDeleted({
           comment_is_liked: false,
           comment_is_hidden: false,
           message_text:
-            "Message deleted by commenter or Page",
+            deletedText,
         })
         .eq(
           "business_id",
@@ -248,6 +256,99 @@ export async function markFacebookCommentThreadDeleted({
       throw new Error(
         updateError.message,
       );
+    }
+  }
+
+  /*
+   * Update the conversation preview only when the message that is actually
+   * latest in this conversation belongs to the deleted thread. Deleting an
+   * old Facebook comment must never overwrite a newer Messenger/Telegram or
+   * newer Facebook-comment preview.
+   */
+  if (affectedMessageIds.length > 0) {
+    const {
+      data: latestMessageData,
+      error: latestMessageError,
+    } = await supabaseAdmin
+      .from("messages")
+      .select(`
+        id,
+        comment_is_deleted,
+        comment_deleted_by,
+        direction
+      `)
+      .eq("business_id", resolvedBusinessId)
+      .eq(
+        "conversation_id",
+        rootMessage.conversation_id,
+      )
+      .order("platform_created_at", {
+        ascending: false,
+        nullsFirst: false,
+      })
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestMessageError) {
+      throw new Error(
+        latestMessageError.message,
+      );
+    }
+
+    const latestMessage =
+      latestMessageData as
+        | {
+            id: string;
+            comment_is_deleted: boolean | null;
+            comment_deleted_by: string | null;
+            direction: string | null;
+          }
+        | null;
+
+    if (
+      latestMessage?.comment_is_deleted === true &&
+      affectedMessageIds.includes(latestMessage.id)
+    ) {
+      const latestDeletedBy =
+        latestMessage.comment_deleted_by === "page"
+          ? "page"
+          : latestMessage.comment_deleted_by === "customer"
+            ? "customer"
+            : latestMessage.direction === "outgoing"
+              ? "page"
+              : deletedBy;
+
+      const latestDeletedText =
+        latestDeletedBy === "page"
+          ? "Message deleted by Page"
+          : "Message deleted by Commenter";
+
+      const { error: previewUpdateError } =
+        await supabaseAdmin
+          .from("conversations")
+          .update({
+            last_message_text:
+              latestDeletedText,
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            "id",
+            rootMessage.conversation_id,
+          )
+          .eq(
+            "business_id",
+            resolvedBusinessId,
+          );
+
+      if (previewUpdateError) {
+        throw new Error(
+          previewUpdateError.message,
+        );
+      }
     }
   }
 

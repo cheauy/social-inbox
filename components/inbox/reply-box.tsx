@@ -47,6 +47,7 @@ type ReplyBoxProps = {
   conversationId: string;
   sending: boolean;
   error: string | null;
+  blockedReason?: string | null;
 
   contactId: string;
   businessId: string;
@@ -289,6 +290,7 @@ export function ReplyBox({
   reply,
   sending,
   error,
+  blockedReason = null,
   contactId,
   businessId,
   initialTags,
@@ -308,6 +310,11 @@ export function ReplyBox({
 
   const isSending =
     sending || sendingContent;
+
+  const isComposerBlocked =
+    Boolean(blockedReason);
+  const isComposerDisabled =
+    isSending || isComposerBlocked;
 
   const imageInputRef =
     useRef<HTMLInputElement | null>(null);
@@ -604,7 +611,7 @@ export function ReplyBox({
 
     if (
       recordingVoice ||
-      isSending
+      isComposerDisabled
     ) {
       return;
     }
@@ -947,7 +954,7 @@ export function ReplyBox({
   async function sendVoiceReview() {
     const attachment = getVoiceReviewAttachment();
 
-    if (!attachment || !onSendAttachments || isSending) {
+    if (!attachment || !onSendAttachments || isComposerDisabled) {
       return;
     }
 
@@ -1227,7 +1234,7 @@ export function ReplyBox({
   function handleSubmit(
     event: FormEvent<HTMLFormElement>,
   ) {
-    if (isSending) {
+    if (isComposerDisabled) {
       event.preventDefault();
       return;
     }
@@ -1271,6 +1278,7 @@ export function ReplyBox({
       | null = null,
   ) {
     if (
+      isComposerBlocked ||
       !onSendAttachments ||
       attachments.length === 0
     ) {
@@ -1652,7 +1660,7 @@ export function ReplyBox({
             <button
               type="button"
               onClick={() => void sendVoiceReview()}
-              disabled={isSending || !onSendAttachments}
+              disabled={isComposerDisabled || !onSendAttachments}
               className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-[0_5px_12px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               title="Send voice note"
             >
@@ -1698,6 +1706,32 @@ export function ReplyBox({
                 <span className="h-1 w-1 animate-bounce rounded-full bg-amber-500 [animation-delay:-0.1s]" />
                 <span className="h-1 w-1 animate-bounce rounded-full bg-amber-500" />
               </span>
+            </div>
+          </div>
+        ) : null}
+
+        {blockedReason ? (
+          <div className="border-t border-amber-200 bg-amber-50 px-4 py-2.5 text-amber-900">
+            <div className="mx-auto flex max-w-[1500px] items-start gap-2.5">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.9"
+                className="mt-0.5 h-4 w-4 shrink-0"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8v5M12 16.5h.01" strokeLinecap="round" />
+              </svg>
+              <div className="min-w-0">
+                <p className="text-xs font-bold">
+                  {isKhmer ? "កំពុងរង់ចាំអតិថិជនឆ្លើយតប" : "Waiting for customer reply"}
+                </p>
+                <p className="mt-0.5 text-[11px] leading-4 text-amber-800">
+                  {blockedReason}
+                </p>
+              </div>
             </div>
           </div>
         ) : null}
@@ -1855,7 +1889,7 @@ export function ReplyBox({
             <div className="flex min-h-12 min-w-0 items-center rounded-2xl border border-slate-200 bg-white pl-1.5 pr-1 transition focus-within:border-violet-300 focus-within:ring-2 focus-within:ring-violet-100">
               <button
                 type="button"
-                disabled={isSending || !allowAttachments}
+                disabled={isComposerDisabled || !allowAttachments}
                 onClick={() => {
                   const nextOpen = !moreOpen;
 
@@ -1887,7 +1921,7 @@ export function ReplyBox({
 
               <button
                 type="button"
-                disabled={isSending || !allowAttachments}
+                disabled={isComposerDisabled || !allowAttachments}
                 onClick={() => void startVoiceRecording()}
                 className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${
                   recordingVoice
@@ -1923,7 +1957,7 @@ export function ReplyBox({
                   event.preventDefault();
 
                   if (
-                    isSending ||
+                    isComposerDisabled ||
                     (!reply.trim() && attachments.length === 0)
                   ) {
                     return;
@@ -1937,8 +1971,16 @@ export function ReplyBox({
                    */
                   event.currentTarget.form?.requestSubmit();
                 }}
-                placeholder={isKhmer ? "សរសេរការឆ្លើយតប..." : "Write a reply..."}
-                disabled={isSending}
+                placeholder={
+                  blockedReason
+                    ? isKhmer
+                      ? "កំពុងរង់ចាំអតិថិជនឆ្លើយតប..."
+                      : "Waiting for customer reply..."
+                    : isKhmer
+                      ? "សរសេរការឆ្លើយតប..."
+                      : "Write a reply..."
+                }
+                disabled={isComposerDisabled}
                 rows={1}
                 className="block h-12 max-h-32 min-h-12 min-w-0 flex-1 resize-none overflow-y-hidden border-0 bg-transparent px-2 py-3 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400 focus:ring-0 disabled:bg-slate-50"
               />
@@ -1951,13 +1993,15 @@ export function ReplyBox({
               <button
                 type="submit"
                 disabled={
-                  isSending ||
+                  isComposerDisabled ||
                   (!reply.trim() &&
                     attachments.length === 0)
                 }
                 className="inline-flex h-12 min-w-[96px] items-center justify-center gap-2 px-4 text-sm font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 title={
-                  sendMode === "close"
+                  blockedReason
+                    ? blockedReason
+                    : sendMode === "close"
                     ? isKhmer ? "ផ្ញើ និងបិទការសន្ទនា" : "Send & close conversation"
                     : sendMode === "pending"
                       ? isKhmer ? "ផ្ញើ និងសម្គាល់ថាកំពុងរង់ចាំ" : "Send & mark pending"
@@ -1991,7 +2035,7 @@ export function ReplyBox({
 
               <button
                 type="button"
-                disabled={isSending}
+                disabled={isComposerDisabled}
                 onClick={() => {
                   const nextOpen = !sendMenuOpen;
 

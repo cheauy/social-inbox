@@ -12,6 +12,9 @@ import {
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
+import {
+  markFacebookCommentThreadDeleted,
+} from "@/lib/facebook/mark-comment-thread-deleted";
 
 export type FacebookFeedCommentValue = {
   item?: string;
@@ -408,6 +411,326 @@ function toIso(
     .toISOString();
 }
 
+
+type ExistingFacebookCommentConversation = {
+  id: string;
+  business_id: string;
+  social_account_id: string;
+  contact_id: string | null;
+  unread_count: number | null;
+  facebook_comment_id: string | null;
+  facebook_post_id: string | null;
+  parent_comment_id: string | null;
+};
+
+async function loadExistingFacebookCommentConversation({
+  conversationId,
+  socialAccountId,
+}: {
+  conversationId: string;
+  socialAccountId: string;
+}): Promise<ExistingFacebookCommentConversation | null> {
+  const {
+    data,
+    error,
+  } = await supabaseAdmin
+    .from("conversations")
+    .select(`
+      id,
+      business_id,
+      social_account_id,
+      contact_id,
+      unread_count,
+      facebook_comment_id,
+      facebook_post_id,
+      parent_comment_id
+    `)
+    .eq("id", conversationId)
+    .eq("social_account_id", socialAccountId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data as ExistingFacebookCommentConversation | null;
+}
+
+async function findExistingFacebookCommentConversationByReference({
+  socialAccountId,
+  commentId,
+}: {
+  socialAccountId: string;
+  commentId: string;
+}): Promise<ExistingFacebookCommentConversation | null> {
+  const normalizedCommentId = commentId.trim();
+
+  if (!normalizedCommentId) {
+    return null;
+  }
+
+  const {
+    data: message,
+    error: messageError,
+  } = await supabaseAdmin
+    .from("messages")
+    .select("conversation_id")
+    .eq("platform_message_id", normalizedCommentId)
+    .maybeSingle();
+
+  if (messageError) {
+    throw new Error(messageError.message);
+  }
+
+  if (message?.conversation_id) {
+    const conversation =
+      await loadExistingFacebookCommentConversation({
+        conversationId: message.conversation_id,
+        socialAccountId,
+      });
+
+    if (conversation) {
+      return conversation;
+    }
+  }
+
+  /*
+   * Older TENH rows can still have the root comment on the conversation even
+   * when the individual message row is unavailable. Match only the exact
+   * facebook_comment_id here; parent_comment_id is intentionally not used as
+   * a standalone lookup because several customers can reply to the same
+   * parent and picking one would be unsafe.
+   */
+  const {
+    data: rootConversation,
+    error: rootConversationError,
+  } = await supabaseAdmin
+    .from("conversations")
+    .select(`
+      id,
+      business_id,
+      social_account_id,
+      contact_id,
+      unread_count,
+      facebook_comment_id,
+      facebook_post_id,
+      parent_comment_id
+    `)
+    .eq("social_account_id", socialAccountId)
+    .eq("facebook_comment_id", normalizedCommentId)
+    .maybeSingle();
+
+  if (rootConversationError) {
+    throw new Error(rootConversationError.message);
+  }
+
+  return rootConversation as ExistingFacebookCommentConversation | null;
+}
+
+async function findFacebookCommentConversationForCustomer({
+  businessId,
+  socialAccountId,
+  platformUserId,
+}: {
+  businessId: string;
+  socialAccountId: string;
+  platformUserId: string;
+}): Promise<ExistingFacebookCommentConversation | null> {
+  const normalizedPlatformUserId = platformUserId.trim();
+
+  if (!normalizedPlatformUserId) {
+    return null;
+  }
+
+  const {
+    data: contact,
+    error: contactError,
+  } = await supabaseAdmin
+    .from("contacts")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("platform", "facebook")
+    .eq("platform_user_id", normalizedPlatformUserId)
+    .maybeSingle();
+
+  if (contactError) {
+    throw new Error(contactError.message);
+  }
+
+  if (!contact?.id) {
+    return null;
+  }
+
+  const {
+    data: conversation,
+    error: conversationError,
+  } = await supabaseAdmin
+    .from("conversations")
+    .select(`
+      id,
+      business_id,
+      social_account_id,
+      contact_id,
+      unread_count,
+      facebook_comment_id,
+      facebook_post_id,
+      parent_comment_id
+    `)
+    .eq("social_account_id", socialAccountId)
+    .eq("contact_id", contact.id)
+    .maybeSingle();
+
+  if (conversationError) {
+    throw new Error(conversationError.message);
+  }
+
+  return conversation as ExistingFacebookCommentConversation | null;
+}
+
+type CommentParentGraphResult = {
+  parent?: {
+    id?: string;
+  } | null;
+  from?: {
+    id?: string;
+  } | null;
+  error?: {
+    message?: string;
+    code?: number;
+    error_subcode?: number;
+  };
+};
+
+async function resolveFacebookCommentConversationFromParentChain({
+  businessId,
+  socialAccountId,
+  pageId,
+  startingCommentId,
+  pageAccessToken,
+}: {
+  businessId: string;
+  socialAccountId: string;
+  pageId: string;
+  startingCommentId: string;
+  pageAccessToken: string | null;
+}): Promise<{
+  conversation: ExistingFacebookCommentConversation | null;
+  accessToken: string | null;
+}> {
+  const graphVersion =
+    process.env.FACEBOOK_GRAPH_API_VERSION ?? "v26.0";
+  const visited = new Set<string>();
+  let currentCommentId = startingCommentId.trim();
+  let currentAccessToken = pageAccessToken;
+
+  /*
+   * Facebook comment threads can be nested. Walk a small, bounded parent
+   * chain so replies made in Business Suite, replies to old replies, and
+   * replies on older posts can reconnect to a TENH thread without guessing.
+   */
+  for (let depth = 0; depth < 8 && currentCommentId; depth += 1) {
+    if (visited.has(currentCommentId)) {
+      break;
+    }
+
+    visited.add(currentCommentId);
+
+    const localConversation =
+      await findExistingFacebookCommentConversationByReference({
+        socialAccountId,
+        commentId: currentCommentId,
+      });
+
+    if (localConversation) {
+      return {
+        conversation: localConversation,
+        accessToken: currentAccessToken,
+      };
+    }
+
+    if (!currentAccessToken) {
+      break;
+    }
+
+    const requestParent = async (token: string) => {
+      const url = new URL(
+        `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(currentCommentId)}`,
+      );
+      url.searchParams.set("fields", "parent{id},from{id}");
+      url.searchParams.set("access_token", token);
+
+      const response = await fetch(url, {
+        method: "GET",
+        cache: "no-store",
+      });
+      const text = await response.text();
+      let result: CommentParentGraphResult = {};
+
+      if (text.trim()) {
+        try {
+          result = JSON.parse(text) as CommentParentGraphResult;
+        } catch {
+          result = {};
+        }
+      }
+
+      return { response, result };
+    };
+
+    let attempt = await requestParent(currentAccessToken);
+
+    if (
+      (!attempt.response.ok || attempt.result.error) &&
+      isFacebookAccessTokenError(attempt.result.error)
+    ) {
+      try {
+        currentAccessToken =
+          await refreshFacebookPageAccessToken(pageId);
+        attempt = await requestParent(currentAccessToken);
+      } catch (error) {
+        console.warn(
+          "[Tenh Facebook Comment] Parent-chain token recovery failed.",
+          error,
+        );
+      }
+    }
+
+    if (!attempt.response.ok || attempt.result.error) {
+      break;
+    }
+
+    const authorId = cleanString(attempt.result.from?.id);
+
+    /*
+     * If an old individual comment row is gone, the customer identity is a
+     * safe fallback because TENH's current schema has one conversation per
+     * Facebook customer per Page. Never use the Page itself as a customer.
+     */
+    if (authorId && authorId !== pageId) {
+      const customerConversation =
+        await findFacebookCommentConversationForCustomer({
+          businessId,
+          socialAccountId,
+          platformUserId: authorId,
+        });
+
+      if (customerConversation) {
+        return {
+          conversation: customerConversation,
+          accessToken: currentAccessToken,
+        };
+      }
+    }
+
+    currentCommentId = cleanString(attempt.result.parent?.id) ?? "";
+  }
+
+  return {
+    conversation: null,
+    accessToken: currentAccessToken,
+  };
+}
+
 export async function processFacebookComment({
   pageId,
   value,
@@ -493,63 +816,11 @@ export async function processFacebookComment({
           ? "page"
           : "customer";
 
-    const deletedText =
-      deletedBy ===
-      "customer"
-        ? "Comment deleted by user"
-        : "Comment deleted by Page";
-
-    const {
-      error:
-        updateMessageError,
-    } =
-      await supabaseAdmin
-        .from(
-          "messages",
-        )
-        .update({
-          comment_is_deleted:
-            true,
-          comment_deleted_by:
-            deletedBy,
-          message_text:
-            deletedText,
-        })
-        .eq(
-          "id",
-          existingMessage.id,
-        );
-
-    if (
-      updateMessageError
-    ) {
-      throw new Error(
-        updateMessageError
-          .message,
-      );
-    }
-
-    if (
-      existingMessage
-        .conversation_id
-    ) {
-      await supabaseAdmin
-        .from(
-          "conversations",
-        )
-        .update({
-          last_message_text:
-            deletedText,
-          updated_at:
-            new Date()
-              .toISOString(),
-        })
-        .eq(
-          "id",
-          existingMessage
-            .conversation_id,
-        );
-    }
+    await markFacebookCommentThreadDeleted({
+      pageId,
+      commentId,
+      deletedBy,
+    });
 
     console.log(
       "[Tenh Facebook Comment] ✅ DELETED",
@@ -583,6 +854,15 @@ export async function processFacebookComment({
   let postId =
     cleanString(value.post_id) ??
     cleanString(webhookPost?.id);
+
+  /*
+   * Keep one normalized parent ID for the entire ingest path. Some Meta feed
+   * events for replies-to-replies omit parent_id even though the Graph
+   * comment object still exposes parent{id}. Recover it best-effort below so
+   * customer replies to a Page/TENH reply cannot disappear from the thread.
+   */
+  let normalizedParentId =
+    cleanString(value.parent_id);
 
   let message =
     value.message
@@ -633,7 +913,9 @@ export async function processFacebookComment({
     (
       !message ||
       !authorId ||
-      !authorName
+      !authorName ||
+      !normalizedParentId ||
+      !postId
     ) &&
     pageAccessToken
   ) {
@@ -664,6 +946,9 @@ export async function processFacebookComment({
           id?: string;
           name?: string;
         };
+        parent?: {
+          id?: string;
+        } | null;
         object?: {
           id?: string;
         };
@@ -773,6 +1058,11 @@ export async function processFacebookComment({
           result.from?.name
             ?.trim() ||
           authorName;
+
+        normalizedParentId =
+          result.parent?.id
+            ?.trim() ||
+          normalizedParentId;
 
         /*
          * Some feed webhook variants can omit post_id. The Comment Graph
@@ -951,10 +1241,13 @@ export async function processFacebookComment({
    * comment as outgoing, keep unread_count unchanged, and return.
    */
   if (isPageAuthored) {
+    const rawParentCommentId =
+      normalizedParentId;
     const parentCommentId =
-      value.parent_id
-        ?.trim() ??
-      null;
+      rawParentCommentId &&
+      rawParentCommentId !== postId
+        ? rawParentCommentId
+        : null;
 
     if (!parentCommentId) {
       console.log(
@@ -967,70 +1260,25 @@ export async function processFacebookComment({
       return;
     }
 
-    const {
-      data:
-        parentMessage,
-      error:
-        parentMessageError,
-    } =
-      await supabaseAdmin
-        .from("messages")
-        .select(`
-          conversation_id
-        `)
-        .eq(
-          "platform_message_id",
+    const resolvedThread =
+      await resolveFacebookCommentConversationFromParentChain({
+        businessId:
+          socialAccount.business_id,
+        socialAccountId:
+          socialAccount.id,
+        pageId,
+        startingCommentId:
           parentCommentId,
-        )
-        .maybeSingle();
+        pageAccessToken,
+      });
 
-    if (parentMessageError) {
-      throw new Error(
-        parentMessageError.message,
-      );
-    }
+    pageAccessToken =
+      resolvedThread.accessToken;
 
-    let targetConversationId =
-      parentMessage
-        ?.conversation_id ??
-      null;
+    const targetConversation =
+      resolvedThread.conversation;
 
-    /*
-     * Fallback for an older/root comment that has a TENH conversation but no
-     * local message row available anymore.
-     */
-    if (!targetConversationId) {
-      const {
-        data:
-          rootConversation,
-        error:
-          rootConversationError,
-      } =
-        await supabaseAdmin
-          .from("conversations")
-          .select("id")
-          .eq(
-            "social_account_id",
-            socialAccount.id,
-          )
-          .eq(
-            "facebook_comment_id",
-            parentCommentId,
-          )
-          .maybeSingle();
-
-      if (rootConversationError) {
-        throw new Error(
-          rootConversationError.message,
-        );
-      }
-
-      targetConversationId =
-        rootConversation?.id ??
-        null;
-    }
-
-    if (!targetConversationId) {
+    if (!targetConversation) {
       console.warn(
         "[Tenh Facebook Comment] Page reply could not be matched to an existing customer thread.",
         {
@@ -1042,48 +1290,15 @@ export async function processFacebookComment({
       return;
     }
 
-    const {
-      data:
-        targetConversation,
-      error:
-        targetConversationError,
-    } =
-      await supabaseAdmin
-        .from("conversations")
-        .select(`
-          id,
-          business_id,
-          social_account_id,
-          contact_id,
-          unread_count
-        `)
-        .eq(
-          "id",
-          targetConversationId,
-        )
-        .eq(
-          "social_account_id",
-          socialAccount.id,
-        )
-        .maybeSingle();
-
-    if (targetConversationError) {
-      throw new Error(
-        targetConversationError.message,
-      );
-    }
-
-    if (
-      !targetConversation ||
-      !targetConversation.contact_id
-    ) {
+    if (!targetConversation.contact_id) {
       console.warn(
         "[Tenh Facebook Comment] Page reply matched a conversation without a customer contact.",
         {
           pageId,
           commentId,
           parentCommentId,
-          targetConversationId,
+          targetConversationId:
+            targetConversation.id,
         },
       );
       return;
@@ -1176,6 +1391,10 @@ export async function processFacebookComment({
             true,
           raw_payload: {
             ...value,
+            parent_id:
+              normalizedParentId ??
+              value.parent_id ??
+              null,
             // Keep the same metadata shape used by TENH's native
             // Facebook comment-reply route so the current MessagePanel
             // renders this Business Suite reply nested under its parent.
@@ -1317,21 +1536,87 @@ export async function processFacebookComment({
     );
   }
 
-  const {
-    data:
-      conversation,
-    error:
-      conversationError,
-  } =
-    await supabaseAdmin
-      .from(
-        "conversations",
-      )
+  const rawIncomingParentCommentId =
+    normalizedParentId;
+  const incomingParentCommentId =
+    rawIncomingParentCommentId &&
+    rawIncomingParentCommentId !== postId
+      ? rawIncomingParentCommentId
+      : null;
+
+  let conversation:
+    ExistingFacebookCommentConversation | null =
+    null;
+
+  /*
+   * If this is a reply inside an existing Facebook thread, keep it attached
+   * to that existing customer conversation. This is especially important for
+   * customers replying to an old Page reply or to a comment on an older post:
+   * do not overwrite the conversation's thread identity just because the
+   * newest webhook event is nested.
+   */
+  if (incomingParentCommentId) {
+    const resolvedThread =
+      await resolveFacebookCommentConversationFromParentChain({
+        businessId:
+          socialAccount.business_id,
+        socialAccountId:
+          socialAccount.id,
+        pageId,
+        startingCommentId:
+          incomingParentCommentId,
+        pageAccessToken,
+      });
+
+    pageAccessToken =
+      resolvedThread.accessToken;
+
+    if (
+      resolvedThread.conversation &&
+      resolvedThread.conversation.contact_id ===
+        contact.id
+    ) {
+      conversation =
+        resolvedThread.conversation;
+    }
+
+    /*
+     * The current TENH schema has one Facebook conversation per customer per
+     * Page. If Meta cannot expose the old parent chain anymore (for example an
+     * ancestor was deleted), reusing this same customer's existing Page
+     * conversation is safe. Never attach a nested reply to another customer.
+     */
+    if (!conversation) {
+      const customerConversation =
+        await findFacebookCommentConversationForCustomer({
+          businessId:
+            socialAccount.business_id,
+          socialAccountId:
+            socialAccount.id,
+          platformUserId:
+            authorId,
+        });
+
+      if (
+        customerConversation?.contact_id ===
+        contact.id
+      ) {
+        conversation =
+          customerConversation;
+      }
+    }
+  }
+
+  if (!conversation) {
+    const {
+      data: upsertedConversation,
+      error: conversationError,
+    } = await supabaseAdmin
+      .from("conversations")
       .upsert(
         {
           business_id:
-            socialAccount
-              .business_id,
+            socialAccount.business_id,
           social_account_id:
             socialAccount.id,
           contact_id:
@@ -1341,19 +1626,15 @@ export async function processFacebookComment({
           source_type:
             "comment",
           facebook_post_id:
-            postId ??
-            null,
+            postId ?? null,
           facebook_comment_id:
             commentId,
           parent_comment_id:
-            value
-              .parent_id ??
-            null,
+            incomingParentCommentId,
           status:
             "open",
           updated_at:
-            new Date()
-              .toISOString(),
+            new Date().toISOString(),
         },
         {
           onConflict:
@@ -1362,19 +1643,28 @@ export async function processFacebookComment({
       )
       .select(`
         id,
-        unread_count
+        business_id,
+        social_account_id,
+        contact_id,
+        unread_count,
+        facebook_comment_id,
+        facebook_post_id,
+        parent_comment_id
       `)
       .single();
 
-  if (
-    conversationError ||
-    !conversation
-  ) {
-    throw new Error(
-      conversationError
-        ?.message ??
-        "Unable to create Facebook comment conversation.",
-    );
+    if (
+      conversationError ||
+      !upsertedConversation
+    ) {
+      throw new Error(
+        conversationError?.message ??
+          "Unable to create Facebook comment conversation.",
+      );
+    }
+
+    conversation =
+      upsertedConversation as ExistingFacebookCommentConversation;
   }
 
   let postPreview:
@@ -1432,6 +1722,10 @@ export async function processFacebookComment({
           false,
         raw_payload: {
           ...value,
+          parent_id:
+            normalizedParentId ??
+            value.parent_id ??
+            null,
           commenter_profile_picture_url:
             authorProfilePictureUrl,
           post_preview:
@@ -1454,6 +1748,54 @@ export async function processFacebookComment({
       0
     ) + 1;
 
+  const conversationUpdate:
+    Record<string, unknown> = {
+      source_type:
+        "comment",
+      last_message_text:
+        message,
+      last_message_at:
+        commentTime,
+      unread_count:
+        unreadCount,
+      status:
+        "open",
+      updated_at:
+        new Date()
+          .toISOString(),
+    };
+
+  /*
+   * A nested reply belongs to the existing Facebook thread. Preserve the
+   * conversation's established root/post identifiers so an old-post reply
+   * cannot silently turn the thread into a different root. For a new
+   * top-level comment, keep the existing TENH behavior and promote it as the
+   * current comment context for this customer.
+   */
+  if (
+    !incomingParentCommentId ||
+    !conversation.facebook_comment_id
+  ) {
+    conversationUpdate.facebook_comment_id =
+      commentId;
+  }
+
+  if (
+    !incomingParentCommentId ||
+    !conversation.facebook_post_id
+  ) {
+    conversationUpdate.facebook_post_id =
+      postId ?? null;
+  }
+
+  if (
+    !incomingParentCommentId ||
+    !conversation.parent_comment_id
+  ) {
+    conversationUpdate.parent_comment_id =
+      incomingParentCommentId;
+  }
+
   const {
     error:
       updateError,
@@ -1462,30 +1804,9 @@ export async function processFacebookComment({
       .from(
         "conversations",
       )
-      .update({
-        source_type:
-          "comment",
-        facebook_post_id:
-          postId ??
-          null,
-        facebook_comment_id:
-          commentId,
-        parent_comment_id:
-          value
-            .parent_id ??
-          null,
-        last_message_text:
-          message,
-        last_message_at:
-          commentTime,
-        unread_count:
-          unreadCount,
-        status:
-          "open",
-        updated_at:
-          new Date()
-            .toISOString(),
-      })
+      .update(
+        conversationUpdate,
+      )
       .eq(
         "id",
         conversation.id,

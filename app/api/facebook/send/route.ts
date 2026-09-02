@@ -19,6 +19,9 @@ import {
   getConversationMessagePreview,
 } from "@/lib/inbox/conversation-preview";
 import {
+  getFacebookMessengerReplyPolicy,
+} from "@/lib/facebook/messenger-reply-policy";
+import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 
@@ -311,6 +314,58 @@ export async function POST(
   }
 
   /*
+   * V3.1.19 — Safe Facebook private-reply guard.
+   *
+   * If a customer only commented, Meta permits one private Messenger reply.
+   * Until that customer replies in Messenger, TENH must not attempt a second
+   * private message (text or attachment). This is enforced server-side so a
+   * stale browser or alternate client cannot bypass the rule.
+   */
+  let messengerPolicy;
+
+  try {
+    messengerPolicy =
+      await getFacebookMessengerReplyPolicy(
+        conversationId,
+      );
+  } catch (policyError) {
+    console.warn(
+      "Unable to inspect the Facebook Messenger reply policy before send:",
+      policyError,
+    );
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "TENH could not safely verify whether Facebook allows another message. Please try again.",
+        code: "MESSENGER_POLICY_CHECK_FAILED",
+      },
+      { status: 503 },
+    );
+  }
+
+  if (
+    messengerPolicy.waitingForCustomerReply
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        code: "WAITING_FOR_CUSTOMER_REPLY",
+        error:
+          "Waiting for customer reply. Meta allows only one private Messenger reply after a Facebook comment. You can send again as soon as the customer replies in Messenger.",
+        waitingForCustomerReply: true,
+      },
+      { status: 409 },
+    );
+  }
+
+  const hasRecentDirectCustomerMessage =
+    messengerPolicy.hasRecentDirectCustomerMessage;
+  const latestDirectIncomingAt =
+    messengerPolicy.latestDirectIncomingAt;
+
+  /*
    * Meta Send API.
    */
   const graphUrl = new URL(
@@ -435,16 +490,44 @@ export async function POST(
         ));
 
     /*
-     * Meta allows the HUMAN_AGENT tag for a real support representative's
-     * manual reply beyond the 24-hour standard window, up to the policy's
-     * Human Agent period. TENH uses it only as a fallback on this authenticated
-     * manual-agent route—never for automated sends.
+     * If a customer genuinely messaged TENH in the last 24 hours, do NOT
+     * switch the next agent reply to HUMAN_AGENT. A Page reply echo or any
+     * other outgoing message must not close the customer's standard window.
+     *
+     * Meta can occasionally return a transient window-looking response while
+     * a very recent customer event is propagating internally, so retry the
+     * standard RESPONSE path once after a short delay. This retry happens only
+     * after a failed request, so it cannot duplicate a successful send.
      */
     if (
       (!facebookResponse.ok ||
         facebookResult.error) &&
+      outsideStandardWindow &&
+      hasRecentDirectCustomerMessage
+    ) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, 400),
+      );
+
+      const standardRetry =
+        await sendToFacebook({
+          useHumanAgentTag: false,
+        });
+
+      facebookResponse =
+        standardRetry.response;
+      facebookResult =
+        standardRetry.result;
+    } else if (
+      (!facebookResponse.ok ||
+        facebookResult.error) &&
       outsideStandardWindow
     ) {
+      /*
+       * Meta allows HUMAN_AGENT only for approved apps and only outside the
+       * standard window. Keep the existing fallback for genuinely old threads,
+       * but never use it for a conversation with a verified recent inbound DM.
+       */
       const humanAgentAttempt =
         await sendToFacebook({
           useHumanAgentTag: true,
@@ -504,11 +587,16 @@ export async function POST(
         error:
           usedHumanAgentTag
             ? `Meta would not allow this manual reply outside the standard messaging window. ${metaMessage}`
-            : metaMessage,
+            : hasRecentDirectCustomerMessage
+              ? `Meta rejected a normal Messenger reply even though TENH received a recent customer message. ${metaMessage}`
+              : metaMessage,
         details:
           facebookResult.error ??
           facebookResult,
         usedHumanAgentTag,
+        hasRecentDirectCustomerMessage,
+        latestDirectIncomingAt:
+          latestDirectIncomingAt,
       },
       {
         status:

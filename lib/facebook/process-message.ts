@@ -40,12 +40,34 @@ export async function processFacebookMessage(
   const pageId = isEcho ? senderId : recipientId;
   const customerId = isEcho ? recipientId : senderId;
 
-  const { data: existingMessage, error: existingMessageError } =
-    await supabaseAdmin
+  /*
+   * V3.11.33 — Messenger receive fast path.
+   *
+   * Duplicate detection and connected-Page lookup are independent reads. Run
+   * them together so a new customer message does not pay for two sequential
+   * Supabase round trips before TENH can insert the Realtime message row.
+   * This changes no authorization or message semantics; it only removes
+   * avoidable latency from the webhook path.
+   */
+  const [existingMessageResult, socialAccountResult] = await Promise.all([
+    supabaseAdmin
       .from("messages")
       .select("id")
       .eq("platform_message_id", messageId)
-      .maybeSingle();
+      .maybeSingle(),
+    supabaseAdmin
+      .from("social_accounts")
+      .select("id,business_id,account_name")
+      .eq("platform", "facebook")
+      .eq("platform_account_id", pageId)
+      .eq("is_active", true)
+      .maybeSingle(),
+  ]);
+
+  const {
+    data: existingMessage,
+    error: existingMessageError,
+  } = existingMessageResult;
 
   if (existingMessageError) {
     throw new Error(existingMessageError.message);
@@ -55,14 +77,10 @@ export async function processFacebookMessage(
     return;
   }
 
-  const { data: socialAccount, error: accountError } =
-    await supabaseAdmin
-      .from("social_accounts")
-      .select("id,business_id,account_name")
-      .eq("platform", "facebook")
-      .eq("platform_account_id", pageId)
-      .eq("is_active", true)
-      .maybeSingle();
+  const {
+    data: socialAccount,
+    error: accountError,
+  } = socialAccountResult;
 
   if (accountError) {
     throw new Error(accountError.message);

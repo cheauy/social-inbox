@@ -3,7 +3,6 @@ import {
   NextResponse,
 } from "next/server";
 
-import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
   isFacebookAccessTokenError,
   refreshFacebookPageAccessToken,
@@ -190,32 +189,6 @@ export async function POST(
       commentId,
       deletedBy: "page",
     });
-
-    const {
-      error: conversationUpdateError,
-    } = await supabaseAdmin
-      .from("conversations")
-      .update({
-        last_message_text:
-          "Message deleted by commenter or Page",
-        updated_at:
-          new Date().toISOString(),
-      })
-      .eq(
-        "id",
-        context.conversation.id,
-      )
-      .eq(
-        "business_id",
-        currentMember.business_id,
-      );
-
-    if (conversationUpdateError) {
-      console.warn(
-        "Facebook comment was deleted, but TENH could not refresh the conversation preview:",
-        conversationUpdateError,
-      );
-    }
 
     return NextResponse.json({
       success: true,
