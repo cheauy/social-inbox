@@ -43,6 +43,30 @@ function getRowTimestampMs(
   return Date.parse(value);
 }
 
+function isNewerPolicyRow(
+  candidate: MessengerPolicyMessageRow,
+  current: MessengerPolicyMessageRow | null,
+) {
+  const candidateMs =
+    getRowTimestampMs(candidate);
+
+  if (!Number.isFinite(candidateMs)) {
+    return false;
+  }
+
+  if (!current) {
+    return true;
+  }
+
+  const currentMs =
+    getRowTimestampMs(current);
+
+  return (
+    !Number.isFinite(currentMs) ||
+    candidateMs > currentMs
+  );
+}
+
 function isFacebookCommentPayload(
   rawPayload: unknown,
 ) {
@@ -121,12 +145,27 @@ function isDirectFacebookMessengerOutgoing(
   return true;
 }
 
+const STANDARD_WINDOW_MS =
+  24 * 60 * 60 * 1000;
+const HUMAN_AGENT_WINDOW_MS =
+  7 * 24 * 60 * 60 * 1000;
+
+export type FacebookMessengerWindowState =
+  | "standard"
+  | "human_agent"
+  | "expired"
+  | "private_reply_available"
+  | "waiting_for_customer_reply"
+  | "unknown";
+
 export type FacebookMessengerReplyPolicy = {
   hasRecentDirectCustomerMessage: boolean;
+  withinHumanAgentWindow: boolean;
   latestDirectIncomingAt: string | null;
   latestIncomingCommentAt: string | null;
   latestDirectOutgoingAt: string | null;
   waitingForCustomerReply: boolean;
+  windowState: FacebookMessengerWindowState;
 };
 
 export async function getFacebookMessengerReplyPolicy(
@@ -144,10 +183,19 @@ export async function getFacebookMessengerReplyPolicy(
       "conversation_id",
       conversationId,
     )
+    /*
+     * Read a generous recent slice ordered by the platform timestamp first.
+     * The policy still fails closed when no trustworthy event can be found,
+     * so a very long conversation can never become sendable by accident.
+     */
+    .order("platform_created_at", {
+      ascending: false,
+      nullsFirst: false,
+    })
     .order("created_at", {
       ascending: false,
     })
-    .limit(100);
+    .limit(500);
 
   if (error) {
     throw new Error(
@@ -167,40 +215,41 @@ export async function getFacebookMessengerReplyPolicy(
 
   for (const row of rows) {
     if (
-      !latestDirectIncoming &&
       row.direction === "incoming" &&
       isDirectFacebookMessengerInbound(
         row.raw_payload,
+      ) &&
+      isNewerPolicyRow(
+        row,
+        latestDirectIncoming,
       )
     ) {
       latestDirectIncoming = row;
     }
 
     if (
-      !latestIncomingComment &&
       row.direction === "incoming" &&
       isFacebookCommentPayload(
         row.raw_payload,
+      ) &&
+      isNewerPolicyRow(
+        row,
+        latestIncomingComment,
       )
     ) {
       latestIncomingComment = row;
     }
 
     if (
-      !latestDirectOutgoing &&
       isDirectFacebookMessengerOutgoing(
         row,
+      ) &&
+      isNewerPolicyRow(
+        row,
+        latestDirectOutgoing,
       )
     ) {
       latestDirectOutgoing = row;
-    }
-
-    if (
-      latestDirectIncoming &&
-      latestIncomingComment &&
-      latestDirectOutgoing
-    ) {
-      break;
     }
   }
 
@@ -242,40 +291,91 @@ export async function getFacebookMessengerReplyPolicy(
         )
       : Number.NaN;
 
+  const nowMs = Date.now();
+  const directCustomerMessageAgeMs =
+    Number.isFinite(latestDirectIncomingAtMs)
+      ? nowMs - latestDirectIncomingAtMs
+      : Number.NaN;
+
   const hasRecentDirectCustomerMessage =
     Number.isFinite(
-      latestDirectIncomingAtMs,
+      directCustomerMessageAgeMs,
     ) &&
-    Date.now() - latestDirectIncomingAtMs >= 0 &&
-    Date.now() - latestDirectIncomingAtMs <
-      24 * 60 * 60 * 1000;
+    directCustomerMessageAgeMs >= 0 &&
+    directCustomerMessageAgeMs <
+      STANDARD_WINDOW_MS;
+
+  const withinHumanAgentWindow =
+    Number.isFinite(
+      directCustomerMessageAgeMs,
+    ) &&
+    directCustomerMessageAgeMs >=
+      STANDARD_WINDOW_MS &&
+    directCustomerMessageAgeMs <
+      HUMAN_AGENT_WINDOW_MS;
 
   /*
-   * Safe private-reply state:
-   * - a Facebook comment is the newest customer interaction that can start a
-   *   private reply,
-   * - TENH already sent one direct Messenger message after that comment,
-   * - the customer has not opened a current Messenger window by replying.
-   *
-   * This never groups customers by name and never guesses identity; it uses
-   * only rows already tied to this exact conversation.
+   * A new Facebook comment creates a separate one-private-reply opportunity.
+   * An older Messenger DM must not count as the customer's reply to that new
+   * comment. We therefore compare exact timestamps inside this conversation.
    */
-  const waitingForCustomerReply =
-    !hasRecentDirectCustomerMessage &&
+  const latestCommentIsNewerThanDirectIncoming =
     Number.isFinite(
       latestIncomingCommentAtMs,
     ) &&
+    (!Number.isFinite(
+      latestDirectIncomingAtMs,
+    ) ||
+      latestIncomingCommentAtMs >
+        latestDirectIncomingAtMs);
+
+  const pageAlreadySentAfterLatestComment =
+    latestCommentIsNewerThanDirectIncoming &&
     Number.isFinite(
       latestDirectOutgoingAtMs,
     ) &&
     latestDirectOutgoingAtMs >=
       latestIncomingCommentAtMs;
 
+  const waitingForCustomerReply =
+    latestCommentIsNewerThanDirectIncoming &&
+    pageAlreadySentAfterLatestComment;
+
+  let windowState:
+    FacebookMessengerWindowState =
+      "unknown";
+
+  if (waitingForCustomerReply) {
+    windowState =
+      "waiting_for_customer_reply";
+  } else if (
+    latestCommentIsNewerThanDirectIncoming
+  ) {
+    windowState =
+      "private_reply_available";
+  } else if (
+    hasRecentDirectCustomerMessage
+  ) {
+    windowState = "standard";
+  } else if (withinHumanAgentWindow) {
+    windowState = "human_agent";
+  } else if (
+    Number.isFinite(
+      directCustomerMessageAgeMs,
+    ) &&
+    directCustomerMessageAgeMs >=
+      HUMAN_AGENT_WINDOW_MS
+  ) {
+    windowState = "expired";
+  }
+
   return {
     hasRecentDirectCustomerMessage,
+    withinHumanAgentWindow,
     latestDirectIncomingAt,
     latestIncomingCommentAt,
     latestDirectOutgoingAt,
     waitingForCustomerReply,
+    windowState,
   };
 }

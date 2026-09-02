@@ -48,6 +48,9 @@ type ReplyBoxProps = {
   sending: boolean;
   error: string | null;
   blockedReason?: string | null;
+  blockedTitle?: string | null;
+  advisoryReason?: string | null;
+  advisoryTitle?: string | null;
 
   contactId: string;
   businessId: string;
@@ -291,6 +294,9 @@ export function ReplyBox({
   sending,
   error,
   blockedReason = null,
+  blockedTitle = null,
+  advisoryReason = null,
+  advisoryTitle = null,
   contactId,
   businessId,
   initialTags,
@@ -1710,7 +1716,7 @@ export function ReplyBox({
           </div>
         ) : null}
 
-        {blockedReason ? (
+        {blockedReason || advisoryReason ? (
           <div className="border-t border-amber-200 bg-amber-50 px-4 py-2.5 text-amber-900">
             <div className="mx-auto flex max-w-[1500px] items-start gap-2.5">
               <svg
@@ -1726,10 +1732,18 @@ export function ReplyBox({
               </svg>
               <div className="min-w-0">
                 <p className="text-xs font-bold">
-                  {isKhmer ? "កំពុងរង់ចាំអតិថិជនឆ្លើយតប" : "Waiting for customer reply"}
+                  {blockedReason
+                    ? blockedTitle ??
+                      (isKhmer
+                        ? "មិនអាចផ្ញើសារបាន"
+                        : "Messaging unavailable")
+                    : advisoryTitle ??
+                      (isKhmer
+                        ? "ព័ត៌មានអំពីការផ្ញើសារ"
+                        : "Messaging notice")}
                 </p>
                 <p className="mt-0.5 text-[11px] leading-4 text-amber-800">
-                  {blockedReason}
+                  {blockedReason ?? advisoryReason}
                 </p>
               </div>
             </div>
@@ -1973,9 +1987,10 @@ export function ReplyBox({
                 }}
                 placeholder={
                   blockedReason
-                    ? isKhmer
-                      ? "កំពុងរង់ចាំអតិថិជនឆ្លើយតប..."
-                      : "Waiting for customer reply..."
+                    ? blockedTitle ??
+                      (isKhmer
+                        ? "មិនអាចផ្ញើសារបាន..."
+                        : "Messaging unavailable...")
                     : isKhmer
                       ? "សរសេរការឆ្លើយតប..."
                       : "Write a reply..."

@@ -140,9 +140,17 @@ function inboxMessageTimestampMs(
   return value ? Date.parse(value) : Number.NaN;
 }
 
-function isWaitingForFacebookCustomerReply(
+type FacebookMessengerComposerState =
+  | "standard"
+  | "human_agent"
+  | "expired"
+  | "private_reply_available"
+  | "waiting_for_customer_reply"
+  | "unknown";
+
+function getFacebookMessengerComposerState(
   messages: InboxMessage[],
-) {
+): FacebookMessengerComposerState {
   let latestDirectIncomingMs = Number.NaN;
   let latestIncomingCommentMs = Number.NaN;
   let latestDirectOutgoingMs = Number.NaN;
@@ -180,17 +188,60 @@ function isWaitingForFacebookCustomerReply(
     }
   }
 
-  const hasRecentDirectCustomerMessage =
-    Number.isFinite(latestDirectIncomingMs) &&
-    Date.now() - latestDirectIncomingMs >= 0 &&
-    Date.now() - latestDirectIncomingMs < 24 * 60 * 60 * 1000;
+  const nowMs = Date.now();
+  const standardWindowMs = 24 * 60 * 60 * 1000;
+  const humanAgentWindowMs = 7 * 24 * 60 * 60 * 1000;
 
-  return (
-    !hasRecentDirectCustomerMessage &&
+  const latestDirectIncomingAgeMs =
+    Number.isFinite(latestDirectIncomingMs)
+      ? nowMs - latestDirectIncomingMs
+      : Number.NaN;
+
+  const latestCommentIsNewerThanDirectIncoming =
     Number.isFinite(latestIncomingCommentMs) &&
+    (!Number.isFinite(latestDirectIncomingMs) ||
+      latestIncomingCommentMs > latestDirectIncomingMs);
+
+  const pageAlreadySentAfterLatestComment =
+    latestCommentIsNewerThanDirectIncoming &&
     Number.isFinite(latestDirectOutgoingMs) &&
-    latestDirectOutgoingMs >= latestIncomingCommentMs
-  );
+    latestDirectOutgoingMs >= latestIncomingCommentMs;
+
+  if (
+    latestCommentIsNewerThanDirectIncoming &&
+    pageAlreadySentAfterLatestComment
+  ) {
+    return "waiting_for_customer_reply";
+  }
+
+  if (latestCommentIsNewerThanDirectIncoming) {
+    return "private_reply_available";
+  }
+
+  if (
+    Number.isFinite(latestDirectIncomingAgeMs) &&
+    latestDirectIncomingAgeMs >= 0 &&
+    latestDirectIncomingAgeMs < standardWindowMs
+  ) {
+    return "standard";
+  }
+
+  if (
+    Number.isFinite(latestDirectIncomingAgeMs) &&
+    latestDirectIncomingAgeMs >= standardWindowMs &&
+    latestDirectIncomingAgeMs < humanAgentWindowMs
+  ) {
+    return "human_agent";
+  }
+
+  if (
+    Number.isFinite(latestDirectIncomingAgeMs) &&
+    latestDirectIncomingAgeMs >= humanAgentWindowMs
+  ) {
+    return "expired";
+  }
+
+  return "unknown";
 }
 
 const CHAT_BACKGROUND_PRESET_SRC: Record<string, string> = {
@@ -1334,19 +1385,38 @@ export function MessagePanel({
 }: MessagePanelProps) {
   const isKhmer = useWorkspaceLanguageId() === "km";
 
+  const facebookMessengerComposerState =
+    activeConversation?.social_account?.platform === "facebook" &&
+    !replyingToCommentId
+      ? getFacebookMessengerComposerState(messages)
+      : "unknown";
+
   const facebookWaitingForCustomerReply =
-    activeConversation !== null &&
-    activeConversation !== undefined &&
-    activeConversation.social_account?.platform === "facebook" &&
-    !replyingToCommentId &&
-    isWaitingForFacebookCustomerReply(messages);
+    facebookMessengerComposerState ===
+    "waiting_for_customer_reply";
+  const facebookMessengerWindowExpired =
+    facebookMessengerComposerState === "expired";
+  const facebookMessengerBlockedTitle =
+    facebookWaitingForCustomerReply
+      ? isKhmer
+        ? "កំពុងរង់ចាំអតិថិជនឆ្លើយតប"
+        : "Waiting for customer reply"
+      : facebookMessengerWindowExpired
+        ? isKhmer
+          ? "រយៈពេលផ្ញើសារ 7 ថ្ងៃបានផុតកំណត់"
+          : "Waiting for customer reply"
+        : null;
 
   const facebookMessengerBlockedReason =
     facebookWaitingForCustomerReply
       ? isKhmer
         ? "Meta អនុញ្ញាតឱ្យផ្ញើសារឯកជនតែមួយប៉ុណ្ណោះបន្ទាប់ពីមតិយោបល់ Facebook។ សូមរង់ចាំអតិថិជនឆ្លើយតបក្នុង Messenger មុនពេលផ្ញើសារបន្ទាប់។"
         : "Meta allows only one private Messenger reply after a Facebook comment. Wait for the customer to reply in Messenger before sending another message."
-      : null;
+      : facebookMessengerWindowExpired
+        ? isKhmer
+          ? "លើស 7 ថ្ងៃចាប់តាំងពីសារ Messenger ចុងក្រោយរបស់អតិថិជន។ សូមរង់ចាំអតិថិជនផ្ញើសារថ្មីមកវិញ មុនពេលឆ្លើយតប។"
+          : "7 days have passed since the customer's last Messenger message. Meta only allows another private message after the customer sends a new message."
+        : null;
 
   const [
     optimisticCommentState,
@@ -5401,6 +5471,7 @@ export function MessagePanel({
           sending={sending}
           error={sendError}
           blockedReason={facebookMessengerBlockedReason}
+          blockedTitle={facebookMessengerBlockedTitle}
 
           onReplyChange={
             onReplyChange

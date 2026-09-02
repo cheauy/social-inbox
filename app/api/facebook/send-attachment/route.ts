@@ -512,18 +512,21 @@ export async function POST(
     socialAccount.platform_account_id;
 
   /*
-   * Keep attachment sending under the exact same Facebook private-reply
-   * policy as text. A second photo/file/voice message must not bypass the
-   * "wait for customer reply" lock.
+   * Keep attachment sending under the same Facebook reply-window policy as
+   * text. This prevents photo/file/voice messages from bypassing either the
+   * one-private-reply lock or Meta's 7-day Human Agent ceiling.
    */
+  let messengerPolicy;
+
   try {
-    const messengerPolicy =
+    messengerPolicy =
       await getFacebookMessengerReplyPolicy(
         conversationId,
       );
 
     if (
-      messengerPolicy.waitingForCustomerReply
+      messengerPolicy.windowState ===
+        "waiting_for_customer_reply"
     ) {
       return NextResponse.json(
         {
@@ -532,6 +535,38 @@ export async function POST(
           error:
             "Waiting for customer reply. Meta allows only one private Messenger reply after a Facebook comment. You can send again as soon as the customer replies in Messenger.",
           waitingForCustomerReply: true,
+        },
+        { status: 409 },
+      );
+    }
+
+    if (
+      messengerPolicy.windowState ===
+        "expired"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "MESSENGER_WINDOW_EXPIRED",
+          error:
+            "The 7-day Messenger support window has expired. Wait for the customer to message again before sending another reply.",
+          latestDirectIncomingAt:
+            messengerPolicy.latestDirectIncomingAt,
+        },
+        { status: 409 },
+      );
+    }
+
+    if (
+      messengerPolicy.windowState ===
+        "unknown"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "MESSENGER_POLICY_UNKNOWN",
+          error:
+            "TENH could not safely verify this Messenger conversation yet. Refresh the conversation and try again after the latest customer activity is loaded.",
         },
         { status: 409 },
       );
@@ -552,6 +587,10 @@ export async function POST(
       { status: 503 },
     );
   }
+
+  const shouldUseHumanAgent =
+    messengerPolicy.windowState ===
+    "human_agent";
 
   let pageAccessToken: string;
 
@@ -755,8 +794,16 @@ export async function POST(
             recipient: {
               id: recipientId,
             },
-            messaging_type:
-              "RESPONSE",
+            ...(shouldUseHumanAgent
+              ? {
+                  messaging_type:
+                    "MESSAGE_TAG",
+                  tag: "HUMAN_AGENT",
+                }
+              : {
+                  messaging_type:
+                    "RESPONSE",
+                }),
             message: {
               attachment: {
                 type: kind,
@@ -855,6 +902,19 @@ export async function POST(
         sendPayload,
         "Facebook did not accept the attachment message.",
       );
+    const errorMessageLower =
+      errorMessage.toLowerCase();
+    const humanAgentApprovalRequired =
+      shouldUseHumanAgent &&
+      errorMessageLower.includes(
+        "human_agent",
+      ) &&
+      (errorMessageLower.includes(
+        "prior approval",
+      ) ||
+        errorMessageLower.includes(
+          "approval",
+        ));
 
     console.error(
       "Facebook attachment send failed:",
@@ -864,10 +924,17 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-        error: errorMessage,
+        code: humanAgentApprovalRequired
+          ? "HUMAN_AGENT_APPROVAL_REQUIRED"
+          : undefined,
+        error: humanAgentApprovalRequired
+          ? "Extended messaging access is not available for this Facebook Page yet. Ask an administrator to finish the required Meta approval, or wait for the customer to message again."
+          : shouldUseHumanAgent
+            ? `Meta rejected this extended support attachment reply. ${errorMessage}`
+            : errorMessage,
       },
       {
-        status: 502,
+        status: sendResponse.status || 502,
       },
     );
   }

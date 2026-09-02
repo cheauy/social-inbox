@@ -6958,7 +6958,13 @@ async function performOptimisticSend(
     ) {
       if (
         result.code ===
-        "WAITING_FOR_CUSTOMER_REPLY"
+          "WAITING_FOR_CUSTOMER_REPLY" ||
+        result.code ===
+          "MESSENGER_WINDOW_EXPIRED" ||
+        result.code ===
+          "MESSENGER_POLICY_UNKNOWN" ||
+        result.code ===
+          "HUMAN_AGENT_APPROVAL_REQUIRED"
       ) {
         setLiveMessages(
           (current) =>
@@ -6974,7 +6980,7 @@ async function performOptimisticSend(
 
         setSendError(
           result.error ??
-            "Waiting for customer reply before another Messenger message can be sent.",
+            "Facebook messaging policy does not allow this reply right now.",
         );
 
         return;
@@ -7121,7 +7127,13 @@ async function performOptimisticAttachmentSend(
     ) {
       if (
         result.code ===
-        "WAITING_FOR_CUSTOMER_REPLY"
+          "WAITING_FOR_CUSTOMER_REPLY" ||
+        result.code ===
+          "MESSENGER_WINDOW_EXPIRED" ||
+        result.code ===
+          "MESSENGER_POLICY_UNKNOWN" ||
+        result.code ===
+          "HUMAN_AGENT_APPROVAL_REQUIRED"
       ) {
         setLiveMessages(
           (current) =>
@@ -7137,7 +7149,7 @@ async function performOptimisticAttachmentSend(
 
         setSendError(
           result.error ??
-            "Waiting for customer reply before another Messenger message can be sent.",
+            "Facebook messaging policy does not allow this attachment reply right now.",
         );
 
         return false;

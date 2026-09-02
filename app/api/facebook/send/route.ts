@@ -314,12 +314,12 @@ export async function POST(
   }
 
   /*
-   * V3.1.19 — Safe Facebook private-reply guard.
+   * Safe Messenger reply-window policy.
    *
-   * If a customer only commented, Meta permits one private Messenger reply.
-   * Until that customer replies in Messenger, TENH must not attempt a second
-   * private message (text or attachment). This is enforced server-side so a
-   * stale browser or alternate client cannot bypass the rule.
+   * - one private reply after a Facebook comment, then wait for the customer
+   * - 0–24h after a customer Messenger message: normal RESPONSE
+   * - 24h–7d: HUMAN_AGENT for a real support agent only
+   * - after 7d: block and wait for a new customer message
    */
   let messengerPolicy;
 
@@ -346,7 +346,8 @@ export async function POST(
   }
 
   if (
-    messengerPolicy.waitingForCustomerReply
+    messengerPolicy.windowState ===
+      "waiting_for_customer_reply"
   ) {
     return NextResponse.json(
       {
@@ -360,13 +361,51 @@ export async function POST(
     );
   }
 
+  if (
+    messengerPolicy.windowState ===
+      "expired"
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        code: "MESSENGER_WINDOW_EXPIRED",
+        error:
+          "The 7-day Messenger support window has expired. Wait for the customer to message again before sending another reply.",
+        latestDirectIncomingAt:
+          messengerPolicy.latestDirectIncomingAt,
+      },
+      { status: 409 },
+    );
+  }
+
+  if (
+    messengerPolicy.windowState ===
+      "unknown"
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        code: "MESSENGER_POLICY_UNKNOWN",
+        error:
+          "TENH could not safely verify this Messenger conversation yet. Refresh the conversation and try again after the latest customer activity is loaded.",
+      },
+      { status: 409 },
+    );
+  }
+
   const hasRecentDirectCustomerMessage =
     messengerPolicy.hasRecentDirectCustomerMessage;
   const latestDirectIncomingAt =
     messengerPolicy.latestDirectIncomingAt;
+  const shouldUseHumanAgent =
+    messengerPolicy.windowState ===
+    "human_agent";
 
   /*
-   * Meta Send API.
+   * Meta Send API. HUMAN_AGENT is selected only when TENH has verified that
+   * the customer's latest direct Messenger message is older than 24 hours
+   * but still younger than 7 days. It is never an automatic fallback for
+   * arbitrary send errors.
    */
   const graphUrl = new URL(
     `https://graph.facebook.com/${graphVersion}/me/messages`,
@@ -430,27 +469,25 @@ export async function POST(
   let facebookResponse: Response | null = null;
   let facebookResult:
     FacebookSendResult = {};
-  let usedHumanAgentTag =
-    false;
+  const usedHumanAgentTag =
+    shouldUseHumanAgent;
 
   try {
-    let standardAttempt =
+    let sendAttempt =
       await sendToFacebook({
-        useHumanAgentTag: false,
+        useHumanAgentTag:
+          shouldUseHumanAgent,
       });
 
     /*
-     * Meta can invalidate a stored Page token while the User authorization
-     * behind it is still valid. In that specific case TENH re-derives the
-     * Page token from the encrypted User token and retries once. This does
-     * not bypass revoked Facebook authorization; if the User token is no
-     * longer valid, the refresh helper returns a reconnect-required error.
+     * Token repair retries the exact same messaging mode. It never changes a
+     * standard reply into HUMAN_AGENT and never bypasses the 7-day ceiling.
      */
     if (
-      (!standardAttempt.response.ok ||
-        standardAttempt.result.error) &&
+      (!sendAttempt.response.ok ||
+        sendAttempt.result.error) &&
       isFacebookAccessTokenError(
-        standardAttempt.result.error,
+        sendAttempt.result.error,
       )
     ) {
       pageAccessToken =
@@ -463,81 +500,58 @@ export async function POST(
         pageAccessToken,
       );
 
-      standardAttempt =
+      sendAttempt =
         await sendToFacebook({
-          useHumanAgentTag: false,
+          useHumanAgentTag:
+            shouldUseHumanAgent,
         });
     }
 
     facebookResponse =
-      standardAttempt.response;
+      sendAttempt.response;
     facebookResult =
-      standardAttempt.result;
-
-    const standardErrorMessage =
-      facebookResult.error?.message
-        ?.toLowerCase() ?? "";
-    const outsideStandardWindow =
-      facebookResult.error?.code === 10 &&
-      (standardErrorMessage.includes(
-        "outside the allowed window",
-      ) ||
-        standardErrorMessage.includes(
-          "allowed window",
-        ) ||
-        standardErrorMessage.includes(
-          "24",
-        ));
+      sendAttempt.result;
 
     /*
-     * If a customer genuinely messaged TENH in the last 24 hours, do NOT
-     * switch the next agent reply to HUMAN_AGENT. A Page reply echo or any
-     * other outgoing message must not close the customer's standard window.
-     *
-     * Meta can occasionally return a transient window-looking response while
-     * a very recent customer event is propagating internally, so retry the
-     * standard RESPONSE path once after a short delay. This retry happens only
-     * after a failed request, so it cannot duplicate a successful send.
+     * A very fresh inbound webhook can race Meta's own messaging-window
+     * propagation. Only the verified <24h RESPONSE path gets one retry.
      */
     if (
+      !shouldUseHumanAgent &&
+      hasRecentDirectCustomerMessage &&
       (!facebookResponse.ok ||
-        facebookResult.error) &&
-      outsideStandardWindow &&
-      hasRecentDirectCustomerMessage
+        facebookResult.error)
     ) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, 400),
-      );
+      const standardErrorMessage =
+        facebookResult.error?.message
+          ?.toLowerCase() ?? "";
+      const outsideStandardWindow =
+        facebookResult.error?.code === 10 &&
+        (standardErrorMessage.includes(
+          "outside the allowed window",
+        ) ||
+          standardErrorMessage.includes(
+            "allowed window",
+          ) ||
+          standardErrorMessage.includes(
+            "24",
+          ));
 
-      const standardRetry =
-        await sendToFacebook({
-          useHumanAgentTag: false,
-        });
+      if (outsideStandardWindow) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, 400),
+        );
 
-      facebookResponse =
-        standardRetry.response;
-      facebookResult =
-        standardRetry.result;
-    } else if (
-      (!facebookResponse.ok ||
-        facebookResult.error) &&
-      outsideStandardWindow
-    ) {
-      /*
-       * Meta allows HUMAN_AGENT only for approved apps and only outside the
-       * standard window. Keep the existing fallback for genuinely old threads,
-       * but never use it for a conversation with a verified recent inbound DM.
-       */
-      const humanAgentAttempt =
-        await sendToFacebook({
-          useHumanAgentTag: true,
-        });
+        const standardRetry =
+          await sendToFacebook({
+            useHumanAgentTag: false,
+          });
 
-      facebookResponse =
-        humanAgentAttempt.response;
-      facebookResult =
-        humanAgentAttempt.result;
-      usedHumanAgentTag = true;
+        facebookResponse =
+          standardRetry.response;
+        facebookResult =
+          standardRetry.result;
+      }
     }
   } catch (sendError) {
     console.error(
@@ -580,13 +594,30 @@ export async function POST(
       facebookResult.error
         ?.message ??
       "Facebook rejected the message.";
+    const metaMessageLower =
+      metaMessage.toLowerCase();
+    const humanAgentApprovalRequired =
+      usedHumanAgentTag &&
+      metaMessageLower.includes(
+        "human_agent",
+      ) &&
+      (metaMessageLower.includes(
+        "prior approval",
+      ) ||
+        metaMessageLower.includes(
+          "approval",
+        ));
 
     return NextResponse.json(
       {
         success: false,
-        error:
-          usedHumanAgentTag
-            ? `Meta would not allow this manual reply outside the standard messaging window. ${metaMessage}`
+        code: humanAgentApprovalRequired
+          ? "HUMAN_AGENT_APPROVAL_REQUIRED"
+          : undefined,
+        error: humanAgentApprovalRequired
+          ? "Extended messaging access is not available for this Facebook Page yet. Ask an administrator to finish the required Meta approval, or wait for the customer to message again."
+          : usedHumanAgentTag
+            ? `Meta rejected this extended support reply. ${metaMessage}`
             : hasRecentDirectCustomerMessage
               ? `Meta rejected a normal Messenger reply even though TENH received a recent customer message. ${metaMessage}`
               : metaMessage,
