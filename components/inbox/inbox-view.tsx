@@ -669,6 +669,21 @@ const persistedManualUnreadCountsRef =
 const readBarrierMessageTimeRef =
   useRef<Map<string, number>>(new Map());
 
+/*
+ * Read row version per conversation: the conversations.updated_at that the
+ * server reported when this browser's read PATCH committed.
+ *
+ * A teammate's Mark unread and a stale echo of our own pre-read state are
+ * identical on the wire — both arrive as "unread_count > 0 on the same last
+ * message" — so unread cannot be attributed by inspecting the row alone. The
+ * row version settles it: anything not strictly newer than the read we just
+ * performed is describing a state we already superseded, while a real
+ * teammate action always lands with a later updated_at. Server timestamps on
+ * both sides, so browser clock skew cannot affect the comparison.
+ */
+const readRowVersionRef =
+  useRef<Map<string, number>>(new Map());
+
 const previousActiveConversationIdRef =
   useRef<string | null>(null);
 
@@ -1505,10 +1520,14 @@ async function markConversationReadRealtime(
           ) as {
             success?: boolean;
             error?: string;
+            conversation?: {
+              updated_at?: string | null;
+            } | null;
           })
         : {
             success:
               response.ok,
+            conversation: null,
           };
 
     if (
@@ -1520,8 +1539,35 @@ async function markConversationReadRealtime(
           "Unable to mark conversation read.",
       );
     }
+
+    /*
+     * Remember the row version this read produced. Conversation rows at or
+     * behind it describe state this read already superseded.
+     */
+    const readRowVersion =
+      typeof result.conversation?.updated_at === "string"
+        ? new Date(
+            result.conversation.updated_at,
+          ).getTime()
+        : Number.NaN;
+
+    if (Number.isFinite(readRowVersion)) {
+      readRowVersionRef.current.set(
+        conversationId,
+        Math.max(
+          readRowVersionRef.current.get(
+            conversationId,
+          ) ?? 0,
+          readRowVersion,
+        ),
+      );
+    }
   } catch (error) {
     readBarrierMessageTimeRef.current.delete(
+      conversationId,
+    );
+
+    readRowVersionRef.current.delete(
       conversationId,
     );
 
@@ -2694,10 +2740,33 @@ useInboxRealtime({
             rowUnreadCount > existingUnreadCount
           )
         );
+      /*
+       * A row is only evidence of a teammate's Mark unread if it is strictly
+       * newer than the read this browser last committed. Without this the
+       * check below is a catch-all — every unread row that could not be
+       * attributed to a new message was treated as a manual unread, so a
+       * stale echo of our own pre-read count resurrected the badge, pinned
+       * the conversation into manualUnreadConversationIds (which makes
+       * markConversationReadRealtime bail out), and dropped the read barrier
+       * that would otherwise have corrected it. That is the "badge comes back
+       * until I switch conversations twice" bug.
+       */
+      const readRowVersion =
+        readRowVersionRef.current.get(conversationId) ?? 0;
+      const rowUpdatedTime =
+        typeof row.updated_at === "string"
+          ? new Date(row.updated_at).getTime()
+          : Number.NaN;
+      const rowSupersedesRead =
+        readRowVersion === 0 ||
+        !Number.isFinite(rowUpdatedTime) ||
+        rowUpdatedTime > readRowVersion;
+
       const isSharedManualUnreadUpdate =
         rowUnreadCount !== null &&
         rowUnreadCount > 0 &&
-        !unreadComesFromNewMessage;
+        !unreadComesFromNewMessage &&
+        rowSupersedesRead;
 
       /*
        * Supabase can occasionally deliver the conversations UPDATE while the
@@ -2765,6 +2834,8 @@ useInboxRealtime({
           Math.max(1, rowUnreadCount ?? 1),
         );
         readBarrierMessageTimeRef.current.delete(conversationId);
+        /* Our read is genuinely superseded here, so retire its row version. */
+        readRowVersionRef.current.delete(conversationId);
       }
 
       /*
@@ -5359,6 +5430,10 @@ useEffect(() => {
 
     /* Keep it unread for the entire time this exact thread stays open. */
     readBarrierMessageTimeRef.current.delete(
+      conversationId,
+    );
+    /* This deliberately supersedes our own read, so retire its row version. */
+    readRowVersionRef.current.delete(
       conversationId,
     );
     manualUnreadConversationIdsRef.current.add(

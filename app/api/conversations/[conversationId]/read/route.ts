@@ -70,9 +70,18 @@ export async function PATCH(
       "business_id",
       currentMember.business_id,
     )
+    /*
+     * updated_at is the read "row version". The browser keeps it and
+     * ignores any later conversations row that is not strictly newer,
+     * which is how a stale realtime echo of the pre-read unread_count is
+     * told apart from a teammate genuinely hitting Mark unread. Both look
+     * identical otherwise, so the comparison must stay server-clock to
+     * server-clock.
+     */
     .select(`
       id,
-      unread_count
+      unread_count,
+      updated_at
     `)
     .maybeSingle();
 

@@ -3029,15 +3029,23 @@ export function ConversationList({
                   }
                 </span>
 
+                {/*
+                 * Counts conversations, not messages: this badge sits on a
+                 * filter that opens a list of chats, so the number should
+                 * match the rows behind it. One customer sending 30 rapid
+                 * messages is still one person to reply to. The per-chat
+                 * badge further down still shows the message count, and the
+                 * tooltip below spells out both numbers.
+                 */}
                 {view.value ===
                   "unread" &&
-                totalUnreadCount >
+                unreadConversationCount >
                   0 ? (
                   <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-slate-50 bg-blue-600 px-1 text-[10px] font-bold leading-none text-white">
-                    {totalUnreadCount >
+                    {unreadConversationCount >
                     99
                       ? "99+"
-                      : totalUnreadCount}
+                      : unreadConversationCount}
                   </span>
                 ) : null}
 
