@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -243,18 +244,24 @@ export async function GET(request: NextRequest) {
         .select("id, platform, account_name")
         .eq("business_id", currentMember.business_id),
 
-      supabaseAdmin
-        .from("conversations")
-        .select(
-          "id, social_account_id, platform, source_type, status, assigned_to, unread_count, contact_id, created_at",
-        )
-        .eq("business_id", currentMember.business_id)
-        .gte("created_at", range.start.toISOString())
-        .lt("created_at", range.end.toISOString()),
+      // Paged: PostgREST caps a plain select at 1,000 rows, which silently
+      // under-counted every channel once a 30/90-day window grew past that.
+      fetchAllRows<ConversationRow>(() =>
+        supabaseAdmin
+          .from("conversations")
+          .select(
+            "id, social_account_id, platform, source_type, status, assigned_to, unread_count, contact_id, created_at",
+          )
+          .eq("business_id", currentMember.business_id)
+          .gte("created_at", range.start.toISOString())
+          .lt("created_at", range.end.toISOString())
+          .order("created_at", { ascending: true }),
+      ),
 
+      // "vs previous" only needs the count, so ask Postgres for it directly.
       supabaseAdmin
         .from("conversations")
-        .select("id")
+        .select("id", { count: "exact", head: true })
         .eq("business_id", currentMember.business_id)
         .gte("created_at", previousStart.toISOString())
         .lt("created_at", range.start.toISOString()),
@@ -295,12 +302,17 @@ export async function GET(request: NextRequest) {
   for (let index = 0; index < conversationIds.length; index += CHUNK) {
     const slice = conversationIds.slice(index, index + CHUNK);
 
-    const { data, error } = await supabaseAdmin
-      .from("messages")
-      .select("conversation_id, direction, created_at")
-      .eq("business_id", currentMember.business_id)
-      .in("conversation_id", slice)
-      .order("created_at", { ascending: true });
+    // Paged as well: 200 conversations can easily hold more than 1,000
+    // messages, and a truncated (ascending) read drops the newest replies.
+    const { data, error } = await fetchAllRows<MessageRow>(() =>
+      supabaseAdmin
+        .from("messages")
+        .select("conversation_id, direction, created_at")
+        .eq("business_id", currentMember.business_id)
+        .in("conversation_id", slice)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true }),
+    );
 
     if (error) {
       return NextResponse.json(
@@ -512,7 +524,7 @@ export async function GET(request: NextRequest) {
 
   const previousConversations = previousResult.error
     ? null
-    : (previousResult.data ?? []).length;
+    : (previousResult.count ?? 0);
 
   const conversationsChangePercent =
     previousConversations === null || previousConversations === 0

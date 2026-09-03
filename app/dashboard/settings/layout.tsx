@@ -11,7 +11,7 @@ export default function SettingsLayout({
 }: SettingsLayoutProps) {
   return (
     <div className="grid h-full min-h-0 grid-cols-[205px_minmax(0,1fr)] overflow-hidden">
-      <aside className="min-h-0 overflow-y-auto border-r border-slate-200 bg-white">
+      <aside className="min-h-0 overflow-hidden border-r border-slate-200 bg-white">
         <SettingsSidebar />
       </aside>
 

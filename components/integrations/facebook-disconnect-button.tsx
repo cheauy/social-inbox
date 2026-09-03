@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
+
 type FacebookDisconnectButtonProps = {
   socialAccountId: string;
   pageName: string;
@@ -13,21 +15,30 @@ export function FacebookDisconnectButton({
   pageName,
 }: FacebookDisconnectButtonProps) {
   const router = useRouter();
-  const [disconnecting, setDisconnecting] =
-    useState(false);
-  const [error, setError] =
-    useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  async function handleDisconnect() {
+  function openConfirm() {
     if (disconnecting) {
       return;
     }
 
-    const confirmed = window.confirm(
-      `Disconnect ${pageName} from TENH?\n\nYour existing customers, conversations, and messages will stay saved. TENH will stop receiving new Facebook events from this Page until you reconnect it.`,
-    );
+    setError(null);
+    setConfirmOpen(true);
+  }
 
-    if (!confirmed) {
+  function closeConfirm() {
+    if (disconnecting) {
+      return;
+    }
+
+    setConfirmOpen(false);
+    setError(null);
+  }
+
+  async function handleDisconnect() {
+    if (disconnecting) {
       return;
     }
 
@@ -52,8 +63,7 @@ export function FacebookDisconnectButton({
 
       if (!response.ok || !result.success) {
         throw new Error(
-          result.error ??
-            "Unable to disconnect the Facebook Page.",
+          result.error ?? "Unable to disconnect the Facebook Page.",
         );
       }
 
@@ -66,11 +76,15 @@ export function FacebookDisconnectButton({
         query.set("warning", result.warning);
       }
 
-      router.replace(
-        `/dashboard/integrations?${query.toString()}`,
-      );
+      setConfirmOpen(false);
+      router.replace(`/dashboard/integrations?${query.toString()}`);
       router.refresh();
     } catch (disconnectError) {
+      /*
+       * Keep the dialog open and show the reason inside it. Previously the
+       * native confirm() had already closed, so the error appeared as small
+       * text beside the button and was easy to miss.
+       */
       setError(
         disconnectError instanceof Error
           ? disconnectError.message
@@ -81,25 +95,30 @@ export function FacebookDisconnectButton({
   }
 
   return (
-    <div className="flex flex-col items-start gap-1">
+    <>
       <button
         type="button"
-        onClick={() =>
-          void handleDisconnect()
-        }
+        onClick={openConfirm}
         disabled={disconnecting}
         className="inline-flex items-center justify-center rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {disconnecting
-          ? "Disconnecting..."
-          : "Disconnect"}
+        {disconnecting ? "Disconnecting..." : "Disconnect"}
       </button>
 
-      {error ? (
-        <p className="max-w-56 text-xs font-medium text-red-600">
-          {error}
-        </p>
-      ) : null}
-    </div>
+      <ConfirmActionDialog
+        open={confirmOpen}
+        icon="unplug"
+        tone="danger"
+        title="Disconnect this Page?"
+        description={`TENH will stop receiving new Messenger messages and comments from ${pageName} until you reconnect it.`}
+        note="Your existing customers, conversations, and messages stay saved. The channel slot is freed for another Page."
+        confirmLabel="Disconnect"
+        loadingLabel="Disconnecting..."
+        loading={disconnecting}
+        error={error}
+        onCancel={closeConfirm}
+        onConfirm={() => void handleDisconnect()}
+      />
+    </>
   );
 }

@@ -20,6 +20,7 @@ type FacebookAccountRow = {
   business_id: string;
   platform_account_id: string | null;
   account_name: string | null;
+  facebook_backfill_requested_at?: string | null;
 };
 
 type WatchdogPageResult = {
@@ -42,6 +43,15 @@ function configuredLookbackMinutes() {
   }
 
   return Math.min(1440, Math.max(60, Math.round(parsed)));
+}
+
+function reconnectLookbackMinutes() {
+  const parsed = Number(
+    process.env.FACEBOOK_RECONNECT_RECOVERY_LOOKBACK_MINUTES?.trim() ||
+      "10080",
+  );
+
+  return Number.isFinite(parsed) ? parsed : 10_080;
 }
 
 async function processAccount(
@@ -79,12 +89,38 @@ async function processAccount(
     };
   }
 
+  /*
+   * A Page that was just connected or reconnected is flagged by
+   * /api/facebook/oauth/select instead of being backfilled inside that
+   * request (which took minutes and could exceed the function timeout).
+   * The first watchdog run after the flag does the deeper "reconnect" pass,
+   * then clears the flag so later runs go back to the normal short window.
+   */
+  const needsBackfill = Boolean(account.facebook_backfill_requested_at);
+
   const recovery = await recoverRecentFacebookData({
     pageId,
     socialAccountId: account.id,
     accessToken: health.accessToken,
-    lookbackMinutes,
+    lookbackMinutes: needsBackfill
+      ? reconnectLookbackMinutes()
+      : lookbackMinutes,
+    mode: needsBackfill ? "reconnect" : "watchdog",
   });
+
+  if (needsBackfill) {
+    const { error: clearError } = await supabaseAdmin
+      .from("social_accounts")
+      .update({ facebook_backfill_requested_at: null })
+      .eq("id", account.id);
+
+    if (clearError) {
+      console.warn(
+        "[TENH Facebook Watchdog] Backfill finished but the flag could not be cleared:",
+        clearError.message,
+      );
+    }
+  }
 
   return {
     socialAccountId: account.id,
@@ -117,7 +153,9 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await supabaseAdmin
     .from("social_accounts")
-    .select("id,business_id,platform_account_id,account_name")
+    .select(
+      "id,business_id,platform_account_id,account_name,facebook_backfill_requested_at",
+    )
     .eq("platform", "facebook")
     .eq("is_active", true)
     .or("facebook_token_status.is.null,facebook_token_status.neq.disconnected")

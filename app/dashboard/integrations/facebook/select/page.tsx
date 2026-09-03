@@ -9,6 +9,7 @@ import {
   FACEBOOK_OAUTH_SESSION_COOKIE,
 } from "@/lib/facebook/facebook-oauth-session";
 import { getFacebookAuthorizedPages } from "@/lib/facebook/facebook-authorized-pages";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -109,11 +110,61 @@ export default async function FacebookPageSelectPage() {
         : "Unable to load Facebook Pages.";
   }
 
-  const safePages = pages.map((page) => ({
-    id: page.id,
-    name: page.name || "Facebook Page",
-    ready: Boolean(page.access_token),
-  }));
+  /*
+   * Meta returns every Page this user administers, so the list alone cannot
+   * tell the customer which Pages TENH already has. Load this workspace's own
+   * rows and label each Page, so a Page that was just disconnected shows as
+   * "Reconnect" and a Page that is still live shows as "Already connected"
+   * instead of looking like a brand-new connection.
+   */
+  const authorizedPageIds = pages
+    .map((page) => page.id)
+    .filter(Boolean);
+
+  let connectionByPageId = new Map<
+    string,
+    { isActive: boolean; tokenStatus: string }
+  >();
+
+  if (authorizedPageIds.length > 0) {
+    const { data: workspacePages } = await supabaseAdmin
+      .from("social_accounts")
+      .select("platform_account_id,is_active,facebook_token_status")
+      .eq("business_id", currentMember.business_id)
+      .eq("platform", "facebook")
+      .in("platform_account_id", authorizedPageIds);
+
+    connectionByPageId = new Map(
+      (workspacePages ?? [])
+        .filter((row) => typeof row.platform_account_id === "string")
+        .map((row) => [
+          String(row.platform_account_id),
+          {
+            isActive: row.is_active === true,
+            tokenStatus:
+              typeof row.facebook_token_status === "string"
+                ? row.facebook_token_status
+                : "unknown",
+          },
+        ]),
+    );
+  }
+
+  const safePages = pages.map((page) => {
+    const connection = connectionByPageId.get(page.id);
+    const connectionState: "new" | "connected" | "reconnect" = !connection
+      ? "new"
+      : connection.isActive && connection.tokenStatus !== "disconnected"
+        ? "connected"
+        : "reconnect";
+
+    return {
+      id: page.id,
+      name: page.name || "Facebook Page",
+      ready: Boolean(page.access_token),
+      connectionState,
+    };
+  });
 
   return (
     <main className="h-[100dvh] overflow-y-auto bg-white px-4 py-4 sm:px-5 lg:px-6">

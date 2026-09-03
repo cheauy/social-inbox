@@ -43,7 +43,13 @@ import {
 const CHAT_BACKGROUND_STORAGE_KEY = "tenh-chat-background-theme";
 const CHAT_BACKGROUND_SRC_STORAGE_KEY = `${CHAT_BACKGROUND_STORAGE_KEY}:src`;
 const CHAT_BACKGROUND_CHANGE_EVENT = "tenh:chat-background-theme-change";
-const DEFAULT_CHAT_BACKGROUND_SRC = "/images/chat-bg.png";
+/*
+ * Theme 1 is the product default for every workspace, including brand-new
+ * accounts that have never opened Display settings. This used to point at
+ * /images/chat-bg.png, so a new user saw one background in the Inbox while
+ * Display showed "Theme 1" as the selected option.
+ */
+const DEFAULT_CHAT_BACKGROUND_SRC = "/images/bg-theme1.png";
 
 
 function isMessengerPolicyRecord(
@@ -2783,18 +2789,16 @@ export function MessagePanel({
           style={{
             backgroundColor: "#EEF2F6",
             backgroundImage: `url("${chatBackgroundSrc}")`,
-            backgroundRepeat:
-              chatBackgroundSrc === DEFAULT_CHAT_BACKGROUND_SRC
-                ? "repeat"
-                : "no-repeat",
-            backgroundSize:
-              chatBackgroundSrc === DEFAULT_CHAT_BACKGROUND_SRC
-                ? "320px"
-                : "cover",
-            backgroundPosition:
-              chatBackgroundSrc === DEFAULT_CHAT_BACKGROUND_SRC
-                ? "left top"
-                : "center",
+            /*
+             * Every background is a full-bleed theme image, so all five are
+             * drawn the same way. This used to branch on the default and tile
+             * it at 320px, which was correct only for the old small pattern
+             * (chat-bg.png). Once Theme 1 became the default that branch made
+             * a full-size gradient repeat as a visible grid.
+             */
+            backgroundRepeat: "no-repeat",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
           }}
         >
           <div className="mb-3 flex min-h-8 items-center justify-center">
@@ -5525,4 +5529,4 @@ export function MessagePanel({
 
     </section>
   );
-}
+}

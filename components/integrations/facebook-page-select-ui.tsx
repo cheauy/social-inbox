@@ -9,6 +9,12 @@ type PageItem = {
   id: string;
   name: string;
   ready: boolean;
+  /*
+   * "connected"  — live in this TENH workspace right now
+   * "reconnect"  — TENH knows this Page but it is disconnected/disabled
+   * "new"        — never connected to this workspace
+   */
+  connectionState?: "new" | "connected" | "reconnect";
 };
 
 type WorkspaceItem = {
@@ -88,7 +94,9 @@ export function FacebookPageSelectUi({
   const isKhmer = useWorkspaceLanguageId() === "km";
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<"all" | "ready" | "needs_access">("all");
+  const [status, setStatus] = useState<
+    "all" | "ready" | "needs_access" | "connected" | "not_connected"
+  >("all");
   const [channelUsage, setChannelUsage] = useState<{
     used: number;
     limit: number;
@@ -133,6 +141,18 @@ export function FacebookPageSelectUi({
       }
       if (status === "ready" && !page.ready) return false;
       if (status === "needs_access" && page.ready) return false;
+      if (
+        status === "connected" &&
+        page.connectionState !== "connected"
+      ) {
+        return false;
+      }
+      if (
+        status === "not_connected" &&
+        page.connectionState === "connected"
+      ) {
+        return false;
+      }
       return true;
     });
   }, [pages, search, status]);
@@ -200,6 +220,8 @@ export function FacebookPageSelectUi({
                   <option value="all">{isKhmer ? "ស្ថានភាពទាំងអស់" : "All status"}</option>
                   <option value="ready">{isKhmer ? "រួចរាល់" : "Ready"}</option>
                   <option value="needs_access">{isKhmer ? "ត្រូវការសិទ្ធិចូលប្រើ" : "Needs access"}</option>
+                  <option value="connected">{isKhmer ? "ភ្ជាប់រួចហើយ" : "Already connected"}</option>
+                  <option value="not_connected">{isKhmer ? "មិនទាន់ភ្ជាប់" : "Not connected"}</option>
                 </select>
                 <svg viewBox="0 0 20 20" className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" fill="currentColor" aria-hidden="true">
                   <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.51a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06Z" clipRule="evenodd" />
@@ -243,6 +265,15 @@ export function FacebookPageSelectUi({
                   <div className="hidden shrink-0 flex-wrap items-center justify-end gap-2 lg:flex">
                     <Badge tone="blue">Messenger</Badge>
                     <Badge tone="green">{isKhmer ? "មតិយោបល់" : "Comments"}</Badge>
+                    {page.connectionState === "connected" ? (
+                      <Badge tone="blue">
+                        {isKhmer ? "ភ្ជាប់រួចហើយ" : "Already connected"}
+                      </Badge>
+                    ) : page.connectionState === "reconnect" ? (
+                      <Badge tone="amber">
+                        {isKhmer ? "ភ្ជាប់ឡើងវិញ" : "Reconnect"}
+                      </Badge>
+                    ) : null}
                     <Badge tone={page.ready ? "green" : "amber"}>
                       {page.ready ? (isKhmer ? "រួចរាល់" : "Ready") : (isKhmer ? "ត្រូវការសិទ្ធិចូលប្រើ" : "Needs access")}
                     </Badge>

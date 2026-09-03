@@ -11,9 +11,9 @@ import {
   ChevronLeft,
   ChevronRight,
   CirclePause,
+  CirclePlay,
   Copy,
   GripVertical,
-  MoreHorizontal,
   Pencil,
   Plus,
   Loader2,
@@ -144,6 +144,9 @@ export function TagManager({
     useState<CustomerTag | null>(null);
   const [deletingTagId, setDeletingTagId] =
     useState<string | null>(null);
+  /* Tags with a pause/resume request still in flight. */
+  const [togglingTagIds, setTogglingTagIds] =
+    useState<Set<string>>(new Set());
   const [copyOpen, setCopyOpen] =
     useState(false);
   const [copySources, setCopySources] =
@@ -484,6 +487,32 @@ export function TagManager({
   async function toggleActive(
     tag: CustomerTag,
   ) {
+    if (togglingTagIds.has(tag.id)) {
+      return;
+    }
+
+    const nextIsActive = !tag.is_active;
+
+    /*
+     * Flip the row immediately instead of waiting for the network round trip.
+     * The button used to stay unchanged for the whole request, which read as
+     * lag; now the icon switches on click and only reverts if the server
+     * rejects the change.
+     */
+    setTags((current) =>
+      current.map((item) =>
+        item.id === tag.id
+          ? { ...item, is_active: nextIsActive }
+          : item,
+      ),
+    );
+
+    setTogglingTagIds((current) => {
+      const next = new Set(current);
+      next.add(tag.id);
+      return next;
+    });
+
     try {
       const response = await fetch(
         `/api/tags/${tag.id}`,
@@ -493,7 +522,7 @@ export function TagManager({
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            isActive: !tag.is_active,
+            isActive: nextIsActive,
           }),
         },
       );
@@ -520,11 +549,26 @@ export function TagManager({
         ),
       );
     } catch (toggleError) {
+      // Roll the optimistic change back.
+      setTags((current) =>
+        current.map((item) =>
+          item.id === tag.id
+            ? { ...item, is_active: tag.is_active }
+            : item,
+        ),
+      );
+
       window.alert(
         toggleError instanceof Error
           ? toggleError.message
           : "Unable to update tag.",
       );
+    } finally {
+      setTogglingTagIds((current) => {
+        const next = new Set(current);
+        next.delete(tag.id);
+        return next;
+      });
     }
   }
 
@@ -826,19 +870,15 @@ export function TagManager({
                             ? `Disable ${tag.name}`
                             : `Enable ${tag.name}`
                         }
-                        title={tag.is_active ? (isKhmer ? "បិទ" : "Disable") : (isKhmer ? "បើក" : "Enable")}
+                        title={tag.is_active ? (isKhmer ? "ផ្អាក" : "Pause") : (isKhmer ? "បន្ត" : "Resume")}
                       >
-                        <CirclePause className="h-4 w-4" strokeWidth={2} />
+                        {tag.is_active ? (
+                          <CirclePause className="h-4 w-4" strokeWidth={2} />
+                        ) : (
+                          <CirclePlay className="h-4 w-4" strokeWidth={2} />
+                        )}
                       </button>
 
-                      <button
-                        type="button"
-                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500"
-                        aria-label={isKhmer ? "សកម្មភាពបន្ថែម" : "More actions"}
-                        title={isKhmer ? "សកម្មភាពបន្ថែម" : "More actions"}
-                      >
-                        <MoreHorizontal className="h-4 w-4" strokeWidth={2} />
-                      </button>
 
                       <button
                         type="button"

@@ -29,9 +29,6 @@ import {
   ensureFacebookPageConnectionHealthy,
 } from "@/lib/facebook/facebook-connection-health";
 import {
-  recoverRecentFacebookData,
-} from "@/lib/facebook/recover-facebook-missed-data";
-import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 import {
@@ -466,31 +463,33 @@ export async function POST(
         continue;
       }
 
-      // Immediately recover a wider window after authorization is restored.
-      // This is intentionally deeper than the hourly watchdog, but still
-      // bounded/idempotent so reconnect cannot duplicate existing messages.
-      const reconnectLookback = Number(
-        process.env.FACEBOOK_RECONNECT_RECOVERY_LOOKBACK_MINUTES?.trim() ||
-          "10080",
-      );
-      const recovery = await recoverRecentFacebookData({
-        pageId: selectedPage.id,
-        socialAccountId: savedAccountId,
-        accessToken: health.accessToken,
-        lookbackMinutes: Number.isFinite(reconnectLookback)
-          ? reconnectLookback
-          : 10_080,
-        mode: "reconnect",
-      });
+      /*
+       * Deep history recovery is NOT run here.
+       *
+       * It used to run inline, in "reconnect" mode, once per selected Page.
+       * That mode issues up to ~250 sequential Graph calls for message details
+       * plus up to ~100 more for post comments, so a single Page could take
+       * one to two minutes and several Pages could exceed the serverless
+       * function timeout entirely — the customer just watched a spinner and
+       * sometimes got an error even though the Page had connected fine.
+       *
+       * Instead the Page is flagged for backfill. The hourly watchdog
+       * (/api/cron/facebook-connection-health) already performs exactly the
+       * same bounded, idempotent recovery pass, so nothing is lost — it simply
+       * happens in the background while the customer keeps using TENH.
+       */
+      const { error: backfillFlagError } = await supabaseAdmin
+        .from("social_accounts")
+        .update({
+          facebook_backfill_requested_at: now,
+        })
+        .eq("id", savedAccountId)
+        .eq("business_id", currentMember.business_id);
 
-      if (
-        recovery.messenger.failed > 0 ||
-        recovery.comments.failed > 0 ||
-        recovery.messenger.truncated ||
-        recovery.comments.truncated
-      ) {
-        connectionWarnings.push(
-          `${selectedPage.name || selectedPage.id}: connected successfully, but some missed-data recovery checks could not finish. TENH's watchdog will continue checking automatically.`,
+      if (backfillFlagError) {
+        console.warn(
+          "[Tenh Facebook OAuth] Could not flag Page for background backfill:",
+          backfillFlagError.message,
         );
       }
     }

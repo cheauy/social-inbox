@@ -26,6 +26,8 @@ import {
   getBillingCycleDefinition,
   getTrustedSubscriptionQuote,
 } from "@/lib/subscription/plan-catalog";
+import { closePayWayTransaction } from "@/lib/payway/close-transaction";
+import { verifyAndFinalizePayWayTransaction } from "@/lib/payway/finalize-payment";
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
@@ -167,11 +169,15 @@ function formatPayWayRequestTime() {
 }
 
 function createTransactionId() {
-  // PayWay documents tran_id with a maximum length of 20 characters.
-  return `${Date.now()}${randomInt(
-    10,
-    100,
-  )}`;
+  /*
+   * PayWay documents tran_id with a maximum length of 20 characters.
+   * Date.now() is 13 digits, so 6 random digits keep the value inside the
+   * limit while making a same-millisecond collision (which the unique index
+   * on provider_transaction_id would reject as a 500) effectively impossible.
+   */
+  return `${Date.now()}${String(
+    randomInt(0, 1_000_000),
+  ).padStart(6, "0")}`;
 }
 
 function centsToPayWayAmount(
@@ -569,6 +575,104 @@ export async function POST(
         },
         { status: 503 },
       );
+    }
+
+    /*
+     * Duplicate-payment guard.
+     *
+     * Each POST previously created a new billing_transactions row and a new
+     * ABA QR. Clicking Pay several times therefore left several live QRs for
+     * the same purchase, and paying two of them charged the customer twice
+     * and stacked two activations. Reuse is not safe (the PayWay hash is
+     * bound to req_time), so instead close any still-open transaction for
+     * this workspace before opening a new one.
+     */
+    const { data: openTransactions, error: openTransactionsError } =
+      await supabaseAdmin
+        .from("billing_transactions")
+        .select("id,provider_transaction_id,created_at")
+        .eq("provider", "payway")
+        .eq("business_id", billingMember.business_id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+    if (openTransactionsError) {
+      console.error(
+        "[TENH PayWay] Unable to check open transactions:",
+        openTransactionsError,
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Unable to verify existing payments before starting a new one.",
+        },
+        { status: 500 },
+      );
+    }
+
+    for (const open of openTransactions ?? []) {
+      const openTransactionId = String(
+        open.provider_transaction_id ?? "",
+      ).trim();
+
+      if (!openTransactionId) {
+        continue;
+      }
+
+      /*
+       * Verify first: if the customer already paid this one, stop here and
+       * send them back to that transaction instead of charging them again.
+       */
+      try {
+        const verification = await verifyAndFinalizePayWayTransaction(
+          openTransactionId,
+          "browser-status",
+        );
+
+        if (verification.paymentState === "approved") {
+          return NextResponse.json(
+            {
+              success: false,
+              code: "TENH_PAYWAY_ALREADY_PAID",
+              error:
+                "This purchase was already paid. Open Subscription to see the active plan and receipt.",
+              transactionId: openTransactionId,
+            },
+            { status: 409 },
+          );
+        }
+
+        if (verification.paymentState !== "pending") {
+          // Already declined/cancelled/failed and recorded; nothing to close.
+          continue;
+        }
+      } catch (error) {
+        console.warn(
+          "[TENH PayWay] Could not verify an open transaction before checkout:",
+          error,
+        );
+      }
+
+      try {
+        await closePayWayTransaction(openTransactionId);
+      } catch (error) {
+        console.warn(
+          "[TENH PayWay] Could not close a previous open transaction:",
+          error,
+        );
+      }
+
+      await supabaseAdmin
+        .from("billing_transactions")
+        .update({
+          status: "cancelled",
+          provider_status: "SUPERSEDED_BY_NEW_CHECKOUT",
+        })
+        .eq("id", open.id)
+        .eq("status", "pending");
     }
 
     const reqTime =

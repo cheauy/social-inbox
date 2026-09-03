@@ -2,6 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
+
+/** Human-readable Bot name for confirmation dialogs: "@shopbot" or its name. */
+function botLabel(connection: TelegramConnection | null | undefined) {
+  if (!connection) {
+    return "this Telegram Bot";
+  }
+
+  if (connection.username) {
+    return `@${connection.username}`;
+  }
+
+  return connection.botName ?? "this Telegram Bot";
+}
+
 type TelegramConnection = {
   id: string;
   botId: string | null;
@@ -86,6 +101,9 @@ export function TelegramChannelPanel({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [token, setToken] = useState("");
   const [showAddBot, setShowAddBot] = useState(false);
+  /* Which destructive action is waiting for confirmation, if any. */
+  const [pendingAction, setPendingAction] =
+    useState<"disable" | "disconnect" | null>(null);
   const [working, setWorking] = useState<Working>(null);
   const [webhook, setWebhook] = useState<TelegramWebhookState | null>(null);
   const [remote, setRemote] = useState<TelegramRemoteWebhook | null>(null);
@@ -235,7 +253,8 @@ export function TelegramChannelPanel({
   }
 
   async function disable() {
-    if (!selected || working || !window.confirm(`Disable incoming messages for ${selected.username ? `@${selected.username}` : selected.botName ?? "this Bot"}?`)) return;
+    if (!selected || working) return;
+    setPendingAction(null);
     setWorking("disable"); setError(null); setErrorCode(null); setNotice(null);
     try {
       const response = await fetch(withConnection("/api/telegram/webhook", selected.id), { method: "DELETE" });
@@ -249,7 +268,8 @@ export function TelegramChannelPanel({
   }
 
   async function disconnect() {
-    if (!selected || working || !window.confirm(`Disconnect ${selected.username ? `@${selected.username}` : selected.botName ?? "this Telegram Bot"}? Existing TENH conversation history will be kept.`)) return;
+    if (!selected || working) return;
+    setPendingAction(null);
     setWorking("disconnect"); setError(null); setErrorCode(null); setNotice(null);
     try {
       const response = await fetch(withConnection("/api/telegram/connection", selected.id), { method: "DELETE" });
@@ -497,7 +517,7 @@ export function TelegramChannelPanel({
                     <button
                       type="button"
                       disabled={Boolean(working)}
-                      onClick={() => void disconnect()}
+                      onClick={() => setPendingAction("disconnect")}
                       className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
                     >
                       {working === "disconnect" ? "Disconnecting…" : "Disconnect"}
@@ -508,7 +528,7 @@ export function TelegramChannelPanel({
                         <button
                           type="button"
                           disabled={Boolean(working)}
-                          onClick={() => void disable()}
+                          onClick={() => setPendingAction("disable")}
                           className="rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-800 hover:bg-amber-50 disabled:opacity-50"
                         >
                           {working === "disable" ? "Disabling…" : "Disable Inbox"}
@@ -639,6 +659,34 @@ export function TelegramChannelPanel({
           ) : null}
         </div>
       )}
+
+      <ConfirmActionDialog
+        open={pendingAction === "disable"}
+        icon="warning"
+        tone="warning"
+        title="Disable Telegram Inbox?"
+        description={`New Telegram messages sent to ${botLabel(selected)} will stop arriving in your TENH Inbox.`}
+        note="The Bot stays connected and its token is kept, so you can turn the Inbox back on at any time."
+        confirmLabel="Disable Inbox"
+        loadingLabel="Disabling..."
+        loading={working === "disable"}
+        onCancel={() => setPendingAction(null)}
+        onConfirm={() => void disable()}
+      />
+
+      <ConfirmActionDialog
+        open={pendingAction === "disconnect"}
+        icon="unplug"
+        tone="danger"
+        title="Disconnect this Telegram Bot?"
+        description={`TENH will remove the saved token for ${botLabel(selected)} and stop receiving its messages.`}
+        note="Your existing TENH conversation history is kept, and the channel slot is freed. You will need the Bot token from @BotFather to connect it again."
+        confirmLabel="Disconnect"
+        loadingLabel="Disconnecting..."
+        loading={working === "disconnect"}
+        onCancel={() => setPendingAction(null)}
+        onConfirm={() => void disconnect()}
+      />
     </section>
   );
 }

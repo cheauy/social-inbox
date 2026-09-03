@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,15 +66,24 @@ export async function GET() {
         ascending: true,
       }),
 
-    supabaseAdmin
-      .from("conversations")
-      .select(`
+    /*
+     * Only open/pending rows feed every figure below (closed conversations
+     * are never counted), and the read is paged so a busy workspace with more
+     * than 1,000 live conversations is no longer silently truncated.
+     */
+    fetchAllRows<ConversationRow>(() =>
+      supabaseAdmin
+        .from("conversations")
+        .select(`
         id,
         status,
         assigned_to,
         unread_count
       `)
-      .eq("business_id", businessId),
+        .eq("business_id", businessId)
+        .in("status", ["open", "pending"])
+        .order("id", { ascending: true }),
+    ),
 
     supabaseAdmin
       .from("conversation_reminders")

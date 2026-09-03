@@ -9,10 +9,9 @@ import {
   CheckCircle2,
   ChevronDown,
   CirclePause,
-  Copy,
+  CirclePlay,
   Folder,
   MessageSquareText,
-  MoreHorizontal,
   Pencil,
   Plus,
   Search,
@@ -135,6 +134,10 @@ export function SavedReplyManager({
 
   const [deletingReplyId, setDeletingReplyId] =
     useState<string | null>(null);
+
+  /* Quick replies with a pause/resume request still in flight. */
+  const [togglingReplyIds, setTogglingReplyIds] =
+    useState<Set<string>>(new Set());
 
   const categories = useMemo(
     () =>
@@ -380,6 +383,30 @@ export function SavedReplyManager({
   async function toggleActive(
     reply: SavedReply,
   ) {
+    if (togglingReplyIds.has(reply.id)) {
+      return;
+    }
+
+    const nextIsActive = !reply.is_active;
+
+    /*
+     * Flip the row immediately instead of waiting for the network round trip,
+     * then reconcile with the server response. Reverts on failure.
+     */
+    setSavedReplies((current) =>
+      current.map((item) =>
+        item.id === reply.id
+          ? { ...item, is_active: nextIsActive }
+          : item,
+      ),
+    );
+
+    setTogglingReplyIds((current) => {
+      const next = new Set(current);
+      next.add(reply.id);
+      return next;
+    });
+
     try {
       const response = await fetch(
         `/api/saved-replies/${reply.id}`,
@@ -392,8 +419,7 @@ export function SavedReplyManager({
           },
 
           body: JSON.stringify({
-            isActive:
-              !reply.is_active,
+            isActive: nextIsActive,
           }),
         },
       );
@@ -420,11 +446,26 @@ export function SavedReplyManager({
         ),
       );
     } catch (toggleError) {
+      // Roll the optimistic change back.
+      setSavedReplies((current) =>
+        current.map((item) =>
+          item.id === reply.id
+            ? { ...item, is_active: reply.is_active }
+            : item,
+        ),
+      );
+
       window.alert(
         toggleError instanceof Error
           ? toggleError.message
           : "Unable to update quick reply.",
       );
+    } finally {
+      setTogglingReplyIds((current) => {
+        const next = new Set(current);
+        next.delete(reply.id);
+        return next;
+      });
     }
   }
 
@@ -810,23 +851,6 @@ export function SavedReplyManager({
 
                       <button
                         type="button"
-                        onClick={() => {
-                          void navigator.clipboard?.writeText(
-                            reply.message_text,
-                          );
-                        }}
-                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-                        aria-label={`${isKhmer ? "ចម្លង" : "Copy"} ${reply.title}`}
-                        title={isKhmer ? "ចម្លងអត្ថបទការឆ្លើយតប" : "Copy reply text"}
-                      >
-                        <Copy
-                          className="h-4 w-4"
-                          strokeWidth={2}
-                        />
-                      </button>
-
-                      <button
-                        type="button"
                         onClick={() =>
                           void toggleActive(reply)
                         }
@@ -839,8 +863,8 @@ export function SavedReplyManager({
                         }
                         title={
                           reply.is_active
-                            ? (isKhmer ? "បិទ" : "Disable")
-                            : (isKhmer ? "បើក" : "Enable")
+                            ? (isKhmer ? "ផ្អាក" : "Pause")
+                            : (isKhmer ? "បន្ត" : "Resume")
                         }
                       >
                         {reply.is_active ? (
@@ -849,7 +873,7 @@ export function SavedReplyManager({
                             strokeWidth={2}
                           />
                         ) : (
-                          <CheckCircle2
+                          <CirclePlay
                             className="h-4 w-4"
                             strokeWidth={2}
                           />
@@ -952,19 +976,6 @@ export function SavedReplyManager({
 
                     <button
                       type="button"
-                      onClick={() => {
-                        void navigator.clipboard?.writeText(
-                          reply.message_text,
-                        );
-                      }}
-                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600"
-                      aria-label={`${isKhmer ? "ចម្លង" : "Copy"} ${reply.title}`}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </button>
-
-                    <button
-                      type="button"
                       onClick={() =>
                         setDeleteTarget(reply)
                       }
@@ -1061,4 +1072,4 @@ export function SavedReplyManager({
       />
     </>
   );
-}
+}

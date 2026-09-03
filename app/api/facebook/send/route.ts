@@ -209,6 +209,77 @@ export async function POST(
     );
   }
 
+  /*
+   * Security: recipientId comes from the client. Never trust it on its own.
+   * The reply must go to the exact customer this conversation belongs to,
+   * matching the guard already used by send-attachment and Telegram send.
+   */
+  if (!conversation.contact_id) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "This conversation has no customer to reply to.",
+      },
+      {
+        status: 400,
+      },
+    );
+  }
+
+  const {
+    data: contact,
+    error: contactError,
+  } = await supabaseAdmin
+    .from("contacts")
+    .select(`
+      id,
+      platform,
+      platform_user_id
+    `)
+    .eq("id", conversation.contact_id)
+    .eq(
+      "business_id",
+      currentMember.business_id,
+    )
+    .maybeSingle();
+
+  if (contactError) {
+    console.error(
+      "Unable to load conversation contact before send:",
+      contactError,
+    );
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Unable to verify the customer for this conversation.",
+      },
+      {
+        status: 500,
+      },
+    );
+  }
+
+  if (
+    !contact ||
+    contact.platform !== "facebook" ||
+    !contact.platform_user_id ||
+    contact.platform_user_id !== recipientId
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Recipient does not match the customer in this conversation.",
+      },
+      {
+        status: 400,
+      },
+    );
+  }
+
   const {
     data: socialAccount,
     error: socialAccountError,

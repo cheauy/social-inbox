@@ -576,11 +576,17 @@ export function ReplyBox({
       return "";
     }
 
+    /*
+     * Safari and iOS do not support WebM/Ogg recording. Their MediaRecorder
+     * produces audio/mp4 (AAC). Listing it here keeps the recorded blob type,
+     * the file extension and the upload validation consistent on iPhone.
+     */
     const candidates = [
       "audio/webm;codecs=opus",
       "audio/webm",
       "audio/ogg;codecs=opus",
       "audio/ogg",
+      "audio/mp4",
     ];
 
     return (
@@ -729,7 +735,10 @@ export function ReplyBox({
         const extension =
           actualType.includes("ogg")
             ? "ogg"
-            : "webm";
+            : actualType.includes("mp4") ||
+                actualType.includes("aac")
+              ? "m4a"
+              : "webm";
 
         const file = new File(
           [blob],
@@ -1213,7 +1222,38 @@ export function ReplyBox({
   }
 
   function insertEmoji(emoji: string) {
-    onReplyChange(`${reply}${emoji}`);
+    const textarea = replyInputRef.current;
+
+    if (!textarea) {
+      onReplyChange(`${reply}${emoji}`);
+      return;
+    }
+
+    /*
+     * Insert at the caret (or replace the current selection) instead of
+     * always appending to the end, then restore focus so the agent can keep
+     * typing without clicking back into the box.
+     */
+    const start =
+      textarea.selectionStart ?? reply.length;
+    const end =
+      textarea.selectionEnd ?? reply.length;
+    const nextValue =
+      `${reply.slice(0, start)}${emoji}${reply.slice(end)}`;
+    const nextCaret = start + emoji.length;
+
+    onReplyChange(nextValue);
+
+    requestAnimationFrame(() => {
+      const input = replyInputRef.current;
+
+      if (!input) {
+        return;
+      }
+
+      input.focus();
+      input.setSelectionRange(nextCaret, nextCaret);
+    });
   }
 
   function addLocation() {
@@ -1271,6 +1311,7 @@ export function ReplyBox({
       event.preventDefault();
       void sendAttachments(
         postSendStatus,
+        event,
       );
       return;
     }
@@ -1281,6 +1322,9 @@ export function ReplyBox({
   async function sendAttachments(
     postSendStatus:
       | ConversationStatus
+      | null = null,
+    submitEvent:
+      | FormEvent<HTMLFormElement>
       | null = null,
   ) {
     if (
@@ -1301,6 +1345,23 @@ export function ReplyBox({
 
       if (success) {
         clearAttachments();
+
+        /*
+         * If the agent also typed a message, send it right after the
+         * attachments instead of leaving it in the box. The parent submit
+         * handler reads the current reply text itself and drives `sending`,
+         * so the existing sending-finished effect applies any Send & close /
+         * Send & pending status after the text goes out.
+         */
+        if (
+          submitEvent &&
+          reply.trim()
+        ) {
+          pendingPostSendStatusRef.current =
+            postSendStatus;
+          onSubmit(submitEvent);
+          return;
+        }
 
         pendingPostSendStatusRef.current =
           null;

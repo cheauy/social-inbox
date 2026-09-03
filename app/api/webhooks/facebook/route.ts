@@ -278,18 +278,32 @@ export async function POST(
     });
   }
 
-  try {
+  /*
+   * Safe batch processing.
+   *
+   * Meta bundles events from MANY Pages into one POST and retries the whole
+   * POST when it receives a non-2xx status. Before this change, one failing
+   * event (for example a Page that was disconnected but still delivers events
+   * for a while) threw, the whole batch returned 500, and every other
+   * workspace's message in that batch was retried or dropped. Each event is
+   * now isolated: a failure is logged and recorded, the remaining events keep
+   * processing, and Meta always receives 200 so it does not retry or disable
+   * the subscription.
+   */
+  const failures: string[] = [];
+
+  for (
+    const entry of
+    payload.entry ?? []
+  ) {
+    /*
+     * Messenger message, delivery and read events.
+     */
     for (
-      const entry of
-      payload.entry ?? []
+      const event of
+      entry.messaging ?? []
     ) {
-      /*
-       * Messenger message, delivery and read events.
-       */
-      for (
-        const event of
-        entry.messaging ?? []
-      ) {
+      try {
         const statusEvent =
           event as
             FacebookMessageStatusEvent;
@@ -312,17 +326,39 @@ export async function POST(
             event,
           );
         }
-      }
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unknown messaging event error.";
 
-      /*
-       * Page feed comments.
-       * This loop was present when TENH comments worked and must not be
-       * removed when Messenger webhook/status code is changed.
-       */
-      for (
-        const change of
-        entry.changes ?? []
-      ) {
+        failures.push(
+          `messaging ${event.message?.mid ?? "status"} (page ${entry.id ?? "?"}): ${message}`,
+        );
+
+        console.error(
+          "[Tenh Facebook Webhook] Messaging event failed; continuing with the rest of the batch.",
+          {
+            pageId:
+              entry.id ?? null,
+            mid:
+              event.message?.mid ?? null,
+            error,
+          },
+        );
+      }
+    }
+
+    /*
+     * Page feed comments.
+     * This loop was present when TENH comments worked and must not be
+     * removed when Messenger webhook/status code is changed.
+     */
+    for (
+      const change of
+      entry.changes ?? []
+    ) {
+      try {
         console.log(
           "[Tenh Facebook Webhook] Page change received.",
           {
@@ -428,69 +464,79 @@ export async function POST(
             value,
           },
         );
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unknown feed event error.";
+
+        failures.push(
+          `feed ${change.value?.comment_id ?? "?"} (page ${entry.id ?? "?"}): ${message}`,
+        );
+
+        console.error(
+          "[Tenh Facebook Webhook] Feed event failed; continuing with the rest of the batch.",
+          {
+            pageId:
+              entry.id ?? null,
+            commentId:
+              change.value?.comment_id ?? null,
+            error,
+          },
+        );
       }
     }
-
-    if (webhookEvent) {
-      await supabaseAdmin
-        .from(
-          "webhook_events",
-        )
-        .update({
-          processing_status:
-            "processed",
-          processed_at:
-            new Date()
-              .toISOString(),
-        })
-        .eq(
-          "id",
-          webhookEvent.id,
-        );
-    }
-
-    return NextResponse.json({
-      received: true,
-    });
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Unknown processing error.";
-
-    console.error(
-      "[Tenh Facebook Webhook] Processing failed:",
-      error,
-    );
-
-    if (webhookEvent) {
-      await supabaseAdmin
-        .from(
-          "webhook_events",
-        )
-        .update({
-          processing_status:
-            "failed",
-          processing_error:
-            message,
-          processed_at:
-            new Date()
-              .toISOString(),
-        })
-        .eq(
-          "id",
-          webhookEvent.id,
-        );
-    }
-
-    return NextResponse.json(
-      {
-        received: false,
-        error: message,
-      },
-      {
-        status: 500,
-      },
-    );
   }
+
+  if (webhookEvent) {
+    try {
+      await supabaseAdmin
+        .from(
+          "webhook_events",
+        )
+        .update(
+          failures.length === 0
+            ? {
+                processing_status:
+                  "processed",
+                processed_at:
+                  new Date()
+                    .toISOString(),
+              }
+            : {
+                processing_status:
+                  "failed",
+                processing_error:
+                  failures
+                    .join(" | ")
+                    .slice(0, 2000),
+                processed_at:
+                  new Date()
+                    .toISOString(),
+              },
+        )
+        .eq(
+          "id",
+          webhookEvent.id,
+        );
+    } catch (auditError) {
+      /*
+       * The audit row is diagnostics only. Never let it change the response
+       * Meta receives.
+       */
+      console.error(
+        "[Tenh Facebook Webhook] Unable to update webhook_events audit row:",
+        auditError,
+      );
+    }
+  }
+
+  /*
+   * Always 200. Failures are already logged and stored in webhook_events;
+   * a non-2xx here would only make Meta re-send the same batch.
+   */
+  return NextResponse.json({
+    received: true,
+    failed: failures.length,
+  });
 }

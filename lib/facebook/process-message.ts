@@ -87,9 +87,17 @@ export async function processFacebookMessage(
   }
 
   if (!socialAccount) {
-    throw new Error(
-      `Active Facebook Page ${pageId} was not found in social_accounts.`,
+    /*
+     * A Page that is not (or no longer) connected to any TENH workspace is a
+     * normal situation, not an error: Meta keeps delivering events for a
+     * short time after a Page is disconnected. Skip quietly so the rest of
+     * the webhook batch is unaffected.
+     */
+    console.warn(
+      "[Tenh Facebook Message] Ignoring event for a Page that is not connected.",
+      { pageId, messageId, isEcho },
     );
+    return;
   }
 
   console.log(
@@ -218,6 +226,19 @@ export async function processFacebookMessage(
     });
 
   if (messageError) {
+    /*
+     * 23505 = unique violation. A concurrent Meta retry already inserted this
+     * exact platform_message_id between the existence check above and this
+     * insert. The message is safely stored; do not fail the webhook for it.
+     */
+    if (messageError.code === "23505") {
+      console.warn(
+        "[Tenh Facebook Message] Duplicate Messenger event skipped.",
+        { pageId, messageId },
+      );
+      return;
+    }
+
     throw new Error(messageError.message);
   }
 
@@ -297,4 +318,4 @@ export async function processFacebookMessage(
       );
     }
   }
-}
+}
