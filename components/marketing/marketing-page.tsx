@@ -103,7 +103,7 @@ const COPY = {
       getStarted: "Get started",
     },
     dir: "Messenger · Comment Facebook · Telegram",
-    headline: "Every customer message, one inbox.",
+    headline: "Every platform, one inbox.",
     lede:
       "TENH brings your Facebook Messenger chats, Facebook comments, and Telegram messages into one workspace — so your team stops switching tabs and no customer is left waiting.",
     ctaPrimary: `Start ${TRIAL_DAYS}-day free trial`,
@@ -139,8 +139,24 @@ const COPY = {
         body: "See what a customer asked and ordered before, so you never ask them to repeat it.",
       },
       {
-        title: "Automatic sharing of new chats",
-        body: "New conversations are handed out evenly to your agents instead of everyone grabbing the same one.",
+        title: "Assign to a teammate",
+        body: "Give a conversation to the right person, or let an agent claim it, so everyone knows who is answering.",
+      },
+      {
+        title: "Follow-up reminders",
+        body: "Set a reminder on a conversation and TENH tells you when it is time to come back to the customer.",
+      },
+      {
+        title: "Saved filters",
+        body: "Save the lists you check every day — unread, assigned to me, one channel — and open them in one click.",
+      },
+      {
+        title: "Team chat & mentions",
+        body: "Talk to your team inside TENH and mention someone when a conversation needs them.",
+      },
+      {
+        title: "Customer files",
+        body: "Keep receipts, photos and documents on the customer profile, next to their conversations.",
       },
       {
         title: "Reports & response time",
@@ -256,7 +272,7 @@ const COPY = {
       getStarted: "ចាប់ផ្តើម",
     },
     dir: "Messenger · Comment Facebook · Telegram",
-    headline: "សារអតិថិជនទាំងអស់ នៅក្នុងប្រអប់សារតែមួយ។",
+    headline: "គ្រប់វេទិកា ក្នុងប្រអប់សារតែមួយ។",
     lede:
       "TENH ប្រមូលការជជែក Facebook Messenger, មតិលើ Facebook និងសារ Telegram មកក្នុងកន្លែងធ្វើការតែមួយ ដើម្បីឱ្យក្រុមរបស់អ្នកលែងប្តូរផ្ទាំងច្រើន និងគ្មានអតិថិជនណាត្រូវរង់ចាំ។",
     ctaPrimary: `សាកល្បងឥតគិតថ្លៃ ${TRIAL_DAYS} ថ្ងៃ`,
@@ -292,8 +308,24 @@ const COPY = {
         body: "មើលឃើញអ្វីដែលអតិថិជនធ្លាប់សួរ និងធ្លាប់កម្ម៉ង់ ដូច្នេះមិនចាំបាច់ឱ្យគាត់និយាយឡើងវិញ។",
       },
       {
-        title: "ចែកការសន្ទនាថ្មីដោយស្វ័យប្រវត្តិ",
-        body: "ការសន្ទនាថ្មីត្រូវបានចែកស្មើៗគ្នាដល់ភ្នាក់ងារ ជំនួសឱ្យអ្នកគ្រប់គ្នាយកតែមួយ។",
+        title: "ចាត់តាំងឱ្យសមាជិកក្រុម",
+        body: "ប្រគល់ការសន្ទនាឱ្យអ្នកសមស្រប ឬឱ្យភ្នាក់ងារយកដោយខ្លួនឯង ដូច្នេះអ្នកគ្រប់គ្នាដឹងថានរណាកំពុងឆ្លើយ។",
+      },
+      {
+        title: "ការរំលឹកតាមដាន",
+        body: "កំណត់ការរំលឹកលើការសន្ទនា ហើយ TENH ប្រាប់អ្នកនៅពេលដល់ម៉ោងត្រឡប់ទៅរកអតិថិជនវិញ។",
+      },
+      {
+        title: "តម្រងរក្សាទុក",
+        body: "រក្សាទុកបញ្ជីដែលអ្នកមើលរាល់ថ្ងៃ — មិនទាន់អាន ចាត់តាំងឱ្យខ្ញុំ ឬឆានែលណាមួយ — ហើយបើកត្រឹមចុចម្តង។",
+      },
+      {
+        title: "ជជែកជាក្រុម និងការនិយាយឈ្មោះ",
+        body: "និយាយជាមួយក្រុមរបស់អ្នកនៅក្នុង TENH និងហៅឈ្មោះនរណាម្នាក់ពេលការសន្ទនាត្រូវការគាត់។",
+      },
+      {
+        title: "ឯកសារអតិថិជន",
+        body: "រក្សាវិក្កយបត្រ រូបភាព និងឯកសារនៅលើប្រវត្តិរូបអតិថិជន ជាប់នឹងការសន្ទនារបស់គាត់។",
       },
       {
         title: "របាយការណ៍ និងល្បឿនឆ្លើយតប",
@@ -732,21 +764,28 @@ export function MarketingPage() {
       </section>
 
       {/* ---------- pricing ---------- */}
-      <section id="pricing" className="bg-slate-950 py-16 text-white">
+      {/*
+        Background follows the logo: its blue-to-magenta arc, deepened so
+        white type stays readable. The amber accents are the logo's orange.
+      */}
+      <section
+        id="pricing"
+        className="bg-[linear-gradient(135deg,#06143A_0%,#0C2C87_46%,#3D1370_100%)] py-16 text-white"
+      >
         <div className="mx-auto max-w-6xl px-6">
           <div className="max-w-2xl">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/55">
               {t.pricingEyebrow}
             </p>
             <h2 className="mt-3 text-3xl font-bold tracking-tight">
               {t.pricingTitle}
             </h2>
-            <p className="mt-3 text-[15px] leading-7 text-slate-400">
+            <p className="mt-3 text-[15px] leading-7 text-white/70">
               {t.pricingLede}
             </p>
           </div>
 
-          <div className="mt-7 inline-flex flex-wrap gap-1 rounded-xl border border-slate-800 bg-white/5 p-1">
+          <div className="mt-7 inline-flex flex-wrap gap-1 rounded-xl border border-white/15 bg-white/10 p-1">
             {CYCLES.map((item, index) => (
               <button
                 key={item.months}
@@ -756,7 +795,7 @@ export function MarketingPage() {
                 className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
                   cycleIndex === index
                     ? "bg-white text-slate-950"
-                    : "text-slate-400 hover:text-slate-200"
+                    : "text-white/70 hover:text-white"
                 }`}
               >
                 {t.cycleLabels[index]}
@@ -764,8 +803,8 @@ export function MarketingPage() {
                   <span
                     className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
                       cycleIndex === index
-                        ? "bg-amber-100 text-amber-700"
-                        : "bg-amber-400/20 text-amber-300"
+                        ? "bg-[#FFE7CC] text-[#B24A00]"
+                        : "bg-[#FF7A00]/25 text-[#FFB877]"
                     }`}
                   >
                     -{Math.round(item.discount * 100)}%
@@ -785,13 +824,13 @@ export function MarketingPage() {
                   className={`flex flex-col rounded-2xl border p-6 ${
                     plan.featured
                       ? "border-white bg-white text-slate-950 shadow-xl"
-                      : "border-slate-800 bg-white/5"
+                      : "border-white/15 bg-white/10"
                   }`}
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-base font-bold">{plan.copy.name}</span>
                     {plan.featured ? (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                      <span className="rounded-full bg-[#FFE7CC] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#B24A00]">
                         {t.popular}
                       </span>
                     ) : null}
@@ -801,7 +840,7 @@ export function MarketingPage() {
                     {price.perMonth}
                     <span
                       className={`ml-1 text-sm font-medium ${
-                        plan.featured ? "text-slate-500" : "text-slate-400"
+                        plan.featured ? "text-slate-500" : "text-white/65"
                       }`}
                     >
                       {t.perMonth}
@@ -810,7 +849,7 @@ export function MarketingPage() {
 
                   <p
                     className={`mt-1.5 min-h-5 text-xs ${
-                      plan.featured ? "text-slate-500" : "text-slate-400"
+                      plan.featured ? "text-slate-500" : "text-white/65"
                     }`}
                   >
                     {price.billed}
@@ -819,14 +858,14 @@ export function MarketingPage() {
                   <div className="mt-4 flex flex-wrap gap-2">
                     <span
                       className={`rounded-lg px-2.5 py-1 text-xs font-semibold tabular-nums ${
-                        plan.featured ? "bg-slate-100" : "bg-white/10"
+                        plan.featured ? "bg-slate-100" : "bg-white/15"
                       }`}
                     >
                       {plan.channels} {t.channelsUnit}
                     </span>
                     <span
                       className={`rounded-lg px-2.5 py-1 text-xs font-semibold tabular-nums ${
-                        plan.featured ? "bg-slate-100" : "bg-white/10"
+                        plan.featured ? "bg-slate-100" : "bg-white/15"
                       }`}
                     >
                       {plan.users} {t.usersUnit}
@@ -835,7 +874,7 @@ export function MarketingPage() {
 
                   <ul
                     className={`mt-4 flex flex-1 flex-col gap-2 text-sm ${
-                      plan.featured ? "text-slate-600" : "text-slate-400"
+                      plan.featured ? "text-slate-600" : "text-white/70"
                     }`}
                   >
                     {plan.copy.points.map((point) => (
@@ -851,7 +890,7 @@ export function MarketingPage() {
                     className={`mt-6 rounded-xl px-4 py-2.5 text-center text-sm font-semibold transition ${
                       plan.featured
                         ? "bg-blue-600 text-white hover:bg-blue-700"
-                        : "border border-slate-700 text-white hover:border-slate-500"
+                        : "border border-white/25 text-white hover:border-white/50"
                     }`}
                   >
                     {t.ctaShort}
@@ -861,40 +900,40 @@ export function MarketingPage() {
             })}
 
             {/* Custom: same shape as the fixed plans, priced from the base. */}
-            <div className="flex flex-col rounded-2xl border border-dashed border-slate-700 bg-white/5 p-6">
+            <div className="flex flex-col rounded-2xl border border-dashed border-white/25 bg-white/10 p-6">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-base font-bold">{t.customName}</span>
-                <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-300">
+                <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                   {t.customTagline}
                 </span>
               </div>
 
               <p className="mt-3 text-4xl font-extrabold tabular-nums tracking-tight">
-                <span className="mr-1 align-middle text-sm font-medium text-slate-400">
+                <span className="mr-1 align-middle text-sm font-medium text-white/65">
                   {t.customFrom}
                 </span>
                 {customPrice.perMonth}
-                <span className="ml-1 text-sm font-medium text-slate-400">
+                <span className="ml-1 text-sm font-medium text-white/65">
                   {t.perMonth}
                 </span>
               </p>
 
-              <p className="mt-1.5 min-h-5 text-xs text-slate-400">
+              <p className="mt-1.5 min-h-5 text-xs text-white/65">
                 {customPrice.billed}
               </p>
 
               <div className="mt-4 flex flex-wrap gap-2">
-                <span className="rounded-lg bg-white/10 px-2.5 py-1 text-xs font-semibold tabular-nums">
+                <span className="rounded-lg bg-white/15 px-2.5 py-1 text-xs font-semibold tabular-nums">
                   {CUSTOM_PRICING.minChannels}–{CUSTOM_PRICING.maxChannels}{" "}
                   {t.channelsUnit}
                 </span>
-                <span className="rounded-lg bg-white/10 px-2.5 py-1 text-xs font-semibold tabular-nums">
+                <span className="rounded-lg bg-white/15 px-2.5 py-1 text-xs font-semibold tabular-nums">
                   {CUSTOM_PRICING.minUsers}–{CUSTOM_PRICING.maxUsers}{" "}
                   {t.usersUnit}
                 </span>
               </div>
 
-              <ul className="mt-4 flex flex-1 flex-col gap-2 text-sm text-slate-400">
+              <ul className="mt-4 flex flex-1 flex-col gap-2 text-sm text-white/70">
                 {customPoints.map((point) => (
                   <li key={point} className="flex gap-2.5">
                     <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-50" />
@@ -905,14 +944,14 @@ export function MarketingPage() {
 
               <a
                 href="/register"
-                className="mt-6 rounded-xl border border-slate-700 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:border-slate-500"
+                className="mt-6 rounded-xl border border-white/25 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:border-white/50"
               >
                 {t.customCta}
               </a>
             </div>
           </div>
 
-          <p className="mt-6 text-sm text-slate-400">{t.payNote}</p>
+          <p className="mt-6 text-sm text-white/70">{t.payNote}</p>
         </div>
       </section>
 
@@ -979,163 +1018,118 @@ export function MarketingPage() {
 }
 
 /*
- * A scaled-down copy of the real TENH inbox, filled with invented sample
- * data so the shot shows how the product works without exposing anyone's
- * real conversations.
+ * A simplified view of the real TENH inbox: the same three columns and the
+ * same shapes people see after signing in, with fewer details and larger
+ * text so it stays readable at this size. All content is invented.
  */
 function InboxMock() {
   const conversations = [
-    { name: "Alex Morgan", preview: "Is this still in stock?", count: 2 },
-    { name: "Jordan Lee", preview: "How much is delivery?", count: 1 },
-    { name: "Sam Rivera", preview: "Can I pay on delivery?", count: 2 },
-    { name: "Casey Kim", preview: "Do you have a bigger size?", count: 1 },
+    { name: "Alex Morgan", preview: "Is this still in stock?", time: "2m", count: 2 },
+    { name: "Jordan Lee", preview: "How much is delivery?", time: "18m", count: 1 },
+    { name: "Sam Rivera", preview: "Can I pay on delivery?", time: "1h", count: 0 },
+    { name: "Casey Kim", preview: "Do you have a bigger size?", time: "3h", count: 0 },
   ];
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-      <div className="grid grid-cols-[44px_minmax(0,150px)_minmax(0,1fr)]">
+      <div className="grid grid-cols-[minmax(0,168px)_minmax(0,1fr)] sm:grid-cols-[52px_minmax(0,190px)_minmax(0,1fr)]">
         {/* icon rail */}
-        <div className="flex flex-col items-center gap-3 border-r border-slate-200 bg-white py-3">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-300">
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-              <rect x="3" y="3" width="7" height="7" rx="1.5" />
-              <rect x="14" y="3" width="7" height="7" rx="1.5" />
-              <rect x="3" y="14" width="7" height="7" rx="1.5" />
-              <rect x="14" y="14" width="7" height="7" rx="1.5" />
-            </svg>
-          </span>
-          <span className="relative flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+        <div className="hidden flex-col items-center gap-2 border-r border-slate-200 bg-slate-50/70 py-4 sm:flex">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white">
+            <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="currentColor">
               <path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h13A2.5 2.5 0 0 1 21 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" />
             </svg>
-            <span className="absolute -right-1.5 -top-1 rounded-full bg-blue-600 px-1 text-[8px] font-bold text-white">
-              6
-            </span>
           </span>
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-300">
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-              <path d="M12 2l2 6 6 .5-4.5 4 1.4 6-4.9-3.2L7.1 18.5l1.4-6L4 8.5 10 8z" />
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-300">
+            <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="currentColor">
+              <path d="M12 3l2 6h6l-4.8 3.6 1.8 6L12 15l-5 3.6 1.8-6L4 9h6z" />
+            </svg>
+          </span>
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-300">
+            <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="currentColor">
+              <circle cx="12" cy="8" r="3.2" />
+              <path d="M5 20a7 7 0 0 1 14 0z" />
             </svg>
           </span>
         </div>
 
         {/* conversation list */}
         <div className="border-r border-slate-200 bg-white">
-          <div className="border-b border-slate-100 p-2">
-            <div className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
-              <p className="text-[7px] font-bold uppercase tracking-wider text-slate-400">
-                Customer channel
-              </p>
-              <p className="text-[10px] font-bold text-slate-900">
-                All Channels
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between border-b border-slate-100 px-2.5 py-1.5">
-            <span className="text-[9px] font-bold text-slate-700">
-              Unread · 6
-            </span>
-            <span className="text-[8px] font-semibold text-blue-600">
-              Clear view
+          <div className="flex items-center justify-between border-b border-slate-200 px-3 py-3">
+            <span className="text-[13px] font-bold text-slate-900">Inbox</span>
+            <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[11px] font-bold text-white">
+              3
             </span>
           </div>
 
           {conversations.map((row, index) => (
             <div
               key={row.name}
-              className={`flex items-center gap-2 border-b border-slate-100 px-2.5 py-2 ${
-                index === 0 ? "bg-slate-50" : ""
+              className={`flex items-center gap-2.5 border-b border-slate-100 px-3 py-2.5 ${
+                index === 0 ? "bg-blue-50/70" : ""
               }`}
             >
-              <span className="relative shrink-0">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[8px] font-bold text-slate-600">
-                  {row.name.slice(0, 1)}
-                </span>
-                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-white bg-[#0084FF]" />
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[11px] font-bold text-slate-600">
+                {row.name.slice(0, 1)}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[9px] font-bold text-slate-900">
-                  {row.name}
+                <span className="flex items-baseline gap-1.5">
+                  <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-900">
+                    {row.name}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-slate-400">
+                    {row.time}
+                  </span>
                 </span>
-                <span className="block truncate text-[8px] text-slate-400">
+                <span className="block truncate text-[11px] text-slate-500">
                   {row.preview}
                 </span>
               </span>
-              <span className="flex h-3.5 min-w-3.5 shrink-0 items-center justify-center rounded-full bg-blue-600 px-1 text-[7px] font-bold text-white">
-                {row.count}
-              </span>
+              {row.count > 0 ? (
+                <span className="flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-bold text-white">
+                  {row.count}
+                </span>
+              ) : null}
             </div>
           ))}
         </div>
 
         {/* thread */}
-        <div className="flex min-w-0 flex-col bg-slate-50/40">
-          <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+        <div className="hidden min-w-0 flex-col bg-slate-50/50 sm:flex">
+          <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[11px] font-bold text-slate-600">
+              A
+            </span>
             <span className="min-w-0">
-              <span className="block truncate text-[11px] font-bold text-slate-900">
+              <span className="block truncate text-[13px] font-bold text-slate-900">
                 Alex Morgan
               </span>
-              <span className="block truncate text-[8px] text-slate-400">
-                Acme Store · Order #10482
+              <span className="block truncate text-[11px] text-slate-500">
+                Comment Facebook · Acme Store
               </span>
             </span>
-            <span className="ml-auto shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-[8px] font-semibold text-slate-600">
+            <span className="ml-auto shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600">
               Open
             </span>
           </div>
 
-          <div className="flex-1 space-y-2 p-3">
-            <p className="text-center text-[7px] font-semibold text-slate-400">
-              Today
-            </p>
-
-            <div className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm">
-              <div className="flex gap-2">
-                <span className="h-12 w-10 shrink-0 rounded bg-gradient-to-br from-slate-200 to-slate-300" />
-                <span className="min-w-0">
-                  <span className="flex items-center gap-1 text-[8px] font-bold text-blue-600">
-                    <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" aria-hidden="true">
-                      <circle cx="12" cy="12" r="11" fill="#1877F2" />
-                    </svg>
-                    Comment on post
-                  </span>
-                  <span className="mt-0.5 block truncate text-[10px] font-bold text-slate-900">
-                    Acme Store
-                  </span>
-                  <span className="block truncate text-[8px] text-slate-500">
-                    New arrivals this week
-                  </span>
-                </span>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[7px] font-bold text-slate-600">
-                A
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[7px] font-bold uppercase tracking-wide text-blue-600">
-                  Comment Facebook
-                </span>
-                <span className="mt-0.5 inline-block rounded-lg rounded-tl-sm border border-slate-200 bg-white px-2 py-1 text-[9px] text-slate-700">
-                  Is this still in stock?
-                </span>
-              </span>
-            </div>
-
-            <div className="flex justify-end">
-              <span className="max-w-[78%] rounded-lg rounded-br-sm bg-blue-600 px-2 py-1 text-[9px] text-white">
-                Yes! We still have it. Would you like us to keep one for you?
-              </span>
-            </div>
+          <div className="flex flex-1 flex-col gap-2.5 p-4">
+            <span className="max-w-[80%] self-start rounded-2xl rounded-tl-md border border-slate-200 bg-white px-3 py-2 text-[12px] leading-5 text-slate-700">
+              Is this still in stock?
+            </span>
+            <span className="max-w-[80%] self-end rounded-2xl rounded-br-md bg-blue-600 px-3 py-2 text-[12px] leading-5 text-white">
+              Yes! We still have it. Would you like us to keep one for you?
+            </span>
+            <span className="max-w-[80%] self-start rounded-2xl rounded-tl-md border border-slate-200 bg-white px-3 py-2 text-[12px] leading-5 text-slate-700">
+              Yes please, size M.
+            </span>
           </div>
 
-          <div className="flex items-center gap-2 border-t border-slate-200 bg-white px-3 py-2">
-            <span className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-[8px] text-slate-400">
+          <div className="flex items-center gap-2 border-t border-slate-200 bg-white px-4 py-3">
+            <span className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-400">
               Write a reply…
             </span>
-            <span className="shrink-0 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[8px] font-bold text-white">
+            <span className="shrink-0 rounded-xl bg-blue-600 px-3 py-2 text-[11px] font-bold text-white">
               Send
             </span>
           </div>
