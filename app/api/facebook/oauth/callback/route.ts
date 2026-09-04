@@ -19,7 +19,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const FACEBOOK_PRODUCTION_ORIGIN =
-  "https://app.tenhchat.com";
+   "https://tenhchat.com";
 
 const FACEBOOK_COOKIE_DOMAIN =
   process.env.NODE_ENV === "production"
