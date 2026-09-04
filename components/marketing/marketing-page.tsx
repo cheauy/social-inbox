@@ -1104,6 +1104,215 @@ export function MarketingPage() {
         </div>
       </section>
 
+      {/* ---------- pricing ---------- */}
+      <section id="pricing" className={`${BRAND_GRADIENT} py-16 text-white`}>
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="max-w-2xl">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/55">
+              {t.pricingEyebrow}
+            </p>
+            <h2 className="mt-3 text-3xl font-bold tracking-tight">
+              {t.pricingTitle}
+            </h2>
+            <p className="mt-3 text-[15px] leading-7 text-white/70">
+              {t.pricingLede}
+            </p>
+          </div>
+
+          <div className="mt-7 inline-flex flex-wrap gap-1 rounded-xl border border-white/15 bg-white/10 p-1">
+            {CYCLES.map((item, index) => (
+              <button
+                key={item.months}
+                type="button"
+                onClick={() => setCycleIndex(index)}
+                aria-pressed={cycleIndex === index}
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                  cycleIndex === index
+                    ? "bg-white text-slate-950"
+                    : "text-white/70 hover:text-white"
+                }`}
+              >
+                {t.cycleLabels[index]}
+                {item.discount > 0 ? (
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                      cycleIndex === index
+                        ? "bg-[#FFE7CC] text-[#B24A00]"
+                        : "bg-[#FF7A00]/25 text-[#FFB877]"
+                    }`}
+                  >
+                    -{Math.round(item.discount * 100)}%
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {plans.map((plan) => {
+              const price = priceFor(plan.cents);
+
+              return (
+                <div
+                  key={plan.key}
+                  className={`flex flex-col rounded-2xl border p-6 ${
+                    plan.featured
+                      ? "border-white bg-white text-slate-950 shadow-xl"
+                      : "border-white/15 bg-white/10"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-base font-bold">{plan.copy.name}</span>
+                    {plan.featured ? (
+                      <span className="rounded-full bg-[#FFE7CC] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#B24A00]">
+                        {t.popular}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <p className="mt-3 text-4xl font-extrabold tabular-nums tracking-tight">
+                    {price.perMonth}
+                    <span
+                      className={`ml-1 text-sm font-medium ${
+                        plan.featured ? "text-slate-500" : "text-white/65"
+                      }`}
+                    >
+                      {t.perMonth}
+                    </span>
+                  </p>
+
+                  <p
+                    className={`mt-1.5 min-h-5 text-xs ${
+                      plan.featured ? "text-slate-500" : "text-white/65"
+                    }`}
+                  >
+                    {price.billed}
+                  </p>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span
+                      className={`rounded-lg px-2.5 py-1 text-xs font-semibold tabular-nums ${
+                        plan.featured ? "bg-slate-100" : "bg-white/15"
+                      }`}
+                    >
+                      {plan.channels} {t.channelsUnit}
+                    </span>
+                    <span
+                      className={`rounded-lg px-2.5 py-1 text-xs font-semibold tabular-nums ${
+                        plan.featured ? "bg-slate-100" : "bg-white/15"
+                      }`}
+                    >
+                      {plan.users} {t.usersUnit}
+                    </span>
+                  </div>
+
+                  <ul
+                    className={`mt-4 flex flex-1 flex-col gap-2 text-sm ${
+                      plan.featured ? "text-slate-600" : "text-white/70"
+                    }`}
+                  >
+                    {plan.copy.points.map((point) => (
+                      <li key={point} className="flex gap-2.5">
+                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-50" />
+                        {point}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <a
+                    href="/register"
+                    className={`mt-6 rounded-xl px-4 py-2.5 text-center text-sm font-semibold transition ${
+                      plan.featured
+                        ? "bg-blue-600 text-white hover:bg-blue-700"
+                        : "border border-white/25 text-white hover:border-white/50"
+                    }`}
+                  >
+                    {t.ctaShort}
+                  </a>
+                </div>
+              );
+            })}
+
+            <div className="flex flex-col rounded-2xl border border-dashed border-white/25 bg-white/10 p-6">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-base font-bold">{t.customName}</span>
+                <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                  {t.customTagline}
+                </span>
+              </div>
+
+              <p className="mt-3 text-4xl font-extrabold tabular-nums tracking-tight">
+                <span className="mr-1 align-middle text-sm font-medium text-white/65">
+                  {t.customFrom}
+                </span>
+                {customPrice.perMonth}
+                <span className="ml-1 text-sm font-medium text-white/65">
+                  {t.perMonth}
+                </span>
+              </p>
+
+              <p className="mt-1.5 min-h-5 text-xs text-white/65">
+                {customPrice.billed}
+              </p>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span className="rounded-lg bg-white/15 px-2.5 py-1 text-xs font-semibold tabular-nums">
+                  {CUSTOM_PRICING.minChannels}–{CUSTOM_PRICING.maxChannels}{" "}
+                  {t.channelsUnit}
+                </span>
+                <span className="rounded-lg bg-white/15 px-2.5 py-1 text-xs font-semibold tabular-nums">
+                  {CUSTOM_PRICING.minUsers}–{CUSTOM_PRICING.maxUsers}{" "}
+                  {t.usersUnit}
+                </span>
+              </div>
+
+              <ul className="mt-4 flex flex-1 flex-col gap-2 text-sm text-white/70">
+                {customPoints.map((point) => (
+                  <li key={point} className="flex gap-2.5">
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-50" />
+                    {point}
+                  </li>
+                ))}
+              </ul>
+
+              <a
+                href="/register"
+                className="mt-6 rounded-xl border border-white/25 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:border-white/50"
+              >
+                {t.customCta}
+              </a>
+            </div>
+          </div>
+
+          <p className="mt-6 text-sm text-white/70">{t.payNote}</p>
+        </div>
+      </section>
+
+      {/* ---------- help / faq ---------- */}
+      <section id="help" className="mx-auto max-w-6xl px-6 py-16">
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
+          {t.faqEyebrow}
+        </p>
+        <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">
+          {t.faqTitle}
+        </h2>
+
+        <div className="mt-7 max-w-3xl">
+          {t.faq.map((item, index) => (
+            <details
+              key={item.q}
+              open={index === 0}
+              className="border-b border-slate-200 py-1"
+            >
+              <summary className="cursor-pointer list-none py-3.5 text-[15px] font-semibold text-slate-900 [&::-webkit-details-marker]:hidden">
+                {item.q}
+              </summary>
+              <p className="pb-4 text-sm leading-7 text-slate-600">{item.a}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
       {/* ---------- showcase bands ---------- */}
       <section className="mx-auto flex max-w-6xl flex-col gap-4 px-6 pb-16">
         <ShowcaseBand
@@ -1323,215 +1532,6 @@ export function MarketingPage() {
                 </span>
               </span>
             </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ---------- pricing ---------- */}
-      <section id="pricing" className={`${BRAND_GRADIENT} py-16 text-white`}>
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="max-w-2xl">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/55">
-              {t.pricingEyebrow}
-            </p>
-            <h2 className="mt-3 text-3xl font-bold tracking-tight">
-              {t.pricingTitle}
-            </h2>
-            <p className="mt-3 text-[15px] leading-7 text-white/70">
-              {t.pricingLede}
-            </p>
-          </div>
-
-          <div className="mt-7 inline-flex flex-wrap gap-1 rounded-xl border border-white/15 bg-white/10 p-1">
-            {CYCLES.map((item, index) => (
-              <button
-                key={item.months}
-                type="button"
-                onClick={() => setCycleIndex(index)}
-                aria-pressed={cycleIndex === index}
-                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                  cycleIndex === index
-                    ? "bg-white text-slate-950"
-                    : "text-white/70 hover:text-white"
-                }`}
-              >
-                {t.cycleLabels[index]}
-                {item.discount > 0 ? (
-                  <span
-                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                      cycleIndex === index
-                        ? "bg-[#FFE7CC] text-[#B24A00]"
-                        : "bg-[#FF7A00]/25 text-[#FFB877]"
-                    }`}
-                  >
-                    -{Math.round(item.discount * 100)}%
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {plans.map((plan) => {
-              const price = priceFor(plan.cents);
-
-              return (
-                <div
-                  key={plan.key}
-                  className={`flex flex-col rounded-2xl border p-6 ${
-                    plan.featured
-                      ? "border-white bg-white text-slate-950 shadow-xl"
-                      : "border-white/15 bg-white/10"
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-base font-bold">{plan.copy.name}</span>
-                    {plan.featured ? (
-                      <span className="rounded-full bg-[#FFE7CC] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#B24A00]">
-                        {t.popular}
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <p className="mt-3 text-4xl font-extrabold tabular-nums tracking-tight">
-                    {price.perMonth}
-                    <span
-                      className={`ml-1 text-sm font-medium ${
-                        plan.featured ? "text-slate-500" : "text-white/65"
-                      }`}
-                    >
-                      {t.perMonth}
-                    </span>
-                  </p>
-
-                  <p
-                    className={`mt-1.5 min-h-5 text-xs ${
-                      plan.featured ? "text-slate-500" : "text-white/65"
-                    }`}
-                  >
-                    {price.billed}
-                  </p>
-
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <span
-                      className={`rounded-lg px-2.5 py-1 text-xs font-semibold tabular-nums ${
-                        plan.featured ? "bg-slate-100" : "bg-white/15"
-                      }`}
-                    >
-                      {plan.channels} {t.channelsUnit}
-                    </span>
-                    <span
-                      className={`rounded-lg px-2.5 py-1 text-xs font-semibold tabular-nums ${
-                        plan.featured ? "bg-slate-100" : "bg-white/15"
-                      }`}
-                    >
-                      {plan.users} {t.usersUnit}
-                    </span>
-                  </div>
-
-                  <ul
-                    className={`mt-4 flex flex-1 flex-col gap-2 text-sm ${
-                      plan.featured ? "text-slate-600" : "text-white/70"
-                    }`}
-                  >
-                    {plan.copy.points.map((point) => (
-                      <li key={point} className="flex gap-2.5">
-                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-50" />
-                        {point}
-                      </li>
-                    ))}
-                  </ul>
-
-                  <a
-                    href="/register"
-                    className={`mt-6 rounded-xl px-4 py-2.5 text-center text-sm font-semibold transition ${
-                      plan.featured
-                        ? "bg-blue-600 text-white hover:bg-blue-700"
-                        : "border border-white/25 text-white hover:border-white/50"
-                    }`}
-                  >
-                    {t.ctaShort}
-                  </a>
-                </div>
-              );
-            })}
-
-            <div className="flex flex-col rounded-2xl border border-dashed border-white/25 bg-white/10 p-6">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-base font-bold">{t.customName}</span>
-                <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                  {t.customTagline}
-                </span>
-              </div>
-
-              <p className="mt-3 text-4xl font-extrabold tabular-nums tracking-tight">
-                <span className="mr-1 align-middle text-sm font-medium text-white/65">
-                  {t.customFrom}
-                </span>
-                {customPrice.perMonth}
-                <span className="ml-1 text-sm font-medium text-white/65">
-                  {t.perMonth}
-                </span>
-              </p>
-
-              <p className="mt-1.5 min-h-5 text-xs text-white/65">
-                {customPrice.billed}
-              </p>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className="rounded-lg bg-white/15 px-2.5 py-1 text-xs font-semibold tabular-nums">
-                  {CUSTOM_PRICING.minChannels}–{CUSTOM_PRICING.maxChannels}{" "}
-                  {t.channelsUnit}
-                </span>
-                <span className="rounded-lg bg-white/15 px-2.5 py-1 text-xs font-semibold tabular-nums">
-                  {CUSTOM_PRICING.minUsers}–{CUSTOM_PRICING.maxUsers}{" "}
-                  {t.usersUnit}
-                </span>
-              </div>
-
-              <ul className="mt-4 flex flex-1 flex-col gap-2 text-sm text-white/70">
-                {customPoints.map((point) => (
-                  <li key={point} className="flex gap-2.5">
-                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-50" />
-                    {point}
-                  </li>
-                ))}
-              </ul>
-
-              <a
-                href="/register"
-                className="mt-6 rounded-xl border border-white/25 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:border-white/50"
-              >
-                {t.customCta}
-              </a>
-            </div>
-          </div>
-
-          <p className="mt-6 text-sm text-white/70">{t.payNote}</p>
-        </div>
-      </section>
-
-      {/* ---------- help / faq ---------- */}
-      <section id="help" className="mx-auto max-w-6xl px-6 py-16">
-        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
-          {t.faqEyebrow}
-        </p>
-        <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">
-          {t.faqTitle}
-        </h2>
-
-        <div className="mt-7 max-w-3xl">
-          {t.faq.map((item, index) => (
-            <details
-              key={item.q}
-              open={index === 0}
-              className="border-b border-slate-200 py-1"
-            >
-              <summary className="cursor-pointer list-none py-3.5 text-[15px] font-semibold text-slate-900 [&::-webkit-details-marker]:hidden">
-                {item.q}
-              </summary>
-              <p className="pb-4 text-sm leading-7 text-slate-600">{item.a}</p>
-            </details>
           ))}
         </div>
       </section>
