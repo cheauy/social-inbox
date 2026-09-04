@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export function WorkspaceAccessRemovedNotice({
   fallbackBusinessId,
@@ -8,11 +8,23 @@ export function WorkspaceAccessRemovedNotice({
   fallbackBusinessId: string;
 }) {
   const [visible, setVisible] = useState(true);
+  const repairedBusinessIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!fallbackBusinessId) {
       return;
     }
+
+    /*
+     * Repair the cookie once per workspace. The effect re-runs on every
+     * remount — twice in development under StrictMode — and each run would
+     * otherwise post another switch for a cookie that is already correct.
+     */
+    if (repairedBusinessIdRef.current === fallbackBusinessId) {
+      return;
+    }
+
+    repairedBusinessIdRef.current = fallbackBusinessId;
 
     void fetch("/api/workspaces/switch", {
       method: "POST",

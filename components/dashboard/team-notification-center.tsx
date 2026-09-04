@@ -10,7 +10,6 @@ import {
 import { useRouter } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
-import { ReminderManagementTab } from "@/components/dashboard/reminder-management-tab";
 
 const GROUP_MENTION_SOUND_SRC = "/alert-sound/mentions-notification.mp3";
 const GROUP_MENTION_FALLBACK_SOUND_SRC = "/alert-sound/crystal-bell-chime.wav";
@@ -370,6 +369,8 @@ export function TeamNotificationCenter() {
   const router = useRouter();
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const groupMentionAudioRef = useRef<HTMLAudioElement | null>(null);
+  /* A ref, not state: the guard must apply within the same click, before any re-render. */
+  const switchingWorkspaceRef = useRef(false);
   const groupMentionFallbackRef = useRef(false);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -379,8 +380,6 @@ export function TeamNotificationCenter() {
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [currentBusinessId, setCurrentBusinessId] = useState<string | null>(null);
   const [workingId, setWorkingId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"notifications" | "reminders">("notifications");
-  const [pendingReminderCount, setPendingReminderCount] = useState(0);
 
   useEffect(() => {
     const audio = new Audio(GROUP_MENTION_SOUND_SRC);
@@ -803,6 +802,16 @@ export function TeamNotificationCenter() {
   }
 
   async function openTeamNotification(notification: TeamNotification) {
+    /*
+     * One workspace switch at a time. Two notifications from different
+     * workspaces clicked in quick succession would otherwise race, and the
+     * cookie that lands last decides where the user ends up — which need not
+     * be the notification they opened second.
+     */
+    if (switchingWorkspaceRef.current) {
+      return;
+    }
+
     // Remove the unread badge immediately, then persist in the background.
     void markRead(notification);
 
@@ -826,6 +835,8 @@ export function TeamNotificationCenter() {
       notification.business_id &&
       notification.business_id !== currentBusinessId
     ) {
+      switchingWorkspaceRef.current = true;
+
       try {
         const response = await fetch("/api/workspaces/switch", {
           method: "POST",
@@ -849,6 +860,8 @@ export function TeamNotificationCenter() {
         // not navigate into stale workspace data.
         void loadNotifications(true);
         return;
+      } finally {
+        switchingWorkspaceRef.current = false;
       }
     }
 
@@ -899,16 +912,14 @@ export function TeamNotificationCenter() {
           <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3.5">
             <div>
               <p className="text-sm font-bold text-slate-950">
-                {activeTab === "notifications" ? "Notifications" : "Reminders"}
+                Notifications
               </p>
               <p className="mt-0.5 text-xs text-slate-500">
-                {activeTab === "notifications"
-                  ? "TENH updates and team activity"
-                  : "Review reminders before they are sent"}
+                TENH updates and team activity
               </p>
             </div>
 
-            {activeTab === "notifications" && unreadTeamCount > 0 ? (
+            {unreadTeamCount > 0 ? (
               <button
                 type="button"
                 onClick={() => {
@@ -922,42 +933,6 @@ export function TeamNotificationCenter() {
             ) : null}
           </div>
 
-          <div className="flex border-b border-slate-100 bg-white px-2 pt-2">
-            <button
-              type="button"
-              onClick={() => setActiveTab("notifications")}
-              className={`flex flex-1 items-center justify-center gap-1.5 border-b-2 px-3 py-2 text-xs font-bold transition ${
-                activeTab === "notifications"
-                  ? "border-blue-600 text-blue-700"
-                  : "border-transparent text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              Notifications
-              {unreadTeamCount > 0 ? (
-                <span className="rounded-full bg-red-50 px-1.5 py-0.5 text-[9px] text-red-600">
-                  {unreadTeamCount > 99 ? "99+" : unreadTeamCount}
-                </span>
-              ) : null}
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("reminders")}
-              className={`flex flex-1 items-center justify-center gap-1.5 border-b-2 px-3 py-2 text-xs font-bold transition ${
-                activeTab === "reminders"
-                  ? "border-blue-600 text-blue-700"
-                  : "border-transparent text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              Reminders
-              {pendingReminderCount > 0 ? (
-                <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] text-amber-700">
-                  {pendingReminderCount > 99 ? "99+" : pendingReminderCount}
-                </span>
-              ) : null}
-            </button>
-          </div>
-
-          {activeTab === "notifications" ? (
           <div className="max-h-[520px] overflow-y-auto p-2">
             {announcement ? (
               <div
@@ -1117,12 +1092,6 @@ export function TeamNotificationCenter() {
               </div>
             )}
           </div>
-          ) : (
-            <ReminderManagementTab
-              onPendingCountChange={setPendingReminderCount}
-              onClosePanel={() => setOpen(false)}
-            />
-          )}
 
           <div className="border-t border-slate-100 bg-slate-50/70 px-4 py-2.5 text-center text-[10px] text-slate-400">
             Click outside this panel or press Esc to close.

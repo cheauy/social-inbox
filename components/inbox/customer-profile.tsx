@@ -125,6 +125,8 @@ export function CustomerProfile({
   const router = useRouter();
   const isKhmer = useWorkspaceLanguageId() === "km";
 
+
+
   const [editing, setEditing] =
     useState(false);
   const [saving, setSaving] =
@@ -137,6 +139,9 @@ export function CustomerProfile({
     useState<CustomerBaseline | null>(null);
   const [conflict, setConflict] =
     useState<CustomerConflict | null>(null);
+  const [profileTab, setProfileTab] =
+    useState<"details" | "notes" | "reminder">("details");
+  const [noteCount, setNoteCount] = useState(0);
   const [reminderOpen, setReminderOpen] =
     useState(false);
   const [filesOpen, setFilesOpen] =
@@ -446,6 +451,7 @@ async function saveProfile() {
 
           <ProfileInput
             label={isKhmer ? "លេខទូរស័ព្ទ" : "Phone"}
+    icon="phone"
             value={form.phone}
             placeholder="+855..."
             type="tel"
@@ -516,10 +522,42 @@ async function saveProfile() {
           </div>
         </div>
       ) : (
+        <>
+        <div className="flex shrink-0 border-b border-slate-200 bg-white px-2 pt-1">
+          {(
+            [
+              { id: "details", label: isKhmer ? "ព័ត៌មាន" : "Details" },
+              { id: "notes", label: isKhmer ? "កំណត់ចំណាំ" : "Notes" },
+              { id: "reminder", label: isKhmer ? "ការរំលឹក" : "Reminder" },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setProfileTab(item.id)}
+              aria-pressed={profileTab === item.id}
+              className={`relative flex flex-1 items-center justify-center gap-1.5 border-b-2 px-2 py-2.5 text-xs font-bold transition ${
+                profileTab === item.id
+                  ? "border-blue-600 text-blue-700"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              {item.label}
+              {item.id === "notes" && noteCount > 0 ? (
+                <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                  {noteCount > 99 ? "99+" : noteCount}
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+
+        {profileTab === "details" ? (
         <div className="space-y-6 p-5">
        <ProfileSection title={isKhmer ? "ព័ត៌មានទំនាក់ទំនង" : "Contact information"}>
   <CopyableProfileValue
     label={isKhmer ? "ឈ្មោះអតិថិជន" : "Customer name"}
+    icon="user"
     value={
       contact.full_name ??
       (isKhmer ? "អតិថិជន Facebook" : "Facebook customer")
@@ -528,6 +566,7 @@ async function saveProfile() {
 
   <CopyableProfileValue
     label={isKhmer ? "លេខទូរស័ព្ទ" : "Phone"}
+    icon="phone"
     value={contact.phone}
     emptyText={isKhmer ? "មិនទាន់បន្ថែម" : "Not added"}
   />
@@ -536,61 +575,25 @@ async function saveProfile() {
   <ProfileSection title={isKhmer ? "កំណត់ចំណាំអតិថិជន" : "Customer note"}>
   <CopyableProfileValue
     label={isKhmer ? "កំណត់ចំណាំ" : "Note"}
+    icon="note"
     value={contact.customer_note}
     emptyText={isKhmer ? "មិនទាន់មានកំណត់ចំណាំអតិថិជនទេ។" : "No customer note has been added."}
   />
 </ProfileSection>
 
-          <ConversationReminderSummary
-            conversationId={activeConversation.id}
-            onCreate={() => setReminderOpen(true)}
-          />
 
-          <section className="border-t border-slate-200 pt-5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              {isKhmer ? "ផ្សេងៗ" : "Other"}
-            </p>
 
-            <div className="mt-3 space-y-2">
-              <button
-                type="button"
-                onClick={() => setFilesOpen(true)}
-                className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-              >
-                {isKhmer ? "ឯកសារ ឯកសារផ្សេងៗ និងតំណ" : "Files, documents & links"}
-              </button>
-
-              <button
-                type="button"
-                className="w-full rounded-lg px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-              >
-                {isKhmer ? "រាយការណ៍សារឥតបានការ" : "Report spam"}
-              </button>
-            </div>
-          </section>
-
-<CustomerNotes
-  contactId={contact.id}
-  conversationId={
-    activeConversation.id
-  }
-  currentMemberId={
-    activeConversation.assigned_to
-  }
-  currentMemberName={
-    activeConversation.assigned_member
-      ?.full_name ?? null
-  }
-/>
           <ProfileSection title={isKhmer ? "ព័ត៌មាន Facebook" : "Facebook information"}>
             <ProfileValue
               label={isKhmer ? "លេខសម្គាល់អតិថិជន" : "Customer ID"}
+    icon="id"
               value={contact.platform_user_id}
               breakAll
             />
 
             <ProfileValue
               label={isKhmer ? "ទំព័រ" : "Page"}
+    icon="page"
               value={
                 activeConversation.social_account
                   ?.account_name ??
@@ -601,7 +604,10 @@ async function saveProfile() {
 
           <ProfileSection title={isKhmer ? "ការសន្ទនា" : "Conversation"}>
             <div>
-              <p className="text-xs text-slate-500">
+              <p className="flex items-center gap-1.5 text-xs text-slate-500">
+                <span className="text-slate-400">
+                  <FieldIcon name="status" />
+                </span>
                 {isKhmer ? "ស្ថានភាព" : "Status"}
               </p>
 
@@ -623,7 +629,10 @@ async function saveProfile() {
             </div>
 
             <div>
-              <p className="text-xs text-slate-500">
+              <p className="flex items-center gap-1.5 text-xs text-slate-500">
+                <span className="text-slate-400">
+                  <FieldIcon name="assigned" />
+                </span>
                 {isKhmer ? "បានចាត់តាំងទៅ" : "Assigned to"}
               </p>
 
@@ -656,6 +665,7 @@ async function saveProfile() {
 
             <ProfileValue
               label={isKhmer ? "ជាអតិថិជនតាំងពី" : "Customer since"}
+              icon="since"
               value={formatProfileDate(
                 contact.created_at,
               )}
@@ -663,6 +673,7 @@ async function saveProfile() {
 
             <ProfileValue
               label={isKhmer ? "សកម្មចុងក្រោយ" : "Last active"}
+              icon="active"
               value={formatProfileDate(
                 contact.last_contact_at,
               )}
@@ -695,8 +706,68 @@ async function saveProfile() {
             )}
           </ProfileSection>
 
+          <section className="border-t border-slate-200 pt-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              {isKhmer ? "ផ្សេងៗ" : "Other"}
+            </p>
 
+            <div className="mt-3 space-y-2">
+              <button
+                type="button"
+                onClick={() => setFilesOpen(true)}
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <span className="text-slate-400">
+                  <FieldIcon name="files" />
+                </span>
+                {isKhmer ? "ឯកសារ ឯកសារផ្សេងៗ និងតំណ" : "Files, documents & links"}
+              </button>
+
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+              >
+                <span className="text-red-400">
+                  <FieldIcon name="spam" />
+                </span>
+                {isKhmer ? "រាយការណ៍សារឥតបានការ" : "Report spam"}
+              </button>
+            </div>
+          </section>
         </div>
+        ) : null}
+
+        {/*
+         * Notes stay mounted on every tab. They own the badge count and the
+         * realtime subscription behind it, so unmounting them would mean the
+         * badge only appeared after someone opened this tab.
+         */}
+        <div className={profileTab === "notes" ? "p-5" : "hidden"}>
+          <CustomerNotes
+            onNoteCountChange={setNoteCount}
+  contactId={contact.id}
+  conversationId={
+    activeConversation.id
+  }
+  currentMemberId={
+    activeConversation.assigned_to
+  }
+  currentMemberName={
+    activeConversation.assigned_member
+      ?.full_name ?? null
+  }
+          />
+        </div>
+
+        {profileTab === "reminder" ? (
+          <div className="p-5">
+            <ConversationReminderSummary
+              conversationId={activeConversation.id}
+              onCreate={() => setReminderOpen(true)}
+            />
+          </div>
+        ) : null}
+        </>
       )}
     </div>
 
@@ -740,6 +811,7 @@ type ProfileInputProps = {
   placeholder?: string;
   type?: "text" | "email" | "tel";
   onChange: (value: string) => void;
+  icon?: FieldIconName;
 };
 
 function ProfileInput({
@@ -748,10 +820,16 @@ function ProfileInput({
   placeholder,
   type = "text",
   onChange,
+  icon,
 }: ProfileInputProps) {
   return (
     <div>
-      <label className="text-sm font-medium text-slate-700">
+      <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
+        {icon ? (
+          <span className="text-slate-400">
+            <FieldIcon name={icon} />
+          </span>
+        ) : null}
         {label}
       </label>
 
@@ -773,13 +851,112 @@ type ProfileSectionProps = {
   children: React.ReactNode;
 };
 
+
+/* Small line icons used to label each profile field. */
+type FieldIconName =
+  | "user"
+  | "phone"
+  | "note"
+  | "id"
+  | "page"
+  | "status"
+  | "assigned"
+  | "since"
+  | "active"
+  | "files"
+  | "spam";
+
+function FieldIcon({ name }: { name: FieldIconName }) {
+  const paths: Record<FieldIconName, React.ReactNode> = {
+    user: (
+      <>
+        <circle cx="12" cy="8" r="3.2" />
+        <path d="M5.5 19.5a6.5 6.5 0 0 1 13 0" />
+      </>
+    ),
+    phone: (
+      <path d="M7 3.5h3l1.4 3.5-2 1.4a12 12 0 0 0 5.2 5.2l1.4-2 3.5 1.4v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 5 5.7 2 2 0 0 1 7 3.5z" />
+    ),
+    note: (
+      <>
+        <path d="M6 3.5h8.5L19 8v12.5H6z" />
+        <path d="M14 3.5V8h4.5M9 12h6M9 16h4" />
+      </>
+    ),
+    id: (
+      <>
+        <rect x="3" y="5.5" width="18" height="13" rx="2.5" />
+        <circle cx="9" cy="11.5" r="2" />
+        <path d="M6 16.2a3.5 3.5 0 0 1 6 0M14.5 10.5h4M14.5 14h3" />
+      </>
+    ),
+    page: (
+      <>
+        <rect x="4" y="4" width="16" height="16" rx="3" />
+        <path d="M13.5 20v-5h1.8l.3-2.2h-2.1v-1.4c0-.6.2-1 1-1h1.2V8.2a13 13 0 0 0-1.6-.1c-1.7 0-2.8 1-2.8 2.8v1.9H9.4V15h1.9v5" />
+      </>
+    ),
+    status: (
+      <>
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="m8.8 12.2 2.2 2.2 4.2-4.6" />
+      </>
+    ),
+    assigned: (
+      <>
+        <circle cx="10" cy="8" r="3" />
+        <path d="M4 19a6 6 0 0 1 12 0" />
+        <path d="M17.5 8.5v5M15 11h5" />
+      </>
+    ),
+    since: (
+      <>
+        <rect x="4" y="5.5" width="16" height="15" rx="2.5" />
+        <path d="M4 10h16M8.5 3.5v4M15.5 3.5v4" />
+      </>
+    ),
+    active: (
+      <>
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 7.2v5.2l3.4 2" />
+      </>
+    ),
+    files: (
+      <>
+        <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h3l2 2.5h6A2.5 2.5 0 0 1 20 10v7.5A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5z" />
+      </>
+    ),
+    spam: (
+      <>
+        <path d="M12 3.5 21 19H3z" />
+        <path d="M12 10v4M12 16.6h.01" />
+      </>
+    ),
+  };
+
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-3.5 w-3.5"
+      aria-hidden="true"
+    >
+      {paths[name]}
+    </svg>
+  );
+}
+
 function ProfileSection({
   title,
   children,
 }: ProfileSectionProps) {
   return (
     <section className="border-t border-slate-200 pt-5 first:border-t-0 first:pt-0">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+      <p className="text-[12.6px] font-bold uppercase tracking-wide text-slate-900">
         {title}
       </p>
 
@@ -794,16 +971,23 @@ type ProfileValueProps = {
   label: string;
   value: string;
   breakAll?: boolean;
+  icon?: FieldIconName;
 };
 
 function ProfileValue({
   label,
   value,
   breakAll = false,
+  icon,
 }: ProfileValueProps) {
   return (
     <div>
-      <p className="text-xs text-slate-500">
+      <p className="flex items-center gap-1.5 text-xs text-slate-500">
+        {icon ? (
+          <span className="text-slate-400">
+            <FieldIcon name={icon} />
+          </span>
+        ) : null}
         {label}
       </p>
 
@@ -848,10 +1032,12 @@ function CopyableProfileValue({
   label,
   value,
   emptyText = "Not added",
+  icon,
 }: {
   label: string;
   value: string | null | undefined;
   emptyText?: string;
+  icon?: FieldIconName;
 }) {
   const [copied, setCopied] =
     useState(false);
@@ -886,7 +1072,12 @@ function CopyableProfileValue({
 
   return (
     <div>
-      <p className="text-xs text-slate-500">
+      <p className="flex items-center gap-1.5 text-xs text-slate-500">
+        {icon ? (
+          <span className="text-slate-400">
+            <FieldIcon name={icon} />
+          </span>
+        ) : null}
         {label}
       </p>
 

@@ -51,29 +51,34 @@ export function NoteItem({
   }
 
   return (
-    <article className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+    <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-slate-900">
-            {note.author?.full_name ??
-              "Team member"}
-          </p>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-bold text-slate-600">
+            {(note.author?.full_name ?? "T").slice(0, 1).toUpperCase()}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-[13px] font-semibold text-slate-900">
+              {note.author?.full_name ??
+                "Team member"}
+            </span>
 
-          <p className="text-xs text-slate-500">
-            {formatNoteDate(note.created_at)}
-            {note.updated_at !== note.created_at
-              ? " · edited"
-              : ""}
-          </p>
+            <span className="block text-[11px] text-slate-400">
+              {formatNoteDate(note.created_at)}
+              {note.updated_at !== note.created_at
+                ? " · edited"
+                : ""}
+            </span>
+          </span>
         </div>
 
         {canManage && !editing ? (
-          <div className="flex gap-2">
+          <div className="flex shrink-0 gap-2">
             <button
               type="button"
               onClick={() => setEditing(true)}
               disabled={busy}
-              className="text-xs font-medium text-blue-700 hover:underline disabled:text-slate-400"
+              className="text-[11px] font-semibold text-slate-500 transition hover:text-blue-700 disabled:text-slate-300"
             >
               Edit
             </button>
@@ -82,7 +87,7 @@ export function NoteItem({
               type="button"
               onClick={() => void onDelete(note.id)}
               disabled={busy}
-              className="text-xs font-medium text-red-600 hover:underline disabled:text-slate-400"
+              className="text-[11px] font-semibold text-slate-500 transition hover:text-red-600 disabled:text-slate-300"
             >
               Delete
             </button>
@@ -126,7 +131,7 @@ export function NoteItem({
           </div>
         </div>
       ) : (
-        <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+        <p className="mt-2 whitespace-pre-wrap text-[13px] leading-6 text-slate-700">
           {note.note_text}
         </p>
       )}

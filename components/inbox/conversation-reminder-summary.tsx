@@ -142,7 +142,7 @@ export function ConversationReminderSummary({
       ) : (
         <div className="mt-3 space-y-2">
           {reminders.slice(0, 3).map((reminder) => (
-            <article key={reminder.id} className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+            <article key={reminder.id} className="rounded-xl border border-amber-200 bg-amber-50 p-3">
               <div className="flex items-start justify-between gap-3">
                 <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm font-medium leading-5 text-slate-800">
                   {reminder.note}

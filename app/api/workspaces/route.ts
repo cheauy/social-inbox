@@ -216,7 +216,25 @@ export async function GET() {
     );
   }
 
-  const workspaces = membershipRows.map((membership) => {
+  /*
+   * One entry per business, never one per membership row.
+   *
+   * businessIds above is already deduplicated, but mapping the raw rows here
+   * listed the same workspace twice whenever a user held two memberships for
+   * it — the usual cause being a removal followed by a re-invite. Rows arrive
+   * oldest first, so keeping the last occurrence keeps the newest membership,
+   * which carries the role and permissions that currently apply.
+   */
+  const uniqueMembershipRows = [
+    ...new Map(
+      membershipRows.map((membership) => [
+        membership.business_id,
+        membership,
+      ]),
+    ).values(),
+  ];
+
+  const workspaces = uniqueMembershipRows.map((membership) => {
     const business = businesses.get(membership.business_id);
     const subscription = subscriptions.get(membership.business_id) ?? null;
 

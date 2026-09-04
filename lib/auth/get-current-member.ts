@@ -6,6 +6,16 @@ import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
+/*
+ * Membership lookups resolve at most one row on purpose.
+ *
+ * A user can end up with more than one team_members row for the same
+ * business — being removed and re-invited is the usual way. maybeSingle()
+ * rejects multiple rows, so without limit(1) a duplicate membership stops
+ * the whole dashboard from loading rather than degrading. Ordering puts any
+ * active row first, then the newest, so the row chosen is the one that
+ * reflects the member's current access.
+ */
 export const TENH_ACTIVE_BUSINESS_COOKIE = "tenh_active_business_id";
 
 export type AuthenticatedMember = {
@@ -93,6 +103,9 @@ async function hasRemovedWorkspaceAccess(
     .select("id,is_active")
     .eq("user_id", userId)
     .eq("business_id", businessId)
+    .order("is_active", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) {
@@ -139,6 +152,9 @@ async function provisionMetaReviewer(user: User): Promise<AuthenticatedMember | 
     .select(MEMBER_SELECT)
     .eq("user_id", user.id)
     .eq("business_id", configuredBusinessId)
+    .order("is_active", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (exactMemberError) {
@@ -216,6 +232,9 @@ export async function getCurrentMember(): Promise<GetCurrentMemberResult> {
       .select(MEMBER_SELECT)
       .eq("user_id", user.id)
       .eq("business_id", requestedBusinessId)
+      .order("is_active", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (requestedMemberError) {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { NoteItem } from "@/components/inbox/note-item";
+import { createClient } from "@/lib/supabase/client";
 import { MentionComposer } from "@/components/team/mention-composer";
 import type { ContactNote } from "@/types/inbox";
 import {
@@ -14,6 +15,12 @@ type CustomerNotesProps = {
   conversationId: string;
   currentMemberId: string | null;
   currentMemberName: string | null;
+  /*
+   * Reports how many internal notes this contact has, so the panel above can
+   * badge the Notes tab. Fires on load and after every add, edit and delete,
+   * which is what keeps the badge falling when a note is removed.
+   */
+  onNoteCountChange?: (count: number) => void;
 };
 
 type MentionMember = {
@@ -40,6 +47,24 @@ type TeamResponse = {
   };
 };
 
+function LockIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-3.5 w-3.5"
+      aria-hidden="true"
+    >
+      <rect x="5" y="10.5" width="14" height="9.5" rx="2" />
+      <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
+}
+
 async function readJsonResponse<T>(
   response: Response,
 ): Promise<T | null> {
@@ -61,6 +86,7 @@ export function CustomerNotes({
   conversationId,
   currentMemberId,
   currentMemberName,
+  onNoteCountChange,
 }: CustomerNotesProps) {
   const isKhmer = useWorkspaceLanguageId() === "km";
 
@@ -77,12 +103,16 @@ export function CustomerNotes({
     useState<string[]>([]);
   const [mentionEveryone, setMentionEveryone] =
     useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadNotes() {
-      setLoading(true);
+      if (refreshKey === 0) {
+        setLoading(true);
+      }
+
       setError(null);
 
       try {
@@ -117,12 +147,14 @@ export function CustomerNotes({
         }
 
         if (!cancelled) {
-          setNotes(notesResult.notes ?? []);
-          setLoggedInMemberId(
+          const loadedNotes = notesResult.notes ?? [];
+          const viewerId =
             notesResult.currentMemberId ??
-              teamResult?.currentMember?.id ??
-              null,
-          );
+            teamResult?.currentMember?.id ??
+            null;
+
+          setNotes(loadedNotes);
+          setLoggedInMemberId(viewerId);
 
           if (
             teamResponse.ok &&
@@ -151,7 +183,46 @@ export function CustomerNotes({
     return () => {
       cancelled = true;
     };
+  }, [contactId, refreshKey]);
+
+  /*
+   * A note written by one teammate has to reach everyone else looking at this
+   * customer, so the list follows contact_notes over realtime and refetches
+   * on any insert, update or delete. Refetching rather than patching the row
+   * keeps the author join intact, which the payload does not carry.
+   */
+  useEffect(() => {
+    const supabase = createClient();
+
+    const channel = supabase
+      .channel(`tenh-contact-notes-${contactId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "contact_notes",
+          filter: `contact_id=eq.${contactId}`,
+        },
+        () => {
+          setRefreshKey((current) => current + 1);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, [contactId]);
+
+  /*
+   * Reported from an effect, not from inside a setNotes updater: React runs
+   * updaters during render, so notifying the parent there updated it mid
+   * render. This fires after commit, once per real change.
+   */
+  useEffect(() => {
+    onNoteCountChange?.(notes.length);
+  }, [notes.length, onNoteCountChange]);
 
   async function createNote() {
     const noteText = newNote.trim();
@@ -327,27 +398,22 @@ export function CustomerNotes({
   }
 
   return (
-    <section className="border-t border-slate-200 pt-5">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            {isKhmer ? "កំណត់ចំណាំផ្ទៃក្នុង" : "Internal notes"}
-          </p>
-
-          <p className="mt-1 text-xs text-slate-500">
-            {isKhmer
-              ? "ឯកជន។ អតិថិជនមិនអាចមើលឃើញកំណត់ចំណាំទាំងនេះទេ។ ប្រើ @ ដើម្បីជូនដំណឹងដល់សមាជិកក្រុម។"
-              : "Private. Customers cannot see these notes. Use @ to notify a teammate."}
-          </p>
-        </div>
-
-        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">
-          {notes.length}
+    <section>
+      {/*
+       * The count lives on the Notes tab as a red unread badge, so it is
+       * deliberately not repeated here.
+       */}
+      <p className="flex items-center gap-1.5 text-[12px] leading-5 text-slate-500">
+        <span className="text-slate-400">
+          <LockIcon />
         </span>
-      </div>
+        {isKhmer
+          ? "ឯកជន។ អតិថិជនមើលមិនឃើញទេ។ ប្រើ @ ដើម្បីជូនដំណឹងសមាជិកក្រុម។"
+          : "Private. Customers cannot see these. Use @ to notify a teammate."}
+      </p>
 
       {!currentMemberId ? (
-        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-[13px] text-slate-600">
           {isKhmer
             ? "ចាត់តាំងការសន្ទនានេះទៅសមាជិកបុគ្គលិក មុនពេលបន្ថែមកំណត់ចំណាំ។"
             : "Assign this conversation to a staff member before adding notes."}
@@ -380,16 +446,19 @@ export function CustomerNotes({
             tone="note"
           />
 
-          <button
-            type="button"
-            onClick={() => void createNote()}
-            disabled={busy || !newNote.trim()}
-            className="mt-2 w-full rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600 disabled:bg-slate-300"
-          >
-            {busy
-              ? isKhmer ? "កំពុងរក្សាទុក..." : "Saving..."
-              : isKhmer ? "បន្ថែមកំណត់ចំណាំផ្ទៃក្នុង" : "Add internal note"}
-          </button>
+          {/* Save sits inline with Mention rather than as a full-width bar. */}
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={() => void createNote()}
+              disabled={busy || !newNote.trim()}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400"
+            >
+              {busy
+                ? isKhmer ? "កំពុងរក្សាទុក..." : "Saving..."
+                : isKhmer ? "រក្សាទុកកំណត់ចំណាំ" : "Save note"}
+            </button>
+          </div>
         </div>
       )}
 

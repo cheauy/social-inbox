@@ -74,12 +74,20 @@ export async function POST(request: Request) {
     );
   }
 
+  /*
+   * limit(1): a user can hold more than one team_members row for the same
+   * business after being removed and re-invited. maybeSingle() rejects
+   * multiple rows, which would turn a duplicate membership into a failed
+   * switch. Any one active row is enough to authorize this.
+   */
   const { data: member, error } = await supabaseAdmin
     .from("team_members")
     .select("id,business_id")
     .eq("user_id", user.id)
     .eq("business_id", businessId)
     .eq("is_active", true)
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) {
