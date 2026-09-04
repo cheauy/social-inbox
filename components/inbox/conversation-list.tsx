@@ -38,6 +38,7 @@ import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog";
 import {
   normalizeLegacyConversationPreview,
 } from "@/lib/inbox/conversation-preview";
+import { CONVERSATION_TEXT_FONT_STACK } from "@/lib/display/workspace-fonts";
 
 type SearchAwareContact =
   NonNullable<InboxConversation["contact"]> & {
@@ -715,7 +716,7 @@ function ChannelAvatarBadge({
 
   return (
     <span
-      className={`absolute -bottom-1 -right-1 flex h-5.5 w-5.5 items-center justify-center overflow-hidden rounded-full border-[3px] border-white shadow-[0_1px_4px_rgba(15,23,42,0.20)] ${
+      className={`absolute -bottom-0.5 -right-0.5 flex h-[18px] w-[18px] items-center justify-center overflow-hidden rounded-full border-2 border-white shadow-[0_1px_3px_rgba(15,23,42,0.20)] ${
         platform === "telegram"
           ? "bg-sky-500 text-sky-500"
           : "bg-blue-600 text-blue-600"
@@ -2995,6 +2996,17 @@ export function ConversationList({
   return (
     <section className="relative flex h-full min-h-0 w-full min-w-0 overflow-hidden border-r border-slate-200 bg-white">
       <aside className="relative z-30 flex h-full w-15 shrink-0 flex-col overflow-visible border-r border-slate-200 bg-slate-50 py-3">
+        {/*
+         * Channel picker and status filter sit above the Smart Views. The
+         * channel panel floats to the right of the rail the same way Smart
+         * Views do; the filter panel opens beside the list.
+         */}
+        <div className="px-2 pb-1.5">
+          <InboxChannelSelector variant="rail" />
+        </div>
+
+        <div className="mx-3 mb-2 mt-0.5 border-t border-slate-200" />
+
         {railViews.map(
           (view) => {
             const isActive =
@@ -3084,6 +3096,34 @@ export function ConversationList({
             );
           },
         )}
+
+        <div className="px-2 pb-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              setViewsOpen(false);
+              setFilterOpen((current) => !current);
+            }}
+            className={`group relative mx-auto flex h-11 w-11 items-center justify-center rounded-xl border transition ${
+              filterOpen || activeStatus !== "all"
+                ? "border-blue-600 bg-blue-50 text-blue-700"
+                : "border-transparent text-slate-500 hover:bg-white hover:text-slate-900"
+            }`}
+            aria-label={isKhmer ? "ត្រងតាមស្ថានភាព" : "Filter by status"}
+            aria-expanded={filterOpen}
+          >
+            <FilterIcon />
+
+            {activeStatus !== "all" ? (
+              <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-blue-600" />
+            ) : null}
+
+            <span className="pointer-events-none absolute left-[52px] top-1/2 z-[100] hidden -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-950 px-3 py-2 text-xs font-medium text-white shadow-xl group-hover:block">
+              {isKhmer ? "ស្ថានភាពការសន្ទនា" : "Conversation status"}
+              <span className="absolute right-full top-1/2 -translate-y-1/2 border-y-4 border-r-4 border-y-transparent border-r-slate-950" />
+            </span>
+          </button>
+        </div>
 
         {showReminderRailShortcut ? (
         <button
@@ -4071,10 +4111,9 @@ export function ConversationList({
           />
         ) : (
           <>
-        <InboxChannelSelector />
-
         <div className="relative shrink-0 border-b border-slate-200 p-3">
-          <div className="flex items-center gap-2">
+          {/* Full-width search: the status filter now lives in the rail. */}
+          <div className="relative w-full">
             <div className="relative min-w-0 flex-1">
               <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
                 <svg
@@ -4099,7 +4138,7 @@ export function ConversationList({
 
               <input
                 type="search"
-                placeholder={isKhmer ? "ស្វែងរកឈ្មោះ លេខទូរស័ព្ទ ឬឈ្មោះអ្នកប្រើ Telegram..." : "Search name, phone or Telegram username..."}
+                placeholder={isKhmer ? "ស្វែងរកការសន្ទនា ទំនាក់ទំនង ឬសារ..." : "Search conversations, contacts or messages..."}
                 value={
                   search
                 }
@@ -4110,42 +4149,9 @@ export function ConversationList({
                     event.target.value,
                   )
                 }
-                className="w-full rounded-xl border border-slate-300 py-3 pl-9 pr-3 text-[13px] outline-none transition placeholder:text-[12px] placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-xl border-0 bg-slate-100 py-3 pl-10 pr-3 text-[13px] text-slate-700 outline-none transition placeholder:text-[12.5px] placeholder:text-slate-400 focus:bg-slate-200/60 focus:ring-2 focus:ring-blue-200"
               />
             </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setViewsOpen(
-                  false,
-                );
-                setFilterOpen(
-                  (
-                    current,
-                  ) =>
-                    !current,
-                );
-              }}
-              className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${
-                filterOpen ||
-                activeStatus !==
-                  "all"
-                  ? "border-blue-600 bg-blue-50 text-blue-700"
-                  : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
-              }`}
-              aria-label="Filter by status"
-              aria-expanded={
-                filterOpen
-              }
-            >
-              <FilterIcon />
-
-              {activeStatus !==
-              "all" ? (
-                <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-blue-600" />
-              ) : null}
-            </button>
           </div>
 
           {filterOpen ? (
@@ -4161,7 +4167,7 @@ export function ConversationList({
                 className="fixed inset-0 z-30 cursor-default"
               />
 
-              <div className="absolute right-3 top-[64px] z-40 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+              <div className="absolute left-0 top-[64px] z-40 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
                 <div className="border-b border-slate-100 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                     Filter
@@ -4411,14 +4417,18 @@ export function ConversationList({
                         conversation.id,
                       )
                     }
-                    className={`relative mx-2 my-1 flex min-h-[104px] w-[calc(100%-1rem)] items-center gap-3 rounded-xl border-2 border-white px-3 py-2.5 text-left shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition ${
+                    /*
+                     * Full-bleed rows separated by a hairline, so the
+                     * selected and hovered states fill the whole width
+                     * instead of floating as inset cards.
+                     */
+                    className={`relative flex w-full items-start gap-2.5 border-b border-slate-100 px-3 py-2.5 text-left transition ${
                       isActive
-                        ? "bg-blue-100 ring-1 ring-blue-100"
-                        : "bg-white hover:bg-slate-50"
+                        ? "bg-blue-50"
+                        : "hover:bg-slate-50"
                     }`}
                   >
-
-                    <div className="relative h-12 w-12 shrink-0">
+                    <div className="relative mt-0.5 h-10 w-10 shrink-0">
                       {customerAvatarUrl ? (
                         <img
                           src={
@@ -4426,10 +4436,10 @@ export function ConversationList({
                           }
                           alt=""
                           referrerPolicy="no-referrer"
-                          className="h-12 w-12 rounded-full bg-slate-100 object-cover"
+                          className="h-10 w-10 rounded-full bg-slate-100 object-cover"
                         />
                       ) : (
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 font-semibold text-blue-700">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">
                           {getInitial(
                             customerName,
                           )}
@@ -4446,14 +4456,33 @@ export function ConversationList({
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="min-w-0 flex-1 truncate font-semibold text-slate-900">
+                      <div className="flex items-center gap-1.5">
+                        <p
+                          className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-slate-900"
+                          style={{
+                            fontFamily: CONVERSATION_TEXT_FONT_STACK,
+                          }}
+                        >
                           {
                             customerName
                           }
                         </p>
 
-                        <span className="shrink-0 text-xs text-slate-400">
+                        {/* Pin sits with the time so a row with no tags
+                            still has somewhere stable to show it. */}
+                        {isConversationPinned(
+                          conversation,
+                        ) ? (
+                          <span
+                            className="inline-flex shrink-0 scale-75 items-center justify-center text-red-600"
+                            title={isKhmer ? "បានខ្ទាស់" : "Pinned"}
+                            aria-label={isKhmer ? "បានខ្ទាស់" : "Pinned"}
+                          >
+                            <PinIcon />
+                          </span>
+                        ) : null}
+
+                        <span className="shrink-0 text-[11px] text-slate-400">
                           {hydrated
                             ? formatMessageTime(
                                 conversation.last_message_at,
@@ -4462,8 +4491,13 @@ export function ConversationList({
                         </span>
                       </div>
 
-                      <div className="mt-1 flex items-center gap-2">
-                        <p className="min-w-0 flex-1 truncate text-sm text-slate-500">
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <p
+                          className="min-w-0 flex-1 truncate text-[12.5px] text-slate-500"
+                          style={{
+                            fontFamily: CONVERSATION_TEXT_FONT_STACK,
+                          }}
+                        >
                           {normalizeLegacyConversationPreview(
                             conversation.last_message_text,
                           )}
@@ -4471,7 +4505,7 @@ export function ConversationList({
 
                         {conversation.unread_count >
                         0 ? (
-                          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 px-1.5 text-xs font-semibold text-white">
+                          <span className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[11px] font-semibold text-white">
                             {
                               conversation.unread_count
                             }
@@ -4479,13 +4513,14 @@ export function ConversationList({
                         ) : null}
                       </div>
 
-                      <div className="mt-2 flex flex-wrap items-center gap-1 pr-9">
+                      {(conversation.contact?.tags?.length ?? 0) > 0 ? (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1">
                         {(conversation.contact
                           ?.tags ??
                           [])
                           .slice(
                             0,
-                            5,
+                            4,
                           )
                           .map(
                             (
@@ -4495,7 +4530,7 @@ export function ConversationList({
                                 key={
                                   tag.id
                                 }
-                                className="max-w-32 truncate rounded-full px-2.5 py-0.5 text-xs font-medium text-white"
+                                className="max-w-24 truncate rounded-full px-2 py-[1px] text-[10.5px] font-semibold text-white"
                                 style={{
                                   backgroundColor:
                                     tag.color,
@@ -4511,29 +4546,18 @@ export function ConversationList({
                         {(conversation.contact
                           ?.tags?.length ??
                           0) >
-                        5 ? (
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+                        4 ? (
+                          <span className="rounded-full bg-slate-100 px-1.5 py-[1px] text-[10.5px] font-semibold text-slate-500">
                             +
                             {(conversation
                               .contact
                               ?.tags
                               ?.length ??
                               0) -
-                              5}
+                              4}
                           </span>
                         ) : null}
                       </div>
-
-                      {isConversationPinned(
-                        conversation,
-                      ) ? (
-                        <span
-                          className="absolute bottom-3 right-3 inline-flex scale-90 items-center justify-center text-red-600"
-                          title={isKhmer ? "បានខ្ទាស់" : "Pinned"}
-                          aria-label={isKhmer ? "បានខ្ទាស់" : "Pinned"}
-                        >
-                          <PinIcon />
-                        </span>
                       ) : null}
                     </div>
                   </button>

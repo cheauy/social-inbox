@@ -227,7 +227,7 @@ export const workspaceKhmerFonts: WorkspaceKhmerFontOption[] = [
 export const DEFAULT_WORKSPACE_ENGLISH_FONT_ID: WorkspaceEnglishFontId =
   "inter";
 export const DEFAULT_WORKSPACE_KHMER_FONT_ID: WorkspaceKhmerFontId =
-  "kantumruy-pro";
+  "hanuman";
 
 export function isWorkspaceEnglishFontId(
   value: string | null,
@@ -305,14 +305,70 @@ function applyWorkspaceFontFamily(
   }
 }
 
+/**
+ * Both chosen faces, as one stack.
+ *
+ * A single family cannot serve this workspace: one conversation list holds
+ * "Vu Tha" next to "កា តេវ". Latin glyphs come from the English face; that
+ * face has no Khmer glyphs, so the browser falls through to the Khmer face
+ * for those characters only. Each script therefore renders in the font it
+ * was picked for, whatever the interface language happens to be.
+ */
+export function buildWorkspaceFontStack(
+  englishFamily: string,
+  khmerFamily: string,
+) {
+  /*
+   * next/font returns "'Inter', 'Inter Fallback'", where the fallback is a
+   * metric-adjusted local face (Arial on Windows). Arial does carry Khmer
+   * glyphs, so leaving that fallback ahead of the Khmer face swallows Khmer
+   * text before it ever reaches Hanuman. Insert the Khmer face directly
+   * after the real English face, and keep the English fallback behind it.
+   */
+  const englishParts = englishFamily
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const englishPrimary = englishParts[0] ?? englishFamily;
+  const englishFallbacks = englishParts.slice(1);
+
+  return [
+    englishPrimary,
+    khmerFamily,
+    ...englishFallbacks,
+    "sans-serif",
+  ].join(", ");
+}
+
+/**
+ * Fixed stack for conversation names and message previews.
+ *
+ * These deliberately ignore the workspace font picker. The list is scanned
+ * constantly and its rows are tightly sized, so the two faces it was laid
+ * out against stay pinned: Inter for Latin, Kantumruy Pro for Khmer.
+ * Changing the display font elsewhere must not reflow this list.
+ */
+export const CONVERSATION_TEXT_FONT_STACK = buildWorkspaceFontStack(
+  inter.style.fontFamily,
+  kantumruyPro.style.fontFamily,
+);
+
 export function applyWorkspaceEnglishFont(
   id: WorkspaceEnglishFontId,
 ) {
   if (typeof document === "undefined") return;
 
   const font = getWorkspaceEnglishFont(id);
+  const khmerFont = getWorkspaceKhmerFont(
+    getStoredWorkspaceKhmerFontId(),
+  );
+
   document.documentElement.dataset.tenhEnglishFont = id;
-  applyWorkspaceFontFamily(font.family, "en");
+  applyWorkspaceFontFamily(
+    buildWorkspaceFontStack(font.family, khmerFont.family),
+    "en",
+  );
 }
 
 export function applyWorkspaceKhmerFont(
@@ -321,6 +377,13 @@ export function applyWorkspaceKhmerFont(
   if (typeof document === "undefined") return;
 
   const font = getWorkspaceKhmerFont(id);
+  const englishFont = getWorkspaceEnglishFont(
+    getStoredWorkspaceEnglishFontId(),
+  );
+
   document.documentElement.dataset.tenhKhmerFont = id;
-  applyWorkspaceFontFamily(font.family, "km");
+  applyWorkspaceFontFamily(
+    buildWorkspaceFontStack(englishFont.family, font.family),
+    "km",
+  );
 }

@@ -124,7 +124,18 @@ function ChannelIcon({
   );
 }
 
-export function InboxChannelSelector() {
+/*
+ * "bar" is the original full-width row above the conversation list.
+ * "rail" is an icon-only trigger that lives in the inbox icon rail and
+ * floats its panel to the right, the same way Smart Views do.
+ */
+type InboxChannelSelectorVariant = "bar" | "rail";
+
+export function InboxChannelSelector({
+  variant = "bar",
+}: {
+  variant?: InboxChannelSelectorVariant;
+} = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isKhmer = useWorkspaceLanguageId() === "km";
@@ -476,47 +487,78 @@ export function InboxChannelSelector() {
     );
   }
 
+  const isRail = variant === "rail";
+  const channelLabel = isKhmer ? "ឆានែលអតិថិជន" : "Customer channel";
+
   return (
-    <div className="relative flex h-[86px] shrink-0 items-center border-b border-slate-200 bg-white px-3 py-3">
-      <button
-        type="button"
-        onClick={() =>
-          setOpen((current) => !current)
-        }
-        className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left transition hover:border-slate-300 hover:bg-white"
-        aria-expanded={open}
-      >
-        <ChannelIcon platform={selectedPlatform} />
-
-        <span className="min-w-0 flex-1">
-          <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-            {isKhmer ? "ឆានែលអតិថិជន" : "Customer channel"}
-          </span>
-
-          <span className="mt-0.5 block truncate text-sm font-semibold text-slate-900">
-            {loading
-              ? isKhmer ? "កំពុងផ្ទុកឆានែល..." : "Loading channels..."
-              : selectedLabel}
-          </span>
-        </span>
-
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className={`h-4 w-4 shrink-0 text-slate-400 transition ${
-            open ? "rotate-180" : ""
+    <div
+      className={
+        isRail
+          ? "relative"
+          : "relative flex h-[86px] shrink-0 items-center border-b border-slate-200 bg-white px-3 py-3"
+      }
+    >
+      {isRail ? (
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          className={`group relative mx-auto flex h-11 w-11 items-center justify-center rounded-xl border transition ${
+            open
+              ? "border-blue-600 bg-blue-50 text-blue-700"
+              : "border-transparent text-slate-500 hover:bg-white hover:text-slate-900"
           }`}
-          aria-hidden="true"
+          aria-expanded={open}
+          aria-label={channelLabel}
         >
-          <path
-            d="m6 9 6 6 6-6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
+          <ChannelIcon platform={selectedPlatform} />
+
+          <span className="pointer-events-none absolute left-[52px] top-1/2 z-[100] hidden -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-950 px-3 py-2 text-xs font-medium text-white shadow-xl group-hover:block">
+            {channelLabel}
+            {loading ? "" : ` · ${selectedLabel}`}
+            <span className="absolute right-full top-1/2 -translate-y-1/2 border-y-4 border-r-4 border-y-transparent border-r-slate-950" />
+          </span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() =>
+            setOpen((current) => !current)
+          }
+          className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left transition hover:border-slate-300 hover:bg-white"
+          aria-expanded={open}
+        >
+          <ChannelIcon platform={selectedPlatform} />
+
+          <span className="min-w-0 flex-1">
+            <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+              {channelLabel}
+            </span>
+
+            <span className="mt-0.5 block truncate text-sm font-semibold text-slate-900">
+              {loading
+                ? isKhmer ? "កំពុងផ្ទុកឆានែល..." : "Loading channels..."
+                : selectedLabel}
+            </span>
+          </span>
+
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className={`h-4 w-4 shrink-0 text-slate-400 transition ${
+              open ? "rotate-180" : ""
+            }`}
+            aria-hidden="true"
+          >
+            <path
+              d="m6 9 6 6 6-6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      )}
 
       {open ? (
         <>
@@ -527,7 +569,13 @@ export function InboxChannelSelector() {
             aria-label={isKhmer ? "បិទកម្មវិធីជ្រើសរើសឆានែល" : "Close channel selector"}
           />
 
-          <div className="absolute left-3 right-3 top-[72px] z-50 max-h-[440px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
+          <div
+            className={
+              isRail
+                ? "absolute left-[52px] top-0 z-50 max-h-[440px] w-[320px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+                : "absolute left-3 right-3 top-[72px] z-50 max-h-[440px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+            }
+          >
             <button
               type="button"
               onClick={selectAllChannels}

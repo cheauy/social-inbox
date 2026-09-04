@@ -325,7 +325,7 @@ export function ConversationHeader({
 
   return (
     <header className="relative z-30 w-full shrink-0 bg-white">
-      <div className="flex min-h-[86px] w-full items-center justify-between gap-4 border-b border-slate-200/90 bg-white px-5 py-3 shadow-[0_5px_18px_rgba(15,23,42,0.055)]">
+      <div className="flex min-h-[82px] w-full items-center justify-between gap-4 border-b border-slate-200/90 bg-white px-5 py-2.5 shadow-[0_5px_18px_rgba(15,23,42,0.055)]">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[18px] font-bold leading-tight tracking-[-0.02em] text-slate-950">
             {customerName}

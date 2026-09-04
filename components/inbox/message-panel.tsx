@@ -886,10 +886,12 @@ function CompactAudioPlayer({
   src,
   label,
   isVoice,
+  isOutgoing = false,
 }: {
   src: string;
   label: string;
   isVoice: boolean;
+  isOutgoing?: boolean;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -927,8 +929,16 @@ function CompactAudioPlayer({
     setCurrentTime(next);
   }
 
+  const remaining = Math.max(0, duration - currentTime);
+
+  /*
+   * No card of its own. The message bubble is already a container, so a
+   * second bordered panel inside it just doubled the padding and, on an
+   * outgoing bubble, dropped a white box onto the blue. These are bare
+   * controls that inherit the bubble they sit in.
+   */
   return (
-    <div className="w-[300px] max-w-full rounded-[22px] border border-slate-200/80 bg-white/95 px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+    <div className="flex w-[218px] max-w-full items-center gap-2.5">
       <audio
         ref={audioRef}
         src={src}
@@ -945,42 +955,43 @@ function CompactAudioPlayer({
         className="hidden"
       />
 
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={togglePlayback}
-          suppressHydrationWarning
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky-600 text-white shadow-sm transition hover:bg-sky-700 active:scale-95"
-          aria-label={playing ? "Pause audio" : "Play audio"}
-        >
-          <PlayIcon paused={!playing} />
-        </button>
+      <button
+        type="button"
+        onClick={togglePlayback}
+        suppressHydrationWarning
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition active:scale-95 ${
+          isOutgoing
+            ? "bg-white/25 text-white hover:bg-white/35"
+            : "bg-sky-600 text-white hover:bg-sky-700"
+        }`}
+        aria-label={playing ? "Pause audio" : "Play audio"}
+      >
+        <PlayIcon paused={!playing} />
+      </button>
 
-        <div className="min-w-0 flex-1">
-          <div className="mb-1.5 text-sky-600">
-            <VoiceIcon />
-          </div>
+      <input
+        type="range"
+        min={0}
+        max={duration > 0 ? duration : 1}
+        step={0.01}
+        value={Math.min(currentTime, duration > 0 ? duration : 1)}
+        onChange={(event) =>
+          seek(Number(event.target.value))
+        }
+        className={`h-1 min-w-0 flex-1 cursor-pointer ${
+          isOutgoing ? "accent-white" : "accent-sky-600"
+        }`}
+        aria-label={isVoice ? "Voice message progress" : label || "Audio progress"}
+      />
 
-          <div className="flex items-center gap-2">
-            <input
-              type="range"
-              min={0}
-              max={duration > 0 ? duration : 1}
-              step={0.01}
-              value={Math.min(currentTime, duration > 0 ? duration : 1)}
-              onChange={(event) =>
-                seek(Number(event.target.value))
-              }
-              className="h-1.5 min-w-0 flex-1 cursor-pointer accent-sky-600"
-              aria-label={isVoice ? "Voice message progress" : label || "Audio progress"}
-            />
-
-            <span className="w-[74px] shrink-0 text-right text-[11px] tabular-nums text-slate-400">
-              {formatAudioTime(currentTime)} / {formatAudioTime(duration)}
-            </span>
-          </div>
-        </div>
-      </div>
+      {/* Counts down while playing, like every other voice note. */}
+      <span
+        className={`shrink-0 text-right text-[11px] tabular-nums ${
+          isOutgoing ? "text-white/80" : "text-slate-500"
+        }`}
+      >
+        {formatAudioTime(playing || currentTime > 0 ? remaining : duration)}
+      </span>
     </div>
   );
 }
@@ -4750,13 +4761,13 @@ export function MessagePanel({
                             </div>
                           </a>
                         ) : isStickerMessage ? (
-                          <div className="min-w-[180px]">
+                          <div className="w-fit">
                             {isFacebookSticker &&
                             facebookStickerUrl ? (
                               <img
                                 src={facebookStickerUrl}
                                 alt="Facebook sticker"
-                                className="max-h-56 max-w-[240px] rounded-xl object-contain"
+                                className="max-h-32 max-w-[132px] rounded-xl object-contain"
                                 loading="lazy"
                               />
                             ) : attachmentUrl &&
@@ -4769,7 +4780,7 @@ export function MessagePanel({
                                 loop
                                 muted
                                 playsInline
-                                className="max-h-56 max-w-[240px] rounded-xl bg-transparent object-contain"
+                                className="max-h-32 max-w-[132px] rounded-xl bg-transparent object-contain"
                               />
                             ) : attachmentUrl &&
                               stickerMeta
@@ -4782,16 +4793,16 @@ export function MessagePanel({
                                     ? `Telegram sticker ${stickerMeta.emoji}`
                                     : "Telegram sticker"
                                 }
-                                className="max-h-56 max-w-[240px] rounded-xl object-contain"
+                                className="max-h-32 max-w-[132px] rounded-xl object-contain"
                                 loading="lazy"
                               />
                             ) : (
-                              <div className="flex min-h-32 min-w-[180px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white/80 p-4">
-                                <span className="text-4xl">
+                              <div className="flex min-h-20 w-fit min-w-[104px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white/80 px-3 py-2.5">
+                                <span className="text-3xl leading-none">
                                   {stickerMeta?.emoji ??
                                     "✨"}
                                 </span>
-                                <span className="mt-2 text-xs font-medium text-slate-500">
+                                <span className="mt-1.5 text-[10.5px] font-medium text-slate-500">
                                   {isFacebookSticker
                                     ? "Facebook sticker"
                                     : stickerMeta?.format ===
@@ -4804,7 +4815,7 @@ export function MessagePanel({
 
                             {!isFacebookSticker &&
                             stickerMeta?.emoji ? (
-                              <p className="mt-1 text-center text-xs text-slate-500">
+                              <p className="mt-0.5 text-center text-[11px] text-slate-500">
                                 {stickerMeta.emoji}
                               </p>
                             ) : null}
@@ -4891,6 +4902,7 @@ export function MessagePanel({
                               src={attachmentUrl}
                               label={attachmentName}
                               isVoice={isVoiceMessage}
+                              isOutgoing={isOutgoing}
                             />
                           ) : (
                             <div className="flex w-[290px] max-w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 p-3">
@@ -5529,4 +5541,4 @@ export function MessagePanel({
 
     </section>
   );
-}
+}

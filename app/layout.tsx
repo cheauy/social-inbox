@@ -47,15 +47,36 @@ const workspaceFontBootstrap = `
       ? storedLanguage
       : defaultLanguage;
 
-    var storedFontId = window.localStorage.getItem(
-      language === "km" ? khmerKey : englishKey
-    );
-    var fontMap = language === "km" ? khmerFonts : englishFonts;
-    var defaultFontId = language === "km" ? defaultKhmer : defaultEnglish;
-    var fontId = storedFontId && fontMap[storedFontId]
-      ? storedFontId
-      : defaultFontId;
-    var family = fontMap[fontId] || englishFonts[defaultEnglish];
+    var storedEnglishId = window.localStorage.getItem(englishKey);
+    var storedKhmerId = window.localStorage.getItem(khmerKey);
+
+    var englishId = storedEnglishId && englishFonts[storedEnglishId]
+      ? storedEnglishId
+      : defaultEnglish;
+    var khmerId = storedKhmerId && khmerFonts[storedKhmerId]
+      ? storedKhmerId
+      : defaultKhmer;
+
+    var fontId = language === "km" ? khmerId : englishId;
+
+    /*
+     * Both faces, in one stack, so mixed Khmer/Latin text renders each
+     * script in its own font from the very first paint. The Khmer face goes
+     * directly after the real English face and ahead of its metric fallback,
+     * which is Arial-based and would otherwise claim the Khmer glyphs. Keep
+     * in step with buildWorkspaceFontStack in lib/display/workspace-fonts.ts.
+     */
+    var englishParts = String(englishFonts[englishId] || "")
+      .split(",")
+      .map(function (part) { return part.trim(); })
+      .filter(Boolean);
+
+    var family = [englishParts[0]]
+      .concat([khmerFonts[khmerId]])
+      .concat(englishParts.slice(1))
+      .concat(["sans-serif"])
+      .filter(Boolean)
+      .join(", ");
     var root = document.documentElement;
 
     root.lang = language === "km" ? "km" : "en";

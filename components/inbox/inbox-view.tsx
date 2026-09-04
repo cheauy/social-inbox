@@ -8263,8 +8263,8 @@ return (
     <div
       className={`grid h-full min-h-0 overflow-hidden ${
        customerPanelVisible
-  ? "grid-cols-[500px_minmax(0,1fr)_340px]"
-  : "grid-cols-[500px_minmax(0,1fr)]"
+  ? "grid-cols-[472px_minmax(0,1fr)_340px]"
+  : "grid-cols-[472px_minmax(0,1fr)]"
       }`}
     >
      <ConversationList
