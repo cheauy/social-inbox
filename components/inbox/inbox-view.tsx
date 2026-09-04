@@ -404,6 +404,17 @@ function getRealtimeMessagePreview(
     ? row.raw_payload
     : null;
 
+  /*
+   * A deleted Telegram message keeps its type and its old payload, so without
+   * this the preview falls through and reports "You sent an image" for a photo
+   * that is gone. Two code paths then disagreed about the same row and the
+   * left list flickered between the two as each update landed. The deletion is
+   * the newest fact about the row, so it wins over every branch below.
+   */
+  if (rawPayload?.tenh_deleted) {
+    return "Message deleted";
+  }
+
   if (rawPayload?.tenh_location) {
     return "Sent a location";
   }
@@ -5811,15 +5822,12 @@ async function handleEditTelegramMessage(
 async function handleDeleteTelegramMessage(
   messageId: string,
 ) {
-  const confirmed =
-    window.confirm(
-      "Delete this Telegram text message for both sides?",
-    );
-
-  if (!confirmed) {
-    return;
-  }
-
+  /*
+   * No confirm() here. MessagePanel asks first with the in-app dialog, and
+   * a second browser prompt on top of it meant confirming the same delete
+   * twice — the native one also said "text message", which is no longer
+   * true now that media can be deleted.
+   */
   setSendError(null);
 
   try {
@@ -5859,6 +5867,12 @@ async function handleDeleteTelegramMessage(
       );
     }
 
+    const deletedMessage =
+      liveMessagesRef.current.find(
+        (message) =>
+          message.id === messageId,
+      ) ?? null;
+
     setLiveMessages(
       (current) =>
         current.map(
@@ -5869,6 +5883,13 @@ async function handleDeleteTelegramMessage(
                   ...message,
                   message_text:
                     "Message deleted",
+                  /*
+                   * Match the server: the stored photo, video, voice note or
+                   * file goes with the message. Leaving the URL here would let
+                   * any render path that does not check the deleted flag keep
+                   * showing media the chat no longer has.
+                   */
+                  attachment_url: null,
                   raw_payload: {
                     ...(
                       message.raw_payload ??
@@ -5885,6 +5906,54 @@ async function handleDeleteTelegramMessage(
                 }
               : message,
         ),
+    );
+
+    /*
+     * Correct the left list here rather than waiting for the Realtime UPDATE
+     * to come back and recompute it. Waiting meant the row sat on its old
+     * preview -- "You sent an image" for a photo that no longer exists -- and
+     * then changed under the agent a moment later. Only the row whose newest
+     * message is the one just deleted is touched; a conversation that has
+     * moved on since keeps its real preview.
+     */
+    setLiveConversations((current) =>
+      current.map((conversation) => {
+        if (
+          conversation.id !==
+          deletedMessage?.conversation_id
+        ) {
+          return conversation;
+        }
+
+        const conversationLatest =
+          conversation.last_message_at
+            ? new Date(
+                conversation.last_message_at,
+              ).getTime()
+            : null;
+        const deletedAt =
+          deletedMessage.platform_created_at ??
+          deletedMessage.created_at;
+        const deletedTime = deletedAt
+          ? new Date(deletedAt).getTime()
+          : null;
+
+        if (
+          conversationLatest === null ||
+          deletedTime === null ||
+          Math.abs(
+            conversationLatest - deletedTime,
+          ) > 1000
+        ) {
+          return conversation;
+        }
+
+        return {
+          ...conversation,
+          last_message_text:
+            "Message deleted",
+        };
+      }),
     );
 
     if (
@@ -7274,23 +7343,16 @@ async function performOptimisticAttachmentSend(
     }
 
     if (result.message) {
-      setLiveMessages(
-        (current) =>
-          current.map(
-            (message) =>
-              message.id ===
-              pending.tempId
-                ? ({
-                    ...result.message,
-                    attachment_url:
-                      pending.previewUrl,
-                    __optimistic_status:
-                      "sent",
-                    __optimistic_created_at:
-                      Date.now(),
-                  } as unknown as typeof message)
-                : message,
-          ),
+      const savedMessage =
+        result.message as InboxMessage;
+
+      setLiveMessages((current) =>
+        reconcileOptimisticMessage(
+          current,
+          pending.tempId,
+          savedMessage,
+          pending.previewUrl,
+        ),
       );
     } else {
       setOptimisticSendStatus(
@@ -7315,6 +7377,187 @@ async function performOptimisticAttachmentSend(
     );
     setSendError(errorMessage);
 
+    return false;
+  } finally {
+    setSending(false);
+  }
+}
+
+/*
+ * Swap an optimistic bubble for the row the server actually stored.
+ *
+ * Realtime can deliver the INSERT for that row before the send request
+ * resolves -- almost guaranteed with an album, where six INSERTs land in one
+ * burst. Renaming the temporary bubble to the real id would then leave two
+ * rows carrying the same id, which React reports as a duplicate key and
+ * renders unpredictably. When the real row is already here, keep it and drop
+ * the temporary one instead, carrying the local blob preview across so the
+ * photo does not blink while the stored URL loads.
+ */
+function reconcileOptimisticMessage(
+  current: InboxMessage[],
+  tempId: string,
+  savedMessage: InboxMessage,
+  previewUrl: string,
+): InboxMessage[] {
+  const alreadyStored = current.some(
+    (message) =>
+      message.id === savedMessage.id &&
+      message.id !== tempId,
+  );
+
+  const reconciled = {
+    ...savedMessage,
+    attachment_url: previewUrl,
+    __optimistic_status: "sent",
+    __optimistic_created_at: Date.now(),
+  } as unknown as InboxMessage;
+
+  if (alreadyStored) {
+    return current.flatMap((message) => {
+      if (message.id === tempId) {
+        return [];
+      }
+
+      return message.id === savedMessage.id
+        ? [
+            {
+              ...message,
+              ...reconciled,
+            } as InboxMessage,
+          ]
+        : [message];
+    });
+  }
+
+  return current.map((message) =>
+    message.id === tempId
+      ? reconciled
+      : message,
+  );
+}
+
+/*
+ * Send several Telegram photos as one album.
+ *
+ * Sending them one request at a time is why a customer received six separate
+ * photos instead of a group: Telegram groups by call, not by timing. One
+ * request carrying every file reaches sendMediaGroup, which delivers them as
+ * a single album. Each photo still has its own optimistic bubble and its own
+ * stored row; only the delivery is grouped.
+ */
+async function performOptimisticAlbumSend(
+  pendings: PendingOptimisticAttachmentSend[],
+): Promise<boolean> {
+  for (const pending of pendings) {
+    setOptimisticSendStatus(
+      pending.tempId,
+      "sending",
+    );
+  }
+
+  setSending(true);
+  setSendError(null);
+
+  try {
+    const formData = new FormData();
+
+    formData.set(
+      "conversationId",
+      pendings[0].conversationId,
+    );
+    formData.set("kind", "image");
+
+    for (const pending of pendings) {
+      formData.append(
+        "files",
+        pending.file,
+        pending.file.name,
+      );
+    }
+
+    const response = await fetch(
+      pendings[0].endpoint,
+      { method: "POST", body: formData },
+    );
+
+    const responseText = await response.text();
+
+    let result: {
+      success?: boolean;
+      error?: string;
+      messages?: InboxMessage[];
+    };
+
+    try {
+      result = responseText.trim()
+        ? (JSON.parse(responseText) as typeof result)
+        : { success: response.ok };
+    } catch {
+      result = {
+        success: false,
+        error:
+          "The attachment API returned invalid JSON.",
+      };
+    }
+
+    if (!response.ok || !result.success) {
+      const errorMessage =
+        result.error ??
+        "Unable to send the photos.";
+
+      for (const pending of pendings) {
+        setOptimisticSendStatus(
+          pending.tempId,
+          "failed",
+        );
+      }
+
+      setSendError(errorMessage);
+      return false;
+    }
+
+    const saved = result.messages ?? [];
+
+    pendings.forEach((pending, index) => {
+      const savedMessage = saved[index];
+
+      if (savedMessage) {
+        setLiveMessages((current) =>
+          reconcileOptimisticMessage(
+            current,
+            pending.tempId,
+            savedMessage,
+            pending.previewUrl,
+          ),
+        );
+      } else {
+        setOptimisticSendStatus(
+          pending.tempId,
+          "sent",
+        );
+      }
+
+      delete pendingAttachmentSendsRef.current[
+        pending.tempId
+      ];
+    });
+
+    return true;
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : "Unable to send the photos.";
+
+    for (const pending of pendings) {
+      setOptimisticSendStatus(
+        pending.tempId,
+        "failed",
+      );
+    }
+
+    setSendError(errorMessage);
     return false;
   } finally {
     setSending(false);
@@ -7448,6 +7691,7 @@ async function handleSendAttachments(
   }
 
   let allSucceeded = true;
+  const albumPendings: PendingOptimisticAttachmentSend[] = [];
 
   for (const attachment of attachments) {
     const randomId =
@@ -7540,6 +7784,19 @@ async function handleSendAttachments(
         optimisticMessage.created_at,
     });
 
+    /*
+     * Telegram photos are held back and sent together below, so they reach
+     * sendMediaGroup as one album. Everything else goes immediately.
+     */
+    if (
+      pending.endpoint ===
+        "/api/telegram/send-photo" &&
+      pending.kind === "image"
+    ) {
+      albumPendings.push(pending);
+      continue;
+    }
+
     const succeeded =
       await performOptimisticAttachmentSend(
         pending,
@@ -7547,6 +7804,43 @@ async function handleSendAttachments(
 
     if (!succeeded) {
       allSucceeded = false;
+    }
+  }
+
+  if (albumPendings.length === 1) {
+    /* A single photo needs no album; sendPhoto is the simpler path. */
+    const succeeded =
+      await performOptimisticAttachmentSend(
+        albumPendings[0],
+      );
+
+    if (!succeeded) {
+      allSucceeded = false;
+    }
+  } else if (albumPendings.length > 1) {
+    /* Telegram albums hold ten items, so send in chunks of ten. */
+    for (
+      let index = 0;
+      index < albumPendings.length;
+      index += 10
+    ) {
+      const chunk = albumPendings.slice(
+        index,
+        index + 10,
+      );
+
+      const succeeded =
+        chunk.length === 1
+          ? await performOptimisticAttachmentSend(
+              chunk[0],
+            )
+          : await performOptimisticAlbumSend(
+              chunk,
+            );
+
+      if (!succeeded) {
+        allSucceeded = false;
+      }
     }
   }
 

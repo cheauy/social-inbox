@@ -24,6 +24,7 @@ import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 import {
+  sendTelegramMediaGroup,
   sendTelegramPhoto,
 } from "@/lib/telegram/telegram-api";
 import {
@@ -112,8 +113,19 @@ export async function POST(
     formData.get(
       "conversationId",
     );
+  /*
+   * "files" carries an album, "file" a single photo. Both are accepted so the
+   * existing single-photo path keeps working unchanged.
+   */
+  const albumValues = formData
+    .getAll("files")
+    .filter(
+      (value): value is File => value instanceof File,
+    );
   const fileValue =
-    formData.get("file");
+    albumValues.length > 0
+      ? albumValues[0]
+      : formData.get("file");
 
   const conversationId =
     typeof conversationIdValue ===
@@ -164,37 +176,60 @@ export async function POST(
   }
 
   const file = fileValue;
+
+  /* One item for a single send, up to ten for an album. */
+  const albumFiles =
+    albumValues.length > 0 ? albumValues : [file];
+
+  if (albumFiles.length > 10) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Telegram albums hold up to 10 photos. Send the rest as a second album.",
+      },
+      { status: 400 },
+    );
+  }
+
+  for (const albumFile of albumFiles) {
+    const albumFileType = albumFile.type
+      .split(";")[0]
+      .trim()
+      .toLowerCase();
+
+    if (!isSupportedPhotoType(albumFileType)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Telegram photo sending currently supports JPG, PNG, and WEBP images.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (
+      albumFile.size <= 0 ||
+      albumFile.size >
+        TENH_TELEGRAM_OUTGOING_PHOTO_MAX_BYTES
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "For reliable Vercel delivery, TENH Telegram photos are currently limited to 4 MB each.",
+        },
+        { status: 400 },
+      );
+    }
+  }
+
   const fileType =
     file.type
       .split(";")[0]
       .trim()
       .toLowerCase();
-
-  if (!isSupportedPhotoType(fileType)) {
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Telegram photo sending currently supports JPG, PNG, and WEBP images.",
-      },
-      { status: 400 },
-    );
-  }
-
-  if (
-    file.size <= 0 ||
-    file.size >
-      TENH_TELEGRAM_OUTGOING_PHOTO_MAX_BYTES
-  ) {
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "For reliable Vercel delivery, TENH Telegram photos are currently limited to 4 MB each.",
-      },
-      { status: 400 },
-    );
-  }
 
   const {
     data: conversationData,
@@ -419,18 +454,27 @@ export async function POST(
     );
   }
 
-  let telegramMessage;
+  let telegramMessages: Awaited<
+    ReturnType<typeof sendTelegramMediaGroup>
+  >;
 
   try {
-    telegramMessage =
-      await sendTelegramPhoto({
-        token: botToken,
-        chatId,
-        photo: file,
-        fileName:
-          file.name ||
-          "tenh-photo.jpg",
-      });
+    telegramMessages =
+      albumFiles.length > 1
+        ? await sendTelegramMediaGroup({
+            token: botToken,
+            chatId,
+            files: albumFiles,
+          })
+        : [
+            await sendTelegramPhoto({
+              token: botToken,
+              chatId,
+              photo: file,
+              fileName:
+                file.name || "tenh-photo.jpg",
+            }),
+          ];
   } catch (error) {
     console.error(
       "[Tenh Telegram] Outgoing photo send failed:",
@@ -451,10 +495,11 @@ export async function POST(
     );
   }
 
-  const messageId =
-    telegramMessage.message_id;
+  const telegramMessage = telegramMessages[0];
 
-  if (!Number.isFinite(messageId)) {
+  if (
+    !Number.isFinite(telegramMessage.message_id)
+  ) {
     return NextResponse.json(
       {
         success: false,
@@ -465,137 +510,148 @@ export async function POST(
     );
   }
 
-  const platformMessageId =
-    `telegram:${chatId}:${messageId}`;
-  const sentAt =
-    telegramMessageTime(
-      telegramMessage.date,
-    );
   const senderPlatformId =
-    socialAccount
-      .platform_account_id ??
+    socialAccount.platform_account_id ??
     (telegramMessage.from?.id
-      ? String(
-          telegramMessage.from.id,
-        )
+      ? String(telegramMessage.from.id)
       : "telegram-bot");
 
-  const localMessageId =
-    randomUUID();
+  const sentAt = telegramMessageTime(
+    telegramMessage.date,
+  );
 
-  let attachmentUrl:
-    | string
-    | null = null;
-  let mediaSaved = false;
-  let saveWarning:
-    | string
-    | null = null;
+  const platformMessageId = `telegram:${chatId}:${telegramMessage.message_id}`;
 
-  try {
-    const fileBytes =
-      new Uint8Array(
-        await file.arrayBuffer(),
+  let saveWarning: string | null = null;
+  let savedMessageData: unknown = null;
+  const savedMessages: unknown[] = [];
+
+  /*
+   * One row per photo. Telegram returns a message per album item, so an album
+   * is stored exactly like six separate sends — the grouping is what the
+   * customer sees, not how TENH keeps it. Anything Telegram did not return a
+   * message for is skipped rather than guessed at.
+   */
+  for (
+    let index = 0;
+    index < telegramMessages.length;
+    index += 1
+  ) {
+    const sentMessage = telegramMessages[index];
+    const sentFile =
+      albumFiles[index] ?? albumFiles[0];
+
+    if (!Number.isFinite(sentMessage.message_id)) {
+      continue;
+    }
+
+    const itemPlatformMessageId = `telegram:${chatId}:${sentMessage.message_id}`;
+    const itemSentAt = telegramMessageTime(
+      sentMessage.date,
+    );
+    const localMessageId = randomUUID();
+
+    let attachmentUrl: string | null = null;
+    let mediaSaved = false;
+
+    try {
+      const fileBytes = new Uint8Array(
+        await sentFile.arrayBuffer(),
       );
 
-    const contentType =
-      inferTelegramPhotoContentType({
-        providedContentType:
-          fileType,
-        filePath:
-          file.name,
-      });
+      const contentType =
+        inferTelegramPhotoContentType({
+          providedContentType: sentFile.type
+            .split(";")[0]
+            .trim()
+            .toLowerCase(),
+          filePath: sentFile.name,
+        });
 
-    const savedMedia =
-      await saveTelegramMessageMedia({
-        businessId:
-          currentMember.business_id,
-        messageId:
-          localMessageId,
-        bytes: fileBytes,
-        contentType,
-      });
+      const savedMedia =
+        await saveTelegramMessageMedia({
+          businessId: currentMember.business_id,
+          messageId: localMessageId,
+          bytes: fileBytes,
+          contentType,
+        });
 
-    attachmentUrl =
-      savedMedia.attachmentUrl;
-    mediaSaved = true;
-  } catch (mediaError) {
-    console.error(
-      "[Tenh Telegram] Photo sent but TENH media storage failed:",
-      mediaError,
-    );
+      attachmentUrl = savedMedia.attachmentUrl;
+      mediaSaved = true;
+    } catch (mediaError) {
+      console.error(
+        "[Tenh Telegram] Photo sent but TENH media storage failed:",
+        mediaError,
+      );
 
-    saveWarning =
-      "Telegram received the photo, but TENH could not save a persistent local image copy.";
-  }
+      saveWarning =
+        "Telegram received the photo, but TENH could not save a persistent local image copy.";
+    }
 
-  const rawPayload = {
-    ...telegramMessage,
-    tenh_attachment: {
-      type: "image",
-      name:
-        file.name ||
-        "Telegram photo",
-      mime_type:
-        fileType,
-      size: file.size,
-    },
-  };
+    const rawPayload = {
+      ...sentMessage,
+      tenh_attachment: {
+        type: "image",
+        name:
+          sentFile.name || "Telegram photo",
+        mime_type: sentFile.type
+          .split(";")[0]
+          .trim()
+          .toLowerCase(),
+        size: sentFile.size,
+      },
+    };
 
-  const {
-    data: savedMessageData,
-    error: insertError,
-  } =
-    await supabaseAdmin
+    const {
+      data: insertedMessage,
+      error: insertError,
+    } = await supabaseAdmin
       .from("messages")
       .insert({
         id: localMessageId,
-        business_id:
-          currentMember.business_id,
-        conversation_id:
-          conversation.id,
-        platform_message_id:
-          platformMessageId,
-        sender_platform_id:
-          senderPlatformId,
-        recipient_platform_id:
-          chatId,
+        business_id: currentMember.business_id,
+        conversation_id: conversation.id,
+        platform_message_id: itemPlatformMessageId,
+        sender_platform_id: senderPlatformId,
+        recipient_platform_id: chatId,
         direction: "outgoing",
         message_type: "image",
-        message_text:
-          "Sent a photo",
-        sent_by_member_id:
-          currentMember.id,
+        message_text: "Sent a photo",
+        sent_by_member_id: currentMember.id,
         delivery_status: "sent",
         delivered_at: null,
         seen_at: null,
-        attachment_url:
-          attachmentUrl,
+        attachment_url: attachmentUrl,
         is_echo: false,
-        raw_payload:
-          rawPayload,
-        platform_created_at:
-          sentAt,
+        raw_payload: rawPayload,
+        platform_created_at: itemSentAt,
       })
       .select("*")
       .single();
 
-  if (insertError) {
-    console.error(
-      "[Tenh Telegram] Photo was sent but local message save failed:",
-      insertError,
-    );
+    if (insertError) {
+      console.error(
+        "[Tenh Telegram] Photo was sent but local message save failed:",
+        insertError,
+      );
 
-    if (mediaSaved) {
-      await deleteTelegramMessageMedia({
-        businessId:
-          currentMember.business_id,
-        messageId:
-          localMessageId,
-      });
+      if (mediaSaved) {
+        await deleteTelegramMessageMedia({
+          businessId: currentMember.business_id,
+          messageId: localMessageId,
+        });
+      }
+
+      saveWarning =
+        "Telegram received the photo, but TENH could not save the local message row.";
+      continue;
     }
 
-    saveWarning =
-      "Telegram received the photo, but TENH could not save the local message row.";
+    savedMessages.push(insertedMessage);
+
+    if (!savedMessageData) {
+      savedMessageData = insertedMessage;
+    }
   }
 
   const {
@@ -643,7 +699,8 @@ export async function POST(
       platformMessageId,
       sentByMemberId:
         currentMember.id,
-      mediaSaved,
+      photos: telegramMessages.length,
+      saved: savedMessages.length,
     },
   );
 
@@ -652,9 +709,12 @@ export async function POST(
     platform: "telegram",
     messageId:
       platformMessageId,
+    /* First row for the existing single-photo callers. */
     message:
       savedMessageData ??
       undefined,
+    /* Every row, so an album caller can reconcile all of its photos. */
+    messages: savedMessages,
     warning:
       saveWarning,
   });

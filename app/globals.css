@@ -24,3 +24,34 @@ body {
   color: var(--foreground);
   font-family: var(--tenh-workspace-font, Arial, Helvetica, sans-serif);
 }
+
+/*
+ * The live recording bars. Each one scales on its own delay so the row reads
+ * as a running meter rather than a frozen picture of one -- a still waveform
+ * next to a running timer looks like the recorder has stopped.
+ *
+ * Scale rather than height: it stays on the compositor, so a full row of bars
+ * costs nothing while the agent is talking. Paused freezes them by dropping
+ * the animation, which is what the paused state should look like.
+ */
+@keyframes tenh-recording-bar {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.tenh-recording-bar {
+  animation: tenh-recording-bar 1.1s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tenh-recording-bar {
+    animation: none;
+  }
+}

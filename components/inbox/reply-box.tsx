@@ -1511,16 +1511,24 @@ export function ReplyBox({
                 ].map((height, index) => (
                   <span
                     key={index}
-                    className={`w-[2px] shrink-0 rounded-full transition-all ${
+                    className={`w-[2px] shrink-0 rounded-full ${
                       recordingPaused
-                        ? "bg-slate-300"
-                        : index % 4 === 0
-                          ? "bg-blue-500"
-                          : "bg-slate-400"
+                        ? "bg-slate-300 transition-all"
+                        : `tenh-recording-bar ${
+                            index % 4 === 0
+                              ? "bg-blue-500"
+                              : "bg-slate-400"
+                          }`
                     }`}
                     style={{
                       height: `${Math.max(4, height - (recordingPaused ? 4 : 0))}px`,
                       opacity: recordingPaused ? 0.75 : 1,
+                      /*
+                       * Walk the delay across the row and vary the duration a
+                       * little, so neighbouring bars never move as one block.
+                       */
+                      animationDelay: `${(index % 7) * 90}ms`,
+                      animationDuration: `${900 + (index % 5) * 120}ms`,
                     }}
                   />
                 ))}

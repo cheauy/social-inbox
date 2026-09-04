@@ -336,6 +336,81 @@ export async function sendTelegramChatAction({
   );
 }
 
+/**
+ * Send 2-10 photos as one Telegram album.
+ *
+ * sendMediaGroup takes a JSON `media` array describing each item, while the
+ * bytes ride alongside as ordinary multipart fields; each item points at its
+ * field with an attach:// reference. Telegram replies with one message per
+ * photo, so the caller still gets a row per item — the grouping is what the
+ * customer sees, not how it is stored.
+ */
+export async function sendTelegramMediaGroup({
+  token,
+  chatId,
+  files,
+}: {
+  token: string;
+  chatId: string;
+  files: File[];
+}) {
+  const formData = new FormData();
+
+  formData.set("chat_id", String(chatId));
+
+  const media = files.map((file, index) => {
+    const field = `photo_${index}`;
+
+    formData.set(
+      field,
+      file,
+      file.name || `tenh-telegram-photo-${index}.jpg`,
+    );
+
+    return {
+      type: "photo",
+      media: `attach://${field}`,
+    };
+  });
+
+  formData.set("media", JSON.stringify(media));
+
+  const response = await fetch(
+    `${TELEGRAM_API_BASE}/bot${token}/sendMediaGroup`,
+    {
+      method: "POST",
+      body: formData,
+      cache: "no-store",
+    },
+  );
+
+  let payload: TelegramApiEnvelope<TelegramMessage[]>;
+
+  try {
+    payload =
+      (await response.json()) as TelegramApiEnvelope<
+        TelegramMessage[]
+      >;
+  } catch {
+    throw new Error(
+      "Telegram sendMediaGroup returned an invalid response.",
+    );
+  }
+
+  if (
+    !response.ok ||
+    payload.ok !== true ||
+    !Array.isArray(payload.result)
+  ) {
+    throw new Error(
+      payload.description ??
+        "Telegram sendMediaGroup failed.",
+    );
+  }
+
+  return payload.result;
+}
+
 export async function sendTelegramPhoto({
   token,
   chatId,

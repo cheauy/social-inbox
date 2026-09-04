@@ -559,14 +559,40 @@ export async function DELETE(
     );
   }
 
+  /*
+   * Every message type can be deleted. Telegram's deleteMessage does not
+   * care what the message contains, and the row is marked deleted the same
+   * way afterwards, so the old text-only limit only stopped agents removing
+   * the photos and files they most often send by mistake.
+   */
+
+  /*
+   * Already gone is a success, not an error. One click can now fan out to
+   * several deletes -- an album, or a retry after a partial failure -- and
+   * asking Telegram to remove a message it has already removed answers with
+   * a 400 that would surface as a failure for work that is in fact done.
+   */
   if (
-    loaded.message.message_type !==
-      "text"
+    Boolean(
+      loaded.message.raw_payload
+        ?.tenh_deleted,
+    )
   ) {
-    return jsonError(
-      "V3.11.13 delete is limited to Telegram text messages.",
-      400,
-    );
+    return NextResponse.json({
+      success: true,
+      messageId:
+        loaded.message.id,
+      deletedAt:
+        (
+          loaded.message
+            .raw_payload
+            ?.tenh_deleted as {
+            deleted_at?: string;
+          } | null
+        )?.deleted_at ??
+        new Date().toISOString(),
+      alreadyDeleted: true,
+    });
   }
 
   let token: string;
@@ -593,25 +619,44 @@ export async function DELETE(
         loaded.platform.messageId,
     });
   } catch (error) {
-    const telegramError =
-      error instanceof TelegramApiError
-        ? {
-            method:
-              error.method,
-            errorCode:
-              error.errorCode,
-            retryAfter:
-              error.retryAfter,
-          }
-        : null;
+    /*
+     * Telegram saying it cannot FIND the message means someone already
+     * removed it there -- on a phone, or by an earlier attempt whose local
+     * write failed. The chat is in the state the agent asked for, so carry on
+     * and mark the local row instead of reporting a failure they cannot act
+     * on.
+     *
+     * "can't be deleted" is deliberately not in here. That one means the
+     * message is still sitting in the customer's chat, past the window
+     * Telegram allows, and the agent has to know it is still visible.
+     */
+    const alreadyGone =
+      error instanceof Error &&
+      /message to delete not found/i.test(
+        error.message,
+      );
 
-    return jsonError(
-      error instanceof Error
-        ? error.message
-        : "Telegram rejected the delete.",
-      502,
-      telegramError,
-    );
+    if (!alreadyGone) {
+      const telegramError =
+        error instanceof TelegramApiError
+          ? {
+              method:
+                error.method,
+              errorCode:
+                error.errorCode,
+              retryAfter:
+                error.retryAfter,
+            }
+          : null;
+
+      return jsonError(
+        error instanceof Error
+          ? error.message
+          : "Telegram rejected the delete.",
+        502,
+        telegramError,
+      );
+    }
   }
 
   const deletedAt =
@@ -637,6 +682,13 @@ export async function DELETE(
       .update({
         message_text:
           "Message deleted",
+        /*
+         * Drop the media with the message. A deleted photo, video, voice note
+         * or file is gone from the chat, so the row must stop pointing at the
+         * stored copy -- otherwise anything reading the row straight from the
+         * database, now or later, can still hand the file back.
+         */
+        attachment_url: null,
         raw_payload:
           rawPayload,
       })

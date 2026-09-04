@@ -40,6 +40,7 @@ import {
   TENH_ACTIVE_WORKSPACE_UI_CHANGE_EVENT,
   readWorkspaceStorage,
 } from "@/lib/display/workspace-storage";
+import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog";
 
 const CHAT_BACKGROUND_STORAGE_KEY = "tenh-chat-background-theme";
 const CHAT_BACKGROUND_SRC_STORAGE_KEY = `${CHAT_BACKGROUND_STORAGE_KEY}:src`;
@@ -744,37 +745,6 @@ function EditIcon() {
   );
 }
 
-function TrashIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="h-3.5 w-3.5"
-      aria-hidden="true"
-    >
-      <path
-        d="M4 7h16"
-        strokeLinecap="round"
-      />
-      <path
-        d="M9 7V4h6v3"
-        strokeLinecap="round"
-      />
-      <path
-        d="m6.5 7 .8 13h9.4l.8-13"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M10 11v5M14 11v5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 function FileIcon() {
   return (
     <svg
@@ -1350,7 +1320,7 @@ function HydrationSafeMessageDay({
 
 export function MessagePanel({
   activeConversation,
-  messages,
+  messages: incomingMessages,
   loadingConversationMessages,
   conversationMessagesError,
   onRetryConversationMessages,
@@ -1401,6 +1371,32 @@ export function MessagePanel({
   onDeleteComment,
   onRetryMessage,
 }: MessagePanelProps) {
+  /*
+   * A message id must appear once. Send reconciliation and Realtime can race
+   * and briefly hand this panel the same row twice, which React reports as a
+   * duplicate key and then renders unpredictably. Collapsing here keeps the
+   * render honest no matter what upstream does; the later copy wins because it
+   * carries the fresher server fields.
+   */
+  const messages = useMemo(() => {
+    const byId = new Map<string, InboxMessage>();
+
+    for (const message of incomingMessages) {
+      const existing = byId.get(message.id);
+
+      byId.set(
+        message.id,
+        existing
+          ? ({ ...existing, ...message } as InboxMessage)
+          : message,
+      );
+    }
+
+    return byId.size === incomingMessages.length
+      ? incomingMessages
+      : Array.from(byId.values());
+  }, [incomingMessages]);
+
   const isKhmer = useWorkspaceLanguageId() === "km";
 
   const facebookMessengerComposerState =
@@ -1609,22 +1605,6 @@ export function MessagePanel({
     };
   }, []);
 
-  const [
-    telegramContextMenu,
-    setTelegramContextMenu,
-  ] = useState<
-    | {
-        messageId: string;
-        messageText: string;
-        x: number;
-        y: number;
-        canReply: boolean;
-        canEdit: boolean;
-        canDelete: boolean;
-      }
-    | null
-  >(null);
-
 
   const [
     jumpHighlightedMessageId,
@@ -1707,6 +1687,18 @@ export function MessagePanel({
    * the agent scrolling away — which would clear userNearBottomRef and cancel
    * the follow-up pins that exist to catch late-loading media.
    */
+  /*
+   * Deleting a message now asks first; it used to fire on the click.
+   *
+   * This holds every id the confirm will remove. An album is one grid with one
+   * Delete button, so that button has to take the whole run with it -- deleting
+   * only the row it was rendered on left the other photos behind.
+   */
+  const [telegramDeleteTarget, setTelegramDeleteTarget] =
+    useState<string[] | null>(null);
+  const [deletingTelegramMessage, setDeletingTelegramMessage] =
+    useState(false);
+
   const programmaticScrollRef = useRef(false);
   const programmaticScrollTimerRef =
     useRef<number | null>(null);
@@ -1771,7 +1763,22 @@ export function MessagePanel({
     };
 
     for (const message of messages) {
+      /*
+       * A deleted photo leaves the album. It renders its own "Message deleted"
+       * bubble instead, so keeping it in the grid would show art that is no
+       * longer in the chat -- which is what happens when a delete only partly
+       * succeeds, or when the customer removes one photo on Telegram's side.
+       */
+      const isDeleted = Boolean(
+        (
+          message.raw_payload as {
+            tenh_deleted?: unknown;
+          } | null
+        )?.tenh_deleted,
+      );
+
       const isPhoto =
+        !isDeleted &&
         message.message_type === "image" &&
         Boolean(message.attachment_url);
 
@@ -2217,10 +2224,6 @@ export function MessagePanel({
           | string
           | null;
       }) => {
-        setTelegramContextMenu(
-          null,
-        );
-
         const findTarget = () => {
           const currentMessages =
             latestMessagesRef.current;
@@ -2470,40 +2473,11 @@ export function MessagePanel({
   ]);
 
   useEffect(() => {
-    setTelegramContextMenu(null);
     setJumpHighlightedMessageId(
       null,
     );
     messageElementRefs.current.clear();
   }, [activeConversation?.id]);
-
-  useEffect(() => {
-    if (!telegramContextMenu) {
-      return;
-    }
-
-    const closeMenu = () => {
-      setTelegramContextMenu(null);
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        closeMenu();
-      }
-    };
-
-    window.addEventListener("click", closeMenu);
-    window.addEventListener("resize", closeMenu);
-    window.addEventListener("scroll", closeMenu, true);
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      window.removeEventListener("click", closeMenu);
-      window.removeEventListener("resize", closeMenu);
-      window.removeEventListener("scroll", closeMenu, true);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [telegramContextMenu]);
 
   if (!activeConversation) {
     return (
@@ -2768,86 +2742,51 @@ export function MessagePanel({
         </div>
       ) : null}
 
-      {telegramContextMenu ? (
-        <div
-          className="fixed z-[220] inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1.5 py-1 shadow-[0_10px_30px_rgba(15,23,42,0.18)]"
-          style={{
-            left: telegramContextMenu.x,
-            top: telegramContextMenu.y,
-          }}
-          onClick={(event) =>
-            event.stopPropagation()
+      <DeleteConfirmDialog
+        open={Boolean(telegramDeleteTarget)}
+        title={
+          (telegramDeleteTarget?.length ?? 0) > 1
+            ? `Delete ${telegramDeleteTarget?.length} photos?`
+            : "Delete message?"
+        }
+        description={
+          (telegramDeleteTarget?.length ?? 0) > 1
+            ? "Every photo in this album will be permanently deleted from the chat. This action cannot be undone."
+            : "This message will be permanently deleted from the chat. This action cannot be undone."
+        }
+        loading={deletingTelegramMessage}
+        onCancel={() => {
+          if (deletingTelegramMessage) {
+            return;
           }
-          onContextMenu={(event) =>
-            event.preventDefault()
+
+          setTelegramDeleteTarget(null);
+        }}
+        onConfirm={async () => {
+          if (!telegramDeleteTarget) {
+            return;
           }
-          role="menu"
-          aria-label="Telegram message actions"
-        >
-          {telegramContextMenu.canReply ? (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                if (
-                  replyingToTelegramMessageId ===
-                  telegramContextMenu.messageId
-                ) {
-                  onCancelTelegramReply();
-                } else {
-                  onReplyToTelegramMessage(
-                    telegramContextMenu.messageId,
-                  );
-                }
 
-                setTelegramContextMenu(null);
-              }}
-              className="inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 hover:text-sky-700"
-              title="Reply"
-            >
-              <ReplyIcon />
-              <span>Reply</span>
-            </button>
-          ) : null}
+          setDeletingTelegramMessage(true);
 
-          {telegramContextMenu.canEdit ? (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                void onEditTelegramMessage(
-                  telegramContextMenu.messageId,
-                  telegramContextMenu.messageText,
-                );
-                setTelegramContextMenu(null);
-              }}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-sky-700"
-              title="Edit message"
-              aria-label="Edit message"
-            >
-              <EditIcon />
-            </button>
-          ) : null}
+          /*
+           * One request per photo, in order. Telegram has no bulk delete, and
+           * firing them together would make a partial failure impossible to
+           * report coherently -- the caller already surfaces the first error.
+           */
+          try {
+            for (const messageId of telegramDeleteTarget) {
+              await onDeleteTelegramMessage(
+                messageId,
+              );
+            }
 
-          {telegramContextMenu.canDelete ? (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                void onDeleteTelegramMessage(
-                  telegramContextMenu.messageId,
-                );
-                setTelegramContextMenu(null);
-              }}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-red-50 hover:text-red-600"
-              title="Delete message"
-              aria-label="Delete message"
-            >
-              <TrashIcon />
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+            setTelegramDeleteTarget(null);
+          } finally {
+            setDeletingTelegramMessage(false);
+          }
+        }}
+      />
 
       <ConversationHeader
         conversation={
@@ -3525,10 +3464,9 @@ export function MessagePanel({
                     ?.trim(),
                 );
 
+              /* Photos, video and files are deletable too, not just text. */
               const canDeleteTelegram =
-                canReplyToTelegram &&
-                message.message_type ===
-                  "text";
+                canReplyToTelegram;
 
               const isTelegramReplyTarget =
                 replyingToTelegramMessageId ===
@@ -4677,44 +4615,6 @@ export function MessagePanel({
                       ? "justify-end"
                       : "justify-start"
                   }`}
-                  onContextMenu={(event) => {
-                    if (
-                      !isTelegramMessage ||
-                      (!canReplyToTelegram &&
-                        !canEditTelegram &&
-                        !canDeleteTelegram)
-                    ) {
-                      return;
-                    }
-
-                    event.preventDefault();
-                    event.stopPropagation();
-
-                    const menuWidth = 176;
-                    const menuHeight = 48;
-                    const edge = 10;
-
-                    const x = Math.min(
-                      event.clientX,
-                      window.innerWidth - menuWidth - edge,
-                    );
-
-                    const y = Math.min(
-                      event.clientY,
-                      window.innerHeight - menuHeight - edge,
-                    );
-
-                    setTelegramContextMenu({
-                      messageId: message.id,
-                      messageText:
-                        message.message_text ?? "",
-                      x: Math.max(edge, x),
-                      y: Math.max(edge, y),
-                      canReply: canReplyToTelegram,
-                      canEdit: canEditTelegram,
-                      canDelete: canDeleteTelegram,
-                    });
-                  }}
                 >
                   <div className="group max-w-[84%] sm:max-w-[74%] xl:max-w-[62%]">
                     <div
@@ -4768,11 +4668,13 @@ export function MessagePanel({
                             }}
                             className={`mb-2.5 block w-full border-l-[3px] pl-2.5 text-left text-xs transition ${
                               isOutgoing
-                                ? "border-emerald-500"
+                                ? "border-white/70"
                                 : "border-sky-500"
                             } ${
                               canJumpToTelegramReply
-                                ? "cursor-pointer rounded-r-lg py-1 pr-2 hover:bg-black/[0.035] active:bg-black/[0.06]"
+                                ? isOutgoing
+                                  ? "cursor-pointer rounded-r-lg py-1 pr-2 hover:bg-white/10 active:bg-white/20"
+                                  : "cursor-pointer rounded-r-lg py-1 pr-2 hover:bg-black/[0.035] active:bg-black/[0.06]"
                                 : "cursor-default"
                             }`}
                             title={
@@ -4781,13 +4683,30 @@ export function MessagePanel({
                                 : undefined
                             }
                           >
-                            <span className="flex items-center gap-1.5 font-semibold text-slate-600">
+                            {/*
+                              The quote sits inside the bubble, so it has to
+                              follow the bubble's colour. Fixed slate greys were
+                              unreadable on an outgoing blue.
+                            */}
+                            <span
+                              className={`flex items-center gap-1.5 font-semibold ${
+                                isOutgoing
+                                  ? "text-white"
+                                  : "text-slate-600"
+                              }`}
+                            >
                               <ReplyIcon />
                               <span>
                                 Reply to {telegramReplyPreview.kind}
                               </span>
                             </span>
-                            <span className="mt-0.5 block max-w-[320px] truncate leading-4 text-slate-500">
+                            <span
+                              className={`mt-0.5 block max-w-[320px] truncate leading-4 ${
+                                isOutgoing
+                                  ? "text-white/80"
+                                  : "text-slate-500"
+                              }`}
+                            >
                               {telegramReplyPreview.text}
                             </span>
                           </button>
@@ -4798,17 +4717,29 @@ export function MessagePanel({
                           <div
                             className={`mb-2.5 block w-full border-l-[3px] pl-2.5 text-left text-xs ${
                               isOutgoing
-                                ? "border-emerald-500"
+                                ? "border-white/70"
                                 : "border-sky-500"
                             }`}
                           >
-                            <span className="flex items-center gap-1.5 font-semibold text-slate-600">
+                            <span
+                              className={`flex items-center gap-1.5 font-semibold ${
+                                isOutgoing
+                                  ? "text-white"
+                                  : "text-slate-600"
+                              }`}
+                            >
                               <ReplyIcon />
                               <span>
                                 Reply to comment
                               </span>
                             </span>
-                            <span className="mt-0.5 block max-w-[320px] truncate leading-4 text-slate-500">
+                            <span
+                              className={`mt-0.5 block max-w-[320px] truncate leading-4 ${
+                                isOutgoing
+                                  ? "text-white/80"
+                                  : "text-slate-500"
+                              }`}
+                            >
                               {facebookReplyPreviewText}
                             </span>
                           </div>
@@ -4949,6 +4880,16 @@ export function MessagePanel({
                               </span>
                             </div>
                           </a>
+                        ) : telegramDeleted ? (
+                          <p
+                            className={`whitespace-pre-wrap italic ${
+                              isOutgoing
+                                ? "text-white/75"
+                                : "text-slate-500"
+                            }`}
+                          >
+                            Message deleted
+                          </p>
                         ) : isStickerMessage ? (
                           <div className="w-fit">
                             {isFacebookSticker &&
@@ -5278,10 +5219,6 @@ export function MessagePanel({
                               </span>
                             </div>
                           )
-                        ) : telegramDeleted ? (
-                          <p className="whitespace-pre-wrap italic text-slate-500">
-                            Message deleted
-                          </p>
                         ) : (
                           /*
                            * Important:
@@ -5390,6 +5327,94 @@ export function MessagePanel({
 
                       {/* Facebook Comment Actions */}
                     </div>
+
+                    {/*
+                      Reply, Edit and Delete ride just under the bubble and fade
+                      in on hover. Right-click is gone, so this is the only route
+                      to them -- it has to read as a real toolbar, not stray text.
+                      Telegram only; the flags are already gated to it.
+                    */}
+                    {canReplyToTelegram ||
+                    canEditTelegram ||
+                    canDeleteTelegram ? (
+                      <div
+                        className={`mt-1 flex items-center px-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100 ${
+                          isOutgoing
+                            ? "justify-end"
+                            : "justify-start"
+                        }`}
+                      >
+                        <div className="inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white p-0.5 text-[11px] shadow-[0_1px_4px_rgba(15,23,42,0.10)]">
+                        {canReplyToTelegram ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+
+                              if (
+                                replyingToTelegramMessageId ===
+                                message.id
+                              ) {
+                                onCancelTelegramReply();
+                                return;
+                              }
+
+                              onReplyToTelegramMessage(
+                                message.id,
+                              );
+                            }}
+                            className="rounded-full px-2 py-0.5 font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-blue-600"
+                          >
+                            {replyingToTelegramMessageId ===
+                            message.id
+                              ? "Cancel reply"
+                              : "Reply"}
+                          </button>
+                        ) : null}
+
+                        {canEditTelegram ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void onEditTelegramMessage(
+                                message.id,
+                                message.message_text ?? "",
+                              );
+                            }}
+                            className="rounded-full px-2 py-0.5 font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-blue-600"
+                          >
+                            Edit
+                          </button>
+                        ) : null}
+
+                        {canDeleteTelegram ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              const album =
+                                photoGroups.get(
+                                  message.id,
+                                );
+
+                              setTelegramDeleteTarget(
+                                album
+                                  ? album.members.map(
+                                      (photo) =>
+                                        photo.id,
+                                    )
+                                  : [message.id],
+                              );
+                            }}
+                            className="rounded-full px-2 py-0.5 font-semibold text-slate-600 transition hover:bg-red-50 hover:text-red-600"
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                        </div>
+                      </div>
+                    ) : null}
 
                     <div>
 
