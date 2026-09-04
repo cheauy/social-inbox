@@ -9,6 +9,7 @@ import {
 import { AdminBillingAnalytics } from "@/components/admin/admin-billing-analytics";
 import { AdminBillingManagement } from "@/components/admin/admin-billing-management";
 import { AdminChannelHealth } from "@/components/admin/admin-channel-health";
+import { AdminConnections } from "@/components/admin/admin-connections";
 import { AdminSecurityCenter } from "@/components/admin/admin-security-center";
 import { CustomerReportReview } from "@/components/admin/customer-report-review";
 import { SystemAnnouncementAdmin } from "@/components/admin/system-announcement-admin";
@@ -21,6 +22,7 @@ type AdminTab =
   | "customer-reports"
   | "announcements"
   | "channel-health"
+  | "connections"
   | "security";
 
 type TenhAdminWorkspaceProps = {
@@ -87,6 +89,11 @@ const tabs: Array<{
     id: "channel-health",
     label: "Run diagnostics",
     description: "Messenger and Telegram health",
+  },
+  {
+    id: "connections",
+    label: "Channel connections",
+    description: "Every Page and Bot, and releasing a Bot for a new subscription",
   },
   {
     id: "security",
@@ -371,6 +378,8 @@ export function TenhAdminWorkspace({
               <SystemAnnouncementAdmin />
             ) : activeTab === "channel-health" ? (
               <AdminChannelHealth />
+            ) : activeTab === "connections" ? (
+              <AdminConnections />
             ) : (
               <AdminSecurityCenter
                 adminMfaRequired={adminMfaRequired}
