@@ -502,13 +502,24 @@ export function SlaAnalyticsPanel() {
 
   const responseRows = useMemo(
     () =>
-      daily.map((item) => ({
-        ...item,
-        responseSeconds: Math.max(
-          0,
-          Number(item.avgFirstResponseSeconds || 0),
-        ),
-      })),
+      daily.map((item) => {
+        const responded = Number(item.responded ?? 0);
+
+        return {
+          ...item,
+          /*
+           * A day where nothing was answered has no average response time.
+           * The SQL coalesces that null to 0, and plotting it drew the line
+           * at zero seconds — a perfect score — for days when in fact nobody
+           * replied at all. Those days are now left out of the line.
+           */
+          hasResponse: responded > 0,
+          responseSeconds: Math.max(
+            0,
+            Number(item.avgFirstResponseSeconds || 0),
+          ),
+        };
+      }),
     [daily],
   );
 
@@ -516,18 +527,16 @@ export function SlaAnalyticsPanel() {
     () =>
       Math.max(
         1,
-        ...responseRows.map(
-          (item) => item.responseSeconds,
-        ),
+        ...responseRows
+          .filter((item) => item.hasResponse)
+          .map((item) => item.responseSeconds),
       ),
     [responseRows],
   );
 
   const bestDay = useMemo(() => {
     const eligible = responseRows.filter(
-      (item) =>
-        item.responded > 0 &&
-        item.responseSeconds > 0,
+      (item) => item.hasResponse,
     );
 
     return eligible.length > 0
@@ -552,7 +561,7 @@ export function SlaAnalyticsPanel() {
 
   const slowestDay = useMemo(() => {
     const eligible = responseRows.filter(
-      (item) => item.responseSeconds > 0,
+      (item) => item.hasResponse,
     );
 
     return eligible.length > 0
@@ -564,30 +573,57 @@ export function SlaAnalyticsPanel() {
       : null;
   }, [responseRows]);
 
-  const chartPoints = useMemo(() => {
-    if (responseRows.length === 0) {
-      return "";
+  const pointX = useCallback(
+    (index: number) =>
+      responseRows.length === 1
+        ? 50
+        : 7 + (index / (responseRows.length - 1)) * 86,
+    [responseRows.length],
+  );
+
+  const pointY = useCallback(
+    (seconds: number) =>
+      Math.max(
+        2,
+        Math.min(98, 100 - (seconds / maxResponseSeconds) * 100),
+      ),
+    [maxResponseSeconds],
+  );
+
+  /* Four gridlines, shared by both axes: conversations left, duration right. */
+  const axisTicks = useMemo(
+    () => [1, 0.75, 0.5, 0.25, 0],
+    [],
+  );
+
+  /*
+   * Segments, not one polyline: a day nobody answered breaks the line rather
+   * than pulling it to the floor and implying an instant reply.
+   */
+  const chartSegments = useMemo(() => {
+    const segments: string[] = [];
+    let current: string[] = [];
+
+    responseRows.forEach((item, index) => {
+      if (!item.hasResponse) {
+        if (current.length > 1) {
+          segments.push(current.join(" "));
+        }
+        current = [];
+        return;
+      }
+
+      current.push(
+        `${pointX(index)},${pointY(item.responseSeconds)}`,
+      );
+    });
+
+    if (current.length > 1) {
+      segments.push(current.join(" "));
     }
 
-    return responseRows
-      .map((item, index) => {
-        const x =
-          responseRows.length === 1
-            ? 50
-            : 7 +
-              (index /
-                (responseRows.length - 1)) *
-                86;
-        const y =
-          84 -
-          (item.responseSeconds /
-            maxResponseSeconds) *
-            64;
-
-        return `${x},${Math.max(12, Math.min(84, y))}`;
-      })
-      .join(" ");
-  }, [maxResponseSeconds, responseRows]);
+    return segments;
+  }, [pointX, pointY, responseRows]);
 
 
   const responseRate =
@@ -645,19 +681,15 @@ export function SlaAnalyticsPanel() {
 
   return (
     <section className="space-y-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      {/*
+        No title here. AnalyticsWorkspace already renders the eyebrow, heading
+        and description for this view, and repeating them printed "Team
+        performance" twice on the page. Only the controls belong to this panel.
+      */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-xs font-semibold text-blue-600">
-            Analytics
-          </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-[28px]">
-            Team performance
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Monitor first response time, SLA health, and overall service performance.
-          </p>
           {refreshing ? (
-            <p className="mt-1 text-xs font-medium text-blue-600">
+            <p className="text-xs font-medium text-blue-600">
               Updating…
             </p>
           ) : null}
@@ -800,22 +832,33 @@ export function SlaAnalyticsPanel() {
             </div>
           ) : (
             <div className="mt-4">
-              <div className="relative h-[250px] overflow-hidden rounded-xl border border-slate-100 bg-white px-2 pt-4">
-                <div className="pointer-events-none absolute inset-x-3 top-5 bottom-8 flex flex-col justify-between">
-                  {[0, 1, 2, 3, 4].map((line) => (
-                    <span key={line} className="border-t border-dashed border-slate-200" />
+              <div className="relative h-[260px] rounded-xl border border-slate-100 bg-white pb-9 pl-11 pr-14 pt-4">
+                {/* Gridlines with a value on each side: counts left, durations right. */}
+                <div className="pointer-events-none absolute inset-y-0 left-0 right-0 bottom-9 top-4">
+                  {axisTicks.map((tick) => (
+                    <div
+                      key={`grid-${tick}`}
+                      className="absolute inset-x-11 flex items-center"
+                      style={{ top: `${(1 - tick) * 100}%` }}
+                    >
+                      <span className="absolute -left-11 w-10 pr-1 text-right text-[9px] font-medium tabular-nums text-slate-400">
+                        {Math.round(maxDailyReceived * tick)}
+                      </span>
+                      <span className="h-px w-full border-t border-dashed border-slate-200" />
+                      <span className="absolute -right-14 w-13 pl-1 text-left text-[9px] font-medium tabular-nums text-blue-500">
+                        {tick === 0
+                          ? "0"
+                          : formatDuration(maxResponseSeconds * tick)}
+                      </span>
+                    </div>
                   ))}
                 </div>
 
-                <div className="absolute inset-x-4 top-5 bottom-9 flex items-end justify-around gap-2">
+                <div className="absolute bottom-9 left-11 right-14 top-4 flex items-end justify-around gap-1.5">
                   {responseRows.map((item) => {
                     const height = Math.max(
-                      8,
-                      Math.round(
-                        (item.received /
-                          maxDailyReceived) *
-                          72,
-                      ),
+                      2,
+                      (item.received / maxDailyReceived) * 100,
                     );
 
                     return (
@@ -824,7 +867,7 @@ export function SlaAnalyticsPanel() {
                         className="flex h-full min-w-0 flex-1 items-end justify-center"
                       >
                         <div
-                          className="w-[56%] max-w-12 rounded-t bg-blue-100"
+                          className="w-[62%] max-w-10 rounded-t-[3px] bg-slate-200 transition hover:bg-slate-300"
                           style={{ height: `${height}%` }}
                           title={`${item.received} conversations`}
                         />
@@ -833,49 +876,61 @@ export function SlaAnalyticsPanel() {
                   })}
                 </div>
 
-                <svg
-                  viewBox="0 0 100 100"
-                  preserveAspectRatio="none"
-                  className="pointer-events-none absolute inset-x-4 top-5 h-[calc(100%-3.3rem)] w-[calc(100%-2rem)] overflow-visible"
-                  aria-hidden="true"
-                >
-                  <polyline
-                    points={chartPoints}
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.2"
-                    vectorEffect="non-scaling-stroke"
-                    className="text-blue-600"
-                  />
+                {/*
+                  The svg is wrapped rather than positioned directly: an svg is
+                  a replaced element, so width/height auto resolves to its own
+                  intrinsic size instead of the inset box, and the viewBox then
+                  maps onto the wrong area entirely.
+                */}
+                <div className="pointer-events-none absolute bottom-9 left-11 right-14 top-4">
+                  <svg
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="none"
+                    className="h-full w-full"
+                    aria-hidden="true"
+                  >
+                    {chartSegments.map((segment, index) => (
+                      <polyline
+                        key={`segment-${index}`}
+                        points={segment}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                        vectorEffect="non-scaling-stroke"
+                        className="text-blue-600"
+                      />
+                    ))}
+                  </svg>
+                </div>
+
+                {/*
+                  Markers are positioned elements, not SVG circles: the plot
+                  stretches to fit its box, and a circle inside it stretches
+                  with it into an oval.
+                */}
+                <div className="pointer-events-none absolute bottom-9 left-11 right-14 top-4">
                   {responseRows.map((item, index) => {
-                    const x =
-                      responseRows.length === 1
-                        ? 50
-                        : 7 +
-                          (index /
-                            (responseRows.length - 1)) *
-                            86;
-                    const y =
-                      84 -
-                      (item.responseSeconds /
-                        maxResponseSeconds) *
-                        64;
+                    if (!item.hasResponse) {
+                      return null;
+                    }
 
                     return (
-                      <circle
+                      <span
                         key={`point-${item.date}`}
-                        cx={x}
-                        cy={Math.max(12, Math.min(84, y))}
-                        r="1.4"
-                        fill="currentColor"
-                        className="text-blue-600"
-                        vectorEffect="non-scaling-stroke"
+                        className="absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600 ring-2 ring-white"
+                        style={{
+                          left: `${pointX(index)}%`,
+                          top: `${pointY(item.responseSeconds)}%`,
+                        }}
+                        title={`${formatDate(`${item.date}T00:00:00`)} · ${formatDuration(item.responseSeconds)}`}
                       />
                     );
                   })}
-                </svg>
+                </div>
 
-                <div className="absolute inset-x-4 bottom-2 flex justify-around gap-1 text-center text-[9px] font-medium text-slate-400">
+                <div className="absolute bottom-2 left-11 right-14 flex justify-around gap-1 text-center text-[9px] font-medium text-slate-400">
                   {responseRows.map((item) => (
                     <span key={`label-${item.date}`} className="min-w-0 flex-1 truncate">
                       {formatDate(`${item.date}T00:00:00`)}

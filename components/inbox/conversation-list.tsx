@@ -4389,6 +4389,9 @@ export function ConversationList({
                   conversation.id ===
                   activeConversationId;
 
+                const isUnread =
+                  (conversation.unread_count ?? 0) > 0;
+
                 const conversationPlatform =
                   getConversationPlatform(
                     conversation,
@@ -4422,10 +4425,17 @@ export function ConversationList({
                      * selected and hovered states fill the whole width
                      * instead of floating as inset cards.
                      */
-                    className={`relative flex w-full items-start gap-2.5 border-b border-slate-100 px-3 py-2.5 text-left transition ${
+                    /*
+                     * Selected, hovered and unread each get their own signal
+                     * so two of them can never look like the same thing:
+                     * selected is a blue rail plus a blue wash, hover is a
+                     * plain grey wash, and unread is carried by weight and
+                     * contrast in the text rather than another background.
+                     */
+                    className={`relative flex w-full items-start gap-2.5 border-b border-slate-100 py-2.5 pl-3 pr-3 text-left transition ${
                       isActive
-                        ? "bg-blue-50"
-                        : "hover:bg-slate-50"
+                        ? "bg-blue-50 shadow-[inset_3px_0_0_0_var(--color-blue-600,#2563eb)]"
+                        : "hover:bg-slate-100/70"
                     }`}
                   >
                     <div className="relative mt-0.5 h-10 w-10 shrink-0">
@@ -4458,7 +4468,11 @@ export function ConversationList({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <p
-                          className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-slate-900"
+                          className={`min-w-0 flex-1 truncate text-[13.5px] ${
+                            isUnread
+                              ? "font-bold text-slate-950"
+                              : "font-medium text-slate-700"
+                          }`}
                           style={{
                             fontFamily: CONVERSATION_TEXT_FONT_STACK,
                           }}
@@ -4482,7 +4496,13 @@ export function ConversationList({
                           </span>
                         ) : null}
 
-                        <span className="shrink-0 text-[11px] text-slate-400">
+                        <span
+                          className={`shrink-0 text-[11px] ${
+                            isUnread
+                              ? "font-semibold text-blue-600"
+                              : "text-slate-400"
+                          }`}
+                        >
                           {hydrated
                             ? formatMessageTime(
                                 conversation.last_message_at,
@@ -4493,7 +4513,11 @@ export function ConversationList({
 
                       <div className="mt-0.5 flex items-center gap-2">
                         <p
-                          className="min-w-0 flex-1 truncate text-[12.5px] text-slate-500"
+                          className={`min-w-0 flex-1 truncate text-[12.5px] ${
+                            isUnread
+                              ? "font-medium text-slate-700"
+                              : "text-slate-400"
+                          }`}
                           style={{
                             fontFamily: CONVERSATION_TEXT_FONT_STACK,
                           }}

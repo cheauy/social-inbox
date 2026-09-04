@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -1701,6 +1702,27 @@ export function MessagePanel({
     useRef(true);
 
   /*
+   * True while a scroll we started is still animating. A smooth scroll fires
+   * scroll events at every intermediate position, and those look exactly like
+   * the agent scrolling away — which would clear userNearBottomRef and cancel
+   * the follow-up pins that exist to catch late-loading media.
+   */
+  const programmaticScrollRef = useRef(false);
+  const programmaticScrollTimerRef =
+    useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (programmaticScrollTimerRef.current !== null) {
+        window.clearTimeout(
+          programmaticScrollTimerRef.current,
+        );
+      }
+    },
+    [],
+  );
+
+  /*
    * V2.7 — preserve the visible viewport while older messages
    * are prepended above the current scroll position.
    */
@@ -1712,6 +1734,83 @@ export function MessagePanel({
 
   const olderLoadRequestedRef =
     useRef(false);
+
+  /*
+   * Photo albums.
+   *
+   * A message carries a single attachment, so sending six photos creates six
+   * messages. Rendered one bubble each they filled the thread; grouped they
+   * read as one album. Consecutive image messages from the same side, sent
+   * close together, are collected into a run and drawn as a grid on the run's
+   * LAST message — last so the album sits where the sending finished, and so
+   * the timestamp and delivery status shown are the newest ones.
+   *
+   * Every photo keeps its own message id, so opening, replying to and
+   * deleting a single photo all still act on the right message.
+   */
+  const photoGroups = useMemo(() => {
+    const ALBUM_WINDOW_MS = 60_000;
+    const groups = new Map<
+      string,
+      { lastId: string; members: InboxMessage[] }
+    >();
+
+    let run: InboxMessage[] = [];
+
+    const flush = () => {
+      if (run.length > 1) {
+        const lastId = run[run.length - 1].id;
+        const members = run;
+
+        for (const item of members) {
+          groups.set(item.id, { lastId, members });
+        }
+      }
+
+      run = [];
+    };
+
+    for (const message of messages) {
+      const isPhoto =
+        message.message_type === "image" &&
+        Boolean(message.attachment_url);
+
+      if (!isPhoto) {
+        flush();
+        continue;
+      }
+
+      const previous = run[run.length - 1];
+
+      if (previous) {
+        const sameSide =
+          previous.direction === message.direction;
+        const previousAt = new Date(
+          previous.platform_created_at ??
+            previous.created_at,
+        ).getTime();
+        const currentAt = new Date(
+          message.platform_created_at ??
+            message.created_at,
+        ).getTime();
+        const closeEnough =
+          Number.isFinite(previousAt) &&
+          Number.isFinite(currentAt) &&
+          Math.abs(currentAt - previousAt) <=
+            ALBUM_WINDOW_MS;
+
+        if (!sameSide || !closeEnough) {
+          flush();
+        }
+      }
+
+      run.push(message);
+    }
+
+    flush();
+
+    return groups;
+  }, [messages]);
 
   const scrollToNewest =
     useCallback(
@@ -1725,6 +1824,23 @@ export function MessagePanel({
         if (!container) {
           return;
         }
+
+        programmaticScrollRef.current = true;
+
+        if (programmaticScrollTimerRef.current !== null) {
+          window.clearTimeout(
+            programmaticScrollTimerRef.current,
+          );
+        }
+
+        programmaticScrollTimerRef.current =
+          window.setTimeout(
+            () => {
+              programmaticScrollRef.current = false;
+              programmaticScrollTimerRef.current = null;
+            },
+            behavior === "smooth" ? 700 : 90,
+          );
 
         container.scrollTo({
           top: container.scrollHeight,
@@ -1789,6 +1905,11 @@ export function MessagePanel({
       messagesContainerRef.current;
 
     if (!container) {
+      return;
+    }
+
+    /* Our own animation, not the agent moving the thread. */
+    if (programmaticScrollRef.current) {
       return;
     }
 
@@ -1994,7 +2115,7 @@ export function MessagePanel({
     }
 
     let cancelled = false;
-    let followUpTimer: number | null = null;
+    const followUpTimers: number[] = [];
 
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
@@ -2002,21 +2123,74 @@ export function MessagePanel({
           return;
         }
 
+        /*
+         * Opening lands instantly. A thread opens scrolled to the top, so
+         * animating to the newest message drags the whole history past the
+         * agent — hundreds or thousands of pixels of images and bubbles the
+         * browser has to paint mid-flight, which is what made it stutter.
+         * The agent has not seen the top anyway, so there is nothing to
+         * animate away from. Animation belongs to the short hops below and
+         * to the Latest button.
+         */
         scrollToNewest("auto");
 
-        followUpTimer = window.setTimeout(() => {
-          if (!cancelled) {
-            scrollToNewest("auto");
-          }
-        }, 120);
+        /*
+         * The thread's height keeps changing after the message DOM is
+         * committed — images and video posters decode, web fonts swap,
+         * reply cards reflow — so a scroll fired once at commit time
+         * lands short of the bottom whenever any of that resolves late.
+         * That is why opening a conversation sometimes reached the newest
+         * message and sometimes did not: it depended on whether the media
+         * happened to be cached already.
+         *
+         * These corrections start only after the opening animation has
+         * finished. Firing them during it replaced the animation with a
+         * jump and made the whole thing look broken. Each one animates
+         * too, and only runs when the thread is genuinely short of the
+         * bottom, so a settled thread never scrolls twice.
+         */
+        for (const delay of [820, 1300, 1900]) {
+          followUpTimers.push(
+            window.setTimeout(() => {
+              const container =
+                messagesContainerRef.current;
+
+              if (
+                cancelled ||
+                !container ||
+                !userNearBottomRef.current
+              ) {
+                return;
+              }
+
+              const distanceFromBottom =
+                container.scrollHeight -
+                container.scrollTop -
+                container.clientHeight;
+
+              if (distanceFromBottom > 8) {
+                /*
+                 * Animate only short corrections. A long one has the same
+                 * stutter problem as animating the open, so past roughly a
+                 * screen and a half it simply snaps.
+                 */
+                scrollToNewest(
+                  distanceFromBottom < 900
+                    ? "smooth"
+                    : "auto",
+                );
+              }
+            }, delay),
+          );
+        }
       });
     });
 
     return () => {
       cancelled = true;
 
-      if (followUpTimer !== null) {
-        window.clearTimeout(followUpTimer);
+      for (const timer of followUpTimers) {
+        window.clearTimeout(timer);
       }
     };
   }, [
@@ -2842,6 +3016,21 @@ export function MessagePanel({
           <div className="space-y-4">
           {messages.map(
             (message, messageIndex) => {
+              /*
+               * Earlier photos of an album render nothing: the whole grid is
+               * drawn once, on the run's last message.
+               */
+              const photoGroup = photoGroups.get(
+                message.id,
+              );
+
+              if (
+                photoGroup &&
+                photoGroup.lastId !== message.id
+              ) {
+                return null;
+              }
+
               const isOutgoing =
                 message.direction ===
                 "outgoing";
@@ -4820,6 +5009,71 @@ export function MessagePanel({
                               </p>
                             ) : null}
                           </div>
+                        ) : isImageMessage &&
+                          photoGroup &&
+                          photoGroup.members.length > 1 ? (
+                          /*
+                           * Three across, so six photos read as 3x2 and four
+                           * as 2x2. Square tiles keep the rows aligned however
+                           * the originals are cropped.
+                           */
+                          <div
+                            className={`-mx-4 grid gap-[3px] overflow-hidden ${
+                              photoGroup.members.length === 2
+                                ? "grid-cols-2"
+                                : photoGroup.members.length === 4
+                                  ? "grid-cols-2"
+                                  : "grid-cols-3"
+                            } ${
+                              telegramReplyPreview
+                                ? "mt-1"
+                                : "-mt-3"
+                            } mb-1`}
+                          >
+                            {photoGroup.members.map((photo: InboxMessage) => {
+                              const photoUrl =
+                                photo.attachment_url;
+
+                              if (!photoUrl) {
+                                return (
+                                  <div
+                                    key={`album-${photo.id}`}
+                                    className="flex aspect-square w-full items-center justify-center bg-slate-100 text-[10px] font-medium text-slate-400"
+                                  >
+                                    Unavailable
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <button
+                                  key={`album-${photo.id}`}
+                                  type="button"
+                                  onClick={() =>
+                                    setImagePreview({
+                                      src: photoUrl,
+                                      alt:
+                                        photo.message_text ||
+                                        "Photo",
+                                    })
+                                  }
+                                  className="group/media block aspect-square w-full cursor-zoom-in overflow-hidden bg-slate-100"
+                                  aria-label="Open photo"
+                                >
+                                  <img
+                                    src={photoUrl}
+                                    alt={
+                                      photo.message_text ||
+                                      "Photo"
+                                    }
+                                    className="h-full w-full object-cover transition duration-200 group-hover/media:scale-[1.02]"
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
+                                </button>
+                              );
+                            })}
+                          </div>
                         ) : isImageMessage ? (
                           <div className="w-[300px] max-w-full overflow-hidden rounded-[22px] bg-slate-100 ring-1 ring-slate-200/70">
                             {attachmentUrl ? (
@@ -4880,14 +5134,29 @@ export function MessagePanel({
                             </p>
                           </div>
                         ) : isVideoMessage ? (
-                          <div className="w-[330px] max-w-full overflow-hidden rounded-[22px] border border-slate-200/80 bg-slate-950 shadow-sm">
+                          /*
+                           * The video spans the bubble instead of sitting in a
+                           * framed card inside it. Negative margins cancel the
+                           * bubble's own padding, which was drawing a thick
+                           * band of bubble colour on all four sides; the
+                           * bubble clips the corners itself. The top offset is
+                           * skipped when a reply preview sits above, or the
+                           * video would ride over it.
+                           */
+                          <div
+                            className={`-mx-4 mb-1 overflow-hidden bg-black ${
+                              telegramReplyPreview
+                                ? "mt-1"
+                                : "-mt-3"
+                            }`}
+                          >
                             {attachmentUrl ? (
                               <video
                                 src={attachmentUrl}
                                 controls
                                 preload="none"
                                 playsInline
-                                className="max-h-[360px] w-full bg-black object-contain"
+                                className="max-h-[380px] w-full bg-black object-contain"
                               />
                             ) : (
                               <div className="flex h-44 w-full items-center justify-center bg-slate-900 text-sm font-medium text-slate-300">
@@ -4922,49 +5191,91 @@ export function MessagePanel({
                             </div>
                           )
                         ) : isFileMessage ? (
+                          /*
+                           * No card of its own. The bubble is already a
+                           * container; a bordered white panel inside it
+                           * doubled the padding and, on an outgoing message,
+                           * dropped a white box onto the blue.
+                           */
                           attachmentUrl ? (
                             <a
                               href={attachmentUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="block w-[320px] max-w-full rounded-[22px] border border-slate-200/90 bg-white/95 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition hover:border-sky-200 hover:bg-white"
+                              className={`flex w-[228px] max-w-full items-center gap-2.5 rounded-lg px-1 py-0.5 transition ${
+                                isOutgoing
+                                  ? "hover:bg-white/10"
+                                  : "hover:bg-slate-100"
+                              }`}
                             >
-                              <div className="flex items-center gap-3">
-                                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600 ring-1 ring-sky-100">
-                                  <FileIcon />
-                                </span>
+                              <span
+                                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                                  isOutgoing
+                                    ? "bg-white/20 text-white"
+                                    : "bg-sky-50 text-sky-600"
+                                }`}
+                              >
+                                <FileIcon />
+                              </span>
 
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-semibold text-slate-800">
-                                    {attachmentName}
-                                  </p>
-                                  <p className="mt-0.5 truncate text-[11px] text-slate-400">
-                                    {[
-                                      attachmentMeta?.mime_type?.split("/").pop()?.toUpperCase(),
-                                      formatAttachmentSize(attachmentMeta?.size),
-                                    ]
-                                      .filter(Boolean)
-                                      .join(" · ") || "Telegram file"}
-                                  </p>
-                                </div>
-                              </div>
+                              <span className="min-w-0 flex-1">
+                                <span
+                                  className={`block truncate text-[13px] font-semibold ${
+                                    isOutgoing
+                                      ? "text-white"
+                                      : "text-slate-800"
+                                  }`}
+                                >
+                                  {attachmentName}
+                                </span>
+                                <span
+                                  className={`block truncate text-[11px] ${
+                                    isOutgoing
+                                      ? "text-white/70"
+                                      : "text-slate-400"
+                                  }`}
+                                >
+                                  {[
+                                    attachmentMeta?.mime_type?.split("/").pop()?.toUpperCase(),
+                                    formatAttachmentSize(attachmentMeta?.size),
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ") || "Telegram file"}
+                                </span>
+                              </span>
                             </a>
                           ) : (
-                            <div className="w-[320px] max-w-full rounded-[22px] border border-slate-200/90 bg-white/95 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-                              <div className="flex items-center gap-3">
-                                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600 ring-1 ring-sky-100">
-                                  <FileIcon />
-                                </span>
+                            <div className="flex w-[228px] max-w-full items-center gap-2.5 px-1 py-0.5">
+                              <span
+                                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                                  isOutgoing
+                                    ? "bg-white/20 text-white"
+                                    : "bg-slate-100 text-slate-400"
+                                }`}
+                              >
+                                <FileIcon />
+                              </span>
 
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-semibold text-slate-800">
-                                    {attachmentName}
-                                  </p>
-                                  <p className="mt-0.5 truncate text-[11px] text-slate-400">
-                                    Unavailable
-                                  </p>
-                                </div>
-                              </div>
+                              <span className="min-w-0 flex-1">
+                                <span
+                                  className={`block truncate text-[13px] font-semibold ${
+                                    isOutgoing
+                                      ? "text-white"
+                                      : "text-slate-800"
+                                  }`}
+                                >
+                                  {attachmentName}
+                                </span>
+                                <span
+                                  className={`block truncate text-[11px] ${
+                                    isOutgoing
+                                      ? "text-white/70"
+                                      : "text-slate-400"
+                                  }`}
+                                >
+                                  Unavailable
+                                </span>
+                              </span>
                             </div>
                           )
                         ) : telegramDeleted ? (

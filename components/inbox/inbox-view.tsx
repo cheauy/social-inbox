@@ -1098,6 +1098,14 @@ const previousActiveConversationIdRef =
    * Prevent multiple read PATCH requests for the same
    * active conversation while realtime events arrive.
    */
+  /*
+   * Conversations whose badge was cleared the moment they were opened, before
+   * the server round trip. The auto-read effect below must still fire for
+   * these, so it cannot rely on unread_count alone to decide there is nothing
+   * left to do.
+   */
+  const pendingReadIdsRef = useRef<Set<string>>(new Set());
+
   const readInFlightRef =
     useRef<Set<string>>(
       new Set(),
@@ -1582,6 +1590,9 @@ async function markConversationReadRealtime(
     router.refresh();
   } finally {
     readInFlightRef.current.delete(
+      conversationId,
+    );
+    pendingReadIdsRef.current.delete(
       conversationId,
     );
   }
@@ -4230,6 +4241,29 @@ const selectConversationSmoothly =
       setClientSelectedConversationId(
         conversationId,
       );
+
+      /*
+       * Drop the badge here rather than waiting for the auto-read effect. That
+       * effect only runs on the render after the selection lands, so on a busy
+       * inbox the badge visibly lingered for a beat after the click. The server
+       * PATCH still happens there; this is only the optimistic paint.
+       */
+      if (
+        !manualUnreadConversationIdsRef.current.has(
+          conversationId,
+        ) &&
+        (targetConversation.unread_count ?? 0) > 0
+      ) {
+        pendingReadIdsRef.current.add(conversationId);
+
+        setLiveConversations((current) =>
+          current.map((conversation) =>
+            conversation.id === conversationId
+              ? { ...conversation, unread_count: 0 }
+              : conversation,
+          ),
+        );
+      }
       setOlderMessagesError(null);
       setConversationMessagesError(
         null,
@@ -5400,7 +5434,10 @@ useEffect(() => {
 
   if (
     !currentConversation ||
-    currentConversation.unread_count === 0 ||
+    (currentConversation.unread_count === 0 &&
+      !pendingReadIdsRef.current.has(
+        resolvedActiveConversationId,
+      )) ||
     manualUnreadConversationIdsRef.current.has(
       resolvedActiveConversationId,
     )
