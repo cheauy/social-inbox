@@ -17,6 +17,7 @@ const khmerNavigationLabels: Record<string, string> = {
   Analytics: "វិភាគទិន្នន័យ",
   Subscription: "ការជាវ",
   Integrations: "ការតភ្ជាប់",
+  Market: "ទីផ្សារ",
   Settings: "ការកំណត់",
 };
 

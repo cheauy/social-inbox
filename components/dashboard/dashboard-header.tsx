@@ -9,12 +9,26 @@ import { NavPermissionGate } from "@/components/dashboard/nav-permission-gate";
 import { WorkspaceSwitcher } from "@/components/dashboard/workspace-switcher";
 import { isCurrentUserTenhAdminIdentity } from "@/lib/admin/tenh-admin-auth";
 
-const normalNavigation = [
+type NavItem = {
+  label: string;
+  href: string;
+  /** Opens in a new tab and skips the Next.js client router. */
+  external?: boolean;
+};
+
+const normalNavigation: NavItem[] = [
   { label: "Inbox", href: "/dashboard/inbox" },
   { label: "Group Chat", href: "/dashboard/group-chat" },
   { label: "Analytics", href: "/dashboard/analytics" },
   { label: "Subscription", href: "/dashboard/subscription" },
   { label: "Integrations", href: "/dashboard/integrations" },
+  /*
+   * Public marketing site. Opens in a new tab so the agent keeps their
+   * inbox open behind it. The in-app preview of this page still lives at
+   * /dashboard/market and can be linked here instead while the public
+   * site is being set up.
+   */
+  { label: "Market", href: "https://market.tenhchat.com", external: true },
   { label: "Settings", href: "/dashboard/settings" },
 ];
 
@@ -82,7 +96,17 @@ export async function DashboardHeader() {
              * the Next.js client router. Other dashboard navigation stays SPA.
              */
             const link =
-              item.href === "/dashboard/inbox" ? (
+              item.external ? (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={linkClassName}
+                >
+                  {linkContent}
+                </a>
+              ) : item.href === "/dashboard/inbox" ? (
                 <a
                   key={item.href}
                   href={item.href}
