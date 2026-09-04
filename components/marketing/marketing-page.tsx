@@ -105,66 +105,149 @@ const COPY = {
     dir: "Messenger · Comment Facebook · Telegram",
     headline: "Every platform, one inbox.",
     lede:
-      "TENH brings your Facebook Messenger chats, Facebook comments, and Telegram messages into one workspace — so your team stops switching tabs and no customer is left waiting.",
+      "Your customers write from Messenger, Facebook comments and Telegram. TENH puts all of it in one screen, so your team answers everyone from one place and nobody is forgotten.",
     ctaPrimary: `Start ${TRIAL_DAYS}-day free trial`,
     ctaShort: "Start free trial",
     ctaSecondary: "See how it works",
     note: `Free for ${TRIAL_DAYS} days · No card needed to start`,
     sampleBadge: "Sample data",
     channelsLead: "Connect the channels your customers already use",
+    availableNow: "Available now",
     comingSoon: "Coming soon",
-    howEyebrow: "How it works",
-    howTitle: "See who is answering what.",
+    howEyebrow: "Inside TENH",
+    howTitle: "Everything your team needs to answer well.",
     howLede:
-      "Every conversation shows a status and the teammate who owns it, so your team always knows what still needs an answer.",
-    queueTitle: "One list, three simple states",
-    queueLede:
-      "New means nobody has replied yet. In progress means a teammate is already answering. Done means it is finished. Because everyone sees the same list, two people never reply to the same customer by mistake.",
-    queueRows: [
-      { who: "Alex Morgan", via: "Messenger", agent: "Nobody yet", pill: "New" },
-      { who: "Jordan Lee", via: "Comment Facebook", agent: "Maya is replying", pill: "In progress" },
-      { who: "Sam Rivera", via: "Telegram", agent: "Answered by Ben", pill: "Done" },
-    ],
+      "TENH is built for teams handling customer messages every day: shared assignment, saved replies, customer history, reminders and reporting. Choose any tool to see how it looks inside the workspace.",
+    previewHint: "Select a tool to preview it",
     features: [
       {
         title: "Saved replies",
         body: "Answer common questions about price, stock and delivery in one click instead of typing again.",
+        preview: {
+          header: "Quick replies",
+          rows: [
+            { title: "Delivery price", sub: "Delivery is $1.50 inside the city." },
+            { title: "In stock today", sub: "Yes, this item is still available." },
+            { title: "Payment options", sub: "You can pay on delivery or transfer." },
+          ],
+          note: "One click puts the text in the reply box.",
+        },
       },
       {
         title: "Tags & customer notes",
         body: "Label conversations your way, and leave notes only your team can see.",
+        preview: {
+          header: "Alex Morgan",
+          rows: [
+            { title: "Tags", sub: "VIP · Order · Follow up", pill: "3", tone: "blue" },
+            { title: "Note from Maya", sub: "Prefers delivery after 5pm." },
+            { title: "Note from Ben", sub: "Asked about bulk price last month." },
+          ],
+          note: "Notes stay internal. Customers never see them.",
+        },
       },
       {
         title: "Customer history",
         body: "See what a customer asked and ordered before, so you never ask them to repeat it.",
+        preview: {
+          header: "Alex Morgan · History",
+          rows: [
+            { title: "Order #10482", sub: "12 Mar", pill: "Delivered", tone: "green" },
+            { title: "Order #10231", sub: "28 Feb", pill: "Delivered", tone: "green" },
+            { title: "First message", sub: "14 Feb · Messenger" },
+          ],
+          note: "6 conversations and 2 orders on this profile.",
+        },
       },
       {
         title: "Assign to a teammate",
         body: "Give a conversation to the right person, or let an agent claim it, so everyone knows who is answering.",
+        preview: {
+          header: "Shared queue",
+          rows: [
+            { title: "Alex Morgan", sub: "Messenger · nobody yet", pill: "New", tone: "blue" },
+            { title: "Jordan Lee", sub: "Comment Facebook · Maya", pill: "In progress", tone: "amber" },
+            { title: "Sam Rivera", sub: "Telegram · Ben", pill: "Done", tone: "green" },
+          ],
+          note: "Everyone sees the same list, so nobody answers twice.",
+        },
       },
       {
         title: "Follow-up reminders",
         body: "Set a reminder on a conversation and TENH tells you when it is time to come back to the customer.",
+        preview: {
+          header: "Reminders",
+          rows: [
+            { title: "Alex Morgan", sub: "Check if the size fits", pill: "Tomorrow 9:00", tone: "amber" },
+            { title: "Casey Kim", sub: "Send the new price list", pill: "Fri 14:00", tone: "slate" },
+          ],
+          note: "TENH notifies you when a reminder is due.",
+        },
       },
       {
         title: "Saved filters",
         body: "Save the lists you check every day — unread, assigned to me, one channel — and open them in one click.",
+        preview: {
+          header: "My views",
+          rows: [
+            { title: "Unread", sub: "Everything nobody has answered", pill: "6", tone: "blue" },
+            { title: "Assigned to me", sub: "My conversations today", pill: "3", tone: "slate" },
+            { title: "Telegram only", sub: "One channel at a time", pill: "2", tone: "slate" },
+          ],
+          note: "Build the list once, open it every day.",
+        },
       },
       {
         title: "Team chat & mentions",
         body: "Talk to your team inside TENH and mention someone when a conversation needs them.",
+        preview: {
+          header: "Support team",
+          rows: [
+            { title: "Maya", sub: "@Ben can you take Alex Morgan?" },
+            { title: "Ben", sub: "Taking it now." },
+            { title: "Maya", sub: "Thanks, customer is waiting." },
+          ],
+          note: "Internal chat. It is never sent to the customer.",
+        },
       },
       {
         title: "Customer files",
         body: "Keep receipts, photos and documents on the customer profile, next to their conversations.",
+        preview: {
+          header: "Files · Alex Morgan",
+          rows: [
+            { title: "receipt-10482.pdf", sub: "Uploaded by Maya · 142 KB" },
+            { title: "size-chart.png", sub: "Uploaded by Ben · 88 KB" },
+            { title: "delivery-note.jpg", sub: "Uploaded by Maya · 210 KB" },
+          ],
+          note: "Stored on the profile, not lost in the chat.",
+        },
       },
       {
         title: "Reports & response time",
         body: "See how many messages each agent answers, which channel is busiest, and how fast your team replies.",
+        preview: {
+          header: "This week",
+          rows: [
+            { title: "Messages answered", sub: "Across all channels", pill: "1,248", tone: "blue" },
+            { title: "Average first reply", sub: "Time to the first answer", pill: "4m 12s", tone: "green" },
+            { title: "Busiest channel", sub: "Where most messages arrive", pill: "Messenger", tone: "slate" },
+          ],
+          note: "Broken down per agent and per channel.",
+        },
       },
       {
         title: "Roles & permissions",
         body: "Choose who can invite people, connect channels, or open reports.",
+        preview: {
+          header: "Roles",
+          rows: [
+            { title: "Owner", sub: "Everything, including billing", pill: "1", tone: "blue" },
+            { title: "Manager", sub: "Team, tags and reports", pill: "2", tone: "slate" },
+            { title: "Agent", sub: "Inbox only", pill: "5", tone: "slate" },
+          ],
+          note: "You decide what each role is allowed to open.",
+        },
       },
     ],
     pricingEyebrow: "Pricing",
@@ -274,66 +357,149 @@ const COPY = {
     dir: "Messenger · Comment Facebook · Telegram",
     headline: "គ្រប់វេទិកា ក្នុងប្រអប់សារតែមួយ។",
     lede:
-      "TENH ប្រមូលការជជែក Facebook Messenger, មតិលើ Facebook និងសារ Telegram មកក្នុងកន្លែងធ្វើការតែមួយ ដើម្បីឱ្យក្រុមរបស់អ្នកលែងប្តូរផ្ទាំងច្រើន និងគ្មានអតិថិជនណាត្រូវរង់ចាំ។",
+      "អតិថិជនរបស់អ្នកសរសេរមកពី Messenger, មតិលើ Facebook និង Telegram។ TENH ដាក់ទាំងអស់នៅលើអេក្រង់តែមួយ ដើម្បីឱ្យក្រុមរបស់អ្នកឆ្លើយគ្រប់គ្នាពីកន្លែងតែមួយ ហើយគ្មាននរណាត្រូវបានភ្លេច។",
     ctaPrimary: `សាកល្បងឥតគិតថ្លៃ ${TRIAL_DAYS} ថ្ងៃ`,
     ctaShort: "សាកល្បងឥតគិតថ្លៃ",
     ctaSecondary: "មើលរបៀបប្រើប្រាស់",
     note: `ឥតគិតថ្លៃ ${TRIAL_DAYS} ថ្ងៃ · មិនចាំបាច់ប្រើកាតដើម្បីចាប់ផ្តើម`,
     sampleBadge: "ទិន្នន័យគំរូ",
     channelsLead: "ភ្ជាប់ឆានែលដែលអតិថិជនរបស់អ្នកកំពុងប្រើ",
+    availableNow: "មានឥឡូវនេះ",
     comingSoon: "នឹងមកដល់ឆាប់ៗ",
-    howEyebrow: "របៀបដំណើរការ",
-    howTitle: "មើលឃើញថានរណាកំពុងឆ្លើយអ្វី។",
+    howEyebrow: "ខាងក្នុង TENH",
+    howTitle: "គ្រប់យ៉ាងដែលក្រុមរបស់អ្នកត្រូវការដើម្បីឆ្លើយបានល្អ។",
     howLede:
-      "រាល់ការសន្ទនាបង្ហាញស្ថានភាព និងឈ្មោះសមាជិកដែលទទួលបន្ទុក ដូច្នេះក្រុមរបស់អ្នកដឹងជានិច្ចថាអ្វីនៅសល់ត្រូវឆ្លើយ។",
-    queueTitle: "បញ្ជីតែមួយ មានស្ថានភាពបីយ៉ាងសាមញ្ញ",
-    queueLede:
-      "«ថ្មី» មានន័យថាមិនទាន់មានអ្នកឆ្លើយ។ «កំពុងធ្វើ» មានន័យថាសមាជិកម្នាក់កំពុងឆ្លើយហើយ។ «រួចរាល់» មានន័យថាបានបញ្ចប់។ ដោយសារអ្នកគ្រប់គ្នាឃើញបញ្ជីតែមួយ គ្មានអ្នកពីរនាក់ឆ្លើយអតិថិជនតែម្នាក់ដោយច្រឡំឡើយ។",
-    queueRows: [
-      { who: "Alex Morgan", via: "Messenger", agent: "មិនទាន់មានអ្នកឆ្លើយ", pill: "ថ្មី" },
-      { who: "Jordan Lee", via: "Comment Facebook", agent: "Maya កំពុងឆ្លើយ", pill: "កំពុងធ្វើ" },
-      { who: "Sam Rivera", via: "Telegram", agent: "ឆ្លើយដោយ Ben", pill: "រួចរាល់" },
-    ],
+      "TENH ត្រូវបានសាងសម្រាប់ក្រុមដែលដោះស្រាយសារអតិថិជនរាល់ថ្ងៃ៖ ការចាត់តាំងរួម ការឆ្លើយតបរហ័ស ប្រវត្តិអតិថិជន ការរំលឹក និងរបាយការណ៍។ ជ្រើសរើសឧបករណ៍ណាមួយដើម្បីមើលរូបរាងខាងក្នុង។",
+    previewHint: "ជ្រើសរើសឧបករណ៍ដើម្បីមើល",
     features: [
       {
         title: "ការឆ្លើយតបរហ័ស",
         body: "ឆ្លើយសំណួរញឹកញាប់អំពីតម្លៃ ស្តុក និងការដឹកជញ្ជូន ត្រឹមចុចម្តង ដោយមិនចាំបាច់វាយម្តងទៀត។",
+        preview: {
+          header: "ចម្លើយរហ័ស",
+          rows: [
+            { title: "តម្លៃដឹកជញ្ជូន", sub: "ដឹកជញ្ជូន $1.50 ក្នុងទីក្រុង។" },
+            { title: "មានស្តុកថ្ងៃនេះ", sub: "បាទ/ចាស ទំនិញនេះនៅមាន។" },
+            { title: "របៀបទូទាត់", sub: "អាចបង់ពេលដឹកជញ្ជូន ឬផ្ទេរប្រាក់។" },
+          ],
+          note: "ចុចម្តងដាក់អត្ថបទចូលប្រអប់ឆ្លើយតប។",
+        },
       },
       {
         title: "ស្លាក និងកំណត់ចំណាំអតិថិជន",
         body: "ដាក់ស្លាកការសន្ទនាតាមរបៀបរបស់អ្នក និងទុកកំណត់ចំណាំសម្រាប់តែក្រុមរបស់អ្នកមើល។",
+        preview: {
+          header: "Alex Morgan",
+          rows: [
+            { title: "ស្លាក", sub: "VIP · កម្ម៉ង់ · តាមដាន", pill: "3", tone: "blue" },
+            { title: "កំណត់ចំណាំពី Maya", sub: "ចូលចិត្តដឹកជញ្ជូនក្រោយម៉ោង ៥ ល្ងាច។" },
+            { title: "កំណត់ចំណាំពី Ben", sub: "ធ្លាប់សួរតម្លៃដុំកាលពីខែមុន។" },
+          ],
+          note: "កំណត់ចំណាំសម្រាប់តែផ្ទៃក្នុង។ អតិថិជនមិនឃើញទេ។",
+        },
       },
       {
         title: "ប្រវត្តិអតិថិជន",
         body: "មើលឃើញអ្វីដែលអតិថិជនធ្លាប់សួរ និងធ្លាប់កម្ម៉ង់ ដូច្នេះមិនចាំបាច់ឱ្យគាត់និយាយឡើងវិញ។",
+        preview: {
+          header: "Alex Morgan · ប្រវត្តិ",
+          rows: [
+            { title: "កម្ម៉ង់ #10482", sub: "១២ មីនា", pill: "ដឹកជញ្ជូនរួច", tone: "green" },
+            { title: "កម្ម៉ង់ #10231", sub: "២៨ កុម្ភៈ", pill: "ដឹកជញ្ជូនរួច", tone: "green" },
+            { title: "សារដំបូង", sub: "១៤ កុម្ភៈ · Messenger" },
+          ],
+          note: "មានការសន្ទនា ៦ និងកម្ម៉ង់ ២ លើប្រវត្តិរូបនេះ។",
+        },
       },
       {
         title: "ចាត់តាំងឱ្យសមាជិកក្រុម",
         body: "ប្រគល់ការសន្ទនាឱ្យអ្នកសមស្រប ឬឱ្យភ្នាក់ងារយកដោយខ្លួនឯង ដូច្នេះអ្នកគ្រប់គ្នាដឹងថានរណាកំពុងឆ្លើយ។",
+        preview: {
+          header: "បញ្ជីការងាររួម",
+          rows: [
+            { title: "Alex Morgan", sub: "Messenger · មិនទាន់មានអ្នកឆ្លើយ", pill: "ថ្មី", tone: "blue" },
+            { title: "Jordan Lee", sub: "Comment Facebook · Maya", pill: "កំពុងធ្វើ", tone: "amber" },
+            { title: "Sam Rivera", sub: "Telegram · Ben", pill: "រួចរាល់", tone: "green" },
+          ],
+          note: "អ្នកគ្រប់គ្នាឃើញបញ្ជីតែមួយ ដូច្នេះគ្មានអ្នកឆ្លើយពីរដងទេ។",
+        },
       },
       {
         title: "ការរំលឹកតាមដាន",
         body: "កំណត់ការរំលឹកលើការសន្ទនា ហើយ TENH ប្រាប់អ្នកនៅពេលដល់ម៉ោងត្រឡប់ទៅរកអតិថិជនវិញ។",
+        preview: {
+          header: "ការរំលឹក",
+          rows: [
+            { title: "Alex Morgan", sub: "ពិនិត្យថាទំហំសមឬអត់", pill: "ស្អែក ៩:០០", tone: "amber" },
+            { title: "Casey Kim", sub: "ផ្ញើតារាងតម្លៃថ្មី", pill: "សុក្រ ១៤:០០", tone: "slate" },
+          ],
+          note: "TENH ជូនដំណឹងពេលដល់ម៉ោងរំលឹក។",
+        },
       },
       {
         title: "តម្រងរក្សាទុក",
         body: "រក្សាទុកបញ្ជីដែលអ្នកមើលរាល់ថ្ងៃ — មិនទាន់អាន ចាត់តាំងឱ្យខ្ញុំ ឬឆានែលណាមួយ — ហើយបើកត្រឹមចុចម្តង។",
+        preview: {
+          header: "បញ្ជីរបស់ខ្ញុំ",
+          rows: [
+            { title: "មិនទាន់អាន", sub: "អ្វីដែលគ្មាននរណាឆ្លើយ", pill: "6", tone: "blue" },
+            { title: "ចាត់តាំងឱ្យខ្ញុំ", sub: "ការសន្ទនារបស់ខ្ញុំថ្ងៃនេះ", pill: "3", tone: "slate" },
+            { title: "តែ Telegram", sub: "មួយឆានែលម្តង", pill: "2", tone: "slate" },
+          ],
+          note: "បង្កើតម្តង បើកប្រើរាល់ថ្ងៃ។",
+        },
       },
       {
         title: "ជជែកជាក្រុម និងការនិយាយឈ្មោះ",
         body: "និយាយជាមួយក្រុមរបស់អ្នកនៅក្នុង TENH និងហៅឈ្មោះនរណាម្នាក់ពេលការសន្ទនាត្រូវការគាត់។",
+        preview: {
+          header: "ក្រុមគាំទ្រ",
+          rows: [
+            { title: "Maya", sub: "@Ben ជួយយក Alex Morgan បានទេ?" },
+            { title: "Ben", sub: "កំពុងយកឥឡូវនេះ។" },
+            { title: "Maya", sub: "អរគុណ អតិថិជនកំពុងរង់ចាំ។" },
+          ],
+          note: "ជជែកផ្ទៃក្នុង។ មិនផ្ញើទៅអតិថិជនទេ។",
+        },
       },
       {
         title: "ឯកសារអតិថិជន",
         body: "រក្សាវិក្កយបត្រ រូបភាព និងឯកសារនៅលើប្រវត្តិរូបអតិថិជន ជាប់នឹងការសន្ទនារបស់គាត់។",
+        preview: {
+          header: "ឯកសារ · Alex Morgan",
+          rows: [
+            { title: "receipt-10482.pdf", sub: "ដាក់ដោយ Maya · 142 KB" },
+            { title: "size-chart.png", sub: "ដាក់ដោយ Ben · 88 KB" },
+            { title: "delivery-note.jpg", sub: "ដាក់ដោយ Maya · 210 KB" },
+          ],
+          note: "រក្សានៅលើប្រវត្តិរូប មិនបាត់ក្នុងការជជែកទេ។",
+        },
       },
       {
         title: "របាយការណ៍ និងល្បឿនឆ្លើយតប",
         body: "មើលថាភ្នាក់ងារម្នាក់ៗឆ្លើយប៉ុន្មានសារ ឆានែលណាមមាញឹកបំផុត និងក្រុមឆ្លើយលឿនប៉ុណ្ណា។",
+        preview: {
+          header: "សប្តាហ៍នេះ",
+          rows: [
+            { title: "សារបានឆ្លើយ", sub: "គ្រប់ឆានែលរួមគ្នា", pill: "1,248", tone: "blue" },
+            { title: "ឆ្លើយលើកដំបូងជាមធ្យម", sub: "រយៈពេលដល់ចម្លើយដំបូង", pill: "4m 12s", tone: "green" },
+            { title: "ឆានែលមមាញឹកបំផុត", sub: "កន្លែងសារចូលច្រើនជាងគេ", pill: "Messenger", tone: "slate" },
+          ],
+          note: "បំបែកតាមភ្នាក់ងារ និងតាមឆានែល។",
+        },
       },
       {
         title: "តួនាទី និងសិទ្ធិ",
         body: "ជ្រើសរើសថានរណាអាចអញ្ជើញសមាជិក ភ្ជាប់ឆានែល ឬបើករបាយការណ៍។",
+        preview: {
+          header: "តួនាទី",
+          rows: [
+            { title: "ម្ចាស់", sub: "គ្រប់យ៉ាង រួមទាំងការទូទាត់", pill: "1", tone: "blue" },
+            { title: "អ្នកគ្រប់គ្រង", sub: "ក្រុម ស្លាក និងរបាយការណ៍", pill: "2", tone: "slate" },
+            { title: "ភ្នាក់ងារ", sub: "តែប្រអប់សារ", pill: "5", tone: "slate" },
+          ],
+          note: "អ្នកសម្រេចថាតួនាទីនីមួយៗអាចបើកអ្វីខ្លះ។",
+        },
       },
     ],
     pricingEyebrow: "តម្លៃ",
@@ -446,18 +612,21 @@ const SOON_CHANNELS = [
   { src: "/images/channels/tiktok.png", label: "TikTok" },
 ];
 
-const PILL_TONES = [
-  "bg-blue-50 text-blue-700",
-  "bg-amber-50 text-amber-700",
-  "bg-emerald-50 text-emerald-700",
-];
+const PREVIEW_TONES = {
+  blue: "bg-blue-50 text-blue-700",
+  amber: "bg-amber-50 text-amber-700",
+  green: "bg-emerald-50 text-emerald-700",
+  slate: "bg-slate-100 text-slate-600",
+} as const;
 
 export function MarketingPage() {
   const [lang, setLang] = useState<Lang>("en");
   const [cycleIndex, setCycleIndex] = useState(0);
+  const [featureIndex, setFeatureIndex] = useState(0);
 
   const t = COPY[lang];
   const cycle = CYCLES[cycleIndex];
+  const active = t.features[featureIndex] ?? t.features[0];
 
   function priceFor(monthlyCents: number) {
     const total = Math.round(
@@ -644,6 +813,10 @@ export function MarketingPage() {
           <p className="text-center text-sm text-slate-500">{t.channelsLead}</p>
 
           <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+            <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700">
+              {t.availableNow}
+            </span>
+
             {LIVE_CHANNELS.map((channel) => (
               <span
                 key={channel.label}
@@ -710,55 +883,103 @@ export function MarketingPage() {
         </div>
 
         <div className="mt-10 grid gap-8 lg:grid-cols-[1.05fr_1fr]">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-bold text-slate-950">{t.queueTitle}</h3>
-            <p className="mt-2 text-sm leading-7 text-slate-600">{t.queueLede}</p>
+          {/*
+            Left panel previews whichever tool is selected on the right, so
+            the claim and the picture of it stay side by side.
+          */}
+          <div className="lg:sticky lg:top-24 lg:self-start">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50/70 px-4 py-3">
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-600 text-white">
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
+                    <path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h13A2.5 2.5 0 0 1 21 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" />
+                  </svg>
+                </span>
+                <span className="min-w-0 truncate text-[13px] font-bold text-slate-900">
+                  {active.preview.header}
+                </span>
+                <span className="ml-auto shrink-0 rounded-full bg-slate-900 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                  {t.sampleBadge}
+                </span>
+              </div>
 
-            <div className="mt-5 flex flex-col gap-2">
-              {t.queueRows.map((row, index) => (
-                <div
-                  key={row.who}
-                  className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3"
-                >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[11px] font-bold text-slate-600">
-                    {row.who.slice(0, 1)}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-slate-900">
-                      {row.who}
-                    </span>
-                    <span className="block truncate text-xs text-slate-500">
-                      {row.via} · {row.agent}
-                    </span>
-                  </span>
-                  <span
-                    className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${PILL_TONES[index]}`}
+              <div className="flex flex-col">
+                {active.preview.rows.map((row) => (
+                  <div
+                    key={row.title}
+                    className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0"
                   >
-                    {row.pill}
-                  </span>
-                </div>
-              ))}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-semibold text-slate-900">
+                        {row.title}
+                      </span>
+                      <span className="block truncate text-[12px] text-slate-500">
+                        {row.sub}
+                      </span>
+                    </span>
+                    {"pill" in row && row.pill ? (
+                      <span
+                        className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold tabular-nums ${
+                          PREVIEW_TONES[
+                            ("tone" in row && row.tone
+                              ? row.tone
+                              : "slate") as keyof typeof PREVIEW_TONES
+                          ]
+                        }`}
+                      >
+                        {row.pill}
+                      </span>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+
+              <p className="border-t border-slate-200 bg-slate-50/70 px-4 py-3 text-[12px] leading-6 text-slate-600">
+                {active.preview.note}
+              </p>
             </div>
           </div>
 
           <div className="flex flex-col">
-            {t.features.map((feature, index) => (
-              <div
-                key={feature.title}
-                className={`py-4 ${
-                  index === t.features.length - 1
-                    ? ""
-                    : "border-b border-slate-200"
-                }`}
-              >
-                <h4 className="text-[15px] font-bold text-slate-900">
-                  {feature.title}
-                </h4>
-                <p className="mt-1 text-sm leading-7 text-slate-600">
-                  {feature.body}
-                </p>
-              </div>
-            ))}
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+              {t.previewHint}
+            </p>
+
+            {t.features.map((feature, index) => {
+              const selected = index === featureIndex;
+
+              return (
+                <button
+                  key={feature.title}
+                  type="button"
+                  onClick={() => setFeatureIndex(index)}
+                  aria-pressed={selected}
+                  className={`group rounded-xl border-b border-slate-200 px-3 py-3.5 text-left transition last:border-b-0 ${
+                    selected
+                      ? "bg-blue-50/70"
+                      : "hover:bg-slate-50"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full transition ${
+                        selected ? "bg-blue-600" : "bg-slate-300"
+                      }`}
+                    />
+                    <span
+                      className={`text-[15px] font-bold ${
+                        selected ? "text-blue-800" : "text-slate-900"
+                      }`}
+                    >
+                      {feature.title}
+                    </span>
+                  </span>
+                  <span className="mt-1 block pl-3.5 text-sm leading-7 text-slate-600">
+                    {feature.body}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -982,18 +1203,18 @@ export function MarketingPage() {
 
       {/* ---------- closer ---------- */}
       <section className="mx-auto max-w-6xl px-6 pb-16">
-        <div className="flex flex-wrap items-center gap-6 rounded-2xl bg-blue-600 px-8 py-10 text-white">
+        <div className="flex flex-wrap items-center gap-6 rounded-2xl bg-[linear-gradient(135deg,#06143A_0%,#0C2C87_46%,#3D1370_100%)] px-8 py-10 text-white">
           <div className="min-w-64 flex-1">
             <h2 className="text-2xl font-bold leading-snug tracking-tight">
               {t.closerTitle}
             </h2>
-            <p className="mt-2 max-w-lg text-sm leading-7 text-blue-100">
+            <p className="mt-2 max-w-lg text-sm leading-7 text-white/75">
               {t.closerBody}
             </p>
           </div>
           <a
             href="/register"
-            className="rounded-xl bg-white px-6 py-3 text-sm font-bold text-blue-700 transition hover:bg-blue-50"
+            className="rounded-xl bg-white px-6 py-3 text-sm font-bold text-[#0C2C87] transition hover:bg-blue-50"
           >
             {t.ctaPrimary}
           </a>
