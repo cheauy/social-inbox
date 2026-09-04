@@ -258,11 +258,17 @@ export async function GET(request: NextRequest) {
           .order("created_at", { ascending: true }),
       ),
 
-      // "vs previous" only needs the count, so ask Postgres for it directly.
+      /*
+       * "vs previous" only needs the count, so ask Postgres for it directly.
+       * It must exclude comments the same way the current window does, or the
+       * change percentage compares Messenger against Messenger-plus-comments
+       * and reports a fall that never happened.
+       */
       supabaseAdmin
         .from("conversations")
         .select("id", { count: "exact", head: true })
         .eq("business_id", currentMember.business_id)
+        .or("source_type.is.null,source_type.neq.comment")
         .gte("created_at", previousStart.toISOString())
         .lt("created_at", range.start.toISOString()),
     ]);
@@ -503,21 +509,32 @@ export async function GET(request: NextRequest) {
     }))
     .sort((a, b) => b.conversations - a.conversations);
 
-  const totalConversations = channels.reduce(
+  /*
+   * Summary figures count Messenger only. Each channel row is keyed by
+   * source type, so summing every row counted comment threads as
+   * conversations — the same overstatement the analytics SQL functions
+   * carried. The per-channel rows below still report comments separately,
+   * which is the point of splitting them.
+   */
+  const messengerChannels = channels.filter(
+    (channel) => channel.sourceType !== "comment",
+  );
+
+  const totalConversations = messengerChannels.reduce(
     (sum, channel) => sum + channel.conversations,
     0,
   );
 
-  const allFirstResponses = [...buckets.values()].flatMap(
-    (bucket) => bucket.firstResponseSeconds,
-  );
+  const allFirstResponses = [...buckets.values()]
+    .filter((bucket) => bucket.sourceType !== "comment")
+    .flatMap((bucket) => bucket.firstResponseSeconds);
 
-  const totalAnswered = channels.reduce(
+  const totalAnswered = messengerChannels.reduce(
     (sum, channel) => sum + channel.answered,
     0,
   );
 
-  const totalSlaMet = channels.reduce(
+  const totalSlaMet = messengerChannels.reduce(
     (sum, channel) => sum + channel.slaMet,
     0,
   );
@@ -545,6 +562,10 @@ export async function GET(request: NextRequest) {
     end: range.end.toISOString(),
     summary: {
       conversations: totalConversations,
+      /*
+       * Message counts stay across every channel, comments included: a reply
+       * sent to a comment is still a message your team sent.
+       */
       incomingMessages: channels.reduce(
         (sum, channel) => sum + channel.incomingMessages,
         0,
@@ -555,7 +576,7 @@ export async function GET(request: NextRequest) {
       ),
       avgFirstResponseSeconds: averageSeconds(allFirstResponses),
       answered: totalAnswered,
-      unanswered: channels.reduce(
+      unanswered: messengerChannels.reduce(
         (sum, channel) => sum + channel.unanswered,
         0,
       ),
