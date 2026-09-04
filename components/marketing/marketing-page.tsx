@@ -16,8 +16,9 @@ import { useState } from "react";
  * language: a visitor to the public site has no workspace, so the page has
  * to stand on its own.
  *
- * Every person, shop and order shown here is invented sample data. Nothing
- * on this page is a real customer.
+ * Every person, shop and order shown here is invented sample data, and
+ * every feature named has a real route behind it — the placeholder
+ * settings pages are deliberately not advertised.
  */
 
 const roboto = Roboto({
@@ -45,10 +46,6 @@ const PLAN_MONTHLY_CENTS = {
 /* Mirrors TENH_CUSTOM_PRICING in lib/subscription/plan-catalog.ts. */
 const CUSTOM_PRICING = {
   baseMonthlyCents: 1300,
-  includedChannels: 3,
-  includedUsers: 1,
-  extraChannelCents: 400,
-  extraUserCents: 300,
   minChannels: 3,
   maxChannels: 30,
   minUsers: 1,
@@ -62,8 +59,175 @@ const CYCLES = [
   { months: 12, discount: 0.2 },
 ];
 
+const BRAND_GRADIENT =
+  "bg-[linear-gradient(135deg,#06143A_0%,#0C2C87_46%,#3D1370_100%)]";
+
 function money(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+/* ---------------------------------------------------------------- icons */
+
+type IconName =
+  | "plug"
+  | "inbox"
+  | "team"
+  | "bell"
+  | "bolt"
+  | "chart"
+  | "clock"
+  | "shield"
+  | "users"
+  | "lock"
+  | "link"
+  | "cart"
+  | "hanger"
+  | "bottle"
+  | "food"
+  | "box"
+  | "headset";
+
+function Icon({
+  name,
+  className = "h-5 w-5",
+}: {
+  name: IconName;
+  className?: string;
+}) {
+  const paths: Record<IconName, React.ReactNode> = {
+    plug: (
+      <>
+        <path d="M9 3v6M15 3v6" />
+        <path d="M6 9h12v3a6 6 0 0 1-12 0z" />
+        <path d="M12 18v3" />
+      </>
+    ),
+    inbox: (
+      <>
+        <path d="M3 13h5l1.5 2.5h5L16 13h5" />
+        <path d="M4.5 6h15l1.5 7v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5z" />
+      </>
+    ),
+    team: (
+      <>
+        <circle cx="9" cy="8" r="3" />
+        <path d="M3.5 19a5.5 5.5 0 0 1 11 0" />
+        <path d="M16.5 7.5a2.5 2.5 0 0 1 0 5" />
+        <path d="M17.5 15a4.5 4.5 0 0 1 3 4" />
+      </>
+    ),
+    bell: (
+      <>
+        <path d="M18 8a6 6 0 0 0-12 0c0 6-2.5 6-2.5 8h17C20.5 14 18 14 18 8" />
+        <path d="M10 20a2 2 0 0 0 4 0" />
+      </>
+    ),
+    bolt: <path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12z" />,
+    chart: (
+      <>
+        <path d="M12 3a9 9 0 1 0 9 9h-9z" />
+        <path d="M14 3.5A9 9 0 0 1 20.5 10H14z" />
+      </>
+    ),
+    clock: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5.5l3.5 2" />
+      </>
+    ),
+    shield: (
+      <>
+        <path d="M12 3 19 6v5.5c0 4.6-2.8 8-7 9.5-4.2-1.5-7-4.9-7-9.5V6z" />
+        <path d="m9.5 12 1.8 1.8 3.4-3.8" />
+      </>
+    ),
+    users: (
+      <>
+        <circle cx="12" cy="8" r="3.2" />
+        <path d="M5.5 19.5a6.5 6.5 0 0 1 13 0" />
+      </>
+    ),
+    lock: (
+      <>
+        <rect x="5" y="10.5" width="14" height="9.5" rx="2" />
+        <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+      </>
+    ),
+    link: (
+      <>
+        <path d="M10.5 13.5a4 4 0 0 0 5.7 0l2.3-2.3a4 4 0 1 0-5.7-5.7l-1.2 1.2" />
+        <path d="M13.5 10.5a4 4 0 0 0-5.7 0l-2.3 2.3a4 4 0 1 0 5.7 5.7l1.2-1.2" />
+      </>
+    ),
+    cart: (
+      <>
+        <circle cx="9.5" cy="19.5" r="1.4" />
+        <circle cx="17" cy="19.5" r="1.4" />
+        <path d="M3 4h2.2l2.3 11h11l2-8H6" />
+      </>
+    ),
+    hanger: (
+      <>
+        <path d="M12 8a2.4 2.4 0 1 1 2.4-2.4" />
+        <path d="M12 8v2.6L3.8 16.4A1.5 1.5 0 0 0 4.7 19h14.6a1.5 1.5 0 0 0 .9-2.6L12 10.6" />
+      </>
+    ),
+    bottle: (
+      <>
+        <path d="M10 3h4v3l1.6 2.2A4 4 0 0 1 16.4 11v8a2 2 0 0 1-2 2H9.6a2 2 0 0 1-2-2v-8a4 4 0 0 1 .8-2.8L10 6z" />
+        <path d="M7.6 13h8.8" />
+      </>
+    ),
+    food: (
+      <>
+        <path d="M6 3v8a2.5 2.5 0 0 0 5 0V3" />
+        <path d="M8.5 11v10" />
+        <path d="M17.5 3c-1.4 1.4-2 3-2 5.5s.7 3.5 2 3.5V3z" />
+        <path d="M17.5 12v9" />
+      </>
+    ),
+    box: (
+      <>
+        <path d="m12 3 8 4v10l-8 4-8-4V7z" />
+        <path d="m4 7 8 4 8-4M12 11v10" />
+      </>
+    ),
+    headset: (
+      <>
+        <path d="M4 14v-2a8 8 0 0 1 16 0v2" />
+        <rect x="2.5" y="13.5" width="4" height="6" rx="1.6" />
+        <rect x="17.5" y="13.5" width="4" height="6" rx="1.6" />
+        <path d="M20 19.5v.5a3 3 0 0 1-3 3h-2" />
+      </>
+    ),
+  };
+
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      {paths[name]}
+    </svg>
+  );
+}
+
+function FacebookGlyph({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="11" fill="#1877F2" />
+      <path
+        d="M13.2 19v-6h2l.3-2.3h-2.3V9.2c0-.66.2-1.1 1.1-1.1h1.2V6.1a15 15 0 0 0-1.8-.1c-1.8 0-3 1.1-3 3v1.7H8.7V13h2v6z"
+        fill="#fff"
+      />
+    </svg>
+  );
 }
 
 function UkFlag() {
@@ -93,6 +257,8 @@ function KhFlag() {
   );
 }
 
+/* ------------------------------------------------------------------ copy */
+
 const COPY = {
   en: {
     nav: {
@@ -114,142 +280,143 @@ const COPY = {
     channelsLead: "Connect the channels your customers already use",
     availableNow: "Available now",
     comingSoon: "Coming soon",
-    howEyebrow: "Inside TENH",
-    howTitle: "Everything your team needs to answer well.",
-    howLede:
-      "TENH is built for teams handling customer messages every day: shared assignment, saved replies, customer history, reminders and reporting. Choose any tool to see how it looks inside the workspace.",
-    previewHint: "Select a tool to preview it",
-    features: [
+
+    stepsTitle: "How TENH works",
+    steps: [
       {
-        title: "Saved replies",
-        body: "Answer common questions about price, stock and delivery in one click instead of typing again.",
-        preview: {
-          header: "Quick replies",
-          rows: [
-            { title: "Delivery price", sub: "Delivery is $1.50 inside the city." },
-            { title: "In stock today", sub: "Yes, this item is still available." },
-            { title: "Payment options", sub: "You can pay on delivery or transfer." },
-          ],
-          note: "One click puts the text in the reply box.",
-        },
+        icon: "plug" as IconName,
+        title: "Connect your channels",
+        body: "Add Messenger, comments and Telegram in a few clicks.",
       },
       {
-        title: "Tags & customer notes",
-        body: "Label conversations your way, and leave notes only your team can see.",
-        preview: {
-          header: "Alex Morgan",
-          rows: [
-            { title: "Tags", sub: "VIP · Order · Follow up", pill: "3", tone: "blue" },
-            { title: "Note from Maya", sub: "Prefers delivery after 5pm." },
-            { title: "Note from Ben", sub: "Asked about bulk price last month." },
-          ],
-          note: "Notes stay internal. Customers never see them.",
-        },
+        icon: "inbox" as IconName,
+        title: "Receive everything in TENH",
+        body: "All messages and comments appear in one unified inbox.",
       },
       {
-        title: "Customer history",
-        body: "See what a customer asked and ordered before, so you never ask them to repeat it.",
-        preview: {
-          header: "Alex Morgan · History",
-          rows: [
-            { title: "Order #10482", sub: "12 Mar", pill: "Delivered", tone: "green" },
-            { title: "Order #10231", sub: "28 Feb", pill: "Delivered", tone: "green" },
-            { title: "First message", sub: "14 Feb · Messenger" },
-          ],
-          note: "6 conversations and 2 orders on this profile.",
-        },
-      },
-      {
-        title: "Assign to a teammate",
-        body: "Give a conversation to the right person, or let an agent claim it, so everyone knows who is answering.",
-        preview: {
-          header: "Shared queue",
-          rows: [
-            { title: "Alex Morgan", sub: "Messenger · nobody yet", pill: "New", tone: "blue" },
-            { title: "Jordan Lee", sub: "Comment Facebook · Maya", pill: "In progress", tone: "amber" },
-            { title: "Sam Rivera", sub: "Telegram · Ben", pill: "Done", tone: "green" },
-          ],
-          note: "Everyone sees the same list, so nobody answers twice.",
-        },
-      },
-      {
-        title: "Follow-up reminders",
-        body: "Set a reminder on a conversation and TENH tells you when it is time to come back to the customer.",
-        preview: {
-          header: "Reminders",
-          rows: [
-            { title: "Alex Morgan", sub: "Check if the size fits", pill: "Tomorrow 9:00", tone: "amber" },
-            { title: "Casey Kim", sub: "Send the new price list", pill: "Fri 14:00", tone: "slate" },
-          ],
-          note: "TENH notifies you when a reminder is due.",
-        },
-      },
-      {
-        title: "Saved filters",
-        body: "Save the lists you check every day — unread, assigned to me, one channel — and open them in one click.",
-        preview: {
-          header: "My views",
-          rows: [
-            { title: "Unread", sub: "Everything nobody has answered", pill: "6", tone: "blue" },
-            { title: "Assigned to me", sub: "My conversations today", pill: "3", tone: "slate" },
-            { title: "Telegram only", sub: "One channel at a time", pill: "2", tone: "slate" },
-          ],
-          note: "Build the list once, open it every day.",
-        },
-      },
-      {
-        title: "Team chat & mentions",
-        body: "Talk to your team inside TENH and mention someone when a conversation needs them.",
-        preview: {
-          header: "Support team",
-          rows: [
-            { title: "Maya", sub: "@Ben can you take Alex Morgan?" },
-            { title: "Ben", sub: "Taking it now." },
-            { title: "Maya", sub: "Thanks, customer is waiting." },
-          ],
-          note: "Internal chat. It is never sent to the customer.",
-        },
-      },
-      {
-        title: "Customer files",
-        body: "Keep receipts, photos and documents on the customer profile, next to their conversations.",
-        preview: {
-          header: "Files · Alex Morgan",
-          rows: [
-            { title: "receipt-10482.pdf", sub: "Uploaded by Maya · 142 KB" },
-            { title: "size-chart.png", sub: "Uploaded by Ben · 88 KB" },
-            { title: "delivery-note.jpg", sub: "Uploaded by Maya · 210 KB" },
-          ],
-          note: "Stored on the profile, not lost in the chat.",
-        },
-      },
-      {
-        title: "Reports & response time",
-        body: "See how many messages each agent answers, which channel is busiest, and how fast your team replies.",
-        preview: {
-          header: "This week",
-          rows: [
-            { title: "Messages answered", sub: "Across all channels", pill: "1,248", tone: "blue" },
-            { title: "Average first reply", sub: "Time to the first answer", pill: "4m 12s", tone: "green" },
-            { title: "Busiest channel", sub: "Where most messages arrive", pill: "Messenger", tone: "slate" },
-          ],
-          note: "Broken down per agent and per channel.",
-        },
-      },
-      {
-        title: "Roles & permissions",
-        body: "Choose who can invite people, connect channels, or open reports.",
-        preview: {
-          header: "Roles",
-          rows: [
-            { title: "Owner", sub: "Everything, including billing", pill: "1", tone: "blue" },
-            { title: "Manager", sub: "Team, tags and reports", pill: "2", tone: "slate" },
-            { title: "Agent", sub: "Inbox only", pill: "5", tone: "slate" },
-          ],
-          note: "You decide what each role is allowed to open.",
-        },
+        icon: "team" as IconName,
+        title: "Reply with your team",
+        body: "Collaborate, assign and respond faster from one place.",
       },
     ],
+
+    featuresEyebrow: "Features",
+    featuresTitle: "Everything your team needs to answer well.",
+    features: [
+      {
+        icon: "inbox" as IconName,
+        title: "Unified inbox",
+        body: "All conversations from every channel in one place.",
+      },
+      {
+        icon: "bell" as IconName,
+        title: "Never miss a customer",
+        body: "Live notifications so no message is left waiting.",
+      },
+      {
+        icon: "team" as IconName,
+        title: "Team collaboration",
+        body: "Assign, note internally, and resolve together.",
+      },
+      {
+        icon: "bolt" as IconName,
+        title: "Fast replies",
+        body: "Use saved replies and tags to respond faster.",
+      },
+      {
+        icon: "chart" as IconName,
+        title: "Channel visibility",
+        body: "See performance and volume across all your channels.",
+      },
+      {
+        icon: "clock" as IconName,
+        title: "Customer history",
+        body: "Full conversation history and customer profiles.",
+      },
+    ],
+
+    showcase: [
+      {
+        tone: "blue" as const,
+        title: "Manage messages and comments in one place",
+        body: "Stop switching between apps. TENH brings your messages, comments and Telegram chats into a single, clean workspace.",
+      },
+      {
+        tone: "violet" as const,
+        title: "Work together with your team",
+        body: "Assign conversations, leave internal notes, and keep everyone on the same page to deliver better support.",
+      },
+      {
+        tone: "green" as const,
+        title: "Reply faster with organized conversations",
+        body: "Use saved replies, tags and saved filters to find what you need and respond in seconds.",
+      },
+    ],
+    labels: {
+      inbox: "Inbox",
+      assignedTo: "Assigned to",
+      teamNotes: "Team notes",
+      note: "Customer asked for a delivery date.",
+      noteBy: "Added by Maya · 10:24 AM",
+      online: "Online",
+      away: "Away",
+      quickReplies: "Quick replies",
+      chips: ["Delivery info", "Refund policy", "Order status"],
+      reply: "Thanks! One moment please, I am checking that for you.",
+      replyTime: "10:23 AM",
+      views: [
+        { label: "All conversations", count: "128" },
+        { label: "Unread", count: "73" },
+        { label: "Mentions", count: "15" },
+        { label: "Assigned to me", count: "7" },
+      ],
+      msgs: [
+        { who: "Alex Morgan", text: "Hi! I need help with my recent order.", time: "2m" },
+        { who: "Jordan Lee", text: "Where can I view my invoice?", time: "10m" },
+      ],
+      more: [
+        { who: "Sam Rivera", text: "Can I pay on delivery?", time: "1h" },
+        { who: "Casey Kim", text: "Do you have a bigger size?", time: "3h" },
+      ],
+      threadSub: "Comment Facebook · Acme Store",
+      open: "Open",
+      send: "Send",
+    },
+
+    industriesTitle: "Built for modern businesses",
+    industries: [
+      { icon: "cart" as IconName, label: "Online shops" },
+      { icon: "hanger" as IconName, label: "Fashion stores" },
+      { icon: "bottle" as IconName, label: "Beauty & salons" },
+      { icon: "food" as IconName, label: "Restaurants" },
+      { icon: "box" as IconName, label: "Delivery businesses" },
+      { icon: "headset" as IconName, label: "Customer support teams" },
+    ],
+
+    securityTitle: "Your workspace stays yours",
+    security: [
+      {
+        icon: "shield" as IconName,
+        title: "Secure authentication",
+        body: "Sign-in is protected, with two-factor available for your account.",
+      },
+      {
+        icon: "users" as IconName,
+        title: "Role-based access",
+        body: "Control who can view, reply and manage your conversations.",
+      },
+      {
+        icon: "lock" as IconName,
+        title: "Workspace permissions",
+        body: "Detailed permissions to protect your team and your customers.",
+      },
+      {
+        icon: "link" as IconName,
+        title: "Channels you authorize",
+        body: "You stay in control of which Pages and Bots are connected.",
+      },
+    ],
+
     pricingEyebrow: "Pricing",
     pricingTitle: "Pay for the channels and seats you use.",
     pricingLede:
@@ -275,7 +442,7 @@ const COPY = {
         name: "Team",
         points: [
           "For a small team with a few Pages and Bots",
-          "Share new chats between agents",
+          "Assign conversations between agents",
           "Reports and response times",
         ],
       },
@@ -283,7 +450,7 @@ const COPY = {
         name: "Pro",
         points: [
           "For a growing support team",
-          "Roles, permissions, change history",
+          "Roles and detailed permissions",
           "Priority support",
         ],
       },
@@ -293,11 +460,12 @@ const COPY = {
     customFrom: "from",
     customPoints: (channels: string, users: string) => [
       `Choose ${channels} channels and ${users} users`,
-      `+$4 per extra channel, +$3 per extra user`,
+      "+$4 per extra channel, +$3 per extra user",
       "Same features as Pro",
     ],
     customCta: "Build a plan",
     payNote: "Pay one time to use — no automatic renewal. Prices in USD.",
+
     faqEyebrow: "Help",
     faqTitle: "Before you start",
     faq: [
@@ -342,10 +510,12 @@ const COPY = {
         a: "Only the people you invite to your workspace. You control what each role is allowed to open using roles and permissions.",
       },
     ],
+
     closerTitle: "Stop losing customers in three different apps.",
     closerBody: `Connect your first Page or Bot in a few minutes. Free for ${TRIAL_DAYS} days.`,
     footerTag: "One inbox. Every conversation.",
   },
+
   km: {
     nav: {
       product: "ផលិតផល",
@@ -366,142 +536,143 @@ const COPY = {
     channelsLead: "ភ្ជាប់ឆានែលដែលអតិថិជនរបស់អ្នកកំពុងប្រើ",
     availableNow: "មានឥឡូវនេះ",
     comingSoon: "នឹងមកដល់ឆាប់ៗ",
-    howEyebrow: "ខាងក្នុង TENH",
-    howTitle: "គ្រប់យ៉ាងដែលក្រុមរបស់អ្នកត្រូវការដើម្បីឆ្លើយបានល្អ។",
-    howLede:
-      "TENH ត្រូវបានសាងសម្រាប់ក្រុមដែលដោះស្រាយសារអតិថិជនរាល់ថ្ងៃ៖ ការចាត់តាំងរួម ការឆ្លើយតបរហ័ស ប្រវត្តិអតិថិជន ការរំលឹក និងរបាយការណ៍។ ជ្រើសរើសឧបករណ៍ណាមួយដើម្បីមើលរូបរាងខាងក្នុង។",
-    previewHint: "ជ្រើសរើសឧបករណ៍ដើម្បីមើល",
-    features: [
+
+    stepsTitle: "របៀបដែល TENH ដំណើរការ",
+    steps: [
       {
-        title: "ការឆ្លើយតបរហ័ស",
-        body: "ឆ្លើយសំណួរញឹកញាប់អំពីតម្លៃ ស្តុក និងការដឹកជញ្ជូន ត្រឹមចុចម្តង ដោយមិនចាំបាច់វាយម្តងទៀត។",
-        preview: {
-          header: "ចម្លើយរហ័ស",
-          rows: [
-            { title: "តម្លៃដឹកជញ្ជូន", sub: "ដឹកជញ្ជូន $1.50 ក្នុងទីក្រុង។" },
-            { title: "មានស្តុកថ្ងៃនេះ", sub: "បាទ/ចាស ទំនិញនេះនៅមាន។" },
-            { title: "របៀបទូទាត់", sub: "អាចបង់ពេលដឹកជញ្ជូន ឬផ្ទេរប្រាក់។" },
-          ],
-          note: "ចុចម្តងដាក់អត្ថបទចូលប្រអប់ឆ្លើយតប។",
-        },
+        icon: "plug" as IconName,
+        title: "ភ្ជាប់ឆានែលរបស់អ្នក",
+        body: "បន្ថែម Messenger មតិយោបល់ និង Telegram ក្នុងការចុចពីរបីដង។",
       },
       {
-        title: "ស្លាក និងកំណត់ចំណាំអតិថិជន",
-        body: "ដាក់ស្លាកការសន្ទនាតាមរបៀបរបស់អ្នក និងទុកកំណត់ចំណាំសម្រាប់តែក្រុមរបស់អ្នកមើល។",
-        preview: {
-          header: "Alex Morgan",
-          rows: [
-            { title: "ស្លាក", sub: "VIP · កម្ម៉ង់ · តាមដាន", pill: "3", tone: "blue" },
-            { title: "កំណត់ចំណាំពី Maya", sub: "ចូលចិត្តដឹកជញ្ជូនក្រោយម៉ោង ៥ ល្ងាច។" },
-            { title: "កំណត់ចំណាំពី Ben", sub: "ធ្លាប់សួរតម្លៃដុំកាលពីខែមុន។" },
-          ],
-          note: "កំណត់ចំណាំសម្រាប់តែផ្ទៃក្នុង។ អតិថិជនមិនឃើញទេ។",
-        },
+        icon: "inbox" as IconName,
+        title: "ទទួលអ្វីៗទាំងអស់ក្នុង TENH",
+        body: "សារ និងមតិទាំងអស់បង្ហាញក្នុងប្រអប់សាររួមតែមួយ។",
       },
       {
-        title: "ប្រវត្តិអតិថិជន",
-        body: "មើលឃើញអ្វីដែលអតិថិជនធ្លាប់សួរ និងធ្លាប់កម្ម៉ង់ ដូច្នេះមិនចាំបាច់ឱ្យគាត់និយាយឡើងវិញ។",
-        preview: {
-          header: "Alex Morgan · ប្រវត្តិ",
-          rows: [
-            { title: "កម្ម៉ង់ #10482", sub: "១២ មីនា", pill: "ដឹកជញ្ជូនរួច", tone: "green" },
-            { title: "កម្ម៉ង់ #10231", sub: "២៨ កុម្ភៈ", pill: "ដឹកជញ្ជូនរួច", tone: "green" },
-            { title: "សារដំបូង", sub: "១៤ កុម្ភៈ · Messenger" },
-          ],
-          note: "មានការសន្ទនា ៦ និងកម្ម៉ង់ ២ លើប្រវត្តិរូបនេះ។",
-        },
-      },
-      {
-        title: "ចាត់តាំងឱ្យសមាជិកក្រុម",
-        body: "ប្រគល់ការសន្ទនាឱ្យអ្នកសមស្រប ឬឱ្យភ្នាក់ងារយកដោយខ្លួនឯង ដូច្នេះអ្នកគ្រប់គ្នាដឹងថានរណាកំពុងឆ្លើយ។",
-        preview: {
-          header: "បញ្ជីការងាររួម",
-          rows: [
-            { title: "Alex Morgan", sub: "Messenger · មិនទាន់មានអ្នកឆ្លើយ", pill: "ថ្មី", tone: "blue" },
-            { title: "Jordan Lee", sub: "Comment Facebook · Maya", pill: "កំពុងធ្វើ", tone: "amber" },
-            { title: "Sam Rivera", sub: "Telegram · Ben", pill: "រួចរាល់", tone: "green" },
-          ],
-          note: "អ្នកគ្រប់គ្នាឃើញបញ្ជីតែមួយ ដូច្នេះគ្មានអ្នកឆ្លើយពីរដងទេ។",
-        },
-      },
-      {
-        title: "ការរំលឹកតាមដាន",
-        body: "កំណត់ការរំលឹកលើការសន្ទនា ហើយ TENH ប្រាប់អ្នកនៅពេលដល់ម៉ោងត្រឡប់ទៅរកអតិថិជនវិញ។",
-        preview: {
-          header: "ការរំលឹក",
-          rows: [
-            { title: "Alex Morgan", sub: "ពិនិត្យថាទំហំសមឬអត់", pill: "ស្អែក ៩:០០", tone: "amber" },
-            { title: "Casey Kim", sub: "ផ្ញើតារាងតម្លៃថ្មី", pill: "សុក្រ ១៤:០០", tone: "slate" },
-          ],
-          note: "TENH ជូនដំណឹងពេលដល់ម៉ោងរំលឹក។",
-        },
-      },
-      {
-        title: "តម្រងរក្សាទុក",
-        body: "រក្សាទុកបញ្ជីដែលអ្នកមើលរាល់ថ្ងៃ — មិនទាន់អាន ចាត់តាំងឱ្យខ្ញុំ ឬឆានែលណាមួយ — ហើយបើកត្រឹមចុចម្តង។",
-        preview: {
-          header: "បញ្ជីរបស់ខ្ញុំ",
-          rows: [
-            { title: "មិនទាន់អាន", sub: "អ្វីដែលគ្មាននរណាឆ្លើយ", pill: "6", tone: "blue" },
-            { title: "ចាត់តាំងឱ្យខ្ញុំ", sub: "ការសន្ទនារបស់ខ្ញុំថ្ងៃនេះ", pill: "3", tone: "slate" },
-            { title: "តែ Telegram", sub: "មួយឆានែលម្តង", pill: "2", tone: "slate" },
-          ],
-          note: "បង្កើតម្តង បើកប្រើរាល់ថ្ងៃ។",
-        },
-      },
-      {
-        title: "ជជែកជាក្រុម និងការនិយាយឈ្មោះ",
-        body: "និយាយជាមួយក្រុមរបស់អ្នកនៅក្នុង TENH និងហៅឈ្មោះនរណាម្នាក់ពេលការសន្ទនាត្រូវការគាត់។",
-        preview: {
-          header: "ក្រុមគាំទ្រ",
-          rows: [
-            { title: "Maya", sub: "@Ben ជួយយក Alex Morgan បានទេ?" },
-            { title: "Ben", sub: "កំពុងយកឥឡូវនេះ។" },
-            { title: "Maya", sub: "អរគុណ អតិថិជនកំពុងរង់ចាំ។" },
-          ],
-          note: "ជជែកផ្ទៃក្នុង។ មិនផ្ញើទៅអតិថិជនទេ។",
-        },
-      },
-      {
-        title: "ឯកសារអតិថិជន",
-        body: "រក្សាវិក្កយបត្រ រូបភាព និងឯកសារនៅលើប្រវត្តិរូបអតិថិជន ជាប់នឹងការសន្ទនារបស់គាត់។",
-        preview: {
-          header: "ឯកសារ · Alex Morgan",
-          rows: [
-            { title: "receipt-10482.pdf", sub: "ដាក់ដោយ Maya · 142 KB" },
-            { title: "size-chart.png", sub: "ដាក់ដោយ Ben · 88 KB" },
-            { title: "delivery-note.jpg", sub: "ដាក់ដោយ Maya · 210 KB" },
-          ],
-          note: "រក្សានៅលើប្រវត្តិរូប មិនបាត់ក្នុងការជជែកទេ។",
-        },
-      },
-      {
-        title: "របាយការណ៍ និងល្បឿនឆ្លើយតប",
-        body: "មើលថាភ្នាក់ងារម្នាក់ៗឆ្លើយប៉ុន្មានសារ ឆានែលណាមមាញឹកបំផុត និងក្រុមឆ្លើយលឿនប៉ុណ្ណា។",
-        preview: {
-          header: "សប្តាហ៍នេះ",
-          rows: [
-            { title: "សារបានឆ្លើយ", sub: "គ្រប់ឆានែលរួមគ្នា", pill: "1,248", tone: "blue" },
-            { title: "ឆ្លើយលើកដំបូងជាមធ្យម", sub: "រយៈពេលដល់ចម្លើយដំបូង", pill: "4m 12s", tone: "green" },
-            { title: "ឆានែលមមាញឹកបំផុត", sub: "កន្លែងសារចូលច្រើនជាងគេ", pill: "Messenger", tone: "slate" },
-          ],
-          note: "បំបែកតាមភ្នាក់ងារ និងតាមឆានែល។",
-        },
-      },
-      {
-        title: "តួនាទី និងសិទ្ធិ",
-        body: "ជ្រើសរើសថានរណាអាចអញ្ជើញសមាជិក ភ្ជាប់ឆានែល ឬបើករបាយការណ៍។",
-        preview: {
-          header: "តួនាទី",
-          rows: [
-            { title: "ម្ចាស់", sub: "គ្រប់យ៉ាង រួមទាំងការទូទាត់", pill: "1", tone: "blue" },
-            { title: "អ្នកគ្រប់គ្រង", sub: "ក្រុម ស្លាក និងរបាយការណ៍", pill: "2", tone: "slate" },
-            { title: "ភ្នាក់ងារ", sub: "តែប្រអប់សារ", pill: "5", tone: "slate" },
-          ],
-          note: "អ្នកសម្រេចថាតួនាទីនីមួយៗអាចបើកអ្វីខ្លះ។",
-        },
+        icon: "team" as IconName,
+        title: "ឆ្លើយតបជាមួយក្រុម",
+        body: "សហការ ចាត់តាំង និងឆ្លើយបានលឿនជាងពីកន្លែងតែមួយ។",
       },
     ],
+
+    featuresEyebrow: "មុខងារ",
+    featuresTitle: "គ្រប់យ៉ាងដែលក្រុមរបស់អ្នកត្រូវការដើម្បីឆ្លើយបានល្អ។",
+    features: [
+      {
+        icon: "inbox" as IconName,
+        title: "ប្រអប់សាររួម",
+        body: "ការសន្ទនាទាំងអស់ពីគ្រប់ឆានែល នៅកន្លែងតែមួយ។",
+      },
+      {
+        icon: "bell" as IconName,
+        title: "មិនខកខានអតិថិជន",
+        body: "ការជូនដំណឹងផ្ទាល់ ដូច្នេះគ្មានសារណាត្រូវរង់ចាំ។",
+      },
+      {
+        icon: "team" as IconName,
+        title: "សហការជាក្រុម",
+        body: "ចាត់តាំង ដាក់កំណត់ចំណាំផ្ទៃក្នុង និងដោះស្រាយរួមគ្នា។",
+      },
+      {
+        icon: "bolt" as IconName,
+        title: "ឆ្លើយតបរហ័ស",
+        body: "ប្រើចម្លើយរក្សាទុក និងស្លាកដើម្បីឆ្លើយបានលឿន។",
+      },
+      {
+        icon: "chart" as IconName,
+        title: "មើលឃើញឆានែល",
+        body: "មើលលទ្ធផល និងបរិមាណសារលើគ្រប់ឆានែលរបស់អ្នក។",
+      },
+      {
+        icon: "clock" as IconName,
+        title: "ប្រវត្តិអតិថិជន",
+        body: "ប្រវត្តិការសន្ទនាពេញលេញ និងប្រវត្តិរូបអតិថិជន។",
+      },
+    ],
+
+    showcase: [
+      {
+        tone: "blue" as const,
+        title: "គ្រប់គ្រងសារ និងមតិនៅកន្លែងតែមួយ",
+        body: "ឈប់ប្តូរកម្មវិធីទៅមក។ TENH នាំសារ មតិយោបល់ និងការជជែក Telegram មកក្នុងកន្លែងធ្វើការតែមួយ។",
+      },
+      {
+        tone: "violet" as const,
+        title: "ធ្វើការរួមគ្នាជាមួយក្រុមរបស់អ្នក",
+        body: "ចាត់តាំងការសន្ទនា ទុកកំណត់ចំណាំផ្ទៃក្នុង និងឱ្យអ្នកគ្រប់គ្នាដឹងព័ត៌មានដូចគ្នា ដើម្បីបម្រើបានល្អជាង។",
+      },
+      {
+        tone: "green" as const,
+        title: "ឆ្លើយលឿនជាងមុនដោយការរៀបចំល្អ",
+        body: "ប្រើចម្លើយរក្សាទុក ស្លាក និងតម្រង ដើម្បីរកអ្វីដែលត្រូវការ ហើយឆ្លើយក្នុងរយៈពេលប៉ុន្មានវិនាទី។",
+      },
+    ],
+    labels: {
+      inbox: "ប្រអប់សារ",
+      assignedTo: "ចាត់តាំងឱ្យ",
+      teamNotes: "កំណត់ចំណាំក្រុម",
+      note: "អតិថិជនសួររកកាលបរិច្ឆេទដឹកជញ្ជូន។",
+      noteBy: "ដាក់ដោយ Maya · ១០:២៤",
+      online: "នៅលើបណ្តាញ",
+      away: "មិននៅ",
+      quickReplies: "ចម្លើយរហ័ស",
+      chips: ["ព័ត៌មានដឹកជញ្ជូន", "គោលការណ៍សងប្រាក់", "ស្ថានភាពកម្ម៉ង់"],
+      reply: "អរគុណ! សូមរង់ចាំមួយភ្លែត ខ្ញុំកំពុងពិនិត្យជូន។",
+      replyTime: "១០:២៣",
+      views: [
+        { label: "ការសន្ទនាទាំងអស់", count: "128" },
+        { label: "មិនទាន់អាន", count: "73" },
+        { label: "ការនិយាយឈ្មោះ", count: "15" },
+        { label: "ចាត់តាំងឱ្យខ្ញុំ", count: "7" },
+      ],
+      msgs: [
+        { who: "Alex Morgan", text: "សួស្តី! ខ្ញុំត្រូវការជំនួយអំពីកម្ម៉ង់ថ្មី។", time: "2m" },
+        { who: "Jordan Lee", text: "តើខ្ញុំមើលវិក្កយបត្រនៅឯណា?", time: "10m" },
+      ],
+      more: [
+        { who: "Sam Rivera", text: "តើបង់ពេលដឹកជញ្ជូនបានទេ?", time: "1h" },
+        { who: "Casey Kim", text: "តើមានទំហំធំជាងនេះទេ?", time: "3h" },
+      ],
+      threadSub: "Comment Facebook · Acme Store",
+      open: "បើក",
+      send: "ផ្ញើ",
+    },
+
+    industriesTitle: "សាងសម្រាប់អាជីវកម្មសម័យថ្មី",
+    industries: [
+      { icon: "cart" as IconName, label: "ហាងលក់អនឡាញ" },
+      { icon: "hanger" as IconName, label: "ហាងសំលៀកបំពាក់" },
+      { icon: "bottle" as IconName, label: "សម្រស់ និងហាងកាត់សក់" },
+      { icon: "food" as IconName, label: "ភោជនីយដ្ឋាន" },
+      { icon: "box" as IconName, label: "អាជីវកម្មដឹកជញ្ជូន" },
+      { icon: "headset" as IconName, label: "ក្រុមគាំទ្រអតិថិជន" },
+    ],
+
+    securityTitle: "កន្លែងធ្វើការរបស់អ្នក នៅជារបស់អ្នក",
+    security: [
+      {
+        icon: "shield" as IconName,
+        title: "ការចូលគណនីមានសុវត្ថិភាព",
+        body: "ការចូលគណនីត្រូវបានការពារ ហើយមានការផ្ទៀងផ្ទាត់ពីរជាន់សម្រាប់គណនីរបស់អ្នក។",
+      },
+      {
+        icon: "users" as IconName,
+        title: "សិទ្ធិតាមតួនាទី",
+        body: "គ្រប់គ្រងថានរណាអាចមើល ឆ្លើយ និងគ្រប់គ្រងការសន្ទនារបស់អ្នក។",
+      },
+      {
+        icon: "lock" as IconName,
+        title: "សិទ្ធិកន្លែងធ្វើការ",
+        body: "សិទ្ធិលម្អិត ដើម្បីការពារក្រុម និងអតិថិជនរបស់អ្នក។",
+      },
+      {
+        icon: "link" as IconName,
+        title: "ឆានែលដែលអ្នកអនុញ្ញាត",
+        body: "អ្នកគ្រប់គ្រងថា Page និង Bot ណាខ្លះត្រូវបានភ្ជាប់។",
+      },
+    ],
+
     pricingEyebrow: "តម្លៃ",
     pricingTitle: "បង់ថ្លៃតាមឆានែល និងចំនួនអ្នកប្រើដែលអ្នកប្រើពិត។",
     pricingLede:
@@ -519,7 +690,7 @@ const COPY = {
         name: "Standard",
         points: [
           "សម្រាប់អ្នកលក់ម្នាក់ ឬហាងតូច",
-          "ប្រអប់សារពេញលេញ ស្លាក ការឆ្លើយតបរហ័ស",
+          "ប្រអប់សារពេញលេញ ស្លាក ចម្លើយរក្សាទុក",
           "ប្រវត្តិរូប និងកំណត់ចំណាំអតិថិជន",
         ],
       },
@@ -527,7 +698,7 @@ const COPY = {
         name: "Team",
         points: [
           "សម្រាប់ក្រុមតូចដែលមាន Page និង Bot ខ្លះ",
-          "ចែកការសន្ទនាថ្មីរវាងភ្នាក់ងារ",
+          "ចាត់តាំងការសន្ទនារវាងភ្នាក់ងារ",
           "របាយការណ៍ និងល្បឿនឆ្លើយតប",
         ],
       },
@@ -535,7 +706,7 @@ const COPY = {
         name: "Pro",
         points: [
           "សម្រាប់ក្រុមគាំទ្រដែលកំពុងរីកចម្រើន",
-          "តួនាទី សិទ្ធិ និងប្រវត្តិការផ្លាស់ប្តូរ",
+          "តួនាទី និងសិទ្ធិលម្អិត",
           "ការគាំទ្រអាទិភាព",
         ],
       },
@@ -545,11 +716,12 @@ const COPY = {
     customFrom: "ចាប់ពី",
     customPoints: (channels: string, users: string) => [
       `ជ្រើសរើស ${channels} ឆានែល និង ${users} អ្នកប្រើ`,
-      `+$4 ក្នុងមួយឆានែលបន្ថែម, +$3 ក្នុងមួយអ្នកប្រើបន្ថែម`,
+      "+$4 ក្នុងមួយឆានែលបន្ថែម, +$3 ក្នុងមួយអ្នកប្រើបន្ថែម",
       "មុខងារដូច Pro",
     ],
     customCta: "បង្កើតគម្រោង",
     payNote: "បង់ម្តងដើម្បីប្រើ — គ្មានការបន្តដោយស្វ័យប្រវត្តិទេ។ តម្លៃជាដុល្លារ។",
+
     faqEyebrow: "ជំនួយ",
     faqTitle: "មុននឹងចាប់ផ្តើម",
     faq: [
@@ -594,11 +766,14 @@ const COPY = {
         a: "មានតែអ្នកដែលអ្នកអញ្ជើញចូលកន្លែងធ្វើការប៉ុណ្ណោះ។ អ្នកគ្រប់គ្រងបានថាតួនាទីនីមួយៗអាចបើកអ្វីខ្លះ។",
       },
     ],
+
     closerTitle: "ឈប់បាត់បង់អតិថិជននៅក្នុងកម្មវិធីបីផ្សេងគ្នា។",
     closerBody: `ភ្ជាប់ Page ឬ Bot ដំបូងក្នុងរយៈពេលពីរបីនាទី។ ឥតគិតថ្លៃ ${TRIAL_DAYS} ថ្ងៃ។`,
     footerTag: "ប្រអប់សារតែមួយ។ គ្រប់ការសន្ទនា។",
   },
 } as const;
+
+type Labels = (typeof COPY)["en"]["labels"] | (typeof COPY)["km"]["labels"];
 
 const LIVE_CHANNELS = [
   { src: "/images/channels/messenger.png", label: "Messenger" },
@@ -612,21 +787,21 @@ const SOON_CHANNELS = [
   { src: "/images/channels/tiktok.png", label: "TikTok" },
 ];
 
-const PREVIEW_TONES = {
-  blue: "bg-blue-50 text-blue-700",
-  amber: "bg-amber-50 text-amber-700",
-  green: "bg-emerald-50 text-emerald-700",
-  slate: "bg-slate-100 text-slate-600",
+const SHOWCASE_TONES = {
+  blue: "bg-blue-50/70",
+  violet: "bg-violet-50/70",
+  green: "bg-emerald-50/60",
 } as const;
+
+/* ------------------------------------------------------------------ page */
 
 export function MarketingPage() {
   const [lang, setLang] = useState<Lang>("en");
   const [cycleIndex, setCycleIndex] = useState(0);
-  const [featureIndex, setFeatureIndex] = useState(0);
 
   const t = COPY[lang];
   const cycle = CYCLES[cycleIndex];
-  const active = t.features[featureIndex] ?? t.features[0];
+  const L: Labels = t.labels;
 
   function priceFor(monthlyCents: number) {
     const total = Math.round(
@@ -803,7 +978,7 @@ export function MarketingPage() {
           <span className="absolute -top-2.5 right-3 z-10 rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
             {t.sampleBadge}
           </span>
-          <InboxMock />
+          <InboxMock labels={L} />
         </div>
       </section>
 
@@ -831,13 +1006,7 @@ export function MarketingPage() {
                     className="h-5 w-5 object-contain"
                   />
                 ) : (
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
-                    <circle cx="12" cy="12" r="11" fill="#1877F2" />
-                    <path
-                      d="M13.2 19v-6h2l.3-2.3h-2.3V9.2c0-.66.2-1.1 1.1-1.1h1.2V6.1a15 15 0 0 0-1.8-.1c-1.8 0-3 1.1-3 3v1.7H8.7V13h2v6z"
-                      fill="#fff"
-                    />
-                  </svg>
+                  <FacebookGlyph />
                 )}
                 {channel.label}
               </span>
@@ -868,131 +1037,298 @@ export function MarketingPage() {
         </div>
       </section>
 
-      {/* ---------- features ---------- */}
-      <section id="features" className="mx-auto max-w-6xl px-6 py-16">
-        <div className="max-w-2xl">
+      {/* ---------- how it works ---------- */}
+      <section className="mx-auto max-w-6xl px-6 py-14">
+        <h2 className="text-center text-2xl font-bold tracking-tight text-slate-950">
+          {t.stepsTitle}
+        </h2>
+
+        <ol className="mt-9 grid gap-x-8 gap-y-8 md:grid-cols-3">
+          {t.steps.map((step, index) => (
+            <li key={step.title} className="relative flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-extrabold text-blue-700">
+                {index + 1}
+              </span>
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm">
+                <Icon name={step.icon} className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-bold text-slate-900">
+                  {step.title}
+                </span>
+                <span className="mt-1 block text-[13px] leading-6 text-slate-500">
+                  {step.body}
+                </span>
+              </span>
+
+              {/* Connector, wide screens only. */}
+              {index < t.steps.length - 1 ? (
+                <span
+                  className="absolute -right-5 top-4.5 hidden w-7 border-t-2 border-dotted border-slate-300 md:block"
+                  aria-hidden="true"
+                />
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      {/* ---------- feature cards ---------- */}
+      <section id="features" className="mx-auto max-w-6xl px-6 pb-14">
+        <div className="mx-auto max-w-2xl text-center">
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
-            {t.howEyebrow}
+            {t.featuresEyebrow}
           </p>
           <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">
-            {t.howTitle}
+            {t.featuresTitle}
           </h2>
-          <p className="mt-3 text-[15px] leading-7 text-slate-600">
-            {t.howLede}
-          </p>
         </div>
 
-        <div className="mt-10 grid gap-8 lg:grid-cols-[1.05fr_1fr]">
-          {/*
-            Left panel previews whichever tool is selected on the right, so
-            the claim and the picture of it stay side by side.
-          */}
-          <div className="lg:sticky lg:top-24 lg:self-start">
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50/70 px-4 py-3">
-                <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-600 text-white">
-                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
-                    <path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h13A2.5 2.5 0 0 1 21 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" />
-                  </svg>
-                </span>
-                <span className="min-w-0 truncate text-[13px] font-bold text-slate-900">
-                  {active.preview.header}
-                </span>
-                <span className="ml-auto shrink-0 rounded-full bg-slate-900 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
-                  {t.sampleBadge}
-                </span>
-              </div>
-
-              <div className="flex flex-col">
-                {active.preview.rows.map((row) => (
-                  <div
-                    key={row.title}
-                    className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0"
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-semibold text-slate-900">
-                        {row.title}
-                      </span>
-                      <span className="block truncate text-[12px] text-slate-500">
-                        {row.sub}
-                      </span>
-                    </span>
-                    {"pill" in row && row.pill ? (
-                      <span
-                        className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold tabular-nums ${
-                          PREVIEW_TONES[
-                            ("tone" in row && row.tone
-                              ? row.tone
-                              : "slate") as keyof typeof PREVIEW_TONES
-                          ]
-                        }`}
-                      >
-                        {row.pill}
-                      </span>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-
-              <p className="border-t border-slate-200 bg-slate-50/70 px-4 py-3 text-[12px] leading-6 text-slate-600">
-                {active.preview.note}
+        <div className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {t.features.map((feature) => (
+            <div
+              key={feature.title}
+              className="rounded-2xl border border-slate-200 bg-white px-5 py-6 text-center transition hover:border-slate-300 hover:shadow-sm"
+            >
+              <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <Icon name={feature.icon} className="h-5 w-5" />
+              </span>
+              <h3 className="mt-4 text-[15px] font-bold text-slate-900">
+                {feature.title}
+              </h3>
+              <p className="mx-auto mt-1.5 max-w-xs text-[13px] leading-6 text-slate-500">
+                {feature.body}
               </p>
             </div>
-          </div>
+          ))}
+        </div>
+      </section>
 
-          <div className="flex flex-col">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-              {t.previewHint}
-            </p>
-
-            {t.features.map((feature, index) => {
-              const selected = index === featureIndex;
-
-              return (
-                <button
-                  key={feature.title}
-                  type="button"
-                  onClick={() => setFeatureIndex(index)}
-                  aria-pressed={selected}
-                  className={`group rounded-xl border-b border-slate-200 px-3 py-3.5 text-left transition last:border-b-0 ${
-                    selected
-                      ? "bg-blue-50/70"
-                      : "hover:bg-slate-50"
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <span
-                      className={`h-1.5 w-1.5 shrink-0 rounded-full transition ${
-                        selected ? "bg-blue-600" : "bg-slate-300"
-                      }`}
-                    />
-                    <span
-                      className={`text-[15px] font-bold ${
-                        selected ? "text-blue-800" : "text-slate-900"
-                      }`}
-                    >
-                      {feature.title}
+      {/* ---------- showcase bands ---------- */}
+      <section className="mx-auto flex max-w-6xl flex-col gap-4 px-6 pb-16">
+        <ShowcaseBand
+          tone={t.showcase[0].tone}
+          title={t.showcase[0].title}
+          body={t.showcase[0].body}
+          media={
+            <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <p className="border-b border-slate-100 pb-2 text-[11px] font-bold text-slate-500">
+                {L.inbox}
+              </p>
+              {L.msgs.map((m) => (
+                <div key={m.who} className="flex items-start gap-2.5 py-2.5">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-600">
+                    {m.who.slice(0, 1)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline gap-2">
+                      <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-900">
+                        {m.who}
+                      </span>
+                      <span className="shrink-0 text-[10px] text-slate-400">
+                        {m.time}
+                      </span>
+                    </span>
+                    <span className="block truncate text-[11px] text-slate-500">
+                      {m.text}
                     </span>
                   </span>
-                  <span className="mt-1 block pl-3.5 text-sm leading-7 text-slate-600">
-                    {feature.body}
+                </div>
+              ))}
+            </div>
+          }
+          aside={
+            <div className="flex flex-col items-center gap-2.5">
+              <div className="flex gap-3">
+                {LIVE_CHANNELS.map((channel) =>
+                  channel.src ? (
+                    <Image
+                      key={channel.label}
+                      src={channel.src}
+                      alt=""
+                      width={34}
+                      height={34}
+                      className="h-8 w-8 object-contain"
+                    />
+                  ) : (
+                    <FacebookGlyph key={channel.label} className="h-8 w-8" />
+                  ),
+                )}
+              </div>
+              <span className="h-6 border-l-2 border-dotted border-blue-300" />
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-md">
+                <Icon name="inbox" className="h-6 w-6" />
+              </span>
+            </div>
+          }
+        />
+
+        <ShowcaseBand
+          tone={t.showcase[1].tone}
+          title={t.showcase[1].title}
+          body={t.showcase[1].body}
+          reverse
+          media={
+            <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
+              <p className="text-[11px] font-bold text-slate-500">
+                {L.assignedTo}
+              </p>
+              <div className="mt-2 flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-700">
+                  M
+                </span>
+                <span className="text-[12px] font-semibold text-slate-900">
+                  Maya Chan
+                </span>
+              </div>
+
+              <p className="mt-3 text-[11px] font-bold text-slate-500">
+                {L.teamNotes}
+              </p>
+              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2">
+                <p className="text-[11px] leading-5 text-slate-700">{L.note}</p>
+                <p className="mt-1 text-[10px] text-slate-500">{L.noteBy}</p>
+              </div>
+            </div>
+          }
+          aside={
+            <div className="flex w-full max-w-[190px] flex-col gap-2">
+              {[
+                { name: "Maya Chan", state: L.online, tone: "bg-emerald-500" },
+                { name: "Ben Sok", state: L.online, tone: "bg-emerald-500" },
+                { name: "Dara Pen", state: L.away, tone: "bg-amber-500" },
+              ].map((member) => (
+                <div
+                  key={member.name}
+                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-600">
+                    {member.name.slice(0, 1)}
                   </span>
-                </button>
-              );
-            })}
+                  <span className="min-w-0">
+                    <span className="block truncate text-[11px] font-semibold text-slate-900">
+                      {member.name}
+                    </span>
+                    <span className="flex items-center gap-1 text-[10px] text-slate-500">
+                      <span className={`h-1.5 w-1.5 rounded-full ${member.tone}`} />
+                      {member.state}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          }
+        />
+
+        <ShowcaseBand
+          tone={t.showcase[2].tone}
+          title={t.showcase[2].title}
+          body={t.showcase[2].body}
+          media={
+            <div className="flex flex-col gap-3">
+              <div className="self-end rounded-2xl rounded-br-md bg-blue-600 px-3 py-2 text-[12px] leading-5 text-white shadow-sm">
+                {L.reply}
+                <span className="mt-1 block text-right text-[9px] text-blue-100">
+                  {L.replyTime} ✓✓
+                </span>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                <p className="text-[11px] font-bold text-slate-500">
+                  {L.quickReplies}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {L.chips.map((chip) => (
+                    <span
+                      key={chip}
+                      className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700"
+                    >
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          }
+          aside={
+            <div className="w-full max-w-[230px] rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+              {L.views.map((view, index) => (
+                <div
+                  key={view.label}
+                  className={`flex items-center gap-2 rounded-lg px-2.5 py-2 ${
+                    index === 1 ? "bg-blue-50 text-blue-700" : "text-slate-600"
+                  }`}
+                >
+                  <span
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                      index === 1 ? "bg-blue-600" : "bg-slate-300"
+                    }`}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-[11px] font-semibold">
+                    {view.label}
+                  </span>
+                  <span className="shrink-0 text-[11px] font-bold tabular-nums">
+                    {view.count}
+                  </span>
+                </div>
+              ))}
+            </div>
+          }
+        />
+      </section>
+
+      {/* ---------- industries ---------- */}
+      <section className="border-y border-slate-200 bg-slate-50/60">
+        <div className="mx-auto max-w-6xl px-6 py-12">
+          <h2 className="text-center text-2xl font-bold tracking-tight text-slate-950">
+            {t.industriesTitle}
+          </h2>
+
+          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {t.industries.map((industry) => (
+              <div
+                key={industry.label}
+                className="flex flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-5 text-center"
+              >
+                <span className="text-slate-500">
+                  <Icon name={industry.icon} className="h-6 w-6" />
+                </span>
+                <span className="text-[12px] font-bold leading-5 text-slate-800">
+                  {industry.label}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
+      {/* ---------- security ---------- */}
+      <section className="mx-auto max-w-6xl px-6 py-14">
+        <h2 className="text-center text-2xl font-bold tracking-tight text-slate-950">
+          {t.securityTitle}
+        </h2>
+
+        <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {t.security.map((item) => (
+            <div key={item.title} className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500">
+                <Icon name={item.icon} className="h-5 w-5" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[14px] font-bold text-slate-900">
+                  {item.title}
+                </span>
+                <span className="mt-1 block text-[12.5px] leading-6 text-slate-500">
+                  {item.body}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ---------- pricing ---------- */}
-      {/*
-        Background follows the logo: its blue-to-magenta arc, deepened so
-        white type stays readable. The amber accents are the logo's orange.
-      */}
-      <section
-        id="pricing"
-        className="bg-[linear-gradient(135deg,#06143A_0%,#0C2C87_46%,#3D1370_100%)] py-16 text-white"
-      >
+      <section id="pricing" className={`${BRAND_GRADIENT} py-16 text-white`}>
         <div className="mx-auto max-w-6xl px-6">
           <div className="max-w-2xl">
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/55">
@@ -1120,7 +1456,6 @@ export function MarketingPage() {
               );
             })}
 
-            {/* Custom: same shape as the fixed plans, priced from the base. */}
             <div className="flex flex-col rounded-2xl border border-dashed border-white/25 bg-white/10 p-6">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-base font-bold">{t.customName}</span>
@@ -1203,7 +1538,9 @@ export function MarketingPage() {
 
       {/* ---------- closer ---------- */}
       <section className="mx-auto max-w-6xl px-6 pb-16">
-        <div className="flex flex-wrap items-center gap-6 rounded-2xl bg-[linear-gradient(135deg,#06143A_0%,#0C2C87_46%,#3D1370_100%)] px-8 py-10 text-white">
+        <div
+          className={`flex flex-wrap items-center gap-6 rounded-2xl ${BRAND_GRADIENT} px-8 py-10 text-white`}
+        >
           <div className="min-w-64 flex-1">
             <h2 className="text-2xl font-bold leading-snug tracking-tight">
               {t.closerTitle}
@@ -1238,46 +1575,76 @@ export function MarketingPage() {
   );
 }
 
+/* ---------------------------------------------------------- showcase band */
+
+function ShowcaseBand({
+  tone,
+  title,
+  body,
+  media,
+  aside,
+  reverse = false,
+}: {
+  tone: keyof typeof SHOWCASE_TONES;
+  title: string;
+  body: string;
+  media: React.ReactNode;
+  aside: React.ReactNode;
+  reverse?: boolean;
+}) {
+  return (
+    <div
+      className={`grid items-center gap-7 rounded-2xl ${SHOWCASE_TONES[tone]} px-6 py-8 md:px-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]`}
+    >
+      <div className={reverse ? "lg:order-2" : ""}>{media}</div>
+
+      <div className={reverse ? "lg:order-1" : ""}>
+        <h3 className="text-xl font-bold leading-snug tracking-tight text-slate-950">
+          {title}
+        </h3>
+        <p className="mt-2.5 max-w-md text-[13.5px] leading-6 text-slate-600">
+          {body}
+        </p>
+      </div>
+
+      <div className="flex justify-center lg:order-3">{aside}</div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------- hero mock */
+
 /*
- * A simplified view of the real TENH inbox: the same three columns and the
- * same shapes people see after signing in, with fewer details and larger
- * text so it stays readable at this size. All content is invented.
+ * A simplified view of the real TENH inbox: the same columns and shapes
+ * people see after signing in, with fewer details and larger text so it
+ * stays readable at this size. All content is invented.
  */
-function InboxMock() {
+function InboxMock({ labels }: { labels: Labels }) {
   const conversations = [
-    { name: "Alex Morgan", preview: "Is this still in stock?", time: "2m", count: 2 },
-    { name: "Jordan Lee", preview: "How much is delivery?", time: "18m", count: 1 },
-    { name: "Sam Rivera", preview: "Can I pay on delivery?", time: "1h", count: 0 },
-    { name: "Casey Kim", preview: "Do you have a bigger size?", time: "3h", count: 0 },
+    ...labels.msgs.map((m, i) => ({ ...m, count: i === 0 ? 2 : 1 })),
+    ...labels.more.map((m) => ({ ...m, count: 0 })),
   ];
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
       <div className="grid grid-cols-[minmax(0,168px)_minmax(0,1fr)] sm:grid-cols-[52px_minmax(0,190px)_minmax(0,1fr)]">
-        {/* icon rail */}
         <div className="hidden flex-col items-center gap-2 border-r border-slate-200 bg-slate-50/70 py-4 sm:flex">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white">
-            <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="currentColor">
-              <path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h13A2.5 2.5 0 0 1 21 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" />
-            </svg>
+            <Icon name="inbox" className="h-5 w-5" />
           </span>
           <span className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-300">
-            <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="currentColor">
-              <path d="M12 3l2 6h6l-4.8 3.6 1.8 6L12 15l-5 3.6 1.8-6L4 9h6z" />
-            </svg>
+            <Icon name="bell" className="h-5 w-5" />
           </span>
           <span className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-300">
-            <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="currentColor">
-              <circle cx="12" cy="8" r="3.2" />
-              <path d="M5 20a7 7 0 0 1 14 0z" />
-            </svg>
+            <Icon name="users" className="h-5 w-5" />
           </span>
         </div>
 
-        {/* conversation list */}
         <div className="border-r border-slate-200 bg-white">
           <div className="flex items-center justify-between border-b border-slate-200 px-3 py-3">
-            <span className="text-[13px] font-bold text-slate-900">Inbox</span>
+            <span className="text-[13px] font-bold text-slate-900">
+              {labels.inbox}
+            </span>
             <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[11px] font-bold text-white">
               3
             </span>
@@ -1285,25 +1652,25 @@ function InboxMock() {
 
           {conversations.map((row, index) => (
             <div
-              key={row.name}
+              key={row.who}
               className={`flex items-center gap-2.5 border-b border-slate-100 px-3 py-2.5 ${
                 index === 0 ? "bg-blue-50/70" : ""
               }`}
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[11px] font-bold text-slate-600">
-                {row.name.slice(0, 1)}
+                {row.who.slice(0, 1)}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline gap-1.5">
                   <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-900">
-                    {row.name}
+                    {row.who}
                   </span>
                   <span className="shrink-0 text-[10px] text-slate-400">
                     {row.time}
                   </span>
                 </span>
                 <span className="block truncate text-[11px] text-slate-500">
-                  {row.preview}
+                  {row.text}
                 </span>
               </span>
               {row.count > 0 ? (
@@ -1315,43 +1682,39 @@ function InboxMock() {
           ))}
         </div>
 
-        {/* thread */}
         <div className="hidden min-w-0 flex-col bg-slate-50/50 sm:flex">
           <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[11px] font-bold text-slate-600">
-              A
+              {labels.msgs[0].who.slice(0, 1)}
             </span>
             <span className="min-w-0">
               <span className="block truncate text-[13px] font-bold text-slate-900">
-                Alex Morgan
+                {labels.msgs[0].who}
               </span>
               <span className="block truncate text-[11px] text-slate-500">
-                Comment Facebook · Acme Store
+                {labels.threadSub}
               </span>
             </span>
             <span className="ml-auto shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600">
-              Open
+              {labels.open}
             </span>
           </div>
 
           <div className="flex flex-1 flex-col gap-2.5 p-4">
             <span className="max-w-[80%] self-start rounded-2xl rounded-tl-md border border-slate-200 bg-white px-3 py-2 text-[12px] leading-5 text-slate-700">
-              Is this still in stock?
+              {labels.msgs[0].text}
             </span>
             <span className="max-w-[80%] self-end rounded-2xl rounded-br-md bg-blue-600 px-3 py-2 text-[12px] leading-5 text-white">
-              Yes! We still have it. Would you like us to keep one for you?
-            </span>
-            <span className="max-w-[80%] self-start rounded-2xl rounded-tl-md border border-slate-200 bg-white px-3 py-2 text-[12px] leading-5 text-slate-700">
-              Yes please, size M.
+              {labels.reply}
             </span>
           </div>
 
           <div className="flex items-center gap-2 border-t border-slate-200 bg-white px-4 py-3">
             <span className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-400">
-              Write a reply…
+              …
             </span>
             <span className="shrink-0 rounded-xl bg-blue-600 px-3 py-2 text-[11px] font-bold text-white">
-              Send
+              {labels.send}
             </span>
           </div>
         </div>
