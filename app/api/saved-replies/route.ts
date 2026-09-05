@@ -10,6 +10,7 @@ import { authorizeInboxBusinessAccess } from "@/lib/inbox/get-inbox-resource-acc
 import { DEFAULT_SAVED_REPLY_SEED_MARKER } from "@/lib/settings/ensure-workspace-default-content";
 import {
   parseAttachments,
+  SAVED_REPLY_MEDIA_BUCKET,
   validateAttachments,
 } from "@/lib/settings/saved-reply-attachments";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -43,6 +44,72 @@ function shortcut(
 
 async function requireMember() {
   return getCurrentMember();
+}
+
+
+/*
+ * Sign every attachment across every reply in one round trip.
+ *
+ * The bucket is private, so a thumbnail needs a signed link. Fetching one per
+ * attachment from the browser meant a picker of twenty replies opened with
+ * dozens of requests in flight, which is what made it feel slow. createSignedUrls
+ * takes the whole list at once, and the links ride back with the replies.
+ *
+ * Ten minutes is long enough to open the panel, scroll it and send, and short
+ * enough that a copied link is not worth much.
+ */
+async function withSignedAttachmentUrls(
+  replies: Record<string, unknown>[],
+) {
+  const paths: string[] = [];
+
+  for (const reply of replies) {
+    for (const attachment of parseAttachments(
+      reply.attachments,
+    )) {
+      paths.push(attachment.path);
+    }
+  }
+
+  if (paths.length === 0) {
+    return replies;
+  }
+
+  const { data, error } =
+    await supabaseAdmin.storage
+      .from(SAVED_REPLY_MEDIA_BUCKET)
+      .createSignedUrls(paths, 60 * 10);
+
+  if (error) {
+    /*
+     * Without links the thumbnails fall back to placeholders, which is worth
+     * far more than failing the list the agent came for.
+     */
+    console.error(
+      `Unable to sign quick reply media — ${error.message}`,
+    );
+
+    return replies;
+  }
+
+  const byPath = new Map<string, string>();
+
+  for (const entry of data ?? []) {
+    if (entry.path && entry.signedUrl) {
+      byPath.set(entry.path, entry.signedUrl);
+    }
+  }
+
+  return replies.map((reply) => ({
+    ...reply,
+    attachments: parseAttachments(
+      reply.attachments,
+    ).map((attachment) => ({
+      ...attachment,
+      url:
+        byPath.get(attachment.path) ?? null,
+    })),
+  }));
 }
 
 export async function GET(
@@ -146,9 +213,17 @@ export async function GET(
     );
   }
 
+  const savedReplies =
+    await withSignedAttachmentUrls(
+      (data ?? []) as Record<
+        string,
+        unknown
+      >[],
+    );
+
   return NextResponse.json({
     success: true,
-    savedReplies: data ?? [],
+    savedReplies,
   });
 }
 

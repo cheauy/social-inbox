@@ -809,16 +809,33 @@ export function TagManager({
                     </div>
 
                     <div>
+                      {/*
+                        Same chip as the Inbox, so a tag looks like itself
+                        wherever it is met.
+
+                        It used to be its own colour as text on a wash of that
+                        colour, which disappears for anything pale -- yellow
+                        text on pale yellow. Colour in the border and the dot,
+                        text in slate, reads at any colour the Owner picks.
+                      */}
                       <span
-                        className="inline-flex max-w-[150px] items-center truncate rounded-lg border px-3 py-1.5 text-sm font-bold"
+                        className="inline-flex max-w-[150px] items-center gap-1.5 rounded-lg border-2 bg-white px-2.5 py-1 text-sm font-bold text-slate-900"
                         style={{
-                          color: tag.color,
-                          borderColor: `${tag.color}33`,
-                          backgroundColor: `${tag.color}14`,
+                          borderColor: tag.color,
                         }}
                         title={tag.name}
                       >
-                        {tag.name}
+                        <span
+                          aria-hidden="true"
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{
+                            backgroundColor:
+                              tag.color,
+                          }}
+                        />
+                        <span className="truncate">
+                          {tag.name}
+                        </span>
                       </span>
                     </div>
 
@@ -919,14 +936,22 @@ export function TagManager({
                           {tag.sort_index}
                         </span>
                         <span
-                          className="inline-flex max-w-[180px] items-center truncate rounded-lg border px-2.5 py-1 text-sm font-bold"
+                          className="inline-flex max-w-[180px] items-center gap-1.5 rounded-lg border-2 bg-white px-2.5 py-1 text-sm font-bold text-slate-900"
                           style={{
-                            color: tag.color,
-                            borderColor: `${tag.color}33`,
-                            backgroundColor: `${tag.color}14`,
+                            borderColor: tag.color,
                           }}
                         >
-                          {tag.name}
+                          <span
+                            aria-hidden="true"
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{
+                              backgroundColor:
+                                tag.color,
+                            }}
+                          />
+                          <span className="truncate">
+                            {tag.name}
+                          </span>
                         </span>
                       </div>
 

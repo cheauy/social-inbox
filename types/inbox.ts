@@ -46,6 +46,16 @@ export type SavedReplyAttachment = {
   name: string;
   size: number;
   mimeType: string;
+
+  /*
+   * A short-lived signed link, attached when the API reads the reply.
+   *
+   * Not stored -- the row holds only the path. It travels with the reply so a
+   * list of them costs one request instead of one per attachment: a picker
+   * showing twenty replies was asking for forty signed links before it could
+   * draw a thumbnail.
+   */
+  url?: string | null;
 };
 
 export type CustomerTag = {

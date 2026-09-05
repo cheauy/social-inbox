@@ -65,14 +65,23 @@ function Thumbnail({
 }: {
   attachment: SavedReplyAttachment;
 }) {
+  /*
+   * The list API signs these in one batch, so most of the time the link is
+   * already here and no request is made at all. The fetch below stays for the
+   * places that read attachments straight from a row -- the edit form -- where
+   * there is nothing to have batched.
+   */
   const [url, setUrl] = useState<
     string | null
-  >(null);
+  >(attachment.url ?? null);
   const [failed, setFailed] =
     useState(false);
 
   useEffect(() => {
-    if (attachment.kind !== "image") {
+    if (
+      attachment.kind !== "image" ||
+      attachment.url
+    ) {
       return;
     }
 
@@ -108,7 +117,11 @@ function Thumbnail({
     return () => {
       cancelled = true;
     };
-  }, [attachment.kind, attachment.path]);
+  }, [
+    attachment.kind,
+    attachment.path,
+    attachment.url,
+  ]);
 
   return (
     <span
@@ -133,8 +146,12 @@ function Thumbnail({
 
 export function AttachmentThumbnails({
   attachments,
+  className = "mt-1.5",
 }: {
   attachments: SavedReplyAttachment[];
+
+  /* The settings list stacks these under the text; the inbox sets them beside it. */
+  className?: string;
 }) {
   if (attachments.length === 0) {
     return null;
@@ -148,7 +165,9 @@ export function AttachmentThumbnails({
     attachments.length - shown.length;
 
   return (
-    <span className="mt-1.5 flex items-center gap-1">
+    <span
+      className={`flex items-center gap-1 ${className}`}
+    >
       {shown.map((attachment) => (
         <Thumbnail
           key={attachment.path}

@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  getReadableTagTextColor,
+  getTagContrastReport,
+} from "@/lib/display/tag-contrast";
+
 import { Check, Copy, X, Pipette } from "lucide-react";
 
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
@@ -61,6 +66,13 @@ export function TagFormModal({
 
   const languageId = useWorkspaceLanguageId();
   const isKhmer = languageId === "km";
+
+  const previewName =
+    value.name.trim() ||
+    (isKhmer ? "មើលស្លាកជាមុន" : "Tag preview");
+
+  const contrastReport =
+    getTagContrastReport(normalizedColor);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-[2px] sm:p-4">
@@ -278,12 +290,128 @@ export function TagFormModal({
                 {isKhmer ? "មើលជាមុនភ្លាមៗ" : "Live preview"}
               </p>
 
-              <span
-                className="mt-3 inline-flex min-w-32 justify-center rounded-full px-5 py-2 text-sm font-bold text-white shadow-sm"
-                style={{ backgroundColor: normalizedColor }}
-              >
-                {value.name.trim() || (isKhmer ? "មើលស្លាកជាមុន" : "Tag preview")}
-              </span>
+              {/*
+                Both states, because a tag is met in both.
+
+                The preview used to show one filled pill with white text, which
+                said nothing about how the tag looks when a customer does not
+                have it -- and hard-coded white, so a bright colour previewed as
+                unreadable and still looked fine in the modal. These are the
+                real chips, with the label colour worked out the same way.
+              */}
+              <div className="mt-3 flex flex-wrap items-center gap-4">
+                <div className="flex flex-col items-start gap-1.5">
+                  <span
+                    className="inline-flex min-h-[37px] items-center gap-1.5 rounded-xl border-2 px-3 py-1 text-[12.5px] font-semibold"
+                    style={{
+                      backgroundColor:
+                        normalizedColor,
+                      borderColor:
+                        normalizedColor,
+                      color:
+                        getReadableTagTextColor(
+                          normalizedColor,
+                        ),
+                    }}
+                  >
+                    {previewName}
+
+                    <span
+                      className="flex h-[17px] w-[17px] shrink-0 items-center justify-center rounded-full bg-white"
+                      style={{
+                        color: normalizedColor,
+                      }}
+                    >
+                      <svg
+                        viewBox="0 0 20 20"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        className="h-2.5 w-2.5"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="m4 10 4 4 8-8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </span>
+                  </span>
+
+                  <span className="text-xs text-slate-400">
+                    {isKhmer
+                      ? "បានដាក់"
+                      : "Applied"}
+                  </span>
+                </div>
+
+                <div className="flex flex-col items-start gap-1.5">
+                  <span
+                    className="inline-flex min-h-[37px] items-center gap-1.5 rounded-xl border-2 bg-white px-3 py-1 text-[12.5px] font-semibold text-slate-900"
+                    style={{
+                      borderColor:
+                        normalizedColor,
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="h-[7px] w-[7px] shrink-0 rounded-full"
+                      style={{
+                        backgroundColor:
+                          normalizedColor,
+                      }}
+                    />
+                    {previewName}
+                  </span>
+
+                  <span className="text-xs text-slate-400">
+                    {isKhmer
+                      ? "មិនទាន់ដាក់"
+                      : "Not applied"}
+                  </span>
+                </div>
+              </div>
+
+              {/*
+                The measured contrast, not an opinion about it.
+
+                The label itself can always be read: whichever of white or black
+                is chosen scores at worst 4.58:1, so there is no colour that
+                fails. Saying so with the number is what stops an Owner
+                second-guessing a colour that is fine.
+
+                The outline is the part that can still fail. An unapplied chip
+                carries its colour only in a border and a dot, so a colour close
+                to white leaves it looking blank -- legible, and no longer
+                recognisably this tag.
+              */}
+              {contrastReport.ratio !== null ? (
+                <div className="mt-3 space-y-1.5">
+                  <p className="text-xs text-slate-500">
+                    {isKhmer
+                      ? `ភាពផ្ទុយគ្នានៃអក្សរ ${contrastReport.ratio.toFixed(
+                          1,
+                        )}:1 — អានបានច្បាស់`
+                      : `Label contrast ${contrastReport.ratio.toFixed(
+                          1,
+                        )}:1 — passes AA${
+                          contrastReport.textColor ===
+                          "#ffffff"
+                            ? " with white text"
+                            : " with dark text"
+                        }`}
+                  </p>
+
+                  {contrastReport.outlineTooPale ? (
+                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                      {isKhmer
+                        ? "ពណ៌នេះស្រាលពេក — ស្លាកដែលមិនទាន់ដាក់នឹងមើលទៅដូចប្រអប់ទទេ។ សូមជ្រើសពណ៌ងងឹតជាងបន្តិច។"
+                        : "This colour is very close to white, so an unapplied tag will look like an empty outline. Pick something a shade deeper to keep the tag recognisable."}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             <div>

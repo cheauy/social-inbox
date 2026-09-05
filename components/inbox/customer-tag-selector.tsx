@@ -10,6 +10,7 @@ import {
 import type {
   CustomerTag,
 } from "@/types/inbox";
+import { getReadableTagTextColor } from "@/lib/display/tag-contrast";
 
 type CustomerTagSelectorProps = {
   contactId: string;
@@ -96,65 +97,6 @@ function CheckIcon() {
       />
     </svg>
   );
-}
-
-function getReadableTagTextColor(
-  color: string,
-) {
-  const normalized =
-    color.trim();
-
-  const compactHex =
-    normalized.match(
-      /^#([0-9a-f]{3})$/i,
-    );
-
-  const fullHex =
-    normalized.match(
-      /^#([0-9a-f]{6})(?:[0-9a-f]{2})?$/i,
-    );
-
-  let hex: string | null =
-    null;
-
-  if (compactHex) {
-    hex = compactHex[1]
-      .split("")
-      .map(
-        (character) =>
-          `${character}${character}`,
-      )
-      .join("");
-  } else if (fullHex) {
-    hex = fullHex[1];
-  }
-
-  if (!hex) {
-    return "#ffffff";
-  }
-
-  const red = parseInt(
-    hex.slice(0, 2),
-    16,
-  );
-  const green = parseInt(
-    hex.slice(2, 4),
-    16,
-  );
-  const blue = parseInt(
-    hex.slice(4, 6),
-    16,
-  );
-
-  const brightness =
-    (red * 299 +
-      green * 587 +
-      blue * 114) /
-    1000;
-
-  return brightness > 170
-    ? "#0f172a"
-    : "#ffffff";
 }
 
 export function CustomerTagSelector({
@@ -782,13 +724,30 @@ export function CustomerTagSelector({
                 No tags found.
               </div>
             ) : (
-              <div className="flex flex-wrap gap-x-3 gap-y-4">
+              <div className="flex flex-wrap gap-2">
+                {/*
+                  Applied tags are filled with their colour; the rest are
+                  outlined in it.
+
+                  Every chip used to be filled, so the panel was a wall of
+                  colour with no way to tell what the customer already had --
+                  the only difference was a pale ring that the brighter colours
+                  swallowed. Filling only what is applied makes the answer to
+                  "which tags does this customer have" visible without reading
+                  a single word, and leaves the unapplied ones as dark text on
+                  white, which is legible whatever colour they carry.
+                */}
                 {visibleTags.map((tag) => {
                   const selected =
                     selectedTagIds.has(tag.id);
 
                   const textColor =
-                    getReadableTagTextColor(tag.color);
+                    getReadableTagTextColor(
+                      tag.color,
+                    );
+
+                  const busy =
+                    updatingTagIds.has(tag.id);
 
                   return (
                     <button
@@ -797,27 +756,61 @@ export function CustomerTagSelector({
                       onClick={() =>
                         void toggleTag(tag)
                       }
-                      disabled={updatingTagIds.has(tag.id)}
-                      title={tag.description ?? tag.name}
-                      className={`inline-flex min-h-11 max-w-full items-center gap-2 rounded-2xl border px-4 py-2.5 text-[15px] font-semibold transition active:scale-[0.98] ${
+                      disabled={busy}
+                      title={
+                        tag.description ??
+                        tag.name
+                      }
+                      aria-pressed={selected}
+                      /* Deliberately compact. This panel sits over a live
+                         conversation and shows every tag at once, so the chips
+                         have to earn their room. The 2px border stays: at this
+                         size it and the dot are the whole of the tag's colour,
+                         and thinning it would leave the chips looking alike. */
+                      className="inline-flex min-h-[34px] max-w-full items-center gap-1 rounded-xl border-2 px-2.5 py-1 text-[11.5px] font-semibold transition hover:brightness-95 active:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
+                      style={
                         selected
-                          ? "shadow-sm ring-2 ring-white ring-offset-1"
-                          : "hover:brightness-95"
-                      } disabled:cursor-wait disabled:opacity-70`}
-                      style={{
-                        backgroundColor: tag.color,
-                        borderColor: tag.color,
-                        color: textColor,
-                      }}
+                          ? {
+                              backgroundColor:
+                                tag.color,
+                              borderColor:
+                                tag.color,
+                              color: textColor,
+                            }
+                          : {
+                              backgroundColor:
+                                "#ffffff",
+                              borderColor:
+                                tag.color,
+                              color: "#0f172a",
+                            }
+                      }
                     >
-                      <span className="max-w-[235px] truncate">
+                      {/*
+                        The dot keeps the colour visible on an outlined chip,
+                        so a tag looks like itself whether or not it is applied.
+                      */}
+                      {!selected ? (
+                        <span
+                          aria-hidden="true"
+                          className="h-1.5 w-1.5 shrink-0 rounded-full"
+                          style={{
+                            backgroundColor:
+                              tag.color,
+                          }}
+                        />
+                      ) : null}
+
+                      <span className="max-w-[180px] truncate">
                         {tag.name}
                       </span>
 
                       {selected ? (
                         <span
-                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white"
-                          style={{ color: tag.color }}
+                          className="flex h-[15px] w-[15px] shrink-0 items-center justify-center rounded-full bg-white"
+                          style={{
+                            color: tag.color,
+                          }}
                         >
                           <CheckIcon />
                         </span>

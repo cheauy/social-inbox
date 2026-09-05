@@ -1,5 +1,6 @@
 "use client";
 
+import { AttachmentThumbnails } from "@/components/settings/saved-reply-attachment-thumbnails";
 import type {
   SavedReplyAttachment,
   SavedReplyCategory,
@@ -459,21 +460,41 @@ export function SavedReplySelector({
                     key={reply.id}
                     type="button"
                     onClick={() => selectReply(reply)}
-                    className="group grid w-full grid-cols-[48px_minmax(0,1fr)] items-center gap-3 border-b border-slate-100 px-4 py-3.5 text-left transition last:border-b-0 hover:bg-blue-50/70 focus:bg-blue-50 focus:outline-none"
+                    className="group grid w-full grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 border-b border-slate-100 px-4 py-3.5 text-left transition last:border-b-0 hover:bg-blue-50/70 focus:bg-blue-50 focus:outline-none"
                   >
                     <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold tabular-nums text-slate-500 group-hover:border-blue-200 group-hover:bg-blue-50 group-hover:text-blue-700">
                       {index + 1}
                     </span>
 
+                    {/*
+                      Title above the message, the same way round as Settings.
+                      It used to lead with the message, so the same reply read
+                      differently in the two places an agent meets it -- and the
+                      title, which is the name they are actually scanning for,
+                      sat underneath in grey.
+                    */}
                     <span className="min-w-0">
                       <span className="block truncate text-[15px] font-semibold text-slate-900">
-                        {reply.message_text}
+                        {reply.title?.trim() ||
+                          "Untitled reply"}
                       </span>
-                      <span className="mt-1 block truncate text-sm text-slate-500">
-                        {reply.title?.trim() || "Untitled reply"}
+                      <span className="mt-0.5 line-clamp-2 break-words text-sm leading-5 text-slate-500">
+                        {reply.message_text}
                       </span>
                     </span>
 
+                    {/*
+                      On the right here, rather than under the text as in
+                      Settings: this list is narrow and scanned quickly, so
+                      keeping the media in its own column stops it pushing the
+                      rows to different heights.
+                    */}
+                    <AttachmentThumbnails
+                      attachments={
+                        reply.attachments ?? []
+                      }
+                      className=""
+                    />
                   </button>
                 ))}
               </div>

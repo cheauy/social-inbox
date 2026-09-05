@@ -12,6 +12,7 @@ import {
   getStatusLabel,
 } from "@/components/inbox/inbox-utils";
 import type { InboxConversation } from "@/types/inbox";
+import { getReadableTagTextColor } from "@/lib/display/tag-contrast";
 import {
   useWorkspaceLanguageId,
 } from "@/components/display/workspace-language-text";
@@ -91,29 +92,6 @@ function formatProfileDate(
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
-}
-
-function getReadableTagTextColor(
-  color: string,
-) {
-  const match = color
-    .trim()
-    .match(/^#([0-9a-f]{6})$/i);
-
-  if (!match) {
-    return "#ffffff";
-  }
-
-  const hex = match[1];
-  const red = parseInt(hex.slice(0, 2), 16);
-  const green = parseInt(hex.slice(2, 4), 16);
-  const blue = parseInt(hex.slice(4, 6), 16);
-  const brightness =
-    (red * 299 + green * 587 + blue * 114) / 1000;
-
-  return brightness > 170
-    ? "#0f172a"
-    : "#ffffff";
 }
 
 export function CustomerProfile({
