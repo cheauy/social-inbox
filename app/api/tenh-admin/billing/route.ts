@@ -505,9 +505,14 @@ async function loadWorkspaceDetail(businessId: string) {
       .select("id,full_name,email,role,is_active,created_at")
       .eq("business_id", businessId)
       .order("created_at", { ascending: true }),
+    // The token and webhook columns live on this same row. Support is rarely
+    // asked "is a Page connected" without also being asked why it stopped
+    // working, and a select list must stay a literal for the row type to infer.
     supabaseAdmin
       .from("social_accounts")
-      .select("id,platform,platform_account_id,account_name,is_active,created_at")
+      .select(
+        "id,platform,platform_account_id,account_name,is_active,created_at,facebook_token_status,telegram_token_status,telegram_webhook_status,telegram_webhook_url",
+      )
       .eq("business_id", businessId)
       .order("created_at", { ascending: true }),
     supabaseAdmin
@@ -634,6 +639,71 @@ async function loadWorkspaceDetail(businessId: string) {
   const members = membersResult.data ?? [];
   const channels = channelsResult.data ?? [];
 
+  /*
+   * Whether the workspace is actually working.
+   *
+   * The billing rows above say what a customer pays for; these say whether any
+   * of it reaches them. Support questions are almost never "what is their plan"
+   * -- they are "it stopped working", and that is answered by unassigned
+   * conversations, failed sends, and when a message last moved.
+   *
+   * Head-only counts, so none of them pulls rows back. This stays fast on a
+   * workspace with tens of thousands of messages, which is the only kind where
+   * the numbers are interesting.
+   */
+  const headCount = { count: "exact" as const, head: true };
+
+  const [
+    conversationCount,
+    openConversationCount,
+    unassignedOpenCount,
+    contactCount,
+    messageCount,
+    failedMessageCount,
+    savedReplyCount,
+    lastMessageResult,
+  ] = await Promise.all([
+    supabaseAdmin
+      .from("conversations")
+      .select("id", headCount)
+      .eq("business_id", businessId),
+    supabaseAdmin
+      .from("conversations")
+      .select("id", headCount)
+      .eq("business_id", businessId)
+      .eq("status", "open"),
+    supabaseAdmin
+      .from("conversations")
+      .select("id", headCount)
+      .eq("business_id", businessId)
+      .eq("status", "open")
+      .is("assigned_to", null),
+    supabaseAdmin
+      .from("contacts")
+      .select("id", headCount)
+      .eq("business_id", businessId),
+    supabaseAdmin
+      .from("messages")
+      .select("id", headCount)
+      .eq("business_id", businessId),
+    supabaseAdmin
+      .from("messages")
+      .select("id", headCount)
+      .eq("business_id", businessId)
+      .eq("delivery_status", "failed"),
+    supabaseAdmin
+      .from("saved_replies")
+      .select("id", headCount)
+      .eq("business_id", businessId),
+    supabaseAdmin
+      .from("messages")
+      .select("created_at,direction")
+      .eq("business_id", businessId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
   const subscriptionData =
     subscriptionResult.data as unknown as
       | WorkspaceDetailSubscriptionRow
@@ -667,6 +737,15 @@ async function loadWorkspaceDetail(businessId: string) {
     usage: {
       activeMembers: members.filter((member) => member.is_active).length,
       activeChannels: channels.filter((channel) => channel.is_active).length,
+      conversations: conversationCount.count ?? 0,
+      openConversations: openConversationCount.count ?? 0,
+      unassignedOpen: unassignedOpenCount.count ?? 0,
+      contacts: contactCount.count ?? 0,
+      messages: messageCount.count ?? 0,
+      failedMessages: failedMessageCount.count ?? 0,
+      savedReplies: savedReplyCount.count ?? 0,
+      lastMessageAt: lastMessageResult.data?.created_at ?? null,
+      lastMessageDirection: lastMessageResult.data?.direction ?? null,
     },
     members: members.map((member) => ({
       id: member.id,
@@ -683,6 +762,10 @@ async function loadWorkspaceDetail(businessId: string) {
       platformAccountId: channel.platform_account_id,
       active: channel.is_active,
       createdAt: channel.created_at,
+      facebookTokenStatus: channel.facebook_token_status ?? null,
+      telegramTokenStatus: channel.telegram_token_status ?? null,
+      telegramWebhookStatus: channel.telegram_webhook_status ?? null,
+      telegramWebhookUrl: channel.telegram_webhook_url ?? null,
     })),
     payWayTransactions: (payWayResult.data ?? []).map((row: any) => ({
       id: row.id,

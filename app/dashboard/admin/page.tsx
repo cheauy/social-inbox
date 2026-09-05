@@ -21,7 +21,6 @@ export type AdminTab =
   | "announcements"
   | "channel-health"
   | "connections"
-  | "workspace-inspector"
   | "security";
 
 function resolveTab(
@@ -36,7 +35,6 @@ function resolveTab(
     tab === "announcements" ||
     tab === "channel-health" ||
     tab === "connections" ||
-    tab === "workspace-inspector" ||
     tab === "security"
   ) {
     return tab;

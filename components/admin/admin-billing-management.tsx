@@ -62,6 +62,15 @@ type WorkspaceDetail = {
   usage: {
     activeMembers: number;
     activeChannels: number;
+    conversations: number;
+    openConversations: number;
+    unassignedOpen: number;
+    contacts: number;
+    messages: number;
+    failedMessages: number;
+    savedReplies: number;
+    lastMessageAt: string | null;
+    lastMessageDirection: string | null;
   };
   members: Array<{
     id: string;
@@ -78,6 +87,10 @@ type WorkspaceDetail = {
     platformAccountId: string | null;
     active: boolean;
     createdAt: string;
+    facebookTokenStatus: string | null;
+    telegramTokenStatus: string | null;
+    telegramWebhookStatus: string | null;
+    telegramWebhookUrl: string | null;
   }>;
   payWayTransactions: Array<{
     id: string;
@@ -340,6 +353,71 @@ function KeyValue({
       </div>
     </div>
   );
+}
+
+/*
+ * A count, with the two that explain a complaint able to raise their hand.
+ * Unassigned conversations and failed sends are the numbers a customer is
+ * really reporting when they say the inbox is not working.
+ */
+function HealthStat({
+  label,
+  value,
+  warn,
+}: {
+  label: string;
+  value: string | number;
+  warn?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-xl border px-3 py-2.5 ${
+        warn
+          ? "border-amber-200 bg-amber-50"
+          : "border-slate-200 bg-white"
+      }`}
+    >
+      <p
+        className={`text-lg font-bold ${
+          warn ? "text-amber-900" : "text-slate-950"
+        }`}
+      >
+        {value}
+      </p>
+      <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+/*
+ * "3 days ago" answers "is this account alive" faster than a timestamp does.
+ * Falls back to the shared date format once the gap stops being human-sized.
+ */
+function formatSince(value: string | null) {
+  if (!value) {
+    return "Never";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Never";
+  }
+
+  const minutes = Math.round((Date.now() - date.getTime()) / 60_000);
+
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} min ago`;
+
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days} day${days === 1 ? "" : "s"} ago`;
+
+  return formatDate(value);
 }
 
 export function AdminBillingManagement() {
@@ -1138,6 +1216,56 @@ export function AdminBillingManagement() {
                         </section>
 
                         <section className="border-b border-slate-200 py-5">
+                          <h3 className="text-base font-bold text-slate-950">
+                            Workspace health
+                          </h3>
+                          <p className="mt-1 text-sm text-slate-500">
+                            Whether the plan above is actually reaching this customer.
+                          </p>
+
+                          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                            <HealthStat
+                              label="Conversations"
+                              value={detail.usage.conversations}
+                            />
+                            <HealthStat
+                              label="Open"
+                              value={detail.usage.openConversations}
+                            />
+                            <HealthStat
+                              label="Unassigned"
+                              value={detail.usage.unassignedOpen}
+                              warn={detail.usage.unassignedOpen > 0}
+                            />
+                            <HealthStat
+                              label="Customers"
+                              value={detail.usage.contacts}
+                            />
+                            <HealthStat
+                              label="Messages"
+                              value={detail.usage.messages}
+                            />
+                            <HealthStat
+                              label="Failed sends"
+                              value={detail.usage.failedMessages}
+                              warn={detail.usage.failedMessages > 0}
+                            />
+                            <HealthStat
+                              label="Quick replies"
+                              value={detail.usage.savedReplies}
+                            />
+                            <HealthStat
+                              label={
+                                detail.usage.lastMessageDirection === "outgoing"
+                                  ? "Last reply sent"
+                                  : "Last message in"
+                              }
+                              value={formatSince(detail.usage.lastMessageAt)}
+                            />
+                          </div>
+                        </section>
+
+                        <section className="border-b border-slate-200 py-5">
                           <h3 className="text-base font-bold text-slate-950">Activity</h3>
                           {activity.length === 0 ? (
                             <p className="mt-3 text-sm text-slate-500">
@@ -1222,13 +1350,64 @@ export function AdminBillingManagement() {
                                             : "Customer channel";
                                       const channelName = channel.accountName?.trim() || fallbackName;
 
+                                      // A connection can be "Active" and still be
+                                      // dead: a revoked token or a dropped webhook
+                                      // is exactly what a customer reports as
+                                      // "messages stopped arriving".
+                                      const isTelegram = channel.platform === "telegram";
+                                      const tokenStatus = isTelegram
+                                        ? channel.telegramTokenStatus
+                                        : channel.facebookTokenStatus;
+                                      const tokenBroken =
+                                        tokenStatus !== null &&
+                                        tokenStatus !== "valid" &&
+                                        tokenStatus !== "verified" &&
+                                        tokenStatus !== "connected";
+                                      const webhookBroken =
+                                        isTelegram &&
+                                        channel.telegramWebhookStatus !== null &&
+                                        channel.telegramWebhookStatus !== "active";
+
                                       return (
-                                        <div key={channel.id} className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2.5 text-sm">
+                                        <div
+                                          key={channel.id}
+                                          className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm ${
+                                            channel.active && (tokenBroken || webhookBroken)
+                                              ? "bg-amber-50 ring-1 ring-amber-200"
+                                              : "bg-white"
+                                          }`}
+                                        >
                                           <div className="min-w-0">
                                             <p className="truncate font-semibold text-slate-800">{channelName}</p>
                                             <p className="truncate text-xs text-slate-400">
                                               {platformLabel} · <span className="font-mono text-[10px]">{channel.platformAccountId ?? channel.id}</span>
                                             </p>
+                                            {tokenStatus || webhookBroken ? (
+                                              <p className="mt-1 flex flex-wrap gap-1.5">
+                                                {tokenStatus ? (
+                                                  <span
+                                                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                                                      tokenBroken
+                                                        ? "bg-amber-100 text-amber-800"
+                                                        : "bg-emerald-100 text-emerald-800"
+                                                    }`}
+                                                  >
+                                                    Token {tokenStatus}
+                                                  </span>
+                                                ) : null}
+                                                {isTelegram && channel.telegramWebhookStatus ? (
+                                                  <span
+                                                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                                                      webhookBroken
+                                                        ? "bg-amber-100 text-amber-800"
+                                                        : "bg-emerald-100 text-emerald-800"
+                                                    }`}
+                                                  >
+                                                    Webhook {channel.telegramWebhookStatus}
+                                                  </span>
+                                                ) : null}
+                                              </p>
+                                            ) : null}
                                           </div>
                                           <span className={channel.active ? "text-emerald-600" : "text-slate-400"}>{channel.active ? "Active" : "Inactive"}</span>
                                         </div>

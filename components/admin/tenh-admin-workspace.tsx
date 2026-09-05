@@ -11,7 +11,6 @@ import { AdminBillingManagement } from "@/components/admin/admin-billing-managem
 import { AdminChannelHealth } from "@/components/admin/admin-channel-health";
 import { AdminConnections } from "@/components/admin/admin-connections";
 import { AdminSecurityCenter } from "@/components/admin/admin-security-center";
-import { AdminWorkspaceInspector } from "@/components/admin/admin-workspace-inspector";
 import { CustomerReportReview } from "@/components/admin/customer-report-review";
 import { SystemAnnouncementAdmin } from "@/components/admin/system-announcement-admin";
 import { ManualPaymentAdmin } from "@/components/billing/manual-payment-admin";
@@ -24,7 +23,6 @@ type AdminTab =
   | "announcements"
   | "channel-health"
   | "connections"
-  | "workspace-inspector"
   | "security";
 
 type TenhAdminWorkspaceProps = {
@@ -69,8 +67,8 @@ const tabs: Array<{
   },
   {
     id: "billing",
-    label: "Billing management",
-    description: "Search workspace billing details and history",
+    label: "Workspaces",
+    description: "Any customer's plan, payments, channels, and activity",
   },
   {
     id: "manual-payments",
@@ -96,11 +94,6 @@ const tabs: Array<{
     id: "connections",
     label: "Channel connections",
     description: "Every Page and Bot, and releasing a Bot for a new subscription",
-  },
-  {
-    id: "workspace-inspector",
-    label: "Workspace inspector",
-    description: "One customer's plan, channels, and activity in one place",
   },
   {
     id: "security",
@@ -387,8 +380,6 @@ export function TenhAdminWorkspace({
               <AdminChannelHealth />
             ) : activeTab === "connections" ? (
               <AdminConnections />
-            ) : activeTab === "workspace-inspector" ? (
-              <AdminWorkspaceInspector />
             ) : (
               <AdminSecurityCenter
                 adminMfaRequired={adminMfaRequired}
