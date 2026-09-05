@@ -169,8 +169,8 @@ export async function processFacebookMessage(
             "business_id,platform,platform_user_id",
         },
       )
-      /* profile_picture_url decides whether the avatar still needs fetching. */
-      .select("id,profile_picture_url")
+      /* created_at tells a first message apart from every one after it. */
+      .select("id,profile_picture_url,created_at")
       .single();
 
   if (contactError || !contact) {
@@ -355,7 +355,28 @@ export async function processFacebookMessage(
         "/facebook-avatar",
       );
 
-    if (!alreadyStored) {
+    /*
+     * Once per contact, on their first message.
+     *
+     * Meta refuses profile_pic for anyone without a role on the app until it
+     * has Advanced Access, so while an app is in review this lookup fails for
+     * every real customer. Attempting it on every message would spend a Graph
+     * call per message, forever, to be told the same thing -- and that quota is
+     * shared with sending.
+     *
+     * The first message is the one attempt worth making: it succeeds outright
+     * once access is granted, and the backfill exists to sweep up everyone who
+     * wrote before then.
+     */
+    const isFirstMessage =
+      typeof contact.created_at === "string" &&
+      Date.now() -
+        new Date(
+          contact.created_at,
+        ).getTime() <
+        30_000;
+
+    if (!alreadyStored && isFirstMessage) {
       try {
         const pageAccessToken =
           await getFacebookPageAccessToken(

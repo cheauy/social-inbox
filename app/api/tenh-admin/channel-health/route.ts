@@ -263,36 +263,33 @@ async function loadRecentActivity(
   };
 
   try {
-    const { data: conversations, error: conversationError } = await supabaseAdmin
-      .from("conversations")
-      .select("id")
-      .eq("business_id", businessId)
-      .eq("social_account_id", socialAccountId)
-      .limit(500);
-
-    if (conversationError) {
-      return {
-        ...empty,
-        error: conversationError.message,
-      };
-    }
-
-    const conversationIds = (conversations ?? [])
-      .map((row) => cleanString((row as { id?: unknown }).id))
-      .filter((id): id is string => Boolean(id));
-
-    if (conversationIds.length === 0) {
-      return empty;
-    }
-
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
+    /*
+     * Filter through the conversation rather than collecting its ids.
+     *
+     * This used to read up to 500 conversation ids and pass them to three
+     * .in() filters. PostgREST puts those values in the query string, and 500
+     * UUIDs is roughly 18KB of URL -- past the 16KB header limit, where Node
+     * refuses the request before it leaves the process and reports only
+     * "fetch failed". The 500 cap also meant a busy Page silently reported
+     * activity for an arbitrary subset of its conversations.
+     *
+     * An inner join on the embedded conversation does the same filtering in
+     * the database, with no id list, no cap, and a URL that stays the same size
+     * however many conversations a Page has.
+     */
     const [incomingResult, outgoingResult, failedResult] = await Promise.all([
       supabaseAdmin
         .from("messages")
-        .select("platform_created_at")
+        .select(
+          "platform_created_at, conversations!inner(social_account_id)",
+        )
         .eq("business_id", businessId)
-        .in("conversation_id", conversationIds)
+        .eq(
+          "conversations.social_account_id",
+          socialAccountId,
+        )
         .eq("direction", "incoming")
         .not("platform_created_at", "is", null)
         .order("platform_created_at", { ascending: false })
@@ -300,9 +297,14 @@ async function loadRecentActivity(
         .maybeSingle(),
       supabaseAdmin
         .from("messages")
-        .select("platform_created_at")
+        .select(
+          "platform_created_at, conversations!inner(social_account_id)",
+        )
         .eq("business_id", businessId)
-        .in("conversation_id", conversationIds)
+        .eq(
+          "conversations.social_account_id",
+          socialAccountId,
+        )
         .eq("direction", "outgoing")
         .not("platform_created_at", "is", null)
         .order("platform_created_at", { ascending: false })
@@ -310,9 +312,15 @@ async function loadRecentActivity(
         .maybeSingle(),
       supabaseAdmin
         .from("messages")
-        .select("id", { count: "exact", head: true })
+        .select(
+          "id, conversations!inner(social_account_id)",
+          { count: "exact", head: true },
+        )
         .eq("business_id", businessId)
-        .in("conversation_id", conversationIds)
+        .eq(
+          "conversations.social_account_id",
+          socialAccountId,
+        )
         .eq("direction", "outgoing")
         .eq("delivery_status", "failed")
         .gte("platform_created_at", since),
