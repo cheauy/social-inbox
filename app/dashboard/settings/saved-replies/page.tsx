@@ -28,6 +28,7 @@ export default async function SavedRepliesSettingsPage() {
       <SavedReplyManager
         businessId={data.businessId}
         initialSavedReplies={data.savedReplies}
+        initialCategories={data.categories}
       />
     </main>
   );

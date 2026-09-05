@@ -29,17 +29,23 @@ export type SavedReplyAttachmentType =
   | "image"
   | "video";
 
+/*
+ * Quick reply media, as stored in saved_replies.attachments.
+ *
+ * A handful of small records that are always read with their reply, so they
+ * live in the row rather than a table of their own -- one write saves a reply
+ * and its media together, and there is no join to keep in step.
+ *
+ * `path` is a key in the private media bucket, never a URL: the file is reached
+ * through /api/saved-replies/media, which checks the path belongs to the
+ * caller's workspace and signs a short-lived link.
+ */
 export type SavedReplyAttachment = {
-  id: string;
-  saved_reply_id: string;
-  attachment_type: SavedReplyAttachmentType;
-  storage_path: string;
-  public_url: string;
-  file_name: string;
-  mime_type: string;
-  file_size: number;
-  sort_index: number;
-  created_at: string;
+  path: string;
+  kind: SavedReplyAttachmentType;
+  name: string;
+  size: number;
+  mimeType: string;
 };
 
 export type CustomerTag = {
@@ -109,6 +115,22 @@ export type InboxContact = {
   last_contact_at: string | null;
   address: string | null;
   tags: CustomerTag[];
+};
+
+/*
+ * A quick reply category.
+ *
+ * Replies still record their category by name, so this table exists to give
+ * those names an order, a spelling worth trusting, and somewhere to rename or
+ * remove them from.
+ */
+export type SavedReplyCategory = {
+  id: string;
+  business_id: string;
+  name: string;
+  sort_index: number;
+  created_at: string;
+  updated_at: string;
 };
 
 export type SavedReply = {

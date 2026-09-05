@@ -85,6 +85,101 @@ const DEFAULT_SAVED_REPLIES = [
   },
 ] as const;
 
+/*
+ * The categories a workspace starts with.
+ *
+ * Sales is here because the placeholder in the form has always suggested it,
+ * and a workspace with one category is a workspace where nobody files anything.
+ * Ten apart so a category can be dragged between two without renumbering the
+ * rest.
+ */
+const DEFAULT_SAVED_REPLY_CATEGORIES = [
+  { name: "General", sort_index: 10 },
+  { name: "Sales", sort_index: 20 },
+  { name: "Follow up", sort_index: 30 },
+] as const;
+
+/*
+ * Tops up rather than replaces. An existing workspace keeps the categories it
+ * has -- including any the migration adopted from replies already filed -- and
+ * only gains the defaults it is missing. Matching is case-insensitive, so a
+ * workspace that already has "sales" does not end up with two.
+ */
+async function ensureDefaultSavedReplyCategories(
+  businessId: string,
+) {
+  const { data: existingRows, error: existingError } =
+    await supabaseAdmin
+      .from("saved_reply_categories")
+      .select("id,name,sort_index")
+      .eq("business_id", businessId);
+
+  if (existingError) {
+    throw new Error(existingError.message);
+  }
+
+  const existingNames = new Set(
+    (existingRows ?? []).map((row) =>
+      String(row.name ?? "").trim().toLowerCase(),
+    ),
+  );
+
+  const missing = DEFAULT_SAVED_REPLY_CATEGORIES.filter(
+    (category) =>
+      !existingNames.has(
+        category.name.toLowerCase(),
+      ),
+  );
+
+  if (missing.length === 0) {
+    return;
+  }
+
+  /*
+   * Defaults go after whatever is already there, so a workspace that arranged
+   * its own categories does not find them pushed down.
+   */
+  const highest = (existingRows ?? []).reduce(
+    (top, row) =>
+      Math.max(
+        top,
+        Number(row.sort_index ?? 0) || 0,
+      ),
+    0,
+  );
+
+  const { error: insertError } =
+    await supabaseAdmin
+      .from("saved_reply_categories")
+      .insert(
+        missing.map((category, index) => ({
+          business_id: businessId,
+          name: category.name,
+          sort_index:
+            existingNames.size === 0
+              ? category.sort_index
+              : highest + (index + 1) * 10,
+        })),
+      );
+
+  if (insertError) {
+    /*
+     * A duplicate here means another request seeded the same workspace at the
+     * same time, which is a race rather than a failure worth surfacing.
+     */
+    if (
+      insertError.code === "23505" ||
+      insertError.message
+        .toLowerCase()
+        .includes("duplicate key")
+    ) {
+      return;
+    }
+
+    throw new Error(insertError.message);
+  }
+}
+
 async function ensureDefaultTags(businessId: string) {
   const { data: existingRows, error: existingError } = await supabaseAdmin
     .from("tags")
@@ -211,5 +306,8 @@ export async function ensureWorkspaceDefaultContent(businessId: string) {
   await Promise.all([
     ensureDefaultTags(normalizedBusinessId),
     ensureDefaultSavedReplies(normalizedBusinessId),
+    ensureDefaultSavedReplyCategories(
+      normalizedBusinessId,
+    ),
   ]);
 }

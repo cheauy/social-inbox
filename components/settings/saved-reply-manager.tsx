@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -26,16 +27,23 @@ import {
 import { useWorkspacePermissions } from "@/lib/auth/use-workspace-permissions";
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog";
 
+import { useRouter } from "next/navigation";
+
+import { AttachmentThumbnails } from "@/components/settings/saved-reply-attachment-thumbnails";
+import { SavedReplyCategoryManager } from "@/components/settings/saved-reply-category-manager";
 import {
   SavedReplyFormModal,
   type SavedReplyFormValue,
 } from "@/components/settings/saved-reply-form-modal";
 
-import type { SavedReply } from "@/types/inbox";
+import type {
+  SavedReplyCategory,
+  SavedReplyAttachment, SavedReply } from "@/types/inbox";
 
 type SavedReplyManagerProps = {
   businessId: string;
   initialSavedReplies: SavedReply[];
+  initialCategories: SavedReplyCategory[];
 };
 
 type SavedReplyResponse = {
@@ -44,20 +52,47 @@ type SavedReplyResponse = {
   savedReply?: SavedReply;
 };
 
+/*
+ * Which category a new quick reply starts in.
+ *
+ * General, when the workspace has it -- it is the default every workspace is
+ * seeded with, and the one most replies belong in. A workspace that renamed or
+ * removed it falls back to whichever category it put first, since that is the
+ * one it chose to lead with. Only a workspace with no categories at all starts
+ * uncategorised.
+ */
+function defaultCategoryName(
+  categories: SavedReplyCategory[],
+) {
+  const general = categories.find(
+    (category) =>
+      category.name.trim().toLowerCase() ===
+      "general",
+  );
+
+  return (
+    general?.name ??
+    categories[0]?.name ??
+    ""
+  );
+}
+
 function emptyForm(
   nextIndex: number,
+  categories: SavedReplyCategory[] = [],
 ): SavedReplyFormValue {
   return {
     title: "",
     shortcut: "",
-    category: "",
+    category:
+      defaultCategoryName(categories),
     messageText: "",
     sortIndex: nextIndex,
     isActive: true,
 
     existingAttachments: [],
     newAttachments: [],
-    removedAttachmentIds: [],
+    removedAttachmentPaths: [],
   };
 }
 
@@ -77,19 +112,29 @@ function formFromReply(
 
     newAttachments: [],
 
-    removedAttachmentIds: [],
+    removedAttachmentPaths: [],
   };
 }
 
 export function SavedReplyManager({
   businessId,
   initialSavedReplies,
+  initialCategories,
 }: SavedReplyManagerProps) {
+  const router = useRouter();
+
   // Usage is always allowed; this only gates create / edit / delete.
   const { can } = useWorkspacePermissions();
   const canManageContent = can("tags_quick_replies");
   const languageId = useWorkspaceLanguageId();
   const isKhmer = languageId === "km";
+
+  const [
+    managedCategories,
+    setManagedCategories,
+  ] = useState<SavedReplyCategory[]>(
+    initialCategories,
+  );
 
   const [savedReplies, setSavedReplies] =
     useState<SavedReply[]>(
@@ -120,6 +165,7 @@ export function SavedReplyManager({
     useState<SavedReplyFormValue>(
       emptyForm(
         initialSavedReplies.length + 1,
+        initialCategories,
       ),
     );
 
@@ -139,22 +185,106 @@ export function SavedReplyManager({
   const [togglingReplyIds, setTogglingReplyIds] =
     useState<Set<string>>(new Set());
 
-  const categories = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          savedReplies
-            .map((reply) => reply.category?.trim())
-            .filter(
-              (category): category is string =>
-                Boolean(category),
-            ),
+  /*
+   * The filter follows the order the Owner dragged, not the alphabet: the point
+   * of arranging categories is that the arrangement is the one people see.
+   * Categories with nothing filed under them are still offered, so a new one is
+   * visible before its first reply exists.
+   */
+  const categories = useMemo(() => {
+    const inUse = new Set(
+      savedReplies
+        .map((reply) =>
+          reply.category?.trim().toLowerCase(),
+        )
+        .filter(
+          (category): category is string =>
+            Boolean(category),
         ),
-      ).sort((first, second) =>
+    );
+
+    const ordered = managedCategories.map(
+      (category) => category.name,
+    );
+    const known = new Set(
+      ordered.map((name) =>
+        name.toLowerCase(),
+      ),
+    );
+
+    const orphans = Array.from(inUse)
+      .filter((name) => !known.has(name))
+      .map((lower) => {
+        const match = savedReplies.find(
+          (reply) =>
+            reply.category?.trim().toLowerCase() ===
+            lower,
+        );
+
+        return (
+          match?.category?.trim() ?? lower
+        );
+      })
+      .sort((first, second) =>
+        first.localeCompare(second),
+      );
+
+    return [...ordered, ...orphans];
+  }, [managedCategories, savedReplies]);
+
+  /*
+   * The managed categories, in the order they were dragged into, plus any name
+   * still carried by a reply but no longer a category of its own. Those come
+   * from before categories were managed, or from a rename that half-finished;
+   * offering them keeps the filter honest about what is actually filed.
+   */
+  const existingCategories = useMemo(() => {
+    const ordered = managedCategories.map(
+      (category) => category.name,
+    );
+    const known = new Set(
+      ordered.map((name) =>
+        name.toLowerCase(),
+      ),
+    );
+    const orphans: string[] = [];
+
+    for (const reply of savedReplies) {
+      const name = reply.category?.trim();
+
+      if (!name) {
+        continue;
+      }
+
+      const key = name.toLowerCase();
+
+      if (!known.has(key)) {
+        known.add(key);
+        orphans.push(name);
+      }
+    }
+
+    return [
+      ...ordered,
+      ...orphans.sort((first, second) =>
         first.localeCompare(second),
       ),
-    [savedReplies],
-  );
+    ];
+  }, [managedCategories, savedReplies]);
+
+  /*
+   * How many rows are drawn at once.
+   *
+   * Each row with media asks for a signed URL per thumbnail, so a workspace
+   * with hundreds of replies would open this page and fire hundreds of
+   * requests before showing anything. Drawing a page at a time keeps that
+   * bounded, and the search and filters above still work across every reply --
+   * they narrow the list before this does.
+   */
+  const REPLY_PAGE_SIZE = 25;
+
+  const [visibleCount, setVisibleCount] =
+    useState(REPLY_PAGE_SIZE);
 
   const totalCount = savedReplies.length;
 
@@ -251,6 +381,26 @@ export function SavedReplyManager({
     return replies;
   }, [filteredReplies, sortMode]);
 
+  /*
+   * Reset to the first page whenever the list underneath changes. Searching
+   * and landing on page three of the old results would look like the search
+   * had failed.
+   */
+  const visibleReplies = sortedReplies.slice(
+    0,
+    visibleCount,
+  );
+
+  const hiddenReplyCount =
+    sortedReplies.length -
+    visibleReplies.length;
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVisibleCount(REPLY_PAGE_SIZE);
+  }, [search, categoryFilter, statusFilter]);
+
+
   function openCreate() {
     const nextIndex =
       savedReplies.reduce(
@@ -263,7 +413,12 @@ export function SavedReplyManager({
       ) + 1;
 
     setSelectedReply(null);
-    setForm(emptyForm(nextIndex));
+    setForm(
+      emptyForm(
+        nextIndex,
+        managedCategories,
+      ),
+    );
     setError(null);
     setModalMode("create");
   }
@@ -287,6 +442,68 @@ export function SavedReplyManager({
     setError(null);
   }
 
+  /*
+   * Upload the newly picked files, then save the reply with the full list.
+   *
+   * Uploads come first because the reply stores paths: saving a reply that
+   * pointed at a file the upload had not produced would leave a quick reply
+   * that sends nothing. If an upload fails, nothing is saved and the files
+   * already uploaded are simply orphaned in the bucket -- a stray object costs
+   * nothing, a broken quick reply costs a customer reply.
+   */
+  async function uploadNewAttachments() {
+    const uploaded: SavedReplyAttachment[] =
+      [];
+
+    for (const pending of form.newAttachments) {
+      const body = new FormData();
+      body.set("file", pending.file);
+
+      const response = await fetch(
+        "/api/saved-replies/media",
+        { method: "POST", body },
+      );
+
+      const result = (await response
+        .json()
+        .catch(() => null)) as {
+        success?: boolean;
+        error?: string;
+        attachment?: SavedReplyAttachment;
+      } | null;
+
+      if (
+        !response.ok ||
+        !result?.success ||
+        !result.attachment
+      ) {
+        throw new Error(
+          result?.error ??
+            `Unable to upload ${pending.file.name}.`,
+        );
+      }
+
+      uploaded.push(result.attachment);
+    }
+
+    return uploaded;
+  }
+
+  /*
+   * Best effort, and deliberately after the save. A file removed from a reply
+   * that then failed to save should still be there.
+   */
+  async function deleteRemovedAttachments() {
+    for (const path of form.removedAttachmentPaths) {
+      await fetch(
+        `/api/saved-replies/media?path=${encodeURIComponent(
+          path,
+        )}`,
+        { method: "DELETE" },
+      ).catch(() => null);
+    }
+  }
+
   async function submitForm() {
     setSaving(true);
     setError(null);
@@ -295,6 +512,14 @@ export function SavedReplyManager({
       const isEditing =
         modalMode === "edit" &&
         selectedReply !== null;
+
+      const uploaded =
+        await uploadNewAttachments();
+
+      const attachments = [
+        ...form.existingAttachments,
+        ...uploaded,
+      ];
 
       const response = await fetch(
         isEditing
@@ -333,6 +558,8 @@ export function SavedReplyManager({
 
             isActive:
               form.isActive,
+
+            attachments,
           }),
         },
       );
@@ -366,6 +593,8 @@ export function SavedReplyManager({
           result.savedReply as SavedReply,
         ]);
       }
+
+      await deleteRemovedAttachments();
 
       setModalMode(null);
       setSelectedReply(null);
@@ -590,6 +819,20 @@ export function SavedReplyManager({
           </div>
         ) : null}
 
+        {/*
+          Categories sit above the list they organise, and above the filter that
+          uses their order -- rearranging them and then seeing the filter change
+          reads as cause and effect.
+        */}
+        <SavedReplyCategoryManager
+          categories={managedCategories}
+          canManage={canManageContent}
+          onChange={setManagedCategories}
+          onRepliesChanged={() =>
+            router.refresh()
+          }
+        />
+
         {/* Main manager */}
         <section className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-4 py-4 sm:px-5">
@@ -743,12 +986,11 @@ export function SavedReplyManager({
 
           {/* Desktop table */}
           <div className="hidden lg:block">
-            <div className="sticky top-0 z-10 grid grid-cols-[70px_minmax(160px,0.95fr)_130px_130px_minmax(220px,1.25fr)_110px_150px] border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400">
+            <div className="sticky top-0 z-10 grid grid-cols-[70px_minmax(280px,2fr)_130px_130px_110px_150px] border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400">
               <div>{isKhmer ? "លំដាប់" : "Order"}</div>
               <div>{isKhmer ? "ការឆ្លើយតបរហ័ស" : "Quick reply"}</div>
               <div>{isKhmer ? "ផ្លូវកាត់" : "Shortcut"}</div>
               <div>{isKhmer ? "ប្រភេទ" : "Category"}</div>
-              <div>{isKhmer ? "មើលសារជាមុន" : "Message preview"}</div>
               <div>{isKhmer ? "ស្ថានភាព" : "Status"}</div>
               <div className="text-right">
                 {isKhmer ? "សកម្មភាព" : "Actions"}
@@ -762,10 +1004,10 @@ export function SavedReplyManager({
                   <WorkspaceLanguageText en="No quick replies found." km="រកមិនឃើញការឆ្លើយតបរហ័ស។" />
                 </div>
               ) : (
-                sortedReplies.map((reply) => (
+                visibleReplies.map((reply) => (
                   <div
                     key={reply.id}
-                    className={`grid grid-cols-[70px_minmax(160px,0.95fr)_130px_130px_minmax(220px,1.25fr)_110px_150px] items-center px-4 py-4 transition ${
+                    className={`grid grid-cols-[70px_minmax(280px,2fr)_130px_130px_110px_150px] items-center px-4 py-4 transition ${
                       reply.is_active
                         ? "bg-white hover:bg-slate-50/60"
                         : "bg-slate-50/70 text-slate-500"
@@ -775,10 +1017,32 @@ export function SavedReplyManager({
                       {reply.sort_index}
                     </div>
 
-                    <div className="min-w-0 pr-3">
+                    {/*
+                      Title above the message it sends, because that is the
+                      order they matter in: the title is how the agent finds
+                      the reply, the message is what the customer receives.
+                      They were two columns far apart, so a long message pushed
+                      the title into a sliver and neither could be read.
+
+                      Both are clamped rather than wrapped -- one line for the
+                      title, two for the message -- so a reply holding an essay
+                      takes the same row height as one holding a sentence, and
+                      the list stays scannable however customers write.
+                    */}
+                    <div className="min-w-0 pr-4">
                       <p className="truncate text-sm font-bold text-slate-900">
                         {reply.title}
                       </p>
+
+                      <p className="mt-0.5 line-clamp-2 break-words text-xs leading-5 text-slate-500">
+                        {reply.message_text}
+                      </p>
+
+                      <AttachmentThumbnails
+                        attachments={
+                          reply.attachments ?? []
+                        }
+                      />
                     </div>
 
                     <div>
@@ -798,12 +1062,6 @@ export function SavedReplyManager({
                         {reply.category ??
                           (isKhmer ? "គ្មានប្រភេទ" : "Uncategorized")}
                       </span>
-                    </div>
-
-                    <div className="min-w-0 pr-4">
-                      <p className="truncate text-sm text-slate-600">
-                        {reply.message_text}
-                      </p>
                     </div>
 
                     <div>
@@ -899,6 +1157,29 @@ export function SavedReplyManager({
                   </div>
                 ))
               )}
+
+                {hiddenReplyCount > 0 ? (
+                  <div className="px-4 py-4 text-center">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibleCount(
+                          (current) =>
+                            current +
+                            REPLY_PAGE_SIZE,
+                        )
+                      }
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                    >
+                      {isKhmer
+                        ? `បង្ហាញបន្ថែម (${hiddenReplyCount})`
+                        : `Show ${Math.min(
+                            hiddenReplyCount,
+                            REPLY_PAGE_SIZE,
+                          )} more of ${hiddenReplyCount}`}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
@@ -910,7 +1191,7 @@ export function SavedReplyManager({
                 <WorkspaceLanguageText en="No quick replies found." km="រកមិនឃើញការឆ្លើយតបរហ័ស។" />
               </div>
             ) : (
-              sortedReplies.map((reply) => (
+              visibleReplies.map((reply) => (
                 <div
                   key={reply.id}
                   className={`p-4 ${
@@ -989,6 +1270,27 @@ export function SavedReplyManager({
                 </div>
               ))
             )}
+            {hiddenReplyCount > 0 ? (
+              <div className="px-4 py-4 text-center">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVisibleCount(
+                      (current) =>
+                        current + REPLY_PAGE_SIZE,
+                    )
+                  }
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                >
+                  {isKhmer
+                    ? `បង្ហាញបន្ថែម (${hiddenReplyCount})`
+                    : `Show ${Math.min(
+                        hiddenReplyCount,
+                        REPLY_PAGE_SIZE,
+                      )} more of ${hiddenReplyCount}`}
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
@@ -1032,6 +1334,7 @@ export function SavedReplyManager({
           value={form}
           saving={saving}
           error={error}
+          categories={existingCategories}
           onChange={setForm}
           onClose={closeModal}
           onSubmit={() =>
@@ -1072,4 +1375,4 @@ export function SavedReplyManager({
       />
     </>
   );
-}
+}

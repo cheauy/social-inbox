@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -14,6 +15,65 @@ import type {
   SavedReplyAttachment,
   SavedReplyAttachmentType,
 } from "@/types/inbox";
+
+/*
+ * Thumbnail for a file that is already stored.
+ *
+ * The media bucket is private, so there is no URL to put in a src -- the path
+ * has to be exchanged for a short-lived signed link first. That is one request
+ * per thumbnail, which is why it is asked for only when the tile renders, and
+ * why a failure just leaves the placeholder icon rather than a broken image.
+ */
+function StoredImagePreview({
+  path,
+  alt,
+}: {
+  path: string;
+  alt: string;
+}) {
+  const [url, setUrl] = useState<
+    string | null
+  >(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void fetch(
+      `/api/saved-replies/media?path=${encodeURIComponent(
+        path,
+      )}`,
+      { cache: "no-store" },
+    )
+      .then((response) => response.json())
+      .then((result) => {
+        if (
+          !cancelled &&
+          result?.success &&
+          typeof result.url === "string"
+        ) {
+          setUrl(result.url);
+        }
+      })
+      .catch(() => null);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  if (!url) {
+    return <ImageIcon />;
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt={alt}
+      className="h-full w-full object-cover"
+    />
+  );
+}
 
 export type NewSavedReplyAttachment = {
   id: string;
@@ -32,7 +92,8 @@ export type SavedReplyFormValue = {
 
   existingAttachments: SavedReplyAttachment[];
   newAttachments: NewSavedReplyAttachment[];
-  removedAttachmentIds: string[];
+  /* Stored paths dropped by this edit, so the files can be deleted on save. */
+  removedAttachmentPaths: string[];
 };
 
 type SavedReplyFormModalProps = {
@@ -40,6 +101,9 @@ type SavedReplyFormModalProps = {
   value: SavedReplyFormValue;
   saving: boolean;
   error: string | null;
+
+  /* Categories already in use, offered as suggestions on the field below. */
+  categories: string[];
 
   onChange: (
     value: SavedReplyFormValue,
@@ -143,6 +207,7 @@ export function SavedReplyFormModal({
   value,
   saving,
   error,
+  categories,
   onChange,
   onClose,
   onSubmit,
@@ -168,10 +233,62 @@ export function SavedReplyFormModal({
       return;
     }
 
-    const maximumSize =
-      attachmentType === "image"
-        ? 10 * 1024 * 1024
-        : 50 * 1024 * 1024;
+    /*
+     * 20 MB for both, matching the server. Messenger caps a send at 25 MB and
+     * Telegram at 50 MB, so this is the size that is sendable on either --
+     * which is the only size worth allowing for something meant to be reused.
+     */
+    const maximumSize = 20 * 1024 * 1024;
+
+    const currentImages =
+      value.existingAttachments.filter(
+        (attachment) =>
+          attachment.kind === "image",
+      ).length +
+      value.newAttachments.filter(
+        (attachment) =>
+          attachment.attachmentType === "image",
+      ).length;
+
+    const currentVideos =
+      value.existingAttachments.filter(
+        (attachment) =>
+          attachment.kind === "video",
+      ).length +
+      value.newAttachments.filter(
+        (attachment) =>
+          attachment.attachmentType === "video",
+      ).length;
+
+    /*
+     * Images or one video, never a mix. Both channels send video on its own and
+     * group images into an album, so a reply holding both could not be
+     * delivered as one message -- better to refuse it here than to send
+     * something the agent did not picture.
+     */
+    if (
+      attachmentType === "video" &&
+      (currentVideos > 0 || currentImages > 0)
+    ) {
+      window.alert(
+        currentVideos > 0
+          ? "A quick reply can include one video. Remove the current video first."
+          : "A quick reply can include images or one video, not both. Video is always sent on its own.",
+      );
+
+      return;
+    }
+
+    if (
+      attachmentType === "image" &&
+      currentVideos > 0
+    ) {
+      window.alert(
+        "This quick reply has a video. Remove it before adding images — video is always sent on its own.",
+      );
+
+      return;
+    }
 
     const selectedFiles =
       Array.from(files);
@@ -198,14 +315,33 @@ export function SavedReplyFormModal({
       selectedFiles.length
     ) {
       window.alert(
-        attachmentType === "image"
-          ? "Some images were rejected. Each image must be under 10 MB."
-          : "Some videos were rejected. Each video must be under 50 MB.",
+        `Some files were rejected. Each ${attachmentType} must be under 20 MB and in a format both Messenger and Telegram accept.`,
+      );
+    }
+
+    /* Ten is what Telegram's sendMediaGroup accepts in one album. */
+    const allowedFiles =
+      attachmentType === "image"
+        ? validFiles.slice(
+            0,
+            Math.max(
+              0,
+              10 - currentImages,
+            ),
+          )
+        : validFiles.slice(0, 1);
+
+    if (
+      allowedFiles.length <
+      validFiles.length
+    ) {
+      window.alert(
+        "A quick reply can include up to 10 images, so some were not added.",
       );
     }
 
     const newAttachments =
-      validFiles.map((file) => ({
+      allowedFiles.map((file) => ({
         id: crypto.randomUUID(),
         file,
         previewUrl:
@@ -272,7 +408,7 @@ export function SavedReplyFormModal({
   }
 
   function removeExistingAttachment(
-    attachmentId: string,
+    attachmentPath: string,
   ) {
     onChange({
       ...value,
@@ -280,13 +416,13 @@ export function SavedReplyFormModal({
       existingAttachments:
         value.existingAttachments.filter(
           (attachment) =>
-            attachment.id !==
-            attachmentId,
+            attachment.path !==
+            attachmentPath,
         ),
 
-      removedAttachmentIds: [
-        ...value.removedAttachmentIds,
-        attachmentId,
+      removedAttachmentPaths: [
+        ...value.removedAttachmentPaths,
+        attachmentPath,
       ],
     });
   }
@@ -305,22 +441,31 @@ export function SavedReplyFormModal({
   const shortcutCount = value.shortcut.length;
   const messageCount = value.messageText.length;
 
-  const existingPreviewSrc = (
-    attachment: SavedReplyAttachment,
-  ) =>
-    ((attachment as any).previewUrl ??
-      (attachment as any).url ??
-      (attachment as any).file_url ??
-      (attachment as any).fileUrl ??
-      null) as string | null;
-
   const existingDisplayName = (
     attachment: SavedReplyAttachment,
-  ) =>
-    ((attachment as any).file_name ??
-      (attachment as any).fileName ??
-      (attachment as any).name ??
-      "Attachment") as string;
+  ) => attachment.name || "Attachment";
+
+  /*
+   * What the dropdown offers: the managed categories, plus this reply's own if
+   * it is no longer one of them. Without that, opening an old reply would show
+   * "No category" and saving would quietly strip it.
+   */
+  const selectableCategories = (() => {
+    const current = value.category.trim();
+
+    if (
+      !current ||
+      categories.some(
+        (name) =>
+          name.toLowerCase() ===
+          current.toLowerCase(),
+      )
+    ) {
+      return categories;
+    }
+
+    return [...categories, current];
+  })();
 
   const attachmentCount =
     value.existingAttachments.length +
@@ -484,19 +629,65 @@ export function SavedReplyFormModal({
                       : "Organize your quick replies."}
                   </p>
 
-                  <input
+                  {/*
+                    Chosen, never typed.
+
+                    Categories are created and arranged in Settings now, so a
+                    free-text box here would quietly make a fourth kind of
+                    category: one nobody can rename, reorder or delete, and that
+                    differs from a real one only by a stray capital or space.
+                    A category the reply already carries is still offered, so
+                    editing an old reply cannot silently refile it.
+                  */}
+                  <select
                     value={value.category}
-                    maxLength={100}
+                    disabled={saving}
                     onChange={(event) =>
                       onChange({
                         ...value,
                         category: event.target.value,
                       })
                     }
-                    disabled={saving}
-                    placeholder={isKhmer ? "ការលក់" : "Sales"}
-                    className="h-12 w-full rounded-xl border border-slate-300 px-4 text-[15px] font-medium text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
-                  />
+                    className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-[15px] font-medium text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100 disabled:opacity-60"
+                  >
+                    {/*
+                      No "No category" option: every quick reply belongs
+                      somewhere now that categories are managed. This shows only
+                      while a reply has none -- an old one from before, or a
+                      category since deleted -- and cannot be chosen, so the
+                      control never sits blank and never saves back to nothing.
+                    */}
+                    {value.category.trim() ===
+                    "" ? (
+                      <option
+                        value=""
+                        disabled
+                      >
+                        {isKhmer
+                          ? "ជ្រើសរើសប្រភេទ"
+                          : "Choose a category"}
+                      </option>
+                    ) : null}
+
+                    {selectableCategories.map(
+                      (name) => (
+                        <option
+                          key={name}
+                          value={name}
+                        >
+                          {name}
+                        </option>
+                      ),
+                    )}
+                  </select>
+
+                  {categories.length === 0 ? (
+                    <p className="mt-2 text-xs text-slate-500">
+                      {isKhmer
+                        ? "បង្កើតប្រភេទនៅក្នុងការកំណត់ ដើម្បីរៀបចំការឆ្លើយតបរហ័ស។"
+                        : "Create categories in Settings to organise your quick replies."}
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
@@ -629,28 +820,22 @@ export function SavedReplyFormModal({
                 {attachmentCount > 0 ? (
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     {value.existingAttachments.map((attachment) => {
-                      const previewSrc = existingPreviewSrc(attachment);
                       const attachmentType =
-                        (((attachment as any).attachment_type ??
-                          (attachment as any).attachmentType ??
-                          "image") as SavedReplyAttachmentType);
+                        attachment.kind;
 
                       return (
                         <div
-                          key={attachment.id}
+                          key={attachment.path}
                           className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
                         >
                           <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-                            {previewSrc && attachmentType === "image" ? (
-                              <img
-                                src={previewSrc}
+                            {attachmentType === "image" ? (
+                              <StoredImagePreview
+                                path={attachment.path}
                                 alt={existingDisplayName(attachment)}
-                                className="h-full w-full object-cover"
                               />
-                            ) : attachmentType === "video" ? (
-                              <VideoIcon />
                             ) : (
-                              <ImageIcon />
+                              <VideoIcon />
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
@@ -665,7 +850,7 @@ export function SavedReplyFormModal({
                           </div>
                           <button
                             type="button"
-                            onClick={() => removeExistingAttachment(attachment.id)}
+                            onClick={() => removeExistingAttachment(attachment.path)}
                             disabled={saving}
                             className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-white hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
                             aria-label={isKhmer ? "ដកឯកសារភ្ជាប់ចេញ" : "Remove attachment"}

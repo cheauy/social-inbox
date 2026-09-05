@@ -7,6 +7,10 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import { DEFAULT_SAVED_REPLY_SEED_MARKER } from "@/lib/settings/ensure-workspace-default-content";
+import {
+  parseAttachments,
+  validateAttachments,
+} from "@/lib/settings/saved-reply-attachments";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requirePermission } from "@/lib/auth/require-permission";
 
@@ -92,6 +96,7 @@ export async function PATCH(
     shortcut?: string | null;
     messageText?: string;
     category?: string | null;
+    attachments?: unknown;
     sortIndex?: number;
     isActive?: boolean;
   };
@@ -184,6 +189,30 @@ export async function PATCH(
       messageText;
   }
 
+  if (body.attachments !== undefined) {
+    const attachments = parseAttachments(
+      body.attachments,
+    );
+
+    const attachmentError =
+      validateAttachments(
+        attachments,
+        currentMember.business_id,
+      );
+
+    if (attachmentError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: attachmentError,
+        },
+        { status: 400 },
+      );
+    }
+
+    updates.attachments = attachments;
+  }
+
   if (body.category !== undefined) {
     updates.category =
       clean(body.category);
@@ -226,7 +255,7 @@ export async function PATCH(
       )
       .neq("title", DEFAULT_SAVED_REPLY_SEED_MARKER)
       .select(
-        "id,business_id,title,shortcut,message_text,category,sort_index,is_active,created_at,updated_at",
+        "id,business_id,title,shortcut,message_text,category,attachments,sort_index,is_active,created_at,updated_at",
       )
       .maybeSingle();
 

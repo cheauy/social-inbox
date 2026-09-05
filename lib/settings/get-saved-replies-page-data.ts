@@ -6,7 +6,10 @@ import {
   ensureWorkspaceDefaultContent,
 } from "@/lib/settings/ensure-workspace-default-content";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import type { SavedReply } from "@/types/inbox";
+import type {
+  SavedReply,
+  SavedReplyCategory,
+} from "@/types/inbox";
 
 export async function getSavedRepliesPageData() {
   const authResult = await getCurrentMember();
@@ -22,6 +25,7 @@ export async function getSavedRepliesPageData() {
   const [
     { data: business, error: businessError },
     { data: savedReplies, error: repliesError },
+    { data: categories, error: categoriesError },
   ] = await Promise.all([
     supabaseAdmin
       .from("businesses")
@@ -31,12 +35,20 @@ export async function getSavedRepliesPageData() {
     supabaseAdmin
       .from("saved_replies")
       .select(
-        "id,business_id,title,shortcut,message_text,category,sort_index,is_active,created_at,updated_at",
+        "id,business_id,title,shortcut,message_text,category,attachments,sort_index,is_active,created_at,updated_at",
       )
       .eq("business_id", businessId)
       .neq("title", DEFAULT_SAVED_REPLY_SEED_MARKER)
       .order("is_active", { ascending: false })
       .order("sort_index", { ascending: true }),
+    supabaseAdmin
+      .from("saved_reply_categories")
+      .select(
+        "id,business_id,name,sort_index,created_at,updated_at",
+      )
+      .eq("business_id", businessId)
+      .order("sort_index", { ascending: true })
+      .order("name", { ascending: true }),
   ]);
 
   if (businessError || !business) {
@@ -47,9 +59,14 @@ export async function getSavedRepliesPageData() {
     throw new Error("Unable to load quick replies.");
   }
 
+  if (categoriesError) {
+    throw new Error("Unable to load quick reply categories.");
+  }
+
   return {
     businessId,
     businessName: business.name ?? "Current workspace",
     savedReplies: (savedReplies ?? []) as SavedReply[],
+    categories: (categories ?? []) as SavedReplyCategory[],
   };
 }

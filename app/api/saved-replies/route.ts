@@ -8,6 +8,10 @@ import {
 } from "@/lib/auth/get-current-member";
 import { authorizeInboxBusinessAccess } from "@/lib/inbox/get-inbox-resource-access";
 import { DEFAULT_SAVED_REPLY_SEED_MARKER } from "@/lib/settings/ensure-workspace-default-content";
+import {
+  parseAttachments,
+  validateAttachments,
+} from "@/lib/settings/saved-reply-attachments";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requirePermission } from "@/lib/auth/require-permission";
 
@@ -102,7 +106,7 @@ export async function GET(
   let query = supabaseAdmin
     .from("saved_replies")
     .select(
-      "id,business_id,title,shortcut,message_text,category,sort_index,is_active,created_at,updated_at",
+      "id,business_id,title,shortcut,message_text,category,attachments,sort_index,is_active,created_at,updated_at",
     )
     .eq(
       "business_id",
@@ -182,6 +186,7 @@ export async function POST(
     shortcut?: string | null;
     messageText?: string;
     category?: string | null;
+    attachments?: unknown;
     sortIndex?: number;
     isActive?: boolean;
   };
@@ -256,12 +261,38 @@ export async function POST(
     );
   }
 
+  /*
+   * Media is validated against the caller's own workspace before it is stored.
+   * The paths arrive from the browser, so the prefix check is what stops a
+   * reply being pointed at another workspace's files, and the count rules are
+   * what stop a reply promising a delivery the channels cannot make.
+   */
+  const attachments = parseAttachments(
+    body.attachments,
+  );
+
+  const attachmentError = validateAttachments(
+    attachments,
+    currentMember.business_id,
+  );
+
+  if (attachmentError) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: attachmentError,
+      },
+      { status: 400 },
+    );
+  }
+
   const { data, error } =
     await supabaseAdmin
       .from("saved_replies")
       .insert({
         business_id:
           currentMember.business_id,
+        attachments,
         title,
         shortcut: shortcut(
           body.shortcut,
@@ -284,7 +315,7 @@ export async function POST(
           body.isActive ?? true,
       })
       .select(
-        "id,business_id,title,shortcut,message_text,category,sort_index,is_active,created_at,updated_at",
+        "id,business_id,title,shortcut,message_text,category,attachments,sort_index,is_active,created_at,updated_at",
       )
       .single();
 
