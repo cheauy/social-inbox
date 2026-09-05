@@ -7,6 +7,7 @@ import {
   getInboxConversationScope,
 } from "@/lib/inbox/get-conversations";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { chunkIds } from "@/lib/supabase/chunk-ids";
 import type {
   ConversationStatus,
   CustomerTag,
@@ -170,12 +171,18 @@ export async function POST(
     );
   }
 
-  const {
-    data: conversationData,
-    error: conversationError,
-  } = await supabaseAdmin
-    .from("conversations")
-    .select(`
+  /*
+   * Batched because conversationIds comes straight from the client: it is every
+   * conversation the Inbox currently has on screen, so it grows with the
+   * customer's data. Sent as one .in() filter it built a request URL past the
+   * 16KB header limit and undici refused it, which arrived here as a 500 and,
+   * in the browser, as "Unable to synchronize Inbox state".
+   */
+  const conversationBatches = await Promise.all(
+    chunkIds(conversationIds).map((batch) =>
+      supabaseAdmin
+        .from("conversations")
+        .select(`
       id,
       business_id,
       contact_id,
@@ -199,11 +206,24 @@ export async function POST(
         profile_picture_url
       )
     `)
-    .in("id", conversationIds)
-    .in(
-      "business_id",
-      scope.accessibleBusinessIds,
-    );
+        .in("id", batch)
+        .in(
+          "business_id",
+          scope.accessibleBusinessIds,
+        ),
+    ),
+  );
+
+  const conversationError =
+    conversationBatches.find(
+      (batch) => batch.error,
+    )?.error ?? null;
+
+  const conversationData = conversationError
+    ? null
+    : conversationBatches.flatMap(
+        (batch) => batch.data ?? [],
+      );
 
   if (conversationError) {
     console.error(
@@ -242,12 +262,11 @@ export async function POST(
     new Map<string, CustomerTag[]>();
 
   if (contactIds.length > 0) {
-    const {
-      data: contactTagData,
-      error: contactTagError,
-    } = await supabaseAdmin
-      .from("contact_tags")
-      .select(`
+    const contactTagBatches = await Promise.all(
+      chunkIds(contactIds).map((batch) =>
+        supabaseAdmin
+          .from("contact_tags")
+          .select(`
         contact_id,
         tag:tags (
           id,
@@ -261,7 +280,20 @@ export async function POST(
           updated_at
         )
       `)
-      .in("contact_id", contactIds);
+          .in("contact_id", batch),
+      ),
+    );
+
+    const contactTagError =
+      contactTagBatches.find(
+        (batch) => batch.error,
+      )?.error ?? null;
+
+    const contactTagData = contactTagError
+      ? null
+      : contactTagBatches.flatMap(
+          (batch) => batch.data ?? [],
+        );
 
     if (contactTagError) {
       console.error(

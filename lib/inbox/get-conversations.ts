@@ -6,6 +6,7 @@ import {
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
+import { chunkIds } from "@/lib/supabase/chunk-ids";
 
 import type {
   CustomerTag,
@@ -450,16 +451,14 @@ export async function getConversations(
     );
   }
 
-  const {
-    data:
-      contactTagRows,
-    error:
-      contactTagError,
-  } = await supabaseAdmin
-    .from(
-      "contact_tags",
-    )
-    .select(`
+  /* Batched: see chunkIds for why a plain .in() breaks on a large workspace. */
+  const contactTagBatches = await Promise.all(
+    chunkIds(contactIds).map((batch) =>
+      supabaseAdmin
+        .from(
+          "contact_tags",
+        )
+        .select(`
       contact_id,
 
       tag:tags (
@@ -474,21 +473,92 @@ export async function getConversations(
         updated_at
       )
     `)
-    .in(
-      "contact_id",
-      contactIds,
-    );
+        .in(
+          "contact_id",
+          batch,
+        ),
+    ),
+  );
+
+  /*
+   * One failed batch fails the lookup. A partial set would quietly drop tags
+   * from some conversations and not others, which reads as data loss rather
+   * than an error.
+   */
+  const contactTagError =
+    contactTagBatches.find(
+      (batch) => batch.error,
+    )?.error ?? null;
+
+  const contactTagRows = contactTagError
+    ? null
+    : contactTagBatches.flatMap(
+        (batch) => batch.data ?? [],
+      );
 
   if (
     contactTagError
   ) {
+    /*
+     * One string, not an object.
+     *
+     * The dev overlay renders a logged object as "{}" whatever is inside it, so
+     * both the bare PostgrestError and a tidy object of its fields came out
+     * empty -- the log named a failure without describing it, which is the one
+     * thing a log must not do. Everything worth knowing is interpolated here so
+     * it survives into the overlay, the terminal and production logs alike.
+     */
+    const detail =
+      contactTagError as {
+        message?: unknown;
+        code?: unknown;
+        details?: unknown;
+        hint?: unknown;
+      };
+
+    const describe = (value: unknown) =>
+      value === null ||
+      value === undefined ||
+      value === ""
+        ? "none"
+        : String(value);
+
     console.error(
-      "Unable to load customer tags:",
-      contactTagError,
+      `Unable to load customer tags — message: ${describe(
+        detail?.message ??
+          JSON.stringify(contactTagError),
+      )} | code: ${describe(
+        detail?.code,
+      )} | details: ${describe(
+        detail?.details,
+      )} | hint: ${describe(
+        detail?.hint,
+      )} | contacts: ${contactIds.length}`,
     );
 
-    throw new Error(
-      `Unable to load customer tags: ${contactTagError.message}`,
+    /*
+     * Tags decorate a conversation; they are not the conversation. Throwing
+     * here emptied the whole Inbox over them, so the list is returned without
+     * tags instead -- the same shape this function already returns when there
+     * are no contacts to look up. The error above is what says something went
+     * wrong.
+     */
+    return sortConversations(
+      conversationsWithSubscription.map(
+        (conversation) => {
+          if (!conversation.contact) {
+            return conversation;
+          }
+
+          return {
+            ...conversation,
+            contact: {
+              ...conversation.contact,
+              tags: [],
+            },
+          };
+        },
+      ),
     );
   }
 
