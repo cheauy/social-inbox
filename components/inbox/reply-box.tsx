@@ -16,6 +16,7 @@ import {
   type PickedLocation,
 } from "@/components/inbox/location-picker-dialog";
 import { SavedReplySelector } from "@/components/inbox/saved-reply-selector";
+import { useOnlineStatus } from "@/lib/inbox/use-online-status";
 import {
   useWorkspaceLanguageId,
 } from "@/components/display/workspace-language-text";
@@ -339,6 +340,8 @@ export function ReplyBox({
   const isSending =
     sending || sendingContent;
 
+  const { online } = useOnlineStatus();
+
   const isComposerBlocked =
     Boolean(blockedReason);
 
@@ -361,9 +364,18 @@ export function ReplyBox({
    * Only the send is held while a quick reply's media loads -- the agent can
    * still type, and often wants to add a line before sending.
    */
+  /*
+   * Offline blocks the send, not the writing.
+   *
+   * A send with no connection fails somewhere in the fetch and leaves the
+   * agent guessing whether the customer got it. Refusing up front is honest,
+   * and keeping the box editable means the reply they were part-way through is
+   * still there -- and still sendable the moment the connection returns.
+   */
   const isSendDisabled =
     isComposerDisabled ||
-    loadingQuickReplyMedia;
+    loadingQuickReplyMedia ||
+    !online;
 
   /*
    * Said before the work, not after it.
@@ -1474,6 +1486,12 @@ export function ReplyBox({
       return;
     }
 
+    /* Nothing would leave the browser, and the draft would be cleared for it. */
+    if (!online) {
+      event.preventDefault();
+      return;
+    }
+
     const postSendStatus:
       | ConversationStatus
       | null =
@@ -1669,6 +1687,14 @@ export function ReplyBox({
         no explanation. Sending is held until it lands, so the wait needs a
         reason attached to it.
       */}
+      {!online ? (
+        <p className="mx-3 mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+          {isKhmer
+            ? "គ្មានអ៊ីនធឺណិត។ អ្នកនៅតែអាចសរសេរបាន ហើយផ្ញើពេលតភ្ជាប់ឡើងវិញ។"
+            : "No internet connection. You can keep writing — send once you are back online."}
+        </p>
+      ) : null}
+
       {attachmentsBlocked ? (
         <p className="mx-3 mt-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">
           {attachmentsBlockedReason}

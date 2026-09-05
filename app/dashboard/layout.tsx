@@ -8,6 +8,7 @@ import { FacebookConnectionAttentionBanner } from "@/components/dashboard/facebo
 import { WorkspacePermissionsProvider } from "@/lib/auth/use-workspace-permissions";
 import { RemovedWorkspaceAccessBoundary } from "@/components/dashboard/removed-workspace-access-boundary";
 import { WorkspaceSetupRecovery } from "@/components/dashboard/workspace-setup-recovery";
+import { ConnectionStatusBanner } from "@/components/dashboard/connection-status-banner";
 import { SubscriptionAccessGate } from "@/components/subscription/subscription-access-gate";
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import {
@@ -136,6 +137,9 @@ export default async function DashboardLayout({
         <FacebookConnectionAttentionBanner />
 
         <main className="min-h-0 flex-1 overflow-hidden">
+          {/* Floats above everything, on every dashboard page. */}
+          <ConnectionStatusBanner />
+
           <SubscriptionAccessGate access={subscriptionAccess}>
             {children}
           </SubscriptionAccessGate>
