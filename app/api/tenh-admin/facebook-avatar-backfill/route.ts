@@ -72,10 +72,32 @@ export async function POST(
     ),
   );
 
+  /*
+   * Take the contact's own Page with it.
+   *
+   * A PSID is issued by one Page and means nothing to another, so a workspace
+   * running two Pages cannot share a token between them -- Meta answers
+   * "Object with ID does not exist, cannot be loaded due to missing
+   * permissions" for every contact looked up with the wrong one. The Page comes
+   * from the contact's conversation, which is where that relationship is
+   * actually recorded.
+   */
   const { data, error } = await supabaseAdmin
     .from("contacts")
     .select(
-      "id,business_id,platform_user_id,profile_picture_url",
+      `
+      id,
+      business_id,
+      platform_user_id,
+      profile_picture_url,
+      conversations!inner (
+        social_account:social_accounts!inner (
+          id,
+          platform_account_id,
+          is_active
+        )
+      )
+    `,
     )
     .eq("platform", "facebook")
     .is("profile_picture_url", null)
@@ -93,11 +115,40 @@ export async function POST(
     );
   }
 
-  const contacts = (data ?? []) as {
+  const contacts = (data ?? []) as unknown as {
     id: string;
     business_id: string;
     platform_user_id: string | null;
+    conversations?: {
+      social_account?: {
+        platform_account_id?: string | null;
+        is_active?: boolean | null;
+      } | null;
+    }[];
   }[];
+
+  /*
+   * A contact can have more than one conversation. Any of them names a Page
+   * that issued this PSID, so the first active one is enough.
+   */
+  function pageIdFor(
+    contact: (typeof contacts)[number],
+  ) {
+    for (const conversation of contact.conversations ??
+      []) {
+      const account =
+        conversation.social_account;
+
+      if (
+        account?.is_active &&
+        account.platform_account_id
+      ) {
+        return account.platform_account_id;
+      }
+    }
+
+    return null;
+  }
 
   if (contacts.length === 0) {
     return NextResponse.json({
@@ -111,12 +162,8 @@ export async function POST(
     });
   }
 
-  /*
-   * The Page token is per social account, and every contact in a workspace
-   * shares one. Resolving it once per business keeps this to a handful of token
-   * reads rather than one per contact.
-   */
-  const tokenByBusiness = new Map<
+  /* One token read per Page, however many of its contacts are in this batch. */
+  const tokenByPage = new Map<
     string,
     string | null
   >();
@@ -131,52 +178,43 @@ export async function POST(
       continue;
     }
 
-    if (
-      !tokenByBusiness.has(contact.business_id)
-    ) {
-      const { data: account } =
-        await supabaseAdmin
-          .from("social_accounts")
-          .select("platform_account_id")
-          .eq(
-            "business_id",
-            contact.business_id,
-          )
-          .eq("platform", "facebook")
-          .eq("is_active", true)
-          .limit(1)
-          .maybeSingle();
+    const pageId = pageIdFor(contact);
 
+    if (!pageId) {
+      skipped += 1;
+      reasons.set(
+        "No active Page connection for this contact.",
+        (reasons.get(
+          "No active Page connection for this contact.",
+        ) ?? 0) + 1,
+      );
+      continue;
+    }
+
+    if (!tokenByPage.has(pageId)) {
       let token: string | null = null;
 
-      if (account?.platform_account_id) {
-        try {
-          token =
-            await getFacebookPageAccessToken(
-              account.platform_account_id as string,
-            );
-        } catch {
-          token = null;
-        }
+      try {
+        token =
+          await getFacebookPageAccessToken(
+            pageId,
+          );
+      } catch {
+        token = null;
       }
 
-      tokenByBusiness.set(
-        contact.business_id,
-        token,
-      );
+      tokenByPage.set(pageId, token);
     }
 
     const pageAccessToken =
-      tokenByBusiness.get(
-        contact.business_id,
-      ) ?? null;
+      tokenByPage.get(pageId) ?? null;
 
     if (!pageAccessToken) {
       skipped += 1;
       reasons.set(
-        "No active Page connection for this workspace.",
+        "That Page has no usable access token.",
         (reasons.get(
-          "No active Page connection for this workspace.",
+          "That Page has no usable access token.",
         ) ?? 0) + 1,
       );
       continue;
@@ -194,9 +232,23 @@ export async function POST(
       stored += 1;
     } else {
       skipped += 1;
+
+      /*
+       * Meta names the customer in its error, so forty identical failures
+       * arrive as forty distinct strings and "most common reason" reports a
+       * count of one. Dropping the id restores the grouping, which is the whole
+       * point of showing a reason rather than a list.
+       */
+      const groupedReason = result.reason
+        .replace(
+          /Object with ID '[^']*'/,
+          "Object with ID",
+        )
+        .replace(/\(#\d+\)\s*/, "");
+
       reasons.set(
-        result.reason,
-        (reasons.get(result.reason) ?? 0) + 1,
+        groupedReason,
+        (reasons.get(groupedReason) ?? 0) + 1,
       );
     }
 
@@ -224,11 +276,14 @@ export async function POST(
      * Grouped rather than listed. "412 have no photo on Meta" is a fact about
      * the customers; 412 identical lines is noise.
      */
-    reasons: Array.from(
-      reasons.entries(),
-    ).map(([reason, count]) => ({
-      reason,
-      count,
-    })),
+    reasons: Array.from(reasons.entries())
+      .sort(
+        (first, second) =>
+          second[1] - first[1],
+      )
+      .map(([reason, count]) => ({
+        reason,
+        count,
+      })),
   });
 }
