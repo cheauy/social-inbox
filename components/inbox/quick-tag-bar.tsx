@@ -47,6 +47,26 @@ function getReadableTextColor(hexColor: string) {
     : "#FFFFFF";
 }
 
+/*
+ * Tags, kept for the life of the tab.
+ *
+ * This bar loads on every conversation change, with no-store, so switching
+ * between customers refetched the same handful of tags each time and left the
+ * bar blank until it landed. Tags change rarely, so the cached copy renders
+ * immediately and a refresh runs behind it.
+ */
+type QuickTagCache = {
+  tags: CustomerTag[];
+  loadedAt: number;
+};
+
+const quickTagCache = new Map<
+  string,
+  QuickTagCache
+>();
+
+const QUICK_TAG_CACHE_TTL_MS = 60_000;
+
 export function QuickTagBar({
   contactId,
   businessId,
@@ -83,6 +103,23 @@ export function QuickTagBar({
   useEffect(() => {
     let cancelled = false;
 
+    const cached =
+      quickTagCache.get(businessId);
+
+    if (cached) {
+      setAllTags(cached.tags);
+    }
+
+    if (
+      cached &&
+      Date.now() - cached.loadedAt <
+        QUICK_TAG_CACHE_TTL_MS
+    ) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
     async function loadActiveTags() {
       setError(null);
 
@@ -106,11 +143,19 @@ export function QuickTagBar({
           );
         }
 
+        const nextTags = result.tags ?? [];
+
+        quickTagCache.set(businessId, {
+          tags: nextTags,
+          loadedAt: Date.now(),
+        });
+
         if (!cancelled) {
-          setAllTags(result.tags ?? []);
+          setAllTags(nextTags);
         }
       } catch (loadError) {
-        if (!cancelled) {
+        /* A stale list still lets the agent tag; an error screen does not. */
+        if (!cancelled && !cached) {
           setError(
             loadError instanceof Error
               ? loadError.message

@@ -1,5 +1,10 @@
 "use client";
 
+import type {
+  SavedReplyAttachment,
+  SavedReplyCategory,
+} from "@/types/inbox";
+
 import {
   useEffect,
   useMemo,
@@ -11,7 +16,10 @@ import type { SavedReply } from "@/types/inbox";
 
 type Props = {
   businessId: string;
-  onSelect: (message: string) => void;
+  onSelect: (
+    message: string,
+    attachments: SavedReplyAttachment[],
+  ) => void;
 };
 
 type Response = {
@@ -56,6 +64,32 @@ function GearIcon() {
   );
 }
 
+/*
+ * What was loaded last time, kept for the life of the tab.
+ *
+ * The picker used to refetch its replies and categories on every open, with
+ * no-store on both, so each click cost two round trips before anything could be
+ * shown -- and agents open it constantly. The list barely changes during a
+ * shift, so the cached copy is shown at once and a refresh runs behind it: the
+ * panel is usable immediately and still correct a moment later.
+ *
+ * Module scope rather than state because the component unmounts with the
+ * conversation; the cache has to outlive it to be worth having.
+ */
+type SavedReplyCache = {
+  replies: SavedReply[];
+  categories: SavedReplyCategory[];
+  loadedAt: number;
+};
+
+const savedReplyCache = new Map<
+  string,
+  SavedReplyCache
+>();
+
+/* Long enough to make repeated opens instant, short enough that an edit shows up. */
+const SAVED_REPLY_CACHE_TTL_MS = 60_000;
+
 export function SavedReplySelector({
   businessId,
   onSelect,
@@ -63,8 +97,21 @@ export function SavedReplySelector({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
+
+  const [
+    managedCategories,
+    setManagedCategories,
+  ] = useState<SavedReplyCategory[]>(
+    () =>
+      savedReplyCache.get(businessId)
+        ?.categories ?? [],
+  );
   const [visibleCount, setVisibleCount] = useState(20);
-  const [replies, setReplies] = useState<SavedReply[]>([]);
+  const [replies, setReplies] = useState<SavedReply[]>(
+    () =>
+      savedReplyCache.get(businessId)
+        ?.replies ?? [],
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const popupRootRef = useRef<HTMLDivElement>(null);
@@ -113,31 +160,89 @@ export function SavedReplySelector({
 
     let cancelled = false;
 
+    const cached =
+      savedReplyCache.get(businessId);
+    const isFresh =
+      cached &&
+      Date.now() - cached.loadedAt <
+        SAVED_REPLY_CACHE_TTL_MS;
+
     async function load() {
-      setLoading(true);
+      /*
+       * Only show the spinner when there is nothing to show. With a cached
+       * copy on screen, a refresh behind it is invisible -- which is the point.
+       */
+      if (!cached) {
+        setLoading(true);
+      }
+
       setError(null);
 
       try {
-        const response = await fetch(
-          `/api/saved-replies?businessId=${encodeURIComponent(
-            businessId,
-          )}&activeOnly=true`,
-          { cache: "no-store" },
-        );
+        const [repliesResponse, categoriesResponse] =
+          await Promise.all([
+            fetch(
+              `/api/saved-replies?businessId=${encodeURIComponent(
+                businessId,
+              )}&activeOnly=true`,
+              { cache: "no-store" },
+            ),
+            fetch(
+              "/api/saved-reply-categories",
+              { cache: "no-store" },
+            ),
+          ]);
 
-        const result = (await response.json()) as Response;
+        const result =
+          (await repliesResponse.json()) as Response;
 
-        if (!response.ok || !result.success) {
+        if (!repliesResponse.ok || !result.success) {
           throw new Error(
             result.error ?? "Unable to load quick replies.",
           );
         }
 
+        const nextReplies =
+          result.savedReplies ?? [];
+
+        const categoriesResult =
+          (await categoriesResponse
+            .json()
+            .catch(() => null)) as {
+            success?: boolean;
+            categories?: SavedReplyCategory[];
+          } | null;
+
+        /*
+         * Categories only decide the order of a filter, so a failure there
+         * falls back to alphabetical rather than failing the whole panel.
+         */
+        const nextCategories =
+          categoriesResult?.success &&
+          Array.isArray(
+            categoriesResult.categories,
+          )
+            ? categoriesResult.categories
+            : cached?.categories ?? [];
+
+        savedReplyCache.set(businessId, {
+          replies: nextReplies,
+          categories: nextCategories,
+          loadedAt: Date.now(),
+        });
+
         if (!cancelled) {
-          setReplies(result.savedReplies ?? []);
+          setReplies(nextReplies);
+          setManagedCategories(
+            nextCategories,
+          );
         }
       } catch (loadError) {
-        if (!cancelled) {
+        /*
+         * A stale list beats an error screen: the agent came here to send a
+         * reply, and last minute's copy almost certainly still does that.
+         */
+        if (!cancelled && !cached) {
           setError(
             loadError instanceof Error
               ? loadError.message
@@ -151,6 +256,19 @@ export function SavedReplySelector({
       }
     }
 
+    if (cached) {
+      setReplies(cached.replies);
+      setManagedCategories(
+        cached.categories,
+      );
+    }
+
+    if (isFresh) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
     void load();
 
     return () => {
@@ -158,15 +276,50 @@ export function SavedReplySelector({
     };
   }, [open, businessId]);
 
+  /*
+   * The order the Owner arranged in Settings, not the alphabet.
+   *
+   * Arranging categories is only worth doing if agents see the arrangement, and
+   * this picker is where they see it. Only categories that actually have a
+   * reply are listed -- an empty one is useful in Settings, where it is being
+   * set up, and noise here, where it is being used.
+   *
+   * A name still on a reply but no longer a category of its own is kept at the
+   * end rather than dropped: those replies exist, and a filter that cannot
+   * reach them would look broken.
+   */
   const categories = useMemo(() => {
-    return Array.from(
-      new Set(
-        replies
-          .map((reply) => (reply.category ?? "").trim())
-          .filter(Boolean),
+    const inUse = new Map<string, string>();
+
+    for (const reply of replies) {
+      const name = (reply.category ?? "").trim();
+
+      if (name) {
+        inUse.set(name.toLowerCase(), name);
+      }
+    }
+
+    const ordered: string[] = [];
+
+    for (const category of managedCategories) {
+      const key = category.name
+        .trim()
+        .toLowerCase();
+
+      if (inUse.has(key)) {
+        ordered.push(category.name);
+        inUse.delete(key);
+      }
+    }
+
+    return [
+      ...ordered,
+      ...Array.from(inUse.values()).sort(
+        (first, second) =>
+          first.localeCompare(second),
       ),
-    ).sort((a, b) => a.localeCompare(b));
-  }, [replies]);
+    ];
+  }, [managedCategories, replies]);
 
   const filteredReplies = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -204,7 +357,10 @@ export function SavedReplySelector({
   }, [search, category, open]);
 
   function selectReply(reply: SavedReply) {
-    onSelect(reply.message_text);
+    onSelect(
+      reply.message_text,
+      reply.attachments ?? [],
+    );
     closePopup();
   }
 
