@@ -13,6 +13,10 @@ export type ConversationPreviewMessageType =
   | "file"
   | "document"
   | "sticker"
+  | "animation"
+  | "gif"
+  | "location"
+  | "contact"
   | "unknown"
   | null
   | undefined;
@@ -75,16 +79,16 @@ export function getConversationMessagePreview({
   if (type === "image") {
     return directionText({
       direction,
-      incoming: "You receive an image",
-      outgoing: "You sent an image",
-      fallback: text || "Image",
+      incoming: "Sent you a photo",
+      outgoing: "You sent a photo",
+      fallback: text || "Photo",
     });
   }
 
   if (type === "audio" || type === "voice") {
     return directionText({
       direction,
-      incoming: "You receive a voice message",
+      incoming: "Sent you a voice message",
       outgoing: "You sent a voice message",
       fallback: text || "Voice message",
     });
@@ -93,7 +97,7 @@ export function getConversationMessagePreview({
   if (type === "video") {
     return directionText({
       direction,
-      incoming: "You receive a video",
+      incoming: "Sent you a video",
       outgoing: "You sent a video",
       fallback: text || "Video",
     });
@@ -102,16 +106,60 @@ export function getConversationMessagePreview({
   if (type === "file" || type === "document") {
     return directionText({
       direction,
-      incoming: "You receive a file",
+      incoming: "Sent you a file",
       outgoing: "You sent a file",
       fallback: text || "File",
+    });
+  }
+
+  /*
+   * Sticker, GIF, location and contact had no case here, so a conversation
+   * whose newest message was one of them fell through to the raw stored text --
+   * usually a placeholder, sometimes nothing at all.
+   */
+  if (type === "sticker") {
+    return directionText({
+      direction,
+      incoming: "Sent you a sticker",
+      outgoing: "You sent a sticker",
+      fallback: text || "Sticker",
+    });
+  }
+
+  if (
+    type === "animation" ||
+    type === "gif"
+  ) {
+    return directionText({
+      direction,
+      incoming: "Sent you a GIF",
+      outgoing: "You sent a GIF",
+      fallback: text || "GIF",
+    });
+  }
+
+  if (type === "location") {
+    return directionText({
+      direction,
+      incoming: "Sent you a location",
+      outgoing: "You sent a location",
+      fallback: text || "Location",
+    });
+  }
+
+  if (type === "contact") {
+    return directionText({
+      direction,
+      incoming: "Sent you a contact",
+      outgoing: "You sent a contact",
+      fallback: text || "Contact",
     });
   }
 
   if (type === "text" && isStandaloneLinkMessage(text)) {
     return directionText({
       direction,
-      incoming: "You receive a link",
+      incoming: "Sent you a link",
       outgoing: "You sent a link",
       fallback: text,
     });
@@ -133,13 +181,33 @@ export function normalizeLegacyConversationPreview(
 
   switch (text.toLowerCase()) {
     case "[image]":
-      return "You receive an image";
+      return "Sent you a photo";
     case "[audio]":
-      return "You receive a voice message";
+      return "Sent you a voice message";
     case "[video]":
-      return "You receive a video";
+      return "Sent you a video";
     case "[file]":
-      return "You receive a file";
+      return "Sent you a file";
+
+    /*
+     * Rows written before the wording changed still hold the old sentence in
+     * conversations.last_message_text. The list shows the stored value first
+     * and the derived one a moment later, so leaving these unmapped made the
+     * preview visibly flip between the two whenever a conversation was opened.
+     */
+    case "you receive an image":
+      return "Sent you a photo";
+    case "you receive a voice message":
+      return "Sent you a voice message";
+    case "you receive a video":
+      return "Sent you a video";
+    case "you receive a file":
+      return "Sent you a file";
+    case "you receive a link":
+      return "Sent you a link";
+    case "you sent an image":
+      return "You sent a photo";
+
     default:
       return text || "No messages";
   }
