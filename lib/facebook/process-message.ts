@@ -7,6 +7,8 @@ import { getFacebookMessageContent } from "@/lib/facebook/get-message-content";
 import {
   getConversationMessagePreview,
 } from "@/lib/inbox/conversation-preview";
+import { getFacebookPageAccessToken } from "@/lib/facebook/get-facebook-page-access-token";
+import { syncFacebookContactProfilePhoto } from "@/lib/facebook/facebook-profile-photo";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { FacebookMessagingEvent } from "@/types/facebook";
 
@@ -167,7 +169,8 @@ export async function processFacebookMessage(
             "business_id,platform,platform_user_id",
         },
       )
-      .select("id")
+      /* profile_picture_url decides whether the avatar still needs fetching. */
+      .select("id,profile_picture_url")
       .single();
 
   if (contactError || !contact) {
@@ -328,6 +331,63 @@ export async function processFacebookMessage(
           ),
         },
       );
+    }
+  }
+
+  /*
+   * Fetch the customer's photo, once, the first time they message.
+   *
+   * Meta does not put a photo in any payload the webhook already reads, so it
+   * has to be asked for directly -- and its URL expires, so a copy is stored
+   * rather than the link. Doing it here means the avatars an agent is actually
+   * looking at stay current, and a customer who changes their picture is picked
+   * up the next time they write.
+   *
+   * Deliberately last, and deliberately swallowed: the message is already
+   * saved and delivered by this point, and a missing avatar must never cost a
+   * customer their message. Echoes are skipped -- the Page is not a contact.
+   */
+  if (!isEcho) {
+    const alreadyStored =
+      typeof contact.profile_picture_url ===
+        "string" &&
+      contact.profile_picture_url.includes(
+        "/facebook-avatar",
+      );
+
+    if (!alreadyStored) {
+      try {
+        const pageAccessToken =
+          await getFacebookPageAccessToken(
+            pageId,
+          );
+
+        const avatarResult =
+          await syncFacebookContactProfilePhoto({
+            contactId: contact.id,
+            businessId:
+              socialAccount.business_id,
+            customerId,
+            pageAccessToken,
+          });
+
+        if (!avatarResult.stored) {
+          console.log(
+            "[Tenh Facebook Message] No customer avatar stored.",
+            {
+              customerId,
+              reason: avatarResult.reason,
+            },
+          );
+        }
+      } catch (avatarError) {
+        console.warn(
+          "[Tenh Facebook Message] Avatar sync failed; message delivery is unaffected.",
+          avatarError instanceof Error
+            ? avatarError.message
+            : avatarError,
+        );
+      }
     }
   }
 }

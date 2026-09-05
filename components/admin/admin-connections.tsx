@@ -127,6 +127,11 @@ export function AdminConnections() {
   const [showReleased, setShowReleased] =
     useState(false);
 
+  const [backfilling, setBackfilling] =
+    useState(false);
+  const [backfillResult, setBackfillResult] =
+    useState<string | null>(null);
+
   const [confirmTarget, setConfirmTarget] =
     useState<ReleaseTarget | null>(null);
   const [confirmId, setConfirmId] =
@@ -200,6 +205,68 @@ export function AdminConnections() {
     void load("", "all");
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+
+  /*
+   * Fetch avatars for Facebook contacts who messaged before TENH collected
+   * them. One batch per press: the route paces itself against Meta's rate
+   * limit, which it shares with sending, and a long request that stalls agent
+   * replies would be a poor trade for some profile pictures.
+   */
+  async function runAvatarBackfill() {
+    if (backfilling) {
+      return;
+    }
+
+    setBackfilling(true);
+    setBackfillResult(null);
+
+    try {
+      const response = await fetch(
+        "/api/tenh-admin/facebook-avatar-backfill?limit=50",
+        { method: "POST" },
+      );
+
+      const result =
+        (await response.json()) as {
+          success?: boolean;
+          error?: string;
+          stored?: number;
+          skipped?: number;
+          remaining?: number;
+          reasons?: {
+            reason: string;
+            count: number;
+          }[];
+        };
+
+      if (!response.ok || !result.success) {
+        setBackfillResult(
+          result.error ??
+            "Unable to fetch avatars.",
+        );
+        return;
+      }
+
+      const topReason =
+        result.reasons?.[0];
+
+      setBackfillResult(
+        `Saved ${result.stored ?? 0}, skipped ${
+          result.skipped ?? 0
+        }. ${result.remaining ?? 0} contacts still without a photo.${
+          topReason
+            ? ` Most common reason: ${topReason.reason}`
+            : ""
+        }`,
+      );
+    } catch {
+      setBackfillResult(
+        "Unable to reach TENH while fetching avatars.",
+      );
+    } finally {
+      setBackfilling(false);
+    }
+  }
 
   async function confirmRelease() {
     if (!confirmTarget) {
@@ -411,6 +478,41 @@ export function AdminConnections() {
             </span>
           </label>
         ) : null}
+      </section>
+
+      <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-slate-400">
+          Messenger customer photos
+        </h3>
+
+        <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-500">
+          New contacts get their photo the first time they message. This is only
+          for the backlog — customers who wrote before TENH started collecting
+          them. Run it as many times as you like; contacts that already have a
+          photo are skipped, and it paces itself so agent replies are never held
+          up.
+        </p>
+
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={backfilling}
+            onClick={() =>
+              void runAvatarBackfill()
+            }
+            className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {backfilling
+              ? "Fetching..."
+              : "Fetch next 50 photos"}
+          </button>
+
+          {backfillResult ? (
+            <p className="text-sm text-slate-600">
+              {backfillResult}
+            </p>
+          ) : null}
+        </div>
       </section>
 
       {showTelegram ? (
