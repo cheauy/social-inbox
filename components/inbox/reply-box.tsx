@@ -82,6 +82,12 @@ type ReplyBoxProps = {
    */
   canCaptionAttachments?: boolean;
 
+  /*
+   * Why attachments cannot be sent here, if they cannot. Set for Facebook
+   * comment threads, which take replies as text only.
+   */
+  attachmentsBlockedReason?: string | null;
+
   onStatusChange?: (
     status: ConversationStatus,
   ) => void;
@@ -317,6 +323,7 @@ export function ReplyBox({
   onSubmit,
   onSendAttachments,
   canCaptionAttachments = false,
+  attachmentsBlockedReason = null,
   onStatusChange,
 }: ReplyBoxProps) {
   const isKhmer = useWorkspaceLanguageId() === "km";
@@ -324,13 +331,51 @@ export function ReplyBox({
   const [sendingContent, setSendingContent] =
     useState(false);
 
+  const [
+    loadingQuickReplyMedia,
+    setLoadingQuickReplyMedia,
+  ] = useState(false);
+
   const isSending =
     sending || sendingContent;
 
   const isComposerBlocked =
     Boolean(blockedReason);
+
+  /*
+   * Sending no longer locks the composer.
+   *
+   * It used to disable the whole thing until the request came back, so an
+   * agent replying quickly had to wait out each message before writing the
+   * next -- and a slow channel made the inbox feel stuck. Nothing needs the
+   * lock: the box is cleared before the request is sent, so a second send
+   * carries new text rather than repeating the last, and each send tracks its
+   * own optimistic bubble.
+   *
+   * Only a genuinely blocked channel disables it now.
+   */
   const isComposerDisabled =
-    isSending || isComposerBlocked;
+    isComposerBlocked;
+
+  /*
+   * Only the send is held while a quick reply's media loads -- the agent can
+   * still type, and often wants to add a line before sending.
+   */
+  const isSendDisabled =
+    isComposerDisabled ||
+    loadingQuickReplyMedia;
+
+  /*
+   * Said before the work, not after it.
+   *
+   * A comment thread rejects attachments at the API, so an agent could pick
+   * files, wait for them to upload and only then be told -- with their message
+   * still in the box. Turning the controls off up front costs them nothing and
+   * says why.
+   */
+  const attachmentsBlocked = Boolean(
+    attachmentsBlockedReason,
+  );
 
   const imageInputRef =
     useRef<HTMLInputElement | null>(null);
@@ -368,61 +413,95 @@ export function ReplyBox({
       return;
     }
 
-    const loaded: ReplyAttachment[] = [];
+    /*
+     * The reply's text lands in the box at once, but its media has to be
+     * fetched -- a signed link per file, then the bytes. Sending during that
+     * gap sent the text on its own, and pressing Send again while waiting sent
+     * it twice, with the photos arriving afterwards to be sent a third time.
+     *
+     * Holding the send until the media is here keeps a quick reply what it
+     * looks like: one message, whole.
+     */
+    setLoadingQuickReplyMedia(true);
 
-    for (const saved of savedAttachments) {
-      try {
-        const signedResponse = await fetch(
-          `/api/saved-replies/media?path=${encodeURIComponent(
-            saved.path,
-          )}`,
-          { cache: "no-store" },
-        );
+    /*
+     * All at once, and one hop each.
+     *
+     * These used to be fetched one after another, and each needed two requests
+     * -- ask for a signed link, then download. Six photos meant twelve requests
+     * in strict sequence, which is why attaching took so long. The list API now
+     * signs them in a batch, so the link usually arrives with the reply and
+     * only the download is left; running them together turns the wait into
+     * roughly the slowest single file rather than the sum of all of them.
+     */
+    const results = await Promise.all(
+      savedAttachments.map(async (saved) => {
+        try {
+          let signedUrl =
+            saved.url ?? null;
 
-        const signed =
-          (await signedResponse.json()) as {
-            success?: boolean;
-            url?: string;
-          };
+          if (!signedUrl) {
+            const signedResponse =
+              await fetch(
+                `/api/saved-replies/media?path=${encodeURIComponent(
+                  saved.path,
+                )}`,
+                { cache: "no-store" },
+              );
 
-        if (
-          !signed?.success ||
-          !signed.url
-        ) {
-          continue;
+            const signed =
+              (await signedResponse.json()) as {
+                success?: boolean;
+                url?: string;
+              };
+
+            if (
+              !signed?.success ||
+              !signed.url
+            ) {
+              return null;
+            }
+
+            signedUrl = signed.url;
+          }
+
+          const fileResponse =
+            await fetch(signedUrl);
+
+          if (!fileResponse.ok) {
+            return null;
+          }
+
+          const blob =
+            await fileResponse.blob();
+
+          const file = new File(
+            [blob],
+            saved.name || "attachment",
+            {
+              type:
+                saved.mimeType || blob.type,
+            },
+          );
+
+          return {
+            id: createId(),
+            file,
+            previewUrl:
+              URL.createObjectURL(blob),
+            kind: saved.kind,
+          } as ReplyAttachment;
+        } catch {
+          /* Skip this one; the reply text still went in. */
+          return null;
         }
+      }),
+    );
 
-        const fileResponse = await fetch(
-          signed.url,
-        );
-
-        if (!fileResponse.ok) {
-          continue;
-        }
-
-        const blob =
-          await fileResponse.blob();
-
-        const file = new File(
-          [blob],
-          saved.name || "attachment",
-          {
-            type:
-              saved.mimeType || blob.type,
-          },
-        );
-
-        loaded.push({
-          id: createId(),
-          file,
-          previewUrl:
-            URL.createObjectURL(blob),
-          kind: saved.kind,
-        });
-      } catch {
-        /* Skip this one; the reply text still went in. */
-      }
-    }
+    const loaded = results.filter(
+      (item): item is ReplyAttachment =>
+        item !== null,
+    );
 
     if (loaded.length > 0) {
       setAttachments((current) => [
@@ -430,6 +509,8 @@ export function ReplyBox({
         ...loaded,
       ]);
     }
+
+    setLoadingQuickReplyMedia(false);
   }
 
   const [emojiOpen, setEmojiOpen] =
@@ -1387,6 +1468,12 @@ export function ReplyBox({
       return;
     }
 
+    /* Its media is still arriving; sending now would send the text alone. */
+    if (loadingQuickReplyMedia) {
+      event.preventDefault();
+      return;
+    }
+
     const postSendStatus:
       | ConversationStatus
       | null =
@@ -1451,20 +1538,49 @@ export function ReplyBox({
       ? reply.trim()
       : undefined;
 
+    /*
+     * Empty the composer the moment sending starts, and put it back if the
+     * send fails.
+     *
+     * The attachments and the typed message used to sit there through the whole
+     * upload, so a slow send looked like nothing had happened and invited a
+     * second press. Clearing straight away matches what the thread already
+     * does -- the optimistic bubble is there before the request finishes -- and
+     * restoring on failure means nothing is lost when it does not.
+     */
+    const sentAttachments = attachments;
+    const sentReply = reply;
+
+    setAttachments([]);
+
+    if (canCaption) {
+      onReplyChange("");
+    }
+
     try {
       const success =
         await onSendAttachments(
-          attachments,
+          sentAttachments,
           caption,
         );
 
-      if (success) {
-        clearAttachments();
+      if (!success) {
+        setAttachments(sentAttachments);
 
-        /* Sent as the caption already; clear the box rather than sending twice. */
         if (canCaption) {
-          onReplyChange("");
+          onReplyChange(sentReply);
+        }
+      }
 
+      if (success) {
+        for (const attachment of sentAttachments) {
+          URL.revokeObjectURL(
+            attachment.previewUrl,
+          );
+        }
+
+        /* Sent as the caption already; nothing more to send. */
+        if (canCaption) {
           pendingPostSendStatusRef.current =
             null;
 
@@ -1512,6 +1628,13 @@ export function ReplyBox({
           null;
       }
     } catch (sendError) {
+      /* Give the agent back exactly what they were about to send. */
+      setAttachments(sentAttachments);
+
+      if (canCaption) {
+        onReplyChange(sentReply);
+      }
+
       console.error(
         "Unable to send attachments:",
         sendError,
@@ -1541,10 +1664,84 @@ export function ReplyBox({
 
   return (
     <div className="shrink-0 w-full border-t border-slate-200 bg-white">
+      {/*
+        Say that the media is coming, rather than leaving a disabled Send with
+        no explanation. Sending is held until it lands, so the wait needs a
+        reason attached to it.
+      */}
+      {attachmentsBlocked ? (
+        <p className="mx-3 mt-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">
+          {attachmentsBlockedReason}
+        </p>
+      ) : null}
+
+      {loadingQuickReplyMedia ? (
+        <div className="mx-3 mt-2 flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-medium text-blue-700">
+          <span
+            aria-hidden="true"
+            className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-300 border-t-blue-700"
+          />
+          {isKhmer
+            ? "កំពុងភ្ជាប់ឯកសាររបស់ការឆ្លើយតបរហ័ស..."
+            : "Attaching the quick reply's media..."}
+        </div>
+      ) : null}
+
       {attachments.some(
         (attachment) => attachment.id !== voiceReview?.attachmentId,
       ) ? (
         <div className="mx-3 mt-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+          {/*
+            One control to clear the lot. A quick reply can bring ten photos in
+            at once, and picking the wrong one meant closing ten crosses before
+            the composer was usable again.
+          */}
+          {attachments.filter(
+            (attachment) =>
+              attachment.id !==
+              voiceReview?.attachmentId,
+          ).length > 1 ? (
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-slate-500">
+                {isKhmer
+                  ? `${
+                      attachments.filter(
+                        (attachment) =>
+                          attachment.id !==
+                          voiceReview?.attachmentId,
+                      ).length
+                    } ឯកសារភ្ជាប់`
+                  : `${
+                      attachments.filter(
+                        (attachment) =>
+                          attachment.id !==
+                          voiceReview?.attachmentId,
+                      ).length
+                    } attachments`}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => {
+                  /*
+                   * The text goes too. These arrived together from one quick
+                   * reply, so clearing only the photos left its message behind
+                   * to be sent on its own -- which is never what "remove all"
+                   * was meant to do.
+                   */
+                  clearAttachments();
+                  onReplyChange("");
+                }}
+                disabled={isSending}
+                className="rounded-lg px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+              >
+                {isKhmer
+                  ? "ដកចេញទាំងអស់"
+                  : "Remove all"}
+              </button>
+            </div>
+          ) : null}
+
           <div className="flex gap-3 overflow-x-auto pb-1">
             {attachments
               .filter(
@@ -2130,7 +2327,12 @@ export function ReplyBox({
                     : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
                 } disabled:cursor-not-allowed disabled:opacity-35`}
                 aria-label={isKhmer ? "ភ្ជាប់មាតិកា" : "Attach content"}
-                title={isKhmer ? "ភ្ជាប់មាតិកា" : "Attach content"}
+                title={
+                  attachmentsBlockedReason ??
+                  (isKhmer
+                    ? "ភ្ជាប់មាតិកា"
+                    : "Attach content")
+                }
                 aria-expanded={moreOpen}
               >
                 <span className="relative">
@@ -2218,13 +2420,17 @@ export function ReplyBox({
               <button
                 type="submit"
                 disabled={
-                  isComposerDisabled ||
+                  isSendDisabled ||
                   (!reply.trim() &&
                     attachments.length === 0)
                 }
                 className="inline-flex h-12 min-w-[96px] items-center justify-center gap-2 px-4 text-sm font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 title={
-                  blockedReason
+                  loadingQuickReplyMedia
+                    ? isKhmer
+                      ? "កំពុងភ្ជាប់ឯកសាររបស់ការឆ្លើយតបរហ័ស..."
+                      : "Attaching the quick reply's media..."
+                    : blockedReason
                     ? blockedReason
                     : sendMode === "close"
                     ? isKhmer ? "ផ្ញើ និងបិទការសន្ទនា" : "Send & close conversation"
@@ -2251,10 +2457,15 @@ export function ReplyBox({
                     strokeLinejoin="round"
                   />
                 </svg>
+                {/*
+                  Always "Send", never "Sending...".
+                  The button stays usable while a message is in flight, so a
+                  label saying otherwise would contradict it. Progress is shown
+                  where it belongs -- on the bubble in the thread, which carries
+                  its own sent tick.
+                */}
                 <span>
-                  {isSending
-                    ? isKhmer ? "កំពុងផ្ញើ..." : "Sending..."
-                    : isKhmer ? "ផ្ញើ" : "Send"}
+                  {isKhmer ? "ផ្ញើ" : "Send"}
                 </span>
               </button>
 

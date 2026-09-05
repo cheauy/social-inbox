@@ -4954,15 +4954,18 @@ export function MessagePanel({
                           photoGroup &&
                           photoGroup.members.length > 1 ? (
                           /*
-                           * Three across, so six photos read as 3x2 and four
-                           * as 2x2. Square tiles keep the rows aligned however
-                           * the originals are cropped.
+                           * Two photos stack, the way Telegram shows them.
+                           * Side by side forced each into a square and cut the
+                           * subject out of both -- with only two there is room
+                           * to show them wide instead. Three or four go 2x2,
+                           * more go three across so six reads as 3x2, and
+                           * those stay square to keep the rows aligned.
                            */
                           <div
                             className={`-mx-4 grid gap-[3px] overflow-hidden ${
                               photoGroup.members.length === 2
-                                ? "grid-cols-2"
-                                : photoGroup.members.length === 4
+                                ? "grid-cols-1"
+                                : photoGroup.members.length <= 4
                                   ? "grid-cols-2"
                                   : "grid-cols-3"
                             } ${
@@ -4979,7 +4982,12 @@ export function MessagePanel({
                                 return (
                                   <div
                                     key={`album-${photo.id}`}
-                                    className="flex aspect-square w-full items-center justify-center bg-slate-100 text-[10px] font-medium text-slate-400"
+                                    className={`flex w-full items-center justify-center bg-slate-100 text-[10px] font-medium text-slate-400 ${
+                                      photoGroup.members
+                                        .length === 2
+                                        ? "aspect-[3/2]"
+                                        : "aspect-square"
+                                    }`}
                                   >
                                     Unavailable
                                   </div>
@@ -4998,7 +5006,12 @@ export function MessagePanel({
                                         "Photo",
                                     })
                                   }
-                                  className="group/media block aspect-square w-full cursor-zoom-in overflow-hidden bg-slate-100"
+                                  className={`group/media block w-full cursor-zoom-in overflow-hidden bg-slate-100 ${
+                                    photoGroup.members
+                                      .length === 2
+                                      ? "aspect-[3/2]"
+                                      : "aspect-square"
+                                  }`}
                                   aria-label="Open photo"
                                 >
                                   <img
@@ -5014,6 +5027,47 @@ export function MessagePanel({
                                 </button>
                               );
                             })}
+
+                            {/*
+                              The album's caption, which Telegram keeps on the
+                              first photo and shows under the whole group.
+
+                              This branch draws the grid in place of the usual
+                              text, so without it the agent's own message was
+                              invisible in TENH while the customer could read it
+                              perfectly well in Telegram. The placeholder labels
+                              the other photos carry are skipped -- they are
+                              filing, not something anyone wrote.
+                            */}
+                            {(() => {
+                              const albumCaption =
+                                photoGroup.members[0]
+                                  ?.message_text?.trim();
+
+                              if (
+                                !albumCaption ||
+                                albumCaption ===
+                                  "Sent a photo" ||
+                                albumCaption ===
+                                  "Sent a video" ||
+                                albumCaption ===
+                                  "Message deleted"
+                              ) {
+                                return null;
+                              }
+
+                              return (
+                                <p
+                                  className={`col-span-full whitespace-pre-wrap break-words px-4 pt-2 text-sm leading-6 ${
+                                    isOutgoing
+                                      ? "text-white"
+                                      : "text-slate-700"
+                                  }`}
+                                >
+                                  {albumCaption}
+                                </p>
+                              );
+                            })()}
                           </div>
                         ) : isImageMessage ? (
                           <div className="w-[300px] max-w-full overflow-hidden rounded-[22px] bg-slate-100 ring-1 ring-slate-200/70">
@@ -5839,8 +5893,24 @@ export function MessagePanel({
           onSendAttachments={
             onSendAttachments
           }
+          /*
+            A Facebook comment thread takes text only, so attachments are off
+            for the whole conversation and not just while replying to one
+            comment. Without this an agent could pick files, wait for them to
+            upload, and be refused by the API afterwards.
+          */
           allowAttachments={
-            !replyingToCommentId
+            !replyingToCommentId &&
+            activeConversation?.source_type !==
+              "comment"
+          }
+          attachmentsBlockedReason={
+            activeConversation?.source_type ===
+            "comment"
+              ? isKhmer
+                ? "ការឆ្លើយតបលើមតិយោបល់ Facebook អាចផ្ញើបានតែអក្សរប៉ុណ្ណោះ។"
+                : "Facebook comment replies can only contain text."
+              : null
           }
         />
       ) : null}

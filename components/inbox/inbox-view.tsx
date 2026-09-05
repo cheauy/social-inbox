@@ -330,6 +330,36 @@ function buildMultiAgentToast(
   };
 }
 
+/*
+ * Compare outgoing text the way a human would.
+ *
+ * An optimistic bubble is matched to the row that comes back by its text, and
+ * that was an exact === . The text does not always survive the round trip
+ * byte-for-byte: emoji and Khmer both have more than one valid encoding, and a
+ * platform may hand back a different one, or trim differently. The bubble then
+ * failed to match, so the message appeared twice until a refresh replaced the
+ * list with the server's single row.
+ *
+ * Normalising to NFC and trimming compares what was written rather than how it
+ * happened to be encoded.
+ */
+function sameOutgoingText(
+  first: unknown,
+  second: unknown,
+) {
+  if (
+    typeof first !== "string" ||
+    typeof second !== "string"
+  ) {
+    return first === second;
+  }
+
+  return (
+    first.normalize("NFC").trim() ===
+    second.normalize("NFC").trim()
+  );
+}
+
 function sortLiveConversations(
   conversations: InboxConversation[],
 ) {
@@ -2439,8 +2469,10 @@ useInboxRealtime({
                         !optimistic.__optimistic_status ||
                         message.conversation_id !==
                           conversationId ||
-                        message.message_text !==
-                          realMessageText
+                        !sameOutgoingText(
+                          message.message_text,
+                          realMessageText,
+                        )
                       ) {
                         return false;
                       }
@@ -4804,8 +4836,10 @@ useEffect(() => {
             !optimistic.__optimistic_status ||
             candidate.conversation_id !== conversationId ||
             candidate.direction !== "outgoing" ||
-            candidate.message_text !==
-              serverMessage.message_text ||
+            !sameOutgoingText(
+              candidate.message_text,
+              serverMessage.message_text,
+            ) ||
             (candidate.message_type ?? "text") !==
               (serverMessage.message_type ?? "text") ||
             (!pendingSendsRef.current[candidate.id] &&
