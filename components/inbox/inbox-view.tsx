@@ -2448,6 +2448,12 @@ useInboxRealtime({
                 ? row.message_text
                 : null;
 
+            const realPlatformMessageId =
+              typeof row.platform_message_id ===
+              "string"
+                ? row.platform_message_id
+                : null;
+
             const realCreatedAt =
               typeof row.created_at ===
               "string"
@@ -2475,6 +2481,19 @@ useInboxRealtime({
                         )
                       ) {
                         return false;
+                      }
+
+                      /*
+                       * If this bubble already knows the platform id, that is
+                       * the answer -- no need to weigh text and timing.
+                       */
+                      if (
+                        message.platform_message_id
+                      ) {
+                        return (
+                          message.platform_message_id ===
+                          realPlatformMessageId
+                        );
                       }
 
                       const optimisticTime =
@@ -7135,6 +7154,7 @@ async function performOptimisticSend(
       success: boolean;
       error?: string;
       code?: string;
+      messageId?: string;
     };
 
     if (
@@ -7148,6 +7168,7 @@ async function performOptimisticSend(
             success: boolean;
             error?: string;
             code?: string;
+            messageId?: string;
           };
       } catch {
         result = {
@@ -7211,6 +7232,33 @@ async function performOptimisticSend(
       pending.tempId,
       "sent",
     );
+
+    /*
+     * Give the bubble the id the platform assigned it.
+     *
+     * Until now a sent bubble kept only its temporary id, so the row arriving
+     * over Realtime had to be recognised by comparing message text and
+     * timestamps -- a guess that fails quietly, and when it fails the same
+     * message is drawn twice until a refresh replaces the list.
+     *
+     * The send response carries the real id, so the two can be matched on it
+     * instead. Nothing else needs to change: the matcher below prefers this
+     * when it is present and falls back to the old comparison for messages
+     * that arrive without one, such as a reply sent from Meta's own inbox.
+     */
+    if (result.messageId) {
+      setLiveMessages((current) =>
+        current.map((message) =>
+          message.id === pending.tempId
+            ? ({
+                ...message,
+                platform_message_id:
+                  result.messageId ?? null,
+              } as InboxMessage)
+            : message,
+        ),
+      );
+    }
   } catch (error) {
     const errorMessage =
       error instanceof Error
