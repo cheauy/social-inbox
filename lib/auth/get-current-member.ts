@@ -119,11 +119,173 @@ async function hasRemovedWorkspaceAccess(
   return Boolean(data && data.is_active === false);
 }
 
-function chooseMember(
+/*
+ * Subscription states that make a workspace unusable. Opening one shows the
+ * locked screen and nothing else, so it is the last thing to land on by
+ * default. Mirrors LOCKED_STATUSES in get-business-entitlements.
+ */
+const LOCKED_SUBSCRIPTION_STATUSES = new Set([
+  "past_due",
+  "expired",
+  "suspended",
+  "cancelled",
+]);
+
+/**
+ * Which of these workspaces can actually be opened.
+ *
+ * A workspace with no subscription row is treated as usable: legacy unmanaged
+ * workspaces have never had one, and they are not locked.
+ */
+async function loadUsableBusinessIds(
+  businessIds: string[],
+): Promise<Set<string>> {
+  const unique = Array.from(
+    new Set(businessIds.filter(Boolean)),
+  );
+
+  if (unique.length === 0) {
+    return new Set();
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("business_subscriptions")
+    .select("business_id,status")
+    .in("business_id", unique);
+
+  if (error) {
+    /*
+     * Never block sign-in over this. Without the statuses the choice below
+     * falls back to the old owner-first ordering, which is where it started.
+     */
+    console.error(
+      "Unable to load subscription states for workspace selection:",
+      error,
+    );
+
+    return new Set(unique);
+  }
+
+  const locked = new Set(
+    ((data ?? []) as {
+      business_id: string;
+      status: string | null;
+    }[])
+      .filter((row) =>
+        LOCKED_SUBSCRIPTION_STATUSES.has(
+          row.status ?? "",
+        ),
+      )
+      .map((row) => row.business_id),
+  );
+
+  return new Set(
+    unique.filter((id) => !locked.has(id)),
+  );
+}
+
+/*
+ * Pick the workspace to open when nothing was saved.
+ *
+ * Memberships arrive oldest first, so owner-first alone handed the user their
+ * very first workspace -- for anyone who trialled before buying or joining, an
+ * expired trial. They then met the locked screen on every fresh sign-in, with
+ * their working workspace one switch away and no sign of it.
+ *
+ * A workspace that can be opened now beats one that cannot; within each group
+ * the old owner-first, oldest-first order stands. Everything locked still
+ * resolves to the same workspace as before, so a customer with nothing but an
+ * expired subscription still lands there and can renew.
+ */
+async function chooseMember(
   members: AuthenticatedMember[],
 ) {
-  // Only choose a default when there is no saved workspace selection.
-  return members.find((member) => member.role === "owner") ?? members[0] ?? null;
+  if (members.length === 0) {
+    return null;
+  }
+
+  const usable = await loadUsableBusinessIds(
+    members.map((member) => member.business_id),
+  );
+
+  const preferred = members.filter((member) =>
+    usable.has(member.business_id),
+  );
+
+  const pool =
+    preferred.length > 0 ? preferred : members;
+
+  return (
+    pool.find(
+      (member) => member.role === "owner",
+    ) ??
+    pool[0] ??
+    null
+  );
+}
+
+/**
+ * Which workspace should be active for this user at sign-in.
+ *
+ * A saved selection is kept only when that workspace can still be opened.
+ * Honouring it unconditionally sounds respectful and is not: the value sitting
+ * in the cookie is often one nobody chose -- sign-in used to overwrite it with
+ * the user's oldest workspace -- so a stale pointer at an expired trial would
+ * survive every attempt to move past it, and the user would meet the locked
+ * screen on every login with no way to break the cycle.
+ *
+ * A switch made during a session still wins, because that workspace is
+ * reachable and stays reachable. Only a locked one is passed over, and only
+ * when something better exists: a user whose workspaces are all expired still
+ * lands on one and can renew it.
+ *
+ * Returns null only when the user has no active membership at all.
+ */
+export async function resolveActiveWorkspaceSelection(
+  userId: string,
+  savedBusinessId: string,
+): Promise<string | null> {
+  const { data, error } = await loadActiveMembers(userId);
+
+  if (error) {
+    console.error(
+      "Unable to load memberships while resolving workspace selection:",
+      error,
+    );
+
+    return null;
+  }
+
+  const members = (data ?? []) as AuthenticatedMember[];
+
+  if (members.length === 0) {
+    return null;
+  }
+
+  if (
+    savedBusinessId &&
+    members.some(
+      (member) =>
+        member.business_id === savedBusinessId,
+    )
+  ) {
+    const usable = await loadUsableBusinessIds(
+      members.map(
+        (member) => member.business_id,
+      ),
+    );
+
+    if (
+      usable.has(savedBusinessId) ||
+      usable.size === 0
+    ) {
+      return savedBusinessId;
+    }
+  }
+
+  const member = await chooseMember(members);
+
+  return member?.business_id ?? null;
 }
 
 /** Temporary Meta App Review bridge. It stays isolated to the configured review workspace. */
@@ -291,7 +453,7 @@ export async function getCurrentMember(): Promise<GetCurrentMemberResult> {
   const activeMembers = (data ?? []) as AuthenticatedMember[];
 
   if (activeMembers.length > 0) {
-    const member = chooseMember(activeMembers);
+    const member = await chooseMember(activeMembers);
 
     if (member) {
       return {

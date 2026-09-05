@@ -1,7 +1,10 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { TENH_ACTIVE_BUSINESS_COOKIE } from "@/lib/auth/get-current-member";
+import {
+  resolveActiveWorkspaceSelection,
+  TENH_ACTIVE_BUSINESS_COOKIE,
+} from "@/lib/auth/get-current-member";
 import { provisionUserWorkspace } from "@/lib/onboarding/ensure-user-workspace";
 import { createClient } from "@/lib/supabase/server";
 
@@ -41,9 +44,34 @@ export async function POST(request: Request) {
   }
 
   const cookieStore = await cookies();
+
+  /*
+   * Every sign-in comes through here, so this cookie decides which workspace
+   * the user lands in. It used to be stamped with whatever the provisioning RPC
+   * returned -- their first workspace -- which sent anyone who had trialled
+   * before buying or joining straight back to the expired trial and its locked
+   * screen, every single time they logged in.
+   *
+   * A workspace just created for a granted trial is the right target and is
+   * used as-is. Otherwise the choice is deferred to the same resolver the
+   * dashboard uses: keep a still-valid saved selection, and failing that prefer
+   * a workspace that can actually be opened.
+   */
+  const savedBusinessId =
+    cookieStore
+      .get(TENH_ACTIVE_BUSINESS_COOKIE)
+      ?.value?.trim() ?? "";
+
+  const activeBusinessId = result.trialGranted
+    ? result.member.business_id
+    : ((await resolveActiveWorkspaceSelection(
+        user.id,
+        savedBusinessId,
+      )) ?? result.member.business_id);
+
   cookieStore.set(
     TENH_ACTIVE_BUSINESS_COOKIE,
-    result.member.business_id,
+    activeBusinessId,
     {
       httpOnly: true,
       sameSite: "lax",
@@ -55,7 +83,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     success: true,
-    businessId: result.member.business_id,
+    businessId: activeBusinessId,
     trialGranted: result.trialGranted,
     trialDays: result.trialDays,
     channelLimit: result.channelLimit,

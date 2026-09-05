@@ -92,6 +92,18 @@ export function ProfileMenu({
       const supabase =
         createClient();
 
+      /*
+       * Drop the active-workspace cookie first. It is httpOnly, so only the
+       * server can clear it, and signOut() below leaves it behind -- which is
+       * how a stale pointer at an expired workspace used to survive into the
+       * next sign-in. Best effort: a failure here must not trap someone in a
+       * session they are trying to leave.
+       */
+      await fetch("/api/auth/sign-out", {
+        method: "POST",
+        cache: "no-store",
+      }).catch(() => null);
+
       const { error } =
         await supabase.auth.signOut();
 
