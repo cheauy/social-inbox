@@ -7218,6 +7218,7 @@ async function performOptimisticSend(
 async function performOptimisticAttachmentSend(
   pending:
     PendingOptimisticAttachmentSend,
+  caption?: string,
 ): Promise<boolean> {
   setOptimisticSendStatus(
     pending.tempId,
@@ -7254,6 +7255,19 @@ async function performOptimisticAttachmentSend(
       pending.file,
       pending.file.name,
     );
+
+    /*
+     * A single photo or video takes the caption too, so one image with a
+     * message is still one Telegram message rather than two. Ignored by the
+     * routes that have nowhere to put it, which is every Messenger path -- Meta
+     * has no caption field at all.
+     */
+    if (caption?.trim()) {
+      formData.set(
+        "caption",
+        caption.trim(),
+      );
+    }
 
     const response =
       await fetch(
@@ -7448,6 +7462,7 @@ function reconcileOptimisticMessage(
  */
 async function performOptimisticAlbumSend(
   pendings: PendingOptimisticAttachmentSend[],
+  caption?: string,
 ): Promise<boolean> {
   for (const pending of pendings) {
     setOptimisticSendStatus(
@@ -7467,6 +7482,17 @@ async function performOptimisticAlbumSend(
       pendings[0].conversationId,
     );
     formData.set("kind", "image");
+
+    /*
+     * Telegram shows this as the album's caption, so the agent's message
+     * arrives with the media rather than as a second message after it.
+     */
+    if (caption?.trim()) {
+      formData.set(
+        "caption",
+        caption.trim(),
+      );
+    }
 
     for (const pending of pendings) {
       formData.append(
@@ -7566,6 +7592,7 @@ async function performOptimisticAlbumSend(
 
 async function handleSendAttachments(
   attachments: ReplyAttachment[],
+  caption?: string,
 ): Promise<boolean> {
   if (editingTelegramMessageId) {
     setSendError(
@@ -7722,14 +7749,28 @@ async function handleSendAttachments(
             attachment.file.name,
           );
 
+    /*
+     * Telegram groups photos and MP4 video into one album, so both go to
+     * send-photo, which batches them. A GIF is sent as an animation and a
+     * document as a document -- Telegram groups neither with photos, so they
+     * keep their own path.
+     */
+    const isAlbumCandidate =
+      conversationPlatform === "telegram" &&
+      ((attachment.kind === "image" &&
+        !isTelegramGifFile(
+          attachment.file,
+        )) ||
+        (attachment.kind === "video" &&
+          attachment.file.type
+            .split(";")[0]
+            .trim()
+            .toLowerCase() === "video/mp4"));
+
     const attachmentEndpoint =
       conversationPlatform ===
         "telegram"
-        ? attachment.kind ===
-              "image" &&
-            !isTelegramGifFile(
-              attachment.file,
-            )
+        ? isAlbumCandidate
           ? "/api/telegram/send-photo"
           : "/api/telegram/send-media"
         : "/api/facebook/send-attachment";
@@ -7790,8 +7831,7 @@ async function handleSendAttachments(
      */
     if (
       pending.endpoint ===
-        "/api/telegram/send-photo" &&
-      pending.kind === "image"
+      "/api/telegram/send-photo"
     ) {
       albumPendings.push(pending);
       continue;
@@ -7829,13 +7869,24 @@ async function handleSendAttachments(
         index + 10,
       );
 
+      /*
+       * The caption rides on the first batch only. Repeating it under every
+       * chunk of a very large album would read as the agent saying the same
+       * thing several times.
+       */
       const succeeded =
         chunk.length === 1
           ? await performOptimisticAttachmentSend(
               chunk[0],
+              index === 0
+                ? caption
+                : undefined,
             )
           : await performOptimisticAlbumSend(
               chunk,
+              index === 0
+                ? caption
+                : undefined,
             );
 
       if (!succeeded) {

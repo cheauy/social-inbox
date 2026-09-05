@@ -5831,6 +5831,11 @@ export function MessagePanel({
           onSubmit={
             onSendMessage
           }
+          canCaptionAttachments={
+            activeConversation
+              ?.social_account
+              ?.platform === "telegram"
+          }
           onSendAttachments={
             onSendAttachments
           }

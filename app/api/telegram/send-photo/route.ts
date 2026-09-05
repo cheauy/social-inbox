@@ -90,6 +90,26 @@ function isSupportedPhotoType(
   );
 }
 
+/*
+ * Telegram puts photos and videos in the same album, so an agent sending both
+ * gets one message rather than two. MP4 only, matching the single-video path --
+ * Telegram plays other containers unreliably.
+ */
+function isSupportedAlbumVideoType(
+  value: string,
+) {
+  return value === "video/mp4";
+}
+
+function isSupportedAlbumType(
+  value: string,
+) {
+  return (
+    isSupportedPhotoType(value) ||
+    isSupportedAlbumVideoType(value)
+  );
+}
+
 export async function POST(
   request: NextRequest,
 ) {
@@ -131,6 +151,20 @@ export async function POST(
     typeof conversationIdValue ===
     "string"
       ? conversationIdValue.trim()
+      : "";
+
+  /*
+   * The agent's typed message, carried as the album caption rather than sent
+   * after it. Telegram caps a caption at 1024 characters; anything longer is
+   * left for the composer to send as its own message, which is the only way it
+   * can arrive at all.
+   */
+  const captionValue = formData.get(
+    "caption",
+  );
+  const caption =
+    typeof captionValue === "string"
+      ? captionValue.trim().slice(0, 1024)
       : "";
 
   if (!conversationId) {
@@ -198,12 +232,12 @@ export async function POST(
       .trim()
       .toLowerCase();
 
-    if (!isSupportedPhotoType(albumFileType)) {
+    if (!isSupportedAlbumType(albumFileType)) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "Telegram photo sending currently supports JPG, PNG, and WEBP images.",
+            "A Telegram album can contain JPG, PNG or WEBP images and MP4 video.",
         },
         { status: 400 },
       );
@@ -465,6 +499,7 @@ export async function POST(
             token: botToken,
             chatId,
             files: albumFiles,
+            caption,
           })
         : [
             await sendTelegramPhoto({
@@ -615,8 +650,29 @@ export async function POST(
         sender_platform_id: senderPlatformId,
         recipient_platform_id: chatId,
         direction: "outgoing",
-        message_type: "image",
-        message_text: "Sent a photo",
+        /*
+         * Per file, not per request: an album can hold both now, and a video
+         * saved as an image renders with the wrong player in the thread.
+         */
+        message_type: sentFile.type
+          .toLowerCase()
+          .startsWith("video/")
+          ? "video"
+          : "image",
+
+        /*
+         * The caption belongs to the first item, the way Telegram displays it.
+         * The rest keep a plain label so the thread reads as one message with
+         * text rather than the same sentence repeated under every photo.
+         */
+        message_text:
+          index === 0 && caption
+            ? caption
+            : sentFile.type
+                  .toLowerCase()
+                  .startsWith("video/")
+              ? "Sent a video"
+              : "Sent a photo",
         sent_by_member_id: currentMember.id,
         delivery_status: "sent",
         delivered_at: null,

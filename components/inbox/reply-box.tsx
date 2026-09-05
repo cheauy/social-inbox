@@ -21,6 +21,7 @@ import {
 } from "@/components/display/workspace-language-text";
 
 import type {
+  SavedReplyAttachment,
   ConversationStatus,
   CustomerTag,
 } from "@/types/inbox";
@@ -71,7 +72,15 @@ type ReplyBoxProps = {
 
   onSendAttachments?: (
     attachments: ReplyAttachment[],
+    caption?: string,
   ) => Promise<boolean>;
+
+  /*
+   * Whether this channel can carry the typed message with the media.
+   * Telegram can, as an album caption; Messenger cannot, because Meta sends one
+   * attachment per message with no caption field at all.
+   */
+  canCaptionAttachments?: boolean;
 
   onStatusChange?: (
     status: ConversationStatus,
@@ -307,6 +316,7 @@ export function ReplyBox({
   onReplyChange,
   onSubmit,
   onSendAttachments,
+  canCaptionAttachments = false,
   onStatusChange,
 }: ReplyBoxProps) {
   const isKhmer = useWorkspaceLanguageId() === "km";
@@ -337,6 +347,90 @@ export function ReplyBox({
 
   const [attachments, setAttachments] =
     useState<ReplyAttachment[]>([]);
+
+  /*
+   * Bring a quick reply's media into the composer as ordinary attachments.
+   *
+   * They become exactly what a hand-picked file becomes, which is the point:
+   * the send path already groups two or more images into one album and sends a
+   * video on its own, so quick replies inherit that rather than needing a
+   * second way to send. The agent can also review or remove them before
+   * sending, the same as anything they attached themselves.
+   *
+   * The bucket is private, so each file is fetched through a signed link and
+   * rebuilt as a File. One that cannot be fetched is skipped: the text is
+   * already in the box, and losing an image is better than losing the reply.
+   */
+  async function loadSavedReplyAttachments(
+    savedAttachments: SavedReplyAttachment[],
+  ) {
+    if (savedAttachments.length === 0) {
+      return;
+    }
+
+    const loaded: ReplyAttachment[] = [];
+
+    for (const saved of savedAttachments) {
+      try {
+        const signedResponse = await fetch(
+          `/api/saved-replies/media?path=${encodeURIComponent(
+            saved.path,
+          )}`,
+          { cache: "no-store" },
+        );
+
+        const signed =
+          (await signedResponse.json()) as {
+            success?: boolean;
+            url?: string;
+          };
+
+        if (
+          !signed?.success ||
+          !signed.url
+        ) {
+          continue;
+        }
+
+        const fileResponse = await fetch(
+          signed.url,
+        );
+
+        if (!fileResponse.ok) {
+          continue;
+        }
+
+        const blob =
+          await fileResponse.blob();
+
+        const file = new File(
+          [blob],
+          saved.name || "attachment",
+          {
+            type:
+              saved.mimeType || blob.type,
+          },
+        );
+
+        loaded.push({
+          id: createId(),
+          file,
+          previewUrl:
+            URL.createObjectURL(blob),
+          kind: saved.kind,
+        });
+      } catch {
+        /* Skip this one; the reply text still went in. */
+      }
+    }
+
+    if (loaded.length > 0) {
+      setAttachments((current) => [
+        ...current,
+        ...loaded,
+      ]);
+    }
+  }
 
   const [emojiOpen, setEmojiOpen] =
     useState(false);
@@ -1337,14 +1431,52 @@ export function ReplyBox({
 
     setSendingContent(true);
 
+    /*
+     * On Telegram the typed message travels with the media as the album's
+     * caption, so photo + video + text arrives as one message instead of
+     * three. Telegram caps a caption at 1024 characters, and anything longer
+     * still has to follow as its own message -- there is no other way for it
+     * to arrive.
+     *
+     * Messenger never gets a caption: Meta's Send API carries one attachment
+     * per message and has no caption field, so the text follows as its own
+     * message there however this is written.
+     */
+    const canCaption =
+      canCaptionAttachments &&
+      reply.trim().length > 0 &&
+      reply.trim().length <= 1024;
+
+    const caption = canCaption
+      ? reply.trim()
+      : undefined;
+
     try {
       const success =
         await onSendAttachments(
           attachments,
+          caption,
         );
 
       if (success) {
         clearAttachments();
+
+        /* Sent as the caption already; clear the box rather than sending twice. */
+        if (canCaption) {
+          onReplyChange("");
+
+          pendingPostSendStatusRef.current =
+            null;
+
+          if (
+            postSendStatus &&
+            onStatusChange
+          ) {
+            onStatusChange(postSendStatus);
+          }
+
+          return;
+        }
 
         /*
          * If the agent also typed a message, send it right after the
@@ -1915,7 +2047,16 @@ export function ReplyBox({
           >
             <SavedReplySelector
               businessId={businessId}
-              onSelect={onReplyChange}
+              onSelect={(
+                message,
+                savedAttachments,
+              ) => {
+                onReplyChange(message);
+
+                void loadSavedReplyAttachments(
+                  savedAttachments,
+                );
+              }}
             />
           </div>
 

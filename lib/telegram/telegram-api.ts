@@ -345,31 +345,77 @@ export async function sendTelegramChatAction({
  * photo, so the caller still gets a row per item — the grouping is what the
  * customer sees, not how it is stored.
  */
+/*
+ * Send several photos and videos as one album.
+ *
+ * Telegram groups photos and videos together, so an agent sending both gets one
+ * message rather than two. Documents cannot join them -- Telegram only groups
+ * documents with documents -- so the caller keeps those separate.
+ *
+ * A caption belongs to the album, not to a file, and Telegram takes it from the
+ * first item only. Putting the agent's text there is what turns "media, then a
+ * separate text message" into the single message they expected to send.
+ */
 export async function sendTelegramMediaGroup({
   token,
   chatId,
   files,
+  caption,
+  replyToMessageId,
 }: {
   token: string;
   chatId: string;
   files: File[];
+  caption?: string | null;
+  replyToMessageId?: number | null;
 }) {
   const formData = new FormData();
 
   formData.set("chat_id", String(chatId));
 
+  if (
+    typeof replyToMessageId === "number"
+  ) {
+    formData.set(
+      "reply_to_message_id",
+      String(replyToMessageId),
+    );
+  }
+
+  const trimmedCaption =
+    caption?.trim() ?? "";
+
   const media = files.map((file, index) => {
-    const field = `photo_${index}`;
+    const isVideo = file.type
+      .toLowerCase()
+      .startsWith("video/");
+
+    const field = isVideo
+      ? `video_${index}`
+      : `photo_${index}`;
 
     formData.set(
       field,
       file,
-      file.name || `tenh-telegram-photo-${index}.jpg`,
+      file.name ||
+        (isVideo
+          ? `tenh-telegram-video-${index}.mp4`
+          : `tenh-telegram-photo-${index}.jpg`),
     );
 
     return {
-      type: "photo",
+      type: isVideo ? "video" : "photo",
       media: `attach://${field}`,
+
+      /* Telegram shows the album's caption from the first item only. */
+      ...(index === 0 && trimmedCaption
+        ? {
+            caption: trimmedCaption.slice(
+              0,
+              1024,
+            ),
+          }
+        : {}),
     };
   });
 
