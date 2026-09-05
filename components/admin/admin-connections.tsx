@@ -30,7 +30,18 @@ type MessengerConnection = {
   tokenStatus: string | null;
   tokenError: string | null;
   createdAt: string | null;
+  blocksReconnect: boolean;
 };
+
+type ReleaseTarget =
+  | {
+      kind: "telegram";
+      connection: TelegramConnection;
+    }
+  | {
+      kind: "messenger";
+      connection: MessengerConnection;
+    };
 
 type PlatformFilter =
   | "all"
@@ -106,9 +117,19 @@ export function AdminConnections() {
     string | null
   >(null);
 
+  /*
+   * Released connections stay in the database -- every conversation joins its
+   * social_accounts row for the channel it belongs to, so deleting one would
+   * strip old threads of their identity, or take them with it. They are hidden
+   * here instead, because the reason to open this tab is a claim that needs
+   * breaking, not a record of ones already broken.
+   */
+  const [showReleased, setShowReleased] =
+    useState(false);
+
   const [confirmTarget, setConfirmTarget] =
-    useState<TelegramConnection | null>(null);
-  const [confirmBotId, setConfirmBotId] =
+    useState<ReleaseTarget | null>(null);
+  const [confirmId, setConfirmId] =
     useState("");
   const [releasing, setReleasing] =
     useState(false);
@@ -188,6 +209,9 @@ export function AdminConnections() {
     setReleasing(true);
     setError(null);
 
+    const isTelegram =
+      confirmTarget.kind === "telegram";
+
     try {
       const response = await fetch(
         "/api/tenh-admin/connections",
@@ -199,9 +223,17 @@ export function AdminConnections() {
           },
           body: JSON.stringify({
             connectionId:
-              confirmTarget.connectionId,
-            confirmBotId:
-              confirmBotId.trim(),
+              confirmTarget.connection
+                .connectionId,
+            ...(isTelegram
+              ? {
+                  confirmBotId:
+                    confirmId.trim(),
+                }
+              : {
+                  confirmPageId:
+                    confirmId.trim(),
+                }),
           }),
         },
       );
@@ -216,7 +248,7 @@ export function AdminConnections() {
       if (!response.ok || !result.success) {
         setError(
           result.error ??
-            "Unable to release this Telegram Bot.",
+            "Unable to release this connection.",
         );
         return;
       }
@@ -228,21 +260,61 @@ export function AdminConnections() {
       );
 
       setConfirmTarget(null);
-      setConfirmBotId("");
+      setConfirmId("");
       void load();
     } catch {
       setError(
-        "Unable to reach TENH while releasing the Bot.",
+        "Unable to reach TENH while releasing the connection.",
       );
     } finally {
       setReleasing(false);
     }
   }
 
+  const targetId =
+    confirmTarget?.kind === "telegram"
+      ? confirmTarget.connection.botId
+      : (confirmTarget?.connection.pageId ??
+        null);
+  const targetName =
+    confirmTarget?.kind === "telegram"
+      ? (confirmTarget.connection
+          .accountName ??
+        confirmTarget.connection
+          .botUsername ??
+        "this Bot")
+      : (confirmTarget?.connection
+          .accountName ?? "this Page");
+
   const showTelegram =
     platform !== "messenger";
   const showMessenger =
     platform !== "telegram";
+
+  const visibleTelegram = showReleased
+    ? telegram
+    : telegram.filter(
+        (connection) =>
+          connection.blocksReconnect,
+      );
+  const visibleMessenger = showReleased
+    ? messenger
+    : messenger.filter(
+        (connection) =>
+          connection.blocksReconnect,
+      );
+
+  const releasedCount =
+    telegram.length -
+    telegram.filter(
+      (connection) =>
+        connection.blocksReconnect,
+    ).length +
+    (messenger.length -
+      messenger.filter(
+        (connection) =>
+          connection.blocksReconnect,
+      ).length);
 
   return (
     <div className="space-y-4">
@@ -318,12 +390,33 @@ export function AdminConnections() {
             {notice}
           </p>
         ) : null}
+
+        {releasedCount > 0 || showReleased ? (
+          <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={showReleased}
+              onChange={(event) =>
+                setShowReleased(
+                  event.target.checked,
+                )
+              }
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Show {releasedCount} already
+            released{" "}
+            <span className="text-slate-400">
+              — kept so their old conversations
+              keep their channel
+            </span>
+          </label>
+        ) : null}
       </section>
 
       {showTelegram ? (
         <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-slate-400">
-            Telegram · {telegram.length}
+            Telegram · {visibleTelegram.length}
           </h3>
 
           <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-500">
@@ -338,18 +431,22 @@ export function AdminConnections() {
             </span>{" "}
             delete the connection or its
             conversation history, which stays
-            with the old workspace.
+            with the old workspace. Only Bots
+            still holding a claim show a Release
+            button.
           </p>
 
-          {telegram.length === 0 ? (
+          {visibleTelegram.length === 0 ? (
             <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
               {loading
                 ? "Loading..."
-                : "No Telegram connection matches."}
+                : showReleased
+                  ? "No Telegram connection matches."
+                  : "No Telegram Bot is holding a claim."}
             </p>
           ) : (
             <div className="mt-3 space-y-2">
-              {telegram.map((connection) => (
+              {visibleTelegram.map((connection) => (
                 <div
                   key={
                     connection.connectionId
@@ -392,10 +489,11 @@ export function AdminConnections() {
                       <button
                         type="button"
                         onClick={() => {
-                          setConfirmTarget(
+                          setConfirmTarget({
+                            kind: "telegram",
                             connection,
-                          );
-                          setConfirmBotId("");
+                          });
+                          setConfirmId("");
                           setError(null);
                           setNotice(null);
                         }}
@@ -403,11 +501,7 @@ export function AdminConnections() {
                       >
                         Release Bot
                       </button>
-                    ) : (
-                      <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
-                        Already free
-                      </span>
-                    )}
+                    ) : null}
                   </div>
 
                   <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -473,36 +567,76 @@ export function AdminConnections() {
       {showMessenger ? (
         <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-slate-400">
-            Messenger · {messenger.length}
+            Messenger · {visibleMessenger.length}
           </h3>
 
-          {messenger.length === 0 ? (
+          <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-500">
+            A Page works the same way, except a
+            Page keeps its claim until it is
+            deliberately disconnected — being
+            deactivated is not enough. Release
+            clears the tokens and gives the claim
+            up, leaving the connection and its
+            history with the old workspace.
+          </p>
+
+          {visibleMessenger.length === 0 ? (
             <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
               {loading
                 ? "Loading..."
-                : "No Messenger Page matches."}
+                : showReleased
+                  ? "No Messenger Page matches."
+                  : "No Messenger Page is holding a claim."}
             </p>
           ) : (
             <div className="mt-3 space-y-2">
-              {messenger.map((connection) => (
+              {visibleMessenger.map((connection) => (
                 <div
                   key={
                     connection.connectionId
                   }
-                  className="rounded-2xl border border-slate-200 bg-white p-3"
+                  className={`rounded-2xl border p-3 ${
+                    connection.blocksReconnect
+                      ? "border-amber-200 bg-amber-50/60"
+                      : "border-slate-200 bg-white"
+                  }`}
                 >
-                  <p className="font-semibold text-slate-900">
-                    {connection.accountName ??
-                      "Facebook Page"}
-                  </p>
-                  <p className="mt-0.5 text-sm text-slate-600">
-                    {connection.businessName}
-                  </p>
-                  <p className="mt-0.5 font-mono text-xs text-slate-400">
-                    page{" "}
-                    {connection.pageId ??
-                      "unknown"}
-                  </p>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-900">
+                        {connection.accountName ??
+                          "Facebook Page"}
+                      </p>
+                      <p className="mt-0.5 text-sm text-slate-600">
+                        {
+                          connection.businessName
+                        }
+                      </p>
+                      <p className="mt-0.5 font-mono text-xs text-slate-400">
+                        page{" "}
+                        {connection.pageId ??
+                          "unknown"}
+                      </p>
+                    </div>
+
+                    {connection.blocksReconnect ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfirmTarget({
+                            kind: "messenger",
+                            connection,
+                          });
+                          setConfirmId("");
+                          setError(null);
+                          setNotice(null);
+                        }}
+                        className="shrink-0 rounded-xl border border-red-200 bg-white px-3 py-1.5 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                      >
+                        Release Page
+                      </button>
+                    ) : null}
+                  </div>
 
                   <div className="mt-2.5 flex flex-wrap gap-1.5">
                     <StatusChip
@@ -556,43 +690,47 @@ export function AdminConnections() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
           <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-xl">
             <h3 className="text-base font-bold text-slate-900">
-              Release this Bot?
+              {confirmTarget.kind === "telegram"
+                ? "Release this Bot?"
+                : "Release this Page?"}
             </h3>
 
             <p className="mt-2 text-sm leading-6 text-slate-600">
               <span className="font-semibold text-slate-900">
-                {confirmTarget.businessName}
+                {
+                  confirmTarget.connection
+                    .businessName
+                }
               </span>{" "}
               will stop receiving and sending
               messages on{" "}
               <span className="font-semibold text-slate-900">
-                {confirmTarget.accountName ??
-                  confirmTarget.botUsername ??
-                  "this Bot"}
+                {targetName}
               </span>{" "}
               immediately. Their past
               conversations stay readable.
             </p>
 
             <label className="mt-4 block text-sm font-semibold text-slate-700">
-              Type the Bot ID to confirm
+              {confirmTarget.kind === "telegram"
+                ? "Type the Bot ID to confirm"
+                : "Type the Page ID to confirm"}
               <input
-                value={confirmBotId}
+                value={confirmId}
                 onChange={(event) =>
-                  setConfirmBotId(
+                  setConfirmId(
                     event.target.value,
                   )
                 }
                 autoComplete="off"
                 spellCheck={false}
-                placeholder={
-                  confirmTarget.botId ?? ""
-                }
+                placeholder={targetId ?? ""}
                 className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white"
               />
             </label>
 
-            {looksLikeBotToken(confirmBotId) ? (
+            {confirmTarget.kind === "telegram" &&
+            looksLikeBotToken(confirmId) ? (
               <p className="mt-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
                 That is a full Bot token, not a
                 Bot ID. Nothing was sent. Enter
@@ -612,7 +750,7 @@ export function AdminConnections() {
                 Owner&apos;s request rather than
                 copying it off this screen — that
                 is what makes this a check. Never
-                ask for the token; TENH already
+                ask for a token; TENH already
                 holds it.
               </p>
             )}
@@ -623,7 +761,7 @@ export function AdminConnections() {
                 disabled={releasing}
                 onClick={() => {
                   setConfirmTarget(null);
-                  setConfirmBotId("");
+                  setConfirmId("");
                 }}
                 className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
               >
@@ -633,11 +771,13 @@ export function AdminConnections() {
                 type="button"
                 disabled={
                   releasing ||
-                  looksLikeBotToken(
-                    confirmBotId,
-                  ) ||
-                  confirmBotId.trim() !==
-                    (confirmTarget.botId ?? "")
+                  (confirmTarget.kind ===
+                    "telegram" &&
+                    looksLikeBotToken(
+                      confirmId,
+                    )) ||
+                  confirmId.trim() !==
+                    (targetId ?? "")
                 }
                 onClick={() =>
                   void confirmRelease()
@@ -646,7 +786,10 @@ export function AdminConnections() {
               >
                 {releasing
                   ? "Releasing..."
-                  : "Release Bot"}
+                  : confirmTarget.kind ===
+                      "telegram"
+                    ? "Release Bot"
+                    : "Release Page"}
               </button>
             </div>
           </div>

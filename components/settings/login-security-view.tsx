@@ -706,7 +706,7 @@ export function LoginSecurityView() {
         </div>
 
         <a
-          href="https://t.me/tenh_chat_support_bot"
+          href="https://t.me/tenhchat_support_bot"
           target="_blank"
           rel="noreferrer"
           className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-600 shadow-sm transition hover:bg-blue-50"

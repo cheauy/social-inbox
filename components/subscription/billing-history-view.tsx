@@ -600,7 +600,7 @@ export function BillingHistoryView() {
           </button>
 
           <a
-            href="https://t.me/tenh_chat_support_bot"
+            href="https://t.me/tenhchat_support_bot"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-4 rounded-[20px] border border-slate-200 bg-white px-5 py-4 transition hover:border-violet-200 hover:bg-violet-50/40"

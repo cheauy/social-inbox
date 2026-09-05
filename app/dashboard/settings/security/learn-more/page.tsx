@@ -336,7 +336,7 @@ export default function SecurityLearnMorePage() {
           </div>
 
           <a
-            href="https://t.me/tenh_chat_support_bot"
+            href="https://t.me/tenhchat_support_bot"
             target="_blank"
             rel="noreferrer"
             className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"

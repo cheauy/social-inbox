@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist_Mono } from "next/font/google";
+import Script from "next/script";
 
 import { WorkspaceFontRuntime } from "@/components/display/workspace-font-runtime";
 import {
@@ -111,12 +112,20 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        <script
+      <body className={`${geistMono.variable} antialiased`}>
+        {/*
+          The font bootstrap has to run before first paint, or the workspace
+          font arrives after the page has already been drawn in the fallback.
+          A raw <script> did that on the server but React never executes one it
+          renders on the client, which is what it was warning about. next/script
+          with beforeInteractive is the supported way to say the same thing: it
+          goes into the initial HTML and runs ahead of any Next.js module.
+        */}
+        <Script
+          id="tenh-workspace-font-bootstrap"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: workspaceFontBootstrap }}
         />
-      </head>
-      <body className={`${geistMono.variable} antialiased`}>
         <WorkspaceFontRuntime />
         {children}
       </body>

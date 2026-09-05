@@ -463,6 +463,13 @@ function SubscriptionTable({
                             : t("Reactivate", "ធ្វើឲ្យសកម្មវិញ")}
                         </button>
                       ) : (
+                        /*
+                         * No action for a trial, by design. Reactivate renews at
+                         * the price already paid, and a trial has none -- a
+                         * finished trial is meant to finish, not to be revived.
+                         * Buying a plan is a new subscription, which the
+                         * Subscription page handles.
+                         */
                         <span className="text-xs text-slate-400">—</span>
                       )}
                     </td>
@@ -686,6 +693,30 @@ export function SubscriptionMembershipList({
             </div>
             <p className="mt-1 text-xs text-slate-500">
               {t("Previous subscriptions are retained for your records.", "ការជាវពីមុនត្រូវបានរក្សាទុកសម្រាប់កំណត់ត្រារបស់អ្នក។")}
+            </p>
+
+            {/*
+              A channel stays claimed by the subscription that connected it --
+              expiring does not release it. Say so here, because this table is
+              where an Owner looks when a Page or Bot will not connect to the
+              subscription they have just bought.
+            */}
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              {t(
+                "A finished free trial releases its Facebook Page or Telegram Bot automatically, so you can connect it to a new subscription straight away. An expired paid subscription keeps its channels until you disconnect them there.",
+                "ការសាកល្បងឥតគិតថ្លៃដែលបញ្ចប់ នឹងលែងទំព័រ Facebook ឬ Bot Telegram ដោយស្វ័យប្រវត្តិ ដូច្នេះអ្នកអាចភ្ជាប់ទៅការជាវថ្មីភ្លាមៗ។ រីឯការជាវដែលបានបង់ប្រាក់ហើយផុតកំណត់ នៅតែរក្សាឆានែលរបស់វា រហូតទាល់តែអ្នកផ្តាច់វានៅទីនោះ។",
+              )}{" "}
+              <a
+                href="https://t.me/tenhchat_support_bot"
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-700"
+              >
+                {t(
+                  "Lost access? Contact TENH support",
+                  "បាត់បង់ការចូលប្រើ? ទាក់ទងផ្នែកជំនួយ TENH",
+                )}
+              </a>
             </p>
           </div>
 

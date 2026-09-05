@@ -29,6 +29,10 @@ import {
   ensureFacebookPageConnectionHealthy,
 } from "@/lib/facebook/facebook-connection-health";
 import {
+  loadExpiredTrialBusinessIds,
+  releaseFacebookTrialClaims,
+} from "@/lib/channels/expired-trial-claim";
+import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 import {
@@ -80,7 +84,34 @@ type ExistingFacebookAccount = {
   business_id: string;
   platform_account_id: string | null;
   is_active: boolean | null;
+  facebook_token_status: string | null;
 };
+
+/*
+ * A released Page holds no claim.
+ *
+ * Disconnecting a Page cleared its token, but the ownership check below matched
+ * on platform_account_id alone -- so a Page stayed claimed by the old workspace
+ * forever, and no action available to its Owner could free it.
+ *
+ * This deliberately mirrors the facebook_live_page_unique index, which is
+ * partial on `facebook_token_status IS DISTINCT FROM 'disconnected'`. The
+ * database decides whether the new row can exist at all; a check that disagreed
+ * with it would either refuse a connect Postgres would have allowed, or allow
+ * one it then rejects with a constraint error. A merely paused connection still
+ * holds a live token, so it keeps its claim under both rules.
+ *
+ * Facebook OAuth is what actually authorizes this. Whoever reaches here has
+ * already proved to Meta that they administer the Page; the claim exists to
+ * stop two workspaces owning one Page by accident, not to be the access check.
+ */
+function isReleasedFacebookAccount(
+  row: ExistingFacebookAccount,
+) {
+  return (
+    row.facebook_token_status === "disconnected"
+  );
+}
 
 function redirectToIntegrations(
   request: NextRequest,
@@ -226,7 +257,8 @@ export async function POST(
         id,
         business_id,
         platform_account_id,
-        is_active
+        is_active,
+        facebook_token_status
       `)
       .eq("platform", "facebook")
       .in("platform_account_id", selectedPageIds)
@@ -236,15 +268,81 @@ export async function POST(
       throw new Error(existingRowsError.message);
     }
 
+    /*
+     * Only this workspace's own rows count as "existing".
+     *
+     * The write below updates by row id but scopes to the current business, so
+     * handing it a row from another workspace matches nothing and the reconnect
+     * fails. That could not happen while every foreign row was refused outright;
+     * now that a released Page is allowed through, it has to fall to the insert
+     * branch and get a row of its own -- the old workspace keeps its row, and
+     * its conversation history with it.
+     */
     const existingByPageId = new Map(
       (existingRows ?? [])
-        .filter((row) => row.platform_account_id)
+        .filter(
+          (row) =>
+            row.platform_account_id &&
+            row.business_id ===
+              currentMember.business_id,
+        )
         .map((row) => [row.platform_account_id as string, row]),
     );
 
-    const foreignRows = (existingRows ?? []).filter(
+    const claimedElsewhere = (existingRows ?? []).filter(
       (row) =>
-        row.business_id !== currentMember.business_id,
+        row.business_id !== currentMember.business_id &&
+        !isReleasedFacebookAccount(row),
+    );
+
+    /*
+     * A claim held by an expired free trial is released here rather than
+     * refused. Buying a plan and reconnecting the Page is the ordinary way out
+     * of a finished trial; making the customer first go back into the dead
+     * workspace to disconnect turned that into a support ticket.
+     *
+     * Only trials. An expired paid subscription keeps its claim, because that
+     * workspace may simply be late paying and must not lose its Page to whoever
+     * connects next.
+     */
+    const expiredTrialBusinessIds =
+      await loadExpiredTrialBusinessIds(
+        claimedElsewhere.map(
+          (row) => row.business_id,
+        ),
+      );
+
+    const trialClaims = claimedElsewhere.filter(
+      (row) =>
+        expiredTrialBusinessIds.has(
+          row.business_id,
+        ),
+    );
+
+    if (trialClaims.length > 0) {
+      /*
+       * Write before the insert further down, not after: the partial unique
+       * index counts these rows as live until they say 'disconnected'.
+       */
+      await releaseFacebookTrialClaims(
+        trialClaims.map((row) => row.id),
+      );
+
+      console.info(
+        "[TENH Facebook] Released expired-trial Page claims.",
+        trialClaims.map((row) => ({
+          rowId: row.id,
+          businessId: row.business_id,
+          pageId: row.platform_account_id,
+        })),
+      );
+    }
+
+    const foreignRows = claimedElsewhere.filter(
+      (row) =>
+        !expiredTrialBusinessIds.has(
+          row.business_id,
+        ),
     );
 
     if (foreignRows.length > 0) {
@@ -301,14 +399,14 @@ export async function POST(
             facebook: "connected",
             message:
               joined.role === "owner"
-                ? "This Facebook Page already belongs to one of your TENH subscriptions. TENH switched to that subscription."
+                ? "This Facebook Page already belongs to one of your TENH subscriptions, so TENH switched you to that subscription. To use this Page in a different subscription instead, disconnect it there first (Integrations, Disconnect Page), then connect it again here."
                 : "This Facebook Page already belongs to an existing TENH subscription. You joined that subscription as an Agent.",
           }),
         );
       }
 
       throw new Error(
-        "One or more selected Pages already belong to another TENH subscription. Connect those Pages one at a time so TENH can switch or join the correct subscription safely.",
+        "One or more selected Pages already belong to another TENH subscription. Connect those Pages one at a time so TENH can switch or join the correct subscription safely. To move a Page to this subscription instead, disconnect it in the subscription that holds it first -- an expired subscription can still disconnect.",
       );
     }
 
@@ -436,6 +534,23 @@ export async function POST(
           .single();
 
         if (insertError || !insertedAccount) {
+          /*
+           * If a unique index on the Page id survives a release, say so in
+           * words support can act on. Anything else surfaces as-is.
+           */
+          const lower =
+            insertError?.message?.toLowerCase() ??
+            "";
+
+          if (
+            insertError?.code === "23505" ||
+            lower.includes("duplicate key")
+          ) {
+            throw new Error(
+              `${selectedPage.name || "This Facebook Page"} is still held by another TENH workspace at the database level. TENH support must release it from that workspace before it can be connected here.`,
+            );
+          }
+
           throw new Error(
             insertError?.message ??
               `Unable to connect ${selectedPage.name || "Facebook Page"}.`,

@@ -496,6 +496,26 @@ export function BuySubscriptionView() {
           </span>
         </button>
 
+        {/*
+          Last, under Custom. Someone who has read every plan and still has not
+          picked one is exactly who needs to ask, and by then Custom has already
+          been offered as the answer to "none of these fit".
+        */}
+        <p className="mt-4 text-center text-xs leading-5 text-slate-500">
+          {t(
+            "Not sure which plan fits your business?",
+            "មិនច្បាស់ថាគម្រោងណាសមនឹងអាជីវកម្មរបស់អ្នក?",
+          )}{" "}
+          <a
+            href="https://t.me/tenhchat_support_bot"
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-700"
+          >
+            {t("Ask TENH support", "សួរផ្នែកជំនួយ TENH")}
+          </a>
+        </p>
+
         {customOpen ? (
           <div
             className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/40 p-3 backdrop-blur-[2px] sm:p-4"

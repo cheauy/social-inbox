@@ -182,6 +182,17 @@ function describeMessenger(
   row: MessengerRow,
   businessName: string | undefined,
 ) {
+  /*
+   * Same rule as isReleasedFacebookAccount in the OAuth select route, which in
+   * turn mirrors the facebook_live_page_unique index. All three have to agree:
+   * this one decides whether support is offered a Release button, that route
+   * decides whether the reconnect is allowed, and the index decides whether the
+   * row can be written at all.
+   */
+  const blocksReconnect =
+    row.facebook_token_status !==
+    "disconnected";
+
   return {
     platform: "messenger" as const,
     connectionId: row.id,
@@ -195,6 +206,7 @@ function describeMessenger(
     tokenError:
       row.facebook_token_last_error,
     createdAt: row.created_at,
+    blocksReconnect,
   };
 }
 
@@ -348,6 +360,124 @@ export async function GET(
   }
 }
 
+async function releaseMessengerPage(
+  connectionId: string,
+  confirmPageId: string,
+  adminUserId: string,
+) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("social_accounts")
+      .select(MESSENGER_COLUMNS)
+      .eq("id", connectionId)
+      .eq("platform", "facebook")
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `social_accounts: ${error.message}`,
+      );
+    }
+
+    const row = (data ??
+      null) as unknown as MessengerRow | null;
+
+    if (!row) {
+      return noStoreJson(
+        {
+          success: false,
+          error:
+            "That Messenger connection no longer exists.",
+        },
+        404,
+      );
+    }
+
+    if (
+      confirmPageId !==
+      (row.platform_account_id ?? "")
+    ) {
+      return noStoreJson(
+        {
+          success: false,
+          error:
+            "The Page ID you typed does not match this connection. Check the ID with the Owner before releasing.",
+        },
+        409,
+      );
+    }
+
+    if (
+      row.facebook_token_status ===
+      "disconnected"
+    ) {
+      return noStoreJson({
+        success: true,
+        alreadyReleased: true,
+        message:
+          "This Page was already released. The Owner can connect it to their new subscription now.",
+      });
+    }
+
+    const { error: releaseError } =
+      await supabaseAdmin
+        .from("social_accounts")
+        .update({
+          is_active: false,
+          facebook_page_access_token_encrypted:
+            null,
+          facebook_user_access_token_encrypted:
+            null,
+          facebook_user_token_expires_at: null,
+          facebook_connected_at: null,
+          facebook_token_status:
+            "disconnected",
+          facebook_token_last_error:
+            "Released by TENH support so the Page could be connected to another subscription.",
+          updated_at:
+            new Date().toISOString(),
+        })
+        .eq("id", row.id);
+
+    if (releaseError) {
+      throw new Error(releaseError.message);
+    }
+
+    console.info(
+      "[TENH Admin] Messenger Page released.",
+      {
+        adminUserId,
+        connectionId: row.id,
+        businessId: row.business_id,
+        pageId: row.platform_account_id,
+      },
+    );
+
+    return noStoreJson({
+      success: true,
+      alreadyReleased: false,
+      message:
+        "Page released. Its conversation history stays with the old workspace, and the Owner can now connect it to their new subscription.",
+    });
+  } catch (releaseError) {
+    console.error(
+      "[TENH Admin] Messenger release failed:",
+      releaseError instanceof Error
+        ? releaseError.message
+        : releaseError,
+    );
+
+    return noStoreJson(
+      {
+        success: false,
+        error:
+          "Unable to release this Messenger Page.",
+      },
+      500,
+    );
+  }
+}
+
 export async function POST(
   request: NextRequest,
 ) {
@@ -366,6 +496,7 @@ export async function POST(
   let body: {
     connectionId?: string;
     confirmBotId?: string;
+    confirmPageId?: string;
   };
 
   try {
@@ -384,6 +515,8 @@ export async function POST(
     body.connectionId?.trim() ?? "";
   const confirmBotId =
     body.confirmBotId?.trim() ?? "";
+  const confirmPageId =
+    body.confirmPageId?.trim() ?? "";
 
   if (!connectionId) {
     return noStoreJson(
@@ -393,6 +526,20 @@ export async function POST(
           "Choose the connection to release.",
       },
       400,
+    );
+  }
+
+  /*
+   * A Page release has nothing to revoke remotely: Meta has no per-connection
+   * webhook to remove, and the Page access token dies with the row. So this is
+   * purely the local claim, which is all that stood between the Owner and their
+   * new subscription.
+   */
+  if (confirmPageId) {
+    return releaseMessengerPage(
+      connectionId,
+      confirmPageId,
+      admin.user.id,
     );
   }
 

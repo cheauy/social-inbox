@@ -11,6 +11,10 @@ import {
 import { getBusinessEntitlements } from "@/lib/subscription/get-business-entitlements";
 import { deleteTelegramWebhook } from "@/lib/telegram/telegram-api";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+  loadExpiredTrialBusinessIds,
+  releaseTelegramTrialClaim,
+} from "@/lib/channels/expired-trial-claim";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -480,10 +484,46 @@ export async function POST(request: NextRequest) {
       verifiedClaim.row &&
       verifiedClaim.row.business_id !== currentMember.business_id
     ) {
-      return handleBotClaimedByAnotherSubscription({
-        claim: verifiedClaim.row,
-        userId: authResult.user.id,
-      });
+      /*
+       * An expired free trial gives the Bot up automatically. Whoever is here
+       * holds the Bot token, which is the only thing that ever proved the right
+       * to connect it, and the trial workspace has nothing left to protect --
+       * it never paid and its seven days are over.
+       *
+       * This must write, not just skip: telegram_verified_bot_unique treats the
+       * old row as live until it says 'disconnected', so the insert below would
+       * otherwise hit the index. An expired paid subscription still refuses,
+       * since that workspace may only be late paying.
+       */
+      const expiredTrialBusinessIds =
+        await loadExpiredTrialBusinessIds([
+          verifiedClaim.row.business_id,
+        ]);
+
+      if (
+        expiredTrialBusinessIds.has(
+          verifiedClaim.row.business_id,
+        )
+      ) {
+        await releaseTelegramTrialClaim(
+          verifiedClaim.row.id,
+        );
+
+        console.info(
+          "[TENH Telegram] Released expired-trial Bot claim.",
+          {
+            rowId: verifiedClaim.row.id,
+            businessId:
+              verifiedClaim.row.business_id,
+            botId,
+          },
+        );
+      } else {
+        return handleBotClaimedByAnotherSubscription({
+          claim: verifiedClaim.row,
+          userId: authResult.user.id,
+        });
+      }
     }
 
     const { data: existingBot, error: existingError } = await supabaseAdmin
