@@ -35,6 +35,19 @@ type SocialAccountSecurityRow = {
 };
 
 
+/*
+ * SECURITY DEFINER helpers that are meant to be callable by authenticated users.
+ *
+ * Each one reads something `authenticated` cannot reach directly -- a tenant
+ * table behind RLS, or auth.sessions -- and each scopes itself to the caller
+ * before returning anything. That scoping is the reason they are safe, so a
+ * name belongs here only after its body has been read and its boundary found.
+ *
+ * The account helpers were reviewed on 2026-09-05: tenh_account_has_password
+ * filters on auth.uid(), tenh_list_user_sessions filters s.user_id = auth.uid(),
+ * and tenh_revoke_user_session refuses an unauthenticated caller and deletes
+ * only where user_id = caller_id.
+ */
 const REVIEWED_AUTHENTICATED_SECURITY_DEFINER_HELPERS = new Set([
   "can_access_tenh_business",
   "can_access_tenh_customer_files",
@@ -43,6 +56,9 @@ const REVIEWED_AUTHENTICATED_SECURITY_DEFINER_HELPERS = new Set([
   "can_access_tenh_reminders",
   "can_access_tenh_team_room",
   "current_tenh_member_id",
+  "tenh_account_has_password",
+  "tenh_list_user_sessions",
+  "tenh_revoke_user_session",
 ]);
 
 type DatabaseSnapshot = {
