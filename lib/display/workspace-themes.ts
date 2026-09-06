@@ -25,13 +25,13 @@ export const workspaceThemes: WorkspaceThemeOption[] = [
     id: "dark",
     name: "Dark",
     description: "Easy on the eyes in low light",
-    available: false,
+    available: true,
   },
   {
     id: "dim",
     name: "Dim",
     description: "Softer dark theme for extended use",
-    available: false,
+    available: true,
   },
 ];
 
@@ -71,13 +71,18 @@ export function applyWorkspaceTheme(id: WorkspaceThemeId) {
     return;
   }
 
-  // Dark and Dim are intentionally unavailable for now.
-  // Force Light even if an older browser has a stale saved value.
   const safeTheme: WorkspaceThemeId =
     isAvailableWorkspaceThemeId(id)
       ? id
       : DEFAULT_WORKSPACE_THEME_ID;
 
   document.documentElement.dataset.tenhWorkspaceTheme = safeTheme;
-  document.documentElement.style.colorScheme = "light";
+
+  /*
+   * colorScheme is what the browser reads to paint the things CSS cannot:
+   * scrollbars, form controls, the canvas behind a short page. Without it a
+   * dark workspace keeps a white scrollbar and white select popups.
+   */
+  document.documentElement.style.colorScheme =
+    safeTheme === "light" ? "light" : "dark";
 }

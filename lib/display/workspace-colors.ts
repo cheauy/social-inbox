@@ -292,28 +292,102 @@ function mixHex(
   ]);
 }
 
+/*
+ * The surface these tints are mixed towards.
+ *
+ * Every soft background below is computed in JavaScript -- mixHex(success,
+ * "#FFFFFF", 0.10) -- and emitted as a literal hex with !important. That is
+ * why no CSS variable could repaint them for Dark: by the time the browser
+ * sees the rule the white is already baked in. Reading the live theme here is
+ * the only place the mix can learn about it.
+ *
+ * These match --color-white in app/theme.css. They are duplicated rather than
+ * imported because this runs before any stylesheet is queryable.
+ */
+function themeSurfaceBase(): string {
+  if (typeof document === "undefined") {
+    return "#FFFFFF";
+  }
+
+  const theme =
+    document.documentElement.dataset.tenhWorkspaceTheme;
+
+  if (theme === "dark") return "#151B26";
+  if (theme === "dim") return "#1E2532";
+  return "#FFFFFF";
+}
+
+function isDarkSurface(): boolean {
+  if (typeof document === "undefined") {
+    return false;
+  }
+
+  const theme =
+    document.documentElement.dataset.tenhWorkspaceTheme;
+
+  return theme === "dark" || theme === "dim";
+}
+
+/*
+ * A hue used as text has to move the opposite way from a hue used as a
+ * surface: on a dark page the brand colour at full strength is too dark to
+ * read, so it is lifted towards white instead of down towards it.
+ */
+function inkOn(hex: string): string {
+  if (typeof document === "undefined") {
+    return hex;
+  }
+
+  const theme =
+    document.documentElement.dataset.tenhWorkspaceTheme;
+
+  /*
+   * The third argument is the weight of the hue, so a smaller number is a
+   * bigger lift. Dim gets the bigger one: its panels sit higher off black, so
+   * a tint mixed into them lands lighter and the text has to climb further to
+   * keep the same separation.
+   */
+  if (theme === "dim") return mixHex(hex, "#FFFFFF", 0.42);
+  if (theme === "dark") return mixHex(hex, "#FFFFFF", 0.5);
+  return hex;
+}
+
 function buildWorkspaceColorCss(colors: WorkspaceColorValues): string {
+  /*
+   * `base` is white on Light and the panel colour on Dark/Dim, so a soft tint
+   * lands on the surface it will actually sit on. The proportions are
+   * unchanged -- only what they are mixed into.
+   */
+  const base = themeSurfaceBase();
+  const dark = isDarkSurface();
+
+  /* A tint needs more of the hue on a dark surface to stay visible at all. */
+  const tint = (hex: string, light: number) =>
+    mixHex(hex, base, dark ? Math.min(0.9, light * 2.2) : light);
+
   const primary = colors.primary;
   const primaryHover = darkenHex(primary);
-  const primaryLight = colors.primaryLight;
+  const primaryLight = dark
+    ? tint(primary, 0.2)
+    : colors.primaryLight;
   const primarySoft = mixHex(primary, primaryLight, 0.18);
-  const primaryBorder = mixHex(primary, "#FFFFFF", 0.38);
-  const primaryRing = mixHex(primary, "#FFFFFF", 0.28);
+  const primaryBorder = tint(primary, 0.38);
+  const primaryRing = tint(primary, 0.28);
 
   const accent = colors.accent;
-  const accentLight = mixHex(accent, "#FFFFFF", 0.12);
+  const accentLight = tint(accent, 0.12);
 
   const success = colors.success;
-  const successLight = mixHex(success, "#FFFFFF", 0.10);
-  const successBorder = mixHex(success, "#FFFFFF", 0.34);
+  const successLight = tint(success, 0.1);
+  const successBorder = tint(success, 0.34);
 
   const warning = colors.warning;
-  const warningLight = mixHex(warning, "#FFFFFF", 0.10);
-  const warningBorder = mixHex(warning, "#FFFFFF", 0.34);
+  const warningLight = tint(warning, 0.1);
+  const warningBorder = tint(warning, 0.34);
 
   const error = colors.error;
-  const errorLight = mixHex(error, "#FFFFFF", 0.09);
-  const errorBorder = mixHex(error, "#FFFFFF", 0.34);
+  const errorLight = tint(error, 0.09);
+  const errorBorder = tint(error, 0.34);
 
   const scope = 'html[data-tenh-color-preset]';
 
@@ -392,7 +466,7 @@ ${scope} [class~="text-[#1463FF]"],
 ${scope} [class~="text-[#2563EB]"],
 ${scope} [class~="text-[#0A4DFF]"],
 ${scope} [class~="text-[#2EA8FF]"] {
-  color: ${primary} !important;
+  color: ${inkOn(primary)} !important;
 }
 
 ${scope} [class~="hover:text-blue-500"]:hover,
@@ -401,7 +475,7 @@ ${scope} [class~="hover:text-blue-700"]:hover,
 ${scope} [class~="hover:text-blue-800"]:hover,
 ${scope} [class~="focus:text-blue-600"]:focus,
 ${scope} [class~="focus:text-blue-700"]:focus {
-  color: ${primary} !important;
+  color: ${inkOn(primary)} !important;
 }
 
 ${scope} [class~="border-blue-50"],
@@ -461,7 +535,7 @@ ${scope} [class~="text-sky-500"],
 ${scope} [class~="text-sky-600"],
 ${scope} [class~="text-cyan-500"],
 ${scope} [class~="text-cyan-600"] {
-  color: ${accent} !important;
+  color: ${inkOn(accent)} !important;
 }
 
 ${scope} [class~="bg-violet-500"],
@@ -497,11 +571,11 @@ ${scope} [class~="text-emerald-600"],
 ${scope} [class~="text-emerald-700"],
 ${scope} [class~="text-green-500"],
 ${scope} [class~="text-green-600"],
-${scope} [class~="text-green-700"] { color: ${success} !important; }
+${scope} [class~="text-green-700"] { color: ${inkOn(success)} !important; }
 ${scope} [class~="bg-emerald-500"],
 ${scope} [class~="bg-emerald-600"],
 ${scope} [class~="bg-green-500"],
-${scope} [class~="bg-green-600"] { background-color: ${success} !important; }
+${scope} [class~="bg-green-600"] { background-color: ${inkOn(success)} !important; }
 ${scope} [class~="bg-emerald-50"],
 ${scope} [class~="bg-emerald-100"],
 ${scope} [class~="bg-green-50"],
@@ -517,11 +591,11 @@ ${scope} [class~="text-amber-600"],
 ${scope} [class~="text-amber-700"],
 ${scope} [class~="text-orange-500"],
 ${scope} [class~="text-orange-600"],
-${scope} [class~="text-orange-700"] { color: ${warning} !important; }
+${scope} [class~="text-orange-700"] { color: ${inkOn(warning)} !important; }
 ${scope} [class~="bg-amber-500"],
 ${scope} [class~="bg-amber-600"],
 ${scope} [class~="bg-orange-500"],
-${scope} [class~="bg-orange-600"] { background-color: ${warning} !important; }
+${scope} [class~="bg-orange-600"] { background-color: ${inkOn(warning)} !important; }
 ${scope} [class~="bg-amber-50"],
 ${scope} [class~="bg-amber-100"],
 ${scope} [class~="bg-orange-50"],
@@ -534,10 +608,10 @@ ${scope} [class~="border-orange-200"] { border-color: ${warningBorder} !importan
 /* Error */
 ${scope} [class~="text-red-500"],
 ${scope} [class~="text-red-600"],
-${scope} [class~="text-red-700"] { color: ${error} !important; }
+${scope} [class~="text-red-700"] { color: ${inkOn(error)} !important; }
 ${scope} [class~="bg-red-500"],
 ${scope} [class~="bg-red-600"],
-${scope} [class~="bg-red-700"] { background-color: ${error} !important; }
+${scope} [class~="bg-red-700"] { background-color: ${inkOn(error)} !important; }
 ${scope} [class~="bg-red-50"],
 ${scope} [class~="bg-red-100"] { background-color: ${errorLight} !important; }
 ${scope} [class~="border-red-100"],

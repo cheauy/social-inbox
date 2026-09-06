@@ -1,0 +1,438 @@
+/*
+ * Dark and Dim, done by repainting Tailwind's palette rather than the app.
+ *
+ * The 182 components carry roughly 3,900 hardcoded light utilities --
+ * bg-white, text-slate-950, border-slate-200 and so on -- and hand-editing
+ * every one into a dark: variant would be thousands of edits where a single
+ * miss leaves white text on white.
+ *
+ * Tailwind v4 makes that unnecessary. Every colour utility compiles to a
+ * variable reference:
+ *
+ *     .bg-white       { background-color: var(--color-white); }
+ *     .text-slate-500 { color: var(--color-slate-500); }
+ *
+ * Custom properties inherit, so redefining those variables on <html> reaches
+ * every utility in the app at once. No component knows the theme changed.
+ *
+ * The slate ramp is inverted, not merely darkened: slate-50 is the lightest
+ * step in a light theme and has to become the darkest in a dark one, or every
+ * "subtle grey background" turns into a glaring panel. Because the ramp flips,
+ * text-slate-950 stays the strongest text and text-slate-400 stays the faintest
+ * -- the components' own hierarchy survives untouched.
+ *
+ * Tinted surfaces (bg-blue-50, bg-red-50) and coloured text (text-blue-600)
+ * need the same treatment for the opposite reason: a 50 step is nearly white
+ * and a 600 step is nearly black, and both are unreadable against a dark page.
+ */
+
+/* ---------------------------------------------------------------- DARK */
+html[data-tenh-workspace-theme="dark"] {
+  color-scheme: dark;
+
+  /* Panels and cards. Not pure black: a raised surface needs somewhere to
+     rise from, and the page background below is darker still. */
+  --color-white: #151b26;
+
+  --color-slate-50: #0d1117;
+  --color-slate-100: #1b2231;
+  --color-slate-200: #2b3446;
+  --color-slate-300: #3d4859;
+  --color-slate-400: #7d8899;
+  --color-slate-500: #9aa5b6;
+  --color-slate-600: #b4bdca;
+  --color-slate-700: #c9d1dc;
+  --color-slate-800: #dde3ea;
+  --color-slate-900: #ebeff4;
+  --color-slate-950: #f6f8fa;
+
+  /* Gray and zinc appear in a few places and would otherwise stay light. */
+  --color-gray-50: #0d1117;
+  --color-gray-100: #1b2231;
+  --color-gray-200: #2b3446;
+  --color-gray-300: #3d4859;
+  --color-gray-400: #7d8899;
+  --color-gray-500: #9aa5b6;
+  --color-gray-600: #b4bdca;
+  --color-gray-700: #c9d1dc;
+  --color-gray-800: #dde3ea;
+  --color-gray-900: #ebeff4;
+  --color-gray-950: #f6f8fa;
+
+  /*
+   * Tinted surfaces become dark washes of the same hue, and the text steps
+   * lift so they read against them. A status colour has to keep meaning the
+   * same thing in both themes, so the hue is held and only the lightness moves.
+   */
+  --color-blue-50: #11203a;
+  --color-blue-100: #16294a;
+  --color-blue-200: #1d3a68;
+  --color-blue-300: #2a5599;
+  --color-blue-600: #60a5fa;
+  --color-blue-700: #93c5fd;
+  --color-blue-800: #bfdbfe;
+  --color-blue-900: #dbeafe;
+
+  --color-emerald-50: #0a2620;
+  --color-emerald-100: #0d3329;
+  --color-emerald-200: #14503f;
+  --color-emerald-600: #34d399;
+  --color-emerald-700: #6ee7b7;
+  --color-emerald-800: #a7f3d0;
+  --color-emerald-900: #d1fae5;
+
+  --color-green-50: #0b2716;
+  --color-green-100: #0f351d;
+  --color-green-600: #4ade80;
+  --color-green-700: #86efac;
+
+  --color-red-50: #33131a;
+  --color-red-100: #451a22;
+  --color-red-200: #6b2531;
+  --color-red-500: #f87171;
+  --color-red-600: #f87171;
+  --color-red-700: #fca5a5;
+  --color-red-800: #fecaca;
+
+  --color-amber-50: #33240b;
+  --color-amber-100: #452f0d;
+  --color-amber-200: #6b4a15;
+  --color-amber-400: #fbbf24;
+  --color-amber-600: #fbbf24;
+  --color-amber-700: #fcd34d;
+  --color-amber-800: #fde68a;
+  --color-amber-950: #fef3c7;
+
+  --color-violet-50: #1e163a;
+  --color-violet-100: #281d4d;
+  --color-violet-600: #a78bfa;
+  --color-violet-700: #c4b5fd;
+
+  --color-sky-50: #0c2233;
+  --color-sky-100: #103047;
+  --color-sky-600: #38bdf8;
+  --color-sky-700: #7dd3fc;
+
+  --color-indigo-50: #1a1c3d;
+  --color-indigo-100: #232653;
+  --color-indigo-600: #818cf8;
+  --color-indigo-700: #a5b4fc;
+
+  /*
+   * The workspace brand colour, adapted rather than replaced.
+   *
+   * The blue utilities are mapped to the workspace palette with !important in
+   * workspace-font-runtime, so --color-blue-* above cannot reach them. These
+   * two do. --tenh-primary itself is untouched: a solid brand button should
+   * stay the brand colour in every theme. What has to change is its light
+   * tint, which is nearly white and would burn a hole in a dark page, and its
+   * use as text, which is too dark to read on one.
+   *
+   * color-mix keeps this working whatever colour the customer picked. If a
+   * browser cannot do color-mix the declaration is dropped and the light
+   * values stand -- worse, but not broken.
+   */
+  --tenh-primary-light: color-mix(
+    in srgb,
+    var(--tenh-primary, #2563eb) 22%,
+    var(--color-white)
+  );
+  --tenh-primary-ink: color-mix(
+    in srgb,
+    var(--tenh-primary, #2563eb) 55%,
+    #ffffff
+  );
+
+  /* The page itself, behind every panel. */
+  --background: #0d1117;
+  --foreground: #f6f8fa;
+}
+
+/* ----------------------------------------------------------------- DIM */
+/*
+ * The same construction, lifted off black. Dim exists for people who find a
+ * true dark theme too contrasty to read for hours, so the gap between the page
+ * and its panels is smaller and the brightest text stops short of white.
+ */
+html[data-tenh-workspace-theme="dim"] {
+  color-scheme: dark;
+
+  --color-white: #1e2532;
+
+  --color-slate-50: #171d28;
+  --color-slate-100: #242c3b;
+  --color-slate-200: #333d4f;
+  --color-slate-300: #465162;
+  --color-slate-400: #8590a1;
+  --color-slate-500: #a2accc;
+  --color-slate-600: #b9c2d0;
+  --color-slate-700: #ccd4e0;
+  --color-slate-800: #dfe5ed;
+  --color-slate-900: #eaeff5;
+  --color-slate-950: #f2f5f9;
+
+  --color-gray-50: #171d28;
+  --color-gray-100: #242c3b;
+  --color-gray-200: #333d4f;
+  --color-gray-300: #465162;
+  --color-gray-400: #8590a1;
+  --color-gray-500: #a2accc;
+  --color-gray-600: #b9c2d0;
+  --color-gray-700: #ccd4e0;
+  --color-gray-800: #dfe5ed;
+  --color-gray-900: #eaeff5;
+  --color-gray-950: #f2f5f9;
+
+  --color-blue-50: #1a2842;
+  --color-blue-100: #203353;
+  --color-blue-200: #274370;
+  --color-blue-300: #325ea1;
+  --color-blue-600: #7cb5fb;
+  --color-blue-700: #a6d0fd;
+  --color-blue-800: #cbe2fe;
+  --color-blue-900: #e3eefe;
+
+  --color-emerald-50: #132e28;
+  --color-emerald-100: #173b31;
+  --color-emerald-200: #1d5847;
+  --color-emerald-600: #4ade9f;
+  --color-emerald-700: #86edc3;
+  --color-emerald-800: #b6f5d8;
+  --color-emerald-900: #d8fbe9;
+
+  --color-green-50: #14301e;
+  --color-green-100: #183d25;
+  --color-green-600: #63e394;
+  --color-green-700: #99f2b8;
+
+  --color-red-50: #3b1c23;
+  --color-red-100: #4d232b;
+  --color-red-200: #732e3a;
+  --color-red-500: #fa8a8a;
+  --color-red-600: #fa8a8a;
+  --color-red-700: #fdb6b6;
+  --color-red-800: #fdd4d4;
+
+  --color-amber-50: #3b2c14;
+  --color-amber-100: #4d3716;
+  --color-amber-200: #73521e;
+  --color-amber-400: #fcc93f;
+  --color-amber-600: #fcc93f;
+  --color-amber-700: #fddc68;
+  --color-amber-800: #feeb9c;
+  --color-amber-950: #fef6cf;
+
+  --color-violet-50: #271f43;
+  --color-violet-100: #312656;
+  --color-violet-600: #b6a1fb;
+  --color-violet-700: #cfc2fd;
+
+  --color-sky-50: #152b3c;
+  --color-sky-100: #193950;
+  --color-sky-600: #55c9f9;
+  --color-sky-700: #92dcfc;
+
+  --color-indigo-50: #232546;
+  --color-indigo-100: #2c2f5c;
+  --color-indigo-600: #96a0f9;
+  --color-indigo-700: #b6c1fd;
+
+  /*
+   * The workspace brand colour, adapted rather than replaced.
+   *
+   * The blue utilities are mapped to the workspace palette with !important in
+   * workspace-font-runtime, so --color-blue-* above cannot reach them. These
+   * two do. --tenh-primary itself is untouched: a solid brand button should
+   * stay the brand colour in every theme. What has to change is its light
+   * tint, which is nearly white and would burn a hole in a dark page, and its
+   * use as text, which is too dark to read on one.
+   *
+   * color-mix keeps this working whatever colour the customer picked. If a
+   * browser cannot do color-mix the declaration is dropped and the light
+   * values stand -- worse, but not broken.
+   */
+  --tenh-primary-light: color-mix(
+    in srgb,
+    var(--tenh-primary, #2563eb) 22%,
+    var(--color-white)
+  );
+  --tenh-primary-ink: color-mix(
+    in srgb,
+    var(--tenh-primary, #2563eb) 55%,
+    #ffffff
+  );
+
+  /* The page itself, behind every panel. */
+  --background: #171d28;
+  --foreground: #f2f5f9;
+}
+
+/*
+ * Things the palette swap cannot reach.
+ *
+ * A handful of components set colours through inline styles or hardcoded hex,
+ * which no variable override can touch. These are the ones that assume a light
+ * page underneath.
+ */
+html[data-tenh-workspace-theme="dark"] img[src*="lookaside"],
+html[data-tenh-workspace-theme="dim"] img[src*="lookaside"] {
+  /* Customer avatars are photos; leave them alone. Declared so the intent is
+     on the record rather than looking like an oversight. */
+  filter: none;
+}
+
+/* Native form controls follow color-scheme, but a select's own dropdown does
+   not inherit the page's variables in every browser. */
+html[data-tenh-workspace-theme="dark"] option,
+html[data-tenh-workspace-theme="dim"] option {
+  background-color: var(--color-white);
+  color: var(--color-slate-900);
+}
+
+/*
+ * Scrollbars. Without this the app is dark and every scrollbar is a bright
+ * white channel down the side of it.
+ */
+html[data-tenh-workspace-theme="dark"] *,
+html[data-tenh-workspace-theme="dim"] * {
+  scrollbar-color: var(--color-slate-300) transparent;
+}
+
+/*
+ * White is two different things, and only one of them should go dark.
+ *
+ * Tailwind has a single `white` token, but the app uses it for two opposite
+ * jobs: bg-white is a surface, and text-white is ink sitting on a coloured
+ * button or bubble. Repainting --color-white turns the surfaces dark, which is
+ * the whole point -- and takes the ink with it, which put dark text on the
+ * brand-blue sign-in button and made the login panel's heading vanish.
+ *
+ * Ink stays light. A solid brand button is the brand colour in every theme, so
+ * what sits on it has to stay readable, and border-white is the same story: it
+ * separates a mark from a coloured field behind it, not from the page.
+ */
+html[data-tenh-workspace-theme="dark"] .text-white,
+html[data-tenh-workspace-theme="dim"] .text-white {
+  color: #f8fafc;
+}
+
+html[data-tenh-workspace-theme="dark"] .border-white,
+html[data-tenh-workspace-theme="dim"] .border-white {
+  border-color: #f8fafc;
+}
+
+/*
+ * ring-white is the opposite case: it is the surface gap that keeps a chart
+ * marker legible where it crosses its own line, so it follows the surface.
+ */
+html[data-tenh-workspace-theme="dark"] .ring-white,
+html[data-tenh-workspace-theme="dim"] .ring-white {
+  --tw-ring-color: var(--color-white);
+}
+
+/*
+ * Panels that were already dark before the theme existed.
+ *
+ * Eight components paint a permanently dark surface with a hardcoded hex --
+ * the sign-in panel's bg-[#08132F], the receipt headers, the expired-plan
+ * screen. No palette swap can reach a literal hex, so those panels stay dark
+ * in every theme while the slate ramp inside them inverts and their body text
+ * goes dark on dark. On the sign-in page that erased the paragraph under the
+ * product name.
+ *
+ * Each of them marks the panel `text-white`, which is the signal: a container
+ * that declares white ink is a dark surface, so the faint slate steps inside it
+ * are light-on-dark and must stay light.
+ */
+html[data-tenh-workspace-theme="dark"] .text-white .text-slate-200,
+html[data-tenh-workspace-theme="dark"] .text-white .text-slate-300,
+html[data-tenh-workspace-theme="dark"] .text-white .text-slate-400,
+html[data-tenh-workspace-theme="dim"] .text-white .text-slate-200,
+html[data-tenh-workspace-theme="dim"] .text-white .text-slate-300,
+html[data-tenh-workspace-theme="dim"] .text-white .text-slate-400 {
+  color: #cbd5e1;
+}
+
+/*
+ * The mirror image: light ink on a slate surface that has just gone light.
+ *
+ * 29 places pair a dark slate background with white text -- the admin menu's
+ * selected item, the primary buttons that use bg-slate-950 rather than the
+ * brand colour. Inverting the ramp turns those backgrounds nearly white, and
+ * the rule above keeps their text light, which is white on white.
+ *
+ * Where both classes sit on the same element the intent is unambiguous: the
+ * text is meant to contrast with that surface, so it flips with it. The
+ * compound selector only matches when both are present, so it cannot touch
+ * white text over a coloured button or a photo.
+ */
+html[data-tenh-workspace-theme="dark"] .bg-slate-800.text-white,
+html[data-tenh-workspace-theme="dark"] .bg-slate-900.text-white,
+html[data-tenh-workspace-theme="dark"] .bg-slate-950.text-white,
+html[data-tenh-workspace-theme="dim"] .bg-slate-800.text-white,
+html[data-tenh-workspace-theme="dim"] .bg-slate-900.text-white,
+html[data-tenh-workspace-theme="dim"] .bg-slate-950.text-white {
+  color: var(--color-slate-50);
+}
+
+/*
+ * The workspace colour system, met where it actually lives.
+ *
+ * workspace-font-runtime maps every blue/green/amber/red utility to the
+ * customer's chosen palette with !important, and mixes each tinted surface
+ * against a literal white. That outranks the --color-* overrides above, which
+ * is why selected rows, warning panels and status chips stayed bright in a
+ * dark workspace -- and why their text, now near-white, vanished into them.
+ *
+ * Two hooks fix the whole family. --tenh-tint-base is what those mixes blend
+ * towards, so a 12% tint of the brand colour lands on a dark surface instead
+ * of a white one. The -ink variables lift the same hues for text, which needs
+ * to move the other way. Both are unset on Light, where the mixes fall back to
+ * white and the ink falls back to the colour itself.
+ *
+ * The brand tint is a special case: it is written as an inline style on <html>
+ * by the colour picker, and an inline style beats any rule. --tenh-primary-tint
+ * is read ahead of it, so the theme wins without changing how a colour is
+ * saved.
+ */
+html[data-tenh-workspace-theme="dark"],
+html[data-tenh-workspace-theme="dim"] {
+  --tenh-tint-base: var(--color-white);
+
+  --tenh-primary-tint: color-mix(
+    in srgb,
+    var(--tenh-primary, #2563eb) 20%,
+    var(--color-white)
+  );
+
+  --tenh-success-ink: color-mix(
+    in srgb,
+    var(--tenh-success, #16a34a) 55%,
+    #ffffff
+  );
+  --tenh-warning-ink: color-mix(
+    in srgb,
+    var(--tenh-warning, #f97316) 62%,
+    #ffffff
+  );
+  --tenh-error-ink: color-mix(
+    in srgb,
+    var(--tenh-error, #ef4444) 62%,
+    #ffffff
+  );
+}
+
+/*
+ * The conversation wallpaper.
+ *
+ * The chat area paints a chosen background image over #EEF2F6, both inline, so
+ * a dark workspace kept a bright panel exactly where the eye rests longest.
+ * The image is the customer's pick and worth keeping, so it is blended down
+ * rather than dropped: multiply against the dark surface keeps the pattern
+ * readable as texture without lighting the room.
+ */
+html[data-tenh-workspace-theme="dark"] [data-tenh-chat-surface],
+html[data-tenh-workspace-theme="dim"] [data-tenh-chat-surface] {
+  background-color: var(--color-slate-50) !important;
+  background-blend-mode: multiply;
+}

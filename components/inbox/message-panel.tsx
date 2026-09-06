@@ -2861,7 +2861,7 @@ export function MessagePanel({
       {/* Messages */}
       <div className="relative min-h-0 flex-1">
         {loadingConversationMessages ? (
-          <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden bg-[#EEF2F6] px-6 py-5">
+          <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden bg-slate-100 px-6 py-5">
             <div className="mx-auto flex h-full max-w-4xl flex-col justify-end gap-4">
               {[
                 { side: "left", width: "w-56" },
@@ -2885,7 +2885,7 @@ export function MessagePanel({
             </div>
           </div>
         ) : conversationMessagesError ? (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#EEF2F6]/75 backdrop-blur-[1px]">
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-100/75 backdrop-blur-[1px]">
             <div className="max-w-sm rounded-2xl border border-red-100 bg-white/95 p-4 text-center shadow-sm">
               <p className="text-sm font-semibold text-slate-800">
                 Couldn&apos;t load this conversation
@@ -2910,6 +2910,7 @@ export function MessagePanel({
             handleMessagesScroll
           }
           className="h-full space-y-4 overflow-y-auto p-6"
+          data-tenh-chat-surface="true"
           style={{
             backgroundColor: "#EEF2F6",
             backgroundImage: `url("${chatBackgroundSrc}")`,

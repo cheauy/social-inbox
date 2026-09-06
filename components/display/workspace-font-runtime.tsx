@@ -112,6 +112,17 @@ export function WorkspaceFontRuntime() {
       applyWorkspaceLanguage(nextLanguage);
       applyActiveFont(nextLanguage, nextEnglish, nextKhmer);
       applyWorkspaceTheme(nextTheme);
+
+      /*
+       * The workspace colour CSS bakes the surface it mixes against into
+       * literal hex, so switching theme has to rebuild it -- otherwise every
+       * tinted row keeps the tint it was given under the previous theme.
+       */
+      const currentColors = getStoredWorkspaceColorSettings();
+      applyWorkspaceColors(
+        currentColors.colors,
+        currentColors.presetId,
+      );
       applyWorkspaceColors(nextColors.colors, nextColors.presetId);
     }
 
@@ -279,101 +290,15 @@ export function WorkspaceFontRuntime() {
         font-family: var(--tenh-workspace-font);
       }
 
-      html[data-tenh-workspace-theme="dark"] body {
-        background: #0b1120 !important;
-        color: #e5e7eb;
-      }
-
-      html[data-tenh-workspace-theme="dark"] .bg-white {
-        background-color: #111827 !important;
-      }
-      html[data-tenh-workspace-theme="dark"] .bg-slate-50,
-      html[data-tenh-workspace-theme="dark"] .bg-slate-50\/70,
-      html[data-tenh-workspace-theme="dark"] .bg-slate-50\/40 {
-        background-color: #0f172a !important;
-      }
-      html[data-tenh-workspace-theme="dark"] .bg-slate-100 {
-        background-color: #172033 !important;
-      }
-      html[data-tenh-workspace-theme="dark"] .bg-slate-200 {
-        background-color: #243044 !important;
-      }
-      html[data-tenh-workspace-theme="dark"] .border-slate-100,
-      html[data-tenh-workspace-theme="dark"] .border-slate-200,
-      html[data-tenh-workspace-theme="dark"] .border-slate-200\/90,
-      html[data-tenh-workspace-theme="dark"] .border-slate-300 {
-        border-color: #334155 !important;
-      }
-      html[data-tenh-workspace-theme="dark"] .text-slate-950,
-      html[data-tenh-workspace-theme="dark"] .text-slate-900,
-      html[data-tenh-workspace-theme="dark"] .text-slate-800 {
-        color: #f8fafc !important;
-      }
-      html[data-tenh-workspace-theme="dark"] .text-slate-700,
-      html[data-tenh-workspace-theme="dark"] .text-slate-600 {
-        color: #cbd5e1 !important;
-      }
-      html[data-tenh-workspace-theme="dark"] .text-slate-500 {
-        color: #94a3b8 !important;
-      }
-      html[data-tenh-workspace-theme="dark"] .text-slate-400 {
-        color: #64748b !important;
-      }
-      html[data-tenh-workspace-theme="dark"] input,
-      html[data-tenh-workspace-theme="dark"] textarea,
-      html[data-tenh-workspace-theme="dark"] select {
-        background-color: #111827 !important;
-        color: #f8fafc !important;
-        border-color: #334155 !important;
-      }
-
-      html[data-tenh-workspace-theme="dim"] body {
-        background: #1b2230 !important;
-        color: #e2e8f0;
-      }
-      html[data-tenh-workspace-theme="dim"] .bg-white {
-        background-color: #273140 !important;
-      }
-      html[data-tenh-workspace-theme="dim"] .bg-slate-50,
-      html[data-tenh-workspace-theme="dim"] .bg-slate-50\/70,
-      html[data-tenh-workspace-theme="dim"] .bg-slate-50\/40 {
-        background-color: #202936 !important;
-      }
-      html[data-tenh-workspace-theme="dim"] .bg-slate-100 {
-        background-color: #303a49 !important;
-      }
-      html[data-tenh-workspace-theme="dim"] .bg-slate-200 {
-        background-color: #3a4657 !important;
-      }
-      html[data-tenh-workspace-theme="dim"] .border-slate-100,
-      html[data-tenh-workspace-theme="dim"] .border-slate-200,
-      html[data-tenh-workspace-theme="dim"] .border-slate-200\/90,
-      html[data-tenh-workspace-theme="dim"] .border-slate-300 {
-        border-color: #465466 !important;
-      }
-      html[data-tenh-workspace-theme="dim"] .text-slate-950,
-      html[data-tenh-workspace-theme="dim"] .text-slate-900,
-      html[data-tenh-workspace-theme="dim"] .text-slate-800 {
-        color: #f1f5f9 !important;
-      }
-      html[data-tenh-workspace-theme="dim"] .text-slate-700,
-      html[data-tenh-workspace-theme="dim"] .text-slate-600 {
-        color: #d5dde8 !important;
-      }
-      html[data-tenh-workspace-theme="dim"] .text-slate-500 {
-        color: #a8b4c4 !important;
-      }
-      html[data-tenh-workspace-theme="dim"] .text-slate-400 {
-        color: #7f8da1 !important;
-      }
-      html[data-tenh-workspace-theme="dim"] input,
-      html[data-tenh-workspace-theme="dim"] textarea,
-      html[data-tenh-workspace-theme="dim"] select {
-        background-color: #273140 !important;
-        color: #f1f5f9 !important;
-        border-color: #465466 !important;
-      }
-
+      /*
+       * Dark and Dim live in app/theme.css now.
+       *
+       * This used to be a list of per-class !important overrides -- .bg-white,
+       * .text-slate-900 and a dozen more -- which covered the classes someone
+       * happened to think of and left the rest light. Tailwind v4 compiles every
+       * colour utility to var(--color-*), so redefining those variables reaches
+       * all of them at once and needs no !important to win.
+       */
 
       /* TENH workspace color system ----------------------------------
        * UI-only palette bridge.
@@ -405,14 +330,14 @@ export function WorkspaceFontRuntime() {
       .bg-blue-200,
       .bg-blue-200\/50,
       .bg-blue-200\/70 {
-        background-color: var(--tenh-primary-light, #dbeafe) !important;
+        background-color: var(--tenh-primary-tint, var(--tenh-primary-light, #dbeafe)) !important;
       }
 
       /* Hover / active primary backgrounds. */
       .hover\:bg-blue-50:hover,
       .hover\:bg-blue-100:hover,
       .hover\:bg-blue-200:hover {
-        background-color: var(--tenh-primary-light, #dbeafe) !important;
+        background-color: var(--tenh-primary-tint, var(--tenh-primary-light, #dbeafe)) !important;
       }
       .hover\:bg-blue-500:hover,
       .hover\:bg-blue-600:hover,
@@ -435,7 +360,15 @@ export function WorkspaceFontRuntime() {
       .hover\:text-blue-800:hover,
       .focus\:text-blue-600:focus,
       .focus\:text-blue-700:focus {
-        color: var(--tenh-primary, #2563eb) !important;
+        /*
+         * --tenh-primary-ink is only set by the dark themes, which lift the
+         * workspace colour so it still reads on a dark surface; on Light it is
+         * unset and this falls straight through to the brand colour itself.
+         */
+        color: var(
+          --tenh-primary-ink,
+          var(--tenh-primary, #2563eb)
+        ) !important;
       }
 
       /* Primary borders: selected cards, input focus, reply bars. */
@@ -458,7 +391,7 @@ export function WorkspaceFontRuntime() {
         border-color: color-mix(
           in srgb,
           var(--tenh-primary, #2563eb) 48%,
-          var(--tenh-primary-light, #dbeafe)
+          var(--tenh-primary-tint, var(--tenh-primary-light, #dbeafe))
         ) !important;
       }
 
@@ -565,25 +498,31 @@ export function WorkspaceFontRuntime() {
       .text-green-500,
       .text-green-600,
       .text-green-700 {
-        color: var(--tenh-success, #16a34a) !important;
+        color: var(
+          --tenh-success-ink,
+          var(--tenh-success, #16a34a)
+        ) !important;
       }
       .bg-emerald-500,
       .bg-emerald-600,
       .bg-green-500,
       .bg-green-600 {
-        background-color: var(--tenh-success, #16a34a) !important;
+        background-color: var(
+          --tenh-success-ink,
+          var(--tenh-success, #16a34a)
+        ) !important;
       }
       .bg-emerald-50,
       .bg-emerald-100,
       .bg-green-50,
       .bg-green-100 {
-        background-color: color-mix(in srgb, var(--tenh-success, #16a34a) 12%, white) !important;
+        background-color: color-mix(in srgb, var(--tenh-success, #16a34a) 12%, var(--tenh-tint-base, white)) !important;
       }
       .border-emerald-100,
       .border-emerald-200,
       .border-green-100,
       .border-green-200 {
-        border-color: color-mix(in srgb, var(--tenh-success, #16a34a) 34%, white) !important;
+        border-color: color-mix(in srgb, var(--tenh-success, #16a34a) 34%, var(--tenh-tint-base, white)) !important;
       }
 
       /* Warning color. */
@@ -593,46 +532,58 @@ export function WorkspaceFontRuntime() {
       .text-orange-500,
       .text-orange-600,
       .text-orange-700 {
-        color: var(--tenh-warning, #f97316) !important;
+        color: var(
+          --tenh-warning-ink,
+          var(--tenh-warning, #f97316)
+        ) !important;
       }
       .bg-amber-500,
       .bg-amber-600,
       .bg-orange-500,
       .bg-orange-600 {
-        background-color: var(--tenh-warning, #f97316) !important;
+        background-color: var(
+          --tenh-warning-ink,
+          var(--tenh-warning, #f97316)
+        ) !important;
       }
       .bg-amber-50,
       .bg-amber-100,
       .bg-orange-50,
       .bg-orange-100 {
-        background-color: color-mix(in srgb, var(--tenh-warning, #f97316) 12%, white) !important;
+        background-color: color-mix(in srgb, var(--tenh-warning, #f97316) 12%, var(--tenh-tint-base, white)) !important;
       }
       .border-amber-100,
       .border-amber-200,
       .border-orange-100,
       .border-orange-200 {
-        border-color: color-mix(in srgb, var(--tenh-warning, #f97316) 34%, white) !important;
+        border-color: color-mix(in srgb, var(--tenh-warning, #f97316) 34%, var(--tenh-tint-base, white)) !important;
       }
 
       /* Error/destructive color. */
       .text-red-500,
       .text-red-600,
       .text-red-700 {
-        color: var(--tenh-error, #ef4444) !important;
+        color: var(
+          --tenh-error-ink,
+          var(--tenh-error, #ef4444)
+        ) !important;
       }
       .bg-red-500,
       .bg-red-600,
       .bg-red-700 {
-        background-color: var(--tenh-error, #ef4444) !important;
+        background-color: var(
+          --tenh-error-ink,
+          var(--tenh-error, #ef4444)
+        ) !important;
       }
       .bg-red-50,
       .bg-red-100 {
-        background-color: color-mix(in srgb, var(--tenh-error, #ef4444) 10%, white) !important;
+        background-color: color-mix(in srgb, var(--tenh-error, #ef4444) 10%, var(--tenh-tint-base, white)) !important;
       }
       .border-red-100,
       .border-red-200,
       .border-red-300 {
-        border-color: color-mix(in srgb, var(--tenh-error, #ef4444) 34%, white) !important;
+        border-color: color-mix(in srgb, var(--tenh-error, #ef4444) 34%, var(--tenh-tint-base, white)) !important;
       }
 
       /* Neutral borders in light mode. */
@@ -644,7 +595,7 @@ export function WorkspaceFontRuntime() {
       }
 
       ::selection {
-        background: var(--tenh-primary-light, #dbeafe);
+        background: var(--tenh-primary-tint, var(--tenh-primary-light, #dbeafe));
         color: #0f172a;
       }
     `}</style>

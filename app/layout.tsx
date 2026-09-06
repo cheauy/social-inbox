@@ -12,6 +12,13 @@ import {
   workspaceKhmerFonts,
 } from "@/lib/display/workspace-fonts";
 import {
+  TENH_ACTIVE_WORKSPACE_UI_STORAGE_KEY,
+} from "@/lib/display/workspace-storage";
+import {
+  DEFAULT_WORKSPACE_THEME_ID,
+  WORKSPACE_THEME_STORAGE_KEY,
+} from "@/lib/display/workspace-themes";
+import {
   DEFAULT_WORKSPACE_LANGUAGE_ID,
   WORKSPACE_LANGUAGE_STORAGE_KEY,
 } from "@/lib/display/workspace-language";
@@ -23,6 +30,15 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+/*
+ * The theme has to be on <html> before the first paint, not after hydration.
+ * It used to be applied from an effect, which meant a dark workspace drew the
+ * whole page white and then flipped -- the flash is worst exactly where it is
+ * least welcome, on a screen someone chose because bright light hurts.
+ *
+ * This rides along with the font bootstrap, which already runs ahead of every
+ * Next.js module for the same reason.
+ */
 const workspaceFontBootstrap = `
 (function () {
   try {
@@ -93,6 +109,28 @@ const workspaceFontBootstrap = `
     } else {
       root.dataset.tenhEnglishFont = fontId;
     }
+
+    /*
+     * Theme, read the same way lib/display/workspace-themes.ts reads it:
+     * scoped to the active workspace, falling back to the legacy global key.
+     */
+    var themeKey = ${JSON.stringify(WORKSPACE_THEME_STORAGE_KEY)};
+    var workspaceId =
+      (window.localStorage.getItem(
+        ${JSON.stringify(TENH_ACTIVE_WORKSPACE_UI_STORAGE_KEY)},
+      ) || "").trim() || "default";
+
+    var storedTheme =
+      window.localStorage.getItem(themeKey + ":" + workspaceId) ||
+      window.localStorage.getItem(themeKey);
+
+    var theme =
+      storedTheme === "dark" || storedTheme === "dim" || storedTheme === "light"
+        ? storedTheme
+        : ${JSON.stringify(DEFAULT_WORKSPACE_THEME_ID)};
+
+    root.dataset.tenhWorkspaceTheme = theme;
+    root.style.colorScheme = theme === "light" ? "light" : "dark";
   } catch (_) {
     // Storage can be unavailable in restricted/private contexts.
   }

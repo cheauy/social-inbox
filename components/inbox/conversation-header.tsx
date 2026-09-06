@@ -332,7 +332,7 @@ export function ConversationHeader({
           </p>
 
           <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] font-medium text-slate-500">
-            <span className="inline-flex min-w-0 items-center gap-1.5 text-[#536B89]">
+            <span className="inline-flex min-w-0 items-center gap-1.5 text-slate-500">
               <StoreIcon />
               <span className="max-w-[220px] truncate">{channelAccountName}</span>
             </span>
@@ -478,7 +478,7 @@ export function ConversationHeader({
               type="button"
               onClick={() => setAssignmentOpen((current) => !current)}
               disabled={assigning}
-              className={`${actionButtonBase} ${assignmentOpen ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 text-[#536B89] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"}`}
+              className={`${actionButtonBase} ${assignmentOpen ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"}`}
               title={isKhmer ? "ចាត់តាំងការសន្ទនា" : "Assign conversation"}
               aria-label={isKhmer ? "ចាត់តាំងការសន្ទនា" : "Assign conversation"}
               aria-expanded={assignmentOpen}
@@ -595,7 +595,7 @@ export function ConversationHeader({
           <button
             type="button"
             onClick={onTogglePin}
-            className={`${actionButtonBase} ${isPinned ? "border-red-200 bg-red-50 text-red-600" : "border-slate-200 text-[#536B89] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"}`}
+            className={`${actionButtonBase} ${isPinned ? "border-red-200 bg-red-50 text-red-600" : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"}`}
             title={isKhmer ? (isPinned ? "ដោះខ្ទាស់ការសន្ទនា" : "ខ្ទាស់ការសន្ទនា") : (isPinned ? "Unpin conversation" : "Pin conversation")}
             aria-label={isKhmer ? (isPinned ? "ដោះខ្ទាស់ការសន្ទនា" : "ខ្ទាស់ការសន្ទនា") : (isPinned ? "Unpin conversation" : "Pin conversation")}
             aria-pressed={isPinned}
@@ -607,7 +607,7 @@ export function ConversationHeader({
             type="button"
             onClick={onMarkUnread}
             disabled={markingUnread}
-            className={`${actionButtonBase} border-slate-200 text-[#536B89] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800`}
+            className={`${actionButtonBase} border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800`}
             title={isKhmer ? "សម្គាល់ថាមិនទាន់អាន" : "Mark as unread"}
             aria-label={isKhmer ? "សម្គាល់ថាមិនទាន់អាន" : "Mark as unread"}
           >
@@ -628,7 +628,7 @@ export function ConversationHeader({
                 </option>
               ))}
             </select>
-            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[#536B89]">
+            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-500">
               <ChevronDownIcon />
             </span>
           </div>
@@ -638,7 +638,7 @@ export function ConversationHeader({
           <button
             type="button"
             onClick={onOpenHistory}
-            className={`${actionButtonBase} border-slate-200 text-[#536B89] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800`}
+            className={`${actionButtonBase} border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800`}
             title={isKhmer ? "ប្រវត្តិអតិថិជន" : "Customer history"}
             aria-label={isKhmer ? "ប្រវត្តិអតិថិជន" : "Customer history"}
           >
@@ -648,7 +648,7 @@ export function ConversationHeader({
           <button
             type="button"
             onClick={onToggleCustomerPanel}
-            className={`${actionButtonBase} ${customerPanelVisible ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 text-[#536B89] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"}`}
+            className={`${actionButtonBase} ${customerPanelVisible ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"}`}
             title={isKhmer ? (customerPanelVisible ? "លាក់ព័ត៌មានអតិថិជន" : "បង្ហាញព័ត៌មានអតិថិជន") : (customerPanelVisible ? "Hide customer information" : "Show customer information")}
             aria-label={isKhmer ? (customerPanelVisible ? "លាក់ព័ត៌មានអតិថិជន" : "បង្ហាញព័ត៌មានអតិថិជន") : (customerPanelVisible ? "Hide customer information" : "Show customer information")}
             aria-pressed={customerPanelVisible}
