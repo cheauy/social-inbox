@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Ramps first, so the tuned neutrals in theme.css take precedence. */
+@import "./theme-ramps.css";
 @import "./theme.css";
 
 :root {
