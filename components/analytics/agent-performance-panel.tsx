@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 
+import { AgentPerformanceHelp } from "@/components/analytics/agent-performance-help";
 import { createClient } from "@/lib/supabase/client";
 
 type PeriodKey = "7d" | "30d" | "90d";
@@ -295,85 +296,6 @@ function getSpeed(agent: AgentRow, slaMinutes: number) {
   };
 }
 
-function PerformanceLine({
-  agent,
-  slaMinutes,
-}: {
-  agent: AgentRow;
-  slaMinutes: number;
-}) {
-  if (agent.firstResponses < 1) {
-    return <span className="text-xs text-slate-400">—</span>;
-  }
-
-  // UI-only indicator built from the current verified agent metrics.
-  // It is intentionally not labeled as historical trend because the
-  // existing API does not return per-agent historical trend points.
-  const target = Math.max(1, slaMinutes * 60);
-  const responseRatio = Math.max(
-    0,
-    Math.min(2, agent.avgFirstResponseSeconds / target),
-  );
-  const responseScore = Math.max(0, 100 - responseRatio * 50);
-  const slaScore = Math.max(0, Math.min(100, agent.slaRate ?? 0));
-  const volumeScore = Math.max(0, Math.min(100, agent.firstResponses * 12));
-  const blended = responseScore * 0.45 + slaScore * 0.4 + volumeScore * 0.15;
-
-  const base = 22 - blended * 0.14;
-  const points = [
-    base + 5,
-    base + 1,
-    base + 3,
-    base - 2,
-    base,
-    base - 5,
-  ].map((value) => Math.max(4, Math.min(24, value)));
-
-  const pointString = points
-    .map((y, index) => `${4 + index * 13},${y}`)
-    .join(" ");
-
-  return (
-    <svg
-      viewBox="0 0 72 30"
-      className="h-9 w-[78px]"
-      aria-label="Current performance indicator"
-    >
-      <defs>
-        <linearGradient
-          id={`agent-performance-fill-${agent.memberId}`}
-          x1="0"
-          y1="0"
-          x2="0"
-          y2="1"
-        >
-          <stop offset="0%" stopColor="#2563EB" stopOpacity="0.16" />
-          <stop offset="100%" stopColor="#2563EB" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-
-      <polygon
-        points={`4,28 ${pointString} 69,28`}
-        fill={`url(#agent-performance-fill-${agent.memberId})`}
-      />
-      <polyline
-        points={pointString}
-        fill="none"
-        stroke="#2563EB"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle
-        cx="69"
-        cy={points[5]}
-        r="2.2"
-        fill="#2563EB"
-      />
-    </svg>
-  );
-}
-
 export function AgentPerformancePanel() {
   const [period, setPeriod] = useState<PeriodKey>("7d");
   const [slaMinutes, setSlaMinutes] = useState(10);
@@ -613,6 +535,8 @@ export function AgentPerformancePanel() {
             <span>{formatRange(period)}</span>
           </div>
 
+          <AgentPerformanceHelp />
+
           {refreshing ? (
             <span className="text-xs font-medium text-blue-600">Updating…</span>
           ) : null}
@@ -625,18 +549,24 @@ export function AgentPerformancePanel() {
         </div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          label="Attributed replies"
-          value={`${summary.attributionRate}%`}
-          helper={`${summary.attributedOutgoing} of ${summary.totalOutgoing} outgoing replies tracked`}
-          icon="reply"
-          tone="blue"
-        />
+      {/*
+        Three cards, not four.
+
+        "Attributed replies 5%" was the largest number on the page and the
+        first one read, but it is a caveat about how much of the period can be
+        measured -- not how the team did. Rendered as a KPI beside real
+        results it reads as a catastrophic score. The banner underneath said
+        the same thing in words, so the card was both alarming and redundant.
+      */}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <MetricCard
           label="First responses"
           value={String(summary.attributedFirstResponses)}
-          helper={`${summary.unattributedFirstResponses} historical / unattributed`}
+          helper={
+            summary.unattributedFirstResponses > 0
+              ? `${summary.unattributedFirstResponses} more could not be attributed`
+              : "Every first response is attributed"
+          }
           icon="bolt"
           tone="green"
         />
@@ -647,7 +577,7 @@ export function AgentPerformancePanel() {
               ? formatDuration(summary.avgFirstResponseSeconds)
               : "—"
           }
-          helper="Attributed first responses only"
+          helper="Across attributed first responses"
           icon="clock"
           tone="purple"
         />
@@ -664,152 +594,50 @@ export function AgentPerformancePanel() {
         <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">i</span>
         <p>
           <span className="font-semibold">Tracking coverage:</span>{" "}
-          {summary.attributedOutgoing} of {summary.totalOutgoing} outgoing replies in this period identify the Tenh Chat sender.
+          {summary.attributedOutgoing} of {summary.totalOutgoing} outgoing replies in this period
+          ({summary.attributionRate}%) identify the Tenh Chat sender, and this page describes those.
           {summary.unattributedOutgoing > 0
-            ? " Older replies are intentionally not guessed."
-            : " Sender attribution is fully tracked for outgoing replies in the selected period."}
+            ? " The rest are left out rather than guessed at."
+            : " Sender attribution is complete for this period."}
         </p>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(280px,0.65fr)]">
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-5 py-4">
-            <h3 className="text-base font-bold text-slate-950">Agent leaderboard</h3>
-          </div>
+      {/*
+        One table, not two.
 
-          {leaderboard.length === 0 ? (
-            <div className="p-10 text-center text-sm text-slate-500">No active team members found.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-xs">
-                <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                  <tr>
-                    <th className="px-4 py-3">#</th>
-                    <th className="px-4 py-3">Agent</th>
-                    <th className="px-4 py-3">Role</th>
-                    <th className="px-4 py-3">Speed</th>
-                    <th className="px-4 py-3">Avg first response</th>
-                    <th className="px-4 py-3">SLA met</th>
-                    <th className="px-4 py-3">First responses</th>
-                    <th className="px-4 py-3">Trend (avg)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {leaderboard.map((agent, index) => {
-                    const speed = getSpeed(agent, slaMinutes);
-                    const hasFirstResponses = agent.firstResponses > 0;
-                    return (
-                      <tr key={agent.memberId} className={index === 0 ? "bg-blue-50/50" : "bg-white"}>
-                        <td className="px-4 py-4 font-bold text-blue-600">{index + 1}</td>
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-3">
-                            {agent.profilePictureUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={agent.profilePictureUrl} alt="" className="h-9 w-9 rounded-full object-cover" />
-                            ) : (
-                              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 font-bold text-slate-700">
-                                {getInitial(agent.fullName)}
-                              </span>
-                            )}
-                            <span className="max-w-[150px] truncate font-semibold text-slate-900">{agent.fullName}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4">
-                          <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">{roleLabel(agent.role)}</span>
-                        </td>
-                        <td className="px-4 py-4">
-                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${speed.classes}`}>
-                            <SpeedIcon tone={speed.tone} />
-                            {speed.label}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4 font-semibold text-slate-700">
-                          {hasFirstResponses ? formatDuration(agent.avgFirstResponseSeconds) : "—"}
-                        </td>
-                        <td className="px-4 py-4">
-                          <span className={`font-bold ${
-                            agent.slaRate === null
-                              ? "text-slate-400"
-                              : agent.slaRate >= 90
-                                ? "text-emerald-600"
-                                : agent.slaRate >= 70
-                                  ? "text-amber-600"
-                                  : "text-red-600"
-                          }`}>
-                            {agent.slaRate === null ? "—" : `${agent.slaRate}%`}
-                          </span>
-                          {agent.slaRate !== null ? (
-                            <span className="ml-1 text-[10px] text-slate-400">({agent.slaMet}/{agent.slaMet + agent.slaMissed})</span>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-4 font-semibold text-slate-700">{agent.firstResponses}</td>
-                        <td className="px-4 py-4 text-blue-500"><PerformanceLine agent={agent} slaMinutes={slaMinutes} /></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        There used to be an "Agent leaderboard" and a "Detailed comparison"
+        below it, over the same people: five of the seven columns appeared in
+        both, so the second table restated the first and then added three more
+        columns. Merged, every agent is one row and the numbers sit next to
+        each other where they can actually be compared.
 
-        <div className="space-y-3">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h3 className="font-bold text-slate-950">How speed is judged</h3>
-            <div className="mt-3 space-y-2">
-              <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-                <div className="flex items-start gap-2">
-                  <SpeedIcon tone="fast" size="large" />
-                  <div>
-                    <p className="font-bold text-emerald-800">Fast</p>
-                    <p className="mt-0.5 text-[11px] leading-4 text-emerald-700">Average response is at or below half of the SLA target and SLA met is 90% or higher.</p>
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
-                <div className="flex items-start gap-2">
-                  <SpeedIcon tone="normal" size="large" />
-                  <div>
-                    <p className="font-bold text-amber-800">Normal</p>
-                    <p className="mt-0.5 text-[11px] leading-4 text-amber-700">Performance is between Fast and Slow and generally within an acceptable range.</p>
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-xl border border-red-100 bg-red-50 p-3">
-                <div className="flex items-start gap-2">
-                  <SpeedIcon tone="slow" size="large" />
-                  <div>
-                    <p className="font-bold text-red-700">Slow</p>
-                    <p className="mt-0.5 text-[11px] leading-4 text-red-600">Average response is slower than the SLA target, or SLA met falls below 70%.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-blue-600">i</span>
-            <div>
-              <p className="font-semibold text-slate-900">Empty-state rule</p>
-              <p className="mt-1 text-[11px] leading-4 text-slate-500">At least 3 verified first responses are required before a speed label is shown.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
+        The speed rules used to occupy a permanent column on the right, which
+        cost the table a third of the page to explain four words. They moved
+        into the help panel in the toolbar, so the table gets the full width it
+        needs.
+      */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-5 py-4">
-          <h3 className="font-bold text-slate-950">Detailed comparison</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-5 py-4">
+          <h3 className="text-base font-bold text-slate-950">
+            Agents
+          </h3>
+          <p className="text-[11px] text-slate-500">
+            Fastest first, then anyone without enough data to judge.
+          </p>
         </div>
 
-        {agents.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">No active team members found.</div>
+        {leaderboard.length === 0 ? (
+          <div className="p-10 text-center text-sm text-slate-500">
+            No active team members found.
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-xs">
               <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-400">
                 <tr>
+                  <th className="px-4 py-3">#</th>
                   <th className="px-4 py-3">Agent</th>
+                  <th className="px-4 py-3">Speed</th>
                   <th className="px-4 py-3">First responses</th>
                   <th className="px-4 py-3">Avg first response</th>
                   <th className="px-4 py-3">SLA met</th>
@@ -819,41 +647,125 @@ export function AgentPerformancePanel() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {agents.map((agent) => (
-                  <tr key={agent.memberId}>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-3">
-                        {agent.profilePictureUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={agent.profilePictureUrl} alt="" className="h-9 w-9 rounded-full object-cover" />
-                        ) : (
-                          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 font-bold text-slate-700">{getInitial(agent.fullName)}</span>
-                        )}
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="truncate font-semibold text-slate-900">{agent.fullName}</span>
-                            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[9px] font-semibold text-slate-600">{roleLabel(agent.role)}</span>
-                            {agent.memberId === bestResponseMemberId && agent.firstResponses > 0 ? (
-                              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-semibold text-emerald-700">Fastest response</span>
-                            ) : null}
+                {leaderboard.map((agent, index) => {
+                  const speed = getSpeed(agent, slaMinutes);
+                  const hasFirstResponses = agent.firstResponses > 0;
+                  const isFastest =
+                    agent.memberId === bestResponseMemberId &&
+                    agent.firstResponses > 0;
+
+                  return (
+                    <tr
+                      key={agent.memberId}
+                      className={
+                        isFastest ? "bg-blue-50/50" : "bg-white"
+                      }
+                    >
+                      <td className="px-4 py-4 font-bold text-blue-600">
+                        {index + 1}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-3">
+                          {agent.profilePictureUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={agent.profilePictureUrl}
+                              alt=""
+                              className="h-9 w-9 shrink-0 rounded-full object-cover"
+                            />
+                          ) : (
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 font-bold text-slate-700">
+                              {getInitial(agent.fullName)}
+                            </span>
+                          )}
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="truncate font-semibold text-slate-900">
+                                {agent.fullName}
+                              </span>
+                              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[9px] font-semibold text-slate-600">
+                                {roleLabel(agent.role)}
+                              </span>
+                              {isFastest ? (
+                                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-semibold text-emerald-700">
+                                  Fastest
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-0.5 truncate text-[10px] text-slate-400">
+                              {agent.email}
+                            </p>
                           </div>
-                          <p className="mt-0.5 truncate text-[10px] text-slate-400">{agent.email}</p>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-4 font-semibold text-slate-700">{agent.firstResponses}</td>
-                    <td className="px-4 py-4 font-semibold text-slate-700">{agent.firstResponses > 0 ? formatDuration(agent.avgFirstResponseSeconds) : "—"}</td>
-                    <td className="px-4 py-4">
-                      <span className={agent.slaRate === null ? "text-slate-400" : agent.slaRate >= 90 ? "font-bold text-emerald-600" : agent.slaRate >= 70 ? "font-bold text-amber-600" : "font-bold text-red-600"}>
-                        {agent.slaRate === null ? "—" : `${agent.slaRate}%`}
-                      </span>
-                      <span className="ml-1 text-[10px] text-slate-400">({agent.slaMet}/{agent.slaMet + agent.slaMissed})</span>
-                    </td>
-                    <td className="px-4 py-4 font-semibold text-slate-700">{agent.outgoingMessages}</td>
-                    <td className="px-4 py-4 font-semibold text-slate-700">{agent.conversationsReplied}</td>
-                    <td className="px-4 py-4 font-semibold text-slate-700">{agent.resolvedActions}</td>
-                  </tr>
-                ))}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${speed.classes}`}
+                        >
+                          <SpeedIcon tone={speed.tone} />
+                          {speed.label}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-4 font-semibold text-slate-700">
+                        {agent.firstResponses}
+                      </td>
+
+                      <td className="px-4 py-4 font-semibold text-slate-700">
+                        {hasFirstResponses
+                          ? formatDuration(agent.avgFirstResponseSeconds)
+                          : "—"}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <span
+                          className={`font-bold ${
+                            agent.slaRate === null
+                              ? "text-slate-400"
+                              : agent.slaRate >= 90
+                                ? "text-emerald-600"
+                                : agent.slaRate >= 70
+                                  ? "text-amber-600"
+                                  : "text-red-600"
+                          }`}
+                        >
+                          {agent.slaRate === null
+                            ? "—"
+                            : `${agent.slaRate}%`}
+                        </span>
+                        {agent.slaRate !== null ? (
+                          <span className="ml-1 text-[10px] text-slate-400">
+                            ({agent.slaMet}/
+                            {agent.slaMet + agent.slaMissed})
+                          </span>
+                        ) : null}
+                      </td>
+
+                      {/*
+                        Zero is written as a dash rather than "0". A column of
+                        noughts reads as a row of failures, when it usually
+                        just means this person was not on the inbox.
+                      */}
+                      <td className="px-4 py-4 font-semibold text-slate-700">
+                        {agent.outgoingMessages || (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 font-semibold text-slate-700">
+                        {agent.conversationsReplied || (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 font-semibold text-slate-700">
+                        {agent.resolvedActions || (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
