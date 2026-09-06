@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 
+import { TeamPerformanceHelp } from "@/components/analytics/team-performance-help";
 import { createClient } from "@/lib/supabase/client";
 
 type PeriodKey = "7d" | "30d" | "90d";
@@ -76,6 +77,58 @@ const EMPTY_SUMMARY: Summary = {
   resolved: 0,
   avgResolutionSeconds: 0,
 };
+
+/*
+ * Axis maxima a person would say out loud.
+ *
+ * The old axis was simply max x 0.75, 0.5, 0.25, which produced ticks like
+ * "3h 25m" and "1h 8m" -- numbers nobody thinks in, and which change shape
+ * every time the data does. These pick a clean quarter-step and multiply, so
+ * the four gridlines always land on round values.
+ */
+/*
+ * Response time gets its own hue because it is its own chart now, not a second
+ * line sharing the volume plot. Validated against the brand blue: adjacent
+ * Delta E 29.9 under protanopia, 38.5 for normal vision, both clear of the
+ * >= 8 threshold, and each clears 3:1 on a white surface.
+ */
+const RESPONSE_SERIES = "#EB6834";
+
+const COUNT_QUARTER_STEPS = [
+  1, 2, 5, 10, 20, 25, 50, 100, 200, 250,
+  500, 1000, 2000, 2500, 5000, 10000,
+];
+
+function niceCountMax(value: number) {
+  const target = Math.max(1, value);
+
+  for (const step of COUNT_QUARTER_STEPS) {
+    if (step * 4 >= target) {
+      return step * 4;
+    }
+  }
+
+  return Math.ceil(target / 40000) * 40000;
+}
+
+/* Quarter-steps that stay sayable: 15m, 30m, 1h, 1h 15m, 2h... */
+const DURATION_QUARTER_STEPS = [
+  30, 60, 120, 300, 600, 900, 1200, 1800,
+  2700, 3600, 4500, 5400, 7200, 9000,
+  10800, 14400, 21600, 43200,
+];
+
+function niceDurationMax(value: number) {
+  const target = Math.max(1, value);
+
+  for (const step of DURATION_QUARTER_STEPS) {
+    if (step * 4 >= target) {
+      return step * 4;
+    }
+  }
+
+  return Math.ceil(target / 345600) * 345600;
+}
 
 function formatDuration(
   seconds: number,
@@ -525,14 +578,30 @@ export function SlaAnalyticsPanel() {
 
   const maxResponseSeconds = useMemo(
     () =>
-      Math.max(
-        1,
-        ...responseRows
-          .filter((item) => item.hasResponse)
-          .map((item) => item.responseSeconds),
+      niceDurationMax(
+        Math.max(
+          1,
+          ...responseRows
+            .filter((item) => item.hasResponse)
+            .map((item) => item.responseSeconds),
+        ),
       ),
     [responseRows],
   );
+
+  const countAxisMax = useMemo(
+    () => niceCountMax(maxDailyReceived),
+    [maxDailyReceived],
+  );
+
+  /*
+   * One hovered day, shared by both plots. The two measures used to share a
+   * plot with two y-scales, which let you read them together but at the cost
+   * of an invented correlation. Splitting them and linking the hover keeps the
+   * comparison and drops the lie.
+   */
+  const [hoveredDay, setHoveredDay] =
+    useState<number | null>(null);
 
   const bestDay = useMemo(() => {
     const eligible = responseRows.filter(
@@ -573,11 +642,14 @@ export function SlaAnalyticsPanel() {
       : null;
   }, [responseRows]);
 
+  /*
+   * Slot centres, matching where the bars and the date labels sit. The line
+   * used to run 7%..93% while the bars sat at slot centres, so a point drifted
+   * from the day it belonged to -- worst at the two ends.
+   */
   const pointX = useCallback(
     (index: number) =>
-      responseRows.length === 1
-        ? 50
-        : 7 + (index / (responseRows.length - 1)) * 86,
+      ((index + 0.5) / Math.max(1, responseRows.length)) * 100,
     [responseRows.length],
   );
 
@@ -734,15 +806,7 @@ export function SlaAnalyticsPanel() {
             </select>
           </label>
 
-          <div
-            className="flex h-[42px] w-[42px] items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm"
-            title={`Selected period: ${period}`}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4" aria-hidden="true">
-              <rect x="4" y="5.5" width="16" height="14" rx="2" />
-              <path d="M8 3.5v4M16 3.5v4M4 9.5h16" strokeLinecap="round" />
-            </svg>
-          </div>
+          <TeamPerformanceHelp />
         </div>
       </div>
 
@@ -815,128 +879,236 @@ export function SlaAnalyticsPanel() {
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-5 text-[10px] font-medium text-slate-500">
-            <span className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-blue-500" />
-              Conversations
-            </span>
-            <span className="flex items-center gap-2">
-              <span className="h-[2px] w-4 bg-blue-500" />
-              Avg. first response time
-            </span>
-          </div>
-
           {responseRows.length === 0 ? (
             <div className="mt-5 flex min-h-[300px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-500">
               No customer messages in this period.
             </div>
           ) : (
             <div className="mt-4">
-              <div className="relative h-[260px] rounded-xl border border-slate-100 bg-white pb-9 pl-11 pr-14 pt-4">
-                {/* Gridlines with a value on each side: counts left, durations right. */}
-                <div className="pointer-events-none absolute inset-y-0 left-0 right-0 bottom-9 top-4">
-                  {axisTicks.map((tick) => (
-                    <div
-                      key={`grid-${tick}`}
-                      className="absolute inset-x-11 flex items-center"
-                      style={{ top: `${(1 - tick) * 100}%` }}
-                    >
-                      <span className="absolute -left-11 w-10 pr-1 text-right text-[9px] font-medium tabular-nums text-slate-400">
-                        {Math.round(maxDailyReceived * tick)}
-                      </span>
-                      <span className="h-px w-full border-t border-dashed border-slate-200" />
-                      <span className="absolute -right-14 w-13 pl-1 text-left text-[9px] font-medium tabular-nums text-blue-500">
-                        {tick === 0
-                          ? "0"
-                          : formatDuration(maxResponseSeconds * tick)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+              {/*
+                Two plots, one date axis -- not two y-scales on one plot.
+                Volume runs 0..64 while response time runs 0..4h33m, and pinning
+                those two ranges to the same box makes the line cross the bars
+                wherever the arbitrary scaling happens to put it. The crossing
+                looked like a finding and was an artefact. Split apart, each
+                measure gets an honest axis, and the linked hover is what lets
+                you still read a single day across both.
+              */}
+              <div
+                className="relative select-none"
+                onMouseLeave={() => setHoveredDay(null)}
+              >
+                {/* ------------------------------------- conversations */}
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">
+                  Conversations
+                </p>
 
-                <div className="absolute bottom-9 left-11 right-14 top-4 flex items-end justify-around gap-1.5">
-                  {responseRows.map((item) => {
-                    const height = Math.max(
-                      2,
-                      (item.received / maxDailyReceived) * 100,
-                    );
-
-                    return (
+                <div className="relative h-[124px] pl-10">
+                  <div className="pointer-events-none absolute inset-y-0 left-10 right-0">
+                    {axisTicks.map((tick) => (
                       <div
-                        key={`bar-${item.date}`}
-                        className="flex h-full min-w-0 flex-1 items-end justify-center"
+                        key={`count-grid-${tick}`}
+                        className="absolute inset-x-0 flex items-center"
+                        style={{ top: `${(1 - tick) * 100}%` }}
                       >
-                        <div
-                          className="w-[62%] max-w-10 rounded-t-[3px] bg-slate-200 transition hover:bg-slate-300"
-                          style={{ height: `${height}%` }}
-                          title={`${item.received} conversations`}
-                        />
+                        <span className="absolute -left-10 w-9 pr-1 text-right text-[9px] font-medium tabular-nums text-slate-400">
+                          {Math.round(countAxisMax * tick)}
+                        </span>
+                        <span className="h-px w-full bg-slate-200/80" />
                       </div>
-                    );
-                  })}
-                </div>
-
-                {/*
-                  The svg is wrapped rather than positioned directly: an svg is
-                  a replaced element, so width/height auto resolves to its own
-                  intrinsic size instead of the inset box, and the viewBox then
-                  maps onto the wrong area entirely.
-                */}
-                <div className="pointer-events-none absolute bottom-9 left-11 right-14 top-4">
-                  <svg
-                    viewBox="0 0 100 100"
-                    preserveAspectRatio="none"
-                    className="h-full w-full"
-                    aria-hidden="true"
-                  >
-                    {chartSegments.map((segment, index) => (
-                      <polyline
-                        key={`segment-${index}`}
-                        points={segment}
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinejoin="round"
-                        strokeLinecap="round"
-                        vectorEffect="non-scaling-stroke"
-                        className="text-blue-600"
-                      />
                     ))}
-                  </svg>
+                  </div>
+
+                  <div className="absolute inset-y-0 left-10 right-0 flex items-end">
+                    {responseRows.map((item, index) => {
+                      const height = Math.max(
+                        1.5,
+                        (item.received / countAxisMax) * 100,
+                      );
+                      const active = hoveredDay === index;
+
+                      return (
+                        <div
+                          key={`bar-${item.date}`}
+                          className="flex h-full min-w-0 flex-1 items-end justify-center"
+                        >
+                          {/*
+                            Capped at 24px instead of filling the slot, so the
+                            leftover band reads as air rather than a second,
+                            wider bar.
+                          */}
+                          <div
+                            className="w-full max-w-[24px] rounded-t-[4px] transition-opacity"
+                            style={{
+                              height: `${height}%`,
+                              backgroundColor:
+                                "var(--tenh-primary, #2563EB)",
+                              opacity:
+                                hoveredDay === null || active
+                                  ? 1
+                                  : 0.3,
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                {/*
-                  Markers are positioned elements, not SVG circles: the plot
-                  stretches to fit its box, and a circle inside it stretches
-                  with it into an oval.
-                */}
-                <div className="pointer-events-none absolute bottom-9 left-11 right-14 top-4">
-                  {responseRows.map((item, index) => {
-                    if (!item.hasResponse) {
-                      return null;
-                    }
+                {/* ---------------------------------- response time */}
+                <p className="mb-1 mt-4 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">
+                  Avg. first response time
+                </p>
 
-                    return (
-                      <span
-                        key={`point-${item.date}`}
-                        className="absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600 ring-2 ring-white"
-                        style={{
-                          left: `${pointX(index)}%`,
-                          top: `${pointY(item.responseSeconds)}%`,
-                        }}
-                        title={`${formatDate(`${item.date}T00:00:00`)} · ${formatDuration(item.responseSeconds)}`}
-                      />
-                    );
-                  })}
+                <div className="relative h-[124px] pl-10">
+                  <div className="pointer-events-none absolute inset-y-0 left-10 right-0">
+                    {axisTicks.map((tick) => (
+                      <div
+                        key={`time-grid-${tick}`}
+                        className="absolute inset-x-0 flex items-center"
+                        style={{ top: `${(1 - tick) * 100}%` }}
+                      >
+                        <span className="absolute -left-10 w-9 pr-1 text-right text-[9px] font-medium tabular-nums text-slate-400">
+                          {tick === 0
+                            ? "0"
+                            : formatDuration(maxResponseSeconds * tick)}
+                        </span>
+                        <span className="h-px w-full bg-slate-200/80" />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="pointer-events-none absolute inset-y-0 left-10 right-0">
+                    <svg
+                      viewBox="0 0 100 100"
+                      preserveAspectRatio="none"
+                      className="h-full w-full"
+                      aria-hidden="true"
+                    >
+                      {chartSegments.map((segment, index) => (
+                        <polyline
+                          key={`segment-${index}`}
+                          points={segment}
+                          fill="none"
+                          stroke={RESPONSE_SERIES}
+                          strokeWidth="2"
+                          strokeLinejoin="round"
+                          strokeLinecap="round"
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      ))}
+                    </svg>
+                  </div>
+
+                  {/*
+                    Markers are positioned elements, not SVG circles: the plot
+                    stretches to fit its box, and a circle inside it stretches
+                    with it into an oval.
+                  */}
+                  <div className="pointer-events-none absolute inset-y-0 left-10 right-0">
+                    {responseRows.map((item, index) => {
+                      if (!item.hasResponse) {
+                        return null;
+                      }
+
+                      const active = hoveredDay === index;
+
+                      return (
+                        <span
+                          key={`point-${item.date}`}
+                          className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white transition-all ${
+                            active ? "h-3 w-3" : "h-2 w-2"
+                          }`}
+                          style={{
+                            left: `${pointX(index)}%`,
+                            top: `${pointY(item.responseSeconds)}%`,
+                            backgroundColor: RESPONSE_SERIES,
+                            opacity:
+                              hoveredDay === null || active ? 1 : 0.3,
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
                 </div>
 
-                <div className="absolute bottom-2 left-11 right-14 flex justify-around gap-1 text-center text-[9px] font-medium text-slate-400">
-                  {responseRows.map((item) => (
-                    <span key={`label-${item.date}`} className="min-w-0 flex-1 truncate">
+                {/* ---------------------------------- shared date axis */}
+                <div className="mt-2 flex pl-10 text-center text-[9px] font-medium text-slate-400">
+                  {responseRows.map((item, index) => (
+                    <span
+                      key={`label-${item.date}`}
+                      className={`min-w-0 flex-1 truncate transition ${
+                        hoveredDay === index
+                          ? "font-bold text-slate-700"
+                          : ""
+                      }`}
+                    >
                       {formatDate(`${item.date}T00:00:00`)}
                     </span>
                   ))}
                 </div>
+
+                {/*
+                  One hover band per day, spanning the full height of both
+                  plots. A 24px bar and an 8px dot are far too small to be the
+                  hit target, so the whole column takes the pointer instead.
+                */}
+                <div className="absolute inset-y-0 left-10 right-0 flex">
+                  {responseRows.map((item, index) => (
+                    <button
+                      key={`hit-${item.date}`}
+                      type="button"
+                      className="min-w-0 flex-1 cursor-default rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                      onMouseEnter={() => setHoveredDay(index)}
+                      onFocus={() => setHoveredDay(index)}
+                      aria-label={`${formatDate(`${item.date}T00:00:00`)}: ${item.received} conversations, ${
+                        item.hasResponse
+                          ? `${formatDuration(item.responseSeconds)} average first response`
+                          : "no reply"
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                {hoveredDay !== null && responseRows[hoveredDay] ? (
+                  <div
+                    className={`pointer-events-none absolute top-0 z-10 w-max rounded-lg border border-slate-200 bg-white px-3 py-2 text-left shadow-lg ${
+                      hoveredDay > responseRows.length / 2
+                        ? "-translate-x-full"
+                        : ""
+                    }`}
+                    style={{
+                      left: `calc(2.5rem + ${pointX(hoveredDay)}%)`,
+                    }}
+                  >
+                    <p className="text-[10px] font-bold text-slate-900">
+                      {formatDate(
+                        `${responseRows[hoveredDay].date}T00:00:00`,
+                      )}
+                    </p>
+                    <p className="mt-1 flex items-center gap-1.5 text-[10px] text-slate-600">
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{
+                          backgroundColor:
+                            "var(--tenh-primary, #2563EB)",
+                        }}
+                      />
+                      {responseRows[hoveredDay].received} conversations
+                    </p>
+                    <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-slate-600">
+                      <span
+                        className="h-[2px] w-2 shrink-0"
+                        style={{ backgroundColor: RESPONSE_SERIES }}
+                      />
+                      {responseRows[hoveredDay].hasResponse
+                        ? formatDuration(
+                            responseRows[hoveredDay].responseSeconds,
+                          )
+                        : "No reply that day"}
+                    </p>
+                  </div>
+                ) : null}
               </div>
 
               <div className="mt-3 grid overflow-hidden rounded-xl border border-slate-200 sm:grid-cols-3">
