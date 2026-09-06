@@ -3366,6 +3366,34 @@ export function MessagePanel({
                 message.message_type ===
                 "sticker";
 
+              /*
+               * A sticker is the artwork, not text inside a card.
+               *
+               * Every chat app people already use -- Telegram, Messenger,
+               * WhatsApp -- draws stickers straight onto the conversation with
+               * no bubble, because a sticker is usually a transparent PNG or
+               * WebM cut to its own silhouette. Wrapping one in a coloured
+               * bubble re-adds the rectangle the artist removed, and on our own
+               * blue outgoing bubble the sticker's soft edge reads as a badly
+               * cut-out photo.
+               *
+               * The bubble still earns its place when the content needs a
+               * surface: a deleted sticker becomes a line of italic text, and a
+               * reply preview is a card that has to sit on something.
+               */
+              const isBareSticker =
+                isStickerMessage &&
+                !telegramDeleted &&
+                !telegramReplyPreview;
+
+              /*
+               * White meta text only works on the coloured bubble. Once the
+               * bubble is gone the timestamp sits on the page, so it has to
+               * switch back to slate or it disappears.
+               */
+              const onColoredBubble =
+                isOutgoing && !isBareSticker;
+
               const locationLatitude =
                 typeof locationMeta
                   ?.latitude ===
@@ -4618,10 +4646,14 @@ export function MessagePanel({
                 >
                   <div className="group max-w-[84%] sm:max-w-[74%] xl:max-w-[62%]">
                     <div
-                      className={`overflow-hidden border text-sm shadow-[0_2px_8px_rgba(15,23,42,0.06)] transition ${
-                        isOutgoing
-                          ? "rounded-[18px] rounded-br-[5px] text-white"
-                          : "rounded-[18px] rounded-bl-[5px] border-slate-200/90 bg-white text-slate-900"
+                      className={`text-sm transition ${
+                        isBareSticker
+                          ? "rounded-[18px] text-slate-900"
+                          : `overflow-hidden border shadow-[0_2px_8px_rgba(15,23,42,0.06)] ${
+                              isOutgoing
+                                ? "rounded-[18px] rounded-br-[5px] text-white"
+                                : "rounded-[18px] rounded-bl-[5px] border-slate-200/90 bg-white text-slate-900"
+                            }`
                       } ${
                         isJumpHighlighted
                           ? "ring-2 ring-amber-400 ring-offset-2 shadow-[0_0_0_6px_rgba(251,191,36,0.12)]"
@@ -4631,7 +4663,7 @@ export function MessagePanel({
                             : ""
                       }`}
                       style={
-                        isOutgoing
+                        onColoredBubble
                           ? {
                               backgroundColor:
                                 "var(--tenh-primary, #2563EB)",
@@ -4643,7 +4675,13 @@ export function MessagePanel({
                       }
                     >
                       {/* Message content */}
-                      <div className="px-4 pb-2 pt-3">
+                      <div
+                        className={
+                          isBareSticker
+                            ? ""
+                            : "px-4 pb-2 pt-3"
+                        }
+                      >
                         {telegramReplyPreview ? (
                           <button
                             type="button"
@@ -4891,13 +4929,23 @@ export function MessagePanel({
                             Message deleted
                           </p>
                         ) : isStickerMessage ? (
+                          /*
+                           * Sized at 160px, up from 128. A sticker carries its
+                           * expression in the face, and at 128 an animated one
+                           * is too small to read -- which is the whole reason
+                           * the customer sent it instead of typing.
+                           *
+                           * No rounding on the artwork: these are transparent
+                           * cut-outs, so a corner radius can only clip a paw or
+                           * an ear that the artist drew right to the edge.
+                           */
                           <div className="w-fit">
                             {isFacebookSticker &&
                             facebookStickerUrl ? (
                               <img
                                 src={facebookStickerUrl}
                                 alt="Facebook sticker"
-                                className="max-h-32 max-w-[132px] rounded-xl object-contain"
+                                className="max-h-40 max-w-[160px] object-contain"
                                 loading="lazy"
                               />
                             ) : attachmentUrl &&
@@ -4910,7 +4958,7 @@ export function MessagePanel({
                                 loop
                                 muted
                                 playsInline
-                                className="max-h-32 max-w-[132px] rounded-xl bg-transparent object-contain"
+                                className="max-h-40 max-w-[160px] bg-transparent object-contain"
                               />
                             ) : attachmentUrl &&
                               stickerMeta
@@ -4923,11 +4971,16 @@ export function MessagePanel({
                                     ? `Telegram sticker ${stickerMeta.emoji}`
                                     : "Telegram sticker"
                                 }
-                                className="max-h-32 max-w-[132px] rounded-xl object-contain"
+                                className="max-h-40 max-w-[160px] object-contain"
                                 loading="lazy"
                               />
                             ) : (
-                              <div className="flex min-h-20 w-fit min-w-[104px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white/80 px-3 py-2.5">
+                              /*
+                               * Nothing downloaded yet. This one keeps a
+                               * surface, because an emoji and a label floating
+                               * on the page would not read as a message at all.
+                               */
+                              <div className="flex min-h-20 w-fit min-w-[104px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white/80 px-3 py-2.5">
                                 <span className="text-3xl leading-none">
                                   {stickerMeta?.emoji ??
                                     "✨"}
@@ -4942,13 +4995,6 @@ export function MessagePanel({
                                 </span>
                               </div>
                             )}
-
-                            {!isFacebookSticker &&
-                            stickerMeta?.emoji ? (
-                              <p className="mt-0.5 text-center text-[11px] text-slate-500">
-                                {stickerMeta.emoji}
-                              </p>
-                            ) : null}
                           </div>
                         ) : isImageMessage &&
                           photoGroup &&
@@ -4960,9 +5006,17 @@ export function MessagePanel({
                            * to show them wide instead. Three or four go 2x2,
                            * more go three across so six reads as 3x2, and
                            * those stay square to keep the rows aligned.
+                           *
+                           * Held to the same 300px column as a single photo.
+                           * `-mx-4` makes the grid span the bubble, and the
+                           * bubble runs to 62% of the panel, so on a wide
+                           * screen a two-photo album was drawing two 400px-tall
+                           * images and pushing the rest of the conversation off
+                           * the screen. Bounding the width bounds the height
+                           * too, since every cell is on a fixed aspect ratio.
                            */
                           <div
-                            className={`-mx-4 grid gap-[3px] overflow-hidden ${
+                            className={`-mx-4 grid w-[300px] max-w-[calc(100%+2rem)] gap-[3px] overflow-hidden ${
                               photoGroup.members.length === 2
                                 ? "grid-cols-1"
                                 : photoGroup.members.length <= 4
@@ -5287,7 +5341,11 @@ export function MessagePanel({
                         )}
 
                         <div
-                          className={`mt-1 flex items-center gap-2 text-xs ${
+                          className={`flex items-center gap-2 text-xs ${
+                            isBareSticker
+                              ? "mt-1 px-1"
+                              : "mt-1"
+                          } ${
                             isOutgoing
                               ? "justify-end"
                               : "justify-start"
@@ -5295,7 +5353,7 @@ export function MessagePanel({
                         >
                           <span
                             className={
-                              isOutgoing
+                              onColoredBubble
                                 ? "text-white/75"
                                 : "text-slate-500"
                             }
@@ -5309,7 +5367,7 @@ export function MessagePanel({
                           !telegramDeleted ? (
                             <span
                               className={
-                                isOutgoing
+                                onColoredBubble
                                   ? "text-white/70"
                                   : "text-slate-400"
                               }
@@ -5322,14 +5380,26 @@ export function MessagePanel({
                           !telegramDeleted ? (
                             optimisticStatus ===
                             "sending" ? (
-                              <span className="inline-flex items-center gap-1 text-white/80">
+                              <span
+                                className={`inline-flex items-center gap-1 ${
+                                  onColoredBubble
+                                    ? "text-white/80"
+                                    : "text-slate-500"
+                                }`}
+                              >
                                 <span className="h-2.5 w-2.5 animate-spin rounded-full border border-white/60 border-t-transparent" />
                                 Sending...
                               </span>
                             ) : optimisticStatus ===
                               "failed" ? (
                               <>
-                                <span className="font-medium text-white">
+                                <span
+                                  className={`font-medium ${
+                                    onColoredBubble
+                                      ? "text-white"
+                                      : "text-red-600"
+                                  }`}
+                                >
                                   Failed to send
                                 </span>
 
@@ -5341,7 +5411,11 @@ export function MessagePanel({
                                         message.id,
                                       )
                                     }
-                                    className="font-semibold text-white underline underline-offset-2 hover:opacity-90"
+                                    className={`font-semibold underline underline-offset-2 hover:opacity-90 ${
+                                      onColoredBubble
+                                        ? "text-white"
+                                        : "text-red-600"
+                                    }`}
                                   >
                                     Retry
                                   </button>
@@ -5349,7 +5423,11 @@ export function MessagePanel({
                               </>
                             ) : isTelegramMessage ? (
                               <span
-                                className="font-medium text-white/85"
+                                className={`font-medium ${
+                                  onColoredBubble
+                                    ? "text-white/85"
+                                    : "text-slate-500"
+                                }`}
                                 title="Accepted by Telegram Bot API. Telegram does not provide delivery/read receipts for this private bot chat."
                               >
                                 ✓ Sent
@@ -5357,7 +5435,11 @@ export function MessagePanel({
                             ) : persistedDeliveryStatus ===
                               "seen" ? (
                               <span
-                                className="font-semibold text-white"
+                                className={`font-semibold ${
+                                  onColoredBubble
+                                    ? "text-white"
+                                    : "text-slate-600"
+                                }`}
                                 title="Seen"
                               >
                                 ✓✓ Seen
@@ -5365,13 +5447,23 @@ export function MessagePanel({
                             ) : persistedDeliveryStatus ===
                               "delivered" ? (
                               <span
-                                className="font-medium text-white/85"
+                                className={`font-medium ${
+                                  onColoredBubble
+                                    ? "text-white/85"
+                                    : "text-slate-500"
+                                }`}
                                 title="Delivered"
                               >
                                 ✓✓ Delivered
                               </span>
                             ) : (
-                              <span className="font-medium text-white/85">
+                              <span
+                                className={`font-medium ${
+                                  onColoredBubble
+                                    ? "text-white/85"
+                                    : "text-slate-500"
+                                }`}
+                              >
                                 ✓ Sent
                               </span>
                             )
