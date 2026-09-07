@@ -8,6 +8,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useTransition,
 } from "react";
 
 import {
@@ -131,6 +132,41 @@ function ChannelIcon({
  */
 type InboxChannelSelectorVariant = "bar" | "rail";
 
+/*
+ * The switch closes the panel immediately, so the feedback has to live on the
+ * trigger -- the one part of the selector still on screen while the server
+ * renders the new channel.
+ */
+function SwitchingSpinner({
+  className = "h-4 w-4",
+}: {
+  className?: string;
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={`${className} shrink-0 animate-spin text-blue-600`}
+      aria-hidden="true"
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="9"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        className="opacity-25"
+      />
+      <path
+        d="M21 12a9 9 0 0 0-9-9"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function InboxChannelSelector({
   variant = "bar",
 }: {
@@ -148,6 +184,33 @@ export function InboxChannelSelector({
     useState<string | null>(null);
   const [switchingChannelId, setSwitchingChannelId] =
     useState<string | null>(null);
+
+  /*
+   * The switch is a server navigation, so the only honest source of "still
+   * loading" is React's own transition.
+   *
+   * switchingChannelId used to be cleared in a finally block one line after
+   * router.push. push does not return a promise you can wait on -- it starts
+   * the navigation and returns -- so the finally ran immediately and the
+   * "Opening..." label was set and unset within the same tick. Nothing was
+   * ever drawn, which is why switching a channel looked like nothing had
+   * happened until the new page appeared.
+   *
+   * Inside startSwitching, isSwitching stays true until the new server payload
+   * has arrived and rendered. switchingChannelId now only says which row was
+   * clicked; isSwitching says whether it is still going.
+   */
+  const [isSwitching, startSwitching] =
+    useTransition();
+  const [switchingLabel, setSwitchingLabel] =
+    useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isSwitching) {
+      setSwitchingChannelId(null);
+      setSwitchingLabel(null);
+    }
+  }, [isSwitching]);
 
   const selectedChannelId =
     searchParams.get("channel") ??
@@ -322,15 +385,25 @@ export function InboxChannelSelector({
 
     setDeniedChannelId(null);
     setSwitchingChannelId(channel.id);
+    setSwitchingLabel(channel.name);
 
     try {
       setOpen(false);
-      router.push(
-        buildInboxUrl({
-          channelId: channel.id,
-        }),
-      );
-      router.refresh();
+      /*
+       * router.refresh() used to follow the push. The push already renders
+       * this route on the server with the new channel, and the inbox page is
+       * dynamic, so nothing stale can be served from the client cache -- the
+       * refresh was a second full render of the same page, every switch, on a
+       * page that loads every conversation the member can see. Dropping it
+       * halves the server work behind a switch.
+       */
+      startSwitching(() => {
+        router.push(
+          buildInboxUrl({
+            channelId: channel.id,
+          }),
+        );
+      });
     } catch (selectError) {
       setError(
         selectError instanceof Error
@@ -338,8 +411,8 @@ export function InboxChannelSelector({
           : "Unable to open this channel.",
       );
       setOpen(true);
-    } finally {
       setSwitchingChannelId(null);
+      setSwitchingLabel(null);
     }
   }
 
@@ -357,15 +430,19 @@ export function InboxChannelSelector({
     }
 
     setSwitchingChannelId(`group:${group.key}`);
+    setSwitchingLabel(
+      shortSubscriptionId(group.subscriptionId),
+    );
 
     try {
       setOpen(false);
-      router.push(
-        buildInboxUrl({
-          workspaceId: group.businessId,
-        }),
-      );
-      router.refresh();
+      startSwitching(() => {
+        router.push(
+          buildInboxUrl({
+            workspaceId: group.businessId,
+          }),
+        );
+      });
     } catch (selectError) {
       setError(
         selectError instanceof Error
@@ -373,8 +450,8 @@ export function InboxChannelSelector({
           : "Unable to open this subscription.",
       );
       setOpen(true);
-    } finally {
       setSwitchingChannelId(null);
+      setSwitchingLabel(null);
     }
   }
 
@@ -382,14 +459,19 @@ export function InboxChannelSelector({
     setDeniedChannelId(null);
     setError(null);
     setOpen(false);
-
-    router.push(
-      buildInboxUrl({
-        channelId: null,
-        workspaceId: null,
-      }),
+    setSwitchingChannelId("all");
+    setSwitchingLabel(
+      isKhmer ? "ឆានែលទាំងអស់" : "All Channels",
     );
-    router.refresh();
+
+    startSwitching(() => {
+      router.push(
+        buildInboxUrl({
+          channelId: null,
+          workspaceId: null,
+        }),
+      );
+    });
   }
 
   const selectedWorkspaceGroup =
@@ -423,6 +505,7 @@ export function InboxChannelSelector({
     const denied =
       deniedChannelId === channel.id;
     const switching =
+      isSwitching &&
       switchingChannelId === channel.id;
 
     return (
@@ -432,7 +515,7 @@ export function InboxChannelSelector({
           onClick={() =>
             void selectChannel(channel)
           }
-          disabled={Boolean(switchingChannelId)}
+          disabled={isSwitching}
           className={`flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition disabled:cursor-wait ${
             selected
               ? "bg-blue-50"
@@ -510,11 +593,20 @@ export function InboxChannelSelector({
           aria-expanded={open}
           aria-label={channelLabel}
         >
-          <ChannelIcon platform={selectedPlatform} />
+          {isSwitching ? (
+            <SwitchingSpinner className="h-5 w-5" />
+          ) : (
+            <ChannelIcon platform={selectedPlatform} />
+          )}
 
           <span className="pointer-events-none absolute left-[52px] top-1/2 z-[100] hidden -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-950 px-3 py-2 text-xs font-medium text-white shadow-xl group-hover:block">
-            {channelLabel}
-            {loading ? "" : ` · ${selectedLabel}`}
+            {isSwitching
+              ? isKhmer
+                ? `កំពុងបើក ${switchingLabel ?? ""}…`
+                : `Opening ${switchingLabel ?? ""}…`
+              : loading
+                ? channelLabel
+                : `${channelLabel} · ${selectedLabel}`}
             <span className="absolute right-full top-1/2 -translate-y-1/2 border-y-4 border-r-4 border-y-transparent border-r-slate-950" />
           </span>
         </button>
@@ -531,32 +623,46 @@ export function InboxChannelSelector({
 
           <span className="min-w-0 flex-1">
             <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-              {channelLabel}
+              {isSwitching
+                ? isKhmer ? "កំពុងបើក" : "Opening"
+                : channelLabel}
             </span>
 
-            <span className="mt-0.5 block truncate text-sm font-semibold text-slate-900">
-              {loading
-                ? isKhmer ? "កំពុងផ្ទុកឆានែល..." : "Loading channels..."
-                : selectedLabel}
+            <span
+              className={`mt-0.5 block truncate text-sm font-semibold ${
+                isSwitching
+                  ? "text-blue-700"
+                  : "text-slate-900"
+              }`}
+            >
+              {isSwitching
+                ? `${switchingLabel ?? selectedLabel}…`
+                : loading
+                  ? isKhmer ? "កំពុងផ្ទុកឆានែល..." : "Loading channels..."
+                  : selectedLabel}
             </span>
           </span>
 
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            className={`h-4 w-4 shrink-0 text-slate-400 transition ${
-              open ? "rotate-180" : ""
-            }`}
-            aria-hidden="true"
-          >
-            <path
-              d="m6 9 6 6 6-6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          {isSwitching ? (
+            <SwitchingSpinner />
+          ) : (
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className={`h-4 w-4 shrink-0 text-slate-400 transition ${
+                open ? "rotate-180" : ""
+              }`}
+              aria-hidden="true"
+            >
+              <path
+                d="m6 9 6 6 6-6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
         </button>
       )}
 
@@ -579,7 +685,8 @@ export function InboxChannelSelector({
             <button
               type="button"
               onClick={selectAllChannels}
-              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+              disabled={isSwitching}
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition disabled:cursor-wait ${
                 !selectedChannelId && !selectedWorkspaceId
                   ? "bg-blue-50"
                   : "hover:bg-slate-50"
@@ -612,7 +719,9 @@ export function InboxChannelSelector({
                 selectedWorkspaceId === group.businessId &&
                 !selectedChannelId;
               const groupSwitching =
-                switchingChannelId === `group:${group.key}`;
+                isSwitching &&
+                switchingChannelId ===
+                  `group:${group.key}`;
 
               return (
                 <div
@@ -624,7 +733,7 @@ export function InboxChannelSelector({
                     onClick={() =>
                       void selectSubscription(group)
                     }
-                    disabled={Boolean(switchingChannelId)}
+                    disabled={isSwitching}
                     className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition ${
                       groupSelected
                         ? "bg-slate-100"

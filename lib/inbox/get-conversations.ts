@@ -211,8 +211,28 @@ export async function getInboxConversationScope(): Promise<
   };
 }
 
+/*
+ * Which slice of the inbox to load.
+ *
+ * Inbox used to fetch every conversation the member can reach and then narrow
+ * it in memory. Choosing a channel therefore cost exactly as much as All
+ * Channels -- the same unbounded conversations query, the same joined contacts
+ * and assignees, the same batched tag lookup for every contact in it -- to
+ * throw most of the rows away a moment later. Handing the filter to Postgres
+ * returns the rows that are actually rendered, and shrinks the tag batches by
+ * the same proportion.
+ *
+ * These are the identical conditions the page applied afterwards, including
+ * the rule that a workspace id outside the member's access narrows nothing.
+ */
+type InboxConversationFilter = {
+  channelId?: string | null;
+  workspaceId?: string | null;
+};
+
 export async function getConversations(
   businessIds?: string[],
+  filter?: InboxConversationFilter,
 ): Promise<
   InboxConversation[]
 > {
@@ -241,6 +261,20 @@ export async function getConversations(
     0
   ) {
     return [];
+  }
+
+  const requestedWorkspaceId =
+    filter?.workspaceId?.trim() || null;
+
+  if (
+    requestedWorkspaceId &&
+    scopedBusinessIds.includes(
+      requestedWorkspaceId,
+    )
+  ) {
+    scopedBusinessIds = [
+      requestedWorkspaceId,
+    ];
   }
 
   const subscriptionByBusiness =
@@ -295,6 +329,25 @@ export async function getConversations(
       .filter(Boolean);
 
   if (activeChannelIds.length === 0) {
+    return [];
+  }
+
+  /*
+   * A channel that is disabled or outside this scope is simply absent here,
+   * and the empty list returns no conversations -- which is what filtering the
+   * full set by that id did before.
+   */
+  const requestedChannelId =
+    filter?.channelId?.trim() || null;
+
+  const queryChannelIds =
+    requestedChannelId
+      ? activeChannelIds.filter(
+          (id) => id === requestedChannelId,
+        )
+      : activeChannelIds;
+
+  if (queryChannelIds.length === 0) {
     return [];
   }
 
@@ -362,7 +415,7 @@ export async function getConversations(
     )
     .in(
       "social_account_id",
-      activeChannelIds,
+      queryChannelIds,
     )
     .order(
       "is_pinned",

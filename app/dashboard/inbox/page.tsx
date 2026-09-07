@@ -47,18 +47,6 @@ export default async function InboxPage({
   const inboxScope =
     await getInboxConversationScope();
 
-  const [
-    allConversations,
-    teamMembers,
-  ] = await Promise.all([
-    getConversations(
-      inboxScope.accessibleBusinessIds,
-    ),
-    getTeamMembers(
-      inboxScope.accessibleBusinessIds,
-    ),
-  ]);
-
   /*
    * V3.11.4 generic channel selector.
    *
@@ -70,18 +58,6 @@ export default async function InboxPage({
       params.workspace,
     );
 
-  const workspaceConversations =
-    selectedWorkspaceId &&
-    inboxScope.accessibleBusinessIds.includes(
-      selectedWorkspaceId,
-    )
-      ? allConversations.filter(
-          (conversation) =>
-            conversation.business_id ===
-            selectedWorkspaceId,
-        )
-      : allConversations;
-
   const selectedChannelId =
     getSingleSearchParam(
       params.channel,
@@ -90,14 +66,28 @@ export default async function InboxPage({
       params.page,
     );
 
-  const channelConversations =
-    selectedChannelId
-      ? workspaceConversations.filter(
-          (conversation) =>
-            conversation.social_account?.id ===
-            selectedChannelId,
-        )
-      : workspaceConversations;
+  /*
+   * The channel and workspace filters go to the query rather than running
+   * over the result. Both used to be applied here, after loading every
+   * conversation in every workspace the member can reach, so opening one
+   * channel did the same work as opening all of them and then discarded most
+   * of it. getConversations applies exactly these conditions.
+   */
+  const [
+    channelConversations,
+    teamMembers,
+  ] = await Promise.all([
+    getConversations(
+      inboxScope.accessibleBusinessIds,
+      {
+        channelId: selectedChannelId,
+        workspaceId: selectedWorkspaceId,
+      },
+    ),
+    getTeamMembers(
+      inboxScope.accessibleBusinessIds,
+    ),
+  ]);
 
   const requestedStatus =
     getSingleSearchParam(
