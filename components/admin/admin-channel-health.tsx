@@ -127,21 +127,6 @@ function StatusIcon({ status }: { status: HealthStatus }) {
   );
 }
 
-function Check({ value, children }: { value: CheckValue; children: ReactNode }) {
-  const classes =
-    value === true
-      ? "bg-emerald-50 text-emerald-700"
-      : value === false
-        ? "bg-red-100 text-red-700"
-        : "bg-slate-100 text-slate-500";
-
-  return (
-    <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${classes}`}>
-      {value === true ? "✓" : value === false ? "×" : "—"} {children}
-    </span>
-  );
-}
-
 function formatDate(value: string | null | undefined) {
   if (!value) return "Never recorded";
 
@@ -170,27 +155,69 @@ function formatRelative(value: string | null | undefined) {
   return `${days}d ago`;
 }
 
-function ActivityRow({ activity }: { activity: ActivitySnapshot }) {
+/*
+ * What the connection has actually been doing, on one line.
+ *
+ * This was a three-cell grid of absolute timestamps -- "07/09/2026, 23:50:25"
+ * -- under seven green pills, repeated for every connection. The date is
+ * ambiguous before you decide whether the day or the month comes first, and
+ * either way it has to be subtracted from the current time before it means
+ * anything. What an admin is actually asking is "is traffic still flowing",
+ * and "8 min ago" answers that without arithmetic. The exact timestamp stays
+ * on hover for when the answer is no.
+ */
+function ActivitySummary({ activity }: { activity: ActivitySnapshot }) {
+  const failed = activity.failedOutbound24h;
+
   return (
-    <div className="mt-3 grid gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600 sm:grid-cols-3">
-      <div>
-        <span className="font-semibold text-slate-700">Last inbound:</span>{" "}
-        {formatDate(activity.lastInboundAt)}
-      </div>
-      <div>
-        <span className="font-semibold text-slate-700">Last outbound:</span>{" "}
-        {formatDate(activity.lastOutboundAt)}
-      </div>
-      <div>
-        <span className="font-semibold text-slate-700">Failed sends 24h:</span>{" "}
-        {activity.failedOutbound24h}
-      </div>
-      {activity.error ? (
-        <div className="text-amber-700 sm:col-span-3">
-          Activity check warning: {activity.error}
-        </div>
+    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
+      <span title={formatDate(activity.lastInboundAt)}>
+        In {formatRelative(activity.lastInboundAt)}
+      </span>
+
+      <span aria-hidden="true" className="text-slate-300">
+        ·
+      </span>
+
+      <span title={formatDate(activity.lastOutboundAt)}>
+        Out {formatRelative(activity.lastOutboundAt)}
+      </span>
+
+      {/*
+        Silence when there is nothing wrong. A row reading "Failed sends 24h:
+        0" on every healthy connection trains the eye to skip the field, which
+        is the one place it must not be skipped.
+      */}
+      {failed > 0 ? (
+        <>
+          <span aria-hidden="true" className="text-slate-300">
+            ·
+          </span>
+          <span className="font-semibold text-red-600">
+            {failed} failed send{failed === 1 ? "" : "s"} in 24h
+          </span>
+        </>
       ) : null}
-    </div>
+
+      {activity.error ? (
+        <>
+          <span aria-hidden="true" className="text-slate-300">
+            ·
+          </span>
+          <span className="text-amber-700">{activity.error}</span>
+        </>
+      ) : null}
+    </p>
+  );
+}
+
+function PassedCount({ rows }: { rows: readonly (readonly [string, CheckValue])[] }) {
+  const passed = rows.filter(([, value]) => value === true).length;
+
+  return (
+    <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+      {passed}/{rows.length} checks
+    </span>
   );
 }
 
@@ -240,69 +267,117 @@ function FailedPills({ item }: { item: AttentionItem }) {
   );
 }
 
-function MessengerDetail({ item }: { item: MessengerItem }) {
+/*
+ * A healthy connection, said once.
+ *
+ * It used to draw seven green pills and then a sentence repeating them --
+ * "Messenger token, conversations access, and webhook subscription are
+ * healthy" next to a row already showing exactly that in pill form -- for
+ * every connection, all expanded. Three healthy Pages filled a screen with
+ * information that amounted to the word "fine".
+ *
+ * Healthy is now a count and a line of activity. The per-check breakdown is
+ * what the Needs attention section is for, and that is where it earns the
+ * space, because there the failing check is the whole point.
+ *
+ * The exceptions are kept: a token with an expiry date, a permission warning
+ * or a stored error still shows, because those are things an admin should see
+ * before they turn into an outage, and the overall status being healthy is
+ * exactly why nothing else would surface them.
+ */
+function MessengerHealthyRow({ item }: { item: MessengerItem }) {
   return (
-    <div className="space-y-2 py-2">
-      <div className="flex flex-wrap gap-1.5">
-        {messengerCheckRows(item).map(([label, value]) => (
-          <Check key={label} value={value}>
-            {label}
-          </Check>
-        ))}
+    <div className="py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-slate-900">
+            {item.name}
+            <span className="ml-2 text-xs font-normal text-slate-400">
+              page {item.pageId ?? "unknown"}
+            </span>
+          </p>
+
+          <ActivitySummary activity={item.activity} />
+        </div>
+
+        <PassedCount rows={messengerCheckRows(item)} />
       </div>
-      <p className="text-sm leading-5 text-slate-600">{item.detail}</p>
+
       {item.permissions.missingScopes.length > 0 ? (
-        <p className="text-xs text-amber-700">
+        <p className="mt-1 text-xs text-amber-700">
           Missing scopes: {item.permissions.missingScopes.join(", ")}
         </p>
       ) : null}
+
       {item.permissions.expiresAt ? (
-        <p className="text-xs text-slate-400">
-          Token expiry reported by Meta: {formatDate(item.permissions.expiresAt)}
+        <p className="mt-1 text-xs text-slate-400">
+          Token expires {formatRelative(item.permissions.expiresAt)} (
+          {formatDate(item.permissions.expiresAt)})
         </p>
       ) : null}
+
       {item.permissions.error ? (
-        <p className="text-xs text-amber-700">
+        <p className="mt-1 text-xs text-amber-700">
           Permission check: {item.permissions.error}
         </p>
       ) : null}
-      <ActivityRow activity={item.activity} />
+
       {item.localError ? (
-        <p className="text-xs text-red-600">Stored error: {item.localError}</p>
+        <p className="mt-1 text-xs text-red-600">Stored error: {item.localError}</p>
       ) : null}
     </div>
   );
 }
 
-function TelegramDetail({ item }: { item: TelegramItem }) {
+function TelegramHealthyRow({ item }: { item: TelegramItem }) {
   return (
-    <div className="space-y-2 py-2">
-      <div className="flex flex-wrap gap-1.5">
-        {telegramCheckRows(item).map(([label, value]) => (
-          <Check key={label} value={value}>
-            {label}
-          </Check>
-        ))}
+    <div className="py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-slate-900">
+            {item.name}
+            {item.username ? (
+              <span className="ml-1 text-xs font-normal text-slate-400">
+                @{item.username}
+              </span>
+            ) : null}
+          </p>
+
+          <ActivitySummary activity={item.activity} />
+        </div>
+
+        <PassedCount rows={telegramCheckRows(item)} />
       </div>
-      <p className="text-sm leading-5 text-slate-600">{item.detail}</p>
+
       {item.remoteWebhookError ? (
-        <p className="text-xs text-amber-700">
+        <p className="mt-1 text-xs text-amber-700">
           Telegram last webhook error: {item.remoteWebhookError}
-          {item.remoteWebhookErrorAt ? ` · ${formatDate(item.remoteWebhookErrorAt)}` : ""}
+          {item.remoteWebhookErrorAt
+            ? ` · ${formatDate(item.remoteWebhookErrorAt)}`
+            : ""}
         </p>
       ) : null}
-      <ActivityRow activity={item.activity} />
+
       {item.localError ? (
-        <p className="text-xs text-red-600">Stored error: {item.localError}</p>
+        <p className="mt-1 text-xs text-red-600">Stored error: {item.localError}</p>
       ) : null}
     </div>
   );
 }
 
+/*
+ * Closed until asked.
+ *
+ * All three of these opened by default, so a run where nothing was wrong
+ * printed every passing check in full and the one section that matters --
+ * Needs attention -- was pushed off the top of the screen by the good news.
+ * Grouping something under "Healthy" is a promise that it does not need
+ * reading; leaving it expanded broke that promise.
+ */
 function HealthyAccordion({
   title,
   children,
-  defaultOpen = true,
+  defaultOpen = false,
 }: {
   title: ReactNode;
   children: ReactNode;
@@ -646,15 +721,7 @@ export function AdminChannelHealth() {
                 ) : (
                   <div className="divide-y divide-slate-100">
                     {healthyMessenger.map((item) => (
-                      <div key={item.id} className="py-3">
-                        <p className="font-semibold text-slate-900">
-                          {item.name}
-                          <span className="ml-2 text-xs font-normal text-slate-400">
-                            page {item.pageId ?? "unknown"}
-                          </span>
-                        </p>
-                        <MessengerDetail item={item} />
-                      </div>
+                      <MessengerHealthyRow key={item.id} item={item} />
                     ))}
                   </div>
                 )}
@@ -674,17 +741,7 @@ export function AdminChannelHealth() {
                 ) : (
                   <div className="divide-y divide-slate-100">
                     {healthyTelegram.map((item) => (
-                      <div key={item.id} className="py-3">
-                        <p className="font-semibold text-slate-900">
-                          {item.name}
-                          {item.username ? (
-                            <span className="ml-1 text-xs font-normal text-slate-400">
-                              (@{item.username})
-                            </span>
-                          ) : null}
-                        </p>
-                        <TelegramDetail item={item} />
-                      </div>
+                      <TelegramHealthyRow key={item.id} item={item} />
                     ))}
                   </div>
                 )}
