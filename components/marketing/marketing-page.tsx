@@ -1925,6 +1925,62 @@ function ShowcaseBand({
 /* -------------------------------------------------------------- hero mock */
 
 /*
+ * Which channel a conversation came in on, worn by the avatar.
+ *
+ * The mock listed four names with nothing to say where any of them wrote
+ * from, which is the one thing this product is about -- the hero line above
+ * it promises every platform in one inbox and the picture underneath showed a
+ * single undifferentiated list. The badge is what carries the claim.
+ *
+ * Facebook is the inline glyph rather than a file because the channels strip
+ * below already draws it that way; the rest reuse the same logos as that
+ * strip, so nothing new is downloaded.
+ */
+const HERO_ROW_CHANNELS = [
+  "facebook",
+  "telegram",
+  "instagram",
+  "tiktok",
+] as const;
+
+type HeroChannel =
+  (typeof HERO_ROW_CHANNELS)[number];
+
+const HERO_CHANNEL_LOGOS: Record<
+  HeroChannel,
+  string | null
+> = {
+  facebook: null,
+  telegram: "/images/channels/telegram.png",
+  instagram: "/images/channels/instagram.png",
+  tiktok: "/images/channels/tiktok.png",
+};
+
+function ChannelBadge({
+  channel,
+}: {
+  channel: HeroChannel;
+}) {
+  const src = HERO_CHANNEL_LOGOS[channel];
+
+  return (
+    <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-white ring-2 ring-white">
+      {src ? (
+        <Image
+          src={src}
+          alt=""
+          width={16}
+          height={16}
+          className="h-4 w-4 rounded-full object-contain"
+        />
+      ) : (
+        <FacebookGlyph className="h-4 w-4" />
+      )}
+    </span>
+  );
+}
+
+/*
  * A simplified view of the real TENH inbox: the same columns and shapes
  * people see after signing in, with fewer details and larger text so it
  * stays readable at this size. All content is invented.
@@ -1933,7 +1989,15 @@ function InboxMock({ labels }: { labels: Labels }) {
   const conversations = [
     ...labels.msgs.map((m, i) => ({ ...m, count: i === 0 ? 2 : 1 })),
     ...labels.more.map((m) => ({ ...m, count: 0 })),
-  ];
+  ].map((row, index) => ({
+    ...row,
+    // Fixed by position, not by name: the names are translated, the channel
+    // each customer writes from is not.
+    channel:
+      HERO_ROW_CHANNELS[
+        index % HERO_ROW_CHANNELS.length
+      ],
+  }));
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
@@ -1967,8 +2031,11 @@ function InboxMock({ labels }: { labels: Labels }) {
                 index === 0 ? "bg-blue-50/70" : ""
               }`}
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[11px] font-bold text-slate-600">
-                {row.who.slice(0, 1)}
+              <span className="relative shrink-0">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-[11px] font-bold text-slate-600">
+                  {row.who.slice(0, 1)}
+                </span>
+                <ChannelBadge channel={row.channel} />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline gap-1.5">
@@ -1994,8 +2061,16 @@ function InboxMock({ labels }: { labels: Labels }) {
 
         <div className="hidden min-w-0 flex-col bg-slate-50/50 sm:flex">
           <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[11px] font-bold text-slate-600">
-              {labels.msgs[0].who.slice(0, 1)}
+            {/*
+              The open thread is the first row, so it wears the same badge --
+              the panel would otherwise be the one place the channel is only
+              spelled out in words.
+            */}
+            <span className="relative shrink-0">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-[11px] font-bold text-slate-600">
+                {labels.msgs[0].who.slice(0, 1)}
+              </span>
+              <ChannelBadge channel={HERO_ROW_CHANNELS[0]} />
             </span>
             <span className="min-w-0">
               <span className="block truncate text-[13px] font-bold text-slate-900">
