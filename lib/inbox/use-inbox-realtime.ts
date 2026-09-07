@@ -9,6 +9,11 @@ import {
   createClient,
 } from "@/lib/supabase/client";
 
+import {
+  isTransientRealtimeError,
+  TRANSIENT_ERRORS_BEFORE_ESCALATING,
+} from "@/lib/inbox/realtime-error";
+
 export type InboxRealtimeTable =
   | "messages"
   | "conversations"
@@ -181,6 +186,9 @@ export function useInboxRealtime({
         if (cancelled) {
           break;
         }
+
+        // Reset on every successful subscribe, so only an unbroken run counts.
+        let consecutiveTransientErrors = 0;
 
         const channel =
           supabase
@@ -370,17 +378,42 @@ export function useInboxRealtime({
                 );
 
                 if (error) {
-                  console.error(
-                    "[Tenh Realtime V3.11.31.39] Channel error:",
-                    businessId,
-                    error,
-                  );
+                  const transient =
+                    isTransientRealtimeError(
+                      error,
+                    );
+
+                  if (transient) {
+                    consecutiveTransientErrors += 1;
+                  }
+
+                  if (
+                    transient &&
+                    consecutiveTransientErrors <
+                      TRANSIENT_ERRORS_BEFORE_ESCALATING
+                  ) {
+                    console.warn(
+                      "[Tenh Realtime V3.11.31.39] Channel dropped, reconnecting:",
+                      businessId,
+                      error,
+                    );
+                  } else {
+                    console.error(
+                      transient
+                        ? "[Tenh Realtime V3.11.31.39] Channel keeps dropping:"
+                        : "[Tenh Realtime V3.11.31.39] Channel error:",
+                      businessId,
+                      error,
+                    );
+                  }
                 }
 
                 if (
                   status ===
                     "SUBSCRIBED"
                 ) {
+                  consecutiveTransientErrors = 0;
+
                   console.log(
                     "[Tenh Realtime V3.11.31.39] ✅ SUBSCRIPTION REALTIME READY",
                     businessId,
