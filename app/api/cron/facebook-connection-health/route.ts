@@ -54,13 +54,26 @@ function configuredLookbackMinutes() {
   return Math.min(1440, Math.max(60, Math.round(parsed)));
 }
 
+/*
+ * One day, not one week.
+ *
+ * A shop reconnecting after a long gap has usually been answering customers in
+ * Business Suite the whole time, and pulling a week of that back turns their
+ * first look at TENH into a wall of conversations they have already dealt
+ * with. What they want is today: the threads still live enough to need an
+ * answer. Anything older is history they can read where it happened.
+ *
+ * Conversations with no activity inside the window are skipped entirely
+ * further down, so a quiet thread is not merely empty here -- it is not
+ * created at all.
+ */
 function reconnectLookbackMinutes() {
   const parsed = Number(
     process.env.FACEBOOK_RECONNECT_RECOVERY_LOOKBACK_MINUTES?.trim() ||
-      "10080",
+      "1440",
   );
 
-  return Number.isFinite(parsed) ? parsed : 10_080;
+  return Number.isFinite(parsed) ? parsed : 1_440;
 }
 
 async function processAccount(
