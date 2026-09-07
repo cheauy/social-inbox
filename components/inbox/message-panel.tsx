@@ -1,5 +1,13 @@
 "use client";
 
+import { isCommentReplyBlocked } from "@/components/inbox/comment-reply-access";
+
+import { mergeCommentActionState } from "@/components/inbox/comment-action-state";
+
+import { withoutEchoedAttachmentDrafts } from "@/lib/facebook/attachment-echo";
+
+import { getFacebookMessengerWindowState, type FacebookMessengerWindowState } from "@/lib/facebook/messenger-window";
+
 import {
   Fragment,
   useCallback,
@@ -95,6 +103,14 @@ function isFacebookCommentInboxMessage(
   );
 }
 
+function facebookAlbumPhotos(message: InboxMessage): InboxMessage[] {
+  const raw = message.raw_payload as { message?: { attachments?: Array<{ type?: string; payload?: { url?: string } }> } } | null;
+  const photos = raw?.message?.attachments?.filter((item) => item.type === "image" && item.payload?.url) ?? [];
+  return photos.length > 1 ? photos.map((item, index) => ({
+    ...message, id: `${message.id}:photo:${index}`, attachment_url: item.payload!.url!,
+  })) : [];
+}
+
 function isDirectFacebookMessengerInboundMessage(
   message: InboxMessage,
 ) {
@@ -148,17 +164,9 @@ function inboxMessageTimestampMs(
   return value ? Date.parse(value) : Number.NaN;
 }
 
-type FacebookMessengerComposerState =
-  | "standard"
-  | "human_agent"
-  | "expired"
-  | "private_reply_available"
-  | "waiting_for_customer_reply"
-  | "unknown";
-
 function getFacebookMessengerComposerState(
   messages: InboxMessage[],
-): FacebookMessengerComposerState {
+): FacebookMessengerWindowState {
   let latestDirectIncomingMs = Number.NaN;
   let latestIncomingCommentMs = Number.NaN;
   let latestDirectOutgoingMs = Number.NaN;
@@ -196,60 +204,11 @@ function getFacebookMessengerComposerState(
     }
   }
 
-  const nowMs = Date.now();
-  const standardWindowMs = 24 * 60 * 60 * 1000;
-  const humanAgentWindowMs = 7 * 24 * 60 * 60 * 1000;
-
-  const latestDirectIncomingAgeMs =
-    Number.isFinite(latestDirectIncomingMs)
-      ? nowMs - latestDirectIncomingMs
-      : Number.NaN;
-
-  const latestCommentIsNewerThanDirectIncoming =
-    Number.isFinite(latestIncomingCommentMs) &&
-    (!Number.isFinite(latestDirectIncomingMs) ||
-      latestIncomingCommentMs > latestDirectIncomingMs);
-
-  const pageAlreadySentAfterLatestComment =
-    latestCommentIsNewerThanDirectIncoming &&
-    Number.isFinite(latestDirectOutgoingMs) &&
-    latestDirectOutgoingMs >= latestIncomingCommentMs;
-
-  if (
-    latestCommentIsNewerThanDirectIncoming &&
-    pageAlreadySentAfterLatestComment
-  ) {
-    return "waiting_for_customer_reply";
-  }
-
-  if (latestCommentIsNewerThanDirectIncoming) {
-    return "private_reply_available";
-  }
-
-  if (
-    Number.isFinite(latestDirectIncomingAgeMs) &&
-    latestDirectIncomingAgeMs >= 0 &&
-    latestDirectIncomingAgeMs < standardWindowMs
-  ) {
-    return "standard";
-  }
-
-  if (
-    Number.isFinite(latestDirectIncomingAgeMs) &&
-    latestDirectIncomingAgeMs >= standardWindowMs &&
-    latestDirectIncomingAgeMs < humanAgentWindowMs
-  ) {
-    return "human_agent";
-  }
-
-  if (
-    Number.isFinite(latestDirectIncomingAgeMs) &&
-    latestDirectIncomingAgeMs >= humanAgentWindowMs
-  ) {
-    return "expired";
-  }
-
-  return "unknown";
+  return getFacebookMessengerWindowState(
+    latestDirectIncomingMs,
+    latestIncomingCommentMs,
+    latestDirectOutgoingMs,
+  );
 }
 
 const CHAT_BACKGROUND_PRESET_SRC: Record<string, string> = {
@@ -375,7 +334,8 @@ type MessagePanelProps = {
 
   onSendMessage: (
     event: FormEvent,
-  ) => void;
+    capturedMessage?: string,
+  ) => void | Promise<void>;
 
   onSendAttachments: (
     attachments: ReplyAttachment[],
@@ -1381,7 +1341,7 @@ export function MessagePanel({
   const messages = useMemo(() => {
     const byId = new Map<string, InboxMessage>();
 
-    for (const message of incomingMessages) {
+    for (const message of withoutEchoedAttachmentDrafts(incomingMessages)) {
       const existing = byId.get(message.id);
 
       byId.set(
@@ -1450,8 +1410,34 @@ export function MessagePanel({
     >
   >({});
 
+  const pendingCommentActionsRef = useRef(new Set<string>());
+
+  async function runCommentAction(
+    messageId: string,
+    action: () => Promise<{ success: boolean; deleted?: boolean }>,
+  ) {
+    pendingCommentActionsRef.current.add(messageId);
+    try {
+      const result = await action();
+      if (result.deleted) showActionNotice("Comment is already deleted");
+      if (!result.success && !result.deleted) showActionNotice("Action failed. Please try again.");
+      return result;
+    } catch {
+      showActionNotice("Action failed. Please try again.");
+      return { success: false };
+    } finally {
+      pendingCommentActionsRef.current.delete(messageId);
+    }
+  }
+
   const [actionNotice, setActionNotice] =
     useState<string | null>(null);
+  useEffect(() => {
+    if (!actionNotice || actionNotice.endsWith("…")) return;
+    const timer = window.setTimeout(() => setActionNotice(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [actionNotice]);
+
 
   const [
     commentConfirmTarget,
@@ -1763,6 +1749,12 @@ export function MessagePanel({
     };
 
     for (const message of messages) {
+      const nativePhotos = facebookAlbumPhotos(message);
+      if (nativePhotos.length > 1) {
+        flush();
+        groups.set(message.id, { lastId: message.id, members: nativePhotos });
+        continue;
+      }
       /*
        * A deleted photo leaves the album. It renders its own "Message deleted"
        * bubble instead, so keeping it in the grid would show art that is no
@@ -1957,11 +1949,8 @@ export function MessagePanel({
 
   function showActionNotice(message: string) {
     setActionNotice(message);
-
-    window.setTimeout(() => {
-      setActionNotice(null);
-    }, 1800);
   }
+
 
   async function confirmCommentAction() {
     if (
@@ -1972,7 +1961,9 @@ export function MessagePanel({
     }
 
     const target = commentConfirmTarget;
+    if (pendingCommentActionsRef.current.has(target.messageId)) return;
     const previous = target.previous;
+    showActionNotice(target.kind === "delete" ? "Deleting comment…" : target.kind === "hide" ? "Hiding comment…" : "Unhiding comment…");
 
     setCommentConfirmLoading(true);
     setCommentConfirmTarget(null);
@@ -1991,9 +1982,9 @@ export function MessagePanel({
         );
 
         const result =
-          await onDeleteComment(
+          await runCommentAction(target.messageId, () => onDeleteComment(
             target.platformMessageId,
-          );
+          ));
 
         if (result.deleted) {
           setOptimisticCommentState(
@@ -2045,10 +2036,10 @@ export function MessagePanel({
       );
 
       const result =
-        await onHideComment(
+        await runCommentAction(target.messageId, () => onHideComment(
           target.platformMessageId,
           nextHidden,
-        );
+        ));
 
       if (result.deleted) {
         setOptimisticCommentState(
@@ -2392,8 +2383,9 @@ export function MessagePanel({
       };
     }
 
+    const pending = new Set(pendingCommentActionsRef.current);
     setOptimisticCommentState(
-      nextState,
+      (current) => mergeCommentActionState(nextState, current, pending),
     );
   }, [messages]);
 
@@ -2578,9 +2570,9 @@ export function MessagePanel({
 
       {telegramActionNotice ||
       actionNotice ? (
-        <div className="pointer-events-none absolute left-1/2 top-16 z-[100] flex -translate-x-1/2 items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-xl">
-          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-[11px]">
-            ✓
+        <div role="status" aria-live="polite" className="pointer-events-none absolute left-1/2 top-24 z-[100] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2.5 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 text-sm font-semibold text-slate-800 shadow-[0_8px_30px_rgba(15,23,42,0.12)] backdrop-blur-sm">
+          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${actionNotice?.includes("failed") ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>
+            {actionNotice?.endsWith("…") ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-200 border-t-blue-500" /> : actionNotice?.includes("failed") ? "!" : "✓"}
           </span>
           {telegramActionNotice ??
             actionNotice}
@@ -3636,11 +3628,13 @@ export function MessagePanel({
                 message.platform_message_id;
 
               async function toggleLike() {
+                if (pendingCommentActionsRef.current.has(message.id)) return;
                 const previous =
                   commentState.liked;
 
                 const next =
                   !previous;
+                showActionNotice(next ? "Liking comment…" : "Unliking comment…");
 
                 setOptimisticCommentState(
                   (current) => ({
@@ -3654,10 +3648,10 @@ export function MessagePanel({
                 );
 
                 const result =
-                  await onLikeComment(
+                  await runCommentAction(message.id, () => onLikeComment(
                     message.platform_message_id,
                     next,
-                  );
+                  ));
 
                 if (result.deleted) {
                   setOptimisticCommentState(
@@ -3944,28 +3938,6 @@ export function MessagePanel({
                                 </span>
                               </div>
 
-                              {/*
-                                What a reply here actually does, said where
-                                the comment is rather than down at the
-                                composer.
-
-                                It sat above the input before, which put it
-                                furthest from the thing it describes and
-                                stacked it against the Messenger notice, so
-                                two boxes competed to explain the same
-                                conversation. It is also dropped entirely once
-                                the private message has gone: at that point the
-                                agent is waiting on the customer, and the
-                                notice beneath already says so.
-                              */}
-                              {!facebookWaitingForCustomerReply ? (
-                                <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
-                                  {isKhmer
-                                    ? "ការឆ្លើយតបនៅទីនេះជាការឆ្លើយតបលើមតិយោបល់ជាសាធារណៈ — អ្នកដែលឃើញការបង្ហោះទាំងអស់អាចអានបាន ហើយផ្ញើបានតែអក្សរ។ អ្នកអាចផ្ញើសារឯកជនទៅអតិថិជនម្តងផងដែរ។"
-                                    : "A reply here is a public comment reply — anyone who sees the post can read it, and it can only be text. You can also send the customer one private message."}
-                                </p>
-                              ) : null}
-
                               <div className="mt-2 text-[22px] font-bold tracking-[-0.02em] text-slate-950 sm:text-[25px]">
                                 {headerChannelAccountName}
                               </div>
@@ -4134,13 +4106,10 @@ export function MessagePanel({
                                 <>
                                   <button
                                     type="button"
-                                    disabled={commentState.deleted}
+                                    disabled={isCommentReplyBlocked(message.platform_message_id, messages, optimisticCommentState)}
                                     onClick={() => {
                                       onReplyToComment(
                                         message.platform_message_id,
-                                      );
-                                      showActionNotice(
-                                        "Replying to Facebook Comment",
                                       );
                                     }}
                                     className={`inline-flex items-center gap-1.5 transition disabled:cursor-not-allowed disabled:opacity-30 ${
@@ -4458,12 +4427,10 @@ export function MessagePanel({
                                             <>
                                               <button
                                                 type="button"
+                                                disabled={commentState.hidden || isCommentReplyBlocked(reply.platform_message_id!, messages, optimisticCommentState)}
                                                 onClick={() => {
                                                   onReplyToComment(
                                                     reply.platform_message_id,
-                                                  );
-                                                  showActionNotice(
-                                                    "Replying to Facebook Comment",
                                                   );
                                                 }}
                                                 className="inline-flex items-center gap-1.5 text-slate-500 transition hover:text-blue-600"
@@ -4477,9 +4444,11 @@ export function MessagePanel({
                                               <button
                                                 type="button"
                                                 onClick={async () => {
+                                                  if (pendingCommentActionsRef.current.has(reply.id)) return;
                                                   const previous =
                                                     replyState.liked;
                                                   const next = !previous;
+                                                  showActionNotice(next ? "Liking comment…" : "Unliking comment…");
 
                                                   setOptimisticCommentState(
                                                     (current) => ({
@@ -4492,10 +4461,10 @@ export function MessagePanel({
                                                   );
 
                                                   const result =
-                                                    await onLikeComment(
+                                                    await runCommentAction(reply.id, () => onLikeComment(
                                                       reply.platform_message_id!,
                                                       next,
-                                                    );
+                                                    ));
 
                                                   if (result.deleted) {
                                                     setOptimisticCommentState(
@@ -4524,6 +4493,7 @@ export function MessagePanel({
                                                       }),
                                                     );
                                                   }
+                                                  if (result.success) showActionNotice(next ? "Comment liked" : "Comment unliked");
                                                 }}
                                                 className={`inline-flex items-center gap-1.5 transition ${
                                                   replyState.liked
@@ -5634,14 +5604,11 @@ export function MessagePanel({
                           <button
                             type="button"
                             disabled={
-                              commentState.deleted
+                              isCommentReplyBlocked(message.platform_message_id, messages, optimisticCommentState)
                             }
                             onClick={() => {
                               onReplyToComment(
                                 message.platform_message_id,
-                              );
-                              showActionNotice(
-                                "Replying to Facebook Comment",
                               );
                             }}
                             className={`flex h-7 w-7 items-center justify-center rounded-md transition active:scale-90 disabled:cursor-not-allowed disabled:opacity-30 ${
@@ -5905,33 +5872,32 @@ export function MessagePanel({
 
       {/* Facebook comment reply target — UI only. Keep reply behavior unchanged. */}
       {replyingToCommentId ? (
-        <div className="shrink-0 bg-white px-3 pt-3 sm:px-5 sm:pt-4">
-          <div className="flex min-h-[76px] items-center gap-4 rounded-[20px] border border-blue-100 bg-gradient-to-r from-blue-50/90 via-white to-blue-50/45 px-4 py-3 shadow-[0_1px_5px_rgba(37,99,235,0.08)] sm:px-5">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-blue-600 sm:h-14 sm:w-14">
+        <div className="shrink-0 bg-white px-3 py-2">
+          <div className="flex items-start gap-3 rounded-xl bg-slate-50 px-3 py-2.5 ring-1 ring-inset ring-slate-200">
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-blue-600 shadow-sm" aria-hidden="true">
               <ReplyIcon />
             </div>
 
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-extrabold uppercase tracking-[0.04em] text-blue-600">
-                Facebook Comment
+              <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
+                <p className="min-w-0 truncate text-sm font-semibold leading-5 text-slate-900">
+                  {isKhmer ? "កំពុងឆ្លើយតបទៅ" : "Replying to"} {replyingToName}
+                </p>
+                <p className="text-xs leading-5 text-slate-500">
+                  {isKhmer
+                    ? "ការឆ្លើយតបលើមតិយោបល់ Facebook អាចផ្ញើបានតែអក្សរប៉ុណ្ណោះ។"
+                    : "Facebook comment replies can only contain text."}
+                </p>
+              </div>
+              <p className="mt-1 truncate border-l-2 border-blue-300 pl-2 text-sm leading-5 text-slate-600">
+                {replyingToMessage?.message_text ?? "Selected Facebook comment"}
               </p>
-
-              <p className="mt-0.5 truncate text-[15px] font-bold leading-5 text-slate-900 sm:text-base">
-                {isKhmer ? "កំពុងឆ្លើយតបទៅ" : "Replying to"} {replyingToName}
-              </p>
-
-              <p className="mt-1 truncate text-[15px] leading-5 text-slate-700 sm:text-base">
-                {replyingToMessage
-                  ?.message_text ??
-                  "Selected Facebook comment"}
-              </p>
-
             </div>
 
             <button
               type="button"
               onClick={onCancelCommentReply}
-              className="group/action relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/90 hover:text-slate-700"
+              className="group/action relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-200/60 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-blue-500"
               title="Cancel reply"
               aria-label="Cancel reply"
             >
@@ -5991,7 +5957,9 @@ export function MessagePanel({
           reply={reply}
           sending={sending}
           error={sendError}
-          blockedReason={facebookMessengerBlockedReason}
+          blockedReason={replyingToCommentId && isCommentReplyBlocked(replyingToCommentId, messages, optimisticCommentState)
+            ? "Unhide this comment and its parent before replying."
+            : facebookMessengerBlockedReason}
           blockedTitle={facebookMessengerBlockedTitle}
 
           onReplyChange={
@@ -6008,20 +5976,11 @@ export function MessagePanel({
           onSendAttachments={
             onSendAttachments
           }
-          /*
-            A Facebook comment thread takes text only, so attachments are off
-            for the whole conversation and not just while replying to one
-            comment. Without this an agent could pick files, wait for them to
-            upload, and be refused by the API afterwards.
-          */
-          allowAttachments={
-            !replyingToCommentId &&
-            activeConversation?.source_type !==
-              "comment"
-          }
+          /* Only a targeted public comment reply is text-only. */
+          allowAttachments={!replyingToCommentId}
+          showAttachmentsBlockedNotice={false}
           attachmentsBlockedReason={
-            activeConversation?.source_type ===
-            "comment"
+            replyingToCommentId
               ? isKhmer
                 ? "ការឆ្លើយតបលើមតិយោបល់ Facebook អាចផ្ញើបានតែអក្សរប៉ុណ្ណោះ។"
                 : "Facebook comment replies can only contain text."

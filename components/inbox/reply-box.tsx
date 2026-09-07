@@ -69,7 +69,8 @@ type ReplyBoxProps = {
 
   onSubmit: (
     event: FormEvent<HTMLFormElement>,
-  ) => void;
+    capturedMessage?: string,
+  ) => void | Promise<void>;
 
   onSendAttachments?: (
     attachments: ReplyAttachment[],
@@ -88,6 +89,7 @@ type ReplyBoxProps = {
    * comment threads, which take replies as text only.
    */
   attachmentsBlockedReason?: string | null;
+  showAttachmentsBlockedNotice?: boolean;
 
   onStatusChange?: (
     status: ConversationStatus,
@@ -325,6 +327,7 @@ export function ReplyBox({
   onSendAttachments,
   canCaptionAttachments = false,
   attachmentsBlockedReason = null,
+  showAttachmentsBlockedNotice = true,
   onStatusChange,
 }: ReplyBoxProps) {
   const isKhmer = useWorkspaceLanguageId() === "km";
@@ -1164,6 +1167,13 @@ export function ReplyBox({
       voicePreviewAudioRef.current.pause();
     }
 
+    const sentReview = voiceReview;
+    setVoiceReview(null);
+    setAttachments((current) => current.filter((item) => item.id !== attachment.id));
+    const restoreVoice = () => {
+      setAttachments((current) => current.some((item) => item.id === attachment.id) ? current : [...current, attachment]);
+      setVoiceReview(sentReview);
+    };
     setVoiceReviewPlaying(false);
     setSendingContent(true);
     setRecordingError(null);
@@ -1172,6 +1182,7 @@ export function ReplyBox({
       const success = await onSendAttachments([attachment]);
 
       if (!success) {
+        restoreVoice();
         return;
       }
 
@@ -1184,6 +1195,7 @@ export function ReplyBox({
       recordingSecondsRef.current = 0;
       setRecordingSeconds(0);
     } catch (sendError) {
+      restoreVoice();
       console.error(
         "Unable to send voice message:",
         sendError,
@@ -1543,8 +1555,7 @@ export function ReplyBox({
      * still has to follow as its own message -- there is no other way for it
      * to arrive.
      *
-     * Messenger never gets a caption: Meta's Send API carries one attachment
-     * per message and has no caption field, so the text follows as its own
+     * Messenger albums have no caption field, so the text follows as its own
      * message there however this is written.
      */
     const canCaption =
@@ -1570,10 +1581,7 @@ export function ReplyBox({
     const sentReply = reply;
 
     setAttachments([]);
-
-    if (canCaption) {
-      onReplyChange("");
-    }
+    onReplyChange("");
 
     try {
       const success =
@@ -1585,9 +1593,7 @@ export function ReplyBox({
       if (!success) {
         setAttachments(sentAttachments);
 
-        if (canCaption) {
-          onReplyChange(sentReply);
-        }
+        onReplyChange(sentReply);
       }
 
       if (success) {
@@ -1615,17 +1621,17 @@ export function ReplyBox({
         /*
          * If the agent also typed a message, send it right after the
          * attachments instead of leaving it in the box. The parent submit
-         * handler reads the current reply text itself and drives `sending`,
+         * handler receives the captured text and drives `sending`,
          * so the existing sending-finished effect applies any Send & close /
          * Send & pending status after the text goes out.
          */
         if (
           submitEvent &&
-          reply.trim()
+          sentReply.trim()
         ) {
           pendingPostSendStatusRef.current =
             postSendStatus;
-          onSubmit(submitEvent);
+          await onSubmit(submitEvent, sentReply);
           return;
         }
 
@@ -1649,9 +1655,7 @@ export function ReplyBox({
       /* Give the agent back exactly what they were about to send. */
       setAttachments(sentAttachments);
 
-      if (canCaption) {
-        onReplyChange(sentReply);
-      }
+      onReplyChange(sentReply);
 
       console.error(
         "Unable to send attachments:",
@@ -1695,7 +1699,7 @@ export function ReplyBox({
         </p>
       ) : null}
 
-      {attachmentsBlocked ? (
+      {attachmentsBlocked && showAttachmentsBlockedNotice ? (
         <p className="mx-3 mt-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">
           {attachmentsBlockedReason}
         </p>
@@ -2182,7 +2186,7 @@ export function ReplyBox({
           {/* Real TENH quick tag selector */}
           <div
             onMouseDownCapture={() => {
-              if (!isSending) {
+              if (!isComposerBlocked) {
                 setEmojiOpen(false);
                 setMoreOpen(false);
                 setSendMenuOpen(false);
@@ -2194,7 +2198,7 @@ export function ReplyBox({
               }
             }}
             onClick={(event) => {
-              if (isSending) {
+              if (isComposerBlocked) {
                 return;
               }
 
@@ -2212,7 +2216,7 @@ export function ReplyBox({
               )?.click();
             }}
             className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl transition [&>div>button]:!h-5 [&>div>button]:!w-5 [&>div>button]:!rounded-none [&>div>button]:!border-0 [&>div>button]:!bg-transparent [&>div>button]:!p-0 [&>div>button]:!shadow-none [&>div>button]:!text-current ${
-              isSending
+              isComposerBlocked
                 ? "pointer-events-none opacity-50"
                 : activeToolbarPanel === "quick-tag"
                   ? "bg-blue-50 text-blue-600"
@@ -2231,7 +2235,7 @@ export function ReplyBox({
           {/* Real TENH saved reply selector */}
           <div
             onMouseDownCapture={() => {
-              if (!isSending) {
+              if (!isComposerBlocked) {
                 setEmojiOpen(false);
                 setMoreOpen(false);
                 setSendMenuOpen(false);
@@ -2243,7 +2247,7 @@ export function ReplyBox({
               }
             }}
             onClick={(event) => {
-              if (isSending) {
+              if (isComposerBlocked) {
                 return;
               }
 
@@ -2261,7 +2265,7 @@ export function ReplyBox({
               )?.click();
             }}
             className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl transition [&>div>button]:!h-5 [&>div>button]:!w-5 [&>div>button]:!rounded-none [&>div>button]:!border-0 [&>div>button]:!bg-transparent [&>div>button]:!p-0 [&>div>button]:!shadow-none [&>div>button]:!text-current ${
-              isSending
+              isComposerBlocked
                 ? "pointer-events-none opacity-50"
                 : activeToolbarPanel === "quick-reply"
                   ? "bg-blue-50 text-blue-600"

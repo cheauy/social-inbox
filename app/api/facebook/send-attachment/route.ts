@@ -1,3 +1,4 @@
+import { facebookMediaMessage } from "@/lib/facebook/media-message";
 import {
   NextRequest,
   NextResponse,
@@ -181,6 +182,9 @@ export async function POST(
 
   const fileValue =
     formData.get("file");
+  const requestIdValue = String(formData.get("clientRequestId") ?? "");
+  const clientRequestId = /^optimistic:attachment:[\w.-]{1,100}$/.test(requestIdValue)
+    ? requestIdValue : null;
 
   if (!conversationId) {
     return NextResponse.json(
@@ -247,6 +251,15 @@ export async function POST(
 
   const file =
     fileValue as File;
+  const files = [file, ...formData.getAll("additionalFiles")];
+  if (files.length > 30 || files.some((item) =>
+    !(item instanceof File) || item.size <= 0 ||
+    (files.length > 1 && (!item.type.startsWith("image/") || item.size > TENH_ATTACHMENT_LIMITS.image))
+  )) {
+    return NextResponse.json({ success: false, error: "Albums require 2-30 photos, each at most 10 MB." }, { status: 400 });
+  }
+  const uploadFiles = files as File[];
+
 
   const detectedKind =
     getExpectedKind(file);
@@ -367,21 +380,9 @@ export async function POST(
     );
   }
 
-  if (
-    conversation.source_type ===
-    "comment"
-  ) {
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "V2.4 attachment sending is currently available for Messenger conversations only.",
-      },
-      {
-        status: 400,
-      },
-    );
-  }
+  // A thread can start with a comment and later contain Messenger DMs.
+  // The reply-window policy below decides whether private media is allowed;
+  // this endpoint never posts attachments as public comment replies.
 
   if (
     !conversation.contact_id ||
@@ -623,149 +624,155 @@ export async function POST(
    * 1. Upload the binary to Meta's Attachment Upload API.
    *    We ask Meta for a reusable attachment_id.
    */
-  const uploadForm =
-    new FormData();
+  const attachmentIds: string[] = [];
+  for (const uploadFile of uploadFiles) {
+    const uploadForm =
+      new FormData();
 
-  uploadForm.set(
-    "message",
-    JSON.stringify({
-      attachment: {
-        type: kind,
-        payload: {
-          is_reusable: true,
+    uploadForm.set(
+      "message",
+      JSON.stringify({
+        attachment: {
+          type: kind,
+          payload: {
+            is_reusable: true,
+          },
         },
-      },
-    }),
-  );
-
-  uploadForm.set(
-    "filedata",
-    file,
-    file.name ||
-      `tenh-${kind}`,
-  );
-
-  const uploadUrl =
-    new URL(
-      `https://graph.facebook.com/${graphVersion}/${pageId}/message_attachments`,
+      }),
     );
 
-  uploadUrl.searchParams.set(
-    "access_token",
-    pageAccessToken,
-  );
+    uploadForm.set(
+      "filedata",
+      uploadFile,
+      uploadFile.name ||
+        `tenh-${kind}`,
+    );
 
-  async function uploadAttachment() {
-    const response =
-      await fetch(
-        uploadUrl,
-        {
-          method: "POST",
-          body: uploadForm,
-          cache: "no-store",
-        },
+    const uploadUrl =
+      new URL(
+        `https://graph.facebook.com/${graphVersion}/${pageId}/message_attachments`,
       );
 
-    let payload:
-      AttachmentUploadResponse = {};
+    uploadUrl.searchParams.set(
+      "access_token",
+      pageAccessToken,
+    );
 
-    try {
-      payload =
-        (await response.json()) as
-          AttachmentUploadResponse;
-    } catch {
-      // handled below
-    }
-
-    return {
-      response,
-      payload,
-    };
-  }
-
-  let uploadAttempt: {
-    response: Response;
-    payload: AttachmentUploadResponse;
-  };
-
-  try {
-    uploadAttempt =
-      await uploadAttachment();
-
-    if (
-      (!uploadAttempt.response.ok ||
-        uploadAttempt.payload.error) &&
-      isFacebookAccessTokenError(
-        uploadAttempt.payload.error,
-      )
-    ) {
-      pageAccessToken =
-        await refreshFacebookPageAccessToken(
-          pageId,
+    async function uploadAttachment() {
+      const response =
+        await fetch(
+          uploadUrl,
+          {
+            method: "POST",
+            body: uploadForm,
+            cache: "no-store",
+          },
         );
 
-      uploadUrl.searchParams.set(
-        "access_token",
-        pageAccessToken,
-      );
+      let payload:
+        AttachmentUploadResponse = {};
 
+      try {
+        payload =
+          (await response.json()) as
+            AttachmentUploadResponse;
+      } catch {
+        // handled below
+      }
+
+      return {
+        response,
+        payload,
+      };
+    }
+
+    let uploadAttempt: {
+      response: Response;
+      payload: AttachmentUploadResponse;
+    };
+
+    try {
       uploadAttempt =
         await uploadAttachment();
-    }
-  } catch (uploadError) {
-    console.error(
-      "Facebook attachment upload request failed:",
-      uploadError,
-    );
 
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          uploadError instanceof Error
-            ? uploadError.message
-            : "Unable to upload the attachment to Facebook.",
-      },
-      {
-        status: 502,
-      },
-    );
-  }
+      if (
+        (!uploadAttempt.response.ok ||
+          uploadAttempt.payload.error) &&
+        isFacebookAccessTokenError(
+          uploadAttempt.payload.error,
+        )
+      ) {
+        pageAccessToken =
+          await refreshFacebookPageAccessToken(
+            pageId,
+          );
 
-  const uploadResponse =
-    uploadAttempt.response;
-  const uploadPayload =
-    uploadAttempt.payload;
+        uploadUrl.searchParams.set(
+          "access_token",
+          pageAccessToken,
+        );
 
-  const attachmentId =
-    uploadPayload.attachment_id
-      ?.trim();
-
-  if (
-    !uploadResponse.ok ||
-    !attachmentId
-  ) {
-    const errorMessage =
-      graphErrorMessage(
-        uploadPayload,
-        "Facebook did not accept the attachment upload.",
+        uploadAttempt =
+          await uploadAttachment();
+      }
+    } catch (uploadError) {
+      console.error(
+        "Facebook attachment upload request failed:",
+        uploadError,
       );
 
-    console.error(
-      "Facebook attachment upload failed:",
-      uploadPayload,
-    );
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            uploadError instanceof Error
+              ? uploadError.message
+              : "Unable to upload the attachment to Facebook.",
+        },
+        {
+          status: 502,
+        },
+      );
+    }
 
-    return NextResponse.json(
-      {
-        success: false,
-        error: errorMessage,
-      },
-      {
-        status: 502,
-      },
-    );
+    const uploadResponse =
+      uploadAttempt.response;
+    const uploadPayload =
+      uploadAttempt.payload;
+
+    const attachmentId =
+      uploadPayload.attachment_id
+        ?.trim();
+
+    if (
+      !uploadResponse.ok ||
+      !attachmentId
+    ) {
+      const errorMessage =
+        graphErrorMessage(
+          uploadPayload,
+          "Facebook did not accept the attachment upload.",
+        );
+
+      console.error(
+        "Facebook attachment upload failed:",
+        uploadPayload,
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: errorMessage,
+        },
+        {
+          status: 502,
+        },
+      );
+    }
+
+    attachmentIds.push(attachmentId);
   }
+  const attachmentId = attachmentIds[0];
 
   /*
    * 2. Send the reusable attachment to the customer's PSID.
@@ -805,13 +812,8 @@ export async function POST(
                     "RESPONSE",
                 }),
             message: {
-              attachment: {
-                type: kind,
-                payload: {
-                  attachment_id:
-                    attachmentId,
-                },
-              },
+              ...facebookMediaMessage(kind, attachmentIds),
+              ...(clientRequestId ? { metadata: clientRequestId } : {}),
             },
           }),
           cache: "no-store",
@@ -979,6 +981,22 @@ export async function POST(
     );
   }
 
+  let albumAttachments: Array<{ type: string; payload: { url: string } }> = [];
+  if (uploadFiles.length > 1) {
+    try {
+      const detailUrl = new URL(`https://graph.facebook.com/${graphVersion}/${facebookMessageId}`);
+      detailUrl.searchParams.set("fields", "attachments");
+      detailUrl.searchParams.set("access_token", pageAccessToken);
+      const detailResponse = await fetch(detailUrl, { cache: "no-store", signal: AbortSignal.timeout(5000) });
+      if (detailResponse.ok) {
+        const detail = await detailResponse.json();
+        albumAttachments = (detail.attachments?.data ?? []).flatMap((item: { image_data?: { url?: string } }) =>
+          item.image_data?.url ? [{ type: "image", payload: { url: item.image_data.url } }] : [],
+        );
+      }
+    } catch { /* The echo webhook can supply URLs when Meta finishes processing. */ }
+  }
+
   let savedMessage =
     existingMessage;
 
@@ -989,6 +1007,13 @@ export async function POST(
     } = await supabaseAdmin
       .from("messages")
       .update({
+        ...(albumAttachments.length > 1 ? {
+          raw_payload: {
+            ...(savedMessage.raw_payload ?? {}),
+            tenh_client_request_id: clientRequestId,
+            message: { attachments: albumAttachments, ...(clientRequestId ? { metadata: clientRequestId } : {}) },
+          },
+        } : {}),
         // V2.14.1 — verified Tenh Chat sender attribution.
         sent_by_member_id:
           currentMember.id,
@@ -1049,8 +1074,14 @@ export async function POST(
         is_echo:
           false,
         raw_payload: {
+          tenh_client_request_id: clientRequestId,
           source:
             "tenh-chat-v2.4",
+          ...(albumAttachments.length > 1 ? { message: { attachments: albumAttachments } } : {}),
+          tenh_attachments: uploadFiles.map((item, index) => ({
+            type: kind, name: item.name, mime_type: item.type,
+            size: item.size, attachment_id: attachmentIds[index],
+          })),
           tenh_attachment: {
             type: kind,
             name:

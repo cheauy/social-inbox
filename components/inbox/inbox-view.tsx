@@ -1,5 +1,9 @@
 "use client";
 
+import { isCommentReplyBlocked } from "@/components/inbox/comment-reply-access";
+
+import { prepareFacebookVoice } from "@/lib/facebook/prepare-voice";
+
 import {
   useRouter,
   useSearchParams,
@@ -83,6 +87,8 @@ type PendingOptimisticSend = {
 };
 
 type PendingOptimisticAttachmentSend = {
+  albumFiles?: File[];
+  albumPreviewUrls?: string[];
   tempId: string;
   conversationId: string;
   recipientId: string;
@@ -1383,6 +1389,7 @@ useEffect(() => {
   );
   setReply("");
   setSendError(null);
+  setReplyingToCommentId(null);
 }, [resolvedActiveConversationId]);
 
 const realtimeBusinessIds =
@@ -4247,6 +4254,8 @@ const selectConversationSmoothly =
       const currentConversationId =
         resolvedActiveConversationId;
 
+      setReplyingToCommentId(null);
+
       /*
        * Reopening a conversation that was manually marked unread is the
        * deliberate acknowledgement point. Clear only the destination's
@@ -4583,6 +4592,7 @@ const selectConversationSmoothly =
 
 const clearConversationSelection =
   useCallback(() => {
+    setReplyingToCommentId(null);
     const currentConversationId =
       resolvedActiveConversationId;
 
@@ -7348,6 +7358,13 @@ async function performOptimisticAttachmentSend(
       pending.file.name,
     );
 
+    for (const file of pending.albumFiles ?? []) {
+      formData.append("additionalFiles", file, file.name);
+    }
+    if (pending.endpoint === "/api/facebook/send-attachment") {
+      formData.set("clientRequestId", pending.tempId);
+    }
+
     /*
      * A single photo or video takes the caption too, so one image with a
      * message is still one Telegram message rather than two. Ignored by the
@@ -7451,6 +7468,13 @@ async function performOptimisticAttachmentSend(
     if (result.message) {
       const savedMessage =
         result.message as InboxMessage;
+      if (pending.albumPreviewUrls) {
+        savedMessage.raw_payload = {
+          ...(savedMessage.raw_payload as Record<string, unknown> ?? {}),
+          message: { attachments: pending.albumPreviewUrls.map((url) => ({ type: "image", payload: { url } })) },
+        };
+      }
+
 
       setLiveMessages((current) =>
         reconcileOptimisticMessage(
@@ -7809,10 +7833,32 @@ async function handleSendAttachments(
     }
   }
 
+  if (conversationPlatform === "facebook") {
+    try {
+      attachments = await Promise.all(attachments.map(async (attachment) =>
+        attachment.kind === "audio"
+          ? { ...attachment, file: await prepareFacebookVoice(attachment.file) }
+          : attachment,
+      ));
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : "Unable to prepare voice recording.");
+      return false;
+    }
+  }
+
   let allSucceeded = true;
   const albumPendings: PendingOptimisticAttachmentSend[] = [];
 
+  const groupedPhotoIds = new Set<string>();
+  const facebookPhotos = conversationPlatform === "facebook"
+    ? attachments.filter((item) => item.kind === "image") : [];
+
   for (const attachment of attachments) {
+    if (groupedPhotoIds.has(attachment.id)) continue;
+    const photoIndex = facebookPhotos.indexOf(attachment);
+    const photoBatch = photoIndex >= 0 ? facebookPhotos.slice(photoIndex, photoIndex + 30) : [];
+    for (const photo of photoBatch.slice(1)) groupedPhotoIds.add(photo.id);
+
     const randomId =
       typeof crypto !==
         "undefined" &&
@@ -7883,6 +7929,11 @@ async function handleSendAttachments(
           attachmentEndpoint,
       };
 
+    if (photoBatch.length > 1) {
+      pending.albumFiles = photoBatch.slice(1).map((item) => item.file);
+      pending.albumPreviewUrls = [previewUrl, ...pending.albumFiles.map((file) => URL.createObjectURL(file))];
+    }
+
     pendingAttachmentSendsRef
       .current[tempId] =
       pending;
@@ -7900,6 +7951,13 @@ async function handleSendAttachments(
         previewUrl,
         messageText,
       });
+
+    if (pending.albumPreviewUrls) {
+      optimisticMessage.raw_payload = {
+        ...(optimisticMessage.raw_payload as Record<string, unknown>),
+        message: { attachments: pending.albumPreviewUrls.map((url) => ({ type: "image", payload: { url } })) },
+      };
+    }
 
     setLiveMessages(
       (current) => [
@@ -8021,11 +8079,12 @@ async function handleRetryOptimisticMessage(
 
 async function handleSendMessage(
   event: FormEvent,
+  capturedMessage?: string,
 ) {
   event.preventDefault();
 
   const message =
-    reply.trim();
+    (capturedMessage ?? reply).trim();
 
   if (
     !message ||
@@ -8043,6 +8102,11 @@ async function handleSendMessage(
    */
   const isCommentReply =
     Boolean(replyingToCommentId);
+
+  if (replyingToCommentId && isCommentReplyBlocked(replyingToCommentId, liveMessages)) {
+    setSendError("Unhide this comment and its parent before replying.");
+    return;
+  }
 
   const commentId =
     replyingToCommentId;
@@ -8330,7 +8394,7 @@ async function handleSendMessage(
         .created_at,
   });
 
-  setReply("");
+  if (capturedMessage === undefined) setReply("");
   setReplyingToCommentId(
     null,
   );
@@ -8686,7 +8750,7 @@ async function handleAssignToMe() {
 }
 
 return (
-<div className="relative h-[calc(100vh-72px)] w-full overflow-hidden bg-white">
+<div className="relative h-full min-h-0 w-full overflow-hidden bg-white">
   {multiAgentToast ? (
     <div className="pointer-events-none absolute right-5 top-5 z-[90] w-[min(390px,calc(100%-2.5rem))]">
       <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
@@ -8735,10 +8799,10 @@ return (
   ) : null}
 
     <div
-      className={`grid h-full min-h-0 overflow-hidden ${
+      className={`grid h-full min-h-0 overflow-x-auto overflow-y-hidden ${
        customerPanelVisible
-  ? "grid-cols-[472px_minmax(0,1fr)_340px]"
-  : "grid-cols-[472px_minmax(0,1fr)]"
+  ? "grid-cols-[clamp(320px,30vw,472px)_minmax(400px,1fr)_300px] 2xl:grid-cols-[472px_minmax(400px,1fr)_340px]"
+  : "grid-cols-[clamp(320px,30vw,472px)_minmax(400px,1fr)]"
       }`}
     >
      <ConversationList

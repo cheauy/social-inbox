@@ -108,6 +108,13 @@ export async function loadLocalFacebookCommentContext({
     );
   }
 
+  return loadCommentConversation(message, businessId);
+}
+
+async function loadCommentConversation(
+  message: CommentMessageRow,
+  businessId: string,
+): Promise<LocalFacebookCommentContext> {
   if (!message.conversation_id) {
     throw new FacebookCommentContextError(
       "Facebook comment conversation routing is missing.",
@@ -176,6 +183,13 @@ export async function loadFacebookCommentActionContext({
       conversationId,
     });
 
+  return loadCommentPageContext(localContext, businessId);
+}
+
+async function loadCommentPageContext(
+  localContext: LocalFacebookCommentContext,
+  businessId: string,
+): Promise<FacebookCommentActionContext> {
   const socialAccountId =
     localContext.conversation
       .social_account_id;
@@ -316,11 +330,10 @@ export async function loadAuthorizedFacebookCommentActionContext({
     throw new FacebookCommentContextError(access.error, access.status);
   }
 
-  const context = await loadFacebookCommentActionContext({
-    businessId: message.business_id,
-    commentId,
-    conversationId,
-  });
+  // Reuse the exact message already resolved and authorized in this request.
+  // Do not repeat the same messages lookup before resolving its Page.
+  const localContext = await loadCommentConversation(message, message.business_id);
+  const context = await loadCommentPageContext(localContext, message.business_id);
 
   return {
     ...context,

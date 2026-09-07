@@ -219,6 +219,7 @@ export async function POST(
       const verifyResponse =
         await fetch(verifyUrl, {
           cache: "no-store",
+          signal: AbortSignal.timeout(1500),
         });
       const verifyResult =
         await readGraphResult(

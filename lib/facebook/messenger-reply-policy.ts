@@ -1,3 +1,6 @@
+import { getFacebookMessengerWindowState, type FacebookMessengerWindowState } from "@/lib/facebook/messenger-window";
+export type { FacebookMessengerWindowState } from "@/lib/facebook/messenger-window";
+
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
@@ -149,14 +152,6 @@ const STANDARD_WINDOW_MS =
   24 * 60 * 60 * 1000;
 const HUMAN_AGENT_WINDOW_MS =
   7 * 24 * 60 * 60 * 1000;
-
-export type FacebookMessengerWindowState =
-  | "standard"
-  | "human_agent"
-  | "expired"
-  | "private_reply_available"
-  | "waiting_for_customer_reply"
-  | "unknown";
 
 export type FacebookMessengerReplyPolicy = {
   hasRecentDirectCustomerMessage: boolean;
@@ -314,60 +309,13 @@ export async function getFacebookMessengerReplyPolicy(
     directCustomerMessageAgeMs <
       HUMAN_AGENT_WINDOW_MS;
 
-  /*
-   * A new Facebook comment creates a separate one-private-reply opportunity.
-   * An older Messenger DM must not count as the customer's reply to that new
-   * comment. We therefore compare exact timestamps inside this conversation.
-   */
-  const latestCommentIsNewerThanDirectIncoming =
-    Number.isFinite(
-      latestIncomingCommentAtMs,
-    ) &&
-    (!Number.isFinite(
-      latestDirectIncomingAtMs,
-    ) ||
-      latestIncomingCommentAtMs >
-        latestDirectIncomingAtMs);
-
-  const pageAlreadySentAfterLatestComment =
-    latestCommentIsNewerThanDirectIncoming &&
-    Number.isFinite(
-      latestDirectOutgoingAtMs,
-    ) &&
-    latestDirectOutgoingAtMs >=
-      latestIncomingCommentAtMs;
-
-  const waitingForCustomerReply =
-    latestCommentIsNewerThanDirectIncoming &&
-    pageAlreadySentAfterLatestComment;
-
-  let windowState:
-    FacebookMessengerWindowState =
-      "unknown";
-
-  if (waitingForCustomerReply) {
-    windowState =
-      "waiting_for_customer_reply";
-  } else if (
-    latestCommentIsNewerThanDirectIncoming
-  ) {
-    windowState =
-      "private_reply_available";
-  } else if (
-    hasRecentDirectCustomerMessage
-  ) {
-    windowState = "standard";
-  } else if (withinHumanAgentWindow) {
-    windowState = "human_agent";
-  } else if (
-    Number.isFinite(
-      directCustomerMessageAgeMs,
-    ) &&
-    directCustomerMessageAgeMs >=
-      HUMAN_AGENT_WINDOW_MS
-  ) {
-    windowState = "expired";
-  }
+  const windowState = getFacebookMessengerWindowState(
+    latestDirectIncomingAtMs,
+    latestIncomingCommentAtMs,
+    latestDirectOutgoingAtMs,
+    nowMs,
+  );
+  const waitingForCustomerReply = windowState === "waiting_for_customer_reply";
 
   return {
     hasRecentDirectCustomerMessage,
