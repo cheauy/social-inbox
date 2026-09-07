@@ -17,10 +17,16 @@ import type { NextRequest } from "next/server";
  * It must match a Valid OAuth Redirect URI in the Meta app exactly -- Meta
  * compares the string, not the destination -- so changing this without adding
  * the new URI in the Meta dashboard first will break connecting a Page.
+ *
+ * It deliberately does not fall back to TENH_APP_URL. That variable is the
+ * public TENH domain -- what Telegram webhooks register against and what
+ * PayWay returns to -- and it points at tenhchat.com, which is now the
+ * marketing site. Chaining to it kept sending Facebook to the marketing
+ * domain after the app had already moved. The two answer different questions,
+ * so they get different variables.
  */
 export const FACEBOOK_PRODUCTION_ORIGIN =
   process.env.FACEBOOK_APP_ORIGIN?.trim() ||
-  process.env.TENH_APP_URL?.trim() ||
   "https://app.tenhchat.com";
 
 /*
