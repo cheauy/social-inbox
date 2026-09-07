@@ -162,6 +162,37 @@ export function FacebookPageSelectUi({
     ? Math.min(100, Math.max(0, (channelUsage.used / channelUsage.limit) * 100))
     : 0;
 
+  /*
+   * Split by whether TENH already has the Page.
+   *
+   * Meta hands back every Page the person administers, so the list mixes three
+   * different situations that looked identical: a Page already live in this
+   * workspace, one TENH knows but has lost access to, and one it has never
+   * seen. Every row carried the same four badges -- Messenger, Comments, and
+   * then a state chip beside a readiness chip -- so "Reconnect" in amber sat
+   * next to "Ready" in green on the same row and read as a contradiction.
+   *
+   * Messenger and Comments were on every row without exception, which means
+   * they distinguished nothing. They belong in the description, once.
+   *
+   * What the customer is actually asking is "which of these do I still need to
+   * connect", so that is the split.
+   */
+  const groupedPages = useMemo(() => {
+    const pending: PageItem[] = [];
+    const connected: PageItem[] = [];
+
+    for (const page of filtered) {
+      if (page.connectionState === "connected") {
+        connected.push(page);
+      } else {
+        pending.push(page);
+      }
+    }
+
+    return { pending, connected };
+  }, [filtered]);
+
   function toggle(pageId: string) {
     setSelected((current) => {
       const next = new Set(current);
@@ -230,57 +261,119 @@ export function FacebookPageSelectUi({
             </div>
           </div>
 
-          <div className="mt-3 max-h-[42dvh] space-y-2 overflow-y-auto overscroll-contain pr-1">
-            {filtered.map((page) => {
-              const checked = selected.has(page.id);
-              return (
-                <label
-                  key={page.id}
-                  className={`flex cursor-pointer items-center gap-3 rounded-xl border bg-white px-4 py-3 transition ${checked ? "border-blue-500 bg-blue-50/40 ring-1 ring-blue-100" : "border-slate-200 hover:border-blue-300 hover:bg-blue-50/20"}`}
-                >
-                  <input
-                    type="checkbox"
-                    name="pageId"
-                    value={page.id}
-                    checked={checked}
-                    onChange={() => toggle(page.id)}
-                    className="h-5 w-5 shrink-0 cursor-pointer rounded border-slate-300 accent-blue-600"
-                  />
-
-                  <PageAvatar page={page} />
-
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-base font-bold tracking-[-0.01em] text-slate-950">
-                      {page.name}
-                    </p>
-                    <div className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-slate-500">
-                      <span className="flex h-4 w-4 items-center justify-center rounded-sm bg-blue-600 text-[10px] font-bold text-white">f</span>
-                      <span>Facebook</span>
-                    </div>
-                    <p className="mt-0.5 truncate text-xs text-slate-500">
-                      {isKhmer ? "លេខសម្គាល់ Page៖" : "Page ID:"} {page.id}
-                    </p>
+          <div className="mt-3 max-h-[42dvh] space-y-4 overflow-y-auto overscroll-contain pr-1">
+            {(
+              [
+                {
+                  key: "pending" as const,
+                  items: groupedPages.pending,
+                  title: isKhmer
+                    ? "មិនទាន់ភ្ជាប់"
+                    : "Not connected yet",
+                  hint: isKhmer
+                    ? "ជ្រើសរើស Page ដែលអ្នកចង់នាំចូល TENH"
+                    : "Choose the Pages you want in TENH",
+                },
+                {
+                  key: "connected" as const,
+                  items: groupedPages.connected,
+                  title: isKhmer
+                    ? "ភ្ជាប់រួចហើយ"
+                    : "Already connected",
+                  hint: isKhmer
+                    ? "ជ្រើសរើសម្តងទៀត តែពេលចង់ធ្វើឱ្យសិទ្ធិចូលប្រើថ្មី"
+                    : "Only select these again to refresh their access",
+                },
+              ]
+            )
+              .filter((group) => group.items.length > 0)
+              .map((group) => (
+                <section key={group.key}>
+                  <div className="flex items-baseline gap-2 px-1 pb-1.5">
+                    <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">
+                      {group.title}
+                    </h3>
+                    <span className="text-[11px] font-semibold text-slate-400">
+                      {group.items.length}
+                    </span>
+                    <span className="truncate text-[11px] text-slate-400">
+                      · {group.hint}
+                    </span>
                   </div>
 
-                  <div className="hidden shrink-0 flex-wrap items-center justify-end gap-2 lg:flex">
-                    <Badge tone="blue">Messenger</Badge>
-                    <Badge tone="green">{isKhmer ? "មតិយោបល់" : "Comments"}</Badge>
-                    {page.connectionState === "connected" ? (
-                      <Badge tone="blue">
-                        {isKhmer ? "ភ្ជាប់រួចហើយ" : "Already connected"}
-                      </Badge>
-                    ) : page.connectionState === "reconnect" ? (
-                      <Badge tone="amber">
-                        {isKhmer ? "ភ្ជាប់ឡើងវិញ" : "Reconnect"}
-                      </Badge>
-                    ) : null}
-                    <Badge tone={page.ready ? "green" : "amber"}>
-                      {page.ready ? (isKhmer ? "រួចរាល់" : "Ready") : (isKhmer ? "ត្រូវការសិទ្ធិចូលប្រើ" : "Needs access")}
-                    </Badge>
+                  <div className="space-y-2">
+                    {group.items.map((page) => {
+                      const checked = selected.has(page.id);
+                      const isConnected =
+                        page.connectionState === "connected";
+
+                      return (
+                        <label
+                          key={page.id}
+                          className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition ${
+                            checked
+                              ? "border-blue-500 bg-blue-50/40 ring-1 ring-blue-100"
+                              : isConnected
+                                ? "border-slate-200 bg-slate-50/70 hover:border-blue-300"
+                                : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/20"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            name="pageId"
+                            value={page.id}
+                            checked={checked}
+                            onChange={() => toggle(page.id)}
+                            className="h-5 w-5 shrink-0 cursor-pointer rounded border-slate-300 accent-blue-600"
+                          />
+
+                          <PageAvatar page={page} />
+
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-base font-bold tracking-[-0.01em] text-slate-950">
+                              {page.name}
+                            </p>
+                            <p className="mt-0.5 truncate text-xs text-slate-500">
+                              {isKhmer ? "លេខសម្គាល់ Page៖" : "Page ID:"}{" "}
+                              {page.id}
+                            </p>
+                          </div>
+
+                          {/*
+                            One chip, not four. A Page is in exactly one state,
+                            and the missing-permission case outranks it: a Page
+                            TENH cannot reach yet is not ready to connect
+                            whatever its history.
+                          */}
+                          <div className="hidden shrink-0 items-center justify-end gap-2 lg:flex">
+                            {!page.ready ? (
+                              <Badge tone="amber">
+                                {isKhmer
+                                  ? "ត្រូវការសិទ្ធិចូលប្រើ"
+                                  : "Needs access"}
+                              </Badge>
+                            ) : isConnected ? (
+                              <Badge tone="blue">
+                                {isKhmer ? "ភ្ជាប់រួចហើយ" : "Connected"}
+                              </Badge>
+                            ) : page.connectionState === "reconnect" ? (
+                              <Badge tone="amber">
+                                {isKhmer
+                                  ? "ភ្ជាប់ឡើងវិញ"
+                                  : "Was disconnected"}
+                              </Badge>
+                            ) : (
+                              <Badge tone="green">
+                                {isKhmer ? "ថ្មី" : "New"}
+                              </Badge>
+                            )}
+                          </div>
+                        </label>
+                      );
+                    })}
                   </div>
-                </label>
-              );
-            })}
+                </section>
+              ))}
 
             {filtered.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
