@@ -741,7 +741,14 @@ async function checkPublicDomain(checks: SystemCheck[]) {
       key: "application_domain",
       label: "TENH production domain",
       status: "error",
-      detail: "Set TENH_APP_URL to the public TENH domain, for example https://tenhchat.com.",
+      /*
+       * app.tenhchat.com, not tenhchat.com. This is where PayWay returns the
+       * customer after paying and where Telegram registers its webhook, and
+       * the bare domain now serves the marketing page -- an admin following
+       * this example would send paying customers to the pitch instead of
+       * their subscription.
+       */
+      detail: "Set TENH_APP_URL to the public TENH app domain, for example https://app.tenhchat.com.",
     });
     checks.push({
       key: "domain_dns",

@@ -13,8 +13,9 @@ import {
  *
  * Rendered in two places from this one deployment:
  * - at "/" when the request host is a marketing host (see app/page.tsx),
- *   which is how market.tenhchat.com serves it;
- * - at /dashboard/market, so the team can review it while signed in.
+ *   which is how tenhchat.com serves it;
+ * - at /dashboard/market, so the team can review it while signed in. It is
+ *   no longer linked from the nav, so that path is reached by typing it.
  *
  * It carries its own language switch rather than following the workspace
  * language: a visitor to the public site has no workspace, so the page has
