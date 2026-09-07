@@ -27,26 +27,13 @@ import {
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
+import {
+  FACEBOOK_COOKIE_DOMAIN,
+  getFacebookAppOrigin,
+} from "@/lib/facebook/facebook-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const FACEBOOK_PRODUCTION_ORIGIN =
-   "https://tenhchat.com";
-
-const FACEBOOK_COOKIE_DOMAIN =
-  process.env.NODE_ENV === "production"
-    ? ".tenhchat.com"
-    : undefined;
-
-function getFacebookAppOrigin(
-  request: NextRequest,
-) {
-  return process.env.NODE_ENV === "production"
-    ? FACEBOOK_PRODUCTION_ORIGIN
-    : request.nextUrl.origin;
-}
-
 
 type StoredFacebookUserToken = {
   facebook_user_access_token_encrypted: string | null;
