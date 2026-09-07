@@ -445,20 +445,12 @@ function getRealtimeMessagePreview(
     return "Message deleted";
   }
 
-  if (rawPayload?.tenh_location) {
-    return "Sent a location";
-  }
-
-  if (rawPayload?.tenh_animation) {
-    return "Sent a GIF";
-  }
-
   const rawMessageType =
     typeof row.message_type === "string"
       ? row.message_type
       : "unknown";
 
-  const messageType =
+  const knownMessageType =
     rawMessageType === "text" ||
     rawMessageType === "image" ||
     rawMessageType === "video" ||
@@ -471,9 +463,24 @@ function getRealtimeMessagePreview(
       ? rawMessageType
       : "unknown";
 
-  if (messageType === "sticker") {
-    return "Sent a sticker";
-  }
+  /*
+   * Location and GIF are recognised from the payload rather than the type --
+   * Telegram files both under a generic type -- so they are translated into a
+   * type the shared preview understands instead of being answered here.
+   *
+   * This used to return "Sent a location", "Sent a GIF" and "Sent a sticker"
+   * directly, which reads as something the agent did. Every other path builds
+   * the preview through getConversationMessagePreview, which knows the
+   * difference: an incoming sticker is "Sent you a sticker". The two disagreed
+   * about the same row, so the left list flickered between them as each update
+   * landed -- the same fault the deleted-message branch above was written to
+   * fix, in three more places.
+   */
+  const messageType = rawPayload?.tenh_location
+    ? "location"
+    : rawPayload?.tenh_animation
+      ? "animation"
+      : knownMessageType;
 
   const direction =
     row.direction === "incoming" ||
