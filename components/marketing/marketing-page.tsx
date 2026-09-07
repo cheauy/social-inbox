@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { Hanuman, Roboto } from "next/font/google";
 import { useState } from "react";
+import { appUrl } from "@/lib/display/app-origin";
 
 /*
  * The public marketing page.
@@ -266,6 +267,7 @@ const COPY = {
       features: "Features",
       pricing: "Pricing",
       help: "Help",
+      signIn: "Log in",
       getStarted: "Get started",
     },
     dir: "Messenger · Comment Facebook · Telegram",
@@ -623,6 +625,7 @@ const COPY = {
       features: "មុខងារ",
       pricing: "តម្លៃ",
       help: "ជំនួយ",
+      signIn: "ចូលគណនី",
       getStarted: "ចាប់ផ្តើម",
     },
     dir: "Messenger · Comment Facebook · Telegram",
@@ -1138,8 +1141,19 @@ export function MarketingPage() {
               </button>
             </div>
 
+            {/*
+              Someone who already has an account arrives looking for a way in,
+              and until now the header only offered them a sign-up button.
+            */}
             <a
-              href="/register"
+              href={appUrl("/login")}
+              className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition hover:text-slate-900 sm:inline-block"
+            >
+              {t.nav.signIn}
+            </a>
+
+            <a
+              href={appUrl("/register")}
               className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
             >
               {t.nav.getStarted}
@@ -1166,7 +1180,7 @@ export function MarketingPage() {
 
           <div className="mt-7 flex flex-wrap gap-3">
             <a
-              href="/register"
+              href={appUrl("/register")}
               className="rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
             >
               {t.ctaPrimary}
@@ -1516,7 +1530,7 @@ export function MarketingPage() {
                   </ul>
 
                   <a
-                    href="/register"
+                    href={appUrl("/register")}
                     className={`mt-6 rounded-xl px-4 py-2.5 text-center text-sm font-semibold transition ${
                       plan.featured
                         ? "bg-blue-600 text-white hover:bg-blue-700"
@@ -1572,7 +1586,7 @@ export function MarketingPage() {
               </ul>
 
               <a
-                href="/register"
+                href={appUrl("/register")}
                 className="mt-6 rounded-xl border border-white/25 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:border-white/50"
               >
                 {t.customCta}
@@ -1846,7 +1860,7 @@ export function MarketingPage() {
             </p>
           </div>
           <a
-            href="/register"
+            href={appUrl("/register")}
             className="rounded-xl bg-white px-6 py-3 text-sm font-bold text-[#0C2C87] transition hover:bg-blue-50"
           >
             {t.ctaPrimary}
