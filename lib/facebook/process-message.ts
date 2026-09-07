@@ -18,6 +18,48 @@ function toIso(timestamp?: number) {
     : new Date().toISOString();
 }
 
+/*
+ * Meta's own annotations, delivered as if the Page had typed them.
+ *
+ * Business Suite narrates itself into the thread -- "This chat was assigned to
+ * Deaar through an automation.", "RA VE replied to an ad.", "You are
+ * responding to a user comment to a post on your Page. View comment. (https://
+ * facebook.com/story.php?...)". They arrive as ordinary echoes, so TENH stored
+ * them as outgoing messages and drew them as blue bubbles the shop appeared to
+ * have sent, one of them a wall of raw URL.
+ *
+ * There is no structural way to tell them apart. They carry is_echo like every
+ * other echo, and while none of them has an app_id, neither do the 350
+ * outgoing messages a person typed straight into Business Suite -- filtering on
+ * that would hide real replies. The wording is the only reliable signal, and
+ * these are a small fixed set of Meta's own strings.
+ *
+ * Matching is deliberately narrow: the full distinctive phrase, only on
+ * echoes. A shop writing "replied to an ad" in a sentence of their own keeps
+ * their message.
+ */
+const FACEBOOK_SYSTEM_NOTICE_PATTERNS = [
+  /\bthrough an automation\.?$/i,
+  /\breplied to an ad\.?$/i,
+  /^you are responding to a user comment to a post on your page\b/i,
+  /^this chat was assigned to\b/i,
+];
+
+function isFacebookSystemNotice(
+  text: string | null | undefined,
+) {
+  const value =
+    typeof text === "string" ? text.trim() : "";
+
+  if (!value) {
+    return false;
+  }
+
+  return FACEBOOK_SYSTEM_NOTICE_PATTERNS.some(
+    (pattern) => pattern.test(value),
+  );
+}
+
 export async function processFacebookMessage(
   event: FacebookMessagingEvent,
 ) {
@@ -30,6 +72,19 @@ export async function processFacebookMessage(
   }
 
   const isEcho = event.message?.is_echo === true;
+
+  /*
+   * Dropped rather than hidden. These are Meta's own interface notices, not
+   * anything anyone wrote, so they do not belong in a message table at all --
+   * storing them would keep them in conversation previews, unread counts and
+   * every export, with a filter needed at each one.
+   */
+  if (
+    isEcho &&
+    isFacebookSystemNotice(event.message?.text)
+  ) {
+    return;
+  }
 
   /*
    * V3.11.30.2 — Multi-Page incoming Messenger fix.
