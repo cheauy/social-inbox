@@ -247,9 +247,16 @@ async function recoverMessenger({
   mode: FacebookRecoveryMode;
 }) {
   const reconnect = mode === "reconnect";
-  const conversationLimit = reconnect ? 100 : 20;
-  const messagesPerConversation = reconnect ? 100 : 20;
-  const maxMessageRefs = reconnect ? 1_500 : 80;
+  /*
+   * The watchdog numbers were chosen for a three-hour window. Widening it to a
+   * day through FACEBOOK_RECOVERY_LOOKBACK_MINUTES multiplies what a single
+   * pass has to look at, and the old caps immediately started cutting it
+   * short -- one Page found 28 missing messages and stored 12. They are sized
+   * for the wider window now.
+   */
+  const conversationLimit = reconnect ? 100 : 60;
+  const messagesPerConversation = reconnect ? 100 : 50;
+  const maxMessageRefs = reconnect ? 1_500 : 600;
 
   /*
    * A ceiling high enough to finish an ordinary day, and a clock to stop it
@@ -262,9 +269,9 @@ async function recoverMessenger({
    * Page finish while a very busy one stops early and reports it, rather than
    * either being cut short or running until the platform kills it mid-write.
    */
-  const maxMessageDetails = reconnect ? 1_200 : 60;
+  const maxMessageDetails = reconnect ? 1_200 : 400;
   const deadlineAt =
-    Date.now() + (reconnect ? 120_000 : 25_000);
+    Date.now() + (reconnect ? 120_000 : 150_000);
   let token = accessToken;
   let tokenRepaired = false;
 

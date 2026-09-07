@@ -11,6 +11,15 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/*
+ * This route repairs tokens and webhooks and then pulls back everything the
+ * webhooks missed, for every connected Page. It was running on the platform
+ * default, which is fine while the recovery window is three hours and much
+ * less so at a day. Stated explicitly so the budget inside the recovery pass
+ * has somewhere to fit.
+ */
+export const maxDuration = 300;
+
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, max-age=0",
 };
