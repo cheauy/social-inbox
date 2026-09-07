@@ -88,6 +88,12 @@ type ReplyBoxProps = {
    * comment threads, which take replies as text only.
    */
   attachmentsBlockedReason?: string | null;
+  /*
+   * Shown above the composer whenever what happens on Send is not what the
+   * agent would assume. Separate from attachmentsBlockedReason, which also
+   * serves as the attach button's tooltip and has to stay short.
+   */
+  channelNotice?: string | null;
 
   onStatusChange?: (
     status: ConversationStatus,
@@ -325,6 +331,7 @@ export function ReplyBox({
   onSendAttachments,
   canCaptionAttachments = false,
   attachmentsBlockedReason = null,
+  channelNotice = null,
   onStatusChange,
 }: ReplyBoxProps) {
   const isKhmer = useWorkspaceLanguageId() === "km";
@@ -1695,7 +1702,17 @@ export function ReplyBox({
         </p>
       ) : null}
 
-      {attachmentsBlocked ? (
+      {/*
+        Amber, not grey. This says the reply is about to be published where
+        anyone can read it, and the previous grey line sat quietly enough to be
+        read as decoration. Getting this wrong posts something meant for one
+        customer onto a public post, which cannot be taken back once seen.
+      */}
+      {channelNotice ? (
+        <p className="mx-3 mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+          {channelNotice}
+        </p>
+      ) : attachmentsBlocked ? (
         <p className="mx-3 mt-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">
           {attachmentsBlockedReason}
         </p>
