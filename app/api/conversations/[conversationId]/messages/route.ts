@@ -230,7 +230,7 @@ export async function GET(
     beforeCreatedAt &&
     beforeId
       ? {
-          createdAt:
+          sentAt:
             beforeCreatedAt,
           id:
             beforeId,

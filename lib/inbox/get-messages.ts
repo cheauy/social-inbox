@@ -8,8 +8,14 @@ import type {
 
 export const MESSAGE_PAGE_SIZE = 50;
 
+/*
+ * `sentAt` is the platform's own timestamp, not the row's insert time. The two
+ * agree for a message that arrived by webhook and disagree for every message
+ * pulled in by the recovery pass, which writes them in whatever order it
+ * fetched them.
+ */
 export type MessageCursor = {
-  createdAt: string;
+  sentAt: string;
   id: string;
 };
 
@@ -73,17 +79,28 @@ export async function getMessagePage({
       );
 
   /*
-   * Stable cursor:
-   * created_at DESC, id DESC
+   * Ordered by when the message was sent, not when TENH stored it.
    *
-   * If two messages share the same created_at value,
-   * the id tie-breaker prevents duplicates or skipped rows.
+   * These are the same thing for a message that arrives by webhook, and
+   * different for every message the recovery pass pulls in -- it fetches them
+   * per conversation, so a 12:58 message can be written after a 1:01 one. The
+   * list was sorted by insert time while the bubbles showed platform time, so
+   * a recovered conversation displayed its messages out of order, with the
+   * timestamps visibly disagreeing with the sequence.
+   *
+   * platform_created_at is set on every message in the table, so there is no
+   * null case to fall back on.
+   *
+   * Stable cursor: platform_created_at DESC, id DESC. The id tie-breaker
+   * matters more here than it did -- a recovery pass can give several messages
+   * the same platform timestamp, and without it they would repeat or vanish
+   * across page boundaries.
    */
   if (before) {
     query = query.or(
       [
-        `created_at.lt.${before.createdAt}`,
-        `and(created_at.eq.${before.createdAt},id.lt.${before.id})`,
+        `platform_created_at.lt.${before.sentAt}`,
+        `and(platform_created_at.eq.${before.sentAt},id.lt.${before.id})`,
       ].join(","),
     );
   }
@@ -92,7 +109,7 @@ export async function getMessagePage({
     data,
     error,
   } = await query
-    .order("created_at", {
+    .order("platform_created_at", {
       ascending: false,
     })
     .order("id", {
@@ -152,7 +169,8 @@ export async function getMessagePage({
       hasMore &&
       oldestMessage
         ? {
-            createdAt:
+            sentAt:
+              oldestMessage.platform_created_at ??
               oldestMessage.created_at,
             id:
               oldestMessage.id,
