@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import {
+  DEFAULT_NOTIFICATION_SOUND_KEY,
   notificationSounds,
   type NotificationSoundKey,
 } from "@/lib/inbox/notification-sounds";
@@ -325,17 +326,43 @@ export function NotificationSettingsCard() {
               </div>
             </div>
 
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
+            {/*
+              Fifteen sounds, so the row is smaller and the grid is wider than
+              the two big cards this held when there were six. The list is
+              scanned, not read: a number, and a way to hear it.
+
+              Choosing a sound plays it. Picking a notification tone without
+              hearing it is not a decision anyone can make, and the old layout
+              made you click the name and then hunt for the play button to find
+              out what you had chosen. The button stays for hearing one again
+              without changing the selection.
+            */}
+            <div className="mt-5 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
               {notificationSounds.map((sound) => {
                 const selected =
                   draftSound === sound.key;
 
+                const silent = !sound.src;
+
+                const isDefault =
+                  sound.key ===
+                  DEFAULT_NOTIFICATION_SOUND_KEY;
+
+                const soundNumber =
+                  sound.key.startsWith("sound-")
+                    ? sound.key.slice("sound-".length)
+                    : null;
+
                 return (
                   <div
                     key={sound.key}
-                    className={`flex min-h-[82px] items-center gap-4 rounded-2xl border px-5 py-4 transition ${
+                    className={`flex min-h-[60px] items-center gap-3 rounded-2xl border px-4 py-3 transition ${
+                      silent
+                        ? "sm:col-span-2 lg:col-span-3"
+                        : ""
+                    } ${
                       selected
-                        ? "border-blue-500 bg-blue-50/40 ring-1 ring-blue-100"
+                        ? "border-blue-500 bg-blue-50/50 ring-1 ring-blue-100"
                         : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60"
                     }`}
                   >
@@ -344,37 +371,60 @@ export function NotificationSettingsCard() {
                       onClick={() => {
                         setDraftSound(sound.key);
                         setSaved(false);
+
+                        if (sound.src) {
+                          void handlePreview(sound.key);
+                        }
                       }}
-                      className="flex min-w-0 flex-1 items-center gap-4 text-left"
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     >
                       <span
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
                           selected
                             ? "border-blue-600"
                             : "border-slate-300"
                         }`}
                       >
                         {selected ? (
-                          <span className="h-3 w-3 rounded-full bg-blue-600" />
+                          <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
                         ) : null}
                       </span>
 
-                      <span className="min-w-0">
-                        <span className="block truncate text-[15px] font-semibold text-slate-800">
-                          {sound.key === "droplet-ping" ? (
+                      <span className="flex min-w-0 flex-1 items-center gap-2">
+                        <span className="truncate text-sm font-semibold text-slate-800">
+                          {soundNumber ? (
                             <WorkspaceLanguageText
                               en={sound.label}
-                              km="Droplet Ping (លំនាំដើម)"
+                              km={`សំឡេង ${soundNumber}`}
                             />
-                          ) : sound.key === "none" ? (
+                          ) : silent ? (
                             <WorkspaceLanguageText
                               en={sound.label}
                               km="គ្មានសំឡេង"
                             />
                           ) : (
-                            sound.label
+                            <WorkspaceLanguageText
+                              en={sound.label}
+                              km="លំនាំដើម"
+                            />
                           )}
                         </span>
+
+                        {/*
+                          A badge rather than "(Default)" inside the name. It
+                          was part of the label before, which meant the string
+                          shown to the agent and the string used for the
+                          preview button's title were the same awkward
+                          "Droplet Ping(Default)".
+                        */}
+                        {isDefault ? (
+                          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                            <WorkspaceLanguageText
+                              en="Default"
+                              km="លំនាំដើម"
+                            />
+                          </span>
+                        ) : null}
                       </span>
                     </button>
 
@@ -384,9 +434,9 @@ export function NotificationSettingsCard() {
                         onClick={() => {
                           void handlePreview(sound.key);
                         }}
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-blue-600 shadow-sm transition hover:border-blue-300 hover:bg-blue-50"
-                        aria-label={`Preview ${sound.label}`}
-                        title={`Preview ${sound.label}`}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-blue-600 shadow-sm transition hover:border-blue-300 hover:bg-blue-50"
+                        aria-label={`Play ${sound.label}`}
+                        title={`Play ${sound.label}`}
                       >
                         <PlayIcon />
                       </button>

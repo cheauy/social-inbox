@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const GROUP_MENTION_SOUND_SRC = "/alert-sound/mentions-notification.mp3";
-const GROUP_MENTION_FALLBACK_SOUND_SRC = "/alert-sound/crystal-bell-chime.wav";
+const GROUP_MENTION_FALLBACK_SOUND_SRC = "/alert-sound/notification-default.wav";
 
 type TeamNotification = {
   id: string;

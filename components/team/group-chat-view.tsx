@@ -149,7 +149,7 @@ async function readJsonResponse<T>(
 }
 
 const MENTION_SOUND_SRC = "/alert-sound/mentions-notification.mp3";
-const FALLBACK_SOUND_SRC = "/alert-sound/crystal-bell-chime.wav";
+const FALLBACK_SOUND_SRC = "/alert-sound/notification-default.wav";
 
 function formatBytes(bytes: number) {
   if (bytes < 1024) {

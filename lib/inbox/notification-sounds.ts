@@ -10,52 +10,65 @@ export const NOTIFICATION_VOLUME_STORAGE_KEY =
 export const NOTIFICATION_PREFERENCES_EVENT =
   "tenh-chat-notification-preferences-changed";
 
-export const notificationSounds = [
+export const DEFAULT_NOTIFICATION_VOLUME = 0.7;
+
+/*
+ * The sounds that exist in public/alert-sound, and nothing else.
+ *
+ * This list named six files -- droplet-ping.wav, crystal-bell-chime.wav and
+ * the rest -- that are no longer in the folder. Every entry in the picker
+ * pointed at a 404, so the whole feature was silent: no preview played and no
+ * message ever made a sound, while the settings page still showed six choices
+ * as though they worked.
+ *
+ * The files are numbered, so the labels are too. Inventing names for audio is
+ * how the list drifted in the first place -- "Crystal Bell" said nothing about
+ * which file it was and survived long after that file was gone. A number
+ * cannot go stale, and the play button is what tells you what it sounds like.
+ *
+ * Adding a sound is one file and one bump of NUMBERED_SOUND_COUNT.
+ */
+const NUMBERED_SOUND_COUNT = 14;
+
+export const DEFAULT_NOTIFICATION_SOUND_KEY = "default";
+
+export type NotificationSoundKey =
+  | "default"
+  | "none"
+  | `sound-${number}`;
+
+export type NotificationSound = {
+  key: NotificationSoundKey;
+  label: string;
+  src: string | null;
+};
+
+export const notificationSounds: NotificationSound[] = [
   {
-    key: "droplet-ping",
-    label: "Droplet Ping(Default)",
-    src: "/alert-sound/droplet-ping.wav",
+    key: DEFAULT_NOTIFICATION_SOUND_KEY,
+    label: "Default",
+    src: "/alert-sound/notification-default.wav",
   },
-  {
-    key: "crystal-bell",
-    label: "Crystal Bell",
-    src: "/alert-sound/crystal-bell-chime.wav",
-  },
-  {
-    key: "bubble-pop",
-    label: "Bubble Pop",
-    src: "/alert-sound/bubble-pop.wav",
-  },
-  {
-    key: "felted-piano",
-    label: "Felted Piano",
-    src: "/alert-sound/felted-piano.wav",
-  },
-  {
-    key: "rising-square-wave",
-    label: "Rising Square Wave",
-    src: "/alert-sound/rising-square-wave.wav",
-  },
-   {
-    key: "soft-glass-droplet",
-    label: "Glass Droplet",
-    src: "/alert-sound/soft-glass-droplet.wav",
-  },
+
+  ...Array.from(
+    { length: NUMBERED_SOUND_COUNT },
+    (_, index): NotificationSound => {
+      const number = index + 1;
+
+      return {
+        key: `sound-${number}`,
+        label: `Sound ${number}`,
+        src: `/alert-sound/notification-${number}.wav`,
+      };
+    },
+  ),
+
   {
     key: "none",
     label: "No sound",
-    description: "Keep desktop notifications silent.",
     src: null,
   },
-] as const;
-
-export type NotificationSoundKey =
-  (typeof notificationSounds)[number]["key"];
-
-export const DEFAULT_NOTIFICATION_SOUND_KEY:
-  NotificationSoundKey = "droplet-ping";
-
-export const DEFAULT_NOTIFICATION_VOLUME = 0.7;
+];
 
 export function isNotificationSoundKey(
   value: string | null,
@@ -68,6 +81,11 @@ export function isNotificationSoundKey(
 export function getNotificationSound(
   key: NotificationSoundKey,
 ) {
+  /*
+   * Anything unrecognised falls back to the default rather than to silence.
+   * Everyone who chose one of the old names is holding a key that no longer
+   * exists, and their inbox should keep making a sound.
+   */
   return (
     notificationSounds.find(
       (sound) => sound.key === key,

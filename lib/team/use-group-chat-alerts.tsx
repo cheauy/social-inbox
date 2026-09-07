@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export const MENTION_SOUND_SRC = "/alert-sound/mentions-notification.mp3";
 
 /** Shipped with the app, used if the mp3 above is missing. */
-const FALLBACK_SOUND_SRC = "/alert-sound/crystal-bell-chime.wav";
+const FALLBACK_SOUND_SRC = "/alert-sound/notification-default.wav";
 
 export const GROUP_CHAT_BADGE_EVENT = "tenh:group-chat-badge";
 
