@@ -12,8 +12,6 @@ import { isCurrentUserTenhAdminIdentity } from "@/lib/admin/tenh-admin-auth";
 type NavItem = {
   label: string;
   href: string;
-  /** Opens in a new tab and skips the Next.js client router. */
-  external?: boolean;
 };
 
 const normalNavigation: NavItem[] = [
@@ -23,12 +21,12 @@ const normalNavigation: NavItem[] = [
   { label: "Subscription", href: "/dashboard/subscription" },
   { label: "Integrations", href: "/dashboard/integrations" },
   /*
-   * Public marketing site. Opens in a new tab so the agent keeps their
-   * inbox open behind it. The in-app preview of this page still lives at
-   * /dashboard/market and can be linked here instead while the public
-   * site is being set up.
+   * No marketing link. It pointed at market.tenhchat.com, which is retired in
+   * favour of tenhchat.com, and it sat between Integrations and Settings in
+   * the working nav -- an outward link where every other item is somewhere the
+   * agent does their job. The page itself is still reviewable at
+   * /dashboard/market.
    */
-  { label: "Market", href: "https://market.tenhchat.com", external: true },
   { label: "Settings", href: "/dashboard/settings" },
 ];
 
@@ -96,17 +94,7 @@ export async function DashboardHeader() {
              * the Next.js client router. Other dashboard navigation stays SPA.
              */
             const link =
-              item.external ? (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={linkClassName}
-                >
-                  {linkContent}
-                </a>
-              ) : item.href === "/dashboard/inbox" ? (
+              item.href === "/dashboard/inbox" ? (
                 <a
                   key={item.href}
                   href={item.href}

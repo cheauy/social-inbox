@@ -2,8 +2,11 @@
 
 import Image from "next/image";
 import { Hanuman, Roboto } from "next/font/google";
-import { useState } from "react";
-import { appUrl } from "@/lib/display/app-origin";
+import { useEffect, useState } from "react";
+import {
+  APP_ORIGIN,
+  appUrl,
+} from "@/lib/display/app-origin";
 
 /*
  * The public marketing page.
@@ -1011,6 +1014,85 @@ export function MarketingPage() {
   const [lang, setLang] = useState<Lang>("en");
   const [cycleIndex, setCycleIndex] = useState(0);
   const [featureIndex, setFeatureIndex] = useState(0);
+
+  /*
+   * A visitor who is already signed in should be in the app, not reading the
+   * pitch for a product they have bought.
+   *
+   * This cannot be decided on the server. The session cookie is host-only on
+   * app.tenhchat.com, so the request that renders tenhchat.com carries no
+   * session at all -- the page has to ask the app host, from the browser,
+   * where the cookie actually is. Both hosts share a registrable domain, so
+   * the cookie rides along and third-party cookie blocking does not apply.
+   *
+   * Deliberately narrow. It only runs on the marketing hostname (APP_ORIGIN is
+   * another origin there, and empty in development), only on the front page,
+   * and never when ?stay=1 is present -- which is how anyone, signed in or
+   * not, reads the marketing site on purpose. Every failure leaves the visitor
+   * exactly where they are: a signed-out visitor, an offline browser and an
+   * endpoint that cannot be reached are all the same answer, which is to show
+   * the page that was already rendered.
+   */
+  useEffect(() => {
+    if (!APP_ORIGIN) {
+      return;
+    }
+
+    if (
+      window.location.origin === APP_ORIGIN ||
+      window.location.pathname !== "/"
+    ) {
+      return;
+    }
+
+    if (
+      new URLSearchParams(
+        window.location.search,
+      ).has("stay")
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function handOverIfSignedIn() {
+      try {
+        const response = await fetch(
+          appUrl("/api/auth/session-check"),
+          {
+            credentials: "include",
+            cache: "no-store",
+          },
+        );
+
+        if (!response.ok || cancelled) {
+          return;
+        }
+
+        const result = (await response.json()) as {
+          signedIn?: boolean;
+        };
+
+        if (cancelled || !result.signedIn) {
+          return;
+        }
+
+        // replace, not assign: Back should return to wherever the visitor
+        // came from, not to a page that immediately forwards them again.
+        window.location.replace(
+          appUrl("/dashboard/inbox"),
+        );
+      } catch {
+        // Offline, blocked, or the app is down. Stay on the marketing page.
+      }
+    }
+
+    void handOverIfSignedIn();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const t = COPY[lang];
   const cycle = CYCLES[cycleIndex];

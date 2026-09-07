@@ -2,6 +2,10 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { MarketingPage } from "@/components/marketing/marketing-page";
+import {
+  MARKETING_HOSTS,
+  normalizeHost,
+} from "@/lib/display/marketing-hosts";
 import { createClient } from "@/lib/supabase/server";
 
 /*
@@ -13,25 +17,9 @@ import { createClient } from "@/lib/supabase/server";
  * what lets www keep answering the Facebook OAuth callback while its front
  * page becomes the marketing site.
  *
- * market.tenhchat.com is being retired in favour of tenhchat.com, but it stays
- * listed until the domain itself is removed or redirected in Vercel. Dropping
- * it here first would not retire it -- it would just start serving the app to
- * anyone still holding that link, which is worse than leaving it.
+ * The host list and the matching live in lib/display/marketing-hosts, because
+ * the session-check endpoint has to agree with them exactly.
  */
-const MARKETING_HOSTS = new Set([
-  "tenhchat.com",
-  "www.tenhchat.com",
-  "market.tenhchat.com",
-]);
-
-function normalizeHost(value: string | null) {
-  if (!value) {
-    return "";
-  }
-
-  // Host can arrive as "name:port"; the port is never part of the match.
-  return value.trim().toLowerCase().split(":")[0];
-}
 
 export default async function HomePage() {
   const headerList = await headers();
