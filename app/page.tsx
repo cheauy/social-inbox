@@ -8,12 +8,19 @@ import { createClient } from "@/lib/supabase/server";
  * One deployment serves both the app hostname and the marketing hostname,
  * so the root route decides by Host which one the visitor asked for.
  *
- * Temporary arrangement: marketing lives on market.tenhchat.com while the
- * app is still in review on the main domain. When it moves to tenhchat.com,
- * add that host here; when market.tenhchat.com is retired, drop it. Nothing
- * else needs to change.
+ * The app now lives on app.tenhchat.com, so the bare domain and www belong to
+ * marketing. Only the root route moves: every other path is shared, which is
+ * what lets www keep answering the Facebook OAuth callback while its front
+ * page becomes the marketing site.
+ *
+ * market.tenhchat.com is being retired in favour of tenhchat.com, but it stays
+ * listed until the domain itself is removed or redirected in Vercel. Dropping
+ * it here first would not retire it -- it would just start serving the app to
+ * anyone still holding that link, which is worse than leaving it.
  */
 const MARKETING_HOSTS = new Set([
+  "tenhchat.com",
+  "www.tenhchat.com",
   "market.tenhchat.com",
 ]);
 
