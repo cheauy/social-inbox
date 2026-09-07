@@ -7,15 +7,16 @@
  * render but its check would be refused, and a signed-in visitor would sit on
  * the marketing page forever with no sign anything was wrong.
  *
- * market.tenhchat.com is retired in favour of tenhchat.com but stays listed
- * until the domain itself is removed or redirected in Vercel. Dropping it here
- * would not retire it -- it would start serving the app to anyone still
- * holding that link.
+ * Both are listed because the bare domain 308s to www in Vercel, so the page
+ * actually runs on www while links and typed addresses arrive at the apex.
+ *
+ * market.tenhchat.com was here until the domain itself was retired; it now
+ * answers 404 at the edge and never reaches this code, so listing it only
+ * described a host that no longer exists.
  */
 export const MARKETING_HOSTS = new Set([
   "tenhchat.com",
   "www.tenhchat.com",
-  "market.tenhchat.com",
 ]);
 
 export function normalizeHost(value: string | null) {
