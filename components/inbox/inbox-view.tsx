@@ -402,6 +402,37 @@ function sortLiveConversations(
   );
 }
 
+/*
+ * When a message belongs in the thread, as opposed to when TENH wrote the row.
+ *
+ * The server orders by platform_created_at, but the client re-sorted every
+ * merged list by created_at and quietly overrode it. Those agree for a message
+ * that arrived by webhook and disagree for every message the recovery pass
+ * pulls in, which writes them whenever it happens to fetch them. A message
+ * sent at 11:12 PM yesterday and recovered this morning sorted to the very end
+ * of the thread -- which is why the "Yesterday" divider appeared underneath
+ * today's messages instead of above them.
+ *
+ * Falling back to created_at keeps this safe for anything without a platform
+ * timestamp.
+ */
+function messageOrderMs(message: {
+  created_at: string;
+  platform_created_at?: string | null;
+}) {
+  const sentAt = message.platform_created_at;
+
+  if (typeof sentAt === "string" && sentAt) {
+    const parsed = new Date(sentAt).getTime();
+
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return new Date(message.created_at).getTime();
+}
+
 function getRealtimeMessagePreview(
   row: Record<string, unknown>,
 ) {
@@ -2383,12 +2414,8 @@ useInboxRealtime({
               [...nextMessages].sort(
                 (first, second) => {
                   const timeDifference =
-                    new Date(
-                      first.created_at,
-                    ).getTime() -
-                    new Date(
-                      second.created_at,
-                    ).getTime();
+                    messageOrderMs(first) -
+              messageOrderMs(second);
 
                   return timeDifference !== 0
                     ? timeDifference
@@ -2569,12 +2596,8 @@ useInboxRealtime({
                   first,
                   second,
                 ) =>
-                  new Date(
-                    first.created_at,
-                  ).getTime() -
-                  new Date(
-                    second.created_at,
-                  ).getTime(),
+                  messageOrderMs(first) -
+              messageOrderMs(second),
               );
             }
 
@@ -2583,12 +2606,8 @@ useInboxRealtime({
               row as unknown as typeof current[number],
             ].sort(
               (first, second) =>
-                new Date(
-                  first.created_at,
-                ).getTime() -
-                new Date(
-                  second.created_at,
-                ).getTime(),
+                messageOrderMs(first) -
+              messageOrderMs(second),
             );
           }
 
@@ -3964,12 +3983,8 @@ useEffect(() => {
       ).sort(
         (first, second) => {
           const timeDifference =
-            new Date(
-              first.created_at,
-            ).getTime() -
-            new Date(
-              second.created_at,
-            ).getTime();
+            messageOrderMs(first) -
+              messageOrderMs(second);
 
           if (
             timeDifference !== 0
@@ -4095,12 +4110,8 @@ const loadConversationMessagePage =
             .sort(
               (first, second) => {
                 const timeDifference =
-                  new Date(
-                    first.created_at,
-                  ).getTime() -
-                  new Date(
-                    second.created_at,
-                  ).getTime();
+                  messageOrderMs(first) -
+              messageOrderMs(second);
 
                 if (
                   timeDifference !== 0
@@ -4436,12 +4447,8 @@ const selectConversationSmoothly =
                 return merged.sort(
                   (first, second) => {
                     const timeDifference =
-                      new Date(
-                        first.created_at,
-                      ).getTime() -
-                      new Date(
-                        second.created_at,
-                      ).getTime();
+                      messageOrderMs(first) -
+              messageOrderMs(second);
 
                     return timeDifference !== 0
                       ? timeDifference
@@ -4924,8 +4931,8 @@ useEffect(() => {
     return merged.sort(
       (first, second) => {
         const timeDifference =
-          new Date(first.created_at).getTime() -
-          new Date(second.created_at).getTime();
+          messageOrderMs(first) -
+      messageOrderMs(second);
 
         return timeDifference !== 0
           ? timeDifference
@@ -5399,12 +5406,8 @@ async function handleLoadOlderMessages(): Promise<boolean> {
         ).sort(
           (first, second) => {
             const timeDifference =
-              new Date(
-                first.created_at,
-              ).getTime() -
-              new Date(
-                second.created_at,
-              ).getTime();
+              messageOrderMs(first) -
+              messageOrderMs(second);
 
             if (
               timeDifference !== 0
