@@ -680,7 +680,10 @@ export async function POST(
           console.info(
             `[Tenh Facebook OAuth] First-day backfill for ${backfillPageId}: ` +
               `${result.messenger.recovered} messages, ` +
-              `${result.comments.recovered} comments.`,
+              `${result.comments.recovered} comments` +
+              (result.messenger.truncated
+                ? ", stopped at this pass's limit; the watchdog will continue."
+                : "."),
           );
         } catch (error) {
           /*

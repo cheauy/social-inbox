@@ -108,7 +108,31 @@ async function processAccount(
     mode: needsBackfill ? "reconnect" : "watchdog",
   });
 
-  if (needsBackfill) {
+  /*
+   * Clear the flag only when the backfill actually finished.
+   *
+   * It used to clear unconditionally, so a pass that ran out of room left the
+   * Page marked as fully caught up. The next run then used the ordinary
+   * three-hour watchdog window, which cannot reach back to what was still
+   * missing -- and those messages were never collected at all. A Page busy
+   * enough to truncate is exactly the one that could least afford it.
+   *
+   * Leaving the flag set costs one more deep pass and is idempotent: already
+   * stored messages are skipped before any Graph call is made for them.
+   */
+  /*
+   * Only the Messenger signal is trustworthy here. comments.truncated is also
+   * set when the Page's feed simply returned a full page of posts, which is
+   * true of any active Page whether or not a single comment was missed -- a
+   * run recovering 38 of 38 still reports it. Gating on that would keep the
+   * flag set permanently and run a seven-day pass every night for nothing.
+   *
+   * messenger.truncated means what it says: there were more missing messages
+   * than this pass could fetch.
+   */
+  const backfillIncomplete = recovery.messenger.truncated;
+
+  if (needsBackfill && !backfillIncomplete) {
     const { error: clearError } = await supabaseAdmin
       .from("social_accounts")
       .update({ facebook_backfill_requested_at: null })
@@ -120,6 +144,11 @@ async function processAccount(
         clearError.message,
       );
     }
+  } else if (needsBackfill) {
+    console.info(
+      `[TENH Facebook Watchdog] ${pageId} backfill hit its limit; ` +
+        "keeping the flag so the next run continues.",
+    );
   }
 
   return {

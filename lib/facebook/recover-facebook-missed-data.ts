@@ -249,8 +249,22 @@ async function recoverMessenger({
   const reconnect = mode === "reconnect";
   const conversationLimit = reconnect ? 100 : 20;
   const messagesPerConversation = reconnect ? 100 : 20;
-  const maxMessageRefs = reconnect ? 500 : 80;
-  const maxMessageDetails = reconnect ? 250 : 60;
+  const maxMessageRefs = reconnect ? 1_500 : 80;
+
+  /*
+   * A ceiling high enough to finish an ordinary day, and a clock to stop it
+   * before the function does.
+   *
+   * Every message costs one sequential Graph call, so a fixed count is really
+   * a bet on how fast Meta answers today. 250 was a safe bet and a low one: a
+   * Page taking three hundred messages in a day connected and silently got
+   * part of it, with nothing to say so. Budgeting time instead lets a busy
+   * Page finish while a very busy one stops early and reports it, rather than
+   * either being cut short or running until the platform kills it mid-write.
+   */
+  const maxMessageDetails = reconnect ? 1_200 : 60;
+  const deadlineAt =
+    Date.now() + (reconnect ? 120_000 : 25_000);
   let token = accessToken;
   let tokenRepaired = false;
 
@@ -312,7 +326,19 @@ async function recoverMessenger({
 
   // Fetch details only for IDs TENH does not already have. This keeps the
   // hourly recovery bounded and avoids unnecessary Graph calls.
+  let stoppedEarly = false;
+
   for (const messageId of missingIds.slice(0, maxMessageDetails)) {
+    if (Date.now() > deadlineAt) {
+      /*
+       * Out of time rather than out of messages. The remainder is not lost --
+       * the caller keeps the backfill flag set so the next pass continues from
+       * whatever is still missing.
+       */
+      stoppedEarly = true;
+      break;
+    }
+
     try {
       let detail =
         await facebookGraphJsonWithTokenRecovery<GraphMessageDetail>({
@@ -413,7 +439,9 @@ async function recoverMessenger({
     recovered,
     failed,
     truncated:
-      refs.size >= maxMessageRefs || missingIds.length > maxMessageDetails,
+      stoppedEarly ||
+      refs.size >= maxMessageRefs ||
+      missingIds.length > maxMessageDetails,
     accessToken: token,
     tokenRepaired,
   };
