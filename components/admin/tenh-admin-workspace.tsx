@@ -11,6 +11,7 @@ import { AdminBillingManagement } from "@/components/admin/admin-billing-managem
 import { AdminChannelHealth } from "@/components/admin/admin-channel-health";
 import { AdminConnections } from "@/components/admin/admin-connections";
 import { AdminSecurityCenter } from "@/components/admin/admin-security-center";
+import { AdminWebhookEvents } from "@/components/admin/admin-webhook-events";
 import { CustomerReportReview } from "@/components/admin/customer-report-review";
 import { SystemAnnouncementAdmin } from "@/components/admin/system-announcement-admin";
 import { ManualPaymentAdmin } from "@/components/billing/manual-payment-admin";
@@ -23,6 +24,7 @@ type AdminTab =
   | "announcements"
   | "channel-health"
   | "connections"
+  | "webhook-events"
   | "security";
 
 type TenhAdminWorkspaceProps = {
@@ -94,6 +96,11 @@ const tabs: Array<{
     id: "connections",
     label: "Channel connections",
     description: "Every Page and Bot, and releasing a Bot for a new subscription",
+  },
+  {
+    id: "webhook-events",
+    label: "Webhook delivery",
+    description: "Whether Meta is sending each Page anything at all",
   },
   {
     id: "security",
@@ -380,6 +387,8 @@ export function TenhAdminWorkspace({
               <AdminChannelHealth />
             ) : activeTab === "connections" ? (
               <AdminConnections />
+            ) : activeTab === "webhook-events" ? (
+              <AdminWebhookEvents />
             ) : (
               <AdminSecurityCenter
                 adminMfaRequired={adminMfaRequired}

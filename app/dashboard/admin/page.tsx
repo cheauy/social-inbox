@@ -21,6 +21,7 @@ export type AdminTab =
   | "announcements"
   | "channel-health"
   | "connections"
+  | "webhook-events"
   | "security";
 
 function resolveTab(
@@ -35,6 +36,7 @@ function resolveTab(
     tab === "announcements" ||
     tab === "channel-health" ||
     tab === "connections" ||
+    tab === "webhook-events" ||
     tab === "security"
   ) {
     return tab;
