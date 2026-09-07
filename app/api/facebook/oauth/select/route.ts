@@ -1,6 +1,7 @@
 import {
   NextRequest,
   NextResponse,
+  after,
 } from "next/server";
 import {
   cookies,
@@ -42,9 +43,16 @@ import {
   FACEBOOK_COOKIE_DOMAIN,
   getFacebookAppOrigin,
 } from "@/lib/facebook/facebook-origin";
+import { recoverRecentFacebookData } from "@/lib/facebook/recover-facebook-missed-data";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/*
+ * The response is sent long before the backfill below finishes, but the
+ * work still runs inside this invocation, so it needs the headroom.
+ */
+export const maxDuration = 300;
 
 function clearFacebookSelectionSession(
   response: NextResponse,
@@ -593,6 +601,58 @@ export async function POST(
           backfillFlagError.message,
         );
       }
+
+      /*
+       * Bring today in straight away, without making the customer wait.
+       *
+       * The flag above hands the deep seven-day pass to the watchdog, which is
+       * the right place for work that can take minutes. But the code comment
+       * calling it "the hourly watchdog" does not match vercel.json, where it
+       * is scheduled daily -- so a Page connected at nine in the morning shows
+       * an empty inbox until midnight UTC. Someone who has just connected a
+       * Page looks at it immediately, and an empty screen reads as a failed
+       * connection.
+       *
+       * after() runs once the redirect has already been sent, so this costs
+       * the customer nothing. One day, not seven: the point is that the inbox
+       * has today's conversations in it when they first look, and a bounded
+       * pass is far likelier to finish inside the function's budget.
+       *
+       * The flag is deliberately left set. This pass is a head start, not a
+       * replacement -- if it fails, times out, or the deploy is cold, the
+       * watchdog still performs the full recovery later and nothing is lost.
+       * Both passes are idempotent, so overlapping them is safe.
+       */
+      const backfillPageId = selectedPage.id;
+      const backfillAccountId = savedAccountId;
+      const backfillToken = health.accessToken;
+
+      after(async () => {
+        try {
+          const result = await recoverRecentFacebookData({
+            pageId: backfillPageId,
+            socialAccountId: backfillAccountId,
+            accessToken: backfillToken,
+            lookbackMinutes: 1_440,
+            mode: "reconnect",
+          });
+
+          console.info(
+            `[Tenh Facebook OAuth] First-day backfill for ${backfillPageId}: ` +
+              `${result.messenger.recovered} messages, ` +
+              `${result.comments.recovered} comments.`,
+          );
+        } catch (error) {
+          /*
+           * Never surfaced to the customer: the Page connected, and the
+           * watchdog will try again. Logged so a repeated failure is visible.
+           */
+          console.warn(
+            "[Tenh Facebook OAuth] First-day backfill failed; the watchdog will retry:",
+            error instanceof Error ? error.message : error,
+          );
+        }
+      });
     }
 
     return clearFacebookSelectionSession(
