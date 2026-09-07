@@ -147,11 +147,24 @@ function toUnixSeconds(value?: string | null) {
     : Math.floor(parsed / 1000);
 }
 
+/*
+ * A day is the default in both modes.
+ *
+ * Reconnect used to fall back to a week, which meant any caller that forgot to
+ * pass a window silently pulled seven days of conversations a shop had already
+ * answered elsewhere. Both current callers pass one explicitly, so this was a
+ * trap rather than a live fault -- but it is the kind that goes off later,
+ * quietly, in the one place nobody re-reads.
+ *
+ * The ceiling stays a week so a longer window remains possible on purpose,
+ * through FACEBOOK_RECONNECT_RECOVERY_LOOKBACK_MINUTES. It is no longer
+ * possible by accident.
+ */
 function clampLookbackMinutes(
   value?: number,
   mode: FacebookRecoveryMode = "watchdog",
 ) {
-  const fallback = mode === "reconnect" ? 10_080 : 180;
+  const fallback = mode === "reconnect" ? 1_440 : 180;
   const maximum = mode === "reconnect" ? 10_080 : 1_440;
 
   if (!Number.isFinite(value)) {
