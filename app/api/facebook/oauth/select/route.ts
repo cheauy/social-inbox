@@ -44,6 +44,10 @@ import {
   getFacebookAppOrigin,
 } from "@/lib/facebook/facebook-origin";
 import { recoverRecentFacebookData } from "@/lib/facebook/recover-facebook-missed-data";
+import {
+  describeThreadOwnerConflict,
+  detectFacebookThreadOwner,
+} from "@/lib/facebook/facebook-thread-owner";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -623,6 +627,42 @@ export async function POST(
        * watchdog still performs the full recovery later and nothing is lost.
        * Both passes are idempotent, so overlapping them is safe.
        */
+      /*
+       * Say so now if another app owns the Page's messages.
+       *
+       * Every signal TENH can check comes back clean in this situation -- the
+       * token is valid, the webhook subscription lists every required field,
+       * Meta accepted the subscribe call -- and yet no message will ever
+       * arrive, because Meta routes them to whichever app is the Primary
+       * Receiver. Without this the customer connects, sees an empty inbox for
+       * hours, then discovers the problem only when a reply is refused with a
+       * Meta error code that does not say what to do.
+       *
+       * Checked here rather than left to the watchdog because the moment
+       * someone connects a Page is the moment they are looking at it.
+       */
+      const threadOwner = await detectFacebookThreadOwner({
+        pageId: selectedPage.id,
+        accessToken: health.accessToken,
+      });
+
+      if (threadOwner.controlled) {
+        connectionWarnings.push(
+          describeThreadOwnerConflict({
+            pageName:
+              selectedPage.name || selectedPage.id,
+            appName: threadOwner.appName,
+            khmer: false,
+          }),
+        );
+
+        console.warn(
+          `[Tenh Facebook OAuth] ${selectedPage.id} is controlled by app ` +
+            `${threadOwner.appId} (${threadOwner.appName ?? "unnamed"}); ` +
+            "TENH is a secondary receiver and will not get messages.",
+        );
+      }
+
       const backfillPageId = selectedPage.id;
       const backfillAccountId = savedAccountId;
       const backfillToken = health.accessToken;

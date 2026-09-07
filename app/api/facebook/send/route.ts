@@ -667,6 +667,25 @@ export async function POST(
       "Facebook rejected the message.";
     const metaMessageLower =
       metaMessage.toLowerCase();
+
+    /*
+     * Error #10 covers two unrelated refusals, and only one of them is about
+     * timing. "Another app is controlling this thread" means Meta's Handover
+     * Protocol has made a different app the Primary Receiver for this Page --
+     * so TENH cannot reply, and is not receiving the Page's messages either.
+     *
+     * Meta's own wording names the symptom and not the cure. An agent watching
+     * a reply fail cannot act on "another app is controlling this thread now";
+     * they can act on being told where the setting is.
+     */
+    const anotherAppControlsThread =
+      facebookResult.error?.code === 10 &&
+      metaMessageLower.includes(
+        "another app",
+      ) &&
+      metaMessageLower.includes(
+        "thread",
+      );
     const humanAgentApprovalRequired =
       usedHumanAgentTag &&
       metaMessageLower.includes(
@@ -685,7 +704,9 @@ export async function POST(
         code: humanAgentApprovalRequired
           ? "HUMAN_AGENT_APPROVAL_REQUIRED"
           : undefined,
-        error: humanAgentApprovalRequired
+        error: anotherAppControlsThread
+          ? "Another app is set as the Primary Receiver for this Facebook Page, so Meta sends its messages there instead of to TENH. Open the Page on Facebook, then Settings → Messaging → Advanced Messaging → Handover Protocol, and set TENH Chat as the Primary Receiver."
+          : humanAgentApprovalRequired
           ? "Extended messaging access is not available for this Facebook Page yet. Ask an administrator to finish the required Meta approval, or wait for the customer to message again."
           : usedHumanAgentTag
             ? `Meta rejected this extended support reply. ${metaMessage}`
