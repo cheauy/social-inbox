@@ -3944,6 +3944,28 @@ export function MessagePanel({
                                 </span>
                               </div>
 
+                              {/*
+                                What a reply here actually does, said where
+                                the comment is rather than down at the
+                                composer.
+
+                                It sat above the input before, which put it
+                                furthest from the thing it describes and
+                                stacked it against the Messenger notice, so
+                                two boxes competed to explain the same
+                                conversation. It is also dropped entirely once
+                                the private message has gone: at that point the
+                                agent is waiting on the customer, and the
+                                notice beneath already says so.
+                              */}
+                              {!facebookWaitingForCustomerReply ? (
+                                <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+                                  {isKhmer
+                                    ? "ការឆ្លើយតបនៅទីនេះជាការឆ្លើយតបលើមតិយោបល់ជាសាធារណៈ — អ្នកដែលឃើញការបង្ហោះទាំងអស់អាចអានបាន ហើយផ្ញើបានតែអក្សរ។ អ្នកអាចផ្ញើសារឯកជនទៅអតិថិជនម្តងផងដែរ។"
+                                    : "A reply here is a public comment reply — anyone who sees the post can read it, and it can only be text. You can also send the customer one private message."}
+                                </p>
+                              ) : null}
+
                               <div className="mt-2 text-[22px] font-bold tracking-[-0.02em] text-slate-950 sm:text-[25px]">
                                 {headerChannelAccountName}
                               </div>
@@ -6005,25 +6027,7 @@ export function MessagePanel({
                 : "Facebook comment replies can only contain text."
               : null
           }
-          /*
-           * Two things an agent cannot see from the composer, and both change
-           * what they would write.
-           *
-           * The reply is published on the post, so everyone reading it sees
-           * the answer -- a price quoted here is quoted to all of them. And
-           * Facebook does not allow a Page to open a private chat with someone
-           * who has only commented; the customer has to write to the Page
-           * first. Without that said plainly, the natural move is to try to
-           * take the conversation private and find no way to do it.
-           */
-          channelNotice={
-            activeConversation?.source_type ===
-            "comment"
-              ? isKhmer
-                ? "ការឆ្លើយតបនេះជាសាធារណៈ — អ្នកដែលឃើញការបង្ហោះទាំងអស់អាចអានបាន ហើយផ្ញើបានតែអក្សរ។ Facebook មិនអនុញ្ញាតឱ្យផ្ញើសារឯកជនទៅអ្នកបញ្ចេញមតិមុនទេ — អតិថិជនត្រូវផ្ញើសារមក Page ជាមុនសិន។"
-                : "This reply is public — anyone who sees the post can read it, and it can only be text. Facebook does not let you message a commenter privately first; the customer has to message the Page before a private chat can start."
-              : null
-          }
+
         />
       ) : null}
 
