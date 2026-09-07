@@ -3775,6 +3775,23 @@ export function MessagePanel({
                         </div>
                       ) : null}
 
+                      {/*
+                        A deleted comment keeps the shape of a comment.
+
+                        It used to collapse to a grey chip pushed in by a bare
+                        left margin, which only lines up with the comment body
+                        when the row above happens to be a comment too -- next
+                        to anything else it reads as floating in the middle of
+                        the thread, attached to nothing. Keeping the avatar
+                        column, the eyebrow and the time means it sits in the
+                        same grid as every row around it, and the reader can
+                        still tell what was removed and when.
+
+                        Everything identifying stays gone: no name, no photo,
+                        no post card, no actions. The circle is an empty dashed
+                        outline holding the same trash icon the other two
+                        deleted states use, so all three read as one thing.
+                      */}
                       <div
                         ref={(node) => {
                           if (node) {
@@ -3788,15 +3805,56 @@ export function MessagePanel({
                             );
                           }
                         }}
-                        className="ml-[52px] w-fit max-w-[680px] rounded-xl bg-slate-50 px-3 py-2 text-[13px] italic text-slate-400 sm:ml-[64px]"
+                        className="flex gap-2.5 px-1 py-2 sm:gap-3 sm:px-2"
                       >
-                        {deletedByPage
-                          ? isKhmer
-                            ? "សារត្រូវបានលុបដោយទំព័រ"
-                            : "Message deleted by Page"
-                          : isKhmer
-                            ? "សារត្រូវបានលុបដោយអ្នកបញ្ចេញមតិ"
-                            : "Message deleted by commenter"}
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-dashed border-slate-300 text-slate-400 sm:h-11 sm:w-11">
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            className="h-4 w-4 sm:h-[18px] sm:w-[18px] shrink-0"
+                            aria-hidden="true"
+                          >
+                            <path
+                              d="M4 7h16"
+                              strokeLinecap="round"
+                            />
+                            <path
+                              d="M9 7V4h6v3"
+                              strokeLinecap="round"
+                            />
+                            <path
+                              d="M6 7l1 13h10l1-13"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 text-[11px] font-extrabold uppercase tracking-[0.04em] text-slate-400">
+                            Facebook Comment
+                          </div>
+
+                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <span className="text-[15px] italic leading-5 text-slate-500 sm:text-base">
+                              {deletedByPage
+                                ? isKhmer
+                                  ? "សារត្រូវបានលុបដោយទំព័រ"
+                                  : "Message deleted by Page"
+                                : isKhmer
+                                  ? "សារត្រូវបានលុបដោយអ្នកបញ្ចេញមតិ"
+                                  : "Message deleted by commenter"}
+                            </span>
+
+                            <span className="text-sm text-slate-400">
+                              <HydrationSafeMessageTime
+                                value={messageTimestamp}
+                              />
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </Fragment>
                   );
@@ -4327,15 +4385,57 @@ export function MessagePanel({
                                           );
                                         }
                                       }}
-                                      className="ml-11 w-fit rounded-xl bg-slate-50 px-3 py-2 text-[13px] italic text-slate-400 sm:ml-14"
+                                      className="flex gap-2.5 px-0 py-1.5 sm:gap-3"
                                     >
-                                      {replyDeletedByPage
-                                        ? isKhmer
-                                          ? "សារត្រូវបានលុបដោយទំព័រ"
-                                          : "Message deleted by Page"
-                                        : isKhmer
-                                          ? "សារត្រូវបានលុបដោយអ្នកបញ្ចេញមតិ"
-                                          : "Message deleted by commenter"}
+                                      {/*
+                                        Same rebuild as the top-level
+                                        tombstone, at reply scale: the 32px
+                                        avatar column is kept so the row stays
+                                        in the nested thread's grid instead of
+                                        hanging off a hard-coded margin.
+                                      */}
+                                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-dashed border-slate-300 text-slate-400">
+                                        <svg
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="1.8"
+                                          className="h-4 w-4 shrink-0"
+                                          aria-hidden="true"
+                                        >
+                                          <path
+                                            d="M4 7h16"
+                                            strokeLinecap="round"
+                                          />
+                                          <path
+                                            d="M9 7V4h6v3"
+                                            strokeLinecap="round"
+                                          />
+                                          <path
+                                            d="M6 7l1 13h10l1-13"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          />
+                                        </svg>
+                                      </div>
+
+                                      <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-0.5">
+                                        <span className="text-sm italic leading-5 text-slate-500">
+                                          {replyDeletedByPage
+                                            ? isKhmer
+                                              ? "សារត្រូវបានលុបដោយទំព័រ"
+                                              : "Message deleted by Page"
+                                            : isKhmer
+                                              ? "សារត្រូវបានលុបដោយអ្នកបញ្ចេញមតិ"
+                                              : "Message deleted by commenter"}
+                                        </span>
+
+                                        <span className="text-xs text-slate-400">
+                                          <HydrationSafeMessageTime
+                                            value={replyTimestamp}
+                                          />
+                                        </span>
+                                      </div>
                                     </div>
                                   );
                                 }
