@@ -48,6 +48,7 @@ import {
   describeThreadOwnerConflict,
   detectFacebookThreadOwner,
 } from "@/lib/facebook/facebook-thread-owner";
+import { minutesSinceLocalMidnight } from "@/lib/facebook/recover-facebook-missed-data";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -673,7 +674,7 @@ export async function POST(
             pageId: backfillPageId,
             socialAccountId: backfillAccountId,
             accessToken: backfillToken,
-            lookbackMinutes: 1_440,
+            lookbackMinutes: minutesSinceLocalMidnight(),
             mode: "reconnect",
           });
 

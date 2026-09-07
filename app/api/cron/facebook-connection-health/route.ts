@@ -7,6 +7,7 @@ import {
   recoverRecentFacebookData,
 } from "@/lib/facebook/recover-facebook-missed-data";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { minutesSinceLocalMidnight } from "@/lib/facebook/recover-facebook-missed-data";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,12 +69,24 @@ function configuredLookbackMinutes() {
  * created at all.
  */
 function reconnectLookbackMinutes() {
-  const parsed = Number(
-    process.env.FACEBOOK_RECONNECT_RECOVERY_LOOKBACK_MINUTES?.trim() ||
-      "1440",
-  );
+  const configured =
+    process.env.FACEBOOK_RECONNECT_RECOVERY_LOOKBACK_MINUTES?.trim();
 
-  return Number.isFinite(parsed) ? parsed : 1_440;
+  /*
+   * Set the variable and it wins; otherwise the window is today, measured
+   * from midnight where the shop is rather than a rolling twenty-four hours.
+   * Reconnecting at nine in the morning should bring this morning, not also
+   * the whole of yesterday evening they have already dealt with.
+   */
+  if (configured) {
+    const parsed = Number(configured);
+
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return minutesSinceLocalMidnight();
 }
 
 async function processAccount(

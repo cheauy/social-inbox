@@ -160,6 +160,54 @@ function toUnixSeconds(value?: string | null) {
  * through FACEBOOK_RECONNECT_RECOVERY_LOOKBACK_MINUTES. It is no longer
  * possible by accident.
  */
+/*
+ * Minutes elapsed since midnight, where the shop is.
+ *
+ * "Today" has to mean the customer's today. Cambodia runs UTC+7, so a UTC day
+ * boundary would drop everything before 07:00 local into yesterday and a shop
+ * opening at eight would find its whole morning missing. The analytics routes
+ * already hit this and solved it the same way.
+ *
+ * The timezone is configurable but defaults to the market TENH serves, because
+ * a wrong default here is invisible: the inbox simply looks emptier than it
+ * should, with nothing to say why.
+ */
+export function minutesSinceLocalMidnight(
+  timeZone = process.env.TENH_TIMEZONE?.trim() ||
+    "Asia/Phnom_Penh",
+) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date());
+
+    const hour = Number(
+      parts.find((part) => part.type === "hour")?.value ?? "0",
+    );
+    const minute = Number(
+      parts.find((part) => part.type === "minute")?.value ?? "0",
+    );
+
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+      return 1_440;
+    }
+
+    /*
+     * Just after midnight this is a handful of minutes, which the caller's
+     * own floor widens back out. Reaching slightly into last night is the
+     * right way to be wrong -- a message sent at 23:58 is still worth
+     * answering at 00:05.
+     */
+    return hour * 60 + minute;
+  } catch {
+    /* An invalid timezone should not empty the inbox. */
+    return 1_440;
+  }
+}
+
 function clampLookbackMinutes(
   value?: number,
   mode: FacebookRecoveryMode = "watchdog",
