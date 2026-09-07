@@ -112,6 +112,25 @@ async function loadFacebookTokenRow(
       "platform_account_id",
       pageId,
     )
+    /*
+     * A Page can legitimately appear twice: once as the live connection, and
+     * once as a released claim left behind in the workspace that used to own
+     * it. Releasing is what lets an Owner move a Page to a new subscription,
+     * so the second row is not corruption -- it is the feature working.
+     *
+     * maybeSingle() throws on two rows ("JSON object requested, multiple (or
+     * no) rows returned"), which is what broke sending for Melody Clothing II
+     * the moment it was reconnected somewhere else.
+     *
+     * The active row wins. A released claim is disconnected by definition and
+     * holds no usable token, and every caller here is trying to send, sync or
+     * post -- work only the live connection can do. Ordering rather than
+     * filtering keeps the old behaviour for a Page that has only a
+     * disconnected row, which callers rely on to report why it stopped.
+     */
+    .order("is_active", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle<FacebookTokenRow>();
 
   if (error) {
