@@ -39,3 +39,11 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# EAS build outputs and local signing material
+/build-artifacts/
+/build-inspect/
+*.apk
+*.aab
+*.keystore
+credentials.json

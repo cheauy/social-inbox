@@ -1,0 +1,30 @@
+# EAS archives this repository from its Git root. Only the mobile client and
+# its shared compile-time Inbox types belong in the Android build upload.
+/*
+!/mobile/
+!/types/
+/types/*
+!/types/inbox.ts
+**/node_modules/
+**/.expo/
+**/dist/
+**/web-build/
+**/build-artifacts/
+**/build-inspect/
+/mobile/android/
+/mobile/ios/
+**/.env*
+!/mobile/.env.example
+**/*.jks
+**/*.keystore
+**/credentials.json
+**/*.pem
+**/*.key
+**/*.p12
+**/*.p8
+**/*.mobileprovision
+**/*.tsbuildinfo
+**/*.log
+**/*.apk
+**/*.aab
+**/.DS_Store
