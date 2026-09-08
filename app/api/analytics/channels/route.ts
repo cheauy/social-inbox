@@ -154,7 +154,43 @@ type MessageRow = {
   conversation_id: string | null;
   direction: string | null;
   created_at: string;
+  platform_created_at: string | null;
 };
+
+/*
+ * When the message was sent, not when TENH wrote the row.
+ *
+ * The four analytics SQL functions all read
+ * coalesce(m.platform_created_at, m.created_at); this route was the one place
+ * computing a response time in TypeScript, and it used created_at raw. Those
+ * agree for a message delivered by webhook and disagree for every message the
+ * recovery pass pulls in, which stamps created_at whenever it happens to
+ * fetch. In this workspace 190 messages differ by more than five minutes, 22
+ * by more than a day, the worst by 167 hours, and 56 of 481 conversations
+ * sort into a different order under the two columns.
+ *
+ * Measured against this workspace, nine conversations shift by more than five
+ * minutes and the worst by 94 hours. A further 41 were counted as answered
+ * with a response time that had no customer message before the reply at all:
+ * the Page opened those conversations, and they were being timed against the
+ * conversation row rather than against anything a customer sent.
+ */
+function sentAtMs(message: {
+  created_at: string;
+  platform_created_at?: string | null;
+}) {
+  const sentAt = message.platform_created_at;
+
+  if (typeof sentAt === "string" && sentAt) {
+    const parsed = new Date(sentAt).getTime();
+
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return new Date(message.created_at).getTime();
+}
 
 type AccountRow = {
   id: string;
@@ -313,7 +349,9 @@ export async function GET(request: NextRequest) {
     const { data, error } = await fetchAllRows<MessageRow>(() =>
       supabaseAdmin
         .from("messages")
-        .select("conversation_id, direction, created_at")
+        .select(
+          "conversation_id, direction, created_at, platform_created_at",
+        )
         .eq("business_id", currentMember.business_id)
         .in("conversation_id", slice)
         .order("created_at", { ascending: true })
@@ -336,12 +374,24 @@ export async function GET(request: NextRequest) {
     messages.push(...((data ?? []) as MessageRow[]));
   }
 
-  const firstOutgoingAt = new Map<string, string>();
+  const firstIncomingAtMs = new Map<string, number>();
+  const firstOutgoingAtMs = new Map<string, number>();
   const incomingByConversation = new Map<string, number>();
   const outgoingByConversation = new Map<string, number>();
 
+  /*
+   * The rows arrive ordered by created_at, which is not the order they were
+   * sent in, so the earliest of each direction is taken by comparison rather
+   * than by position.
+   */
   for (const message of messages) {
     if (!message.conversation_id) {
+      continue;
+    }
+
+    const at = sentAtMs(message);
+
+    if (!Number.isFinite(at)) {
       continue;
     }
 
@@ -351,14 +401,22 @@ export async function GET(request: NextRequest) {
         (outgoingByConversation.get(message.conversation_id) ?? 0) + 1,
       );
 
-      if (!firstOutgoingAt.has(message.conversation_id)) {
-        firstOutgoingAt.set(message.conversation_id, message.created_at);
+      const earliest = firstOutgoingAtMs.get(message.conversation_id);
+
+      if (earliest === undefined || at < earliest) {
+        firstOutgoingAtMs.set(message.conversation_id, at);
       }
     } else if (message.direction === "incoming") {
       incomingByConversation.set(
         message.conversation_id,
         (incomingByConversation.get(message.conversation_id) ?? 0) + 1,
       );
+
+      const earliest = firstIncomingAtMs.get(message.conversation_id);
+
+      if (earliest === undefined || at < earliest) {
+        firstIncomingAtMs.set(message.conversation_id, at);
+      }
     }
   }
 
@@ -449,16 +507,31 @@ export async function GET(request: NextRequest) {
     const day = bucket.daily.get(dayKey) ?? { received: 0, replied: 0 };
     day.received += 1;
 
-    const firstReply = firstOutgoingAt.get(row.id);
+    /*
+     * Measured from the customer's first message, not from the conversation
+     * row, and only counted when the reply actually followed it.
+     *
+     * The baseline used to be conversations.created_at, which is when TENH
+     * created the record -- for a conversation discovered by the recovery
+     * pass that can be days after the customer wrote. This is the same
+     * baseline the SLA function uses: min(coalesce(platform_created_at,
+     * created_at)) over incoming messages.
+     *
+     * An outgoing message with no incoming before it is the Page opening the
+     * conversation. That is not a response to anything, and timing it against
+     * a customer message that came later is what produced the negative
+     * intervals.
+     */
+    const firstAsk = firstIncomingAtMs.get(row.id);
+    const firstReply = firstOutgoingAtMs.get(row.id);
 
-    if (firstReply) {
-      const seconds = Math.max(
-        0,
-        Math.round(
-          (new Date(firstReply).getTime() -
-            new Date(row.created_at).getTime()) /
-            1000,
-        ),
+    if (
+      firstAsk !== undefined &&
+      firstReply !== undefined &&
+      firstReply >= firstAsk
+    ) {
+      const seconds = Math.round(
+        (firstReply - firstAsk) / 1000,
       );
 
       bucket.firstResponseSeconds.push(seconds);
