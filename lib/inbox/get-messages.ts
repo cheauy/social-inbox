@@ -6,7 +6,20 @@ import type {
   InboxMessage,
 } from "@/types/inbox";
 
-export const MESSAGE_PAGE_SIZE = 50;
+/*
+ * How many messages open with a conversation.
+ *
+ * Measured in the running app: a thread rendered 48 messages into a 6,923px
+ * column while the viewport showed about 500px of it, and mounting that panel
+ * was the largest remaining blocking task. Each message runs a ~3,000 line
+ * render body, so the cost is close to linear in this number and almost all
+ * of it was spent on messages nobody had scrolled to.
+ *
+ * Twenty-five still fills the visible thread several times over, and the
+ * older ones arrive through the load-older path that already exists rather
+ * than being paid for on every open.
+ */
+export const MESSAGE_PAGE_SIZE = 25;
 
 /*
  * `sentAt` is the platform's own timestamp, not the row's insert time. The two

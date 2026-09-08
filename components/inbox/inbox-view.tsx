@@ -55,7 +55,9 @@ import type {
 
 
 
-const MESSAGE_PAGE_SIZE = 50;
+// Must match lib/inbox/get-messages: the client pages older messages in
+// the same size the server first sends.
+const MESSAGE_PAGE_SIZE = 25;
 const MESSAGE_CACHE_MAX_CONVERSATIONS = 25;
 const PROFILE_CACHE_MAX_CONVERSATIONS = 50;
 
