@@ -9,6 +9,7 @@
     "expo": "~56.0.21",
     "expo-asset": "~56.0.24",
     "expo-audio": "~56.0.13",
+    "expo-clipboard": "~56.0.4",
     "expo-constants": "~56.0.25",
     "expo-document-picker": "~56.0.4",
     "expo-file-system": "~56.0.11",

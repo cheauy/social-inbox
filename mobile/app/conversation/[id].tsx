@@ -33,6 +33,14 @@ import {
   styles,
   time,
 } from "../../components/ui";
+import {
+  CustomerPanel,
+  CustomerPanelEdge,
+} from "../../components/customer-panel";
+import type {
+  CustomerDetail,
+  TeamMember,
+} from "../../components/customer-panel";
 import { api, ApiError } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
 import type {
@@ -102,49 +110,6 @@ type Tag = {
   id: string;
   name: string;
   color: string | null;
-};
-
-type TeamMember = {
-  id: string;
-  full_name: string | null;
-  role: string | null;
-  profile_picture_url: string | null;
-};
-
-/*
- * The five the status endpoint accepts, in the order the web lists them.
- * Anything else it rejects, so the sheet cannot offer it.
- */
-const STATUS_OPTIONS: {
-  key: ConversationStatus;
-  label: string;
-  icon: React.ComponentProps<typeof Ionicons>["name"];
-}[] = [
-  { key: "open", label: "Open", icon: "ellipse-outline" },
-  { key: "pending", label: "Pending", icon: "time-outline" },
-  { key: "resolved", label: "Resolved", icon: "checkmark-circle-outline" },
-  { key: "closed", label: "Closed", icon: "archive-outline" },
-  { key: "spam", label: "Spam", icon: "alert-circle-outline" },
-];
-
-type CustomerDetail = {
-  customer: {
-    id: string;
-    fullName: string;
-    profilePictureUrl: string | null;
-    phone: string | null;
-    address: string | null;
-    customerNote: string | null;
-    createdAt: string | null;
-    lastActiveAt: string | null;
-    tags: Tag[];
-  };
-  statistics: {
-    totalConversations: number;
-    openConversations: number;
-    pendingConversations: number;
-    resolvedConversations: number;
-  };
 };
 
 function kindOf(mimeType: string, name: string): AttachmentKind {
@@ -523,199 +488,6 @@ function Bubble({
 }
 
 /*
- * Everything you can do to a conversation, rather than inside it.
- *
- * Status, who owns it, whether it is pinned, and putting it back on the
- * unread pile -- the four moves that get a conversation off an agent's plate.
- * They are one sheet because they are one decision made at one moment: you
- * answer, you resolve, you hand it on.
- *
- * Nothing closes the sheet except a status change and marking unread, both of
- * which end the visit. Assigning and pinning leave it open so the agent can
- * see the tick land and carry on.
- */
-function ActionsSheet({
-  open,
-  status,
-  pinned,
-  assignedTo,
-  members,
-  membersLoading,
-  busy,
-  onStatus,
-  onAssign,
-  onPin,
-  onUnread,
-  onClose,
-}: {
-  open: boolean;
-  status: ConversationStatus | null;
-  pinned: boolean;
-  assignedTo: string | null;
-  members: TeamMember[];
-  membersLoading: boolean;
-  busy: string | null;
-  onStatus: (next: ConversationStatus) => void;
-  onAssign: (memberId: string | null) => void;
-  onPin: () => void;
-  onUnread: () => void;
-  onClose: () => void;
-}) {
-  return (
-    <Sheet
-      open={open}
-      title="Conversation"
-      detail="Status, owner, and where it sits in the list."
-      onClose={onClose}
-    >
-      <ScrollView>
-        <SheetGroup>Status</SheetGroup>
-
-        {STATUS_OPTIONS.map((option) => (
-          <ActionRow
-            key={option.key}
-            icon={option.icon}
-            label={option.label}
-            active={status === option.key}
-            busy={busy === `status:${option.key}`}
-            onPress={() => onStatus(option.key)}
-          />
-        ))}
-
-        <SheetGroup>Assigned to</SheetGroup>
-
-        {membersLoading ? (
-          <View style={{ paddingVertical: 18 }}>
-            <ActivityIndicator color={colors.blue} />
-          </View>
-        ) : (
-          <>
-            <ActionRow
-              icon="person-remove-outline"
-              label="Nobody"
-              active={!assignedTo}
-              busy={busy === "assign:none"}
-              onPress={() => onAssign(null)}
-            />
-
-            {members.map((member) => (
-              <ActionRow
-                key={member.id}
-                icon="person-outline"
-                label={member.full_name ?? "Team member"}
-                detail={member.role ?? undefined}
-                active={assignedTo === member.id}
-                busy={busy === `assign:${member.id}`}
-                onPress={() => onAssign(member.id)}
-              />
-            ))}
-          </>
-        )}
-
-        <SheetGroup>More</SheetGroup>
-
-        <ActionRow
-          icon={pinned ? "pin" : "pin-outline"}
-          label={pinned ? "Unpin from the top" : "Pin to the top"}
-          active={pinned}
-          busy={busy === "pin"}
-          onPress={onPin}
-        />
-
-        <ActionRow
-          icon="mail-unread-outline"
-          label="Mark unread and go back"
-          detail="Puts it back on the pile for whoever picks it up next."
-          active={false}
-          busy={busy === "unread"}
-          onPress={onUnread}
-        />
-      </ScrollView>
-    </Sheet>
-  );
-}
-
-function SheetGroup({ children }: { children: React.ReactNode }) {
-  return (
-    <Text
-      style={{
-        paddingHorizontal: 18,
-        paddingTop: 14,
-        paddingBottom: 4,
-        fontSize: 11,
-        fontWeight: "800",
-        letterSpacing: 0.6,
-        textTransform: "uppercase",
-        color: colors.muted,
-      }}
-    >
-      {children}
-    </Text>
-  );
-}
-
-function ActionRow({
-  icon,
-  label,
-  detail,
-  active,
-  busy,
-  onPress,
-}: {
-  icon: React.ComponentProps<typeof Ionicons>["name"];
-  label: string;
-  detail?: string;
-  active: boolean;
-  busy: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      disabled={busy}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 12,
-        paddingHorizontal: 18,
-        paddingVertical: 13,
-        backgroundColor: pressed ? colors.pale : "transparent",
-      })}
-    >
-      <Ionicons
-        name={icon}
-        size={19}
-        color={active ? colors.blue : colors.muted}
-      />
-
-      <View style={{ flex: 1 }}>
-        <Text
-          style={{
-            color: colors.ink,
-            fontSize: 15,
-            fontWeight: active ? "800" : "500",
-          }}
-        >
-          {label}
-        </Text>
-
-        {detail ? (
-          <Text style={[styles.muted, { fontSize: 12 }]}>{detail}</Text>
-        ) : null}
-      </View>
-
-      {busy ? (
-        <ActivityIndicator color={colors.blue} />
-      ) : active ? (
-        <Ionicons name="checkmark" size={19} color={colors.blue} />
-      ) : null}
-    </Pressable>
-  );
-}
-
-/*
  * Where an attachment comes from.
  *
  * Two buttons in the composer would have cost 44 more points beside three
@@ -962,136 +734,13 @@ function QuickTagSheet({
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={{ gap: 2 }}>
-      <Text style={{ fontSize: 11, fontWeight: "800", letterSpacing: 0.6, textTransform: "uppercase", color: colors.muted }}>
-        {label}
-      </Text>
-      <Text style={{ color: colors.ink, fontSize: 15 }}>{value || "—"}</Text>
-    </View>
-  );
-}
-
-function CustomerSheet({
-  open,
-  detail,
-  loading,
-  onClose,
-}: {
-  open: boolean;
-  detail: CustomerDetail | null;
-  loading: boolean;
-  onClose: () => void;
-}) {
-  const customer = detail?.customer;
-
-  return (
-    <Sheet
-      open={open}
-      title="Customer"
-      detail="Everything TENH holds about them."
-      onClose={onClose}
-    >
-      {loading && !detail ? (
-        <View style={{ padding: 40 }}>
-          <ActivityIndicator color={colors.blue} />
-        </View>
-      ) : !customer ? (
-        <Empty
-          icon="person-outline"
-          title="No customer record"
-          detail="This conversation is not linked to a customer yet. It will be as soon as the next message arrives."
-        />
-      ) : (
-        <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 4, gap: 16 }}>
-          <View style={styles.row}>
-            <Avatar name={customer.fullName} uri={customer.profilePictureUrl} size={54} />
-
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.heading}>{customer.fullName}</Text>
-              <Text style={styles.muted}>
-                Customer since {dayMonth(customer.createdAt)}
-              </Text>
-            </View>
-          </View>
-
-          {customer.tags.length > 0 ? (
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              {customer.tags.map((tag) => (
-                <View
-                  key={tag.id}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 6,
-                    paddingHorizontal: 10,
-                    paddingVertical: 5,
-                    borderRadius: 999,
-                    backgroundColor: colors.pale,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 9,
-                      height: 9,
-                      borderRadius: 5,
-                      backgroundColor: tag.color ?? colors.muted,
-                    }}
-                  />
-                  <Text style={{ color: colors.ink, fontSize: 12.5, fontWeight: "700" }}>
-                    {tag.name}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-
-          <Field label="Phone" value={customer.phone ?? ""} />
-          <Field label="Address" value={customer.address ?? ""} />
-          <Field label="Note" value={customer.customerNote ?? ""} />
-          <Field label="Last active" value={dayMonth(customer.lastActiveAt)} />
-
-          {detail ? (
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-              {(
-                [
-                  ["Conversations", detail.statistics.totalConversations],
-                  ["Open", detail.statistics.openConversations],
-                  ["Pending", detail.statistics.pendingConversations],
-                  ["Resolved", detail.statistics.resolvedConversations],
-                ] as const
-              ).map(([label, value]) => (
-                <View
-                  key={label}
-                  style={{
-                    flexGrow: 1,
-                    minWidth: 84,
-                    padding: 12,
-                    borderRadius: 14,
-                    backgroundColor: colors.background,
-                  }}
-                >
-                  <Text style={{ color: colors.ink, fontSize: 20, fontWeight: "800" }}>
-                    {value}
-                  </Text>
-                  <Text style={[styles.muted, { fontSize: 12 }]}>{label}</Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-        </ScrollView>
-      )}
-    </Sheet>
-  );
-}
-
 export default function Conversation() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const { conversations, workspace, revision, updateConversation } = useInbox();
+  const { conversations, workspace, member, revision, updateConversation } =
+    useInbox();
 
   const conversation = useMemo(
     () => conversations.find((item) => item.id === id) ?? null,
@@ -1121,12 +770,11 @@ export default function Conversation() {
   const [busyTagId, setBusyTagId] = useState<string | null>(null);
   const [tagsLoading, setTagsLoading] = useState(false);
 
-  const [actionsOpen, setActionsOpen] = useState(false);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
-  const [customerOpen, setCustomerOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
   const [customerLoading, setCustomerLoading] = useState(false);
 
@@ -1660,8 +1308,15 @@ export default function Conversation() {
     }
   }
 
-  async function openActions() {
-    setActionsOpen(true);
+  /*
+   * One panel, so one open: the customer record and the team it can be
+   * assigned to are fetched together rather than each waiting for its own
+   * sheet to be tapped. The team is fetched once per visit; the customer
+   * every time, because a tag added on another device should show.
+   */
+  async function openPanel() {
+    setPanelOpen(true);
+    void loadCustomer();
 
     if (members.length > 0) {
       return;
@@ -1689,22 +1344,21 @@ export default function Conversation() {
 
   async function changeStatus(next: ConversationStatus) {
     if (conversation?.status === next) {
-      setActionsOpen(false);
       return;
     }
 
-    const done = await runAction(`status:${next}`, { status: next }, () =>
+    /*
+     * The panel stays open. It did close when this was a sheet of nothing but
+     * choices, but the panel is a record you read as well as act on, and
+     * throwing it away because you resolved something is the wrong reflex.
+     * The badge above the list changes where you can see it.
+     */
+    await runAction(`status:${next}`, { status: next }, () =>
       api(`/api/conversations/${encodeURIComponent(String(id))}/status`, workspace?.businessId, {
         method: "PATCH",
         body: { status: next },
       }),
     );
-
-    if (done) {
-      // The decision is made; staying in the sheet to admire it is nobody's
-      // idea of finishing a conversation.
-      setActionsOpen(false);
-    }
   }
 
   async function assign(memberId: string | null) {
@@ -1748,14 +1402,9 @@ export default function Conversation() {
        * straight back into its mark-as-read effect the next time it mounts,
        * and the agent would wonder why the badge did not stick.
        */
-      setActionsOpen(false);
+      setPanelOpen(false);
       router.back();
     }
-  }
-
-  async function openCustomer() {
-    setCustomerOpen(true);
-    await loadCustomer();
   }
 
   const canSend = !sending && (draft.trim().length > 0 || pending.length > 0);
@@ -1800,8 +1449,8 @@ export default function Conversation() {
 
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`Status: ${conversation.status}. Change status, owner or pin.`}
-                  onPress={() => void openActions()}
+                  accessibilityLabel={`Status: ${conversation.status}. Open customer details.`}
+                  onPress={() => void openPanel()}
                   style={({ pressed }) => ({
                     flexDirection: "row",
                     alignItems: "center",
@@ -1848,9 +1497,9 @@ export default function Conversation() {
 
           <IconButton
             icon="person-circle-outline"
-            label="Customer details"
+            label="Customer details. Or swipe in from the right edge."
             disabled={!contactId}
-            onPress={() => void openCustomer()}
+            onPress={() => void openPanel()}
           />
         </View>
       </View>
@@ -2039,6 +1688,32 @@ export default function Conversation() {
         onClose={() => setReplyOpen(false)}
       />
 
+      {/*
+        The edge strip sits above everything on the thread, and the panel
+        above that, so a swipe reaches them wherever the agent's thumb is.
+      */}
+      {contactId ? <CustomerPanelEdge onOpen={() => void openPanel()} /> : null}
+
+      <CustomerPanel
+        open={panelOpen}
+        detail={customer}
+        loading={customerLoading}
+        channelName={conversation?.social_account?.account_name ?? null}
+        status={conversation?.status ?? null}
+        pinned={Boolean(conversation?.is_pinned)}
+        assignedTo={conversation?.assigned_to ?? null}
+        members={members}
+        membersLoading={membersLoading}
+        currentMemberId={member?.id ?? null}
+        busy={busyAction}
+        onStatus={(next) => void changeStatus(next)}
+        onAssign={(memberId) => void assign(memberId)}
+        onPin={() => void togglePin()}
+        onUnread={() => void markUnread()}
+        onEditTags={() => void openTags()}
+        onClose={() => setPanelOpen(false)}
+      />
+
       <QuickTagSheet
         open={tagOpen}
         tags={tags}
@@ -2050,27 +1725,6 @@ export default function Conversation() {
         onClose={() => setTagOpen(false)}
       />
 
-      <ActionsSheet
-        open={actionsOpen}
-        status={conversation?.status ?? null}
-        pinned={Boolean(conversation?.is_pinned)}
-        assignedTo={conversation?.assigned_to ?? null}
-        members={members}
-        membersLoading={membersLoading}
-        busy={busyAction}
-        onStatus={(next) => void changeStatus(next)}
-        onAssign={(memberId) => void assign(memberId)}
-        onPin={() => void togglePin()}
-        onUnread={() => void markUnread()}
-        onClose={() => setActionsOpen(false)}
-      />
-
-      <CustomerSheet
-        open={customerOpen}
-        detail={customer}
-        loading={customerLoading}
-        onClose={() => setCustomerOpen(false)}
-      />
     </KeyboardAvoidingView>
   );
 }

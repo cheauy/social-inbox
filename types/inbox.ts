@@ -258,6 +258,9 @@ export type MobileConversation = Pick<
   social_account: {
     id: string;
     platform?: string;
+
+    // The Page's name, shown in the customer panel's Facebook section.
+    account_name: string;
   } | null;
 };
 

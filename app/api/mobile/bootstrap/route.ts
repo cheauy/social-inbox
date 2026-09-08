@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
         ? {
             id: row.social_account.id,
             platform: row.social_account.platform,
+            account_name: row.social_account.account_name,
           }
         : null,
     }));
