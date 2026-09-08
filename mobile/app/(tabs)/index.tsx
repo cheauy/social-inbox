@@ -10,13 +10,13 @@ import {
   RefreshControl,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   ChannelAvatar,
-  ChannelBadge,
   Empty,
   ErrorNotice,
   colors,
@@ -154,9 +154,12 @@ function ConversationRow({
           {conversation.last_message_text?.trim() || "No messages yet"}
         </Text>
 
+        {/*
+          No channel line. The avatar wears the mark, and a third line
+          repeating it in words pushed the preview up and said nothing the
+          badge had not already said.
+        */}
         <View style={styles.row}>
-          <ChannelBadge conversation={conversation} />
-
           {unread ? (
             <View
               style={{
@@ -317,6 +320,60 @@ function ChannelSheet({
   );
 }
 
+
+/*
+ * The quick views and the status filter, in one strip.
+ *
+ * The web keeps them apart -- a rail for views, a panel for status -- but a
+ * phone header cannot hold two rows of controls above the list. They are
+ * mutually exclusive in practice anyway: nobody asks for "unread and closed".
+ * One selection, scrollable, with the views first because they are what an
+ * agent reaches for between messages.
+ */
+type ViewKey =
+  | "all"
+  | "unread"
+  | "pinned"
+  | "open"
+  | "pending"
+  | "resolved"
+  | "closed";
+
+const VIEWS: { key: ViewKey; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "unread", label: "Unread" },
+  { key: "pinned", label: "Pinned" },
+  { key: "open", label: "Open" },
+  { key: "pending", label: "Pending" },
+  { key: "resolved", label: "Resolved" },
+  { key: "closed", label: "Closed" },
+];
+
+function matchesView(conversation: InboxConversation, view: ViewKey) {
+  if (view === "all") return true;
+  if (view === "unread") return (conversation.unread_count ?? 0) > 0;
+  if (view === "pinned") return Boolean(conversation.is_pinned);
+  return conversation.status === view;
+}
+
+/*
+ * Name, message preview and phone, which is what the list holds. Searching
+ * further back through a thread needs the server, as it does on the web.
+ */
+function matchesSearch(conversation: InboxConversation, keyword: string) {
+  if (!keyword) return true;
+
+  const haystack = [
+    conversation.contact?.full_name,
+    conversation.contact?.phone,
+    conversation.last_message_text,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return haystack.includes(keyword);
+}
+
 export default function Inbox() {
   const { session } = useAuth();
   const router = useRouter();
@@ -338,6 +395,8 @@ export default function Inbox() {
   const [switching, setSwitching] = useState(false);
   const [channelOpen, setChannelOpen] = useState(false);
   const [channelId, setChannelId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [view, setView] = useState<ViewKey>("all");
 
   const { data: channelData } = useWorkspaceResource<{ channels: Channel[] }>(
     workspace ? "/api/inbox/channels" : null,
@@ -360,8 +419,10 @@ export default function Inbox() {
       conversations
         .filter(
           (conversation) =>
-            !channelId ||
-            conversation.social_account?.id === channelId,
+            (!channelId ||
+              conversation.social_account?.id === channelId) &&
+            matchesView(conversation, view) &&
+            matchesSearch(conversation, search.trim().toLowerCase()),
         )
         .sort((first, second) => {
         // Pinned first, then most recent, matching the web Inbox.
@@ -374,7 +435,7 @@ export default function Inbox() {
           new Date(first.last_message_at ?? 0).getTime()
         );
       }),
-    [channelId, conversations],
+    [channelId, conversations, search, view],
   );
 
   if (!session) {
@@ -498,6 +559,132 @@ export default function Inbox() {
         </View>
       </View>
 
+      {/*
+        Search and the view strip only exist once a workspace is chosen --
+        before that the list below is a workspace picker, and filtering it
+        would be filtering the wrong thing.
+      */}
+      {workspace ? (
+        <View
+          style={{
+            backgroundColor: "white",
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+            paddingBottom: 10,
+            gap: 10,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              marginHorizontal: 16,
+              paddingHorizontal: 12,
+              borderRadius: 12,
+              backgroundColor: colors.background,
+            }}
+          >
+            <Ionicons name="search" size={17} color={colors.muted} />
+
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search conversations and contacts"
+              placeholderTextColor={colors.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                fontSize: 15,
+                color: colors.ink,
+              }}
+            />
+
+            {search.length > 0 ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Clear search"
+                onPress={() => setSearch("")}
+                hitSlop={10}
+              >
+                <Ionicons
+                  name="close-circle"
+                  size={17}
+                  color={colors.muted}
+                />
+              </Pressable>
+            ) : null}
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              gap: 8,
+            }}
+          >
+            {VIEWS.map((option) => {
+              const active = option.key === view;
+
+              /*
+               * Counted from what is on screen, so the number always matches
+               * the list a tap produces -- including the channel filter, which
+               * a count taken from the whole workspace would ignore.
+               */
+              const count = conversations.filter(
+                (conversation) =>
+                  (!channelId ||
+                    conversation.social_account?.id === channelId) &&
+                  matchesView(conversation, option.key),
+              ).length;
+
+              return (
+                <Pressable
+                  key={option.key}
+                  accessibilityRole="button"
+                  onPress={() => setView(option.key)}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    paddingHorizontal: 13,
+                    paddingVertical: 7,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: active ? colors.blue : colors.border,
+                    backgroundColor: active ? colors.blue : "white",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: active ? "white" : colors.ink,
+                      fontSize: 13,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {option.label}
+                  </Text>
+
+                  <Text
+                    style={{
+                      color: active ? "rgba(255,255,255,0.85)" : colors.muted,
+                      fontSize: 12,
+                      fontWeight: "600",
+                    }}
+                  >
+                    {count}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
+
       <ChannelSheet
         open={channelOpen}
         channels={channels}
@@ -549,22 +736,31 @@ export default function Inbox() {
               </View>
             ) : (
               <Empty
+                /*
+                 * There are now four ways to end up with an empty list and
+                 * only one of them means the workspace is empty. Saying the
+                 * wrong one sends somebody looking for a problem that is not
+                 * there, so each filter names itself and the way back --
+                 * search and the view strip are easy to leave set and forget.
+                 */
+                icon={search.trim() ? "search-outline" : "chatbubbles-outline"}
                 title={
-                  selectedChannel
-                    ? "Nothing on this channel"
-                    : "No conversations yet"
+                  search.trim()
+                    ? "No match"
+                    : view !== "all"
+                      ? `Nothing ${VIEWS.find((v) => v.key === view)?.label.toLowerCase()}`
+                      : selectedChannel
+                        ? "Nothing on this channel"
+                        : "No conversations yet"
                 }
                 detail={
-                  /*
-                   * A filtered list that is empty is not the same as a
-                   * workspace that has no conversations, and saying the wrong
-                   * one sends somebody looking for a problem that is not
-                   * there. The way out is named, since the filter lives in
-                   * the header where it is easy to forget.
-                   */
-                  selectedChannel
-                    ? `${selectedChannel.name} has no conversations. Tap the channel button above to see all of them.`
-                    : "When a customer messages one of this workspace's channels, the conversation appears here."
+                  search.trim()
+                    ? `No customer or message matches "${search.trim()}" in this view. Searching further back through a thread is on the web.`
+                    : view !== "all"
+                      ? "Tap All in the strip above to see every conversation."
+                      : selectedChannel
+                        ? `${selectedChannel.name} has no conversations. Tap the channel button above to see all of them.`
+                        : "When a customer messages one of this workspace's channels, the conversation appears here."
                 }
               />
             )

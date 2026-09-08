@@ -52,11 +52,13 @@ const PLATFORM_MARK: Record<
  */
 export function ChannelAvatar({ conversation, size = 48 }: { conversation: InboxConversation; size?: number }) {
   const mark = PLATFORM_MARK[platformOf(conversation)];
-  const badge = Math.round(size * 0.42);
+  // Large enough to read the mark, and sat far enough into the corner that it
+  // breaks the avatar's outline rather than floating inside it.
+  const badge = Math.round(size * 0.46);
   return (
     <View>
       <Avatar name={conversation.contact?.full_name} uri={conversation.contact?.profile_picture_url} size={size} />
-      <View style={{ position: "absolute", right: -1, bottom: -1, width: badge, height: badge, borderRadius: badge / 2, backgroundColor: mark.logo ? "white" : mark.tint, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "white", overflow: "hidden" }}>
+      <View style={{ position: "absolute", right: -3, bottom: -3, width: badge, height: badge, borderRadius: badge / 2, backgroundColor: mark.logo ? "white" : mark.tint, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "white", overflow: "hidden" }}>
         {mark.logo ? (
           <Image source={mark.logo} style={{ width: badge, height: badge }} resizeMode="cover" />
         ) : (

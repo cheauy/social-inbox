@@ -12,6 +12,14 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    /*
+     * The Expo app is a separate project with its own toolchain, and the web
+     * tsconfig already excludes it for the same reason. Linting it with Next's
+     * rules reports things that are correct in React Native -- require() for a
+     * static asset is how Metro resolves images -- and would hide a real web
+     * finding in the noise. It has its own tsc run.
+     */
+    "mobile/**",
   ]),
 ]);
 
