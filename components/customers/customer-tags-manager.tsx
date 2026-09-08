@@ -191,7 +191,14 @@ const response = await fetch(
     return () => {
       cancelled = true;
     };
-  }, [open]);
+    /*
+     * businessId belongs here: it is in the request URL, so a workspace
+     * change while this panel stays mounted would leave the previous
+     * workspace's tag list on screen. Nothing is exposed by that -- /api/tags
+     * re-verifies membership for any businessId it is handed, and refuses one
+     * the caller does not belong to -- but the list would be wrong.
+     */
+  }, [open, businessId]);
 
   const selectedTagIds =
     useMemo(
