@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -24,6 +24,7 @@ import {
   time,
 } from "../../components/ui";
 import { useWorkspaceResource } from "../../components/screen";
+import { api } from "../../lib/api/client";
 import { useAuth } from "../../lib/auth/provider";
 import { useInbox } from "../../lib/inbox-provider";
 import type { InboxConversation, Workspace } from "../../lib/types";
@@ -337,16 +338,22 @@ type ViewKey =
   | "open"
   | "pending"
   | "resolved"
-  | "closed";
+  | "closed"
+  | "spam";
 
-const VIEWS: { key: ViewKey; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "unread", label: "Unread" },
-  { key: "pinned", label: "Pinned" },
-  { key: "open", label: "Open" },
-  { key: "pending", label: "Pending" },
-  { key: "resolved", label: "Resolved" },
-  { key: "closed", label: "Closed" },
+const VIEWS: {
+  key: ViewKey;
+  label: string;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+}[] = [
+  { key: "all", label: "All conversations", icon: "layers-outline" },
+  { key: "unread", label: "Unread", icon: "mail-unread-outline" },
+  { key: "pinned", label: "Pinned", icon: "pin-outline" },
+  { key: "open", label: "Open", icon: "ellipse-outline" },
+  { key: "pending", label: "Pending", icon: "time-outline" },
+  { key: "resolved", label: "Resolved", icon: "checkmark-circle-outline" },
+  { key: "closed", label: "Closed", icon: "archive-outline" },
+  { key: "spam", label: "Spam", icon: "alert-circle-outline" },
 ];
 
 function matchesView(conversation: InboxConversation, view: ViewKey) {
@@ -374,6 +381,145 @@ function matchesSearch(conversation: InboxConversation, keyword: string) {
   return haystack.includes(keyword);
 }
 
+
+/*
+ * Views and status behind one control, rather than a strip of chips.
+ *
+ * The chips took a whole row above the list and still ran off the edge at
+ * seven of them, so the ones past "Open" were only reachable by scrolling a
+ * bar most people would not think to scroll. A sheet costs one tap and can
+ * show every option at once, grouped the way the web groups them.
+ */
+function FilterSheet({
+  open,
+  view,
+  counts,
+  onSelect,
+  onClose,
+}: {
+  open: boolean;
+  view: ViewKey;
+  counts: Record<ViewKey, number>;
+  onSelect: (view: ViewKey) => void;
+  onClose: () => void;
+}) {
+  const groups: { title: string; keys: ViewKey[] }[] = [
+    { title: "Smart views", keys: ["all", "unread", "pinned"] },
+    {
+      title: "Conversation status",
+      keys: ["open", "pending", "resolved", "closed", "spam"],
+    },
+  ];
+
+  return (
+    <Modal
+      visible={open}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <Pressable
+        accessibilityLabel="Close filters"
+        onPress={onClose}
+        style={{ flex: 1, backgroundColor: "rgba(16,34,56,0.35)" }}
+      />
+
+      <View
+        style={{
+          backgroundColor: "white",
+          borderTopLeftRadius: 20,
+          borderTopRightRadius: 20,
+          paddingBottom: 28,
+          maxHeight: "78%",
+        }}
+      >
+        <View style={{ padding: 18, paddingBottom: 6 }}>
+          <Text style={styles.heading}>Filter</Text>
+          <Text style={styles.muted}>
+            One at a time, over the channel you have selected.
+          </Text>
+        </View>
+
+        <ScrollView>
+          {groups.map((group) => (
+            <View key={group.title}>
+              <Text
+                style={{
+                  paddingHorizontal: 18,
+                  paddingTop: 14,
+                  paddingBottom: 4,
+                  fontSize: 11,
+                  fontWeight: "800",
+                  letterSpacing: 0.6,
+                  textTransform: "uppercase",
+                  color: colors.muted,
+                }}
+              >
+                {group.title}
+              </Text>
+
+              {group.keys.map((key) => {
+                const option = VIEWS.find((v) => v.key === key);
+                if (!option) return null;
+
+                const active = key === view;
+
+                return (
+                  <Pressable
+                    key={key}
+                    accessibilityRole="button"
+                    onPress={() => {
+                      onSelect(key);
+                      onClose();
+                    }}
+                    style={({ pressed }) => ({
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 12,
+                      paddingHorizontal: 18,
+                      paddingVertical: 13,
+                      backgroundColor: pressed ? colors.pale : "transparent",
+                    })}
+                  >
+                    <Ionicons
+                      name={option.icon}
+                      size={19}
+                      color={active ? colors.blue : colors.muted}
+                    />
+
+                    <Text
+                      style={{
+                        flex: 1,
+                        color: colors.ink,
+                        fontSize: 15,
+                        fontWeight: active ? "800" : "500",
+                      }}
+                    >
+                      {option.label}
+                    </Text>
+
+                    <Text style={[styles.muted, { fontSize: 13 }]}>
+                      {counts[key]}
+                    </Text>
+
+                    {active ? (
+                      <Ionicons
+                        name="checkmark"
+                        size={19}
+                        color={colors.blue}
+                      />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
 export default function Inbox() {
   const { session } = useAuth();
   const router = useRouter();
@@ -397,6 +543,60 @@ export default function Inbox() {
   const [channelId, setChannelId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [view, setView] = useState<ViewKey>("all");
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [messageMatches, setMessageMatches] = useState<Set<string>>(
+    () => new Set(),
+  );
+
+  const activeView = VIEWS.find((option) => option.key === view);
+
+  /*
+   * Conversations whose history contains the typed text, answered by the
+   * server -- the same endpoint the web search uses.
+   *
+   * The list only holds each conversation's last message, so a phone number a
+   * customer sent three messages ago is not in the phone at all. It is also
+   * where most numbers actually are: seven contacts in this workspace have a
+   * phone field, and every one of them typed it into a message first.
+   *
+   * Debounced, and aborted when the query moves on, so a fast typist cannot
+   * have the slowest of several searches land last.
+   */
+  useEffect(() => {
+    const keyword = search.trim();
+
+    if (keyword.length < 3 || !workspace) {
+      setMessageMatches((current) =>
+        current.size === 0 ? current : new Set(),
+      );
+
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void api<{ conversationIds?: string[] }>(
+        `/api/inbox/search-messages?q=${encodeURIComponent(keyword)}`,
+        workspace.businessId,
+        { signal: controller.signal },
+      )
+        .then((result) =>
+          setMessageMatches(new Set(result.conversationIds ?? [])),
+        )
+        .catch(() => {
+          /*
+           * An aborted request is the normal case, and a failed one must not
+           * empty what is already on screen: name and preview matches stand
+           * on their own.
+           */
+        });
+    }, 300);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [search, workspace?.businessId]);
 
   const { data: channelData } = useWorkspaceResource<{ channels: Channel[] }>(
     workspace ? "/api/inbox/channels" : null,
@@ -422,7 +622,8 @@ export default function Inbox() {
             (!channelId ||
               conversation.social_account?.id === channelId) &&
             matchesView(conversation, view) &&
-            matchesSearch(conversation, search.trim().toLowerCase()),
+            (matchesSearch(conversation, search.trim().toLowerCase()) ||
+              messageMatches.has(conversation.id)),
         )
         .sort((first, second) => {
         // Pinned first, then most recent, matching the web Inbox.
@@ -435,8 +636,30 @@ export default function Inbox() {
           new Date(first.last_message_at ?? 0).getTime()
         );
       }),
-    [channelId, conversations, search, view],
+    [channelId, conversations, messageMatches, search, view],
   );
+
+  /*
+   * Counted over the channel in force but not the search box: the sheet is
+   * for choosing a filter, and a count that moved while you typed would be
+   * describing a list you are about to leave.
+   */
+  const viewCounts = useMemo(() => {
+    const inChannel = conversations.filter(
+      (conversation) =>
+        !channelId || conversation.social_account?.id === channelId,
+    );
+
+    return VIEWS.reduce(
+      (totals, option) => ({
+        ...totals,
+        [option.key]: inChannel.filter((conversation) =>
+          matchesView(conversation, option.key),
+        ).length,
+      }),
+      {} as Record<ViewKey, number>,
+    );
+  }, [channelId, conversations]);
 
   if (!session) {
     return <Redirect href="/sign-in" />;
@@ -578,112 +801,138 @@ export default function Inbox() {
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 8,
+              gap: 10,
               marginHorizontal: 16,
-              paddingHorizontal: 12,
-              borderRadius: 12,
-              backgroundColor: colors.background,
             }}
           >
-            <Ionicons name="search" size={17} color={colors.muted} />
-
-            <TextInput
-              value={search}
-              onChangeText={setSearch}
-              placeholder="Search conversations and contacts"
-              placeholderTextColor={colors.muted}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
+            <View
               style={{
                 flex: 1,
-                paddingVertical: 10,
-                fontSize: 15,
-                color: colors.ink,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                paddingHorizontal: 12,
+                borderRadius: 12,
+                backgroundColor: colors.background,
               }}
-            />
+            >
+              <Ionicons name="search" size={17} color={colors.muted} />
 
-            {search.length > 0 ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Clear search"
-                onPress={() => setSearch("")}
-                hitSlop={10}
-              >
-                <Ionicons
-                  name="close-circle"
-                  size={17}
-                  color={colors.muted}
-                />
-              </Pressable>
-            ) : null}
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Search name, number or message"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+                style={{
+                  flex: 1,
+                  paddingVertical: 10,
+                  fontSize: 15,
+                  color: colors.ink,
+                }}
+              />
+
+              {search.length > 0 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
+                  onPress={() => setSearch("")}
+                  hitSlop={10}
+                >
+                  <Ionicons
+                    name="close-circle"
+                    size={17}
+                    color={colors.muted}
+                  />
+                </Pressable>
+              ) : null}
+            </View>
+
+            {/*
+              Beside the search box, and marked when a filter is on -- a
+              sheet hides its own state, so the button has to carry it or
+              somebody stares at a short list wondering where everything
+              went.
+            */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                view === "all"
+                  ? "Filter conversations"
+                  : `Filtered by ${activeView?.label}. Change filter.`
+              }
+              onPress={() => setFilterOpen(true)}
+              style={({ pressed }) => ({
+                width: 42,
+                height: 42,
+                borderRadius: 12,
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: view === "all" ? colors.border : colors.blue,
+                backgroundColor:
+                  view === "all"
+                    ? pressed
+                      ? colors.pale
+                      : "white"
+                    : colors.blue,
+              })}
+            >
+              <Ionicons
+                name="options-outline"
+                size={20}
+                color={view === "all" ? colors.ink : "white"}
+              />
+            </Pressable>
           </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{
-              paddingHorizontal: 16,
-              gap: 8,
-            }}
-          >
-            {VIEWS.map((option) => {
-              const active = option.key === view;
+          {/*
+            The filter in words when one is on. The icon alone says "something
+            is filtered" but not what, and this is also how it gets cleared
+            without opening the sheet again.
+          */}
+          {view !== "all" ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Clear the ${activeView?.label} filter`}
+              onPress={() => setView("all")}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                alignSelf: "flex-start",
+                marginHorizontal: 16,
+                paddingHorizontal: 11,
+                paddingVertical: 6,
+                borderRadius: 999,
+                backgroundColor: colors.pale,
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.blue,
+                  fontSize: 12.5,
+                  fontWeight: "700",
+                }}
+              >
+                {activeView?.label} · {ordered.length}
+              </Text>
 
-              /*
-               * Counted from what is on screen, so the number always matches
-               * the list a tap produces -- including the channel filter, which
-               * a count taken from the whole workspace would ignore.
-               */
-              const count = conversations.filter(
-                (conversation) =>
-                  (!channelId ||
-                    conversation.social_account?.id === channelId) &&
-                  matchesView(conversation, option.key),
-              ).length;
-
-              return (
-                <Pressable
-                  key={option.key}
-                  accessibilityRole="button"
-                  onPress={() => setView(option.key)}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 6,
-                    paddingHorizontal: 13,
-                    paddingVertical: 7,
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    borderColor: active ? colors.blue : colors.border,
-                    backgroundColor: active ? colors.blue : "white",
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: active ? "white" : colors.ink,
-                      fontSize: 13,
-                      fontWeight: "700",
-                    }}
-                  >
-                    {option.label}
-                  </Text>
-
-                  <Text
-                    style={{
-                      color: active ? "rgba(255,255,255,0.85)" : colors.muted,
-                      fontSize: 12,
-                      fontWeight: "600",
-                    }}
-                  >
-                    {count}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+              <Ionicons name="close" size={13} color={colors.blue} />
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
+
+      <FilterSheet
+        open={filterOpen}
+        view={view}
+        counts={viewCounts}
+        onSelect={setView}
+        onClose={() => setFilterOpen(false)}
+      />
 
       <ChannelSheet
         open={channelOpen}
