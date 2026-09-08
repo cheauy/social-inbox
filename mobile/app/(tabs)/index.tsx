@@ -19,6 +19,7 @@ import {
   ChannelAvatar,
   Empty,
   ErrorNotice,
+  Sheet,
   colors,
   styles,
   time,
@@ -663,55 +664,6 @@ function OptionList<T extends string>({
         </View>
       ))}
     </>
-  );
-}
-
-/*
- * The sheet shell: the dimmed backdrop and the card it sits on.
- */
-function Sheet({
-  open,
-  title,
-  detail,
-  onClose,
-  children,
-}: {
-  open: boolean;
-  title: string;
-  detail: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <Modal
-      visible={open}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <Pressable
-        accessibilityLabel={`Close ${title.toLowerCase()}`}
-        onPress={onClose}
-        style={{ flex: 1, backgroundColor: "rgba(16,34,56,0.35)" }}
-      />
-
-      <View
-        style={{
-          backgroundColor: "white",
-          borderTopLeftRadius: 20,
-          borderTopRightRadius: 20,
-          paddingBottom: 28,
-          maxHeight: "82%",
-        }}
-      >
-        <View style={{ padding: 18, paddingBottom: 8 }}>
-          <Text style={styles.heading}>{title}</Text>
-          <Text style={styles.muted}>{detail}</Text>
-        </View>
-
-        {children}
-      </View>
-    </Modal>
   );
 }
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { InboxConversation } from "../lib/types";
 
@@ -77,6 +77,29 @@ export function ChannelAvatar({ conversation, size = 48 }: { conversation: Inbox
  */
 export function ChannelBadge({ conversation }: { conversation: InboxConversation }) {
   return <Text style={{ fontSize: 11, color: colors.muted }}>{channel(conversation)}</Text>;
+}
+/*
+ * A bottom sheet: dimmed backdrop, rounded card, title and detail.
+ *
+ * Every panel the phone has room for arrives this way -- channels, filters,
+ * quick replies, tags, the customer -- so the shell lives here and each one
+ * only writes its own contents.
+ */
+export function Sheet({ open, title, detail, onClose, children }: { open: boolean; title: string; detail: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable accessibilityLabel={`Close ${title.toLowerCase()}`} onPress={onClose} style={{ flex: 1, backgroundColor: "rgba(16,34,56,0.35)" }} />
+
+      <View style={{ backgroundColor: "white", borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 28, maxHeight: "82%" }}>
+        <View style={{ padding: 18, paddingBottom: 8 }}>
+          <Text style={styles.heading}>{title}</Text>
+          <Text style={styles.muted}>{detail}</Text>
+        </View>
+
+        {children}
+      </View>
+    </Modal>
+  );
 }
 export function Empty({ title, detail, icon = "chatbubbles-outline" }: { title: string; detail: string; icon?: IconName }) {
   return <View style={styles.empty}><View style={styles.emptyIcon}><Ionicons name={icon} size={34} color={colors.blue} /></View><Text style={styles.heading}>{title}</Text><Text style={[styles.muted, { textAlign: "center", lineHeight: 22 }]}>{detail}</Text></View>;
