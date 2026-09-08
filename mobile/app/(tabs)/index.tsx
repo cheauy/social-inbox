@@ -458,30 +458,93 @@ function FilterButton({
 }
 
 /*
- * One sheet, handed whichever list it is filtering.
- *
- * Smart views and status ask different questions but take the same shape of
- * answer -- a short exclusive list with a count against each -- so they share
- * this rather than being written twice and drifting apart.
+ * One row in either sheet: icon, label, and how many conversations it leaves.
  */
-function FilterSheet<T extends string>({
+function OptionRow<T extends string>({
+  option,
+  active,
+  count,
+  onPress,
+}: {
+  option: FilterOption<T>;
+  active: boolean;
+  count: number;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        paddingHorizontal: 18,
+        paddingVertical: 13,
+        backgroundColor: pressed ? colors.pale : "transparent",
+      })}
+    >
+      <Ionicons
+        name={option.icon}
+        size={19}
+        color={active ? colors.blue : colors.muted}
+      />
+
+      <Text
+        style={{
+          flex: 1,
+          color: colors.ink,
+          fontSize: 15,
+          fontWeight: active ? "800" : "500",
+        }}
+      >
+        {option.label}
+      </Text>
+
+      <Text style={[styles.muted, { fontSize: 13 }]}>{count}</Text>
+
+      {active ? (
+        <Ionicons name="checkmark" size={19} color={colors.blue} />
+      ) : null}
+    </Pressable>
+  );
+}
+
+function GroupLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <Text
+      style={{
+        paddingHorizontal: 18,
+        paddingTop: 14,
+        paddingBottom: 4,
+        fontSize: 11,
+        fontWeight: "800",
+        letterSpacing: 0.6,
+        textTransform: "uppercase",
+        color: colors.muted,
+      }}
+    >
+      {children}
+    </Text>
+  );
+}
+
+/*
+ * The sheet shell: the dimmed backdrop and the card it sits on.
+ */
+function Sheet({
   open,
   title,
   detail,
-  options,
-  selected,
-  counts,
-  onSelect,
   onClose,
+  children,
 }: {
   open: boolean;
   title: string;
   detail: string;
-  options: FilterOption<T>[];
-  selected: T;
-  counts: Record<string, number>;
-  onSelect: (value: T) => void;
   onClose: () => void;
+  children: React.ReactNode;
 }) {
   return (
     <Modal
@@ -502,7 +565,7 @@ function FilterSheet<T extends string>({
           borderTopLeftRadius: 20,
           borderTopRightRadius: 20,
           paddingBottom: 28,
-          maxHeight: "78%",
+          maxHeight: "82%",
         }}
       >
         <View style={{ padding: 18, paddingBottom: 8 }}>
@@ -510,57 +573,167 @@ function FilterSheet<T extends string>({
           <Text style={styles.muted}>{detail}</Text>
         </View>
 
-        <ScrollView>
-          {options.map((option) => {
-            const active = option.key === selected;
-
-            return (
-              <Pressable
-                key={option.key}
-                accessibilityRole="button"
-                onPress={() => {
-                  onSelect(option.key);
-                  onClose();
-                }}
-                style={({ pressed }) => ({
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                  paddingHorizontal: 18,
-                  paddingVertical: 13,
-                  backgroundColor: pressed ? colors.pale : "transparent",
-                })}
-              >
-                <Ionicons
-                  name={option.icon}
-                  size={19}
-                  color={active ? colors.blue : colors.muted}
-                />
-
-                <Text
-                  style={{
-                    flex: 1,
-                    color: colors.ink,
-                    fontSize: 15,
-                    fontWeight: active ? "800" : "500",
-                  }}
-                >
-                  {option.label}
-                </Text>
-
-                <Text style={[styles.muted, { fontSize: 13 }]}>
-                  {counts[option.key] ?? 0}
-                </Text>
-
-                {active ? (
-                  <Ionicons name="checkmark" size={19} color={colors.blue} />
-                ) : null}
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        {children}
       </View>
     </Modal>
+  );
+}
+
+/*
+ * The smart-view icon: the three views on their own, one tap and gone.
+ *
+ * All three are in the filter sheet as well. They are here too because
+ * moving between all, unread and pinned is what an agent does between
+ * messages, and that should not cost a scroll past five statuses.
+ */
+function SmartViewSheet({
+  open,
+  selected,
+  counts,
+  onSelect,
+  onClose,
+}: {
+  open: boolean;
+  selected: SmartView;
+  counts: Record<string, number>;
+  onSelect: (value: SmartView) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Sheet
+      open={open}
+      title="Smart views"
+      detail="Cuts across every status, over the channel you have selected."
+      onClose={onClose}
+    >
+      <ScrollView>
+        {SMART_VIEWS.map((option) => (
+          <OptionRow
+            key={option.key}
+            option={option}
+            active={option.key === selected}
+            count={counts[option.key] ?? 0}
+            onPress={() => {
+              onSelect(option.key);
+              onClose();
+            }}
+          />
+        ))}
+      </ScrollView>
+    </Sheet>
+  );
+}
+
+/*
+ * The filter icon: both lists, in full.
+ *
+ * They are two selections rather than one list of nine -- a view and a
+ * status hold at the same time -- so this sheet does not close on a tap the
+ * way the smart-view one does. Set the view, set the status, and the button
+ * along the bottom says what you are about to be left with.
+ */
+function FilterSheet({
+  open,
+  smartView,
+  status,
+  counts,
+  onSmartView,
+  onStatus,
+  onClose,
+}: {
+  open: boolean;
+  smartView: SmartView;
+  status: StatusKey;
+  counts: { smart: Record<string, number>; status: Record<string, number> };
+  onSmartView: (value: SmartView) => void;
+  onStatus: (value: StatusKey) => void;
+  onClose: () => void;
+}) {
+  const total = counts.smart[smartView] ?? 0;
+
+  return (
+    <Sheet
+      open={open}
+      title="Filter"
+      detail="A smart view and a status, together."
+      onClose={onClose}
+    >
+      <ScrollView>
+        <GroupLabel>Smart views</GroupLabel>
+
+        {SMART_VIEWS.map((option) => (
+          <OptionRow
+            key={option.key}
+            option={option}
+            active={option.key === smartView}
+            count={counts.smart[option.key] ?? 0}
+            onPress={() => onSmartView(option.key)}
+          />
+        ))}
+
+        <GroupLabel>Conversation status</GroupLabel>
+
+        {STATUSES.map((option) => (
+          <OptionRow
+            key={option.key}
+            option={option}
+            active={option.key === status}
+            count={counts.status[option.key] ?? 0}
+            onPress={() => onStatus(option.key)}
+          />
+        ))}
+      </ScrollView>
+
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+          padding: 16,
+          paddingBottom: 4,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+        }}
+      >
+        {smartView !== "all" || status !== "all" ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Clear both filters"
+            onPress={() => {
+              onSmartView("all");
+              onStatus("all");
+            }}
+            style={({ pressed }) => ({
+              paddingHorizontal: 16,
+              paddingVertical: 13,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: pressed ? colors.pale : "white",
+            })}
+          >
+            <Text
+              style={{ color: colors.ink, fontSize: 15, fontWeight: "700" }}
+            >
+              Clear
+            </Text>
+          </Pressable>
+        ) : null}
+
+        <Pressable
+          accessibilityRole="button"
+          onPress={onClose}
+          style={({ pressed }) => [
+            styles.button,
+            { flex: 1, opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
+          <Text style={{ color: "white", fontSize: 16, fontWeight: "700" }}>
+            Show {total} {total === 1 ? "conversation" : "conversations"}
+          </Text>
+        </Pressable>
+      </View>
+    </Sheet>
   );
 }
 
@@ -921,10 +1094,15 @@ export default function Inbox() {
               </View>
 
               {/*
-                Smart view first, then status -- the same order as the web,
-                and the order an agent works in: pick the pile, then narrow
-                it. Each wears its own filter's icon when one is set, so the
-                header says which without opening anything.
+                The first is the shortcut, the second is everything.
+
+                Smart views are what an agent moves between while working, so
+                they get their own icon and their own three-row sheet. The
+                filter icon opens the full list -- both smart views and every
+                status -- for the times you are setting up a view rather than
+                flicking between them. Each button wears its filter's icon
+                when one is set, so the header says what is on without
+                opening anything.
               */}
               <FilterButton
                 icon={activeSmart?.icon ?? "albums-outline"}
@@ -938,13 +1116,20 @@ export default function Inbox() {
               />
 
               <FilterButton
-                icon={activeStatus?.icon ?? "options-outline"}
-                label={
+                icon={
                   status === "all"
-                    ? "Filter by status"
-                    : `Status: ${activeStatus?.label}. Change it.`
+                    ? "options-outline"
+                    : (activeStatus?.icon ?? "options-outline")
                 }
-                active={status !== "all"}
+                label={
+                  filtering
+                    ? `Filtered by ${[activeSmart, activeStatus]
+                        .filter((option) => option && option.key !== "all")
+                        .map((option) => option?.label)
+                        .join(" and ")}. Change it.`
+                    : "Filter conversations"
+                }
+                active={filtering}
                 onPress={() => setStatusOpen(true)}
               />
             </View>
@@ -987,11 +1172,8 @@ export default function Inbox() {
         ) : null}
       </View>
 
-      <FilterSheet
+      <SmartViewSheet
         open={smartOpen}
-        title="Smart views"
-        detail="Cuts across every status, over the channel you have selected."
-        options={SMART_VIEWS}
         selected={smartView}
         counts={counts.smart}
         onSelect={setSmartView}
@@ -1000,12 +1182,11 @@ export default function Inbox() {
 
       <FilterSheet
         open={statusOpen}
-        title="Conversation status"
-        detail="Where each conversation stands. Combines with the smart view."
-        options={STATUSES}
-        selected={status}
-        counts={counts.status}
-        onSelect={setStatus}
+        smartView={smartView}
+        status={status}
+        counts={counts}
+        onSmartView={setSmartView}
+        onStatus={setStatus}
         onClose={() => setStatusOpen(false)}
       />
 
