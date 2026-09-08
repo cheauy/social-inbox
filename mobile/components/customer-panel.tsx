@@ -93,6 +93,14 @@ function stamp(value?: string | null) {
   })}, ${at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 }
 
+/*
+ * A titled group, drawn as a card on the panel's tinted ground.
+ *
+ * The sections used to be separated by hairlines on white, which left the
+ * whole record as one long undifferentiated column -- the eye had nothing to
+ * catch on and the headings did all the work. Cards give each group an edge,
+ * and match how every other screen in the app is built.
+ */
 function Section({
   title,
   children,
@@ -101,16 +109,10 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <View
-      style={{
-        paddingVertical: 14,
-        borderTopWidth: 1,
-        borderTopColor: colors.border,
-        gap: 12,
-      }}
-    >
+    <View style={{ gap: 8 }}>
       <Text
         style={{
+          paddingLeft: 4,
           fontSize: 11,
           fontWeight: "800",
           letterSpacing: 0.7,
@@ -121,8 +123,32 @@ function Section({
         {title}
       </Text>
 
-      {children}
+      <View
+        style={{
+          backgroundColor: "white",
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: colors.border,
+          paddingHorizontal: 14,
+          paddingVertical: 4,
+        }}
+      >
+        {children}
+      </View>
     </View>
+  );
+}
+
+/** A hairline between two rows of the same card. */
+function Divider() {
+  return (
+    <View
+      style={{
+        height: 1,
+        backgroundColor: colors.border,
+        marginHorizontal: -14,
+      }}
+    />
   );
 }
 
@@ -280,7 +306,13 @@ function Editable({
   );
 }
 
-/** One of the three things you can do to a conversation, in the header. */
+/*
+ * One of the three things you can do to a conversation.
+ *
+ * A card each rather than three icons sharing one grey strip: they are
+ * separate decisions, one of them is a toggle that stays on, and a strip gave
+ * no way to show which. An active pin now reads as a filled card.
+ */
 function HeaderAction({
   icon,
   label,
@@ -302,26 +334,33 @@ function HeaderAction({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ selected: Boolean(active) }}
       disabled={busy}
       onPress={onPress}
       style={({ pressed }) => ({
         flex: 1,
         alignItems: "center",
-        gap: 4,
-        paddingVertical: 10,
-        borderRadius: 10,
-        backgroundColor: pressed ? colors.pale : "transparent",
+        gap: 5,
+        paddingVertical: 12,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: active ? colors.blue : colors.border,
+        backgroundColor: active
+          ? colors.pale
+          : pressed
+            ? colors.pale
+            : "white",
       })}
     >
       {busy ? (
         <ActivityIndicator color={colors.blue} />
       ) : (
-        <Ionicons name={icon} size={21} color={colour} />
+        <Ionicons name={icon} size={20} color={colour} />
       )}
 
       <Text
         numberOfLines={1}
-        style={{ fontSize: 11.5, fontWeight: "700", color: colour }}
+        style={{ fontSize: 11.5, fontWeight: "800", color: colour }}
       >
         {label}
       </Text>
@@ -525,7 +564,7 @@ export function CustomerPanel({
           bottom: 0,
           right: 0,
           width: PANEL,
-          backgroundColor: "white",
+          backgroundColor: colors.background,
           borderLeftWidth: 1,
           borderLeftColor: colors.border,
           transform: [{ translateX: slide }],
@@ -558,7 +597,8 @@ export function CustomerPanel({
           contentContainerStyle={{
             paddingTop: error ? 14 : insets.top + 14,
             paddingBottom: insets.bottom + 28,
-            paddingHorizontal: 18,
+            paddingHorizontal: 14,
+            gap: 16,
           }}
         >
           {loading && !customer ? (
@@ -573,7 +613,17 @@ export function CustomerPanel({
             />
           ) : (
             <>
-              <View style={{ flexDirection: "row", gap: 12 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  gap: 12,
+                  padding: 14,
+                  borderRadius: 16,
+                  backgroundColor: "white",
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
                 <Avatar
                   name={customer.fullName}
                   uri={customer.profilePictureUrl}
@@ -630,15 +680,7 @@ export function CustomerPanel({
                 toolbar belongs, rather than in a section at the bottom you
                 have to scroll a record to reach.
               */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  marginTop: 14,
-                  paddingVertical: 2,
-                  borderRadius: 12,
-                  backgroundColor: colors.background,
-                }}
-              >
+              <View style={{ flexDirection: "row", gap: 10 }}>
                 <HeaderAction
                   icon={pinned ? "pin" : "pin-outline"}
                   label={pinned ? "Unpin" : "Pin"}
@@ -664,7 +706,16 @@ export function CustomerPanel({
               </View>
 
               {statusOpen ? (
-                <View style={{ paddingTop: 8 }}>
+                <View
+                  style={{
+                    backgroundColor: "white",
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    paddingHorizontal: 14,
+                    paddingVertical: 4,
+                  }}
+                >
                   {STATUSES.map((option) => (
                     <ChoiceRow
                       key={option.key}
@@ -682,83 +733,124 @@ export function CustomerPanel({
               ) : null}
 
               <Section title="Tags">
-                {customer.tags.length === 0 ? (
-                  <Text style={{ fontSize: 14, color: colors.muted }}>
-                    No tags yet
-                  </Text>
-                ) : (
-                  <View
-                    style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
-                  >
-                    {customer.tags.map((tag) => (
-                      <View
-                        key={tag.id}
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 6,
-                          paddingHorizontal: 10,
-                          paddingVertical: 5,
-                          borderRadius: 999,
-                          backgroundColor: colors.pale,
-                        }}
-                      >
+                <View style={{ paddingVertical: 12, gap: 12 }}>
+                  {customer.tags.length === 0 ? (
+                    <Text style={{ fontSize: 14.5, color: colors.muted }}>
+                      No tag yet
+                    </Text>
+                  ) : (
+                    <View
+                      style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
+                    >
+                      {customer.tags.map((tag) => (
                         <View
+                          key={tag.id}
                           style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: 4,
-                            backgroundColor: tag.color ?? colors.muted,
-                          }}
-                        />
-
-                        <Text
-                          style={{
-                            color: colors.ink,
-                            fontSize: 12.5,
-                            fontWeight: "700",
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 6,
+                            paddingHorizontal: 11,
+                            paddingVertical: 6,
+                            borderRadius: 999,
+                            backgroundColor: colors.pale,
                           }}
                         >
-                          {tag.name}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
+                          <View
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: 4,
+                              backgroundColor: tag.color ?? colors.muted,
+                            }}
+                          />
 
-                <ChoiceRow
-                  icon="pricetag-outline"
-                  label="Edit tags"
-                  active={false}
-                  busy={false}
-                  onPress={onEditTags}
-                />
+                          <Text
+                            style={{
+                              color: colors.ink,
+                              fontSize: 12.5,
+                              fontWeight: "700",
+                            }}
+                          >
+                            {tag.name}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/*
+                    Add when there are none, Edit when there are. The same
+                    sheet either way, but "Edit tags" over an empty list reads
+                    as a dead end -- there is nothing there to edit.
+                  */}
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={onEditTags}
+                    style={({ pressed }) => ({
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                      alignSelf: "flex-start",
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: 999,
+                      backgroundColor: pressed ? colors.border : colors.pale,
+                    })}
+                  >
+                    <Ionicons
+                      name="pricetag-outline"
+                      size={15}
+                      color={colors.blue}
+                    />
+
+                    <Text
+                      style={{
+                        color: colors.blue,
+                        fontSize: 13,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {customer.tags.length === 0 ? "Add tags" : "Edit tags"}
+                    </Text>
+                  </Pressable>
+                </View>
               </Section>
 
-              <Section title="Contact">
-                <Editable
-                  icon="call-outline"
-                  label="Phone"
-                  value={customer.phone}
-                  empty="Not added"
-                  busy={busy === "field:phone"}
-                  onSave={(next) => onSaveField("phone", next)}
-                />
+              <Section title="Information">
+                <View style={{ paddingVertical: 12 }}>
+                  <Editable
+                    icon="call-outline"
+                    label="Phone"
+                    value={customer.phone}
+                    empty="Not added"
+                    busy={busy === "field:phone"}
+                    onSave={(next) => onSaveField("phone", next)}
+                  />
+                </View>
 
-                <Editable
-                  icon="document-text-outline"
-                  label="Note"
-                  value={customer.customerNote}
-                  empty="No customer note has been added."
-                  multiline
-                  busy={busy === "field:customerNote"}
-                  onSave={(next) => onSaveField("customerNote", next)}
-                />
+                <Divider />
+
+                <View style={{ paddingVertical: 12 }}>
+                  <Editable
+                    icon="document-text-outline"
+                    label="Note"
+                    value={customer.customerNote}
+                    empty="No customer note has been added."
+                    multiline
+                    busy={busy === "field:customerNote"}
+                    onSave={(next) => onSaveField("customerNote", next)}
+                  />
+                </View>
               </Section>
 
               <Section title="Conversation">
                 <View
-                  style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 8,
+                    paddingVertical: 12,
+                  }}
                 >
                   <Ionicons name="person-outline" size={13} color={colors.muted} />
 
@@ -797,6 +889,7 @@ export function CustomerPanel({
                     onPress={() => onAssign(currentMemberId)}
                     style={({ pressed }) => ({
                       alignSelf: "flex-start",
+                      marginBottom: 12,
                       paddingHorizontal: 12,
                       paddingVertical: 7,
                       borderRadius: 8,
@@ -847,7 +940,9 @@ export function CustomerPanel({
                   )
                 ) : null}
 
-                <View style={{ gap: 3 }}>
+                <Divider />
+
+                <View style={{ gap: 3, paddingVertical: 12 }}>
                   <View
                     style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
                   >
