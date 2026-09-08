@@ -3,7 +3,6 @@ import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import * as DocumentPicker from "expo-document-picker";
 import { File, Paths } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
-import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -12,6 +11,7 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Linking,
   Platform,
   Pressable,
@@ -36,6 +36,7 @@ import {
   time,
 } from "../../components/ui";
 import { Composer } from "../../components/composer";
+import { LocationPicker } from "../../components/location-picker";
 import type { Pending } from "../../components/composer";
 import {
   CustomerPanel,
@@ -71,6 +72,58 @@ const PAGE_SIZE = 25;
 
 const sentAt = (message: InboxMessage) =>
   new Date(message.platform_created_at ?? message.created_at).getTime();
+
+/*
+ * The day a message belongs to, and how to name it.
+ *
+ * Every bubble carried a clock and nothing else, so a thread that had been
+ * going a fortnight read as one long day and 9:36 AM could have been this
+ * morning or a week last Tuesday. Today and Yesterday by name because that is
+ * how people say them; anything older gets its date, and anything from
+ * another year gets the year too.
+ */
+const dayOf = (message: InboxMessage) => {
+  const at = new Date(message.platform_created_at ?? message.created_at);
+
+  return new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
+};
+
+function dayLabel(stamp: number) {
+  const day = new Date(stamp);
+  const now = new Date();
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = Math.round((midnight.getTime() - stamp) / 86400000);
+
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+
+  return day.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    ...(day.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+  });
+}
+
+function DaySeparator({ label }: { label: string }) {
+  return (
+    <View style={{ alignItems: "center", paddingVertical: 12 }}>
+      <View
+        style={{
+          paddingHorizontal: 12,
+          paddingVertical: 5,
+          borderRadius: 999,
+          backgroundColor: colors.border,
+        }}
+      >
+        <Text
+          style={{ fontSize: 11.5, fontWeight: "800", color: colors.muted }}
+        >
+          {label}
+        </Text>
+      </View>
+    </View>
+  );
+}
 
 /*
  * Newest first, and each message once.
@@ -269,28 +322,45 @@ function VoiceMessage({
       style={({ pressed }) => ({
         flexDirection: "row",
         alignItems: "center",
-        gap: 10,
+        gap: 9,
         opacity: pressed ? 0.7 : 1,
       })}
     >
-      <Ionicons name={playing ? "pause-circle" : "play-circle"} size={34} color={tint} />
+      <Ionicons name={playing ? "pause-circle" : "play-circle"} size={30} color={tint} />
 
-      <View style={{ width: 128, gap: 6 }}>
-        <View style={{ height: 4, borderRadius: 2, backgroundColor: track }}>
-          <View
-            style={{
-              width: `${progress * 100}%`,
-              height: 4,
-              borderRadius: 2,
-              backgroundColor: tint,
-            }}
-          />
-        </View>
-
-        <Text style={{ fontSize: 11, color: outgoing ? "rgba(255,255,255,0.8)" : colors.muted }}>
-          {active && duration > 0 ? `${clock(position)} / ${clock(duration)}` : "Voice message"}
-        </Text>
+      {/*
+        Sized to the clip, not to a guess. It was a fixed 128-point track with
+        the words "Voice message" under it, which made a two-second note as
+        wide as a sentence and left a bubble that was mostly empty. The track
+        is the width it needs and the time sits beside it.
+      */}
+      <View style={{ width: 96, height: 4, borderRadius: 2, backgroundColor: track }}>
+        <View
+          style={{
+            width: `${progress * 100}%`,
+            height: 4,
+            borderRadius: 2,
+            backgroundColor: tint,
+          }}
+        />
       </View>
+
+      {/*
+        Only once there is a time to show. A clip's length is not known until
+        it has been loaded into the player, and printing 0:00 before then
+        claims every unplayed voice note is empty.
+      */}
+      {active && duration > 0 ? (
+        <Text
+          style={{
+            fontSize: 12,
+            fontVariant: ["tabular-nums"],
+            color: outgoing ? "rgba(255,255,255,0.85)" : colors.muted,
+          }}
+        >
+          {clock(position)}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -303,14 +373,20 @@ function VoiceMessage({
  * cheaper than reserving nothing and letting the whole thread jump when each
  * picture lands.
  */
-function MessagePhoto({ uri }: { uri: string }) {
+function MessagePhoto({
+  uri,
+  onOpen,
+}: {
+  uri: string;
+  onOpen: (uri: string) => void;
+}) {
   const [ratio, setRatio] = useState(1);
 
   return (
     <Pressable
       accessibilityRole="imagebutton"
-      accessibilityLabel="Open photo"
-      onPress={() => void Linking.openURL(uri)}
+      accessibilityLabel="View photo"
+      onPress={() => onOpen(uri)}
     >
       <Image
         source={{ uri }}
@@ -384,8 +460,10 @@ function MessageFile({
 function Bubble({
   message,
   audio,
+  onViewPhoto,
 }: {
   message: InboxMessage;
+  onViewPhoto: (uri: string) => void;
   audio: {
     activeId: string | null;
     playing: boolean;
@@ -427,7 +505,9 @@ function Bubble({
           gap: 6,
         }}
       >
-        {url && type === "image" ? <MessagePhoto uri={url} /> : null}
+        {url && type === "image" ? (
+          <MessagePhoto uri={url} onOpen={onViewPhoto} />
+        ) : null}
 
         {url && type === "audio" ? (
           <VoiceMessage
@@ -687,6 +767,8 @@ export default function Conversation() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const [panelOpen, setPanelOpen] = useState(false);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [mapOpen, setMapOpen] = useState(false);
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
   const [customerLoading, setCustomerLoading] = useState(false);
 
@@ -1006,15 +1088,14 @@ export default function Conversation() {
    * has nothing of the kind, so it gets the same Google Maps link the web
    * writes into the reply box -- which is what a customer can actually open.
    */
-  async function sendLocation() {
+  async function sendLocation({
+    latitude,
+    longitude,
+  }: {
+    latitude: number;
+    longitude: number;
+  }) {
     if (!id || sending) {
-      return;
-    }
-
-    const permission = await Location.requestForegroundPermissionsAsync();
-
-    if (!permission.granted) {
-      setError("TENH needs permission to your location to send it.");
       return;
     }
 
@@ -1022,13 +1103,6 @@ export default function Conversation() {
     setError("");
 
     try {
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      const latitude = Number(position.coords.latitude.toFixed(6));
-      const longitude = Number(position.coords.longitude.toFixed(6));
-
       if (platform === "telegram") {
         await api("/api/telegram/send-location", workspace?.businessId, {
           method: "POST",
@@ -1044,12 +1118,13 @@ export default function Conversation() {
         });
       }
 
+      setMapOpen(false);
       await load();
     } catch (locationError) {
       setError(
         locationError instanceof ApiError
           ? locationError.message
-          : "Unable to send your location.",
+          : "Unable to send that location.",
       );
     } finally {
       setSending(false);
@@ -1545,18 +1620,35 @@ export default function Conversation() {
           style={{ flex: 1 }}
           data={messages}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <Bubble
-              message={item}
-              audio={{
-                activeId: playingId,
-                playing: playerStatus.playing,
-                position: playerStatus.currentTime,
-                duration: playerStatus.duration,
-                onToggle: toggleAudio,
-              }}
-            />
-          )}
+          renderItem={({ item, index }) => {
+            /*
+             * Inverted, so the next item in the array is the one above on
+             * screen. When it belongs to an earlier day, this message is the
+             * first of its own day and the separator goes above it.
+             */
+            const older = messages[index + 1];
+            const startsADay = !older || dayOf(older) !== dayOf(item);
+
+            return (
+              <>
+                {startsADay ? (
+                  <DaySeparator label={dayLabel(dayOf(item))} />
+                ) : null}
+
+                <Bubble
+                  message={item}
+                  onViewPhoto={setPhoto}
+                  audio={{
+                    activeId: playingId,
+                    playing: playerStatus.playing,
+                    position: playerStatus.currentTime,
+                    duration: playerStatus.duration,
+                    onToggle: toggleAudio,
+                  }}
+                />
+              </>
+            );
+          }}
           /*
            * Inverted, so the list's "end" is the top of the screen -- which
            * is where older messages belong. Half a screen of warning is
@@ -1588,7 +1680,7 @@ export default function Conversation() {
         onPickImages={() => void pickFromLibrary(["images"], true)}
         onPickVideo={() => void pickFromLibrary(["videos"], false)}
         onPickFile={() => void pickFile()}
-        onSendLocation={() => void sendLocation()}
+        onSendLocation={() => setMapOpen(true)}
         onQuickReplies={() => void openReplies()}
         onVoice={stageVoice}
         onSend={() => void send()}
@@ -1601,6 +1693,61 @@ export default function Conversation() {
         onPick={(reply) => void pickReply(reply)}
         onClose={() => setReplyOpen(false)}
       />
+
+      <LocationPicker
+        open={mapOpen}
+        sending={sending}
+        onSend={(point) => void sendLocation(point)}
+        onClose={() => setMapOpen(false)}
+      />
+
+      {/*
+        A photo, full screen, in the app. Tapping one used to hand the URL to
+        the browser, which meant leaving the conversation, waiting for Chrome,
+        and coming back to a thread that had scrolled.
+      */}
+      <Modal
+        visible={Boolean(photo)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPhoto(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.94)" }}>
+          <Pressable
+            accessibilityLabel="Close the photo"
+            onPress={() => setPhoto(null)}
+            style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+          >
+            {photo ? (
+              <Image
+                source={{ uri: photo }}
+                style={{ width: "100%", height: "100%" }}
+                resizeMode="contain"
+              />
+            ) : null}
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close the photo"
+            onPress={() => setPhoto(null)}
+            hitSlop={12}
+            style={{
+              position: "absolute",
+              top: insets.top + 10,
+              right: 16,
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(255,255,255,0.18)",
+            }}
+          >
+            <Ionicons name="close" size={24} color="white" />
+          </Pressable>
+        </View>
+      </Modal>
 
       <CustomerPanel
         open={panelOpen}

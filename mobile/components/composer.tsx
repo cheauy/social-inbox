@@ -9,6 +9,7 @@ import {
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   Text,
@@ -241,63 +242,123 @@ export function Composer({
         than sent on pick, so a quick reply's text and its picture leave
         together and a wrong file can be taken back off.
       */}
+      {/*
+        What is queued to go with the next send.
+
+        A photo shows itself. It was a pill reading IMG_20260908_114233.jpg,
+        which tells an agent nothing about which photo they picked and takes
+        the width of three of them to say it. Files keep their name, because
+        for a file the name is the whole of what it is.
+      */}
       {pending.length > 0 ? (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ gap: 8, paddingHorizontal: 12, paddingTop: 10 }}
-          style={{ maxHeight: 56, backgroundColor: "white" }}
+          style={{ maxHeight: 76, backgroundColor: "white" }}
         >
-          {pending.map((file) => (
-            <View
-              key={file.key}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 8,
-                paddingHorizontal: 11,
-                paddingVertical: 8,
-                borderRadius: 999,
-                backgroundColor: colors.pale,
-              }}
-            >
-              <Ionicons
-                name={
-                  file.kind === "image"
-                    ? "image"
-                    : file.kind === "video"
-                      ? "videocam"
-                      : file.kind === "audio"
-                        ? "mic"
-                        : "document"
-                }
-                size={15}
-                color={colors.blue}
-              />
+          {pending.map((file) => {
+            const visual = file.kind === "image" || file.kind === "video";
 
-              <Text
-                numberOfLines={1}
-                style={{
-                  maxWidth: 140,
-                  color: colors.ink,
-                  fontSize: 12.5,
-                  fontWeight: "600",
-                }}
-              >
-                {file.name}
-              </Text>
+            return (
+              <View key={file.key}>
+                {visual ? (
+                  <View
+                    style={{
+                      width: 58,
+                      height: 58,
+                      borderRadius: 12,
+                      overflow: "hidden",
+                      backgroundColor: colors.border,
+                    }}
+                  >
+                    <Image
+                      source={{ uri: file.uri }}
+                      style={{ width: 58, height: 58 }}
+                      resizeMode="cover"
+                    />
 
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${file.name}`}
-                disabled={sending}
-                hitSlop={8}
-                onPress={() => onRemovePending(file.key)}
-              >
-                <Ionicons name="close" size={14} color={colors.blue} />
-              </Pressable>
-            </View>
-          ))}
+                    {file.kind === "video" ? (
+                      <View
+                        style={{
+                          position: "absolute",
+                          left: 0,
+                          right: 0,
+                          top: 0,
+                          bottom: 0,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "rgba(16,34,56,0.25)",
+                        }}
+                      >
+                        <Ionicons name="play" size={20} color="white" />
+                      </View>
+                    ) : null}
+                  </View>
+                ) : (
+                  <View
+                    style={{
+                      height: 58,
+                      maxWidth: 170,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                      paddingHorizontal: 12,
+                      borderRadius: 12,
+                      backgroundColor: colors.pale,
+                    }}
+                  >
+                    <Ionicons
+                      name={file.kind === "audio" ? "mic" : "document"}
+                      size={17}
+                      color={colors.blue}
+                    />
+
+                    <Text
+                      numberOfLines={2}
+                      style={{
+                        flexShrink: 1,
+                        color: colors.ink,
+                        fontSize: 12,
+                        fontWeight: "600",
+                      }}
+                    >
+                      {file.name}
+                    </Text>
+                  </View>
+                )}
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${
+                    file.kind === "image"
+                      ? "this photo"
+                      : file.kind === "video"
+                        ? "this video"
+                        : file.name
+                  }`}
+                  disabled={sending}
+                  hitSlop={8}
+                  onPress={() => onRemovePending(file.key)}
+                  style={{
+                    position: "absolute",
+                    top: -6,
+                    right: -6,
+                    width: 22,
+                    height: 22,
+                    borderRadius: 11,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: colors.ink,
+                    borderWidth: 2,
+                    borderColor: "white",
+                  }}
+                >
+                  <Ionicons name="close" size={12} color="white" />
+                </Pressable>
+              </View>
+            );
+          })}
         </ScrollView>
       ) : null}
 
@@ -391,7 +452,7 @@ export function Composer({
             />
 
             <Round
-              icon="flash-outline"
+              icon="chatbox-ellipses-outline"
               label="Quick replies"
               disabled={sending}
               onPress={onQuickReplies}
