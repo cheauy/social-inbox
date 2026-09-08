@@ -1,19 +1,68 @@
-# EAS archives this repository from its Git root. Only the mobile client and
-# its shared compile-time Inbox types belong in the Android build upload.
-/*
-!/mobile/
-!/types/
-/types/*
-!/types/inbox.ts
+# EAS archives this repository from its Git root, so the whole web app would
+# travel with the Android build unless it is excluded here. Only the mobile
+# client and the one shared types file it compiles against belong in the
+# upload.
+#
+# Written as explicit excludes rather than the "/*" whitelist idiom that works
+# in .gitignore. EAS does not re-descend into a directory that an earlier rule
+# excluded, so "/*" followed by "!/mobile/" archives nothing at all -- an
+# empty upload that builds for ten minutes and fails on a missing package.json.
+# Verify any change to this file with:
+#
+#   npx eas-cli@latest build:inspect --platform android --stage archive \
+#     --output <dir>
+#
+# and check the result contains mobile/ and types/inbox.ts.
+
+# The Next.js app.
+/api/
+/app/
+/components/
+/dashboard/
+/db/
+/lib/
+/public/
+/types/facebook.ts
+/types/telegram.ts
+/types/inbox.ts.ADDITIONS.txt
+/next.config.ts
+/next-env.d.ts
+/postcss.config.mjs
+/proxy.ts
+/eslint.config.mjs
+/tsconfig.json
+/tsconfig.tsbuildinfo
+/vercel.json
+/package.json
+/package-lock.json
+/README.md
+/AGENTS.md
+/CLAUDE.md
+/.next/
+/.claude/
+/.codex/
+/.mcp.json
+
+# .git is not listed. EAS keeps it whatever this file says -- it is how the
+# archive is produced -- so it is about 19MB of the 20MB upload and there is
+# no rule here that changes that.
+
+# Anything generated, anywhere.
 **/node_modules/
 **/.expo/
 **/dist/
 **/web-build/
 **/build-artifacts/
 **/build-inspect/
+**/*.tsbuildinfo
+**/*.log
 /mobile/android/
 /mobile/ios/
-**/.env*
+
+# Secrets and signing material never travel. EAS injects the environment from
+# its own store; the .env in this working tree is for the local dev server.
+**/.env
+**/.env.*
 !/mobile/.env.example
 **/*.jks
 **/*.keystore
@@ -23,8 +72,8 @@
 **/*.p12
 **/*.p8
 **/*.mobileprovision
-**/*.tsbuildinfo
-**/*.log
+
+# Build outputs.
 **/*.apk
 **/*.aab
-**/.DS_Store
+.DS_Store
