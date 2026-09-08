@@ -6,6 +6,7 @@ import {
   useSearchParams,
 } from "next/navigation";
 import {
+  memo,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -1262,7 +1263,24 @@ function viewKeyFromUrl(
   return "all";
 }
 
-export function ConversationList({
+/*
+ * Memoized, because typing must not redraw the list.
+ *
+ * The reply draft lives in InboxView -- the whole 9,000-line component -- so
+ * every character typed into the composer sets state up there and re-renders
+ * its children. This list is 4,600 lines of rows, filters, saved views and
+ * channel groups, and none of it changes while somebody types a message.
+ *
+ * Its seven props survive a keystroke unchanged: the arrays and counts come
+ * from server props or realtime state, and the three callbacks are
+ * useCallback values whose dependencies do not include the draft. So memo
+ * turns the per-character re-render into a reference check.
+ *
+ * Anything added here later must keep that true -- an inline arrow passed
+ * from InboxView would be a new reference on every render and would quietly
+ * turn this back off.
+ */
+function ConversationListView({
   conversations,
   activeConversationId,
   activeStatus,
@@ -4622,3 +4640,5 @@ export function ConversationList({
     </section>
   );
 }
+
+export const ConversationList = memo(ConversationListView);
