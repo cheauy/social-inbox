@@ -1265,6 +1265,44 @@ function viewKeyFromUrl(
 }
 
 /*
+ * Placeholder rows for when the list is genuinely waiting on the server.
+ *
+ * Shaped like a conversation row rather than a spinner, so the list keeps its
+ * rhythm and nothing jumps when the real rows replace them: an avatar circle,
+ * a name line and a shorter preview line.
+ *
+ * Not decoration. It stands in for a specific wrong answer -- see the empty
+ * state below for when it is used and why "No conversations found" was a lie.
+ */
+function ConversationListSkeleton() {
+  return (
+    <div
+      aria-busy="true"
+      aria-live="polite"
+      className="animate-pulse"
+    >
+      <span className="sr-only">
+        Loading conversations…
+      </span>
+
+      {[0, 1, 2, 3, 4, 5].map((row) => (
+        <div
+          key={row}
+          className="flex items-start gap-2.5 border-b border-slate-100 py-2.5 pl-3 pr-3"
+        >
+          <div className="mt-0.5 h-10 w-10 shrink-0 rounded-full bg-slate-200/80" />
+
+          <div className="min-w-0 flex-1 pt-1">
+            <div className="h-3 w-2/5 rounded bg-slate-200/80" />
+            <div className="mt-2 h-2.5 w-3/4 rounded bg-slate-200/60" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/*
  * One conversation row, memoized.
  *
  * Measured before this existed: opening a conversation blocked the main
@@ -4968,8 +5006,33 @@ function ConversationListView({
 
 
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-          {filteredConversations.length ===
-          0 ? (
+          {/*
+            An empty list means two different things, and only one of them is
+            true.
+
+            The status filter is applied optimistically, over the
+            conversations the client already holds -- and those were loaded
+            for the previous filter. Coming from All that is the whole
+            workspace and the answer is right, which is why the rows appear in
+            about 25ms. Coming from one status to another it is only the
+            previous status's conversations, and a conversation has exactly
+            one status, so filtering them always finds nothing until the
+            server replies.
+
+            Going from Open to Closed therefore showed "No conversations
+            found -- No conversations match this filter" for the two seconds
+            the round trip took, and then four appeared. Slow is forgivable;
+            asserting there is nothing there when there is is not.
+
+            So: nothing found while the server still owes us an answer for
+            this filter is a wait, and gets the skeleton. Nothing found once
+            the server has agreed is genuinely nothing, and still says so.
+          */}
+          {filteredConversations.length === 0 &&
+          optimisticStatus !== activeStatus ? (
+            <ConversationListSkeleton />
+          ) : filteredConversations.length ===
+            0 ? (
             <div className="p-8 text-center">
               <p className="font-medium text-slate-800">
                 No conversations found
