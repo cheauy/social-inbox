@@ -323,32 +323,31 @@ function ChannelSheet({
 
 
 /*
- * The quick views and the status filter, in one strip.
+ * Smart views and status, kept apart.
  *
- * The web keeps them apart -- a rail for views, a panel for status -- but a
- * phone header cannot hold two rows of controls above the list. They are
- * mutually exclusive in practice anyway: nobody asks for "unread and closed".
- * One selection, scrollable, with the views first because they are what an
- * agent reaches for between messages.
+ * They were one exclusive list, which meant asking for "unread" gave up on
+ * "open" -- and those are different questions. The web answers both at once:
+ * a rail for the view, a panel for the status. Two controls cost one more
+ * icon in the header and get that back, and each list now reads as itself
+ * instead of a strip where "Pinned" and "Closed" looked like alternatives.
  */
-type ViewKey =
-  | "all"
-  | "unread"
-  | "pinned"
-  | "open"
-  | "pending"
-  | "resolved"
-  | "closed"
-  | "spam";
+type SmartView = "all" | "unread" | "pinned";
+type StatusKey = "all" | "open" | "pending" | "resolved" | "closed" | "spam";
 
-const VIEWS: {
-  key: ViewKey;
+type FilterOption<T> = {
+  key: T;
   label: string;
   icon: React.ComponentProps<typeof Ionicons>["name"];
-}[] = [
-  { key: "all", label: "All conversations", icon: "layers-outline" },
+};
+
+const SMART_VIEWS: FilterOption<SmartView>[] = [
+  { key: "all", label: "All conversations", icon: "albums-outline" },
   { key: "unread", label: "Unread", icon: "mail-unread-outline" },
   { key: "pinned", label: "Pinned", icon: "pin-outline" },
+];
+
+const STATUSES: FilterOption<StatusKey>[] = [
+  { key: "all", label: "Any status", icon: "options-outline" },
   { key: "open", label: "Open", icon: "ellipse-outline" },
   { key: "pending", label: "Pending", icon: "time-outline" },
   { key: "resolved", label: "Resolved", icon: "checkmark-circle-outline" },
@@ -356,11 +355,14 @@ const VIEWS: {
   { key: "spam", label: "Spam", icon: "alert-circle-outline" },
 ];
 
-function matchesView(conversation: InboxConversation, view: ViewKey) {
-  if (view === "all") return true;
+function matchesSmartView(conversation: InboxConversation, view: SmartView) {
   if (view === "unread") return (conversation.unread_count ?? 0) > 0;
   if (view === "pinned") return Boolean(conversation.is_pinned);
-  return conversation.status === view;
+  return true;
+}
+
+function matchesStatus(conversation: InboxConversation, status: StatusKey) {
+  return status === "all" || conversation.status === status;
 }
 
 /*
@@ -383,34 +385,104 @@ function matchesSearch(conversation: InboxConversation, keyword: string) {
 
 
 /*
- * Views and status behind one control, rather than a strip of chips.
- *
- * The chips took a whole row above the list and still ran off the edge at
- * seven of them, so the ones past "Open" were only reachable by scrolling a
- * bar most people would not think to scroll. A sheet costs one tap and can
- * show every option at once, grouped the way the web groups them.
+ * One active filter, and the way off it.
  */
-function FilterSheet({
+function FilterPill({
+  label,
+  onClear,
+}: {
+  label: string;
+  onClear: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Clear the ${label} filter`}
+      onPress={onClear}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        paddingHorizontal: 11,
+        paddingVertical: 6,
+        borderRadius: 999,
+        backgroundColor: pressed ? colors.border : colors.pale,
+      })}
+    >
+      <Text style={{ color: colors.blue, fontSize: 12.5, fontWeight: "700" }}>
+        {label}
+      </Text>
+
+      <Ionicons name="close" size={13} color={colors.blue} />
+    </Pressable>
+  );
+}
+
+/*
+ * The button that opens one of them.
+ *
+ * Filled while its filter is on. A sheet hides its own state once it closes,
+ * so the button has to carry it -- otherwise somebody stares at a short list
+ * wondering where the rest of it went.
+ */
+function FilterButton({
+  icon,
+  label,
+  active,
+  onPress,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        width: 42,
+        height: 42,
+        borderRadius: 12,
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 1,
+        borderColor: active ? colors.blue : colors.border,
+        backgroundColor: active ? colors.blue : pressed ? colors.pale : "white",
+      })}
+    >
+      <Ionicons name={icon} size={20} color={active ? "white" : colors.ink} />
+    </Pressable>
+  );
+}
+
+/*
+ * One sheet, handed whichever list it is filtering.
+ *
+ * Smart views and status ask different questions but take the same shape of
+ * answer -- a short exclusive list with a count against each -- so they share
+ * this rather than being written twice and drifting apart.
+ */
+function FilterSheet<T extends string>({
   open,
-  view,
+  title,
+  detail,
+  options,
+  selected,
   counts,
   onSelect,
   onClose,
 }: {
   open: boolean;
-  view: ViewKey;
-  counts: Record<ViewKey, number>;
-  onSelect: (view: ViewKey) => void;
+  title: string;
+  detail: string;
+  options: FilterOption<T>[];
+  selected: T;
+  counts: Record<string, number>;
+  onSelect: (value: T) => void;
   onClose: () => void;
 }) {
-  const groups: { title: string; keys: ViewKey[] }[] = [
-    { title: "Smart views", keys: ["all", "unread", "pinned"] },
-    {
-      title: "Conversation status",
-      keys: ["open", "pending", "resolved", "closed", "spam"],
-    },
-  ];
-
   return (
     <Modal
       visible={open}
@@ -419,7 +491,7 @@ function FilterSheet({
       onRequestClose={onClose}
     >
       <Pressable
-        accessibilityLabel="Close filters"
+        accessibilityLabel={`Close ${title.toLowerCase()}`}
         onPress={onClose}
         style={{ flex: 1, backgroundColor: "rgba(16,34,56,0.35)" }}
       />
@@ -433,87 +505,59 @@ function FilterSheet({
           maxHeight: "78%",
         }}
       >
-        <View style={{ padding: 18, paddingBottom: 6 }}>
-          <Text style={styles.heading}>Filter</Text>
-          <Text style={styles.muted}>
-            One at a time, over the channel you have selected.
-          </Text>
+        <View style={{ padding: 18, paddingBottom: 8 }}>
+          <Text style={styles.heading}>{title}</Text>
+          <Text style={styles.muted}>{detail}</Text>
         </View>
 
         <ScrollView>
-          {groups.map((group) => (
-            <View key={group.title}>
-              <Text
-                style={{
-                  paddingHorizontal: 18,
-                  paddingTop: 14,
-                  paddingBottom: 4,
-                  fontSize: 11,
-                  fontWeight: "800",
-                  letterSpacing: 0.6,
-                  textTransform: "uppercase",
-                  color: colors.muted,
+          {options.map((option) => {
+            const active = option.key === selected;
+
+            return (
+              <Pressable
+                key={option.key}
+                accessibilityRole="button"
+                onPress={() => {
+                  onSelect(option.key);
+                  onClose();
                 }}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingHorizontal: 18,
+                  paddingVertical: 13,
+                  backgroundColor: pressed ? colors.pale : "transparent",
+                })}
               >
-                {group.title}
-              </Text>
+                <Ionicons
+                  name={option.icon}
+                  size={19}
+                  color={active ? colors.blue : colors.muted}
+                />
 
-              {group.keys.map((key) => {
-                const option = VIEWS.find((v) => v.key === key);
-                if (!option) return null;
+                <Text
+                  style={{
+                    flex: 1,
+                    color: colors.ink,
+                    fontSize: 15,
+                    fontWeight: active ? "800" : "500",
+                  }}
+                >
+                  {option.label}
+                </Text>
 
-                const active = key === view;
+                <Text style={[styles.muted, { fontSize: 13 }]}>
+                  {counts[option.key] ?? 0}
+                </Text>
 
-                return (
-                  <Pressable
-                    key={key}
-                    accessibilityRole="button"
-                    onPress={() => {
-                      onSelect(key);
-                      onClose();
-                    }}
-                    style={({ pressed }) => ({
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 12,
-                      paddingHorizontal: 18,
-                      paddingVertical: 13,
-                      backgroundColor: pressed ? colors.pale : "transparent",
-                    })}
-                  >
-                    <Ionicons
-                      name={option.icon}
-                      size={19}
-                      color={active ? colors.blue : colors.muted}
-                    />
-
-                    <Text
-                      style={{
-                        flex: 1,
-                        color: colors.ink,
-                        fontSize: 15,
-                        fontWeight: active ? "800" : "500",
-                      }}
-                    >
-                      {option.label}
-                    </Text>
-
-                    <Text style={[styles.muted, { fontSize: 13 }]}>
-                      {counts[key]}
-                    </Text>
-
-                    {active ? (
-                      <Ionicons
-                        name="checkmark"
-                        size={19}
-                        color={colors.blue}
-                      />
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-            </View>
-          ))}
+                {active ? (
+                  <Ionicons name="checkmark" size={19} color={colors.blue} />
+                ) : null}
+              </Pressable>
+            );
+          })}
         </ScrollView>
       </View>
     </Modal>
@@ -542,13 +586,17 @@ export default function Inbox() {
   const [channelOpen, setChannelOpen] = useState(false);
   const [channelId, setChannelId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<ViewKey>("all");
-  const [filterOpen, setFilterOpen] = useState(false);
+  const [smartView, setSmartView] = useState<SmartView>("all");
+  const [status, setStatus] = useState<StatusKey>("all");
+  const [smartOpen, setSmartOpen] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
   const [messageMatches, setMessageMatches] = useState<Set<string>>(
     () => new Set(),
   );
 
-  const activeView = VIEWS.find((option) => option.key === view);
+  const activeSmart = SMART_VIEWS.find((option) => option.key === smartView);
+  const activeStatus = STATUSES.find((option) => option.key === status);
+  const filtering = smartView !== "all" || status !== "all";
 
   /*
    * Conversations whose history contains the typed text, answered by the
@@ -621,7 +669,8 @@ export default function Inbox() {
           (conversation) =>
             (!channelId ||
               conversation.social_account?.id === channelId) &&
-            matchesView(conversation, view) &&
+            matchesSmartView(conversation, smartView) &&
+            matchesStatus(conversation, status) &&
             (matchesSearch(conversation, search.trim().toLowerCase()) ||
               messageMatches.has(conversation.id)),
         )
@@ -636,30 +685,50 @@ export default function Inbox() {
           new Date(first.last_message_at ?? 0).getTime()
         );
       }),
-    [channelId, conversations, messageMatches, search, view],
+    [channelId, conversations, messageMatches, search, smartView, status],
   );
 
   /*
-   * Counted over the channel in force but not the search box: the sheet is
-   * for choosing a filter, and a count that moved while you typed would be
-   * describing a list you are about to leave.
+   * Each count is what tapping that row would actually leave on screen, so
+   * the two sheets read against each other: the statuses are counted inside
+   * the smart view you are already in, and the smart views inside the status.
+   * Counting each in isolation would promise "Open 466" from inside Unread
+   * and then hand back nine.
+   *
+   * The channel counts; the search box does not. A number that moved while
+   * you typed would be describing a list you are about to leave.
    */
-  const viewCounts = useMemo(() => {
+  const counts = useMemo(() => {
     const inChannel = conversations.filter(
       (conversation) =>
         !channelId || conversation.social_account?.id === channelId,
     );
 
-    return VIEWS.reduce(
-      (totals, option) => ({
-        ...totals,
-        [option.key]: inChannel.filter((conversation) =>
-          matchesView(conversation, option.key),
-        ).length,
-      }),
-      {} as Record<ViewKey, number>,
-    );
-  }, [channelId, conversations]);
+    return {
+      smart: SMART_VIEWS.reduce(
+        (totals, option) => ({
+          ...totals,
+          [option.key]: inChannel.filter(
+            (conversation) =>
+              matchesSmartView(conversation, option.key) &&
+              matchesStatus(conversation, status),
+          ).length,
+        }),
+        {} as Record<SmartView, number>,
+      ),
+      status: STATUSES.reduce(
+        (totals, option) => ({
+          ...totals,
+          [option.key]: inChannel.filter(
+            (conversation) =>
+              matchesSmartView(conversation, smartView) &&
+              matchesStatus(conversation, option.key),
+          ).length,
+        }),
+        {} as Record<StatusKey, number>,
+      ),
+    };
+  }, [channelId, conversations, smartView, status]);
 
   if (!session) {
     return <Redirect href="/sign-in" />;
@@ -690,7 +759,22 @@ export default function Inbox() {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
+      {/*
+        Header, search and filters are one white surface.
+
+        They were two blocks with a border between them, which drew a seam
+        across the top of the screen and made the search box look like it
+        belonged to the list rather than to the header. Same padding, one
+        container, one edge where it meets the conversations.
+      */}
+      <View
+        style={[
+          styles.header,
+          workspace
+            ? { borderBottomWidth: 0, paddingBottom: 12, gap: 12 }
+            : null,
+        ]}
+      >
         <View style={styles.row}>
           <Image
             source={require("../../assets/tenh-logo.png")}
@@ -780,158 +864,149 @@ export default function Inbox() {
             </Pressable>
           ) : null}
         </View>
-      </View>
 
-      {/*
-        Search and the view strip only exist once a workspace is chosen --
-        before that the list below is a workspace picker, and filtering it
-        would be filtering the wrong thing.
-      */}
-      {workspace ? (
-        <View
-          style={{
-            backgroundColor: "white",
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border,
-            paddingBottom: 10,
-            gap: 10,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 10,
-              marginHorizontal: 16,
-            }}
-          >
+        {/*
+          Search and the filters only exist once a workspace is chosen --
+          before that the list below is a workspace picker, and filtering it
+          would be filtering the wrong thing.
+        */}
+        {workspace ? (
+          <View style={{ gap: 10, marginHorizontal: 16 }}>
             <View
-              style={{
-                flex: 1,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 8,
-                paddingHorizontal: 12,
-                borderRadius: 12,
-                backgroundColor: colors.background,
-              }}
+              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
             >
-              <Ionicons name="search" size={17} color={colors.muted} />
-
-              <TextInput
-                value={search}
-                onChangeText={setSearch}
-                placeholder="Search name, number or message"
-                placeholderTextColor={colors.muted}
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="search"
+              <View
                 style={{
                   flex: 1,
-                  paddingVertical: 10,
-                  fontSize: 15,
-                  color: colors.ink,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                  paddingHorizontal: 12,
+                  borderRadius: 12,
+                  backgroundColor: colors.background,
                 }}
+              >
+                <Ionicons name="search" size={17} color={colors.muted} />
+
+                <TextInput
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Search name, number or message"
+                  placeholderTextColor={colors.muted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    fontSize: 15,
+                    color: colors.ink,
+                  }}
+                />
+
+                {search.length > 0 ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear search"
+                    onPress={() => setSearch("")}
+                    hitSlop={10}
+                  >
+                    <Ionicons
+                      name="close-circle"
+                      size={17}
+                      color={colors.muted}
+                    />
+                  </Pressable>
+                ) : null}
+              </View>
+
+              {/*
+                Smart view first, then status -- the same order as the web,
+                and the order an agent works in: pick the pile, then narrow
+                it. Each wears its own filter's icon when one is set, so the
+                header says which without opening anything.
+              */}
+              <FilterButton
+                icon={activeSmart?.icon ?? "albums-outline"}
+                label={
+                  smartView === "all"
+                    ? "Smart views"
+                    : `Smart view: ${activeSmart?.label}. Change it.`
+                }
+                active={smartView !== "all"}
+                onPress={() => setSmartOpen(true)}
               />
 
-              {search.length > 0 ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Clear search"
-                  onPress={() => setSearch("")}
-                  hitSlop={10}
-                >
-                  <Ionicons
-                    name="close-circle"
-                    size={17}
-                    color={colors.muted}
-                  />
-                </Pressable>
-              ) : null}
+              <FilterButton
+                icon={activeStatus?.icon ?? "options-outline"}
+                label={
+                  status === "all"
+                    ? "Filter by status"
+                    : `Status: ${activeStatus?.label}. Change it.`
+                }
+                active={status !== "all"}
+                onPress={() => setStatusOpen(true)}
+              />
             </View>
 
             {/*
-              Beside the search box, and marked when a filter is on -- a
-              sheet hides its own state, so the button has to carry it or
-              somebody stares at a short list wondering where everything
-              went.
+              What is on, in words, and how to take it off. The icons say
+              "something is filtered" but not what, and clearing one should
+              not mean opening its sheet again to find All.
             */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                view === "all"
-                  ? "Filter conversations"
-                  : `Filtered by ${activeView?.label}. Change filter.`
-              }
-              onPress={() => setFilterOpen(true)}
-              style={({ pressed }) => ({
-                width: 42,
-                height: 42,
-                borderRadius: 12,
-                alignItems: "center",
-                justifyContent: "center",
-                borderWidth: 1,
-                borderColor: view === "all" ? colors.border : colors.blue,
-                backgroundColor:
-                  view === "all"
-                    ? pressed
-                      ? colors.pale
-                      : "white"
-                    : colors.blue,
-              })}
-            >
-              <Ionicons
-                name="options-outline"
-                size={20}
-                color={view === "all" ? colors.ink : "white"}
-              />
-            </Pressable>
-          </View>
-
-          {/*
-            The filter in words when one is on. The icon alone says "something
-            is filtered" but not what, and this is also how it gets cleared
-            without opening the sheet again.
-          */}
-          {view !== "all" ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Clear the ${activeView?.label} filter`}
-              onPress={() => setView("all")}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 6,
-                alignSelf: "flex-start",
-                marginHorizontal: 16,
-                paddingHorizontal: 11,
-                paddingVertical: 6,
-                borderRadius: 999,
-                backgroundColor: colors.pale,
-              }}
-            >
-              <Text
+            {filtering ? (
+              <View
                 style={{
-                  color: colors.blue,
-                  fontSize: 12.5,
-                  fontWeight: "700",
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  gap: 8,
                 }}
               >
-                {activeView?.label} · {ordered.length}
-              </Text>
+                {smartView !== "all" && activeSmart ? (
+                  <FilterPill
+                    label={activeSmart.label}
+                    onClear={() => setSmartView("all")}
+                  />
+                ) : null}
 
-              <Ionicons name="close" size={13} color={colors.blue} />
-            </Pressable>
-          ) : null}
-        </View>
-      ) : null}
+                {status !== "all" && activeStatus ? (
+                  <FilterPill
+                    label={activeStatus.label}
+                    onClear={() => setStatus("all")}
+                  />
+                ) : null}
+
+                <Text style={[styles.muted, { fontSize: 12.5 }]}>
+                  {ordered.length}{" "}
+                  {ordered.length === 1 ? "conversation" : "conversations"}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
 
       <FilterSheet
-        open={filterOpen}
-        view={view}
-        counts={viewCounts}
-        onSelect={setView}
-        onClose={() => setFilterOpen(false)}
+        open={smartOpen}
+        title="Smart views"
+        detail="Cuts across every status, over the channel you have selected."
+        options={SMART_VIEWS}
+        selected={smartView}
+        counts={counts.smart}
+        onSelect={setSmartView}
+        onClose={() => setSmartOpen(false)}
+      />
+
+      <FilterSheet
+        open={statusOpen}
+        title="Conversation status"
+        detail="Where each conversation stands. Combines with the smart view."
+        options={STATUSES}
+        selected={status}
+        counts={counts.status}
+        onSelect={setStatus}
+        onClose={() => setStatusOpen(false)}
       />
 
       <ChannelSheet
@@ -986,27 +1061,36 @@ export default function Inbox() {
             ) : (
               <Empty
                 /*
-                 * There are now four ways to end up with an empty list and
-                 * only one of them means the workspace is empty. Saying the
-                 * wrong one sends somebody looking for a problem that is not
-                 * there, so each filter names itself and the way back --
-                 * search and the view strip are easy to leave set and forget.
+                 * Four ways to end up with an empty list and only one of them
+                 * means the workspace is empty. Naming the wrong one sends
+                 * somebody looking for a problem that is not there, so each
+                 * filter names itself and the way back -- search and the two
+                 * filters are all easy to leave set and forget.
                  */
                 icon={search.trim() ? "search-outline" : "chatbubbles-outline"}
                 title={
                   search.trim()
                     ? "No match"
-                    : view !== "all"
-                      ? `Nothing ${VIEWS.find((v) => v.key === view)?.label.toLowerCase()}`
+                    : filtering
+                      ? `Nothing ${[
+                          smartView !== "all"
+                            ? activeSmart?.label.toLowerCase()
+                            : null,
+                          status !== "all"
+                            ? activeStatus?.label.toLowerCase()
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" and ")}`
                       : selectedChannel
                         ? "Nothing on this channel"
                         : "No conversations yet"
                 }
                 detail={
                   search.trim()
-                    ? `No customer or message matches "${search.trim()}" in this view. Searching further back through a thread is on the web.`
-                    : view !== "all"
-                      ? "Tap All in the strip above to see every conversation."
+                    ? `No customer or message matches "${search.trim()}" here. Searching further back through a thread is on the web.`
+                    : filtering
+                      ? "Tap a filter chip above to clear it and see more."
                       : selectedChannel
                         ? `${selectedChannel.name} has no conversations. Tap the channel button above to see all of them.`
                         : "When a customer messages one of this workspace's channels, the conversation appears here."
