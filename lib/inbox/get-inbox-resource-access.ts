@@ -123,6 +123,25 @@ export async function authorizeInboxBusinessAccess(
     .eq("user_id", auth.user.id)
     .eq("business_id", normalizedBusinessId)
     .eq("is_active", true)
+    /*
+     * limit(1), not maybeSingle() alone.
+     *
+     * A user can hold more than one active team_members row for the same
+     * workspace after being removed and re-invited -- workspaces/switch
+     * documents exactly this and already guards it the same way.
+     * maybeSingle() rejects multiple rows, so a duplicate membership does not
+     * degrade the answer, it turns it into a 500.
+     *
+     * This lookup gates every Inbox action, so the failure would not be one
+     * broken button: mark read, mark unread, assign, claim, pin, change
+     * status, tag and note would all stop at once, for that person only,
+     * behind "Unable to verify workspace access." Any one active row is
+     * enough to authorize, which is what the switch route concluded.
+     *
+     * The subscription lookup directly below already orders and limits.
+     */
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (memberError) {

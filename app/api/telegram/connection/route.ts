@@ -368,6 +368,10 @@ async function handleBotClaimedByAnotherSubscription({
     .select("id,role,is_active")
     .eq("user_id", userId)
     .eq("business_id", claim.business_id)
+    // See get-inbox-resource-access: a re-invited member can hold two
+    // active rows, and maybeSingle() turns that into a 500.
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (membershipError) {

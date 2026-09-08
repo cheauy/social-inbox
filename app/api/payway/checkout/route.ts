@@ -223,6 +223,10 @@ export async function POST(
         .eq("business_id", requestedPurchaseBusinessId)
         .eq("user_id", authResult.user.id)
         .eq("is_active", true)
+        // See get-inbox-resource-access: a re-invited member can hold two
+        // active rows, and maybeSingle() turns that into a 500.
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (purchaseMemberError || !purchaseMember) {

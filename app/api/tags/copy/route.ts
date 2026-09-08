@@ -60,6 +60,10 @@ async function verifyReadableWorkspace(userId: string, businessId: string) {
       .eq("user_id", userId)
       .eq("business_id", businessId)
       .eq("is_active", true)
+      // See get-inbox-resource-access: a re-invited member can hold two
+      // active rows, and maybeSingle() turns that into a 500.
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle(),
     supabaseAdmin
       .from("business_subscriptions")
