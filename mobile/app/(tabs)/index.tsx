@@ -19,6 +19,7 @@ import {
   ChannelAvatar,
   Empty,
   ErrorNotice,
+  PlatformMark,
   Sheet,
   colors,
   styles,
@@ -271,17 +272,20 @@ function ChannelSheet({
                   backgroundColor: pressed ? colors.pale : "transparent",
                 })}
               >
-                <Ionicons
-                  name={
-                    item === null
-                      ? "layers"
-                      : item.platform === "telegram"
-                        ? "paper-plane"
-                        : "chatbubble-ellipses"
-                  }
-                  size={21}
-                  color={colors.blue}
-                />
+                {/*
+                  The channel's own mark, not a glyph standing in for it.
+                  A row that says "Apex Clothing" and shows a grey paper
+                  plane makes you read the words to learn what it is; the
+                  logo is the thing an agent already recognises.
+                */}
+                {item === null ? (
+                  <Ionicons name="layers" size={24} color={colors.blue} />
+                ) : (
+                  <PlatformMark
+                    platform={item.platform === "telegram" ? "telegram" : "messenger"}
+                    size={24}
+                  />
+                )}
 
                 <View style={{ flex: 1 }}>
                   <Text
@@ -668,48 +672,6 @@ function OptionList<T extends string>({
 }
 
 /*
- * The smart-view icon: the three views on their own, one tap and gone.
- *
- * All three are in the filter sheet as well. They are here too because
- * moving between all, unread and pinned is what an agent does between
- * messages, and that should not cost a scroll past five statuses.
- */
-function SmartViewSheet({
-  open,
-  selected,
-  counts,
-  onSelect,
-  onClose,
-}: {
-  open: boolean;
-  selected: SmartView;
-  counts: Record<string, number>;
-  onSelect: (value: SmartView) => void;
-  onClose: () => void;
-}) {
-  return (
-    <Sheet
-      open={open}
-      title="Smart views"
-      detail="Cuts across every status, over the channel you have selected."
-      onClose={onClose}
-    >
-      <ScrollView>
-        <OptionList
-          options={SMART_VIEWS}
-          selected={selected}
-          counts={counts}
-          onSelect={(value) => {
-            onSelect(value);
-            onClose();
-          }}
-        />
-      </ScrollView>
-    </Sheet>
-  );
-}
-
-/*
  * The filter icon: both lists, in full.
  *
  * They are two selections rather than one list of nine -- a view and a
@@ -836,7 +798,6 @@ export default function Inbox() {
   const [search, setSearch] = useState("");
   const [smartView, setSmartView] = useState<SmartView>("all");
   const [status, setStatus] = useState<StatusKey>("all");
-  const [smartOpen, setSmartOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [messageMatches, setMessageMatches] = useState<Set<string>>(
     () => new Set(),
@@ -1052,14 +1013,7 @@ export default function Inbox() {
             </Text>
           </View>
 
-          {/*
-            The channel filter, and the live dot tucked into its corner.
-
-            The dot used to sit alone in this space saying only whether
-            realtime was connected -- true but rarely actionable. Riding on the
-            control an agent already looks at costs it no room, and the space
-            goes to the thing they actually reach for.
-          */}
+          {/* The channel filter. */}
           {workspace ? (
             <Pressable
               accessibilityRole="button"
@@ -1082,17 +1036,16 @@ export default function Inbox() {
                 backgroundColor: pressed ? colors.pale : "white",
               })}
             >
-              <Ionicons
-                name={
-                  !selectedChannel
-                    ? "layers"
-                    : selectedChannel.platform === "telegram"
-                      ? "paper-plane"
-                      : "chatbubble-ellipses"
-                }
-                size={16}
-                color={colors.blue}
-              />
+              {!selectedChannel ? (
+                <Ionicons name="layers" size={16} color={colors.blue} />
+              ) : (
+                <PlatformMark
+                  platform={
+                    selectedChannel.platform === "telegram" ? "telegram" : "messenger"
+                  }
+                  size={16}
+                />
+              )}
 
               <Text
                 numberOfLines={1}
@@ -1112,17 +1065,20 @@ export default function Inbox() {
                 color={colors.muted}
               />
 
-              <View
-                accessibilityLabel={
-                  live ? "Live updates connected" : "Live updates offline"
-                }
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: 4,
-                  backgroundColor: live ? "#2FA36B" : colors.border,
-                }}
-              />
+              {/*
+                Nothing while realtime is connected, which is nearly always.
+                A green dot that is always green is not information -- but the
+                moment it stops being true an agent is reading a list that has
+                quietly stopped updating, and that is worth a mark.
+              */}
+              {live ? null : (
+                <Ionicons
+                  name="cloud-offline-outline"
+                  accessibilityLabel="Live updates offline"
+                  size={14}
+                  color="#C77700"
+                />
+              )}
             </Pressable>
           ) : null}
         </View>
@@ -1183,27 +1139,13 @@ export default function Inbox() {
               </View>
 
               {/*
-                The first is the shortcut, the second is everything.
+                One button, because one sheet holds everything.
 
-                Smart views are what an agent moves between while working, so
-                they get their own icon and their own three-row sheet. The
-                filter icon opens the full list -- both smart views and every
-                status -- for the times you are setting up a view rather than
-                flicking between them. Each button wears its filter's icon
-                when one is set, so the header says what is on without
-                opening anything.
+                A second icon opened a shortlist that was already inside the
+                filter sheet, so it spent 42 points of a narrow header saying
+                what the button beside it could say, and left the search box
+                too short to read a name in.
               */}
-              <FilterButton
-                icon={activeSmart?.icon ?? "albums-outline"}
-                label={
-                  smartView === "all"
-                    ? "Smart views"
-                    : `Smart view: ${activeSmart?.label}. Change it.`
-                }
-                active={smartView !== "all"}
-                onPress={() => setSmartOpen(true)}
-              />
-
               <FilterButton
                 icon={
                   status === "all"
@@ -1260,14 +1202,6 @@ export default function Inbox() {
           </View>
         ) : null}
       </View>
-
-      <SmartViewSheet
-        open={smartOpen}
-        selected={smartView}
-        counts={counts.smart}
-        onSelect={setSmartView}
-        onClose={() => setSmartOpen(false)}
-      />
 
       <FilterSheet
         open={statusOpen}

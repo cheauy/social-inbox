@@ -43,6 +43,22 @@ const PLATFORM_MARK: Record<
 };
 
 /*
+ * The mark on its own, at whatever size is asked for.
+ *
+ * The same files the avatar badge wears, so a channel is the same picture
+ * wherever it is named -- the picker, the header button, the row.
+ */
+export function PlatformMark({ platform, size = 22 }: { platform: Platform; size?: number }) {
+  const mark = PLATFORM_MARK[platform];
+  return mark.logo ? (
+    <Image source={mark.logo} style={{ width: size, height: size, borderRadius: size / 2 }} resizeMode="cover" />
+  ) : (
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: mark.tint, alignItems: "center", justifyContent: "center" }}>
+      <Ionicons name={mark.icon} size={Math.round(size * 0.62)} color="white" />
+    </View>
+  );
+}
+/*
  * An avatar wearing the channel it arrived on.
  *
  * The list mixes Messenger, Facebook comments and Telegram, and the row's own
