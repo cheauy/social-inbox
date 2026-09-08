@@ -328,36 +328,136 @@ function ChannelSheet({
  * They were one exclusive list, which meant asking for "unread" gave up on
  * "open" -- and those are different questions. The web answers both at once:
  * a rail for the view, a panel for the status. Two controls cost one more
- * icon in the header and get that back, and each list now reads as itself
- * instead of a strip where "Pinned" and "Closed" looked like alternatives.
+ * icon in the header and get that back.
+ *
+ * The smart views are the web's own, in the web's order: the three rail tabs,
+ * then the four Default Smart Views from the panel. Personal saved views are
+ * not here -- they carry workspace scope, tag sets and channel rules that the
+ * phone has no filter engine for, and half-honouring a saved view would be
+ * worse than not offering it.
  */
-type SmartView = "all" | "unread" | "pinned";
+type SmartView =
+  | "all"
+  | "unread"
+  | "pinned"
+  | "my"
+  | "unassigned"
+  | "comment"
+  | "open";
+
 type StatusKey = "all" | "open" | "pending" | "resolved" | "closed" | "spam";
 
 type FilterOption<T> = {
   key: T;
   label: string;
+  group: string;
   icon: React.ComponentProps<typeof Ionicons>["name"];
 };
 
 const SMART_VIEWS: FilterOption<SmartView>[] = [
-  { key: "all", label: "All conversations", icon: "albums-outline" },
-  { key: "unread", label: "Unread", icon: "mail-unread-outline" },
-  { key: "pinned", label: "Pinned", icon: "pin-outline" },
+  {
+    key: "all",
+    label: "All conversations",
+    group: "Smart views",
+    icon: "albums-outline",
+  },
+  {
+    key: "unread",
+    label: "Unread",
+    group: "Smart views",
+    icon: "mail-unread-outline",
+  },
+  {
+    key: "pinned",
+    label: "Pinned",
+    group: "Smart views",
+    icon: "pin-outline",
+  },
+  {
+    key: "my",
+    label: "Assign to me",
+    group: "Default Smart Views",
+    icon: "person-circle-outline",
+  },
+  {
+    key: "unassigned",
+    label: "Unassigned",
+    group: "Default Smart Views",
+    icon: "person-remove-outline",
+  },
+  {
+    key: "comment",
+    label: "Facebook Comment",
+    group: "Default Smart Views",
+    icon: "chatbox-ellipses-outline",
+  },
+  {
+    key: "open",
+    label: "Open conversation",
+    group: "Default Smart Views",
+    icon: "chatbubbles-outline",
+  },
 ];
 
 const STATUSES: FilterOption<StatusKey>[] = [
-  { key: "all", label: "Any status", icon: "options-outline" },
-  { key: "open", label: "Open", icon: "ellipse-outline" },
-  { key: "pending", label: "Pending", icon: "time-outline" },
-  { key: "resolved", label: "Resolved", icon: "checkmark-circle-outline" },
-  { key: "closed", label: "Closed", icon: "archive-outline" },
-  { key: "spam", label: "Spam", icon: "alert-circle-outline" },
+  {
+    key: "all",
+    label: "Any status",
+    group: "Conversation status",
+    icon: "options-outline",
+  },
+  {
+    key: "open",
+    label: "Open",
+    group: "Conversation status",
+    icon: "ellipse-outline",
+  },
+  {
+    key: "pending",
+    label: "Pending",
+    group: "Conversation status",
+    icon: "time-outline",
+  },
+  {
+    key: "resolved",
+    label: "Resolved",
+    group: "Conversation status",
+    icon: "checkmark-circle-outline",
+  },
+  {
+    key: "closed",
+    label: "Closed",
+    group: "Conversation status",
+    icon: "archive-outline",
+  },
+  {
+    key: "spam",
+    label: "Spam",
+    group: "Conversation status",
+    icon: "alert-circle-outline",
+  },
 ];
 
-function matchesSmartView(conversation: InboxConversation, view: SmartView) {
+/*
+ * The same tests the web's own matchesView runs, in the same order.
+ *
+ * "Assign to me" needs the member id for the workspace in view, not the user
+ * id: assignment is recorded against team_members, and one person has a
+ * different member row in every workspace they belong to.
+ */
+function matchesSmartView(
+  conversation: InboxConversation,
+  view: SmartView,
+  memberId: string | null,
+) {
   if (view === "unread") return (conversation.unread_count ?? 0) > 0;
   if (view === "pinned") return Boolean(conversation.is_pinned);
+  if (view === "my") {
+    return Boolean(memberId && conversation.assigned_to === memberId);
+  }
+  if (view === "unassigned") return !conversation.assigned_to;
+  if (view === "comment") return conversation.source_type === "comment";
+  if (view === "open") return conversation.status === "open";
   return true;
 }
 
@@ -531,6 +631,42 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
 }
 
 /*
+ * A list of options with its group headings, inserted wherever the group
+ * changes. Both sheets draw the same rows; only which lists they are handed
+ * differs.
+ */
+function OptionList<T extends string>({
+  options,
+  selected,
+  counts,
+  onSelect,
+}: {
+  options: FilterOption<T>[];
+  selected: T;
+  counts: Record<string, number>;
+  onSelect: (value: T) => void;
+}) {
+  return (
+    <>
+      {options.map((option, index) => (
+        <View key={option.key}>
+          {index === 0 || options[index - 1].group !== option.group ? (
+            <GroupLabel>{option.group}</GroupLabel>
+          ) : null}
+
+          <OptionRow
+            option={option}
+            active={option.key === selected}
+            count={counts[option.key] ?? 0}
+            onPress={() => onSelect(option.key)}
+          />
+        </View>
+      ))}
+    </>
+  );
+}
+
+/*
  * The sheet shell: the dimmed backdrop and the card it sits on.
  */
 function Sheet({
@@ -607,18 +743,15 @@ function SmartViewSheet({
       onClose={onClose}
     >
       <ScrollView>
-        {SMART_VIEWS.map((option) => (
-          <OptionRow
-            key={option.key}
-            option={option}
-            active={option.key === selected}
-            count={counts[option.key] ?? 0}
-            onPress={() => {
-              onSelect(option.key);
-              onClose();
-            }}
-          />
-        ))}
+        <OptionList
+          options={SMART_VIEWS}
+          selected={selected}
+          counts={counts}
+          onSelect={(value) => {
+            onSelect(value);
+            onClose();
+          }}
+        />
       </ScrollView>
     </Sheet>
   );
@@ -659,29 +792,19 @@ function FilterSheet({
       onClose={onClose}
     >
       <ScrollView>
-        <GroupLabel>Smart views</GroupLabel>
+        <OptionList
+          options={SMART_VIEWS}
+          selected={smartView}
+          counts={counts.smart}
+          onSelect={onSmartView}
+        />
 
-        {SMART_VIEWS.map((option) => (
-          <OptionRow
-            key={option.key}
-            option={option}
-            active={option.key === smartView}
-            count={counts.smart[option.key] ?? 0}
-            onPress={() => onSmartView(option.key)}
-          />
-        ))}
-
-        <GroupLabel>Conversation status</GroupLabel>
-
-        {STATUSES.map((option) => (
-          <OptionRow
-            key={option.key}
-            option={option}
-            active={option.key === status}
-            count={counts.status[option.key] ?? 0}
-            onPress={() => onStatus(option.key)}
-          />
-        ))}
+        <OptionList
+          options={STATUSES}
+          selected={status}
+          counts={counts.status}
+          onSelect={onStatus}
+        />
       </ScrollView>
 
       <View
@@ -767,6 +890,12 @@ export default function Inbox() {
     () => new Set(),
   );
 
+  /*
+   * Assignment is recorded against this workspace's member row, so the id
+   * has to come from the workspace in view rather than from the session.
+   */
+  const memberId = workspace?.memberId ?? null;
+
   const activeSmart = SMART_VIEWS.find((option) => option.key === smartView);
   const activeStatus = STATUSES.find((option) => option.key === status);
   const filtering = smartView !== "all" || status !== "all";
@@ -842,7 +971,7 @@ export default function Inbox() {
           (conversation) =>
             (!channelId ||
               conversation.social_account?.id === channelId) &&
-            matchesSmartView(conversation, smartView) &&
+            matchesSmartView(conversation, smartView, memberId) &&
             matchesStatus(conversation, status) &&
             (matchesSearch(conversation, search.trim().toLowerCase()) ||
               messageMatches.has(conversation.id)),
@@ -858,7 +987,15 @@ export default function Inbox() {
           new Date(first.last_message_at ?? 0).getTime()
         );
       }),
-    [channelId, conversations, messageMatches, search, smartView, status],
+    [
+      channelId,
+      conversations,
+      memberId,
+      messageMatches,
+      search,
+      smartView,
+      status,
+    ],
   );
 
   /*
@@ -883,7 +1020,7 @@ export default function Inbox() {
           ...totals,
           [option.key]: inChannel.filter(
             (conversation) =>
-              matchesSmartView(conversation, option.key) &&
+              matchesSmartView(conversation, option.key, memberId) &&
               matchesStatus(conversation, status),
           ).length,
         }),
@@ -894,14 +1031,14 @@ export default function Inbox() {
           ...totals,
           [option.key]: inChannel.filter(
             (conversation) =>
-              matchesSmartView(conversation, smartView) &&
+              matchesSmartView(conversation, smartView, memberId) &&
               matchesStatus(conversation, option.key),
           ).length,
         }),
         {} as Record<StatusKey, number>,
       ),
     };
-  }, [channelId, conversations, smartView, status]);
+  }, [channelId, conversations, memberId, smartView, status]);
 
   if (!session) {
     return <Redirect href="/sign-in" />;
