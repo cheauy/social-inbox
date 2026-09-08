@@ -1965,6 +1965,46 @@ function ConversationListView({
 
   const draggingSmartViewIdRef = useRef<string | null>(null);
 
+  /*
+   * The status filter, applied before the server answers.
+   *
+   * activeStatus is a prop: choosing a status is a Link, so the list could
+   * not change until /dashboard/inbox?status=... came back. Measured in the
+   * running app, that round trip took 1,781ms during which nothing moved --
+   * no jank, just a wait, which is the kind of slow that reads as broken.
+   *
+   * scopedConversations already does this filtering on the client; it simply
+   * did not know the new status yet. Every conversation carries its status,
+   * so the answer was in the browser the whole time.
+   *
+   * The navigation still happens, because the URL should stay shareable and
+   * the server still owns statusCounts. This only stops the list waiting for
+   * it. The effect below re-syncs from the prop, so a back button, a shared
+   * link or a server correction all win over the optimistic value.
+   */
+  const [optimisticStatus, setOptimisticStatus] =
+    useState<StatusFilter>(activeStatus);
+
+  const [
+    lastServerStatus,
+    setLastServerStatus,
+  ] = useState<StatusFilter>(activeStatus);
+
+  /*
+   * Adjusted during render rather than in an effect.
+   *
+   * An effect would render once with the old value and correct it on the
+   * next pass, so a back button would flash the previous filter's rows. This
+   * is React's documented way to reset state when a prop changes: the extra
+   * state remembers what the server last said, and when that moves, the
+   * optimistic value is discarded in the same render. React re-runs the
+   * component immediately without committing anything in between.
+   */
+  if (activeStatus !== lastServerStatus) {
+    setLastServerStatus(activeStatus);
+    setOptimisticStatus(activeStatus);
+  }
+
   const [
     selectedViewKey,
     setSelectedViewKey,
@@ -2330,8 +2370,8 @@ function ConversationListView({
       () =>
         conversations.filter((conversation) => {
           if (
-            activeStatus !== "all" &&
-            conversation.status !== activeStatus
+            optimisticStatus !== "all" &&
+            conversation.status !== optimisticStatus
           ) {
             return false;
           }
@@ -2346,8 +2386,8 @@ function ConversationListView({
           return true;
         }),
       [
-        activeStatus,
         conversations,
+        optimisticStatus,
         selectedChannelId,
       ],
     );
@@ -4801,6 +4841,11 @@ function ConversationListView({
                           onClick={() => {
                             setFilterOpen(
                               false,
+                            );
+
+                            // Filter now; the navigation catches up.
+                            setOptimisticStatus(
+                              filter.value,
                             );
                           }}
                           className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm transition ${
