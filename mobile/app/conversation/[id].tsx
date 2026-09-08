@@ -35,7 +35,11 @@ import {
 } from "../../components/ui";
 import { api, ApiError } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
-import type { InboxMessage, SavedReply } from "../../lib/types";
+import type {
+  ConversationStatus,
+  InboxMessage,
+  SavedReply,
+} from "../../lib/types";
 
 /*
  * The thread is held newest-first and drawn inverted, which puts the newest
@@ -99,6 +103,29 @@ type Tag = {
   name: string;
   color: string | null;
 };
+
+type TeamMember = {
+  id: string;
+  full_name: string | null;
+  role: string | null;
+  profile_picture_url: string | null;
+};
+
+/*
+ * The five the status endpoint accepts, in the order the web lists them.
+ * Anything else it rejects, so the sheet cannot offer it.
+ */
+const STATUS_OPTIONS: {
+  key: ConversationStatus;
+  label: string;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+}[] = [
+  { key: "open", label: "Open", icon: "ellipse-outline" },
+  { key: "pending", label: "Pending", icon: "time-outline" },
+  { key: "resolved", label: "Resolved", icon: "checkmark-circle-outline" },
+  { key: "closed", label: "Closed", icon: "archive-outline" },
+  { key: "spam", label: "Spam", icon: "alert-circle-outline" },
+];
 
 type CustomerDetail = {
   customer: {
@@ -492,6 +519,199 @@ function Bubble({
         </Text>
       </View>
     </View>
+  );
+}
+
+/*
+ * Everything you can do to a conversation, rather than inside it.
+ *
+ * Status, who owns it, whether it is pinned, and putting it back on the
+ * unread pile -- the four moves that get a conversation off an agent's plate.
+ * They are one sheet because they are one decision made at one moment: you
+ * answer, you resolve, you hand it on.
+ *
+ * Nothing closes the sheet except a status change and marking unread, both of
+ * which end the visit. Assigning and pinning leave it open so the agent can
+ * see the tick land and carry on.
+ */
+function ActionsSheet({
+  open,
+  status,
+  pinned,
+  assignedTo,
+  members,
+  membersLoading,
+  busy,
+  onStatus,
+  onAssign,
+  onPin,
+  onUnread,
+  onClose,
+}: {
+  open: boolean;
+  status: ConversationStatus | null;
+  pinned: boolean;
+  assignedTo: string | null;
+  members: TeamMember[];
+  membersLoading: boolean;
+  busy: string | null;
+  onStatus: (next: ConversationStatus) => void;
+  onAssign: (memberId: string | null) => void;
+  onPin: () => void;
+  onUnread: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Sheet
+      open={open}
+      title="Conversation"
+      detail="Status, owner, and where it sits in the list."
+      onClose={onClose}
+    >
+      <ScrollView>
+        <SheetGroup>Status</SheetGroup>
+
+        {STATUS_OPTIONS.map((option) => (
+          <ActionRow
+            key={option.key}
+            icon={option.icon}
+            label={option.label}
+            active={status === option.key}
+            busy={busy === `status:${option.key}`}
+            onPress={() => onStatus(option.key)}
+          />
+        ))}
+
+        <SheetGroup>Assigned to</SheetGroup>
+
+        {membersLoading ? (
+          <View style={{ paddingVertical: 18 }}>
+            <ActivityIndicator color={colors.blue} />
+          </View>
+        ) : (
+          <>
+            <ActionRow
+              icon="person-remove-outline"
+              label="Nobody"
+              active={!assignedTo}
+              busy={busy === "assign:none"}
+              onPress={() => onAssign(null)}
+            />
+
+            {members.map((member) => (
+              <ActionRow
+                key={member.id}
+                icon="person-outline"
+                label={member.full_name ?? "Team member"}
+                detail={member.role ?? undefined}
+                active={assignedTo === member.id}
+                busy={busy === `assign:${member.id}`}
+                onPress={() => onAssign(member.id)}
+              />
+            ))}
+          </>
+        )}
+
+        <SheetGroup>More</SheetGroup>
+
+        <ActionRow
+          icon={pinned ? "pin" : "pin-outline"}
+          label={pinned ? "Unpin from the top" : "Pin to the top"}
+          active={pinned}
+          busy={busy === "pin"}
+          onPress={onPin}
+        />
+
+        <ActionRow
+          icon="mail-unread-outline"
+          label="Mark unread and go back"
+          detail="Puts it back on the pile for whoever picks it up next."
+          active={false}
+          busy={busy === "unread"}
+          onPress={onUnread}
+        />
+      </ScrollView>
+    </Sheet>
+  );
+}
+
+function SheetGroup({ children }: { children: React.ReactNode }) {
+  return (
+    <Text
+      style={{
+        paddingHorizontal: 18,
+        paddingTop: 14,
+        paddingBottom: 4,
+        fontSize: 11,
+        fontWeight: "800",
+        letterSpacing: 0.6,
+        textTransform: "uppercase",
+        color: colors.muted,
+      }}
+    >
+      {children}
+    </Text>
+  );
+}
+
+function ActionRow({
+  icon,
+  label,
+  detail,
+  active,
+  busy,
+  onPress,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
+  detail?: string;
+  active: boolean;
+  busy: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      disabled={busy}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        paddingHorizontal: 18,
+        paddingVertical: 13,
+        backgroundColor: pressed ? colors.pale : "transparent",
+      })}
+    >
+      <Ionicons
+        name={icon}
+        size={19}
+        color={active ? colors.blue : colors.muted}
+      />
+
+      <View style={{ flex: 1 }}>
+        <Text
+          style={{
+            color: colors.ink,
+            fontSize: 15,
+            fontWeight: active ? "800" : "500",
+          }}
+        >
+          {label}
+        </Text>
+
+        {detail ? (
+          <Text style={[styles.muted, { fontSize: 12 }]}>{detail}</Text>
+        ) : null}
+      </View>
+
+      {busy ? (
+        <ActivityIndicator color={colors.blue} />
+      ) : active ? (
+        <Ionicons name="checkmark" size={19} color={colors.blue} />
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -900,6 +1120,11 @@ export default function Conversation() {
   const [assigned, setAssigned] = useState<Set<string>>(() => new Set());
   const [busyTagId, setBusyTagId] = useState<string | null>(null);
   const [tagsLoading, setTagsLoading] = useState(false);
+
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const [customerOpen, setCustomerOpen] = useState(false);
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
@@ -1391,6 +1616,143 @@ export default function Conversation() {
     }
   }
 
+  /*
+   * Every one of these moves the row first and puts it back if the server
+   * refuses. The list behind is the same object, so a status changed here
+   * shows there before the request lands -- and un-shows if it fails.
+   */
+  async function runAction(
+    key: string,
+    patch: Record<string, unknown>,
+    request: () => Promise<unknown>,
+  ) {
+    if (!id || !conversation || busyAction) {
+      return false;
+    }
+
+    const before = Object.fromEntries(
+      Object.keys(patch).map((field) => [
+        field,
+        (conversation as unknown as Record<string, unknown>)[field],
+      ]),
+    );
+
+    setBusyAction(key);
+    setError("");
+    updateConversation(id, patch);
+
+    try {
+      await request();
+
+      return true;
+    } catch (actionError) {
+      updateConversation(id, before);
+
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "Unable to change this conversation.",
+      );
+
+      return false;
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function openActions() {
+    setActionsOpen(true);
+
+    if (members.length > 0) {
+      return;
+    }
+
+    setMembersLoading(true);
+
+    try {
+      const data = await api<{ members: TeamMember[] }>(
+        "/api/team/members",
+        workspace?.businessId,
+      );
+
+      setMembers(data.members ?? []);
+    } catch (memberError) {
+      setError(
+        memberError instanceof Error
+          ? memberError.message
+          : "Unable to load the team.",
+      );
+    } finally {
+      setMembersLoading(false);
+    }
+  }
+
+  async function changeStatus(next: ConversationStatus) {
+    if (conversation?.status === next) {
+      setActionsOpen(false);
+      return;
+    }
+
+    const done = await runAction(`status:${next}`, { status: next }, () =>
+      api(`/api/conversations/${encodeURIComponent(String(id))}/status`, workspace?.businessId, {
+        method: "PATCH",
+        body: { status: next },
+      }),
+    );
+
+    if (done) {
+      // The decision is made; staying in the sheet to admire it is nobody's
+      // idea of finishing a conversation.
+      setActionsOpen(false);
+    }
+  }
+
+  async function assign(memberId: string | null) {
+    if ((conversation?.assigned_to ?? null) === memberId) {
+      return;
+    }
+
+    await runAction(
+      `assign:${memberId ?? "none"}`,
+      { assigned_to: memberId },
+      () =>
+        api(
+          `/api/conversations/${encodeURIComponent(String(id))}/assignment`,
+          workspace?.businessId,
+          { method: "PATCH", body: { assignedTo: memberId } },
+        ),
+    );
+  }
+
+  async function togglePin() {
+    const next = !conversation?.is_pinned;
+
+    await runAction("pin", { is_pinned: next }, () =>
+      api(`/api/conversations/${encodeURIComponent(String(id))}/pin`, workspace?.businessId, {
+        method: "PATCH",
+        body: { isPinned: next },
+      }),
+    );
+  }
+
+  async function markUnread() {
+    const done = await runAction("unread", { unread_count: 1 }, () =>
+      api(`/api/conversations/${encodeURIComponent(String(id))}/unread`, workspace?.businessId, {
+        method: "PATCH",
+      }),
+    );
+
+    if (done) {
+      /*
+       * Leaving is the point of the action. Staying would put the screen
+       * straight back into its mark-as-read effect the next time it mounts,
+       * and the agent would wonder why the badge did not stick.
+       */
+      setActionsOpen(false);
+      router.back();
+    }
+  }
+
   async function openCustomer() {
     setCustomerOpen(true);
     await loadCustomer();
@@ -1419,12 +1781,56 @@ export default function Conversation() {
             <Avatar name={name} size={38} />
           )}
 
-          <View style={{ flex: 1, gap: 2 }}>
+          <View style={{ flex: 1, gap: 3 }}>
             <Text numberOfLines={1} style={styles.heading}>
               {name}
             </Text>
 
-            {conversation ? <ChannelBadge conversation={conversation} /> : null}
+            {/*
+              The channel, and the status as something you can press.
+
+              Status was not on this screen at all -- an agent could answer a
+              closed conversation without ever being told it was closed. It
+              doubles as the way in to the actions, which is where it would
+              have had to live anyway.
+            */}
+            {conversation ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <ChannelBadge conversation={conversation} />
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Status: ${conversation.status}. Change status, owner or pin.`}
+                  onPress={() => void openActions()}
+                  style={({ pressed }) => ({
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 999,
+                    backgroundColor: pressed ? colors.border : colors.pale,
+                  })}
+                >
+                  <Text
+                    style={{
+                      color: colors.blue,
+                      fontSize: 11,
+                      fontWeight: "800",
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    {conversation.status}
+                  </Text>
+
+                  {conversation.is_pinned ? (
+                    <Ionicons name="pin" size={10} color={colors.blue} />
+                  ) : null}
+
+                  <Ionicons name="chevron-down" size={10} color={colors.blue} />
+                </Pressable>
+              </View>
+            ) : null}
           </View>
 
           {/*
@@ -1642,6 +2048,21 @@ export default function Conversation() {
         name={name}
         onToggle={(tag) => void toggleTag(tag)}
         onClose={() => setTagOpen(false)}
+      />
+
+      <ActionsSheet
+        open={actionsOpen}
+        status={conversation?.status ?? null}
+        pinned={Boolean(conversation?.is_pinned)}
+        assignedTo={conversation?.assigned_to ?? null}
+        members={members}
+        membersLoading={membersLoading}
+        busy={busyAction}
+        onStatus={(next) => void changeStatus(next)}
+        onAssign={(memberId) => void assign(memberId)}
+        onPin={() => void togglePin()}
+        onUnread={() => void markUnread()}
+        onClose={() => setActionsOpen(false)}
       />
 
       <CustomerSheet
