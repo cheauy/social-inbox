@@ -7,6 +7,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -120,6 +121,100 @@ function dayMonth(value?: string | null) {
         year: "numeric",
       })
     : "—";
+}
+
+/*
+ * The thread while it is loading.
+ *
+ * A spinner in the middle of an empty screen says only "wait", and on a slow
+ * Cambodian connection that can be several seconds of a screen that looks
+ * broken. Bubble-shaped placeholders say what is coming and where it will
+ * sit, so nothing jumps when the real messages land -- and they say it in the
+ * shape of a conversation, which is the answer to "did I open the right one".
+ *
+ * Alternating sides and uneven widths on purpose: a column of identical bars
+ * reads as a list, not as people talking.
+ */
+const SKELETON_ROWS: { outgoing: boolean; width: number; lines: number }[] = [
+  { outgoing: false, width: 0.62, lines: 2 },
+  { outgoing: true, width: 0.45, lines: 1 },
+  { outgoing: false, width: 0.5, lines: 1 },
+  { outgoing: true, width: 0.7, lines: 2 },
+  { outgoing: false, width: 0.4, lines: 1 },
+  { outgoing: true, width: 0.55, lines: 1 },
+];
+
+function ThreadSkeleton() {
+  const pulse = useRef(new Animated.Value(0.45)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.45,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    loop.start();
+
+    return () => loop.stop();
+  }, [pulse]);
+
+  return (
+    <View
+      accessibilityRole="progressbar"
+      accessibilityLabel="Loading this conversation"
+      style={{ flex: 1, paddingVertical: 12, justifyContent: "flex-end" }}
+    >
+      {SKELETON_ROWS.map((row, index) => (
+        <Animated.View
+          key={index}
+          style={{
+            opacity: pulse,
+            paddingHorizontal: 14,
+            paddingVertical: 4,
+            alignItems: row.outgoing ? "flex-end" : "flex-start",
+          }}
+        >
+          <View
+            style={{
+              width: `${row.width * 100}%`,
+              backgroundColor: row.outgoing ? "#BFE2F4" : "white",
+              borderRadius: 18,
+              borderWidth: row.outgoing ? 0 : 1,
+              borderColor: colors.border,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              gap: 8,
+            }}
+          >
+            {Array.from({ length: row.lines }).map((_, line) => (
+              <View
+                key={line}
+                style={{
+                  height: 10,
+                  borderRadius: 5,
+                  // The last line of a paragraph is short, the way real text is.
+                  width: line === row.lines - 1 ? "70%" : "100%",
+                  backgroundColor: row.outgoing
+                    ? "rgba(255,255,255,0.65)"
+                    : colors.border,
+                }}
+              />
+            ))}
+          </View>
+        </Animated.View>
+      ))}
+    </View>
+  );
 }
 
 /*
@@ -1264,14 +1359,25 @@ export default function Conversation() {
       <ErrorNotice message={error} onRetry={() => void load()} />
 
       {loading && messages.length === 0 ? (
-        <View style={{ padding: 40 }}>
-          <ActivityIndicator color={colors.blue} />
-        </View>
+        <ThreadSkeleton />
       ) : messages.length === 0 ? (
-        <Empty title="No messages yet" detail="Anything this customer sends will appear here." />
+        /*
+         * Both of these have to claim the space the thread would have taken,
+         * or the composer rides up under the header and the rest of the
+         * screen is left blank below it.
+         */
+        <View style={{ flex: 1, justifyContent: "center" }}>
+          <Empty
+            title="No messages yet"
+            detail="Anything this customer sends will appear here."
+          />
+        </View>
       ) : (
         <FlatList
           inverted
+          // Claims the space between header and composer whether there are
+          // three messages or three hundred.
+          style={{ flex: 1 }}
           data={messages}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
