@@ -6,6 +6,7 @@ import {
 } from "@/lib/admin/tenh-admin-auth";
 import { logTenhAdminAction } from "@/lib/admin/log-tenh-admin-action";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { normalizeAnnouncementLink } from "@/lib/display/announcement-link";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,30 +33,6 @@ function noStoreJson(
       "Cache-Control": "private, no-store, max-age=0",
     },
   });
-}
-
-function normalizeLinkUrl(value: string) {
-  const trimmed = value.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  if (trimmed.startsWith("/")) {
-    return trimmed.slice(0, 500);
-  }
-
-  try {
-    const url = new URL(trimmed);
-
-    if (url.protocol !== "https:" && url.protocol !== "http:") {
-      return null;
-    }
-
-    return url.toString().slice(0, 500);
-  } catch {
-    return null;
-  }
 }
 
 export async function GET() {
@@ -221,7 +198,7 @@ export async function POST(request: Request) {
     : "update";
   const linkLabel = clean(body.linkLabel).slice(0, 40);
   const rawLinkUrl = clean(body.linkUrl);
-  const linkUrl = normalizeLinkUrl(rawLinkUrl);
+  const linkUrl = normalizeAnnouncementLink(rawLinkUrl);
   const rawEndsAt = clean(body.endsAt);
 
   if (!title || !message) {

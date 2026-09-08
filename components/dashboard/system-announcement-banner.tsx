@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import Link from "next/link";
+import { isInternalAnnouncementLink } from "@/lib/display/announcement-link";
 
 type AnnouncementTone =
   | "info"
@@ -114,9 +115,7 @@ function BellIcon() {
   );
 }
 
-function isInternalLink(value: string) {
-  return value.startsWith("/");
-}
+
 
 export function SystemAnnouncementBanner() {
   const [announcement, setAnnouncement] =
@@ -297,7 +296,7 @@ export function SystemAnnouncementBanner() {
         </div>
 
         {announcement.link_url ? (
-          isInternalLink(announcement.link_url) ? (
+          isInternalAnnouncementLink(announcement.link_url) ? (
             <Link
               href={announcement.link_url}
               className={`hidden shrink-0 rounded-xl border px-3 py-2 text-xs font-bold transition sm:inline-flex ${classes.link}`}
@@ -330,7 +329,7 @@ export function SystemAnnouncementBanner() {
 
       {announcement.link_url ? (
         <div className="px-4 pb-3 sm:hidden">
-          {isInternalLink(announcement.link_url) ? (
+          {isInternalAnnouncementLink(announcement.link_url) ? (
             <Link
               href={announcement.link_url}
               className={`inline-flex rounded-xl border px-3 py-2 text-xs font-bold ${classes.link}`}

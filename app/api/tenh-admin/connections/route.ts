@@ -3,6 +3,7 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getTenhAdminUser } from "@/lib/admin/tenh-admin-auth";
+import { logTenhAdminAction } from "@/lib/admin/log-tenh-admin-action";
 import { decryptChannelCredential } from "@/lib/channels/channel-token-crypto";
 import { deleteTelegramWebhook } from "@/lib/telegram/telegram-api";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -720,15 +721,32 @@ export async function POST(
       );
     }
 
-    console.info(
-      "[TENH Admin] Telegram Bot released.",
-      {
-        adminUserId: admin.user.id,
-        connectionId: row.id,
+    /*
+     * Written to the audit table, not only to the server console.
+     *
+     * This is the most destructive action an administrator can take: it takes
+     * a customer's channel offline and destroys the stored Bot token. Every
+     * other admin mutation -- announcements, customer report replies -- lands
+     * in tenh_admin_audit_logs, and this one only reached console.info, which
+     * ages out of the platform's log retention and cannot be read from the
+     * admin Security panel. A destructive action with no durable record is
+     * the one you most want a record of.
+     *
+     * The helper swallows its own failures on purpose, so an audit outage
+     * cannot undo a release that has already happened.
+     */
+    await logTenhAdminAction({
+      user: admin.user,
+      action: "telegram_bot_released",
+      resourceType: "social_account",
+      resourceId: row.id,
+      metadata: {
         businessId: row.business_id,
         botId: row.platform_account_id,
+        webhookCleared,
+        webhookNote,
       },
-    );
+    });
 
     return noStoreJson({
       success: true,

@@ -3,6 +3,7 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getTenhAdminUser } from "@/lib/admin/tenh-admin-auth";
+import { logTenhAdminAction } from "@/lib/admin/log-tenh-admin-action";
 import { syncFacebookContactProfilePhoto } from "@/lib/facebook/facebook-profile-photo";
 import { getFacebookPageAccessToken } from "@/lib/facebook/get-facebook-page-access-token";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -264,6 +265,23 @@ export async function POST(
       })
       .eq("platform", "facebook")
       .is("profile_picture_url", null);
+
+  /*
+   * Logged like every other admin mutation. This one writes to customer
+   * contact rows across workspaces, so "who ran it and what did it touch"
+   * belongs in the audit table rather than only in a response nobody keeps.
+   */
+  await logTenhAdminAction({
+    user: admin.user,
+    action: "facebook_avatar_backfill_run",
+    resourceType: "contacts",
+    metadata: {
+      processed: contacts.length,
+      stored,
+      skipped,
+      remaining: remaining ?? 0,
+    },
+  });
 
   return NextResponse.json({
     success: true,
