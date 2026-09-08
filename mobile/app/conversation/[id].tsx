@@ -38,12 +38,44 @@ import { useInbox } from "../../lib/inbox-provider";
 import type { InboxMessage, SavedReply } from "../../lib/types";
 
 /*
- * Messages come back newest-first from the API and the list is inverted, so
- * the newest sits at the bottom without measuring anything or scrolling after
- * layout. An inverted FlatList also keeps the newest message pinned when the
- * keyboard opens, which is the behaviour anyone expects from a chat.
+ * The thread is held newest-first and drawn inverted, which puts the newest
+ * at the bottom with nothing measured and nothing scrolled after layout. An
+ * inverted list also keeps the newest message pinned when the keyboard opens,
+ * which is what anyone expects from a chat, and it puts "load older" on the
+ * end the list reaches when you scroll up.
+ *
+ * The API hands back the opposite order -- oldest-first, because the web
+ * renders top-down -- so every page is reversed on the way in. Feeding it
+ * straight through drew the whole conversation upside down: the newest
+ * message sat at the top and time ran backwards as you read down.
  */
 const PAGE_SIZE = 25;
+
+const sentAt = (message: InboxMessage) =>
+  new Date(message.platform_created_at ?? message.created_at).getTime();
+
+/*
+ * Newest first, and each message once.
+ *
+ * A refresh re-fetches the newest page while the agent may have scrolled back
+ * through several older ones. Replacing the list would throw that history
+ * away every time a message arrives; merging by id keeps it and still picks
+ * up whatever is new.
+ */
+function mergeMessages(current: InboxMessage[], incoming: InboxMessage[]) {
+  const byId = new Map(current.map((message) => [message.id, message]));
+
+  for (const message of incoming) {
+    byId.set(message.id, message);
+  }
+
+  return Array.from(byId.values()).sort((first, second) => {
+    const difference = sentAt(second) - sentAt(first);
+
+    // Same timestamp to the second happens on an album; id keeps it stable.
+    return difference !== 0 ? difference : second.id.localeCompare(first.id);
+  });
+}
 
 /*
  * What TENH will accept as an upload, and what it calls each one.
@@ -847,6 +879,11 @@ export default function Conversation() {
   );
 
   const [messages, setMessages] = useState<InboxMessage[]>([]);
+  const [cursor, setCursor] = useState<{ sentAt: string; id: string } | null>(
+    null,
+  );
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [draft, setDraft] = useState("");
@@ -894,7 +931,11 @@ export default function Conversation() {
     const sequence = ++requestRef.current;
 
     try {
-      const data = await api<{ messages: InboxMessage[] }>(
+      const data = await api<{
+        messages: InboxMessage[];
+        hasMore: boolean;
+        nextCursor: { sentAt: string; id: string } | null;
+      }>(
         `/api/conversations/${encodeURIComponent(id)}/messages?limit=${PAGE_SIZE}`,
         workspace?.businessId,
       );
@@ -904,8 +945,16 @@ export default function Conversation() {
         return;
       }
 
-      setMessages(data.messages ?? []);
+      setMessages((current) => mergeMessages(current, data.messages ?? []));
       setError("");
+
+      /*
+       * Only the first page moves the cursor. Once older pages are loaded
+       * the newest page knows nothing about where the agent has read back
+       * to, and taking its cursor would send them there again.
+       */
+      setCursor((current) => current ?? data.nextCursor ?? null);
+      setHasMore((current) => current || Boolean(data.hasMore));
     } catch (loadError) {
       if (sequence !== requestRef.current) {
         return;
@@ -927,6 +976,50 @@ export default function Conversation() {
   useEffect(() => {
     void load();
   }, [load, revision]);
+
+  /*
+   * Older messages, one page at a time, as the agent scrolls back.
+   *
+   * Keyset paging on the oldest message held rather than an offset: new
+   * messages arriving at the other end would shift every offset by one and
+   * quietly skip or repeat a message in the middle.
+   */
+  const loadOlder = useCallback(async () => {
+    if (!id || !cursor || !hasMore || loadingOlder) {
+      return;
+    }
+
+    setLoadingOlder(true);
+
+    try {
+      const query = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        beforeCreatedAt: cursor.sentAt,
+        beforeId: cursor.id,
+      });
+
+      const data = await api<{
+        messages: InboxMessage[];
+        hasMore: boolean;
+        nextCursor: { sentAt: string; id: string } | null;
+      }>(
+        `/api/conversations/${encodeURIComponent(id)}/messages?${query.toString()}`,
+        workspace?.businessId,
+      );
+
+      setMessages((current) => mergeMessages(current, data.messages ?? []));
+      setCursor(data.nextCursor ?? null);
+      setHasMore(Boolean(data.hasMore));
+    } catch (olderError) {
+      setError(
+        olderError instanceof Error
+          ? olderError.message
+          : "Unable to load older messages.",
+      );
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [cursor, hasMore, id, loadingOlder, workspace?.businessId]);
 
   /*
    * Marked read once per conversation, not on every realtime tick. The server
@@ -1392,6 +1485,20 @@ export default function Conversation() {
               }}
             />
           )}
+          /*
+           * Inverted, so the list's "end" is the top of the screen -- which
+           * is where older messages belong. Half a screen of warning is
+           * enough to have them by the time the agent gets there.
+           */
+          onEndReached={() => void loadOlder()}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            loadingOlder ? (
+              <View style={{ paddingVertical: 16 }}>
+                <ActivityIndicator color={colors.blue} />
+              </View>
+            ) : null
+          }
           contentContainerStyle={{ paddingVertical: 12 }}
         />
       )}
