@@ -3,6 +3,7 @@ import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import * as DocumentPicker from "expo-document-picker";
 import { File, Paths } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -34,6 +35,8 @@ import {
   styles,
   time,
 } from "../../components/ui";
+import { Composer } from "../../components/composer";
+import type { Pending } from "../../components/composer";
 import {
   CustomerPanel,
   PanelButton,
@@ -92,30 +95,13 @@ function mergeMessages(current: InboxMessage[], incoming: InboxMessage[]) {
   });
 }
 
-/*
- * What TENH will accept as an upload, and what it calls each one.
- *
- * The kind travels with the file because the server will not guess for us on
- * anything but obvious types, and Messenger treats a video sent as "file"
- * differently from one sent as "video".
- */
-type AttachmentKind = "image" | "video" | "file";
-
-type Pending = {
-  key: string;
-  uri: string;
-  name: string;
-  mimeType: string;
-  kind: AttachmentKind;
-};
-
 type Tag = {
   id: string;
   name: string;
   color: string | null;
 };
 
-function kindOf(mimeType: string, name: string): AttachmentKind {
+function kindOf(mimeType: string, name: string): Pending["kind"] {
   const type = mimeType.toLowerCase();
   const extension = name.toLowerCase().split(".").pop() ?? "";
 
@@ -491,82 +477,6 @@ function Bubble({
 }
 
 /*
- * Where an attachment comes from.
- *
- * Two buttons in the composer would have cost 44 more points beside three
- * others, and left the reply box too narrow to see a sentence in. One button
- * asks which, which is also the only question there is.
- */
-function AttachSheet({
-  open,
-  onMedia,
-  onFile,
-  onClose,
-}: {
-  open: boolean;
-  onMedia: () => void;
-  onFile: () => void;
-  onClose: () => void;
-}) {
-  const choices: {
-    icon: React.ComponentProps<typeof Ionicons>["name"];
-    label: string;
-    detail: string;
-    onPress: () => void;
-  }[] = [
-    {
-      icon: "images-outline",
-      label: "Photo or video",
-      detail: "From this phone's gallery.",
-      onPress: onMedia,
-    },
-    {
-      icon: "document-outline",
-      label: "File",
-      detail: "A document, PDF or anything else.",
-      onPress: onFile,
-    },
-  ];
-
-  return (
-    <Sheet
-      open={open}
-      title="Attach"
-      detail="Added to the box, sent with your next message."
-      onClose={onClose}
-    >
-      {choices.map((choice) => (
-        <Pressable
-          key={choice.label}
-          accessibilityRole="button"
-          onPress={() => {
-            onClose();
-            choice.onPress();
-          }}
-          style={({ pressed }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 14,
-            paddingHorizontal: 18,
-            paddingVertical: 14,
-            backgroundColor: pressed ? colors.pale : "transparent",
-          })}
-        >
-          <Ionicons name={choice.icon} size={22} color={colors.blue} />
-
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.ink, fontSize: 15, fontWeight: "700" }}>
-              {choice.label}
-            </Text>
-            <Text style={[styles.muted, { fontSize: 12.5 }]}>{choice.detail}</Text>
-          </View>
-        </Pressable>
-      ))}
-    </Sheet>
-  );
-}
-
-/*
  * Quick replies, as the web keeps them.
  *
  * Tapping one loads it into the composer rather than sending it: almost every
@@ -762,7 +672,6 @@ export default function Conversation() {
   const [pending, setPending] = useState<Pending[]>([]);
   const [sending, setSending] = useState(false);
 
-  const [attachOpen, setAttachOpen] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
   const [replies, setReplies] = useState<SavedReply[]>([]);
   const [repliesLoading, setRepliesLoading] = useState(false);
@@ -1030,7 +939,16 @@ export default function Conversation() {
     }
   }
 
-  async function pickMedia() {
+  /*
+   * Photos and video are separate choices now. They were one picker offering
+   * both, which reads fine in a menu and badly in practice: an agent sending
+   * a product shot had to notice that videos were also in there, and Android
+   * shows a different, slower picker when both types are allowed.
+   */
+  async function pickFromLibrary(
+    mediaTypes: ImagePicker.MediaType[],
+    multiple: boolean,
+  ) {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
@@ -1039,8 +957,8 @@ export default function Conversation() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images", "videos"],
-      allowsMultipleSelection: true,
+      mediaTypes,
+      allowsMultipleSelection: multiple,
       quality: 1,
     });
 
@@ -1051,18 +969,91 @@ export default function Conversation() {
     setPending((current) => [
       ...current,
       ...result.assets.map((asset, index) => {
-        const fallback = asset.type === "video" ? "video.mp4" : "photo.jpg";
-        const name = asset.fileName || fallback;
+        const video = asset.type === "video";
 
         return {
           key: `${asset.assetId ?? asset.uri}:${index}`,
           uri: asset.uri,
-          name,
-          mimeType: asset.mimeType || (asset.type === "video" ? "video/mp4" : "image/jpeg"),
-          kind: asset.type === "video" ? ("video" as const) : ("image" as const),
+          name: asset.fileName || (video ? "video.mp4" : "photo.jpg"),
+          mimeType: asset.mimeType || (video ? "video/mp4" : "image/jpeg"),
+          kind: video ? ("video" as const) : ("image" as const),
         };
       }),
     ]);
+  }
+
+  /*
+   * A recorded voice note joins the queue like any other attachment, so it
+   * can go with a sentence rather than instead of one.
+   */
+  function stageVoice(uri: string, millis: number) {
+    setPending((current) => [
+      ...current,
+      {
+        key: `voice:${Date.now()}`,
+        uri,
+        name: `voice-${Math.round(millis / 1000)}s.m4a`,
+        mimeType: "audio/m4a",
+        kind: "audio" as const,
+      },
+    ]);
+  }
+
+  /*
+   * Where this phone is, sent the way the web sends it.
+   *
+   * Telegram has a real location message and takes the coordinates. Messenger
+   * has nothing of the kind, so it gets the same Google Maps link the web
+   * writes into the reply box -- which is what a customer can actually open.
+   */
+  async function sendLocation() {
+    if (!id || sending) {
+      return;
+    }
+
+    const permission = await Location.requestForegroundPermissionsAsync();
+
+    if (!permission.granted) {
+      setError("TENH needs permission to your location to send it.");
+      return;
+    }
+
+    setSending(true);
+    setError("");
+
+    try {
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const latitude = Number(position.coords.latitude.toFixed(6));
+      const longitude = Number(position.coords.longitude.toFixed(6));
+
+      if (platform === "telegram") {
+        await api("/api/telegram/send-location", workspace?.businessId, {
+          method: "POST",
+          body: { conversationId: id, latitude, longitude },
+        });
+      } else {
+        await api("/api/facebook/send", workspace?.businessId, {
+          method: "POST",
+          body: {
+            conversationId: id,
+            message: `📍 Location: https://www.google.com/maps?q=${latitude},${longitude}`,
+          },
+        });
+      }
+
+      await load();
+    } catch (locationError) {
+      setError(
+        locationError instanceof ApiError
+          ? locationError.message
+          : "Unable to send your location.",
+      );
+    } finally {
+      setSending(false);
+    }
   }
 
   async function pickFile() {
@@ -1457,8 +1448,6 @@ export default function Conversation() {
     }
   }
 
-  const canSend = !sending && (draft.trim().length > 0 || pending.length > 0);
-
   const swipe = useThreadSwipe(
     () => void openPanel(),
     Boolean(contactId) && !panelOpen,
@@ -1562,126 +1551,22 @@ export default function Conversation() {
       )}
       </View>
 
-      {/*
-        What is queued to go with the next send. Attachments are staged rather
-        than sent on pick so a quick reply's text and its picture leave
-        together, and so a wrong file can be taken back off.
-      */}
-      {pending.length > 0 ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8, paddingHorizontal: 12, paddingTop: 10 }}
-          style={{ maxHeight: 56, backgroundColor: "white" }}
-        >
-          {pending.map((file) => (
-            <View
-              key={file.key}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 8,
-                paddingHorizontal: 11,
-                paddingVertical: 8,
-                borderRadius: 999,
-                backgroundColor: colors.pale,
-              }}
-            >
-              <Ionicons
-                name={
-                  file.kind === "image"
-                    ? "image"
-                    : file.kind === "video"
-                      ? "videocam"
-                      : "document"
-                }
-                size={15}
-                color={colors.blue}
-              />
-
-              <Text numberOfLines={1} style={{ maxWidth: 140, color: colors.ink, fontSize: 12.5, fontWeight: "600" }}>
-                {file.name}
-              </Text>
-
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${file.name}`}
-                disabled={sending}
-                hitSlop={8}
-                onPress={() =>
-                  setPending((current) => current.filter((item) => item.key !== file.key))
-                }
-              >
-                <Ionicons name="close" size={14} color={colors.blue} />
-              </Pressable>
-            </View>
-          ))}
-        </ScrollView>
-      ) : null}
-
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "flex-end",
-          gap: 4,
-          padding: 12,
-          paddingBottom: 12 + insets.bottom,
-          backgroundColor: "white",
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
-        }}
-      >
-        <IconButton
-          icon="attach-outline"
-          label="Attach a photo, video or file"
-          disabled={sending}
-          onPress={() => setAttachOpen(true)}
-        />
-
-        <IconButton
-          icon="flash-outline"
-          label="Quick replies"
-          disabled={sending}
-          onPress={() => void openReplies()}
-        />
-
-        <TextInput
-          value={draft}
-          onChangeText={setDraft}
-          style={[styles.input, { flex: 1, maxHeight: 120, marginLeft: 4 }]}
-          placeholder="Write a reply…"
-          placeholderTextColor={colors.muted}
-          multiline
-          editable={!sending}
-        />
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Send message"
-          disabled={!canSend}
-          onPress={() => void send()}
-          style={({ pressed }) => [
-            styles.button,
-            {
-              minWidth: 52,
-              paddingHorizontal: 16,
-              opacity: !canSend ? 0.4 : pressed ? 0.7 : 1,
-            },
-          ]}
-        >
-          {sending ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Ionicons name="send" size={19} color="white" />
-          )}
-        </Pressable>
-      </View>
-
-      <AttachSheet
-        open={attachOpen}
-        onMedia={() => void pickMedia()}
-        onFile={() => void pickFile()}
-        onClose={() => setAttachOpen(false)}
+      <Composer
+        draft={draft}
+        onDraftChange={setDraft}
+        pending={pending}
+        onRemovePending={(key) =>
+          setPending((current) => current.filter((item) => item.key !== key))
+        }
+        sending={sending}
+        bottomInset={insets.bottom}
+        onPickImages={() => void pickFromLibrary(["images"], true)}
+        onPickVideo={() => void pickFromLibrary(["videos"], false)}
+        onPickFile={() => void pickFile()}
+        onSendLocation={() => void sendLocation()}
+        onQuickReplies={() => void openReplies()}
+        onVoice={stageVoice}
+        onSend={() => void send()}
       />
 
       <QuickReplySheet
