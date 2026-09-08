@@ -4040,6 +4040,11 @@ export function MessagePanel({
                             <img
                               src={facebookCommentActorPhoto}
                               alt={facebookCommentActorName}
+                              // One per comment in the thread, and the thread
+                              // pages at 50. The other avatars here already
+                              // load this way.
+                              loading="lazy"
+                              decoding="async"
                               className={`${
                                 isNestedFacebookCommentReply
                                   ? "h-8 w-8"

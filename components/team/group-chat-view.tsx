@@ -2143,6 +2143,8 @@ export function GroupChatView() {
                           src={member.profile_picture_url}
                           alt=""
                           className="h-9 w-9 rounded-full border-2 border-white object-cover"
+                          loading="lazy"
+                          decoding="async"
                         />
                       ) : (
                         <div
@@ -2393,6 +2395,8 @@ export function GroupChatView() {
                               src={sender.profile_picture_url}
                               alt=""
                               className="h-10 w-10 shrink-0 rounded-full object-cover"
+                              loading="lazy"
+                              decoding="async"
                             />
                           ) : (
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-600">
@@ -2485,6 +2489,8 @@ export function GroupChatView() {
                                           src={attachment.url ?? ""}
                                           alt={attachment.file_name}
                                           className="h-full w-full object-cover"
+                                          loading="lazy"
+                                          decoding="async"
                                         />
                                         {index === 8 &&
                                         imageAttachments.length > 9 ? (
@@ -2824,6 +2830,8 @@ export function GroupChatView() {
                                 src={attachment.url}
                                 alt=""
                                 className="block h-28 w-28 object-cover sm:h-32 sm:w-32"
+                                loading="lazy"
+                                decoding="async"
                               />
                               <button
                                 type="button"
@@ -3128,6 +3136,8 @@ export function GroupChatView() {
                           src={member.profile_picture_url}
                           alt=""
                           className="h-9 w-9 rounded-full object-cover"
+                          loading="lazy"
+                          decoding="async"
                         />
                       ) : (
                         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-600">
@@ -3348,6 +3358,8 @@ export function GroupChatView() {
                           src={item.url}
                           alt=""
                           className="h-full w-full object-cover transition duration-200 group-hover/storage:scale-[1.02]"
+                          loading="lazy"
+                          decoding="async"
                         />
                       </a>
                     ))}
@@ -3732,6 +3744,8 @@ function RoomMembersModal({
                     src={member.profile_picture_url}
                     alt=""
                     className="h-9 w-9 rounded-full object-cover"
+                    loading="lazy"
+                    decoding="async"
                   />
                 ) : (
                   <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">

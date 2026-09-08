@@ -4450,7 +4450,33 @@ function ConversationListView({
                      * plain grey wash, and unread is carried by weight and
                      * contrast in the text rather than another background.
                      */
-                    className={`relative flex w-full items-start gap-2.5 border-b border-slate-100 py-2.5 pl-3 pr-3 text-left transition ${
+                    /*
+                     * content-visibility keeps the list cheap however long it
+                     * gets.
+                     *
+                     * There is no virtualisation here: every conversation in
+                     * the workspace is a real row, and the busiest workspace
+                     * in this database has 474 of them. Each row carries an
+                     * avatar, channel icon, unread badge, tag chips, status
+                     * and a message preview, so the browser was laying out
+                     * and painting all of it -- including the ~460 rows
+                     * nobody can see -- on first paint and again on every
+                     * re-render that got through.
+                     *
+                     * content-visibility:auto lets the browser skip style,
+                     * layout and paint for a row while it is off screen, and
+                     * do the work when it scrolls near. contain-intrinsic-size
+                     * gives it a height to reserve in the meantime so the
+                     * scrollbar is the right length; the auto keyword means
+                     * "remember what this row actually measured last time",
+                     * which is what stops the scroll position jumping once a
+                     * row has been seen.
+                     *
+                     * Filtering and search are unaffected -- they run over the
+                     * full array before any of this, and a row the browser has
+                     * skipped is still in the DOM and still found by Ctrl+F.
+                     */
+                    className={`relative flex w-full items-start gap-2.5 border-b border-slate-100 py-2.5 pl-3 pr-3 text-left transition [contain-intrinsic-size:auto_72px] [content-visibility:auto] ${
                       isActive
                         ? "bg-blue-50 shadow-[inset_3px_0_0_0_var(--color-blue-600,#2563eb)]"
                         : "hover:bg-slate-100/70"
@@ -4458,11 +4484,31 @@ function ConversationListView({
                   >
                     <div className="relative mt-0.5 h-10 w-10 shrink-0">
                       {customerAvatarUrl ? (
+                        /*
+                         * Lazy, because the list is every conversation in the
+                         * workspace and the busiest one here has 474 of them.
+                         * Without this the browser opened an avatar request
+                         * for every row on first paint -- hundreds of them,
+                         * nearly all for rows below the fold -- and each one
+                         * competed with the messages the agent was actually
+                         * waiting for.
+                         *
+                         * decoding="async" keeps the ones that do load off the
+                         * main thread, so an avatar arriving never blocks a
+                         * scroll or a keystroke.
+                         *
+                         * Sized by the class, and the container reserves the
+                         * same 40px, so nothing shifts when one lands.
+                         */
                         <img
                           src={
                             customerAvatarUrl
                           }
                           alt=""
+                          loading="lazy"
+                          decoding="async"
+                          width={40}
+                          height={40}
                           referrerPolicy="no-referrer"
                           className="h-10 w-10 rounded-full bg-slate-100 object-cover"
                         />
