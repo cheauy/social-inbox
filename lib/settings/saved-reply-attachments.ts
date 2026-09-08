@@ -18,8 +18,16 @@ import type {
 export const SAVED_REPLY_MEDIA_BUCKET =
   TELEGRAM_MESSAGE_MEDIA_BUCKET;
 
-export const SAVED_REPLY_MEDIA_PREFIX =
-  "saved-replies";
+import {
+  SAVED_REPLY_MEDIA_PREFIX,
+  isPathOwnedByBusiness,
+} from "@/lib/settings/saved-reply-media-path";
+
+// Re-exported so existing importers keep their single source for these.
+export {
+  SAVED_REPLY_MEDIA_PREFIX,
+  isPathOwnedByBusiness,
+};
 
 /*
  * Meta caps Messenger attachments at 25 MB and Telegram's Bot API at 50 MB for
@@ -80,15 +88,6 @@ export function supportedMediaTypes() {
 }
 
 /** Storage paths are the workspace boundary, so check the prefix on every read. */
-export function isPathOwnedByBusiness(
-  path: string,
-  businessId: string,
-) {
-  return path.startsWith(
-    `${SAVED_REPLY_MEDIA_PREFIX}/${businessId}/`,
-  );
-}
-
 /**
  * Read attachments back out of the jsonb column.
  *
