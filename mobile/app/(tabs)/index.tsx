@@ -19,10 +19,10 @@ import {
   colors,
   styles,
   time,
-} from "../components/ui";
-import { useAuth } from "../lib/auth/provider";
-import { useInbox } from "../lib/inbox-provider";
-import type { InboxConversation, Workspace } from "../lib/types";
+} from "../../components/ui";
+import { useAuth } from "../../lib/auth/provider";
+import { useInbox } from "../../lib/inbox-provider";
+import type { InboxConversation, Workspace } from "../../lib/types";
 
 function WorkspacePicker({
   workspaces,
