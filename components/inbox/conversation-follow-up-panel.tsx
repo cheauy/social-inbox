@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useNowTick } from "@/lib/inbox/use-now-tick";
 
 type ReminderMember = {
   id: string;
@@ -86,11 +87,15 @@ export function ConversationFollowUpPanel({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // See use-now-tick: without this the answer below is computed once and
+  // then frozen, leaving Save enabled after the chosen time has passed.
+  const now = useNowTick(Boolean(remindAt));
+
   const canCreate = useMemo(() => {
     if (creating || !assignedTo || !note.trim() || !remindAt) return false;
     const date = new Date(remindAt);
-    return Number.isFinite(date.getTime()) && date.getTime() > Date.now();
-  }, [assignedTo, creating, note, remindAt]);
+    return Number.isFinite(date.getTime()) && date.getTime() > now;
+  }, [assignedTo, creating, note, now, remindAt]);
 
   async function load() {
     setLoading(true);

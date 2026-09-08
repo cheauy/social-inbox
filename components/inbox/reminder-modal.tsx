@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useNowTick } from "@/lib/inbox/use-now-tick";
 
 type ReminderMember = {
   id: string;
@@ -176,6 +177,10 @@ export function ReminderModal({
     };
   }, [defaultAssignedTo]);
 
+  // See use-now-tick: without this the answer below is computed once and then
+  // frozen, leaving Save enabled after the chosen time has passed.
+  const now = useNowTick(Boolean(remindAt));
+
   const canSave = useMemo(() => {
     if (
       saving ||
@@ -190,9 +195,10 @@ export function ReminderModal({
     const date = new Date(remindAt);
     return (
       Number.isFinite(date.getTime()) &&
-      date.getTime() > Date.now()
+      date.getTime() > now
     );
   }, [
+    now,
     assignedTo,
     loadingOptions,
     note,

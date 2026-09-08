@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useNowTick } from "@/lib/inbox/use-now-tick";
 
 export type EditableReminder = {
   id: string;
@@ -51,11 +52,15 @@ export function ReminderEditDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // See use-now-tick: without this the answer below is computed once and
+  // then frozen, leaving Save enabled after the chosen time has passed.
+  const now = useNowTick(Boolean(remindAt));
+
   const canSave = useMemo(() => {
     if (!reminder || saving || !note.trim() || !remindAt) return false;
     const date = new Date(remindAt);
-    return Number.isFinite(date.getTime()) && date.getTime() > Date.now();
-  }, [note, remindAt, reminder, saving]);
+    return Number.isFinite(date.getTime()) && date.getTime() > now;
+  }, [note, now, remindAt, reminder, saving]);
 
   if (!reminder) return null;
 
