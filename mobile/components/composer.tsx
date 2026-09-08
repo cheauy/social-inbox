@@ -92,21 +92,28 @@ function Choice({
   );
 }
 
-/** A round button in the composer row. */
+/*
+ * The height everything in the row shares.
+ *
+ * The buttons and the reply field were different heights sitting on a
+ * flex-end baseline, so the icons hung slightly below the pill they were
+ * meant to line up with. One number, used by all of them.
+ */
+const ROW = 44;
+
+/** A round button in the composer row, the same height as the field. */
 function Round({
   icon,
   label,
   disabled,
   tone,
   onPress,
-  onLongPress,
 }: {
   icon: IconName;
   label: string;
   disabled?: boolean;
   tone?: string;
   onPress: () => void;
-  onLongPress?: () => void;
 }) {
   return (
     <Pressable
@@ -114,18 +121,17 @@ function Round({
       accessibilityLabel={label}
       disabled={disabled}
       onPress={onPress}
-      onLongPress={onLongPress}
       style={({ pressed }) => ({
-        width: 38,
-        height: 38,
-        borderRadius: 19,
+        width: ROW,
+        height: ROW,
+        borderRadius: ROW / 2,
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: pressed ? colors.pale : "transparent",
         opacity: disabled ? 0.35 : 1,
       })}
     >
-      <Ionicons name={icon} size={22} color={tone ?? colors.blue} />
+      <Ionicons name={icon} size={23} color={tone ?? colors.blue} />
     </Pressable>
   );
 }
@@ -165,7 +171,14 @@ export function Composer({
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recording = useAudioRecorderState(recorder, 250);
 
-  const canSend = !sending && (draft.trim().length > 0 || pending.length > 0);
+  const hasSomething = draft.trim().length > 0 || pending.length > 0;
+
+  /*
+   * The send button is present whenever there is something to send, sending
+   * included -- it holds the spinner. Disabling it is what stops a second
+   * tap, not removing it, which would make the row jump at the worst moment.
+   */
+  const canSend = hasSomething;
 
   /*
    * Tap to start, tap to stop. Not hold-to-talk: an agent recording a reply is
@@ -292,8 +305,8 @@ export function Composer({
         style={{
           flexDirection: "row",
           alignItems: "flex-end",
-          gap: 2,
-          paddingHorizontal: 8,
+          gap: 0,
+          paddingHorizontal: 6,
           paddingTop: 8,
           paddingBottom: 8 + bottomInset,
           backgroundColor: "white",
@@ -364,37 +377,17 @@ export function Composer({
           </View>
         ) : (
           <>
+            {/*
+              Attach and quick replies together on the left: both put
+              something into the box rather than sending it, and an agent
+              reaching for a saved greeting was crossing the whole composer
+              to find it.
+            */}
             <Round
-              icon="add-circle-outline"
+              icon="attach-outline"
               label="Attach a photo, video, file or location"
               disabled={sending}
               onPress={() => setAttachOpen(true)}
-            />
-
-            <Round
-              icon="mic-outline"
-              label="Record a voice message"
-              disabled={sending}
-              onPress={() => void toggleRecording()}
-            />
-
-            <TextInput
-              value={draft}
-              onChangeText={onDraftChange}
-              style={[
-                styles.input,
-                {
-                  flex: 1,
-                  maxHeight: 120,
-                  marginHorizontal: 4,
-                  borderRadius: 22,
-                  paddingHorizontal: 16,
-                },
-              ]}
-              placeholder="Write a reply…"
-              placeholderTextColor={colors.muted}
-              multiline
-              editable={!sending}
             />
 
             <Round
@@ -404,28 +397,100 @@ export function Composer({
               onPress={onQuickReplies}
             />
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Send"
-              disabled={!canSend}
-              onPress={onSend}
-              style={({ pressed }) => ({
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                alignItems: "center",
-                justifyContent: "center",
-                marginLeft: 2,
-                backgroundColor: colors.blue,
-                opacity: !canSend ? 0.35 : pressed ? 0.7 : 1,
-              })}
+            {/*
+              The field, with the microphone inside it.
+
+              It sat outside as a fourth icon, which is a lot of chrome around
+              a box you are meant to type in. Inside on the right is where a
+              phone keyboard has taught everybody to look for it, and it gives
+              the field the width back.
+            */}
+            <View
+              style={{
+                flex: 1,
+                flexDirection: "row",
+                alignItems: "flex-end",
+                minHeight: ROW,
+                marginHorizontal: 4,
+                paddingRight: 4,
+                borderRadius: ROW / 2,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: "white",
+              }}
             >
-              {sending ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <MaterialCommunityIcons name="send" size={21} color="white" />
+              <TextInput
+                value={draft}
+                onChangeText={onDraftChange}
+                style={{
+                  flex: 1,
+                  maxHeight: 120,
+                  minHeight: ROW,
+                  paddingTop: 11,
+                  paddingBottom: 11,
+                  paddingLeft: 16,
+                  fontSize: 16,
+                  color: colors.ink,
+                }}
+                placeholder="Write a reply…"
+                placeholderTextColor={colors.muted}
+                multiline
+                editable={!sending}
+              />
+
+              {/*
+                Swapped for the send button rather than shown beside it. Both
+                at once is two ways to end the same message, and the one you
+                want is never in doubt: if there are words in the box you are
+                sending them.
+              */}
+              {canSend ? null : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Record a voice message"
+                  disabled={sending}
+                  onPress={() => void toggleRecording()}
+                  hitSlop={6}
+                  style={({ pressed }) => ({
+                    width: 36,
+                    height: ROW - 2,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    opacity: sending ? 0.35 : pressed ? 0.5 : 1,
+                  })}
+                >
+                  <Ionicons name="mic-outline" size={22} color={colors.blue} />
+                </Pressable>
               )}
-            </Pressable>
+            </View>
+
+            {/*
+              Only there when there is something to send, which is what gives
+              the field its full width the rest of the time.
+            */}
+            {canSend ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Send"
+                disabled={sending}
+                onPress={onSend}
+                style={({ pressed }) => ({
+                  width: ROW,
+                  height: ROW,
+                  borderRadius: ROW / 2,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: colors.blue,
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                {sending ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <MaterialCommunityIcons name="send" size={20} color="white" />
+                )}
+              </Pressable>
+            ) : null}
           </>
         )}
       </View>

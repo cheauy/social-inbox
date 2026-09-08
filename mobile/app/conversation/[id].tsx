@@ -25,11 +25,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Avatar,
   ChannelAvatar,
-  ChannelBadge,
   Empty,
   ErrorNotice,
   IconButton,
   Sheet,
+  channel,
   colors,
   platformOf,
   styles,
@@ -1479,7 +1479,32 @@ export default function Conversation() {
               {name}
             </Text>
 
-            {conversation ? <ChannelBadge conversation={conversation} /> : null}
+            {/*
+              The page this conversation belongs to, not the word for the
+              channel it came in on. An agent working three shops needs to
+              know which one the customer wrote to; that it was Messenger is
+              already on the avatar. Falls back to the channel name on a
+              workspace whose page name has not reached the phone yet.
+            */}
+            {conversation ? (
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
+              >
+                <Ionicons
+                  name="storefront-outline"
+                  size={13}
+                  color={colors.muted}
+                />
+
+                <Text
+                  numberOfLines={1}
+                  style={{ fontSize: 12.5, color: colors.muted, flexShrink: 1 }}
+                >
+                  {conversation.social_account?.account_name?.trim() ||
+                    channel(conversation)}
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           {/*
