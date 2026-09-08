@@ -7,6 +7,7 @@ import {
 } from "next/navigation";
 import {
   memo,
+  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -1264,6 +1265,315 @@ function viewKeyFromUrl(
 }
 
 /*
+ * One conversation row, memoized.
+ *
+ * Measured before this existed: opening a conversation blocked the main
+ * thread for 439ms, changing a status for 439ms, and narrowing the search
+ * from 473 rows to 3 for 459ms. Typing cost nothing. The difference is that
+ * the first three all rebuild the conversations array, and rebuilding it
+ * re-rendered all 473 rows -- every avatar, badge, tag chip and preview --
+ * to show a change that touched one of them.
+ *
+ * memo makes that a per-row decision. A status change now re-renders the row
+ * whose object actually changed; selecting a conversation re-renders two, the
+ * one leaving and the one arriving.
+ *
+ * isActive is a prop rather than something derived here from
+ * activeConversationId, and that is the whole trick: if the row compared the
+ * selected id itself, every row would see a changed prop on every selection
+ * and memo would buy nothing.
+ *
+ * The two callbacks must keep their identity across renders for any of this
+ * to hold -- see the stable wrappers in ConversationListView.
+ */
+type ConversationRowProps = {
+  conversation: InboxConversation;
+  isActive: boolean;
+  isKhmer: boolean;
+  channelDirectory: ChannelDirectory;
+  channelDirectoryLoaded: boolean;
+  /*
+   * False until the client has mounted, so the row renders no timestamp on
+   * the server pass and cannot produce a hydration mismatch. It flips once
+   * and then never changes, so it costs the memo nothing.
+   */
+  hydrated: boolean;
+  onSelectConversation: (
+    conversationId: string,
+  ) => void;
+  onPrefetchConversation?: (
+    conversationId: string,
+  ) => void;
+};
+
+const ConversationRow = memo(function ConversationRow({
+  conversation,
+  isActive,
+  isKhmer,
+  channelDirectory,
+  channelDirectoryLoaded,
+  hydrated,
+  onSelectConversation,
+  onPrefetchConversation,
+}: ConversationRowProps) {
+                const customerName =
+                  conversation.contact
+                    ?.full_name ??
+                  "Customer";
+
+                const customerAvatarUrl =
+                  conversation.contact
+                    ?.profile_picture_url
+                    ?.trim() ||
+                  null;
+
+
+                const isUnread =
+                  (conversation.unread_count ?? 0) > 0;
+
+                const conversationPlatform =
+                  getConversationPlatform(
+                    conversation,
+                    channelDirectory,
+                    channelDirectoryLoaded,
+                  );
+
+                return (
+                  <button
+                    key={
+                      conversation.id
+                    }
+                    type="button"
+                    onClick={() => {
+                      onSelectConversation(
+                        conversation.id,
+                      );
+                    }}
+                    onMouseEnter={() =>
+                      onPrefetchConversation?.(
+                        conversation.id,
+                      )
+                    }
+                    onFocus={() =>
+                      onPrefetchConversation?.(
+                        conversation.id,
+                      )
+                    }
+                    /*
+                     * Full-bleed rows separated by a hairline, so the
+                     * selected and hovered states fill the whole width
+                     * instead of floating as inset cards.
+                     */
+                    /*
+                     * Selected, hovered and unread each get their own signal
+                     * so two of them can never look like the same thing:
+                     * selected is a blue rail plus a blue wash, hover is a
+                     * plain grey wash, and unread is carried by weight and
+                     * contrast in the text rather than another background.
+                     */
+                    /*
+                     * content-visibility keeps the list cheap however long it
+                     * gets.
+                     *
+                     * There is no virtualisation here: every conversation in
+                     * the workspace is a real row, and the busiest workspace
+                     * in this database has 474 of them. Each row carries an
+                     * avatar, channel icon, unread badge, tag chips, status
+                     * and a message preview, so the browser was laying out
+                     * and painting all of it -- including the ~460 rows
+                     * nobody can see -- on first paint and again on every
+                     * re-render that got through.
+                     *
+                     * content-visibility:auto lets the browser skip style,
+                     * layout and paint for a row while it is off screen, and
+                     * do the work when it scrolls near. contain-intrinsic-size
+                     * gives it a height to reserve in the meantime so the
+                     * scrollbar is the right length; the auto keyword means
+                     * "remember what this row actually measured last time",
+                     * which is what stops the scroll position jumping once a
+                     * row has been seen.
+                     *
+                     * Filtering and search are unaffected -- they run over the
+                     * full array before any of this, and a row the browser has
+                     * skipped is still in the DOM and still found by Ctrl+F.
+                     */
+                    className={`relative flex w-full items-start gap-2.5 border-b border-slate-100 py-2.5 pl-3 pr-3 text-left transition [contain-intrinsic-size:auto_72px] [content-visibility:auto] ${
+                      isActive
+                        ? "bg-blue-50 shadow-[inset_3px_0_0_0_var(--color-blue-600,#2563eb)]"
+                        : "hover:bg-slate-100/70"
+                    }`}
+                  >
+                    <div className="relative mt-0.5 h-10 w-10 shrink-0">
+                      {customerAvatarUrl ? (
+                        /*
+                         * Lazy, because the list is every conversation in the
+                         * workspace and the busiest one here has 474 of them.
+                         * Without this the browser opened an avatar request
+                         * for every row on first paint -- hundreds of them,
+                         * nearly all for rows below the fold -- and each one
+                         * competed with the messages the agent was actually
+                         * waiting for.
+                         *
+                         * decoding="async" keeps the ones that do load off the
+                         * main thread, so an avatar arriving never blocks a
+                         * scroll or a keystroke.
+                         *
+                         * Sized by the class, and the container reserves the
+                         * same 40px, so nothing shifts when one lands.
+                         */
+                        <img
+                          src={
+                            customerAvatarUrl
+                          }
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          width={40}
+                          height={40}
+                          referrerPolicy="no-referrer"
+                          className="h-10 w-10 rounded-full bg-slate-100 object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">
+                          {getInitial(
+                            customerName,
+                          )}
+                        </div>
+                      )}
+
+                      {conversationPlatform ? (
+                        <ChannelAvatarBadge
+                          platform={
+                            conversationPlatform
+                          }
+                        />
+                      ) : null}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p
+                          className={`min-w-0 flex-1 truncate text-[13.5px] ${
+                            isUnread
+                              ? "font-bold text-slate-950"
+                              : "font-medium text-slate-700"
+                          }`}
+                          style={{
+                            fontFamily: CONVERSATION_TEXT_FONT_STACK,
+                          }}
+                        >
+                          {
+                            customerName
+                          }
+                        </p>
+
+                        {/* Pin sits with the time so a row with no tags
+                            still has somewhere stable to show it. */}
+                        {isConversationPinned(
+                          conversation,
+                        ) ? (
+                          <span
+                            className="inline-flex shrink-0 scale-75 items-center justify-center text-red-600"
+                            title={isKhmer ? "បានខ្ទាស់" : "Pinned"}
+                            aria-label={isKhmer ? "បានខ្ទាស់" : "Pinned"}
+                          >
+                            <PinIcon />
+                          </span>
+                        ) : null}
+
+                        <span
+                          className={`shrink-0 text-[11px] ${
+                            isUnread
+                              ? "font-semibold text-blue-600"
+                              : "text-slate-400"
+                          }`}
+                        >
+                          {hydrated
+                            ? formatMessageTime(
+                                conversation.last_message_at,
+                              )
+                            : ""}
+                        </span>
+                      </div>
+
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <p
+                          className={`min-w-0 flex-1 truncate text-[12.5px] ${
+                            isUnread
+                              ? "font-medium text-slate-700"
+                              : "text-slate-400"
+                          }`}
+                          style={{
+                            fontFamily: CONVERSATION_TEXT_FONT_STACK,
+                          }}
+                        >
+                          {normalizeLegacyConversationPreview(
+                            conversation.last_message_text,
+                          )}
+                        </p>
+
+                        {conversation.unread_count >
+                        0 ? (
+                          <span className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[11px] font-semibold text-white">
+                            {
+                              conversation.unread_count
+                            }
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {(conversation.contact?.tags?.length ?? 0) > 0 ? (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                        {(conversation.contact
+                          ?.tags ??
+                          [])
+                          .slice(
+                            0,
+                            4,
+                          )
+                          .map(
+                            (
+                              tag,
+                            ) => (
+                              <span
+                                key={
+                                  tag.id
+                                }
+                                className="max-w-24 truncate rounded-full px-2 py-[1px] text-[10.5px] font-semibold text-white"
+                                style={{
+                                  backgroundColor:
+                                    tag.color,
+                                }}
+                              >
+                                {
+                                  tag.name
+                                }
+                              </span>
+                            ),
+                          )}
+
+                        {(conversation.contact
+                          ?.tags?.length ??
+                          0) >
+                        4 ? (
+                          <span className="rounded-full bg-slate-100 px-1.5 py-[1px] text-[10.5px] font-semibold text-slate-500">
+                            +
+                            {(conversation
+                              .contact
+                              ?.tags
+                              ?.length ??
+                              0) -
+                              4}
+                          </span>
+                        ) : null}
+                      </div>
+                      ) : null}
+                    </div>
+                  </button>
+                );
+});
+
+/*
  * Memoized, because typing must not redraw the list.
  *
  * The reply draft lives in InboxView -- the whole 9,000-line component -- so
@@ -1296,6 +1606,58 @@ function ConversationListView({
     useSearchParams();
 
   const isKhmer = useWorkspaceLanguageId() === "km";
+
+  /*
+   * Handlers that never change identity, so memo on the row actually holds.
+   *
+   * onSelectConversation and onPrefetchConversation arrive from InboxView as
+   * useCallback values, but their dependency lists include liveMessages -- so
+   * they get a new identity every time a message arrives, which would hand
+   * every row a changed prop and defeat the memo exactly when the inbox is
+   * busiest.
+   *
+   * The ref always holds the current handler, and the wrapper around it is
+   * created once. These are event handlers: they want the latest version at
+   * the moment they are called, never the one captured at render.
+   */
+  const selectConversationRef = useRef(
+    onSelectConversation,
+  );
+  const prefetchConversationRef = useRef(
+    onPrefetchConversation,
+  );
+
+  /*
+   * Assigned after the render rather than during it. A ref written while
+   * rendering is impure and the React Compiler rejects it, and nothing needs
+   * the new handler earlier than this: the only caller is a click, which
+   * cannot happen before the effect has run, and useRef already seeded both
+   * refs with the first render's handlers.
+   */
+  useEffect(() => {
+    selectConversationRef.current =
+      onSelectConversation;
+    prefetchConversationRef.current =
+      onPrefetchConversation;
+  });
+
+  const stableSelectConversation = useCallback(
+    (conversationId: string) => {
+      selectConversationRef.current(
+        conversationId,
+      );
+    },
+    [],
+  );
+
+  const stablePrefetchConversation = useCallback(
+    (conversationId: string) => {
+      prefetchConversationRef.current?.(
+        conversationId,
+      );
+    },
+    [],
+  );
 
   /*
    * Generic V3.11.4 channel key.
@@ -4389,268 +4751,28 @@ function ConversationListView({
             </div>
           ) : (
             filteredConversations.map(
-              (
-                conversation,
-              ) => {
-                const customerName =
-                  conversation.contact
-                    ?.full_name ??
-                  "Customer";
-
-                const customerAvatarUrl =
-                  conversation.contact
-                    ?.profile_picture_url
-                    ?.trim() ||
-                  null;
-
-                const isActive =
-                  conversation.id ===
-                  activeConversationId;
-
-                const isUnread =
-                  (conversation.unread_count ?? 0) > 0;
-
-                const conversationPlatform =
-                  getConversationPlatform(
-                    conversation,
-                    channelDirectory,
-                    channelDirectoryLoaded,
-                  );
-
-                return (
-                  <button
-                    key={
-                      conversation.id
-                    }
-                    type="button"
-                    onClick={() => {
-                      onSelectConversation(
-                        conversation.id,
-                      );
-                    }}
-                    onMouseEnter={() =>
-                      onPrefetchConversation?.(
-                        conversation.id,
-                      )
-                    }
-                    onFocus={() =>
-                      onPrefetchConversation?.(
-                        conversation.id,
-                      )
-                    }
-                    /*
-                     * Full-bleed rows separated by a hairline, so the
-                     * selected and hovered states fill the whole width
-                     * instead of floating as inset cards.
-                     */
-                    /*
-                     * Selected, hovered and unread each get their own signal
-                     * so two of them can never look like the same thing:
-                     * selected is a blue rail plus a blue wash, hover is a
-                     * plain grey wash, and unread is carried by weight and
-                     * contrast in the text rather than another background.
-                     */
-                    /*
-                     * content-visibility keeps the list cheap however long it
-                     * gets.
-                     *
-                     * There is no virtualisation here: every conversation in
-                     * the workspace is a real row, and the busiest workspace
-                     * in this database has 474 of them. Each row carries an
-                     * avatar, channel icon, unread badge, tag chips, status
-                     * and a message preview, so the browser was laying out
-                     * and painting all of it -- including the ~460 rows
-                     * nobody can see -- on first paint and again on every
-                     * re-render that got through.
-                     *
-                     * content-visibility:auto lets the browser skip style,
-                     * layout and paint for a row while it is off screen, and
-                     * do the work when it scrolls near. contain-intrinsic-size
-                     * gives it a height to reserve in the meantime so the
-                     * scrollbar is the right length; the auto keyword means
-                     * "remember what this row actually measured last time",
-                     * which is what stops the scroll position jumping once a
-                     * row has been seen.
-                     *
-                     * Filtering and search are unaffected -- they run over the
-                     * full array before any of this, and a row the browser has
-                     * skipped is still in the DOM and still found by Ctrl+F.
-                     */
-                    className={`relative flex w-full items-start gap-2.5 border-b border-slate-100 py-2.5 pl-3 pr-3 text-left transition [contain-intrinsic-size:auto_72px] [content-visibility:auto] ${
-                      isActive
-                        ? "bg-blue-50 shadow-[inset_3px_0_0_0_var(--color-blue-600,#2563eb)]"
-                        : "hover:bg-slate-100/70"
-                    }`}
-                  >
-                    <div className="relative mt-0.5 h-10 w-10 shrink-0">
-                      {customerAvatarUrl ? (
-                        /*
-                         * Lazy, because the list is every conversation in the
-                         * workspace and the busiest one here has 474 of them.
-                         * Without this the browser opened an avatar request
-                         * for every row on first paint -- hundreds of them,
-                         * nearly all for rows below the fold -- and each one
-                         * competed with the messages the agent was actually
-                         * waiting for.
-                         *
-                         * decoding="async" keeps the ones that do load off the
-                         * main thread, so an avatar arriving never blocks a
-                         * scroll or a keystroke.
-                         *
-                         * Sized by the class, and the container reserves the
-                         * same 40px, so nothing shifts when one lands.
-                         */
-                        <img
-                          src={
-                            customerAvatarUrl
-                          }
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                          width={40}
-                          height={40}
-                          referrerPolicy="no-referrer"
-                          className="h-10 w-10 rounded-full bg-slate-100 object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">
-                          {getInitial(
-                            customerName,
-                          )}
-                        </div>
-                      )}
-
-                      {conversationPlatform ? (
-                        <ChannelAvatarBadge
-                          platform={
-                            conversationPlatform
-                          }
-                        />
-                      ) : null}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <p
-                          className={`min-w-0 flex-1 truncate text-[13.5px] ${
-                            isUnread
-                              ? "font-bold text-slate-950"
-                              : "font-medium text-slate-700"
-                          }`}
-                          style={{
-                            fontFamily: CONVERSATION_TEXT_FONT_STACK,
-                          }}
-                        >
-                          {
-                            customerName
-                          }
-                        </p>
-
-                        {/* Pin sits with the time so a row with no tags
-                            still has somewhere stable to show it. */}
-                        {isConversationPinned(
-                          conversation,
-                        ) ? (
-                          <span
-                            className="inline-flex shrink-0 scale-75 items-center justify-center text-red-600"
-                            title={isKhmer ? "បានខ្ទាស់" : "Pinned"}
-                            aria-label={isKhmer ? "បានខ្ទាស់" : "Pinned"}
-                          >
-                            <PinIcon />
-                          </span>
-                        ) : null}
-
-                        <span
-                          className={`shrink-0 text-[11px] ${
-                            isUnread
-                              ? "font-semibold text-blue-600"
-                              : "text-slate-400"
-                          }`}
-                        >
-                          {hydrated
-                            ? formatMessageTime(
-                                conversation.last_message_at,
-                              )
-                            : ""}
-                        </span>
-                      </div>
-
-                      <div className="mt-0.5 flex items-center gap-2">
-                        <p
-                          className={`min-w-0 flex-1 truncate text-[12.5px] ${
-                            isUnread
-                              ? "font-medium text-slate-700"
-                              : "text-slate-400"
-                          }`}
-                          style={{
-                            fontFamily: CONVERSATION_TEXT_FONT_STACK,
-                          }}
-                        >
-                          {normalizeLegacyConversationPreview(
-                            conversation.last_message_text,
-                          )}
-                        </p>
-
-                        {conversation.unread_count >
-                        0 ? (
-                          <span className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[11px] font-semibold text-white">
-                            {
-                              conversation.unread_count
-                            }
-                          </span>
-                        ) : null}
-                      </div>
-
-                      {(conversation.contact?.tags?.length ?? 0) > 0 ? (
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                        {(conversation.contact
-                          ?.tags ??
-                          [])
-                          .slice(
-                            0,
-                            4,
-                          )
-                          .map(
-                            (
-                              tag,
-                            ) => (
-                              <span
-                                key={
-                                  tag.id
-                                }
-                                className="max-w-24 truncate rounded-full px-2 py-[1px] text-[10.5px] font-semibold text-white"
-                                style={{
-                                  backgroundColor:
-                                    tag.color,
-                                }}
-                              >
-                                {
-                                  tag.name
-                                }
-                              </span>
-                            ),
-                          )}
-
-                        {(conversation.contact
-                          ?.tags?.length ??
-                          0) >
-                        4 ? (
-                          <span className="rounded-full bg-slate-100 px-1.5 py-[1px] text-[10.5px] font-semibold text-slate-500">
-                            +
-                            {(conversation
-                              .contact
-                              ?.tags
-                              ?.length ??
-                              0) -
-                              4}
-                          </span>
-                        ) : null}
-                      </div>
-                      ) : null}
-                    </div>
-                  </button>
-                );
-              },
+              (conversation) => (
+                <ConversationRow
+                  key={conversation.id}
+                  conversation={conversation}
+                  isActive={
+                    conversation.id ===
+                    activeConversationId
+                  }
+                  isKhmer={isKhmer}
+                  channelDirectory={channelDirectory}
+                  channelDirectoryLoaded={
+                    channelDirectoryLoaded
+                  }
+                  hydrated={hydrated}
+                  onSelectConversation={
+                    stableSelectConversation
+                  }
+                  onPrefetchConversation={
+                    stablePrefetchConversation
+                  }
+                />
+              ),
             )
           )}
         </div>
