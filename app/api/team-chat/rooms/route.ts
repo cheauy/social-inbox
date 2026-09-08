@@ -186,6 +186,15 @@ export async function GET() {
           .eq("business_id", currentMember.business_id)
           .eq("recipient_member_id", currentMember.id)
           .eq("room_id", room.id)
+          /*
+           * Mentions only. This counted every unread notification carrying a
+           * room id, and the client treats a rise in that number as "you were
+           * just mentioned" and plays the mention sound. Today only mentions
+           * carry a room id, so nothing is miscounted yet -- but the day any
+           * other room-scoped notification is added, it would ring as a
+           * mention that does not exist.
+           */
+          .eq("notification_type", "team_chat_mention")
           .eq("is_read", false);
 
         return {

@@ -10,6 +10,7 @@ import {
 import { useRouter } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
+import { getStoredNotificationVolume } from "@/lib/inbox/notification-sounds";
 
 const GROUP_MENTION_SOUND_SRC = "/alert-sound/mentions-notification.mp3";
 const GROUP_MENTION_FALLBACK_SOUND_SRC = "/alert-sound/notification-default.wav";
@@ -420,7 +421,9 @@ export function TeamNotificationCenter() {
       return;
     }
 
-    audio.volume = 0.7;
+    // Same setting the inbox alert obeys; see group-chat-view for why this is
+    // read at play time rather than captured once at mount.
+    audio.volume = getStoredNotificationVolume();
     audio.currentTime = 0;
 
     // Browsers can reject autoplay until the user has interacted with TENH.

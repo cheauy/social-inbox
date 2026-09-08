@@ -35,6 +35,7 @@ import EmojiPicker from "emoji-picker-react";
 
 import { createClient } from "@/lib/supabase/client";
 import { MentionComposer } from "@/components/team/mention-composer";
+import { getStoredNotificationVolume } from "@/lib/inbox/notification-sounds";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 
 type TeamMember = {
@@ -446,6 +447,18 @@ export function GroupChatView() {
       return;
     }
 
+    /*
+     * The volume slider in Settings is labelled "Volume for Tenh Chat
+     * notification sounds" and this was the one sound ignoring it. A new
+     * Audio() starts at 1.0, so a mention played at full volume next to an
+     * inbox alert the agent had turned down to a tenth of it -- and turning
+     * the slider to zero silenced customer messages while mentions kept
+     * shouting.
+     *
+     * Read at play time, not at mount: the setting can change in another tab
+     * while this page stays open.
+     */
+    audio.volume = getStoredNotificationVolume();
     audio.currentTime = 0;
 
     // Browsers block audio until the page has been interacted with.
