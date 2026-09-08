@@ -25,10 +25,21 @@ export const channel = (c: InboxConversation) => c.social_account?.platform === 
 export type Platform = "telegram" | "comment" | "messenger";
 export const platformOf = (c: InboxConversation): Platform =>
   c.social_account?.platform === "telegram" ? "telegram" : c.source_type === "comment" ? "comment" : "messenger";
-const PLATFORM_MARK: Record<Platform, { icon: IconName; tint: string }> = {
-  telegram: { icon: "paper-plane", tint: "#2AABEE" },
+/*
+ * The real Messenger and Telegram marks, the same ones the website uses,
+ * downscaled from 1254px to 96px -- at the size this badge draws them the
+ * originals were 788KB each of detail nobody can see.
+ *
+ * Facebook comments keep the glyph: there is no facebook.png in the web
+ * assets either, where that mark is drawn inline as SVG.
+ */
+const PLATFORM_MARK: Record<
+  Platform,
+  { logo?: number; icon?: IconName; tint: string }
+> = {
+  telegram: { logo: require("../assets/channels/telegram.png"), tint: "#2AABEE" },
+  messenger: { logo: require("../assets/channels/messenger.png"), tint: "#0084FF" },
   comment: { icon: "logo-facebook", tint: "#1877F2" },
-  messenger: { icon: "chatbubble-ellipses", tint: "#0084FF" },
 };
 
 /*
@@ -45,15 +56,25 @@ export function ChannelAvatar({ conversation, size = 48 }: { conversation: Inbox
   return (
     <View>
       <Avatar name={conversation.contact?.full_name} uri={conversation.contact?.profile_picture_url} size={size} />
-      <View style={{ position: "absolute", right: -1, bottom: -1, width: badge, height: badge, borderRadius: badge / 2, backgroundColor: mark.tint, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "white" }}>
-        <Ionicons name={mark.icon} size={badge * 0.58} color="white" />
+      <View style={{ position: "absolute", right: -1, bottom: -1, width: badge, height: badge, borderRadius: badge / 2, backgroundColor: mark.logo ? "white" : mark.tint, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "white", overflow: "hidden" }}>
+        {mark.logo ? (
+          <Image source={mark.logo} style={{ width: badge, height: badge }} resizeMode="cover" />
+        ) : (
+          <Ionicons name={mark.icon} size={badge * 0.58} color="white" />
+        )}
       </View>
     </View>
   );
 }
+/*
+ * The channel in words, with no mark of its own.
+ *
+ * It had one, and in a list row that put the same symbol twice on the same
+ * line -- once on the avatar and again beside the label a few pixels away.
+ * The avatar carries the picture; this carries the name.
+ */
 export function ChannelBadge({ conversation }: { conversation: InboxConversation }) {
-  const label = channel(conversation);
-  return <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}><Ionicons name={label === "Telegram" ? "paper-plane" : label === "Messenger" ? "chatbubble-ellipses" : "logo-facebook"} size={12} color={colors.blue} /><Text style={{ fontSize: 11, color: colors.muted }}>{label}</Text></View>;
+  return <Text style={{ fontSize: 11, color: colors.muted }}>{channel(conversation)}</Text>;
 }
 export function Empty({ title, detail, icon = "chatbubbles-outline" }: { title: string; detail: string; icon?: IconName }) {
   return <View style={styles.empty}><View style={styles.emptyIcon}><Ionicons name={icon} size={34} color={colors.blue} /></View><Text style={styles.heading}>{title}</Text><Text style={[styles.muted, { textAlign: "center", lineHeight: 22 }]}>{detail}</Text></View>;

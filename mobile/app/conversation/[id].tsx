@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   Avatar,
+  ChannelAvatar,
   ChannelBadge,
   Empty,
   ErrorNotice,
@@ -234,11 +235,16 @@ export default function Conversation() {
             onPress={() => router.back()}
           />
 
-          <Avatar
-            name={name}
-            uri={conversation?.contact?.profile_picture_url}
-            size={38}
-          />
+          {/*
+            The same mark the list row wears, so the thread you opened is
+            recognisably the row you tapped. Falls back to a plain avatar
+            before the conversation has been found in the provider.
+          */}
+          {conversation ? (
+            <ChannelAvatar conversation={conversation} size={38} />
+          ) : (
+            <Avatar name={name} size={38} />
+          )}
 
           <View style={{ flex: 1, gap: 2 }}>
             <Text numberOfLines={1} style={styles.heading}>
