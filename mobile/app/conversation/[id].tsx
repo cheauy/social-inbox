@@ -30,15 +30,18 @@ import {
   IconButton,
   Sheet,
   colors,
+  platformOf,
   styles,
   time,
 } from "../../components/ui";
 import {
   CustomerPanel,
-  CustomerPanelEdge,
+  PanelButton,
+  useThreadSwipe,
 } from "../../components/customer-panel";
 import type {
   CustomerDetail,
+  EditableField,
   TeamMember,
 } from "../../components/customer-panel";
 import { api, ApiError } from "../../lib/api/client";
@@ -1314,6 +1317,53 @@ export default function Conversation() {
    * sheet to be tapped. The team is fetched once per visit; the customer
    * every time, because a tag added on another device should show.
    */
+  /*
+   * Phone and note, written back from the panel.
+   *
+   * The customer is reloaded rather than patched locally: the endpoint
+   * normalises what it stores -- trimming, and turning an emptied field into
+   * null -- and showing the agent their raw draft would quietly disagree with
+   * what everybody else sees.
+   */
+  async function saveField(field: EditableField, value: string) {
+    if (!contactId || busyAction) {
+      return false;
+    }
+
+    setBusyAction(`field:${field}`);
+    setError("");
+
+    try {
+      await api(
+        `/api/contacts/${encodeURIComponent(contactId)}`,
+        workspace?.businessId,
+        {
+          method: "PATCH",
+          /*
+           * The endpoint wants the conversation as well as the field. It logs
+           * the edit against the thread it was made from, which is how the
+           * customer timeline knows where a phone number came from.
+           */
+          body: { conversationId: id, [field]: value },
+        },
+      );
+
+      await loadCustomer();
+
+      return true;
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Unable to save that.",
+      );
+
+      return false;
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function openPanel() {
     setPanelOpen(true);
     void loadCustomer();
@@ -1409,6 +1459,11 @@ export default function Conversation() {
 
   const canSend = !sending && (draft.trim().length > 0 || pending.length > 0);
 
+  const swipe = useThreadSwipe(
+    () => void openPanel(),
+    Boolean(contactId) && !panelOpen,
+  );
+
   return (
     <KeyboardAvoidingView
       style={[styles.screen, { paddingTop: insets.top }]}
@@ -1435,77 +1490,25 @@ export default function Conversation() {
               {name}
             </Text>
 
-            {/*
-              The channel, and the status as something you can press.
-
-              Status was not on this screen at all -- an agent could answer a
-              closed conversation without ever being told it was closed. It
-              doubles as the way in to the actions, which is where it would
-              have had to live anyway.
-            */}
-            {conversation ? (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <ChannelBadge conversation={conversation} />
-
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Status: ${conversation.status}. Open customer details.`}
-                  onPress={() => void openPanel()}
-                  style={({ pressed }) => ({
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 4,
-                    paddingHorizontal: 8,
-                    paddingVertical: 3,
-                    borderRadius: 999,
-                    backgroundColor: pressed ? colors.border : colors.pale,
-                  })}
-                >
-                  <Text
-                    style={{
-                      color: colors.blue,
-                      fontSize: 11,
-                      fontWeight: "800",
-                      textTransform: "capitalize",
-                    }}
-                  >
-                    {conversation.status}
-                  </Text>
-
-                  {conversation.is_pinned ? (
-                    <Ionicons name="pin" size={10} color={colors.blue} />
-                  ) : null}
-
-                  <Ionicons name="chevron-down" size={10} color={colors.blue} />
-                </Pressable>
-              </View>
-            ) : null}
+            {conversation ? <ChannelBadge conversation={conversation} /> : null}
           </View>
 
           {/*
-            Tag then customer, the same order as the web's right rail: the
-            tag is the one an agent reaches for mid-conversation, the profile
-            is what they open when they need to know who they are talking to.
-            Both need a customer record, so both wait for one.
+            One control, because there is one panel now. Tags and status
+            moved inside it -- three icons across a header this narrow left
+            no room for the customer's name.
           */}
-          <IconButton
-            icon="pricetag-outline"
-            label="Tag this customer"
-            disabled={!contactId}
-            onPress={() => void openTags()}
-          />
-
-          <IconButton
-            icon="person-circle-outline"
-            label="Customer details. Or swipe in from the right edge."
-            disabled={!contactId}
-            onPress={() => void openPanel()}
-          />
+          <PanelButton disabled={!contactId} onPress={() => void openPanel()} />
         </View>
       </View>
 
       <ErrorNotice message={error} onRetry={() => void load()} />
 
+      {/*
+        Everything between the header and the composer answers a right-to-left
+        swipe by pulling the panel in.
+      */}
+      <View style={{ flex: 1 }} {...swipe}>
       {loading && messages.length === 0 ? (
         <ThreadSkeleton />
       ) : messages.length === 0 ? (
@@ -1557,6 +1560,7 @@ export default function Conversation() {
           contentContainerStyle={{ paddingVertical: 12 }}
         />
       )}
+      </View>
 
       {/*
         What is queued to go with the next send. Attachments are staged rather
@@ -1688,17 +1692,18 @@ export default function Conversation() {
         onClose={() => setReplyOpen(false)}
       />
 
-      {/*
-        The edge strip sits above everything on the thread, and the panel
-        above that, so a swipe reaches them wherever the agent's thumb is.
-      */}
-      {contactId ? <CustomerPanelEdge onOpen={() => void openPanel()} /> : null}
-
       <CustomerPanel
         open={panelOpen}
         detail={customer}
         loading={customerLoading}
         channelName={conversation?.social_account?.account_name ?? null}
+        channelIcon={
+          conversation && platformOf(conversation) === "telegram"
+            ? "paper-plane"
+            : conversation && platformOf(conversation) === "comment"
+              ? "chatbox-ellipses"
+              : "chatbubble-ellipses"
+        }
         status={conversation?.status ?? null}
         pinned={Boolean(conversation?.is_pinned)}
         assignedTo={conversation?.assigned_to ?? null}
@@ -1711,6 +1716,8 @@ export default function Conversation() {
         onPin={() => void togglePin()}
         onUnread={() => void markUnread()}
         onEditTags={() => void openTags()}
+        onSaveField={saveField}
+        error={panelOpen ? error : ""}
         onClose={() => setPanelOpen(false)}
       />
 

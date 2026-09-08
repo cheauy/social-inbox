@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -9,6 +9,7 @@ import {
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,17 +20,12 @@ import type { ConversationStatus } from "../lib/types";
 /*
  * The customer, as a panel that slides in from the right.
  *
- * It was a bottom sheet, which is the right shape for a short list of choices
- * and the wrong one for a record: the customer's details, the state of the
+ * It was two bottom sheets. A sheet is the right shape for a short list of
+ * choices and the wrong one for a record: the details, the state of the
  * conversation and everything you can do to it do not fit in the two thirds
  * of the screen a sheet is allowed, and scrolling a sheet fights the gesture
- * that dismisses it. The web keeps this in a right-hand rail. A phone has no
- * room for a rail beside the thread, so it arrives over it -- swipe in from
- * the right edge, swipe out to close.
- *
- * Status, assignment, pin and mark-unread live here too. They used to be a
- * second sheet of their own, which meant deciding what to do about a customer
- * and reading who they are were two different screens.
+ * that dismisses it. The web keeps this in a right-hand rail; a phone has no
+ * room for a rail beside the thread, so it arrives over it.
  */
 
 const { width: SCREEN } = Dimensions.get("window");
@@ -37,6 +33,14 @@ const PANEL = Math.min(400, Math.round(SCREEN * 0.88));
 
 /* How far the panel must be dragged before letting go closes it. */
 const DISMISS_AFTER = PANEL * 0.3;
+
+const FILL = {
+  position: "absolute" as const,
+  top: 0,
+  bottom: 0,
+  left: 0,
+  right: 0,
+};
 
 export type TeamMember = {
   id: string;
@@ -59,6 +63,8 @@ export type CustomerDetail = {
   };
 };
 
+export type EditableField = "phone" | "customerNote";
+
 const STATUSES: { key: ConversationStatus; label: string; icon: IconName }[] = [
   { key: "open", label: "Open", icon: "ellipse-outline" },
   { key: "pending", label: "Pending", icon: "time-outline" },
@@ -67,12 +73,12 @@ const STATUSES: { key: ConversationStatus; label: string; icon: IconName }[] = [
   { key: "spam", label: "Spam", icon: "alert-circle-outline" },
 ];
 
-const STATUS_TONE: Record<string, { text: string; fill: string }> = {
-  open: { text: "#2FA36B", fill: "#E7F6EE" },
-  pending: { text: "#C77700", fill: "#FFF4E3" },
-  resolved: { text: colors.blue, fill: colors.pale },
-  closed: { text: colors.muted, fill: colors.background },
-  spam: { text: colors.red, fill: "#FFF1EF" },
+const STATUS_TONE: Record<string, string> = {
+  open: "#2FA36B",
+  pending: "#C77700",
+  resolved: colors.blue,
+  closed: colors.muted,
+  spam: colors.red,
 };
 
 function stamp(value?: string | null) {
@@ -87,14 +93,20 @@ function stamp(value?: string | null) {
   })}, ${at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <View
       style={{
         paddingVertical: 14,
         borderTopWidth: 1,
         borderTopColor: colors.border,
-        gap: 10,
+        gap: 12,
       }}
     >
       <Text
@@ -114,34 +126,206 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Field({
+/** A copy button that says it worked, then goes quiet again. */
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [done, setDone] = useState(false);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Copy ${label}`}
+      hitSlop={10}
+      onPress={() => {
+        void Clipboard.setStringAsync(value);
+        setDone(true);
+        setTimeout(() => setDone(false), 1500);
+      }}
+    >
+      <Ionicons
+        name={done ? "checkmark" : "copy-outline"}
+        size={14}
+        color={done ? "#2FA36B" : colors.muted}
+      />
+    </Pressable>
+  );
+}
+
+/*
+ * A field you can read, copy and change without leaving the panel.
+ *
+ * Both of these are things an agent learns mid-conversation -- a customer
+ * says their number out loud and it wants writing down before the next
+ * message arrives. Sending them to the web for that is how a phone number
+ * ends up only in the thread.
+ */
+function Editable({
   icon,
   label,
   value,
-  muted,
+  empty,
+  multiline,
+  busy,
+  onSave,
 }: {
   icon: IconName;
   label: string;
-  value: string;
-  muted?: boolean;
+  value: string | null;
+  empty: string;
+  multiline?: boolean;
+  busy: boolean;
+  onSave: (next: string) => Promise<boolean>;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+
+  const text = value?.trim() ?? "";
+
+  useEffect(() => {
+    if (!editing) {
+      setDraft(value ?? "");
+    }
+  }, [value, editing]);
+
   return (
-    <View style={{ gap: 3 }}>
+    <View style={{ gap: 4 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
         <Ionicons name={icon} size={13} color={colors.muted} />
-        <Text style={{ fontSize: 12.5, color: colors.muted }}>{label}</Text>
+
+        <Text style={{ fontSize: 12.5, color: colors.muted, flex: 1 }}>
+          {label}
+        </Text>
+
+        {text && !editing ? <CopyButton value={text} label={label} /> : null}
       </View>
 
-      <Text
-        style={{
-          fontSize: 15,
-          color: muted ? colors.muted : colors.ink,
-          lineHeight: 21,
-        }}
-      >
-        {value}
-      </Text>
+      {editing ? (
+        <View style={{ gap: 8 }}>
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            autoFocus
+            multiline={multiline}
+            keyboardType={multiline ? "default" : "phone-pad"}
+            placeholder={empty}
+            placeholderTextColor={colors.muted}
+            editable={!busy}
+            style={[
+              styles.input,
+              { fontSize: 15, paddingVertical: 10, minHeight: multiline ? 78 : 0 },
+            ]}
+          />
+
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={async () => {
+                if (await onSave(draft.trim())) {
+                  setEditing(false);
+                }
+              }}
+              style={({ pressed }) => ({
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                borderRadius: 8,
+                backgroundColor: pressed ? "#0072AB" : colors.blue,
+              })}
+            >
+              {busy ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text
+                  style={{ color: "white", fontSize: 13, fontWeight: "700" }}
+                >
+                  Save
+                </Text>
+              )}
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={() => {
+                setDraft(value ?? "");
+                setEditing(false);
+              }}
+              style={{ paddingHorizontal: 14, paddingVertical: 8 }}
+            >
+              <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "700" }}>
+                Cancel
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            text ? `${label}: ${text}. Edit it.` : `Add a ${label.toLowerCase()}`
+          }
+          onPress={() => setEditing(true)}
+        >
+          <Text
+            style={{
+              fontSize: 15,
+              lineHeight: 21,
+              color: text ? colors.ink : colors.muted,
+            }}
+          >
+            {text || empty}
+          </Text>
+        </Pressable>
+      )}
     </View>
+  );
+}
+
+/** One of the three things you can do to a conversation, in the header. */
+function HeaderAction({
+  icon,
+  label,
+  tint,
+  active,
+  busy,
+  onPress,
+}: {
+  icon: IconName;
+  label: string;
+  tint?: string;
+  active?: boolean;
+  busy: boolean;
+  onPress: () => void;
+}) {
+  const colour = tint ?? (active ? colors.blue : colors.ink);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      disabled={busy}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flex: 1,
+        alignItems: "center",
+        gap: 4,
+        paddingVertical: 10,
+        borderRadius: 10,
+        backgroundColor: pressed ? colors.pale : "transparent",
+      })}
+    >
+      {busy ? (
+        <ActivityIndicator color={colors.blue} />
+      ) : (
+        <Ionicons name={icon} size={21} color={colour} />
+      )}
+
+      <Text
+        numberOfLines={1}
+        style={{ fontSize: 11.5, fontWeight: "700", color: colour }}
+      >
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -177,11 +361,7 @@ function ChoiceRow({
         backgroundColor: pressed ? colors.pale : "transparent",
       })}
     >
-      <Ionicons
-        name={icon}
-        size={17}
-        color={active ? colors.blue : colors.muted}
-      />
+      <Ionicons name={icon} size={17} color={active ? colors.blue : colors.muted} />
 
       <View style={{ flex: 1 }}>
         <Text
@@ -213,6 +393,7 @@ export function CustomerPanel({
   detail,
   loading,
   channelName,
+  channelIcon,
   status,
   pinned,
   assignedTo,
@@ -225,12 +406,15 @@ export function CustomerPanel({
   onPin,
   onUnread,
   onEditTags,
+  onSaveField,
   onClose,
+  error,
 }: {
   open: boolean;
   detail: CustomerDetail | null;
   loading: boolean;
   channelName: string | null;
+  channelIcon: IconName;
   status: ConversationStatus | null;
   pinned: boolean;
   assignedTo: string | null;
@@ -243,7 +427,9 @@ export function CustomerPanel({
   onPin: () => void;
   onUnread: () => void;
   onEditTags: () => void;
+  onSaveField: (field: EditableField, value: string) => Promise<boolean>;
   onClose: () => void;
+  error: string;
 }) {
   const insets = useSafeAreaInsets();
 
@@ -251,7 +437,6 @@ export function CustomerPanel({
   const [mounted, setMounted] = useState(open);
   const [statusOpen, setStatusOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -263,8 +448,6 @@ export function CustomerPanel({
       duration: open ? 220 : 180,
       useNativeDriver: true,
     }).start(({ finished }) => {
-      // Unmounted only once it is off screen, so the contents do not vanish
-      // mid-slide, and so a closed panel costs nothing.
       if (finished && !open) {
         setMounted(false);
         setStatusOpen(false);
@@ -274,11 +457,9 @@ export function CustomerPanel({
   }, [open, slide]);
 
   /*
-   * Drag the panel back off to the right to dismiss it.
-   *
-   * Claimed only for a horizontal drag: the panel scrolls, and a responder
-   * that took every touch would make the record unreadable. Dragging left
-   * does nothing -- the panel is already as far in as it goes.
+   * Drag the panel back off to the right. Claimed only for a horizontal drag:
+   * the panel scrolls, and a responder that took every touch would make the
+   * record unreadable.
    */
   const drag = useRef(
     PanResponder.create({
@@ -290,9 +471,7 @@ export function CustomerPanel({
       },
 
       onPanResponderRelease: (_event, gesture) => {
-        const goneFarEnough = gesture.dx > DISMISS_AFTER || gesture.vx > 0.5;
-
-        if (goneFarEnough) {
+        if (gesture.dx > DISMISS_AFTER || gesture.vx > 0.5) {
           onClose();
           return;
         }
@@ -311,16 +490,19 @@ export function CustomerPanel({
   }
 
   const customer = detail?.customer ?? null;
-  const tone = STATUS_TONE[status ?? "open"] ?? STATUS_TONE.open;
+  const statusLabel =
+    STATUSES.find((option) => option.key === status)?.label ?? "Status";
+  const statusIcon =
+    STATUSES.find((option) => option.key === status)?.icon ?? "ellipse-outline";
   const assignedName =
     members.find((member) => member.id === assignedTo)?.full_name ?? null;
 
   return (
-    <View style={{ ...StyleSheetAbsolute }} pointerEvents="box-none">
+    <View style={FILL} pointerEvents="box-none">
       <Animated.View
         pointerEvents={open ? "auto" : "none"}
         style={{
-          ...StyleSheetAbsolute,
+          ...FILL,
           backgroundColor: "rgba(16,34,56,0.35)",
           opacity: slide.interpolate({
             inputRange: [0, PANEL],
@@ -349,9 +531,32 @@ export function CustomerPanel({
           transform: [{ translateX: slide }],
         }}
       >
+        {/*
+          A refusal from anything in here has to be readable in here. The
+          thread has its own error line, and it sits behind this panel: an
+          agent tapping Save watched nothing happen and had no way to learn
+          that the server had turned it down.
+        */}
+        {error ? (
+          <View
+            accessibilityRole="alert"
+            style={{
+              backgroundColor: "#FFF1EF",
+              paddingTop: insets.top + 10,
+              paddingBottom: 10,
+              paddingHorizontal: 18,
+            }}
+          >
+            <Text style={{ color: colors.red, fontSize: 13, lineHeight: 19 }}>
+              {error}
+            </Text>
+          </View>
+        ) : null}
+
         <ScrollView
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
-            paddingTop: insets.top + 14,
+            paddingTop: error ? 14 : insets.top + 14,
             paddingBottom: insets.bottom + 28,
             paddingHorizontal: 18,
           }}
@@ -368,50 +573,46 @@ export function CustomerPanel({
             />
           ) : (
             <>
-              <View style={{ flexDirection: "row", gap: 12, paddingBottom: 14 }}>
+              <View style={{ flexDirection: "row", gap: 12 }}>
                 <Avatar
                   name={customer.fullName}
                   uri={customer.profilePictureUrl}
                   size={46}
                 />
 
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={styles.heading} numberOfLines={2}>
-                    {customer.fullName}
-                  </Text>
+                <View style={{ flex: 1, gap: 3 }}>
+                  <View
+                    style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+                  >
+                    <Text style={styles.heading} numberOfLines={2}>
+                      {customer.fullName}
+                    </Text>
+
+                    <CopyButton value={customer.fullName} label="the name" />
+                  </View>
 
                   {customer.platformUserId ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Copy the customer ID"
-                      onPress={() => {
-                        void Clipboard.setStringAsync(
-                          customer.platformUserId as string,
-                        );
-
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 1500);
-                      }}
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 6,
-                      }}
+                    <Text
+                      numberOfLines={1}
+                      style={{ fontSize: 12, color: colors.muted }}
                     >
-                      <Text
-                        numberOfLines={1}
-                        style={{ fontSize: 12, color: colors.muted, flexShrink: 1 }}
-                      >
-                        ID: {customer.platformUserId}
-                      </Text>
-
-                      <Ionicons
-                        name={copied ? "checkmark" : "copy-outline"}
-                        size={13}
-                        color={copied ? "#2FA36B" : colors.muted}
-                      />
-                    </Pressable>
+                      ID: {customer.platformUserId}
+                    </Text>
                   ) : null}
+
+                  {/* The page this customer reached, the way the web names it. */}
+                  <View
+                    style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                  >
+                    <Ionicons name={channelIcon} size={13} color={colors.blue} />
+
+                    <Text
+                      numberOfLines={1}
+                      style={{ fontSize: 12.5, color: colors.ink, flexShrink: 1 }}
+                    >
+                      {channelName ?? "—"}
+                    </Text>
+                  </View>
                 </View>
 
                 <Pressable
@@ -424,117 +625,141 @@ export function CustomerPanel({
                 </Pressable>
               </View>
 
+              {/*
+                The three things you do to a conversation, at the top where a
+                toolbar belongs, rather than in a section at the bottom you
+                have to scroll a record to reach.
+              */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  marginTop: 14,
+                  paddingVertical: 2,
+                  borderRadius: 12,
+                  backgroundColor: colors.background,
+                }}
+              >
+                <HeaderAction
+                  icon={pinned ? "pin" : "pin-outline"}
+                  label={pinned ? "Unpin" : "Pin"}
+                  active={pinned}
+                  busy={busy === "pin"}
+                  onPress={onPin}
+                />
+
+                <HeaderAction
+                  icon="mail-unread-outline"
+                  label="Unread"
+                  busy={busy === "unread"}
+                  onPress={onUnread}
+                />
+
+                <HeaderAction
+                  icon={statusIcon}
+                  label={statusLabel}
+                  tint={STATUS_TONE[status ?? "open"]}
+                  busy={Boolean(busy?.startsWith("status:"))}
+                  onPress={() => setStatusOpen((current) => !current)}
+                />
+              </View>
+
+              {statusOpen ? (
+                <View style={{ paddingTop: 8 }}>
+                  {STATUSES.map((option) => (
+                    <ChoiceRow
+                      key={option.key}
+                      icon={option.icon}
+                      label={option.label}
+                      active={status === option.key}
+                      busy={busy === `status:${option.key}`}
+                      onPress={() => {
+                        onStatus(option.key);
+                        setStatusOpen(false);
+                      }}
+                    />
+                  ))}
+                </View>
+              ) : null}
+
+              <Section title="Tags">
+                {customer.tags.length === 0 ? (
+                  <Text style={{ fontSize: 14, color: colors.muted }}>
+                    No tags yet
+                  </Text>
+                ) : (
+                  <View
+                    style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
+                  >
+                    {customer.tags.map((tag) => (
+                      <View
+                        key={tag.id}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 6,
+                          paddingHorizontal: 10,
+                          paddingVertical: 5,
+                          borderRadius: 999,
+                          backgroundColor: colors.pale,
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: 4,
+                            backgroundColor: tag.color ?? colors.muted,
+                          }}
+                        />
+
+                        <Text
+                          style={{
+                            color: colors.ink,
+                            fontSize: 12.5,
+                            fontWeight: "700",
+                          }}
+                        >
+                          {tag.name}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                <ChoiceRow
+                  icon="pricetag-outline"
+                  label="Edit tags"
+                  active={false}
+                  busy={false}
+                  onPress={onEditTags}
+                />
+              </Section>
+
               <Section title="Contact">
-                <Field
+                <Editable
                   icon="call-outline"
                   label="Phone"
-                  value={customer.phone?.trim() || "Not added"}
-                  muted={!customer.phone?.trim()}
+                  value={customer.phone}
+                  empty="Not added"
+                  busy={busy === "field:phone"}
+                  onSave={(next) => onSaveField("phone", next)}
                 />
 
-                {customer.address?.trim() ? (
-                  <Field
-                    icon="location-outline"
-                    label="Address"
-                    value={customer.address}
-                  />
-                ) : null}
-              </Section>
-
-              <Section title="Customer note">
-                <Field
+                <Editable
                   icon="document-text-outline"
                   label="Note"
-                  value={
-                    customer.customerNote?.trim() ||
-                    "No customer note has been added."
-                  }
-                  muted={!customer.customerNote?.trim()}
-                />
-              </Section>
-
-              <Section title="Channel">
-                {customer.platformUserId ? (
-                  <Field
-                    icon="finger-print-outline"
-                    label="Customer ID"
-                    value={customer.platformUserId}
-                  />
-                ) : null}
-
-                <Field
-                  icon="flag-outline"
-                  label="Page"
-                  value={channelName ?? "—"}
+                  value={customer.customerNote}
+                  empty="No customer note has been added."
+                  multiline
+                  busy={busy === "field:customerNote"}
+                  onSave={(next) => onSaveField("customerNote", next)}
                 />
               </Section>
 
               <Section title="Conversation">
-                {/*
-                  Status reads as a badge and opens as a list, so the common
-                  case -- glancing at where this conversation stands -- costs
-                  nothing, and changing it costs one tap.
-                */}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Status: ${status ?? "unknown"}. Change it.`}
-                  onPress={() => setStatusOpen((current) => !current)}
+                <View
                   style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
                 >
-                  <Ionicons
-                    name="checkmark-circle-outline"
-                    size={13}
-                    color={colors.muted}
-                  />
-
-                  <Text style={{ fontSize: 12.5, color: colors.muted, flex: 1 }}>
-                    Status
-                  </Text>
-
-                  <View
-                    style={{
-                      paddingHorizontal: 10,
-                      paddingVertical: 4,
-                      borderRadius: 999,
-                      backgroundColor: tone.fill,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: "800",
-                        color: tone.text,
-                        textTransform: "capitalize",
-                      }}
-                    >
-                      {status ?? "—"}
-                    </Text>
-                  </View>
-
-                  <Ionicons
-                    name={statusOpen ? "chevron-up" : "chevron-down"}
-                    size={14}
-                    color={colors.muted}
-                  />
-                </Pressable>
-
-                {statusOpen
-                  ? STATUSES.map((option) => (
-                      <ChoiceRow
-                        key={option.key}
-                        icon={option.icon}
-                        label={option.label}
-                        active={status === option.key}
-                        busy={busy === `status:${option.key}`}
-                        onPress={() => {
-                          onStatus(option.key);
-                          setStatusOpen(false);
-                        }}
-                      />
-                    ))
-                  : null}
-
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                   <Ionicons name="person-outline" size={13} color={colors.muted} />
 
                   <Text style={{ fontSize: 12.5, color: colors.muted, flex: 1 }}>
@@ -565,10 +790,6 @@ export function CustomerPanel({
                   </Pressable>
                 </View>
 
-                {/*
-                  The web's one-tap "Assign to me", which is the only
-                  assignment most agents ever make.
-                */}
                 {currentMemberId && assignedTo !== currentMemberId ? (
                   <Pressable
                     accessibilityRole="button"
@@ -626,88 +847,25 @@ export function CustomerPanel({
                   )
                 ) : null}
 
-                <Field
-                  icon="calendar-outline"
-                  label="Customer since"
-                  value={stamp(customer.createdAt)}
-                />
+                <View style={{ gap: 3 }}>
+                  <View
+                    style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                  >
+                    <Ionicons
+                      name="calendar-outline"
+                      size={13}
+                      color={colors.muted}
+                    />
 
-                <Field
-                  icon="time-outline"
-                  label="Last active"
-                  value={stamp(customer.lastActiveAt)}
-                />
-              </Section>
-
-              <Section title="Tags">
-                {customer.tags.length === 0 ? (
-                  <Text style={{ fontSize: 14, color: colors.muted }}>
-                    No tags yet
-                  </Text>
-                ) : (
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                    {customer.tags.map((tag) => (
-                      <View
-                        key={tag.id}
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 6,
-                          paddingHorizontal: 10,
-                          paddingVertical: 5,
-                          borderRadius: 999,
-                          backgroundColor: colors.pale,
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: 4,
-                            backgroundColor: tag.color ?? colors.muted,
-                          }}
-                        />
-
-                        <Text
-                          style={{
-                            color: colors.ink,
-                            fontSize: 12.5,
-                            fontWeight: "700",
-                          }}
-                        >
-                          {tag.name}
-                        </Text>
-                      </View>
-                    ))}
+                    <Text style={{ fontSize: 12.5, color: colors.muted }}>
+                      Customer since
+                    </Text>
                   </View>
-                )}
 
-                <ChoiceRow
-                  icon="pricetag-outline"
-                  label="Edit tags"
-                  active={false}
-                  busy={false}
-                  onPress={onEditTags}
-                />
-              </Section>
-
-              <Section title="Other">
-                <ChoiceRow
-                  icon={pinned ? "pin" : "pin-outline"}
-                  label={pinned ? "Unpin from the top" : "Pin to the top"}
-                  active={pinned}
-                  busy={busy === "pin"}
-                  onPress={onPin}
-                />
-
-                <ChoiceRow
-                  icon="mail-unread-outline"
-                  label="Mark unread and go back"
-                  detail="Puts it back on the pile for whoever picks it up next."
-                  active={false}
-                  busy={busy === "unread"}
-                  onPress={onUnread}
-                />
+                  <Text style={{ fontSize: 15, color: colors.ink }}>
+                    {stamp(customer.createdAt)}
+                  </Text>
+                </View>
               </Section>
             </>
           )}
@@ -717,48 +875,64 @@ export function CustomerPanel({
   );
 }
 
-/* Repeated on the scrim and its container; named so the intent is legible. */
-const StyleSheetAbsolute = {
-  position: "absolute" as const,
-  top: 0,
-  bottom: 0,
-  left: 0,
-  right: 0,
-};
+/*
+ * The button in the thread header that pulls the panel in.
+ *
+ * A dock icon rather than a person: the panel is no longer only the customer,
+ * it is everything to the side of the conversation, and it is the same
+ * control whether you tap it or swipe it in from the right.
+ */
+export function PanelButton({ onPress, disabled }: { onPress: () => void; disabled?: boolean }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Open the customer panel. Or swipe in from the right edge."
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.icon,
+        { opacity: disabled ? 0.35 : pressed ? 0.55 : 1 },
+      ]}
+    >
+      <MaterialCommunityIcons name="dock-right" size={23} color={colors.blue} />
+    </Pressable>
+  );
+}
 
 /*
- * The strip along the right edge of the thread that opens the panel.
+ * Swipe anywhere on the thread, right to left, to pull the panel in.
  *
- * A gesture nobody can see is a gesture nobody uses, so the header keeps its
- * button and this is the shortcut for the people who find it. Narrow, and
- * claimed only for a leftward drag, so the message list keeps every vertical
- * touch and every tap.
+ * Taken on the capture phase and only for a clear leftward drag, so a tap on
+ * a bubble still reaches the bubble and a vertical scroll still scrolls. An
+ * edge strip did this before and was 22 points wide -- discoverable by
+ * accident at best, and it swallowed taps on the right side of every
+ * outgoing message.
  */
-export function CustomerPanelEdge({ onOpen }: { onOpen: () => void }) {
-  const edge = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_event, gesture) =>
-        gesture.dx < -12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
+export function useThreadSwipe(onOpen: () => void, enabled: boolean) {
+  const opened = useRef(false);
 
-      onPanResponderRelease: (_event, gesture) => {
-        if (gesture.dx < -24) {
-          onOpen();
+  const responder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (_event, gesture) =>
+        gesture.dx < -24 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 2,
+
+      onPanResponderGrant: () => {
+        opened.current = false;
+      },
+
+      onPanResponderMove: (_event, gesture) => {
+        if (!opened.current && gesture.dx < -40) {
+          opened.current = true;
+          onOpenRef.current();
         }
       },
     }),
   ).current;
 
-  return (
-    <View
-      {...edge.panHandlers}
-      pointerEvents="box-only"
-      style={{
-        position: "absolute",
-        top: 0,
-        bottom: 0,
-        right: 0,
-        width: 22,
-      }}
-    />
-  );
+  // Kept in a ref so the responder, created once, always calls the current
+  // handler rather than the one that existed on first render.
+  const onOpenRef = useRef(onOpen);
+  onOpenRef.current = onOpen;
+
+  return enabled ? responder.panHandlers : {};
 }
