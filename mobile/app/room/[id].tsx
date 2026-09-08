@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -90,21 +91,39 @@ function RoomBubble({
   message,
   showSender,
   mine,
+  deleting,
+  onDelete,
 }: {
   message: RoomMessage;
   showSender: boolean;
   mine: boolean;
+  deleting: boolean;
+  onDelete: () => void;
 }) {
   const name = message.sender?.full_name ?? "Someone";
 
   return (
-    <View
+    <Pressable
+      /*
+       * Long press to delete, and only your own. The server also lets an
+       * owner or admin delete anyone's, but a room is a conversation between
+       * colleagues -- reaching into someone else's words wants the deliberate
+       * surface the web has, not a long press you can trigger by resting a
+       * thumb on the screen.
+       */
+      accessibilityRole={mine ? "button" : "text"}
+      accessibilityLabel={
+        mine ? `Your message: ${message.message_text ?? ""}. Long press to delete.` : undefined
+      }
+      onLongPress={mine ? onDelete : undefined}
+      delayLongPress={500}
       style={{
         flexDirection: "row",
         gap: 10,
         paddingHorizontal: 14,
         paddingTop: showSender ? 10 : 2,
         paddingBottom: 2,
+        opacity: deleting ? 0.4 : 1,
       }}
     >
       <View style={{ width: 32 }}>
@@ -155,7 +174,7 @@ function RoomBubble({
           <Text style={[styles.muted, { fontSize: 11 }]}>edited</Text>
         ) : null}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -177,6 +196,7 @@ export default function RoomScreen() {
   const [error, setError] = useState("");
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const requestRef = useRef(0);
   const readMarkedRef = useRef<string | null>(null);
@@ -282,6 +302,54 @@ export default function RoomScreen() {
       setLoadingOlder(false);
     }
   }, [hasMore, id, loadingOlder, messages, workspace?.businessId]);
+
+  function confirmDelete(message: RoomMessage) {
+    if (deletingId) {
+      return;
+    }
+
+    Alert.alert(
+      "Delete this message?",
+      "It disappears for everyone in the room. This cannot be undone.",
+      [
+        { text: "Keep it", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => void remove(message),
+        },
+      ],
+    );
+  }
+
+  async function remove(message: RoomMessage) {
+    if (!workspace) {
+      return;
+    }
+
+    setDeletingId(message.id);
+    setError("");
+
+    try {
+      await api(
+        `/api/team-chat/messages/${encodeURIComponent(message.id)}`,
+        workspace.businessId,
+        { method: "DELETE" },
+      );
+
+      setMessages((current) =>
+        current.filter((item) => item.id !== message.id),
+      );
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Unable to delete that message.",
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   async function send() {
     const text = draft.trim();
@@ -413,6 +481,8 @@ export default function RoomScreen() {
                 mine={Boolean(
                   member && item.sender_member_id === member.id,
                 )}
+                deleting={deletingId === item.id}
+                onDelete={() => confirmDelete(item)}
               />
             );
           }}
