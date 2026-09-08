@@ -51,7 +51,11 @@ export default function GroupChat() {
               onPress={() =>
                 router.push({
                   pathname: "/room/[id]",
-                  params: { id: room.id, name: room.name ?? "" },
+                  params: {
+                    id: room.id,
+                    name: room.name ?? "",
+                    muted: room.is_muted ? "1" : "0",
+                  },
                 })
               }
               style={({ pressed }) => [

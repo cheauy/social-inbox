@@ -179,14 +179,15 @@ function RoomBubble({
 }
 
 export default function RoomScreen() {
-  const { id, name: passedName } = useLocalSearchParams<{
+  const { id, name: passedName, muted: passedMuted } = useLocalSearchParams<{
     id: string;
     name?: string;
+    muted?: string;
   }>();
 
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { workspace, member, revision, refresh } = useInbox();
+  const { workspace, member, revision } = useInbox();
 
   const [room, setRoom] = useState<Room | null>(null);
   const [messages, setMessages] = useState<RoomMessage[]>([]);
@@ -197,6 +198,14 @@ export default function RoomScreen() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  /*
+   * Mute is per member, so it lives in a table of its own and the room row
+   * knows nothing about it. The list already worked it out, so it travels
+   * here as a param rather than costing a second request on open.
+   */
+  const [muted, setMuted] = useState(passedMuted === "1");
+  const [muting, setMuting] = useState(false);
 
   const requestRef = useRef(0);
   const readMarkedRef = useRef<string | null>(null);
@@ -248,9 +257,11 @@ export default function RoomScreen() {
   }, [load, revision]);
 
   /*
-   * Marked read once per room per visit. The badge on the tab is the server's
-   * count, so the list behind is refreshed rather than patched -- there is no
-   * local copy of a room's unread count to correct.
+   * Marked read once per room per visit.
+   *
+   * Nothing local is patched: the unread count belongs to the server and the
+   * list that draws it reloads when its tab comes back into view, which is
+   * the moment the number matters.
    */
   useEffect(() => {
     if (!id || !workspace || loading || readMarkedRef.current === id) {
@@ -263,12 +274,10 @@ export default function RoomScreen() {
       `/api/team-chat/rooms/${encodeURIComponent(id)}/read`,
       workspace.businessId,
       { method: "POST" },
-    )
-      .then(() => refresh())
-      .catch(() => {
-        // The next visit marks it again; nothing here is worth an error line.
-      });
-  }, [id, workspace?.businessId, loading, refresh]);
+    ).catch(() => {
+      // The next visit marks it again; nothing here is worth an error line.
+    });
+  }, [id, workspace?.businessId, loading]);
 
   const loadOlder = useCallback(async () => {
     const oldest = messages[messages.length - 1];
@@ -302,6 +311,37 @@ export default function RoomScreen() {
       setLoadingOlder(false);
     }
   }, [hasMore, id, loadingOlder, messages, workspace?.businessId]);
+
+  async function toggleMute() {
+    if (!id || !workspace || muting) {
+      return;
+    }
+
+    const next = !muted;
+
+    setMuting(true);
+    setError("");
+    setMuted(next);
+
+    try {
+      await api(
+        `/api/team-chat/rooms/${encodeURIComponent(id)}/mute`,
+        workspace.businessId,
+        { method: "PATCH", body: { muted: next } },
+      );
+
+    } catch (muteError) {
+      setMuted(!next);
+
+      setError(
+        muteError instanceof Error
+          ? muteError.message
+          : "Unable to change notifications for this room.",
+      );
+    } finally {
+      setMuting(false);
+    }
+  }
 
   function confirmDelete(message: RoomMessage) {
     if (deletingId) {
@@ -428,18 +468,32 @@ export default function RoomScreen() {
               {title}
             </Text>
 
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text style={[styles.muted, { fontSize: 12 }]}>Team room</Text>
-
-              {room?.is_muted ? (
-                <Ionicons
-                  name="notifications-off"
-                  size={12}
-                  color={colors.muted}
-                />
-              ) : null}
-            </View>
+            <Text style={[styles.muted, { fontSize: 12 }]}>
+              {muted ? "Muted · team room" : "Team room"}
+            </Text>
           </View>
+
+          {/*
+            Muting is the one room setting worth a tap from here: a busy room
+            is exactly the room you are in when you decide you have had
+            enough of it. A direct mention still gets through, which is the
+            server's rule and the reason muting is safe to offer.
+          */}
+          {muting ? (
+            <View style={{ minWidth: 44, alignItems: "center" }}>
+              <ActivityIndicator color={colors.blue} />
+            </View>
+          ) : (
+            <IconButton
+              icon={muted ? "notifications-off" : "notifications-outline"}
+              label={
+                muted
+                  ? "Unmute this room"
+                  : "Mute this room. Mentions still come through."
+              }
+              onPress={() => void toggleMute()}
+            />
+          )}
         </View>
       </View>
 

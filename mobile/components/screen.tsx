@@ -1,5 +1,6 @@
+import { useFocusEffect } from "expo-router";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -50,6 +51,31 @@ export function useWorkspaceResource<T>(path: string | null) {
   useEffect(() => {
     void load();
   }, [load, revision]);
+
+  /*
+   * And again whenever the tab comes back into view.
+   *
+   * A tab screen stays mounted while you are elsewhere in the app, so
+   * everything on it was frozen at whatever it said when you last looked --
+   * a room still showing its unread badge after you had read it, a mute you
+   * had just turned on. Reloading on focus costs one request at the moment
+   * somebody is looking at the answer.
+   *
+   * The first focus is skipped: it lands with the mount, and loading the
+   * same thing twice on open is the one case this must not cause.
+   */
+  const focusedOnce = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!focusedOnce.current) {
+        focusedOnce.current = true;
+        return;
+      }
+
+      void load();
+    }, [load]),
+  );
 
   return { data, loading, error, reload: load, workspace };
 }
