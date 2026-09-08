@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Text, View } from "react-native";
+import { useRouter } from "expo-router";
+import { Pressable, Text, View } from "react-native";
 
 import { TabScreen, useWorkspaceResource } from "../../components/screen";
 import { Empty, colors, styles } from "../../components/ui";
@@ -17,6 +18,8 @@ type Room = {
 type Response = { rooms: Room[] };
 
 export default function GroupChat() {
+  const router = useRouter();
+
   const { data, loading, error, reload } =
     useWorkspaceResource<Response>("/api/team-chat/rooms");
 
@@ -41,7 +44,21 @@ export default function GroupChat() {
           const mentions = room.mention_count ?? 0;
 
           return (
-            <View key={room.id} style={styles.card}>
+            <Pressable
+              key={room.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${room.name?.trim() || "General"}`}
+              onPress={() =>
+                router.push({
+                  pathname: "/room/[id]",
+                  params: { id: room.id, name: room.name ?? "" },
+                })
+              }
+              style={({ pressed }) => [
+                styles.card,
+                { opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
               <View style={styles.row}>
                 <View style={{ flex: 1, gap: 3 }}>
                   <View style={styles.row}>
@@ -113,16 +130,22 @@ export default function GroupChat() {
                     </Text>
                   </View>
                 ) : null}
+
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={colors.muted}
+                />
               </View>
-            </View>
+            </Pressable>
           );
         })
       )}
 
       {rooms.length > 0 ? (
         <Text style={[styles.muted, { fontSize: 12, paddingHorizontal: 2 }]}>
-          Reading and posting in rooms is on the web for now. This shows what
-          is waiting.
+          Mentioning someone, and anything with a file attached, is still on
+          the web.
         </Text>
       ) : null}
     </TabScreen>
