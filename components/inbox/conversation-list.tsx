@@ -2636,9 +2636,29 @@ function ConversationListView({
             platform,
           );
 
+        /*
+         * The preview line is searchable too.
+         *
+         * The box says it searches "conversations, contacts or messages", and
+         * the index held only the contact's name, phone and Telegram handle.
+         * So typing a phrase an agent could read in the row in front of them
+         * -- the last message preview is on every row -- returned nothing,
+         * which reads as the search being broken rather than as the search
+         * being narrower than its own placeholder.
+         *
+         * This covers the last message of each conversation, which is what
+         * the list already knows. Searching further back through a thread is
+         * a different thing: the client does not hold those messages, so it
+         * needs the server. See the note on the search box.
+         */
+        const lastMessage =
+          conversation.last_message_text
+            ?.trim()
+            .toLowerCase() ?? "";
+
         index.set(
           conversation.id,
-          `${name} ${phone} ${telegramIdentity}`.trim(),
+          `${name} ${phone} ${telegramIdentity} ${lastMessage}`.trim(),
         );
       }
 
@@ -2675,6 +2695,98 @@ function ConversationListView({
   const loadMoreRowsRef =
     useRef<HTMLDivElement | null>(null);
 
+  /*
+   * Conversations whose history contains the search text, answered by the
+   * server.
+   *
+   * The index above only knows what the list holds: each conversation's name,
+   * phone, handle and last message. A phrase from the middle of a thread is
+   * not in the browser at all, so it has to be asked for. The result is a set
+   * of conversation ids, unioned with the local matches below -- the rows are
+   * still drawn from conversations the client already has, so nothing new is
+   * trusted from this response beyond which ones to show.
+   *
+   * deferredSearch rather than the raw box, so this follows React's own
+   * debouncing rather than adding a second timer, and the request is aborted
+   * when the query moves on: a fast typist would otherwise have several
+   * searches in flight and the slowest could land last.
+   */
+  const [messageMatchIds, setMessageMatchIds] =
+    useState<Set<string>>(
+      () => new Set(),
+    );
+
+  useEffect(() => {
+    const keyword = deferredSearch
+      .trim()
+      .replace(/^@/, "");
+
+    const controller = new AbortController();
+
+    async function searchMessageHistory() {
+      /*
+       * Inside the async function rather than in the effect body: a setState
+       * run synchronously while an effect is executing cascades an extra
+       * render, and the React Compiler rejects it. A microtask later is the
+       * same result without the cascade.
+       *
+       * Below three characters there is nothing to ask the server, and the
+       * identity check keeps an already-empty set from causing a render at
+       * all -- which is every keystroke of a short query.
+       */
+      if (keyword.length < 3) {
+        setMessageMatchIds((current) =>
+          current.size === 0
+            ? current
+            : new Set(),
+        );
+
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `/api/inbox/search-messages?q=${encodeURIComponent(
+            keyword,
+          )}`,
+          {
+            cache: "no-store",
+            signal: controller.signal,
+          },
+        );
+
+        if (!response.ok) {
+          return;
+        }
+
+        const result = (await response.json()) as {
+          success?: boolean;
+          conversationIds?: string[];
+        };
+
+        if (!result.success) {
+          return;
+        }
+
+        setMessageMatchIds(
+          new Set(result.conversationIds ?? []),
+        );
+      } catch {
+        /*
+         * An aborted request is the normal case here, and a failed one must
+         * not empty the results the agent can already see: name and preview
+         * matches stand on their own.
+         */
+      }
+    }
+
+    void searchMessageHistory();
+
+    return () => {
+      controller.abort();
+    };
+  }, [deferredSearch]);
+
   const filteredConversations =
     useMemo(() => {
       const keyword =
@@ -2689,18 +2801,23 @@ function ConversationListView({
 
       return baseViewConversations.filter(
         (conversation) =>
-          conversationSearchIndex
+          (conversationSearchIndex
             .get(
               conversation.id,
             )
             ?.includes(
               keyword,
-            ) ?? false,
+            ) ??
+            false) ||
+          messageMatchIds.has(
+            conversation.id,
+          ),
       );
     }, [
       baseViewConversations,
       conversationSearchIndex,
       deferredSearch,
+      messageMatchIds,
     ]);
 
   const visibleConversations =
