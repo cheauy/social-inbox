@@ -526,6 +526,36 @@ export function ReplyBox({
     }
 
     setLoadingQuickReplyMedia(false);
+
+    /*
+     * Say when a file did not arrive.
+     *
+     * A failed fetch -- an expired signed link, a blip, a storage error --
+     * returned null, was filtered out here, and that was the end of it. The
+     * text was already in the box and the spinner stopped, so a quick reply
+     * meant to carry three product photos looked finished carrying two, and
+     * the agent sent an incomplete answer without ever being told one was
+     * missing. Nothing downstream could catch it either: the send path only
+     * ever sees the attachments that made it.
+     *
+     * Loud on purpose. This is the same alert the composer already uses when
+     * it rejects a file the agent picked, and unlike that case the agent did
+     * not choose to leave anything out.
+     */
+    const missing =
+      results.length - loaded.length;
+
+    if (missing > 0) {
+      window.alert(
+        missing === results.length
+          ? `None of this quick reply's ${missing} attachment${
+              missing === 1 ? "" : "s"
+            } could be loaded. The message text is ready — attach the file${
+              missing === 1 ? "" : "s"
+            } yourself before sending.`
+          : `${missing} of this quick reply's ${results.length} attachments could not be loaded. Check what is attached before sending.`,
+      );
+    }
   }
 
   const [emojiOpen, setEmojiOpen] =
