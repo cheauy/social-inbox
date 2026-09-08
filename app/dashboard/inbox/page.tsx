@@ -104,24 +104,30 @@ export default async function InboxPage({
       ? (requestedStatus as ConversationStatus)
       : "all";
 
-  const filteredConversations =
-    activeStatus === "all"
-      ? channelConversations
-      : channelConversations.filter(
-          (conversation) =>
-            conversation.status ===
-            activeStatus,
-        );
-
+  /*
+   * Every status goes to the client, and the client filters.
+   *
+   * The status filter used to be applied here, so switching status was a
+   * server round trip -- measured at 1.6 to 2.2 seconds in development. The
+   * browser then had only that status's conversations, which is what made
+   * switching from one status to another show nothing at all until the server
+   * answered: a conversation has exactly one status, so filtering Open's
+   * conversations for Closed always finds none.
+   *
+   * Sending all of them costs almost nothing. This workspace holds 466 open,
+   * 5 pending and 4 closed, and All Conversations -- the default view --
+   * already sends all 475. Filtering to Closed now sends the same 475 rather
+   * than 4, and in exchange every status switch is instant and needs no
+   * loading state at all.
+   *
+   * The URL still changes, so a filtered view stays shareable, and
+   * statusCounts below are still counted here. Only the filtering moved.
+   */
   const requestedConversationId =
     getSingleSearchParam(
       params.conversation,
     );
 
-  /*
-   * Find the URL-requested conversation from the
-   * complete list—not only from the filtered list.
-   */
   const requestedConversation =
     requestedConversationId
       ? channelConversations.find(
@@ -130,23 +136,6 @@ export default async function InboxPage({
             requestedConversationId,
         ) ?? null
       : null;
-
-  /*
-   * If a status filter hides the requested
-   * conversation, include it temporarily.
-   */
-  const visibleConversations =
-    requestedConversation &&
-    !filteredConversations.some(
-      (conversation) =>
-        conversation.id ===
-        requestedConversation.id,
-    )
-      ? [
-          requestedConversation,
-          ...filteredConversations,
-        ]
-      : filteredConversations;
 
   /*
    * This exact ID controls both the header
@@ -211,7 +200,7 @@ export default async function InboxPage({
             "empty-inbox"
           }
           conversations={
-            visibleConversations
+            channelConversations
           }
           activeConversationId={
             activeConversationId

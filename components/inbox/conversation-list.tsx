@@ -1265,14 +1265,10 @@ function viewKeyFromUrl(
 }
 
 /*
- * Placeholder rows for when the list is genuinely waiting on the server.
+ * Placeholder rows shown while the list changes filter.
  *
- * Shaped like a conversation row rather than a spinner, so the list keeps its
- * rhythm and nothing jumps when the real rows replace them: an avatar circle,
- * a name line and a shorter preview line.
- *
- * Not decoration. It stands in for a specific wrong answer -- see the empty
- * state below for when it is used and why "No conversations found" was a lie.
+ * Shaped like a real row -- avatar circle, name line, shorter preview line --
+ * so the list keeps its rhythm and nothing jumps when the real rows arrive.
  */
 function ConversationListSkeleton() {
   return (
@@ -2027,6 +2023,52 @@ function ConversationListView({
     lastServerStatus,
     setLastServerStatus,
   ] = useState<StatusFilter>(activeStatus);
+
+  /*
+   * Every status change shows placeholder rows, in both directions.
+   *
+   * The rows themselves are ready in about 60ms now that the browser holds
+   * every status, so this is not covering a wait -- it is a deliberate beat
+   * so the list visibly changes rather than swapping under the reader, and so
+   * All to Closed and Closed to All behave the same way. Without a floor it
+   * would be a flicker, which is worse than no transition at all.
+   */
+  const STATUS_SKELETON_MS = 320;
+
+  const [
+    statusSwitching,
+    setStatusSwitching,
+  ] = useState(false);
+
+  const statusSkeletonTimerRef =
+    useRef<number | null>(null);
+
+  const beginStatusSwitch = useCallback(() => {
+    if (statusSkeletonTimerRef.current !== null) {
+      window.clearTimeout(
+        statusSkeletonTimerRef.current,
+      );
+    }
+
+    setStatusSwitching(true);
+
+    statusSkeletonTimerRef.current =
+      window.setTimeout(() => {
+        statusSkeletonTimerRef.current = null;
+        setStatusSwitching(false);
+      }, STATUS_SKELETON_MS);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (statusSkeletonTimerRef.current !== null) {
+        window.clearTimeout(
+          statusSkeletonTimerRef.current,
+        );
+      }
+    },
+    [],
+  );
 
   /*
    * Adjusted during render rather than in an effect.
@@ -4885,6 +4927,8 @@ function ConversationListView({
                             setOptimisticStatus(
                               filter.value,
                             );
+
+                            beginStatusSwitch();
                           }}
                           className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm transition ${
                             isActive
@@ -4969,6 +5013,17 @@ function ConversationListView({
                         )}`
                       : "/dashboard/inbox"
                   }
+                  onClick={() => {
+                    /*
+                     * This is the second way to change the status filter, and
+                     * it has to behave like the first. Clearing from here was
+                     * the one path that swapped the rows with no transition
+                     * at all, which is exactly the inconsistency the
+                     * placeholder rows exist to remove.
+                     */
+                    setOptimisticStatus("all");
+                    beginStatusSwitch();
+                  }}
                   className="text-xs font-medium text-blue-700 hover:underline"
                 >
                   Clear
@@ -5007,29 +5062,11 @@ function ConversationListView({
 
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           {/*
-            An empty list means two different things, and only one of them is
-            true.
-
-            The status filter is applied optimistically, over the
-            conversations the client already holds -- and those were loaded
-            for the previous filter. Coming from All that is the whole
-            workspace and the answer is right, which is why the rows appear in
-            about 25ms. Coming from one status to another it is only the
-            previous status's conversations, and a conversation has exactly
-            one status, so filtering them always finds nothing until the
-            server replies.
-
-            Going from Open to Closed therefore showed "No conversations
-            found -- No conversations match this filter" for the two seconds
-            the round trip took, and then four appeared. Slow is forgivable;
-            asserting there is nothing there when there is is not.
-
-            So: nothing found while the server still owes us an answer for
-            this filter is a wait, and gets the skeleton. Nothing found once
-            the server has agreed is genuinely nothing, and still says so.
+            The skeleton wins over both the rows and the empty state, so a
+            status with no conversations gets the same transition as one with
+            plenty rather than snapping straight to "none found".
           */}
-          {filteredConversations.length === 0 &&
-          optimisticStatus !== activeStatus ? (
+          {statusSwitching ? (
             <ConversationListSkeleton />
           ) : filteredConversations.length ===
             0 ? (
