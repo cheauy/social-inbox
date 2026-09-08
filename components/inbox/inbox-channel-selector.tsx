@@ -341,6 +341,28 @@ export function InboxChannelSelector({
     query.delete("conversation");
     query.delete("page");
 
+    /*
+     * The filters go too, not just the open conversation.
+     *
+     * Switching channel changes which conversations exist, and a filter
+     * chosen for the previous one can hide every conversation in the next.
+     * Picking Melody Clothing II while the Unread view was on landed on
+     * "?view=unread&channel=..." with nothing in the list and "No
+     * conversations found" -- that Page has conversations, just no unread
+     * ones. The channel had switched correctly; it looked broken.
+     *
+     * conversation and page were already dropped here for the same reason:
+     * they name something from the workspace being left. view and status are
+     * the same kind of thing, and a channel switch is a change of context,
+     * not a refinement of the current one.
+     *
+     * Recoverable before this, through the "Clear view" link in the list
+     * header, but only for somebody who noticed it rather than concluding the
+     * channel was empty.
+     */
+    query.delete("view");
+    query.delete("status");
+
     if (channelId) {
       query.set("channel", channelId);
       query.delete("workspace");
