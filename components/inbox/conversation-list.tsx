@@ -2649,6 +2649,32 @@ function ConversationListView({
       channelDirectoryLoaded,
     ]);
 
+  /*
+   * How many rows are actually built.
+   *
+   * Measured in the running app: returning to All conversations cost a 388ms
+   * blocking task, because React had to create all 473 rows at once.
+   * content-visibility stops the browser painting the ones off screen, but
+   * React still builds every element and every DOM node before the browser
+   * gets the chance to skip them.
+   *
+   * Forty is several screens deep, and the window grows before the reader
+   * reaches the end of it, so scrolling stays continuous. It never shrinks:
+   * somebody who has scrolled a long way and then searches and clears the
+   * search finds their place still there, and re-slicing on every filter
+   * change would cost more than it saves.
+   *
+   * Filtering and search are untouched -- both run over the whole array, and
+   * only the last step, building the rows, is windowed.
+   */
+  const ROWS_PER_WINDOW = 40;
+
+  const [visibleRowCount, setVisibleRowCount] =
+    useState(ROWS_PER_WINDOW);
+
+  const loadMoreRowsRef =
+    useRef<HTMLDivElement | null>(null);
+
   const filteredConversations =
     useMemo(() => {
       const keyword =
@@ -2676,6 +2702,52 @@ function ConversationListView({
       conversationSearchIndex,
       deferredSearch,
     ]);
+
+  const visibleConversations =
+    useMemo(
+      () =>
+        filteredConversations.length <=
+        visibleRowCount
+          ? filteredConversations
+          : filteredConversations.slice(
+              0,
+              visibleRowCount,
+            ),
+      [filteredConversations, visibleRowCount],
+    );
+
+  useEffect(() => {
+    const marker = loadMoreRowsRef.current;
+
+    if (!marker) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) {
+          return;
+        }
+
+        setVisibleRowCount(
+          (current) =>
+            current + ROWS_PER_WINDOW,
+        );
+      },
+      // Grow before the marker is actually reached, so the next rows are
+      // already there by the time the reader scrolls to where they go.
+      { rootMargin: "600px" },
+    );
+
+    observer.observe(marker);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [
+    visibleRowCount,
+    filteredConversations.length,
+  ]);
 
   const builtInCounts =
     useMemo(
@@ -4750,30 +4822,51 @@ function ConversationListView({
               </p>
             </div>
           ) : (
-            filteredConversations.map(
-              (conversation) => (
-                <ConversationRow
-                  key={conversation.id}
-                  conversation={conversation}
-                  isActive={
-                    conversation.id ===
-                    activeConversationId
-                  }
-                  isKhmer={isKhmer}
-                  channelDirectory={channelDirectory}
-                  channelDirectoryLoaded={
-                    channelDirectoryLoaded
-                  }
-                  hydrated={hydrated}
-                  onSelectConversation={
-                    stableSelectConversation
-                  }
-                  onPrefetchConversation={
-                    stablePrefetchConversation
-                  }
+            <>
+              {visibleConversations.map(
+                (conversation) => (
+                  <ConversationRow
+                    key={conversation.id}
+                    conversation={conversation}
+                    isActive={
+                      conversation.id ===
+                      activeConversationId
+                    }
+                    isKhmer={isKhmer}
+                    channelDirectory={
+                      channelDirectory
+                    }
+                    channelDirectoryLoaded={
+                      channelDirectoryLoaded
+                    }
+                    hydrated={hydrated}
+                    onSelectConversation={
+                      stableSelectConversation
+                    }
+                    onPrefetchConversation={
+                      stablePrefetchConversation
+                    }
+                  />
+                ),
+              )}
+
+              {/*
+                Grows the window when the reader nears the end of it.
+
+                An observer rather than a scroll handler: it fires once when
+                this marker comes into view instead of on every scroll frame,
+                and it costs nothing while the reader stays at the top, which
+                is where they spend nearly all of their time.
+              */}
+              {visibleConversations.length <
+              filteredConversations.length ? (
+                <div
+                  ref={loadMoreRowsRef}
+                  className="h-10"
+                  aria-hidden="true"
                 />
-              ),
-            )
+              ) : null}
+            </>
           )}
         </div>
           </>
