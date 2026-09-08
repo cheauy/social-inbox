@@ -17,6 +17,40 @@ export function Avatar({ name, uri, size = 48 }: { name?: string | null; uri?: s
   return uri && !failed ? <Image source={{ uri }} onError={() => setFailed(true)} style={{ width: size, height: size, borderRadius: size / 2 }} /> : <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.pale, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.blue, fontWeight: "700", fontSize: size * 0.36 }}>{Array.from(name?.trim() || "?")[0]}</Text></View>;
 }
 export const channel = (c: InboxConversation) => c.social_account?.platform === "telegram" ? "Telegram" : c.source_type === "comment" ? "Facebook Comments" : "Messenger";
+
+/*
+ * Which platform mark a row wears. Kept beside `channel` above so the badge
+ * and the label can never disagree about what a conversation is.
+ */
+export type Platform = "telegram" | "comment" | "messenger";
+export const platformOf = (c: InboxConversation): Platform =>
+  c.social_account?.platform === "telegram" ? "telegram" : c.source_type === "comment" ? "comment" : "messenger";
+const PLATFORM_MARK: Record<Platform, { icon: IconName; tint: string }> = {
+  telegram: { icon: "paper-plane", tint: "#2AABEE" },
+  comment: { icon: "logo-facebook", tint: "#1877F2" },
+  messenger: { icon: "chatbubble-ellipses", tint: "#0084FF" },
+};
+
+/*
+ * An avatar wearing the channel it arrived on.
+ *
+ * The list mixes Messenger, Facebook comments and Telegram, and the row's own
+ * text does not say which until you read the label -- so the mark rides on the
+ * avatar where the eye already is. Ringed in white so it stays legible against
+ * a photo as well as against the initial's flat background.
+ */
+export function ChannelAvatar({ conversation, size = 48 }: { conversation: InboxConversation; size?: number }) {
+  const mark = PLATFORM_MARK[platformOf(conversation)];
+  const badge = Math.round(size * 0.42);
+  return (
+    <View>
+      <Avatar name={conversation.contact?.full_name} uri={conversation.contact?.profile_picture_url} size={size} />
+      <View style={{ position: "absolute", right: -1, bottom: -1, width: badge, height: badge, borderRadius: badge / 2, backgroundColor: mark.tint, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "white" }}>
+        <Ionicons name={mark.icon} size={badge * 0.58} color="white" />
+      </View>
+    </View>
+  );
+}
 export function ChannelBadge({ conversation }: { conversation: InboxConversation }) {
   const label = channel(conversation);
   return <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}><Ionicons name={label === "Telegram" ? "paper-plane" : label === "Messenger" ? "chatbubble-ellipses" : "logo-facebook"} size={12} color={colors.blue} /><Text style={{ fontSize: 11, color: colors.muted }}>{label}</Text></View>;

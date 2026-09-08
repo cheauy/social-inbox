@@ -4,15 +4,18 @@ import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Image,
+  Modal,
   Pressable,
   RefreshControl,
+  ScrollView,
   Text,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  Avatar,
+  ChannelAvatar,
   ChannelBadge,
   Empty,
   ErrorNotice,
@@ -20,6 +23,7 @@ import {
   styles,
   time,
 } from "../../components/ui";
+import { useWorkspaceResource } from "../../components/screen";
 import { useAuth } from "../../lib/auth/provider";
 import { useInbox } from "../../lib/inbox-provider";
 import type { InboxConversation, Workspace } from "../../lib/types";
@@ -118,10 +122,7 @@ function ConversationRow({
         },
       ]}
     >
-      <Avatar
-        name={conversation.contact?.full_name}
-        uri={conversation.contact?.profile_picture_url}
-      />
+      <ChannelAvatar conversation={conversation} />
 
       <View style={{ flex: 1, gap: 3 }}>
         <View style={styles.row}>
@@ -185,6 +186,137 @@ function ConversationRow({
   );
 }
 
+
+type Channel = {
+  id: string;
+  businessId: string;
+  platform: "facebook" | "telegram";
+  name: string;
+  username: string | null;
+};
+
+/*
+ * The channel filter, as a sheet rather than a dropdown.
+ *
+ * A phone has no room for the web's sidebar picker, and the list of channels
+ * is short. All Channels is first and always present, because it is the state
+ * somebody returns to.
+ */
+function ChannelSheet({
+  open,
+  channels,
+  selectedId,
+  onSelect,
+  onClose,
+}: {
+  open: boolean;
+  channels: Channel[];
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      visible={open}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <Pressable
+        accessibilityLabel="Close channel picker"
+        onPress={onClose}
+        style={{ flex: 1, backgroundColor: "rgba(16,34,56,0.35)" }}
+      />
+
+      <View
+        style={{
+          backgroundColor: "white",
+          borderTopLeftRadius: 20,
+          borderTopRightRadius: 20,
+          paddingBottom: 28,
+          maxHeight: "70%",
+        }}
+      >
+        <View style={{ padding: 18, paddingBottom: 10 }}>
+          <Text style={styles.heading}>Customer channel</Text>
+          <Text style={styles.muted}>
+            Show one channel, or everything at once.
+          </Text>
+        </View>
+
+        <ScrollView>
+          {[null, ...channels.map((c) => c.id)].map((id) => {
+            const item = channels.find((c) => c.id === id) ?? null;
+            const active = id === selectedId;
+
+            return (
+              <Pressable
+                key={id ?? "all"}
+                accessibilityRole="button"
+                onPress={() => {
+                  onSelect(id);
+                  onClose();
+                }}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingHorizontal: 18,
+                  paddingVertical: 14,
+                  backgroundColor: pressed ? colors.pale : "transparent",
+                })}
+              >
+                <Ionicons
+                  name={
+                    item === null
+                      ? "layers"
+                      : item.platform === "telegram"
+                        ? "paper-plane"
+                        : "chatbubble-ellipses"
+                  }
+                  size={21}
+                  color={colors.blue}
+                />
+
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      color: colors.ink,
+                      fontSize: 15,
+                      fontWeight: active ? "800" : "500",
+                    }}
+                    numberOfLines={1}
+                  >
+                    {item === null ? "All Channels" : item.name}
+                  </Text>
+
+                  <Text style={[styles.muted, { fontSize: 12 }]}>
+                    {item === null
+                      ? "Messenger and Telegram"
+                      : item.username
+                        ? `@${item.username}`
+                        : item.platform === "telegram"
+                          ? "Telegram"
+                          : "Messenger"}
+                  </Text>
+                </View>
+
+                {active ? (
+                  <Ionicons
+                    name="checkmark"
+                    size={20}
+                    color={colors.blue}
+                  />
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
 export default function Inbox() {
   const { session } = useAuth();
   const router = useRouter();
@@ -204,10 +336,34 @@ export default function Inbox() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [channelOpen, setChannelOpen] = useState(false);
+  const [channelId, setChannelId] = useState<string | null>(null);
+
+  const { data: channelData } = useWorkspaceResource<{ channels: Channel[] }>(
+    workspace ? "/api/inbox/channels" : null,
+  );
+
+  /*
+   * Only this workspace's channels. The endpoint answers for every workspace
+   * the member can reach, and offering another one here would filter the list
+   * down to nothing with no way to tell why.
+   */
+  const channels = (channelData?.channels ?? []).filter(
+    (item) => item.businessId === workspace?.businessId,
+  );
+
+  const selectedChannel =
+    channels.find((item) => item.id === channelId) ?? null;
 
   const ordered = useMemo(
     () =>
-      [...conversations].sort((first, second) => {
+      conversations
+        .filter(
+          (conversation) =>
+            !channelId ||
+            conversation.social_account?.id === channelId,
+        )
+        .sort((first, second) => {
         // Pinned first, then most recent, matching the web Inbox.
         if (Boolean(first.is_pinned) !== Boolean(second.is_pinned)) {
           return first.is_pinned ? -1 : 1;
@@ -218,7 +374,7 @@ export default function Inbox() {
           new Date(first.last_message_at ?? 0).getTime()
         );
       }),
-    [conversations],
+    [channelId, conversations],
   );
 
   if (!session) {
@@ -252,31 +408,103 @@ export default function Inbox() {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View style={styles.row}>
+          <Image
+            source={require("../../assets/tenh-logo.png")}
+            style={{ width: 34, height: 34 }}
+            resizeMode="contain"
+            accessibilityLabel="Tenh Chat"
+          />
+
           <View style={{ flex: 1 }}>
-            <Text style={styles.title}>Inbox</Text>
-            <Text style={styles.muted}>
+            <Text style={[styles.title, { fontSize: 24 }]}>Inbox</Text>
+            <Text style={styles.muted} numberOfLines={1}>
               {workspace?.businessName ?? "Choose a workspace"}
             </Text>
           </View>
 
           {/*
-            A quiet dot rather than a label. It says whether updates are
-            arriving on their own; when it is off, pull to refresh is the
-            answer, and that gesture is already there.
+            The channel filter, and the live dot tucked into its corner.
+
+            The dot used to sit alone in this space saying only whether
+            realtime was connected -- true but rarely actionable. Riding on the
+            control an agent already looks at costs it no room, and the space
+            goes to the thing they actually reach for.
           */}
-          <View
-            accessibilityLabel={
-              live ? "Live updates connected" : "Live updates offline"
-            }
-            style={{
-              width: 9,
-              height: 9,
-              borderRadius: 5,
-              backgroundColor: live ? "#2FA36B" : colors.border,
-            }}
-          />
+          {workspace ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                selectedChannel
+                  ? `Channel: ${selectedChannel.name}. Change channel.`
+                  : "All channels. Change channel."
+              }
+              onPress={() => setChannelOpen(true)}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                maxWidth: 150,
+                paddingHorizontal: 11,
+                paddingVertical: 8,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: pressed ? colors.pale : "white",
+              })}
+            >
+              <Ionicons
+                name={
+                  !selectedChannel
+                    ? "layers"
+                    : selectedChannel.platform === "telegram"
+                      ? "paper-plane"
+                      : "chatbubble-ellipses"
+                }
+                size={16}
+                color={colors.blue}
+              />
+
+              <Text
+                numberOfLines={1}
+                style={{
+                  flexShrink: 1,
+                  color: colors.ink,
+                  fontSize: 12.5,
+                  fontWeight: "700",
+                }}
+              >
+                {selectedChannel?.name ?? "All"}
+              </Text>
+
+              <Ionicons
+                name="chevron-down"
+                size={13}
+                color={colors.muted}
+              />
+
+              <View
+                accessibilityLabel={
+                  live ? "Live updates connected" : "Live updates offline"
+                }
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: 4,
+                  backgroundColor: live ? "#2FA36B" : colors.border,
+                }}
+              />
+            </Pressable>
+          ) : null}
         </View>
       </View>
+
+      <ChannelSheet
+        open={channelOpen}
+        channels={channels}
+        selectedId={channelId}
+        onSelect={setChannelId}
+        onClose={() => setChannelOpen(false)}
+      />
 
       <ErrorNotice message={error} onRetry={() => void pullToRefresh()} />
 
@@ -321,8 +549,23 @@ export default function Inbox() {
               </View>
             ) : (
               <Empty
-                title="No conversations yet"
-                detail="When a customer messages one of this workspace's channels, the conversation appears here."
+                title={
+                  selectedChannel
+                    ? "Nothing on this channel"
+                    : "No conversations yet"
+                }
+                detail={
+                  /*
+                   * A filtered list that is empty is not the same as a
+                   * workspace that has no conversations, and saying the wrong
+                   * one sends somebody looking for a problem that is not
+                   * there. The way out is named, since the filter lives in
+                   * the header where it is easy to forget.
+                   */
+                  selectedChannel
+                    ? `${selectedChannel.name} has no conversations. Tap the channel button above to see all of them.`
+                    : "When a customer messages one of this workspace's channels, the conversation appears here."
+                }
               />
             )
           }
