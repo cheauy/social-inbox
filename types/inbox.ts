@@ -225,6 +225,42 @@ parent_comment_id:
   } | null;
 };
 
+/*
+ * What the phone is sent for each conversation.
+ *
+ * The web Inbox reads a conversation's assignee, its pin metadata, the
+ * comment ids that tie it to a Facebook post, and the customer's whole
+ * record. The phone reads ten fields and six across the two joins, and it is
+ * sent every conversation in the workspace at once -- 488 of them here, which
+ * is 520kB of the full shape and 247kB of this one. Half a megabyte over a
+ * Cambodian mobile connection to draw a list of names is not a trade worth
+ * making, so the mobile bootstrap projects down to this.
+ *
+ * Kept beside InboxConversation on purpose: the day the phone needs another
+ * field, the two are read together and the projection is one line away.
+ */
+export type MobileConversation = Pick<
+  InboxConversation,
+  | "id"
+  | "status"
+  | "unread_count"
+  | "last_message_text"
+  | "last_message_at"
+  | "is_pinned"
+  | "assigned_to"
+  | "source_type"
+> & {
+  contact: Pick<
+    InboxContact,
+    "id" | "full_name" | "profile_picture_url" | "phone"
+  > | null;
+
+  social_account: {
+    id: string;
+    platform?: string;
+  } | null;
+};
+
 export type InboxMessage = {
   id: string;
   platform_message_id: string;
