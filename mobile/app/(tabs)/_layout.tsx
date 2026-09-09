@@ -11,19 +11,7 @@ import { useInbox } from "../../lib/inbox-provider";
  * Drawn as a dot rather than a number past 99, because the tab bar has five
  * items on a phone and a four-digit badge pushes the labels around.
  */
-function InboxBadge() {
-  const { conversations } = useInbox();
-
-  const unread = conversations.reduce(
-    (total, conversation) =>
-      total + ((conversation.unread_count ?? 0) > 0 ? 1 : 0),
-    0,
-  );
-
-  if (unread === 0) {
-    return null;
-  }
-
+function Dot() {
   return (
     <View
       style={{
@@ -39,21 +27,45 @@ function InboxBadge() {
   );
 }
 
+function InboxBadge() {
+  const { conversations } = useInbox();
+
+  const unread = conversations.reduce(
+    (total, conversation) =>
+      total + ((conversation.unread_count ?? 0) > 0 ? 1 : 0),
+    0,
+  );
+
+  return unread === 0 ? null : <Dot />;
+}
+
+/*
+ * The same dot on Group Chat. The server has already decided what counts --
+ * unread in a room you follow, mentions only in one you have muted -- so the
+ * tab just draws whatever total it sends.
+ */
+function RoomsBadge() {
+  const { roomsBadge } = useInbox();
+
+  return roomsBadge === 0 ? null : <Dot />;
+}
+
 function TabIcon({
   name,
   color,
-  badge = false,
+  badge,
 }: {
   name: React.ComponentProps<typeof Ionicons>["name"];
   // What Tabs hands the callback is a ColorValue, not a string, and Ionicons
   // takes the same union -- so borrow its type rather than narrowing.
   color: React.ComponentProps<typeof Ionicons>["color"];
-  badge?: boolean;
+  badge?: "inbox" | "rooms";
 }) {
   return (
     <View>
       <Ionicons name={name} size={23} color={color} />
-      {badge ? <InboxBadge /> : null}
+      {badge === "inbox" ? <InboxBadge /> : null}
+      {badge === "rooms" ? <RoomsBadge /> : null}
     </View>
   );
 }
@@ -72,7 +84,7 @@ export default function TabsLayout() {
         /*
          * Five labels have to fit across a phone, so they are small and the
          * icons carry most of the recognition. Labels stay rather than going
-         * icon-only: "Subscription" and "Settings" are not guessable from an
+         * icon-only: "Notifications" and "Settings" are not guessable from an
          * icon alone.
          */
         tabBarLabelStyle: { fontSize: 10.5, fontWeight: "600" },
@@ -83,7 +95,7 @@ export default function TabsLayout() {
         options={{
           title: "Inbox",
           tabBarIcon: ({ color }) => (
-            <TabIcon name="chatbubbles" color={color} badge />
+            <TabIcon name="chatbubbles" color={color} badge="inbox" />
           ),
         }}
       />
@@ -93,7 +105,7 @@ export default function TabsLayout() {
         options={{
           title: "Group Chat",
           tabBarIcon: ({ color }) => (
-            <TabIcon name="people" color={color} />
+            <TabIcon name="people" color={color} badge="rooms" />
           ),
         }}
       />
@@ -109,12 +121,19 @@ export default function TabsLayout() {
       />
 
       <Tabs.Screen
+        name="notifications"
+        options={{
+          title: "Notifications",
+          tabBarIcon: ({ color }) => (
+            <TabIcon name="notifications" color={color} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
         name="subscription"
         options={{
-          title: "Subscription",
-          tabBarIcon: ({ color }) => (
-            <TabIcon name="card" color={color} />
-          ),
+          href: null,
         }}
       />
 

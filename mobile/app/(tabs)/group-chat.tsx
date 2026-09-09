@@ -1,49 +1,332 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { Pressable, Text, View } from "react-native";
+import { useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { TabScreen, useWorkspaceResource } from "../../components/screen";
-import { Empty, colors, styles } from "../../components/ui";
+import { Empty, ErrorNotice, Sheet, colors, styles } from "../../components/ui";
+import { api } from "../../lib/api/client";
+import { useInbox } from "../../lib/inbox-provider";
+import type { Member, TeamRoom } from "../../lib/types";
 
-type Room = {
-  id: string;
-  name: string | null;
-  is_general?: boolean;
-  badge_count?: number;
-  mention_count?: number;
-  is_muted?: boolean;
-  member_count?: number;
-};
+/*
+ * The rooms this workspace has, and a way to make another.
+ *
+ * The list comes from the provider rather than a fetch of its own: the tab
+ * bar draws a badge from the same numbers and a room's header reads its name
+ * and description out of it, so three screens would otherwise each be asking
+ * the server the same question at different moments and disagreeing.
+ */
 
-type Response = { rooms: Room[] };
+function Badge({ count, mention }: { count: number; mention: boolean }) {
+  if (count <= 0) {
+    return null;
+  }
+
+  return (
+    <View
+      style={{
+        minWidth: 24,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 999,
+        backgroundColor: mention ? colors.red : colors.blue,
+      }}
+    >
+      <Text
+        style={{
+          color: "white",
+          fontSize: 11,
+          fontWeight: "800",
+          textAlign: "center",
+        }}
+      >
+        {count > 99 ? "99+" : count}
+      </Text>
+    </View>
+  );
+}
+
+/*
+ * Creating a group, which only an owner or an admin can do -- the server
+ * refuses anyone else, so the button is not offered to them either.
+ *
+ * Members are picked here because a group with nobody in it is not a group,
+ * and the web asks the same question at the same moment. The creator is
+ * always in it; the server adds them whether or not they tick themselves.
+ */
+function CreateGroupSheet({
+  open,
+  roster,
+  busy,
+  onCreate,
+  onClose,
+}: {
+  open: boolean;
+  roster: Member[];
+  busy: boolean;
+  onCreate: (name: string, description: string, memberIds: string[]) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+
+  return (
+    <Sheet
+      open={open}
+      title="New group"
+      detail="Everyone you add can read it from the beginning."
+      onClose={onClose}
+    >
+      <ScrollView keyboardShouldPersistTaps="handled">
+        <View style={{ paddingHorizontal: 18, gap: 12 }}>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder="Group name"
+            placeholderTextColor={colors.muted}
+            maxLength={80}
+            editable={!busy}
+            style={styles.input}
+          />
+
+          <TextInput
+            value={description}
+            onChangeText={setDescription}
+            placeholder="What is it for? (optional)"
+            placeholderTextColor={colors.muted}
+            maxLength={200}
+            editable={!busy}
+            style={styles.input}
+          />
+        </View>
+
+        <Text
+          style={{
+            paddingHorizontal: 18,
+            paddingTop: 18,
+            paddingBottom: 4,
+            fontSize: 11,
+            fontWeight: "800",
+            letterSpacing: 0.6,
+            textTransform: "uppercase",
+            color: colors.muted,
+          }}
+        >
+          Members
+        </Text>
+
+        {roster.map((member) => {
+          const on = picked.has(member.id);
+
+          return (
+            <Pressable
+              key={member.id}
+              accessibilityRole="button"
+              accessibilityState={{ selected: on }}
+              disabled={busy}
+              onPress={() =>
+                setPicked((current) => {
+                  const next = new Set(current);
+                  if (on) next.delete(member.id);
+                  else next.add(member.id);
+                  return next;
+                })
+              }
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+                paddingHorizontal: 18,
+                paddingVertical: 12,
+                backgroundColor: pressed ? colors.pale : "transparent",
+              })}
+            >
+              <Ionicons
+                name={on ? "checkbox" : "square-outline"}
+                size={20}
+                color={on ? colors.blue : colors.muted}
+              />
+
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{ color: colors.ink, fontSize: 15, fontWeight: "600" }}
+                >
+                  {member.full_name || member.email}
+                </Text>
+                <Text style={[styles.muted, { fontSize: 12 }]}>
+                  {member.role}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      <View
+        style={{
+          padding: 16,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+        }}
+      >
+        <Pressable
+          accessibilityRole="button"
+          disabled={busy || name.trim().length === 0}
+          onPress={() => onCreate(name.trim(), description.trim(), [...picked])}
+          style={({ pressed }) => [
+            styles.button,
+            {
+              opacity:
+                busy || name.trim().length === 0 ? 0.4 : pressed ? 0.8 : 1,
+            },
+          ]}
+        >
+          {busy ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={{ color: "white", fontSize: 16, fontWeight: "700" }}>
+              Create group
+            </Text>
+          )}
+        </Pressable>
+      </View>
+    </Sheet>
+  );
+}
 
 export default function GroupChat() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
-  const { data, loading, error, reload } =
-    useWorkspaceResource<Response>("/api/team-chat/rooms");
+  const { workspace, rooms, roomsBadge, roster, canManageRooms, refreshRooms } =
+    useInbox();
 
-  const rooms = data?.rooms ?? [];
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
+
+  async function create(
+    name: string,
+    description: string,
+    memberIds: string[],
+  ) {
+    if (!workspace) {
+      return;
+    }
+
+    setCreating(true);
+    setError("");
+
+    try {
+      const data = await api<{ room: TeamRoom }>(
+        "/api/team-chat/rooms",
+        workspace.businessId,
+        { method: "POST", body: { name, description, memberIds } },
+      );
+
+      await refreshRooms();
+      setCreateOpen(false);
+
+      /*
+       * Straight into it. Somebody who has just named a group and chosen who
+       * is in it has something to say to them.
+       */
+      if (data.room?.id) {
+        router.push({
+          pathname: "/room/[id]",
+          params: { id: data.room.id, name: data.room.name ?? "" },
+        });
+      }
+    } catch (createError) {
+      setError(
+        createError instanceof Error
+          ? createError.message
+          : "Unable to create that group.",
+      );
+    } finally {
+      setCreating(false);
+    }
+  }
 
   return (
-    <TabScreen
-      title="Group Chat"
-      loading={loading}
-      error={error}
-      onRefresh={reload}
-    >
-      {rooms.length === 0 ? (
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <View style={styles.header}>
+        <View style={styles.row}>
+          <View style={{ flex: 1 }}>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+            >
+              <Text style={styles.title}>Group Chat</Text>
+
+              {/*
+                The same total the tab bar draws, said in full here where
+                there is room for a number.
+              */}
+              <Badge count={roomsBadge} mention={false} />
+            </View>
+
+            <Text style={styles.muted} numberOfLines={1}>
+              {workspace?.businessName ?? "No workspace selected"}
+            </Text>
+          </View>
+
+          {canManageRooms ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Create a group"
+              onPress={() => setCreateOpen(true)}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                paddingHorizontal: 12,
+                paddingVertical: 9,
+                borderRadius: 999,
+                backgroundColor: pressed ? "#0072AB" : colors.blue,
+              })}
+            >
+              <Ionicons name="add" size={17} color="white" />
+
+              <Text
+                style={{ color: "white", fontSize: 13, fontWeight: "700" }}
+              >
+                Create
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+
+      <ErrorNotice message={error} onRetry={() => void refreshRooms()} />
+
+      {!workspace ? (
+        <Empty
+          icon="briefcase-outline"
+          title="Choose a workspace"
+          detail="Open the Inbox tab and pick a workspace. Everything else is scoped to it."
+        />
+      ) : rooms.length === 0 ? (
         <Empty
           icon="people-outline"
           title="No rooms yet"
-          detail="Team rooms created on the web appear here."
+          detail={
+            canManageRooms
+              ? "Create one and add the people who need it."
+              : "Team rooms an owner adds you to appear here."
+          }
         />
       ) : (
-        rooms.map((room) => {
-          const badge = room.badge_count ?? 0;
-          const mentions = room.mention_count ?? 0;
-
-          return (
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+          {rooms.map((room) => (
             <Pressable
               key={room.id}
               accessibilityRole="button"
@@ -79,61 +362,23 @@ export default function GroupChat() {
                     ) : null}
                   </View>
 
-                  <Text style={styles.muted}>
-                    {room.member_count === undefined
-                      ? "Team room"
-                      : `${room.member_count} member${room.member_count === 1 ? "" : "s"}`}
+                  <Text style={styles.muted} numberOfLines={1}>
+                    {room.description?.trim() ||
+                      `${room.member_count} member${room.member_count === 1 ? "" : "s"}`}
                   </Text>
                 </View>
 
                 {/*
-                  A mention is shown apart from the unread count because muting
-                  a busy room still lets a direct @you through -- that is the
-                  rule the server applies, and collapsing the two would hide it.
+                  A mention is shown apart from the unread count because
+                  muting a busy room still lets a direct @you through -- that
+                  is the rule the server applies, and collapsing the two would
+                  hide it.
                 */}
-                {mentions > 0 ? (
-                  <View
-                    style={{
-                      paddingHorizontal: 9,
-                      paddingVertical: 3,
-                      borderRadius: 999,
-                      backgroundColor: "#B43232",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: "white",
-                        fontSize: 11,
-                        fontWeight: "800",
-                      }}
-                    >
-                      @{mentions}
-                    </Text>
-                  </View>
+                {room.mention_count > 0 ? (
+                  <Badge count={room.mention_count} mention />
                 ) : null}
 
-                {badge > 0 ? (
-                  <View
-                    style={{
-                      minWidth: 24,
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
-                      borderRadius: 999,
-                      backgroundColor: colors.blue,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: "white",
-                        fontSize: 11,
-                        fontWeight: "800",
-                        textAlign: "center",
-                      }}
-                    >
-                      {badge > 99 ? "99+" : badge}
-                    </Text>
-                  </View>
-                ) : null}
+                <Badge count={room.badge_count} mention={false} />
 
                 <Ionicons
                   name="chevron-forward"
@@ -142,16 +387,19 @@ export default function GroupChat() {
                 />
               </View>
             </Pressable>
-          );
-        })
+          ))}
+        </ScrollView>
       )}
 
-      {rooms.length > 0 ? (
-        <Text style={[styles.muted, { fontSize: 12, paddingHorizontal: 2 }]}>
-          Mentioning someone, and anything with a file attached, is still on
-          the web.
-        </Text>
-      ) : null}
-    </TabScreen>
+      <CreateGroupSheet
+        open={createOpen}
+        roster={roster}
+        busy={creating}
+        onCreate={(name, description, memberIds) =>
+          void create(name, description, memberIds)
+        }
+        onClose={() => setCreateOpen(false)}
+      />
+    </View>
   );
 }

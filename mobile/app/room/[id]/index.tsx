@@ -1,4 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -9,7 +11,6 @@ import {
   Platform,
   Pressable,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,9 +23,11 @@ import {
   colors,
   styles,
   time,
-} from "../../components/ui";
-import { api, ApiError } from "../../lib/api/client";
-import { useInbox } from "../../lib/inbox-provider";
+} from "../../../components/ui";
+import { RoomComposer } from "../../../components/room-composer";
+import type { RoomPending } from "../../../components/room-composer";
+import { api, ApiError } from "../../../lib/api/client";
+import { useInbox } from "../../../lib/inbox-provider";
 
 const PAGE_SIZE = 40;
 
@@ -187,7 +190,10 @@ export default function RoomScreen() {
 
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { workspace, member, revision } = useInbox();
+  const { workspace, member, revision, rooms, roster, refreshRooms } =
+    useInbox();
+
+  const current = rooms.find((item) => item.id === id) ?? null;
 
   const [room, setRoom] = useState<Room | null>(null);
   const [messages, setMessages] = useState<RoomMessage[]>([]);
@@ -198,13 +204,22 @@ export default function RoomScreen() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pending, setPending] = useState<RoomPending[]>([]);
+  const [mentions, setMentions] = useState<string[]>([]);
+  const [mentionEveryone, setMentionEveryone] = useState(false);
 
   /*
    * Mute is per member, so it lives in a table of its own and the room row
    * knows nothing about it. The list already worked it out, so it travels
    * here as a param rather than costing a second request on open.
    */
-  const [muted, setMuted] = useState(passedMuted === "1");
+  /*
+   * Mute follows the provider once it has the room, and falls back to what
+   * the list passed in until then -- so the bell is right on the first frame
+   * rather than flickering.
+   */
+  const [mutedLocally, setMuted] = useState(passedMuted === "1");
+  const muted = current?.is_muted ?? mutedLocally;
   const [muting, setMuting] = useState(false);
 
   const requestRef = useRef(0);
@@ -312,6 +327,102 @@ export default function RoomScreen() {
     }
   }, [hasMore, id, loadingOlder, messages, workspace?.businessId]);
 
+  /*
+   * Attachments are staged like the customer composer's, so a file and the
+   * sentence explaining it leave together. The upload happens on send: the
+   * server wants an attachment id in the message body, and an id created for
+   * a message nobody sent is a row pointing at nothing.
+   */
+  async function pickFromLibrary(mediaTypes: ImagePicker.MediaType[]) {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      setError("TENH needs permission to your photos to attach one.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes,
+      allowsMultipleSelection: mediaTypes.includes("images"),
+      quality: 1,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    setPending((current) => [
+      ...current,
+      ...result.assets.map((asset, index) => {
+        const video = asset.type === "video";
+
+        return {
+          key: `${asset.assetId ?? asset.uri}:${index}`,
+          uri: asset.uri,
+          name: asset.fileName || (video ? "video.mp4" : "photo.jpg"),
+          mimeType: asset.mimeType || (video ? "video/mp4" : "image/jpeg"),
+          kind: video ? ("video" as const) : ("image" as const),
+        };
+      }),
+    ]);
+  }
+
+  async function pickFile() {
+    const result = await DocumentPicker.getDocumentAsync({
+      multiple: true,
+      copyToCacheDirectory: true,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    setPending((current) => [
+      ...current,
+      ...result.assets.map((asset, index) => ({
+        key: `${asset.uri}:${index}`,
+        uri: asset.uri,
+        name: asset.name || "attachment",
+        mimeType: asset.mimeType || "application/octet-stream",
+        kind: "file" as const,
+      })),
+    ]);
+  }
+
+  function stageVoice(uri: string, millis: number) {
+    setPending((current) => [
+      ...current,
+      {
+        key: `voice:${Date.now()}`,
+        uri,
+        name: `voice-${Math.round(millis / 1000)}s.m4a`,
+        mimeType: "audio/m4a",
+        kind: "audio" as const,
+      },
+    ]);
+  }
+
+  /*
+   * A mention is the person's name in the text and their id alongside it,
+   * which is how the web records one. Both have to agree: the server sends
+   * the notification off the id, and the reader sees the name.
+   */
+  function mention(name: string, memberId: string | null) {
+    const token = memberId ? `@${name}` : "@everyone";
+
+    setDraft((current) =>
+      current.trim().length === 0 ? `${token} ` : `${current.trimEnd()} ${token} `,
+    );
+
+    if (memberId) {
+      setMentions((current) =>
+        current.includes(memberId) ? current : [...current, memberId],
+      );
+    } else {
+      setMentionEveryone(true);
+    }
+  }
+
   async function toggleMute() {
     if (!id || !workspace || muting) {
       return;
@@ -329,6 +440,10 @@ export default function RoomScreen() {
         workspace.businessId,
         { method: "PATCH", body: { muted: next } },
       );
+
+      // The provider owns the room now, so the list, this header and the tab
+      // badge all move together rather than each finding out separately.
+      await refreshRooms();
 
     } catch (muteError) {
       setMuted(!next);
@@ -394,7 +509,7 @@ export default function RoomScreen() {
   async function send() {
     const text = draft.trim();
 
-    if (!text || !id || !workspace || sending) {
+    if ((!text && pending.length === 0) || !id || !workspace || sending) {
       return;
     }
 
@@ -402,13 +517,52 @@ export default function RoomScreen() {
     setError("");
 
     try {
+      /*
+       * Files first, because the message carries their ids. A failed upload
+       * therefore stops the send rather than posting a message that promises
+       * an attachment nobody can open.
+       */
+      const attachmentIds: string[] = [];
+
+      for (const file of pending) {
+        const form = new FormData();
+
+        form.append("roomId", String(id));
+        form.append("file", {
+          uri: file.uri,
+          name: file.name,
+          type: file.mimeType,
+        } as unknown as Blob);
+
+        const uploaded = await api<{ attachment: { id: string } }>(
+          "/api/team-chat/attachments",
+          workspace.businessId,
+          { method: "POST", body: form },
+        );
+
+        if (uploaded.attachment?.id) {
+          attachmentIds.push(uploaded.attachment.id);
+        }
+      }
+
       const data = await api<{ message: RoomMessage }>(
         `/api/team-chat/rooms/${encodeURIComponent(id)}/messages`,
         workspace.businessId,
-        { method: "POST", body: { messageText: text } },
+        {
+          method: "POST",
+          body: {
+            messageText: text,
+            attachmentIds,
+            mentionedMemberIds: mentions,
+            mentionEveryone,
+          },
+        },
       );
 
       setDraft("");
+      setPending([]);
+      setMentions([]);
+      setMentionEveryone(false);
 
       /*
        * The posted message comes back, so it goes straight in rather than
@@ -434,7 +588,18 @@ export default function RoomScreen() {
     }
   }
 
-  const title = room?.name?.trim() || passedName || "Room";
+  const title = current?.name?.trim() || room?.name?.trim() || passedName || "Room";
+
+  /*
+   * What the group is for, or how many people are in it when nobody has said.
+   * Read from the provider's copy, which the details screen also writes to,
+   * so a description changed there is right here without a reload.
+   */
+  const subtitle =
+    current?.description?.trim() ||
+    (current
+      ? `${current.member_count} member${current.member_count === 1 ? "" : "s"}`
+      : "Team room");
 
   return (
     <KeyboardAvoidingView
@@ -450,28 +615,67 @@ export default function RoomScreen() {
             onPress={() => router.back()}
           />
 
-          <View
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 12,
-              backgroundColor: colors.pale,
+          {/*
+            The name, and under it what the group is for.
+
+            Tapping either opens the details, which is where somebody looks
+            when they want to know who can read what they are about to type.
+            The description is truncated rather than wrapped: a header that
+            grows a line when a group gets a longer purpose pushes the whole
+            thread down.
+          */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${title}. Open group details.`}
+            onPress={() =>
+              router.push({
+                pathname: "/room/[id]/details",
+                params: { id: String(id) },
+              })
+            }
+            style={({ pressed }) => ({
+              flex: 1,
+              flexDirection: "row",
               alignItems: "center",
-              justifyContent: "center",
-            }}
+              gap: 12,
+              opacity: pressed ? 0.6 : 1,
+            })}
           >
-            <Ionicons name="people" size={20} color={colors.blue} />
-          </View>
+            <View
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 12,
+                backgroundColor: colors.pale,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="people" size={20} color={colors.blue} />
+            </View>
 
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text numberOfLines={1} style={styles.heading}>
-              {title}
-            </Text>
+            <View style={{ flex: 1, gap: 2 }}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+              >
+                <Text numberOfLines={1} style={[styles.heading, { flexShrink: 1 }]}>
+                  {title}
+                </Text>
 
-            <Text style={[styles.muted, { fontSize: 12 }]}>
-              {muted ? "Muted · team room" : "Team room"}
-            </Text>
-          </View>
+                {muted ? (
+                  <Ionicons
+                    name="notifications-off"
+                    size={13}
+                    color={colors.muted}
+                  />
+                ) : null}
+              </View>
+
+              <Text numberOfLines={1} style={[styles.muted, { fontSize: 12 }]}>
+                {subtitle}
+              </Text>
+            </View>
+          </Pressable>
 
           {/*
             Muting is the one room setting worth a tap from here: a busy room
@@ -553,54 +757,25 @@ export default function RoomScreen() {
         />
       )}
 
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "flex-end",
-          gap: 8,
-          padding: 12,
-          paddingBottom: 12 + insets.bottom,
-          backgroundColor: "white",
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
-        }}
-      >
-        <TextInput
-          value={draft}
-          onChangeText={setDraft}
-          style={[styles.input, { flex: 1, maxHeight: 120 }]}
-          placeholder={`Message ${title}…`}
-          placeholderTextColor={colors.muted}
-          multiline
-          editable={!sending}
-        />
+      <RoomComposer
+        roomName={title}
+        draft={draft}
+        onDraftChange={setDraft}
+        pending={pending}
+        onRemovePending={(key) =>
+          setPending((items) => items.filter((item) => item.key !== key))
+        }
+        roster={roster}
+        sending={sending}
+        bottomInset={insets.bottom}
+        onPickImages={() => void pickFromLibrary(["images"])}
+        onPickVideo={() => void pickFromLibrary(["videos"])}
+        onPickFile={() => void pickFile()}
+        onVoice={stageVoice}
+        onMention={mention}
+        onSend={() => void send()}
+      />
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Send to the room"
-          disabled={sending || draft.trim().length === 0}
-          onPress={() => void send()}
-          style={({ pressed }) => [
-            styles.button,
-            {
-              minWidth: 52,
-              paddingHorizontal: 16,
-              opacity:
-                sending || draft.trim().length === 0
-                  ? 0.4
-                  : pressed
-                    ? 0.7
-                    : 1,
-            },
-          ]}
-        >
-          {sending ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Ionicons name="send" size={19} color="white" />
-          )}
-        </Pressable>
-      </View>
     </KeyboardAvoidingView>
   );
 }

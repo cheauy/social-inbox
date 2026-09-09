@@ -1,4 +1,4 @@
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -17,19 +17,20 @@ import {
   View,
 } from "react-native";
 
-import { IconName, Sheet, colors, styles } from "./ui";
+import { Avatar, IconName, Sheet, colors, styles } from "./ui";
+import type { Member } from "../lib/types";
 
 /*
- * The reply box, and everything that can be sent from it.
+ * The reply box for a team room.
  *
- * It was an attach button, a quick-reply button and a text field. Sending a
- * photo took two taps through a sheet that offered two things, there was no
- * way to send a voice note back to a customer who had just sent one, and no
- * way to send an address -- which in Phnom Penh is how half of deliveries get
- * arranged.
+ * Close cousin of the customer composer and deliberately not the same
+ * component: a room has no quick replies and no location, and it has the one
+ * thing the customer thread cannot have -- mentions, which are the whole
+ * reason a busy room stays readable. Sharing one component would have meant
+ * four props switching halves of it off.
  */
 
-export type Pending = {
+export type RoomPending = {
   key: string;
   uri: string;
   name: string;
@@ -37,83 +38,23 @@ export type Pending = {
   kind: "image" | "video" | "file" | "audio";
 };
 
+const ROW = 44;
+
 function clock(millis: number) {
   const whole = Math.floor(millis / 1000);
 
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
 }
 
-/** One row in the attach sheet. */
-function Choice({
-  icon,
-  label,
-  detail,
-  onPress,
-}: {
-  icon: IconName;
-  label: string;
-  detail: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 14,
-        paddingHorizontal: 18,
-        paddingVertical: 13,
-        backgroundColor: pressed ? colors.pale : "transparent",
-      })}
-    >
-      <View
-        style={{
-          width: 40,
-          height: 40,
-          borderRadius: 12,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: colors.pale,
-        }}
-      >
-        <Ionicons name={icon} size={20} color={colors.blue} />
-      </View>
-
-      <View style={{ flex: 1 }}>
-        <Text style={{ color: colors.ink, fontSize: 15, fontWeight: "700" }}>
-          {label}
-        </Text>
-        <Text style={[styles.muted, { fontSize: 12.5 }]}>{detail}</Text>
-      </View>
-
-      <Ionicons name="chevron-forward" size={16} color={colors.muted} />
-    </Pressable>
-  );
-}
-
-/*
- * The height everything in the row shares.
- *
- * The buttons and the reply field were different heights sitting on a
- * flex-end baseline, so the icons hung slightly below the pill they were
- * meant to line up with. One number, used by all of them.
- */
-const ROW = 44;
-
-/** A round button in the composer row, the same height as the field. */
 function Round({
   icon,
   label,
   disabled,
-  tone,
   onPress,
 }: {
   icon: IconName;
   label: string;
   disabled?: boolean;
-  tone?: string;
   onPress: () => void;
 }) {
   return (
@@ -132,61 +73,51 @@ function Round({
         opacity: disabled ? 0.35 : 1,
       })}
     >
-      <Ionicons name={icon} size={23} color={tone ?? colors.blue} />
+      <Ionicons name={icon} size={23} color={colors.blue} />
     </Pressable>
   );
 }
 
-export function Composer({
+export function RoomComposer({
+  roomName,
   draft,
   onDraftChange,
   pending,
   onRemovePending,
+  roster,
   sending,
   bottomInset,
   onPickImages,
   onPickVideo,
   onPickFile,
-  onSendLocation,
-  onQuickReplies,
   onVoice,
+  onMention,
   onSend,
 }: {
+  roomName: string;
   draft: string;
   onDraftChange: (next: string) => void;
-  pending: Pending[];
+  pending: RoomPending[];
   onRemovePending: (key: string) => void;
+  roster: Member[];
   sending: boolean;
   bottomInset: number;
   onPickImages: () => void;
   onPickVideo: () => void;
   onPickFile: () => void;
-  onSendLocation: () => void;
-  onQuickReplies: () => void;
   onVoice: (uri: string, millis: number) => void;
+  onMention: (name: string, memberId: string | null) => void;
   onSend: () => void;
 }) {
   const [attachOpen, setAttachOpen] = useState(false);
+  const [mentionOpen, setMentionOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recording = useAudioRecorderState(recorder, 250);
 
-  const hasSomething = draft.trim().length > 0 || pending.length > 0;
+  const canSend = draft.trim().length > 0 || pending.length > 0;
 
-  /*
-   * The send button is present whenever there is something to send, sending
-   * included -- it holds the spinner. Disabling it is what stops a second
-   * tap, not removing it, which would make the row jump at the worst moment.
-   */
-  const canSend = hasSomething;
-
-  /*
-   * Tap to start, tap to stop. Not hold-to-talk: an agent recording a reply is
-   * usually reading the customer's message at the same time, and a gesture
-   * that ends the moment a thumb lifts loses the recording every time they
-   * scroll back to check something.
-   */
   async function toggleRecording() {
     if (recording.isRecording) {
       setFinishing(true);
@@ -197,7 +128,6 @@ export function Composer({
         const uri = recorder.uri;
         const millis = recording.durationMillis;
 
-        // Under a second is a mis-tap, not a message.
         if (uri && millis >= 1000) {
           onVoice(uri, millis);
         }
@@ -233,42 +163,17 @@ export function Composer({
     recorder.record();
   }
 
-  async function cancelRecording() {
-    if (!recording.isRecording) {
-      return;
-    }
-
-    setFinishing(true);
-
-    try {
-      // Stopped and thrown away: stop() is the only way to release the
-      // hardware, so a cancel is a stop whose file is never used.
-      await recorder.stop();
-    } finally {
-      setFinishing(false);
-    }
-  }
-
   return (
     <>
-      {/*
-        What is queued to go with the next send. Attachments are staged rather
-        than sent on pick, so a quick reply's text and its picture leave
-        together and a wrong file can be taken back off.
-      */}
-      {/*
-        What is queued to go with the next send.
-
-        A photo shows itself. It was a pill reading IMG_20260908_114233.jpg,
-        which tells an agent nothing about which photo they picked and takes
-        the width of three of them to say it. Files keep their name, because
-        for a file the name is the whole of what it is.
-      */}
       {pending.length > 0 ? (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8, paddingHorizontal: 12, paddingTop: 10 }}
+          contentContainerStyle={{
+            gap: 8,
+            paddingHorizontal: 12,
+            paddingTop: 10,
+          }}
           style={{ maxHeight: 76, backgroundColor: "white" }}
         >
           {pending.map((file) => {
@@ -291,23 +196,6 @@ export function Composer({
                       style={{ width: 58, height: 58 }}
                       resizeMode="cover"
                     />
-
-                    {file.kind === "video" ? (
-                      <View
-                        style={{
-                          position: "absolute",
-                          left: 0,
-                          right: 0,
-                          top: 0,
-                          bottom: 0,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: "rgba(16,34,56,0.25)",
-                        }}
-                      >
-                        <Ionicons name="play" size={20} color="white" />
-                      </View>
-                    ) : null}
                   </View>
                 ) : (
                   <View
@@ -344,13 +232,7 @@ export function Composer({
 
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`Remove ${
-                    file.kind === "image"
-                      ? "this photo"
-                      : file.kind === "video"
-                        ? "this video"
-                        : file.name
-                  }`}
+                  accessibilityLabel={`Remove ${file.name}`}
                   disabled={sending}
                   hitSlop={8}
                   onPress={() => onRemovePending(file.key)}
@@ -380,7 +262,6 @@ export function Composer({
         style={{
           flexDirection: "row",
           alignItems: "flex-end",
-          gap: 0,
           paddingHorizontal: 6,
           paddingTop: 8,
           paddingBottom: 8 + bottomInset,
@@ -390,26 +271,20 @@ export function Composer({
         }}
       >
         {recording.isRecording || finishing ? (
-          /*
-           * Recording takes the whole row. Half a composer with a timer in it
-           * invites somebody to keep typing into a field that will not be
-           * sent, and the two controls that matter are throw it away and
-           * keep it.
-           */
           <View
             style={{
               flex: 1,
               flexDirection: "row",
               alignItems: "center",
               gap: 12,
-              paddingLeft: 6,
+              paddingLeft: 10,
             }}
           >
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Discard this recording"
               disabled={finishing}
-              onPress={() => void cancelRecording()}
+              onPress={() => void recorder.stop()}
               hitSlop={8}
             >
               <Ionicons name="trash-outline" size={22} color={colors.red} />
@@ -452,54 +327,20 @@ export function Composer({
           </View>
         ) : (
           <>
-            {/*
-              Attach and quick replies together on the left: both put
-              something into the box rather than sending it, and an agent
-              reaching for a saved greeting was crossing the whole composer
-              to find it.
-            */}
             <Round
               icon="attach-outline"
-              label="Attach a photo, video, file or location"
+              label="Attach a photo, video or file"
               disabled={sending}
               onPress={() => setAttachOpen(true)}
             />
 
-            {/*
-              A message with a bolt through it: the Ionicons set has nothing
-              for a saved reply, and both a plain bolt and a plain speech
-              bubble were guesses at it.
-            */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Quick replies"
+            <Round
+              icon="at-outline"
+              label="Mention someone"
               disabled={sending}
-              onPress={onQuickReplies}
-              style={({ pressed }) => ({
-                width: ROW,
-                height: ROW,
-                borderRadius: ROW / 2,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: pressed ? colors.pale : "transparent",
-                opacity: sending ? 0.35 : 1,
-              })}
-            >
-              <MaterialCommunityIcons
-                name="message-flash-outline"
-                size={23}
-                color={colors.blue}
-              />
-            </Pressable>
+              onPress={() => setMentionOpen(true)}
+            />
 
-            {/*
-              The field, with the microphone inside it.
-
-              It sat outside as a fourth icon, which is a lot of chrome around
-              a box you are meant to type in. Inside on the right is where a
-              phone keyboard has taught everybody to look for it, and it gives
-              the field the width back.
-            */}
             <View
               style={{
                 flex: 1,
@@ -527,18 +368,12 @@ export function Composer({
                   fontSize: 16,
                   color: colors.ink,
                 }}
-                placeholder="Write a reply…"
+                placeholder={`Message ${roomName}…`}
                 placeholderTextColor={colors.muted}
                 multiline
                 editable={!sending}
               />
 
-              {/*
-                Swapped for the send button rather than shown beside it. Both
-                at once is two ways to end the same message, and the one you
-                want is never in doubt: if there are words in the box you are
-                sending them.
-              */}
               {canSend ? null : (
                 <Pressable
                   accessibilityRole="button"
@@ -559,14 +394,10 @@ export function Composer({
               )}
             </View>
 
-            {/*
-              Only there when there is something to send, which is what gives
-              the field its full width the rest of the time.
-            */}
             {canSend ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Send"
+                accessibilityLabel="Send to the room"
                 disabled={sending}
                 onPress={onSend}
                 style={({ pressed }) => ({
@@ -582,7 +413,7 @@ export function Composer({
                 {sending ? (
                   <ActivityIndicator color="white" />
                 ) : (
-                  <MaterialCommunityIcons name="send" size={20} color="white" />
+                  <Ionicons name="send" size={19} color="white" />
                 )}
               </Pressable>
             ) : null}
@@ -596,45 +427,137 @@ export function Composer({
         detail="Added to the box, sent with your next message."
         onClose={() => setAttachOpen(false)}
       >
-        <Choice
-          icon="images-outline"
-          label="Photos"
-          detail="Pick as many as you like."
-          onPress={() => {
-            setAttachOpen(false);
-            onPickImages();
-          }}
-        />
+        {(
+          [
+            ["images-outline", "Photos", "Pick as many as you like.", onPickImages],
+            ["videocam-outline", "Video", "One clip from this phone.", onPickVideo],
+            ["document-outline", "File", "A document, PDF or anything else.", onPickFile],
+          ] as const
+        ).map(([icon, label, detail, run]) => (
+          <Pressable
+            key={label}
+            accessibilityRole="button"
+            onPress={() => {
+              setAttachOpen(false);
+              run();
+            }}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 14,
+              paddingHorizontal: 18,
+              paddingVertical: 13,
+              backgroundColor: pressed ? colors.pale : "transparent",
+            })}
+          >
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: colors.pale,
+              }}
+            >
+              <Ionicons name={icon} size={20} color={colors.blue} />
+            </View>
 
-        <Choice
-          icon="videocam-outline"
-          label="Video"
-          detail="One clip from this phone."
-          onPress={() => {
-            setAttachOpen(false);
-            onPickVideo();
-          }}
-        />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.ink, fontSize: 15, fontWeight: "700" }}>
+                {label}
+              </Text>
+              <Text style={[styles.muted, { fontSize: 12.5 }]}>{detail}</Text>
+            </View>
+          </Pressable>
+        ))}
+      </Sheet>
 
-        <Choice
-          icon="document-outline"
-          label="File"
-          detail="A document, PDF or anything else."
-          onPress={() => {
-            setAttachOpen(false);
-            onPickFile();
-          }}
-        />
+      <Sheet
+        open={mentionOpen}
+        title="Mention"
+        detail="They get a notification even if they have muted this room."
+        onClose={() => setMentionOpen(false)}
+      >
+        <ScrollView>
+          {/*
+            Everyone first, because it is the one most likely to be wanted and
+            the one hardest to find by scrolling a roster.
+          */}
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              setMentionOpen(false);
+              onMention("everyone", null);
+            }}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              paddingHorizontal: 18,
+              paddingVertical: 13,
+              backgroundColor: pressed ? colors.pale : "transparent",
+            })}
+          >
+            <View
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: colors.pale,
+              }}
+            >
+              <Ionicons name="megaphone-outline" size={19} color={colors.blue} />
+            </View>
 
-        <Choice
-          icon="location-outline"
-          label="Send location"
-          detail="Where this phone is now."
-          onPress={() => {
-            setAttachOpen(false);
-            onSendLocation();
-          }}
-        />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.ink, fontSize: 15, fontWeight: "700" }}>
+                @everyone
+              </Text>
+              <Text style={[styles.muted, { fontSize: 12.5 }]}>
+                Notifies every member of this room.
+              </Text>
+            </View>
+          </Pressable>
+
+          {roster.map((member) => (
+            <Pressable
+              key={member.id}
+              accessibilityRole="button"
+              onPress={() => {
+                setMentionOpen(false);
+                onMention(member.full_name || member.email, member.id);
+              }}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+                paddingHorizontal: 18,
+                paddingVertical: 12,
+                backgroundColor: pressed ? colors.pale : "transparent",
+              })}
+            >
+              <Avatar
+                name={member.full_name}
+                uri={member.profile_picture_url}
+                size={38}
+              />
+
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{ color: colors.ink, fontSize: 15, fontWeight: "600" }}
+                >
+                  {member.full_name || member.email}
+                </Text>
+                <Text style={[styles.muted, { fontSize: 12 }]}>
+                  {member.role}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </ScrollView>
       </Sheet>
     </>
   );

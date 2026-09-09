@@ -10,3 +10,23 @@ export type { InboxMessage, InboxContact, SavedReply, ConversationStatus } from 
 
 export type Workspace = { memberId: string; businessId: string; businessName: string; role: string; subscriptionOperational: boolean };
 export type Member = { id: string; full_name: string; email: string; role: string; profile_picture_url: string | null };
+
+/*
+ * A team chat room, as /api/team-chat/rooms returns it.
+ *
+ * badge_count is the number to draw: it is the unread count normally, and the
+ * mention count in a muted room -- the server's rule, so a muted room still
+ * says something when somebody has actually asked for you.
+ */
+export type TeamRoom = {
+  id: string;
+  name: string | null;
+  description: string | null;
+  is_general: boolean;
+  is_muted: boolean;
+  member_ids: string[];
+  member_count: number;
+  unread_count: number;
+  mention_count: number;
+  badge_count: number;
+};
