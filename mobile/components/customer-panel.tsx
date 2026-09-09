@@ -567,6 +567,12 @@ export function CustomerPanel({
 
       <Animated.View
         {...drag.panHandlers}
+        /*
+         * Claim any touch nothing inside wanted. The backdrop runs the full
+         * width behind this, and Android hands an unclaimed touch to the view
+         * below -- so tapping a gap between the cards was closing the panel.
+         */
+        onStartShouldSetResponder={() => true}
         style={{
           position: "absolute",
           top: 0,

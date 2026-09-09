@@ -1,11 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Text, View } from "react-native";
 
-import {
-  SettingsGroup,
-  SettingsScreen,
-} from "../../components/settings-screen";
-import { IconName, colors, styles } from "../../components/ui";
+import { SettingsGroup } from "../settings-screen";
+import { SlidePanel } from "../slide-panel";
+import { IconName, colors, styles } from "../ui";
 import { useAuth } from "../../lib/auth/provider";
 import { useInbox } from "../../lib/inbox-provider";
 
@@ -64,7 +62,7 @@ function Row({
   );
 }
 
-export default function Information() {
+export function InformationPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { session } = useAuth();
   const { member, workspace, workspaces, rooms, roster } = useInbox();
 
@@ -74,7 +72,12 @@ export default function Information() {
     : "";
 
   return (
-    <SettingsScreen title="Information" detail="Your account and workspace">
+    <SlidePanel
+      open={open}
+      onClose={onClose}
+      title="Information"
+      detail="Your account and workspace"
+    >
       <SettingsGroup title="You">
         <Row
           first
@@ -129,6 +132,6 @@ export default function Information() {
         security. Both need a verification step, and this app never shows a
         password field.
       </Text>
-    </SettingsScreen>
+    </SlidePanel>
   );
 }

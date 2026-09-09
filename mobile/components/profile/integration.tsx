@@ -2,11 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useState } from "react";
 import { Linking, Pressable, Text, View } from "react-native";
 
-import {
-  SettingsGroup,
-  SettingsScreen,
-} from "../../components/settings-screen";
-import { PlatformMark, colors, styles } from "../../components/ui";
+import { SettingsGroup } from "../settings-screen";
+import { SlidePanel } from "../slide-panel";
+import { PlatformMark, colors, styles } from "../ui";
 import { api } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
 
@@ -36,7 +34,7 @@ type AttentionPage = { id: string; name: string; status: string };
 
 const WEB = process.env.EXPO_PUBLIC_TENH_API_URL || "https://app.tenhchat.com";
 
-export default function Integration() {
+export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { workspace } = useInbox();
 
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -94,7 +92,9 @@ export default function Integration() {
   );
 
   return (
-    <SettingsScreen
+    <SlidePanel
+      open={open}
+      onClose={onClose}
       title="Integration"
       detail={`${channels.length} connected`}
       loading={loading}
@@ -246,6 +246,6 @@ export default function Integration() {
           Connect or reconnect on the web
         </Text>
       </Pressable>
-    </SettingsScreen>
+    </SlidePanel>
   );
 }

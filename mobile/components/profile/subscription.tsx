@@ -1,8 +1,9 @@
 import { Text, View } from "react-native";
 
-import { Stat, useWorkspaceResource } from "../../components/screen";
-import { SettingsGroup, SettingsScreen } from "../../components/settings-screen";
-import { Empty, colors, styles } from "../../components/ui";
+import { Stat, useWorkspaceResource } from "../screen";
+import { SettingsGroup } from "../settings-screen";
+import { SlidePanel } from "../slide-panel";
+import { Empty, colors, styles } from "../ui";
 
 type Subscription = {
   status: string;
@@ -32,7 +33,7 @@ const date = (value: string | null) =>
 const usageOf = (used: number, limit: number | null) =>
   limit === null ? `${used}` : `${used} of ${limit}`;
 
-export default function SubscriptionTab() {
+export function SubscriptionPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data, loading, error, reload } = useWorkspaceResource<Response>(
     "/api/subscription/current",
   );
@@ -50,7 +51,9 @@ export default function SubscriptionTab() {
       : (subscription?.current_period_end ?? null);
 
   return (
-    <SettingsScreen
+    <SlidePanel
+      open={open}
+      onClose={onClose}
       title="Subscription"
       detail="The plan this workspace is on"
       loading={loading}
@@ -131,6 +134,6 @@ export default function SubscriptionTab() {
           </Text>
         </>
       )}
-    </SettingsScreen>
+    </SlidePanel>
   );
 }
