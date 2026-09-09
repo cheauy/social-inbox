@@ -5,6 +5,7 @@ import { SettingsGroup } from "../settings-screen";
 import { SlidePanel } from "../slide-panel";
 import { IconName, colors, styles } from "../ui";
 import { useAuth } from "../../lib/auth/provider";
+import { useAccount } from "../../lib/account";
 import { useInbox } from "../../lib/inbox-provider";
 import { useLanguage } from "../../lib/language-provider";
 
@@ -67,6 +68,7 @@ export function InformationPanel({ open, onClose }: { open: boolean; onClose: ()
   const { session } = useAuth();
   const { member, workspace, workspaces, rooms, roster } = useInbox();
   const { t } = useLanguage();
+  const account = useAccount();
 
   // "agent" reads like a typo next to every other value on the screen.
   const role = member?.role
@@ -85,18 +87,38 @@ export function InformationPanel({ open, onClose }: { open: boolean; onClose: ()
           first
           icon="person-outline"
           label={t("Name", "ឈ្មោះ")}
-          value={member?.full_name ?? ""}
+          value={account.name ?? ""}
         />
         <Row
           icon="mail-outline"
           label={t("Email", "អ៊ីមែល")}
-          value={member?.email ?? session?.user.email ?? ""}
+          value={account.email ?? ""}
         />
+        {account.phone ? (
+          <Row
+            icon="call-outline"
+            label={t("Phone", "ទូរស័ព្ទ")}
+            value={account.phone}
+          />
+        ) : null}
         <Row
           icon="ribbon-outline"
           label={t("Role here", "តួនាទីនៅទីនេះ")}
           value={role}
         />
+
+        {/*
+          Only when it differs. A membership carries its own name -- whatever
+          was on the invitation -- and somebody greeted by their own name
+          everywhere else deserves to know the team sees another one.
+        */}
+        {member?.full_name && member.full_name !== account.name ? (
+          <Row
+            icon="people-circle-outline"
+            label={t("Shown to the team as", "ក្រុមមើលឃើញជា")}
+            value={member.full_name}
+          />
+        ) : null}
       </SettingsGroup>
 
       <SettingsGroup title={t("Workspace", "កន្លែងធ្វើការ")}>
@@ -134,7 +156,7 @@ export function InformationPanel({ open, onClose }: { open: boolean; onClose: ()
         style={[styles.muted, { fontSize: 12, paddingHorizontal: 2, lineHeight: 18 }]}
       >
         {t(
-          "Changing your name is on the web. Your password is under Login and security, on this phone.",
+          "Your name, email and picture come from your account, and change on the web under Profile information. Your password is under Login and security, on this phone.",
           "ការប្តូរឈ្មោះ គឺនៅលើគេហទំព័រ។ ពាក្យសម្ងាត់ស្ថិតក្រោម ការចូល និងសុវត្ថិភាព នៅលើទូរស័ព្ទនេះ។",
         )}
       </Text>

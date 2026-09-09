@@ -11,6 +11,7 @@ import {
 } from "../../components/settings-screen";
 import { Avatar, IconName, colors, styles } from "../../components/ui";
 import { useAuth } from "../../lib/auth/provider";
+import { useAccount } from "../../lib/account";
 import { useInbox } from "../../lib/inbox-provider";
 import { useLanguage } from "../../lib/language-provider";
 
@@ -72,6 +73,7 @@ export default function Profile() {
   const { session } = useAuth();
   const { member, workspace } = useInbox();
   const { t } = useLanguage();
+  const account = useAccount();
 
   /*
    * Two pieces of state, because they answer different questions: `section`
@@ -121,17 +123,17 @@ export default function Profile() {
           }}
         >
           <Avatar
-            name={member?.full_name}
-            uri={member?.profile_picture_url}
+            name={account.name ?? member?.full_name}
+            uri={account.avatar ?? member?.profile_picture_url}
             size={72}
           />
 
           <Text style={[styles.heading, { fontSize: 20 }]}>
-            {member?.full_name ?? t("You", "អ្នក")}
+            {account.name ?? t("You", "អ្នក")}
           </Text>
 
           <Text style={[styles.muted, { fontSize: 13 }]}>
-            {member?.email ?? session?.user.email}
+            {account.email}
           </Text>
 
           <View

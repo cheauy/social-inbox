@@ -20,6 +20,7 @@ import {
   styles,
 } from "../../components/ui";
 import { useAuth } from "../../lib/auth/provider";
+import { useAccount } from "../../lib/account";
 import { useInbox } from "../../lib/inbox-provider";
 import { useLanguage } from "../../lib/language-provider";
 import { supabase } from "../../lib/supabase/client";
@@ -209,6 +210,7 @@ export default function Settings() {
     loadWorkspaces,
   } = useInbox();
   const { t } = useLanguage();
+  const account = useAccount();
 
   /*
    * Only the ones you can actually open. An expired workspace was listed
@@ -304,17 +306,17 @@ export default function Settings() {
           })}
         >
           <Avatar
-            name={member?.full_name}
-            uri={member?.profile_picture_url}
+            name={account.name ?? member?.full_name}
+            uri={account.avatar ?? member?.profile_picture_url}
             size={46}
           />
 
           <View style={{ flex: 1, gap: 2 }}>
             <Text style={styles.heading} numberOfLines={1}>
-              {member?.full_name ?? "You"}
+              {account.name ?? t("You", "អ្នក")}
             </Text>
             <Text style={[styles.muted, { fontSize: 12.5 }]} numberOfLines={1}>
-              {member?.email ?? session.user.email} · {member?.role ?? "member"}
+              {account.email} · {member?.role ?? "member"}
             </Text>
           </View>
 
