@@ -1279,12 +1279,36 @@ export default function Inbox() {
             accessibilityLabel="Tenh Chat"
           />
 
-          <View style={{ flex: 1 }}>
+          {/*
+            The workspace name is the way back to choosing one.
+            
+            The back gesture works too now that the chooser is underneath, but
+            a gesture is not a thing you can see: somebody who wants the other
+            shop needs somewhere to press, and the name of the one they are in
+            is where they will press.
+          */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              workspace
+                ? `${workspace.businessName}. Switch workspace.`
+                : "Choose a workspace"
+            }
+            onPress={() => router.push("/workspaces")}
+            style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.6 : 1 })}
+          >
             <Text style={[styles.title, { fontSize: 24 }]}>Inbox</Text>
-            <Text style={styles.muted} numberOfLines={1}>
-              {workspace?.businessName ?? "Choose a workspace"}
-            </Text>
-          </View>
+
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+            >
+              <Text style={styles.muted} numberOfLines={1}>
+                {workspace?.businessName ?? "Choose a workspace"}
+              </Text>
+
+              <Ionicons name="swap-horizontal" size={13} color={colors.muted} />
+            </View>
+          </Pressable>
 
           {/* The channel filter. */}
           {workspace ? (

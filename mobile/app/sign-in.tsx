@@ -23,8 +23,17 @@ export default function SignIn() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  /*
+   * Straight to the workspace chooser, not the Inbox.
+   *
+   * Landing on the Inbox meant the app quietly reopened whichever workspace
+   * was last used -- fine for reopening the app, wrong right after signing
+   * in, when the first question is which shop you are here for. It also left
+   * nothing underneath the Inbox, so the back gesture had nowhere to go; now
+   * the chooser is the screen the Inbox sits on top of.
+   */
   if (session) {
-    return <Redirect href="/" />;
+    return <Redirect href="/workspaces" />;
   }
 
   async function signIn() {
