@@ -7,6 +7,7 @@ import { SlidePanel } from "../slide-panel";
 import { PlatformMark, colors, styles } from "../ui";
 import { api } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
+import { useLanguage } from "../../lib/language-provider";
 
 /*
  * What this workspace is connected to, and whether any of it has stopped
@@ -36,6 +37,7 @@ const WEB = process.env.EXPO_PUBLIC_TENH_API_URL || "https://app.tenhchat.com";
 
 export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { workspace } = useInbox();
+  const { t } = useLanguage();
 
   const [channels, setChannels] = useState<Channel[]>([]);
   const [attention, setAttention] = useState<AttentionPage[]>([]);
@@ -95,8 +97,11 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
     <SlidePanel
       open={open}
       onClose={onClose}
-      title="Integration"
-      detail={`${channels.length} connected`}
+      title={t("Integration", "ការតភ្ជាប់")}
+      detail={t(
+        channels.length + " connected",
+        "ភ្ជាប់ " + channels.length,
+      )}
       loading={loading}
       error={error}
       onRetry={() => void load()}
@@ -118,9 +123,12 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
             <Text
               style={{ flex: 1, fontSize: 15, fontWeight: "700", color: colors.red }}
             >
-              {attention.length === 1
-                ? "A page needs reconnecting"
-                : `${attention.length} pages need reconnecting`}
+              {t(
+                attention.length === 1
+                  ? "A page needs reconnecting"
+                  : attention.length + " pages need reconnecting",
+                "ទំព័រ " + attention.length + " ត្រូវការភ្ជាប់ឡើងវិញ",
+              )}
             </Text>
           </View>
 
@@ -132,7 +140,12 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
         </View>
       ) : null}
 
-      <SettingsGroup title={`Messenger and comments · ${messenger.length}`}>
+      <SettingsGroup
+        title={t(
+          "Messenger and comments · " + messenger.length,
+          "Messenger និងមតិ · " + messenger.length,
+        )}
+      >
         {messenger.length === 0 ? (
           <Text
             style={[styles.muted, { fontSize: 13, padding: 16, textAlign: "center" }]}
@@ -174,7 +187,9 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
                       fontWeight: "700",
                     }}
                   >
-                    {unhealthy ? "Needs reconnecting" : "Connected"}
+                    {unhealthy
+                      ? t("Needs reconnecting", "ត្រូវភ្ជាប់ឡើងវិញ")
+                      : t("Connected", "បានភ្ជាប់")}
                   </Text>
                 </View>
               </View>
@@ -183,7 +198,7 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
         )}
       </SettingsGroup>
 
-      <SettingsGroup title={`Telegram · ${telegram.length}`}>
+      <SettingsGroup title={"Telegram · " + telegram.length}>
         {telegram.length === 0 ? (
           <Text
             style={[styles.muted, { fontSize: 13, padding: 16, textAlign: "center" }]}
@@ -243,7 +258,7 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
         <Ionicons name="open-outline" size={16} color={colors.blue} />
 
         <Text style={{ color: colors.blue, fontSize: 14.5, fontWeight: "700" }}>
-          Connect or reconnect on the web
+          {t("Connect or reconnect on the web", "ភ្ជាប់នៅលើគេហទំព័រ")}
         </Text>
       </Pressable>
     </SlidePanel>

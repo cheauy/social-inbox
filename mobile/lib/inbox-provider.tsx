@@ -3,6 +3,7 @@ import { AppState } from "react-native";
 import { api, ApiError } from "./api/client";
 import { useAuth } from "./auth/provider";
 import { sessionStorage } from "./auth/secure-storage";
+import { useNotificationSound } from "./notification-sound";
 import { supabase } from "./supabase/client";
 import type { InboxConversation, Member, TeamRoom, Workspace } from "./types";
 
@@ -20,6 +21,7 @@ type InboxState = {
    * out of it. One fetch, one truth.
    */
   rooms: TeamRoom[];
+  roomsLoading: boolean;
   roomsBadge: number;
   roster: Member[];
   canManageRooms: boolean;
@@ -38,14 +40,22 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
   const [live, setLive] = useState(false);
   const [revision, setRevision] = useState(0);
   const [rooms, setRooms] = useState<TeamRoom[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(true);
   const [roomsBadge, setRoomsBadge] = useState(0);
   const [roster, setRoster] = useState<Member[]>([]);
   const [canManageRooms, setCanManageRooms] = useState(false);
   const generation = useRef(0), request = useRef(0), alive = useRef(true);
+  /*
+   * Held in a ref so the realtime subscription does not have to be torn down
+   * and rebuilt every time somebody changes their alert tone.
+   */
+  const { play, enabled: soundOn } = useNotificationSound();
+  const alert = useRef(() => {});
+  alert.current = () => { if (soundOn) play(); };
   const workspaceRef = useRef<Workspace | null>(null);
   const storageKey = `workspace.${session?.user.id}`;
   useEffect(() => () => { alive.current = false; generation.current++; }, []);
-  const clear = useCallback(() => { workspaceRef.current = null; setWorkspace(null); setMember(null); setConversations([]); setRooms([]); setRoomsBadge(0); setRoster([]); setCanManageRooms(false); }, []);
+  const clear = useCallback(() => { workspaceRef.current = null; setWorkspace(null); setMember(null); setConversations([]); setRooms([]); setRoomsLoading(true); setRoomsBadge(0); setRoster([]); setCanManageRooms(false); }, []);
   const loadWorkspaces = useCallback(async () => {
     if (!session) { setLoading(false); return; }
     const current = generation.current;
@@ -102,15 +112,23 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     } catch {
       // The Group Chat tab shows its own empty state; a failed poll here is
       // not worth taking over the Inbox's error line.
+    } finally {
+      if (alive.current && current === generation.current) setRoomsLoading(false);
     }
   }, []);
   useEffect(() => {
     if (!workspace?.businessId) return;
-    setLoading(true); void refresh();
+    setLoading(true); setRoomsLoading(true); void refresh(); void refreshRooms();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const changed = () => { clearTimeout(timer); timer = setTimeout(() => { setRevision(v => v + 1); void refresh(); void refreshRooms(); }, 300); };
     let channel = supabase.channel(`tenh-mobile-${workspace.businessId}`);
     for (const table of ["messages", "conversations", "contacts", "team_chat_messages", "team_chat_rooms"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${workspace.businessId}` }, changed);
+    /*
+     * The alert tone, on the arrival itself rather than on the reload the
+     * arrival triggers: `changed` is debounced and fires for edits, reads and
+     * the agent's own sends, all of which would make a noise for nothing.
+     */
+    channel = channel.on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `business_id=eq.${workspace.businessId}` }, payload => { if ((payload.new as { direction?: string } | null)?.direction === "incoming") alert.current(); });
     for (const table of ["team_members", "business_subscriptions", "social_accounts"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${workspace.businessId}` }, () => { void loadWorkspaces(); changed(); });
     channel.subscribe(status => { setLive(status === "SUBSCRIBED"); if (status === "SUBSCRIBED") changed(); });
     const listener = AppState.addEventListener("change", state => { if (state === "active") { void loadWorkspaces(); changed(); } });
@@ -126,5 +144,5 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       ),
     );
   }, []);
-  return <Context.Provider value={{ workspaces, workspace, member, conversations, loading, error, live, revision, refresh, loadWorkspaces, selectWorkspace, updateConversation, updateContactTags, rooms, roomsBadge, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ workspaces, workspace, member, conversations, loading, error, live, revision, refresh, loadWorkspaces, selectWorkspace, updateConversation, updateContactTags, rooms, roomsLoading, roomsBadge, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
 }

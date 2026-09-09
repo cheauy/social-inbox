@@ -1,6 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   SettingsGroup,
@@ -14,6 +24,7 @@ import {
 } from "../../components/ui";
 import { api } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
+import { useLanguage } from "../../lib/language-provider";
 import type { Member } from "../../lib/types";
 
 /*
@@ -25,10 +36,23 @@ import type { Member } from "../../lib/types";
  * phone actually gets asked is the simple one: who is on this workspace and
  * what is it connected to.
  *
- * Read-only on purpose. Inviting somebody, changing a role or reconnecting a
- * Facebook page all take a flow this screen would only half-carry, so the
- * settings list sends those to the web instead of starting them here.
+ * Inviting is here too. It is the one thing on this screen that is urgent --
+ * somebody starts on Monday and needs an inbox on Monday -- and it is an
+ * email address and a choice of two roles, which is a phone-sized question.
+ * The invitation goes to their email, so nothing is granted from this screen
+ * that the person cannot decline.
+ *
+ * Reconnecting a Facebook page is still on the web: it is an OAuth round trip
+ * that would hand somebody to a browser mid-flow anyway.
  */
+
+type Invitation = {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  expires_at: string | null;
+};
 
 type Channel = {
   id: string;
@@ -39,12 +63,22 @@ type Channel = {
 };
 
 export default function People() {
+  const insets = useSafeAreaInsets();
   const { workspace } = useInbox();
+  const { t } = useLanguage();
 
   const [members, setMembers] = useState<Member[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [canInvite, setCanInvite] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const [inviting, setInviting] = useState(false);
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"agent" | "owner">("agent");
+  const [sending, setSending] = useState(false);
+  const [inviteError, setInviteError] = useState("");
 
   const load = useCallback(async () => {
     if (!workspace) {
@@ -53,15 +87,26 @@ export default function People() {
     }
 
     try {
-      const [team, connected] = await Promise.all([
+      const [team, connected, invited] = await Promise.all([
         api<{ members: Member[] }>("/api/team/members", workspace.businessId),
         api<{ channels: Channel[] }>(
           "/api/inbox/channels",
           workspace.businessId,
         ),
+        /*
+         * Only an owner may see or send these, and the endpoint says so by
+         * answering with an empty list rather than an error -- so a failure
+         * here is a real failure and stays quiet either way.
+         */
+        api<{ canManage?: boolean; invitations?: Invitation[] }>(
+          "/api/team/invitations",
+          workspace.businessId,
+        ).catch(() => ({ canManage: false, invitations: [] })),
       ]);
 
       setMembers(team.members ?? []);
+      setInvitations(invited.invitations ?? []);
+      setCanInvite(invited.canManage === true);
 
       /*
        * Only this workspace's channels. The endpoint answers for every
@@ -91,15 +136,129 @@ export default function People() {
     void load();
   }, [load]);
 
+  async function invite() {
+    if (!workspace) return;
+
+    const address = email.trim().toLowerCase();
+
+    if (!address.includes("@") || address.length < 5) {
+      setInviteError(
+        t("Enter the email address to invite.", "បញ្ចូលអ៊ីមែលដែលចង់អញ្ជើញ។"),
+      );
+      return;
+    }
+
+    setSending(true);
+    setInviteError("");
+
+    try {
+      await api("/api/team/invitations", workspace.businessId, {
+        method: "POST",
+        body: { email: address, role },
+      });
+
+      setEmail("");
+      setInviting(false);
+      await load();
+    } catch (sendError) {
+      setInviteError(
+        sendError instanceof Error
+          ? sendError.message
+          : "Unable to send that invitation.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function act(invitation: Invitation, action: "resend" | "cancel") {
+    if (!workspace) return;
+
+    try {
+      await api("/api/team/invitations/" + invitation.id, workspace.businessId, {
+        method: "PATCH",
+        body: { action },
+      });
+
+      await load();
+    } catch (actError) {
+      setError(
+        actError instanceof Error
+          ? actError.message
+          : "Unable to update that invitation.",
+      );
+    }
+  }
+
+  function confirmCancel(invitation: Invitation) {
+    Alert.alert(
+      t("Cancel this invitation?", "បោះបង់ការអញ្ជើញនេះ?"),
+      t(
+        invitation.email + " will not be able to join with it.",
+        invitation.email + " នឹងមិនអាចចូលរួមដោយប្រើវាទេ។",
+      ),
+      [
+        { text: t("Keep", "រក្សាទុក"), style: "cancel" },
+        {
+          text: t("Cancel invitation", "បោះបង់"),
+          style: "destructive",
+          onPress: () => void act(invitation, "cancel"),
+        },
+      ],
+    );
+  }
+
   return (
     <SettingsScreen
-      title="People and channels"
-      detail={`${members.length} on the team · ${channels.length} connected`}
+      title={t("People and channels", "មនុស្ស និងឆានែល")}
+      detail={t(
+        members.length + " on the team · " + channels.length + " connected",
+        "ក្រុម " + members.length + " · ភ្ជាប់ " + channels.length,
+      )}
       loading={loading}
       error={error}
       onRetry={() => void load()}
+      footer={
+        canInvite ? (
+          <View
+            style={{
+              padding: 14,
+              paddingBottom: insets.bottom + 14,
+              borderTopWidth: 1,
+              borderTopColor: colors.border,
+              backgroundColor: "white",
+            }}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t("Invite somebody", "អញ្ជើញនរណាម្នាក់")}
+              onPress={() => {
+                setInviteError("");
+                setInviting(true);
+              }}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                paddingVertical: 14,
+                borderRadius: 14,
+                backgroundColor: pressed ? "#0A6FA8" : colors.blue,
+              })}
+            >
+              <Ionicons name="person-add-outline" size={17} color="white" />
+
+              <Text style={{ color: "white", fontSize: 15, fontWeight: "700" }}>
+                {t("Invite somebody", "អញ្ជើញនរណាម្នាក់")}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null
+      }
     >
-      <SettingsGroup title={`People · ${members.length}`}>
+      <SettingsGroup
+        title={t("People · " + members.length, "មនុស្ស · " + members.length)}
+      >
         {members.map((member, index) => (
           <View
             key={member.id}
@@ -154,7 +313,9 @@ export default function People() {
         ))}
       </SettingsGroup>
 
-      <SettingsGroup title={`Channels · ${channels.length}`}>
+      <SettingsGroup
+        title={t("Channels · " + channels.length, "ឆានែល · " + channels.length)}
+      >
         {channels.length === 0 ? (
           <View style={{ padding: 24, alignItems: "center", gap: 6 }}>
             <Ionicons name="link-outline" size={24} color={colors.muted} />
@@ -205,10 +366,226 @@ export default function People() {
         )}
       </SettingsGroup>
 
-      <Text style={[styles.muted, { fontSize: 12, paddingHorizontal: 2, lineHeight: 18 }]}>
-        Inviting somebody, changing a role and connecting a page are on the web
-        — each takes a flow this screen would only half-carry.
+      {invitations.length > 0 ? (
+        <SettingsGroup
+          title={t(
+            "Invited · " + invitations.length,
+            "បានអញ្ជើញ · " + invitations.length,
+          )}
+        >
+          {invitations.map((invitation, index) => (
+            <View
+              key={invitation.id}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                borderTopWidth: index === 0 ? 0 : 1,
+                borderTopColor: colors.border,
+              }}
+            >
+              <Ionicons name="mail-outline" size={19} color={colors.muted} />
+
+              <View style={{ flex: 1 }}>
+                <Text
+                  numberOfLines={1}
+                  style={{ fontSize: 14.5, fontWeight: "600", color: colors.ink }}
+                >
+                  {invitation.email}
+                </Text>
+                <Text style={[styles.muted, { fontSize: 12 }]}>
+                  {t("Waiting · ", "កំពុងរង់ចាំ · ") + invitation.role}
+                </Text>
+              </View>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("Send again", "ផ្ញើម្តងទៀត")}
+                onPress={() => void act(invitation, "resend")}
+                hitSlop={8}
+                style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+              >
+                <Ionicons name="refresh-outline" size={19} color={colors.blue} />
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("Cancel invitation", "បោះបង់ការអញ្ជើញ")}
+                onPress={() => confirmCancel(invitation)}
+                hitSlop={8}
+                style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+              >
+                <Ionicons
+                  name="close-circle-outline"
+                  size={19}
+                  color={colors.red}
+                />
+              </Pressable>
+            </View>
+          ))}
+        </SettingsGroup>
+      ) : null}
+
+      <Text
+        style={[styles.muted, { fontSize: 12, paddingHorizontal: 2, lineHeight: 18 }]}
+      >
+        {t(
+          "Connecting or reconnecting a page is on the web — it is an OAuth round trip through Facebook.",
+          "ការភ្ជាប់ទំព័រ គឺនៅលើគេហទំព័រ។",
+        )}
       </Text>
+
+      <Modal
+        visible={inviting}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setInviting(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: "rgba(16,34,56,0.35)" }}>
+          <Pressable style={{ flex: 1 }} onPress={() => setInviting(false)} />
+
+          <View
+            style={{
+              backgroundColor: colors.background,
+              borderTopLeftRadius: 22,
+              borderTopRightRadius: 22,
+              paddingBottom: insets.bottom + 14,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                padding: 14,
+              }}
+            >
+              <Text style={[styles.heading, { flex: 1, fontSize: 17 }]}>
+                {t("Invite somebody", "អញ្ជើញនរណាម្នាក់")}
+              </Text>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("Close", "បិទ")}
+                onPress={() => setInviting(false)}
+                hitSlop={10}
+              >
+                <Ionicons name="close" size={22} color={colors.muted} />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ padding: 14, paddingTop: 0, gap: 14 }}
+            >
+              {inviteError ? (
+                <Text
+                  accessibilityRole="alert"
+                  style={{ color: colors.red, fontSize: 13, lineHeight: 19 }}
+                >
+                  {inviteError}
+                </Text>
+              ) : null}
+
+              <TextInput
+                value={email}
+                onChangeText={(value) => {
+                  setEmail(value);
+                  setInviteError("");
+                }}
+                placeholder="name@example.com"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                style={{
+                  height: 48,
+                  paddingHorizontal: 13,
+                  borderRadius: 13,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: "white",
+                  fontSize: 15,
+                  color: colors.ink,
+                }}
+              />
+
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {(["agent", "owner"] as const).map((option) => {
+                  const on = role === option;
+
+                  return (
+                    <Pressable
+                      key={option}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      onPress={() => setRole(option)}
+                      style={({ pressed }) => ({
+                        flex: 1,
+                        alignItems: "center",
+                        paddingVertical: 12,
+                        borderRadius: 13,
+                        borderWidth: 1,
+                        borderColor: on ? colors.blue : colors.border,
+                        backgroundColor: on
+                          ? colors.pale
+                          : pressed
+                            ? colors.pale
+                            : "white",
+                      })}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: on ? "800" : "600",
+                          color: on ? colors.blue : colors.muted,
+                        }}
+                      >
+                        {option === "agent"
+                          ? t("Agent", "ភ្នាក់ងារ")
+                          : t("Owner", "ម្ចាស់")}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={[styles.muted, { fontSize: 12.5, lineHeight: 18 }]}>
+                {t(
+                  "TENH emails them a link. Nothing changes on this workspace until they accept it.",
+                  "TENH ផ្ញើតំណតាមអ៊ីមែល។ គ្មានអ្វីផ្លាស់ប្តូរទេ រហូតដល់គេទទួលយក។",
+                )}
+              </Text>
+
+              <Pressable
+                accessibilityRole="button"
+                disabled={sending}
+                onPress={() => void invite()}
+                style={({ pressed }) => ({
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingVertical: 14,
+                  borderRadius: 14,
+                  backgroundColor: pressed ? "#0A6FA8" : colors.blue,
+                  opacity: sending ? 0.6 : 1,
+                })}
+              >
+                {sending ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text
+                    style={{ color: "white", fontSize: 15, fontWeight: "700" }}
+                  >
+                    {t("Send invitation", "ផ្ញើការអញ្ជើញ")}
+                  </Text>
+                )}
+              </Pressable>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SettingsScreen>
   );
 }

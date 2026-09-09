@@ -14,53 +14,51 @@ import { sessionStorage } from "./auth/secure-storage";
  * The web keeps these in the browser's own storage rather than on the
  * workspace, so one person's dark chat does not darken everybody's. The phone
  * does the same, in the store it already uses for the session.
+ *
+ * The backgrounds are the web's own five, by the same ids, served from the
+ * same files. They were four invented colours before, which meant the two
+ * apps could not agree on what "the warm one" was -- somebody who set a
+ * background on their laptop opened the phone and found something else.
  */
 
-export type ChatBackgroundId = "default" | "plain" | "warm" | "dim";
+export type ChatBackgroundId =
+  | "theme-1"
+  | "theme-2"
+  | "theme-3"
+  | "theme-4"
+  | "theme-5";
+
+const WEB = process.env.EXPO_PUBLIC_TENH_API_URL || "https://app.tenhchat.com";
 
 export const CHAT_BACKGROUNDS: {
   id: ChatBackgroundId;
   label: string;
-  detail: string;
-  color: string;
-}[] = [
-  {
-    id: "default",
-    label: "TENH",
-    detail: "The usual pale blue-grey.",
-    color: "#F6F8FC",
-  },
-  {
-    id: "plain",
-    label: "Plain",
-    detail: "White, for reading in bright sun.",
-    color: "#FFFFFF",
-  },
-  {
-    id: "warm",
-    label: "Warm",
-    detail: "Softer on the eyes over a long shift.",
-    color: "#FAF6F0",
-  },
-  {
-    id: "dim",
-    label: "Dim",
-    detail: "Darker, for working at night.",
-    color: "#E4E8EF",
-  },
-];
+  km: string;
+  uri: string;
+}[] = [1, 2, 3, 4, 5].map((number) => ({
+  id: `theme-${number}` as ChatBackgroundId,
+  label: `Theme ${number}`,
+  km: `ផ្ទៃខាងក្រោយ ${number}`,
+  uri: `${WEB}/images/bg-theme${number}.png`,
+}));
+
+/*
+ * Behind whatever the wallpaper is, and what shows while it loads. The
+ * bubbles have to stay readable on the first frame of a cold thread, so this
+ * is the pale ground the app used before wallpapers existed.
+ */
+export const CHAT_BASE_COLOR = "#F6F8FC";
 
 const STORAGE_KEY = "display.chat-background";
 
-const DEFAULT: ChatBackgroundId = "default";
+const DEFAULT: ChatBackgroundId = "theme-1";
 
-export const chatBackgroundColor = (id: ChatBackgroundId) =>
-  CHAT_BACKGROUNDS.find((option) => option.id === id)?.color ??
-  CHAT_BACKGROUNDS[0].color;
+export const chatBackground = (id: ChatBackgroundId) =>
+  CHAT_BACKGROUNDS.find((option) => option.id === id) ?? CHAT_BACKGROUNDS[0];
 
 type DisplayState = {
   background: ChatBackgroundId;
-  backgroundColor: string;
+  backgroundUri: string;
   setBackground: (id: ChatBackgroundId) => Promise<void>;
 };
 
@@ -81,8 +79,7 @@ export function DisplayProvider({ children }: React.PropsWithChildren) {
 
   /*
    * Read once at start. The default is what shows until it arrives, which is
-   * a frame or two -- not worth holding the app for, and it is the same
-   * colour most people will have chosen anyway.
+   * a frame or two -- not worth holding the app for.
    */
   useEffect(() => {
     let alive = true;
@@ -112,7 +109,7 @@ export function DisplayProvider({ children }: React.PropsWithChildren) {
     <Context.Provider
       value={{
         background,
-        backgroundColor: chatBackgroundColor(background),
+        backgroundUri: chatBackground(background).uri,
         setBackground,
       }}
     >

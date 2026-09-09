@@ -3,6 +3,7 @@ import { Tabs } from "expo-router";
 import { View } from "react-native";
 
 import { colors } from "../../components/ui";
+import { useLanguage } from "../../lib/language-provider";
 import { useInbox } from "../../lib/inbox-provider";
 
 /*
@@ -71,6 +72,8 @@ function TabIcon({
 }
 
 export default function TabsLayout() {
+  const { t } = useLanguage();
+
   return (
     <Tabs
       screenOptions={{
@@ -93,7 +96,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Inbox",
+          title: t("Inbox", "ប្រអប់សារ"),
           tabBarIcon: ({ color }) => (
             <TabIcon name="chatbubbles" color={color} badge="inbox" />
           ),
@@ -103,7 +106,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="group-chat"
         options={{
-          title: "Group Chat",
+          title: t("Group Chat", "ឆាតក្រុម"),
           tabBarIcon: ({ color }) => (
             <TabIcon name="people" color={color} badge="rooms" />
           ),
@@ -113,7 +116,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="analytics"
         options={{
-          title: "Analytics",
+          title: t("Analytics", "ស្ថិតិ"),
           tabBarIcon: ({ color }) => (
             <TabIcon name="stats-chart" color={color} />
           ),
@@ -123,7 +126,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="notifications"
         options={{
-          title: "Notifications",
+          title: t("Notifications", "ការជូនដំណឹង"),
           tabBarIcon: ({ color }) => (
             <TabIcon name="notifications" color={color} />
           ),
@@ -133,7 +136,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="settings"
         options={{
-          title: "Settings",
+          title: t("Settings", "ការកំណត់"),
           tabBarIcon: ({ color }) => (
             <TabIcon name="settings-sharp" color={color} />
           ),

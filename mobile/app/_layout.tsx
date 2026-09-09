@@ -7,6 +7,8 @@ import { Empty, colors, styles } from "../components/ui";
 import { AuthProvider, useAuth } from "../lib/auth/provider";
 import { DisplayProvider } from "../lib/display-provider";
 import { InboxProvider } from "../lib/inbox-provider";
+import { LanguageProvider } from "../lib/language-provider";
+import { NotificationSoundProvider } from "../lib/notification-sound";
 import { configured } from "../lib/supabase/client";
 
 /*
@@ -74,11 +76,15 @@ export default function RootLayout() {
 
       {configured ? (
         <AuthProvider>
-          <DisplayProvider>
-            <InboxProvider>
-              <Gate />
-            </InboxProvider>
-          </DisplayProvider>
+          <LanguageProvider>
+            <DisplayProvider>
+              <NotificationSoundProvider>
+                <InboxProvider>
+                  <Gate />
+                </InboxProvider>
+              </NotificationSoundProvider>
+            </DisplayProvider>
+          </LanguageProvider>
         </AuthProvider>
       ) : (
         <Unconfigured />

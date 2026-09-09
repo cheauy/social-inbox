@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Linking,
   Pressable,
   ScrollView,
   Text,
@@ -21,6 +20,7 @@ import {
 } from "../../components/ui";
 import { useAuth } from "../../lib/auth/provider";
 import { useInbox } from "../../lib/inbox-provider";
+import { useLanguage } from "../../lib/language-provider";
 import { supabase } from "../../lib/supabase/client";
 import type { Workspace } from "../../lib/types";
 
@@ -33,107 +33,128 @@ import type { Workspace } from "../../lib/types";
  * Workspace, Inbox, Access, Security, Help -- so somebody who knows one knows
  * the other.
  *
- * Rows that this app can do open here. Rows that need a surface a phone
- * cannot give -- a font picker, a permission matrix -- say so and open the
- * web page rather than pretending. A row that lies about what it does is
- * worse than a row that sends you somewhere honest.
+ * Every row opens here now. Four of them used to hand you to a browser --
+ * quick replies, permissions, the sound, your password -- on the grounds that
+ * they were desktop shapes. Three of those were: a matrix of thirty
+ * permissions by every member, a grid of fourteen sounds, a media library.
+ * The decisions inside them are not. A phone can ask "what is this one person
+ * allowed to do" and "which of these six" perfectly well, and being handed to
+ * a browser is how those decisions stopped being made at all.
  */
 
 type Row = {
   icon: IconName;
   label: string;
+  km: string;
   detail: string;
-  route?: string;
-  web?: string;
-  /* Owners and admins only, matching the web's own gating. */
-  manage?: boolean;
+  detailKm: string;
+  route: string;
 };
 
-const GROUPS: { title: string; rows: Row[] }[] = [
+const GROUPS: { title: string; km: string; rows: Row[] }[] = [
   {
     title: "Workspace",
+    km: "កន្លែងធ្វើការ",
     rows: [
       {
-        icon: "business-outline",
+        icon: "notifications-outline",
         label: "General",
-        detail: "Workspace name, time zone and contact details.",
-        web: "/dashboard/settings/general",
-        manage: true,
+        km: "ទូទៅ",
+        detail: "The sound a new message makes.",
+        detailKm: "សំឡេងពេលមានសារថ្មី។",
+        route: "/settings/general",
       },
       {
         icon: "color-palette-outline",
         label: "Display",
+        km: "ការបង្ហាញ",
         detail: "Language and chat background.",
+        detailKm: "ភាសា និងផ្ទៃខាងក្រោយឆាត។",
         route: "/settings/display",
       },
     ],
   },
   {
     title: "Inbox",
+    km: "ប្រអប់សារ",
     rows: [
       {
         icon: "pricetags-outline",
         label: "Tags",
+        km: "ស្លាក",
         detail: "What you can label a customer with.",
+        detailKm: "អ្វីដែលអ្នកអាចដាក់ស្លាកលើអតិថិជន។",
         route: "/settings/tags",
       },
       {
         icon: "flash-outline",
         label: "Quick replies",
-        detail: "Saved messages and their categories.",
-        web: "/dashboard/settings/saved-replies",
+        km: "ការឆ្លើយតបរហ័ស",
+        detail: "Saved messages you can send in a tap.",
+        detailKm: "សារដែលរក្សាទុក ផ្ញើបានក្នុងមួយប៉ះ។",
+        route: "/settings/quick-replies",
       },
     ],
   },
   {
     title: "Access",
+    km: "សិទ្ធិចូល",
     rows: [
       {
         icon: "people-outline",
         label: "People and channels",
+        km: "មនុស្ស និងឆានែល",
         detail: "Who is on the team and which pages are connected.",
+        detailKm: "នរណានៅក្នុងក្រុម និងទំព័រណាភ្ជាប់។",
         route: "/settings/people",
       },
       {
         icon: "key-outline",
         label: "Roles and permissions",
-        detail: "What each role is allowed to do.",
-        web: "/dashboard/settings/roles-permissions",
-        manage: true,
+        km: "តួនាទី និងសិទ្ធិ",
+        detail: "What each person is allowed to do.",
+        detailKm: "អ្វីដែលម្នាក់ៗអាចធ្វើបាន។",
+        route: "/settings/roles",
       },
       {
         icon: "time-outline",
         label: "Change history",
+        km: "ប្រវត្តិផ្លាស់ប្តូរ",
         detail: "Who changed what, and when.",
+        detailKm: "នរណាកែអ្វី និងពេលណា។",
         route: "/settings/history",
       },
     ],
   },
   {
     title: "Security",
+    km: "សុវត្ថិភាព",
     rows: [
       {
         icon: "lock-closed-outline",
         label: "Login and security",
-        detail: "Password, and the devices signed in.",
-        web: "/dashboard/settings/security",
+        km: "ការចូល និងសុវត្ថិភាព",
+        detail: "Password, recovery and the devices signed in.",
+        detailKm: "ពាក្យសម្ងាត់ ការសង្គ្រោះ និងឧបករណ៍។",
+        route: "/settings/security",
       },
     ],
   },
   {
     title: "Help",
+    km: "ជំនួយ",
     rows: [
       {
         icon: "help-buoy-outline",
         label: "Report a problem",
+        km: "រាយការណ៍បញ្ហា",
         detail: "Send TENH something that is not working.",
+        detailKm: "ផ្ញើបញ្ហាទៅ TENH។",
         route: "/settings/report",
       },
     ],
   },
 ];
-
-const WEB = process.env.EXPO_PUBLIC_TENH_API_URL || "https://app.tenhchat.com";
 
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -176,10 +197,10 @@ export default function Settings() {
     workspace,
     workspaces,
     error,
-    canManageRooms,
     selectWorkspace,
     loadWorkspaces,
   } = useInbox();
+  const { t } = useLanguage();
 
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState("");
@@ -188,14 +209,6 @@ export default function Settings() {
   if (!session) {
     return <Redirect href="/sign-in" />;
   }
-
-  /*
-   * canManageRooms is the owner-or-admin answer the team chat endpoint
-   * already gives us, which is the same test the web applies to these rows.
-   * Asking a second endpoint for the same fact would only give it a second
-   * chance to disagree.
-   */
-  const canManage = canManageRooms;
 
   async function switchTo(next: Workspace) {
     if (next.businessId === workspace?.businessId || busy) {
@@ -215,28 +228,21 @@ export default function Settings() {
     }
   }
 
-  /*
-   * Handed to the browser rather than shown in a web view. The app's session
-   * lives in its own storage, not the browser's, so an in-app view would
-   * present a sign-in page rather than the settings page -- and a page that
-   * asks for a password is exactly what this app should not be showing.
-   */
-  function openOnWeb(path: string) {
-    void Linking.openURL(`${WEB}${path}`);
-  }
-
   function confirmSignOut() {
     /*
      * Confirmed, because signing out on a phone is one mis-tap away and
      * getting back in means typing a password on a small keyboard.
      */
     Alert.alert(
-      "Sign out?",
-      "You will need your email and password to sign back in.",
+      t("Sign out?", "ចាកចេញ?"),
+      t(
+        "You will need your email and password to sign back in.",
+        "អ្នកនឹងត្រូវប្រើអ៊ីមែល និងពាក្យសម្ងាត់ដើម្បីចូលម្តងទៀត។",
+      ),
       [
-        { text: "Stay signed in", style: "cancel" },
+        { text: t("Stay signed in", "នៅជាប់"), style: "cancel" },
         {
-          text: "Sign out",
+          text: t("Sign out", "ចាកចេញ"),
           style: "destructive",
           onPress: () => void supabase.auth.signOut(),
         },
@@ -247,9 +253,9 @@ export default function Settings() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Settings</Text>
+        <Text style={styles.title}>{t("Settings", "ការកំណត់")}</Text>
         <Text style={styles.muted} numberOfLines={1}>
-          {workspace?.businessName ?? "No workspace selected"}
+          {workspace?.businessName ?? t("No workspace selected", "មិនបានជ្រើសកន្លែងធ្វើការ")}
         </Text>
       </View>
 
@@ -298,7 +304,7 @@ export default function Settings() {
         </Pressable>
 
         {workspaces.length > 1 ? (
-          <Group title="Workspace in use">
+          <Group title={t("Switch workspace", "ប្តូរកន្លែងធ្វើការ")}>
             <Pressable
               accessibilityRole="button"
               onPress={() => setSwitcher((open) => !open)}
@@ -317,7 +323,7 @@ export default function Settings() {
                 style={{ flex: 1, fontSize: 15, fontWeight: "600", color: colors.ink }}
                 numberOfLines={1}
               >
-                {workspace?.businessName ?? "Choose a workspace"}
+                {workspace?.businessName ?? t("Choose a workspace", "ជ្រើសកន្លែងធ្វើការ")}
               </Text>
 
               {busy ? (
@@ -370,7 +376,10 @@ export default function Settings() {
                         <Text style={[styles.muted, { fontSize: 12 }]}>
                           {usable
                             ? option.role
-                            : "Subscription expired — renew on the web"}
+                            : t(
+                                "Subscription expired — renew on the web",
+                                "អស់សុពលភាព — សូមបន្តនៅលើគេហទំព័រ",
+                              )}
                         </Text>
                       </View>
 
@@ -388,29 +397,14 @@ export default function Settings() {
           </Group>
         ) : null}
 
-        {GROUPS.map((group) => {
-          const rows = group.rows.filter((row) => !row.manage || canManage);
-
-          if (rows.length === 0) {
-            return null;
-          }
-
-          return (
-            <Group key={group.title} title={group.title}>
-              {rows.map((row, index) => (
+        {GROUPS.map((group) => (
+          <Group key={group.title} title={t(group.title, group.km)}>
+              {group.rows.map((row, index) => (
                 <Pressable
                   key={row.label}
                   accessibilityRole="button"
-                  accessibilityLabel={
-                    row.web
-                      ? `${row.label}. Opens on the web.`
-                      : row.label
-                  }
-                  onPress={() =>
-                    row.route
-                      ? router.push(row.route as never)
-                      : openOnWeb(row.web as string)
-                  }
+                  accessibilityLabel={t(row.label, row.km)}
+                  onPress={() => router.push(row.route as never)}
                   style={({ pressed }) => ({
                     flexDirection: "row",
                     alignItems: "center",
@@ -439,28 +433,22 @@ export default function Settings() {
                     <Text
                       style={{ fontSize: 15, fontWeight: "600", color: colors.ink }}
                     >
-                      {row.label}
+                      {t(row.label, row.km)}
                     </Text>
                     <Text style={[styles.muted, { fontSize: 12.5 }]}>
-                      {row.detail}
+                      {t(row.detail, row.detailKm)}
                     </Text>
                   </View>
 
-                  {/*
-                    Marked, so nobody taps expecting to stay in the app. These
-                    are the pages that need a width or a keyboard a phone does
-                    not have.
-                  */}
                   <Ionicons
-                    name={row.web ? "open-outline" : "chevron-forward"}
-                    size={row.web ? 15 : 18}
+                    name="chevron-forward"
+                    size={18}
                     color={colors.muted}
                   />
                 </Pressable>
               ))}
             </Group>
-          );
-        })}
+        ))}
 
         <Pressable
           accessibilityRole="button"
@@ -480,7 +468,7 @@ export default function Settings() {
           <Ionicons name="log-out-outline" size={18} color={colors.red} />
 
           <Text style={{ color: colors.red, fontSize: 15, fontWeight: "700" }}>
-            Sign out
+            {t("Sign out", "ចាកចេញ")}
           </Text>
         </Pressable>
       </ScrollView>

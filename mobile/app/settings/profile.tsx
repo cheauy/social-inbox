@@ -12,6 +12,7 @@ import {
 import { Avatar, IconName, colors, styles } from "../../components/ui";
 import { useAuth } from "../../lib/auth/provider";
 import { useInbox } from "../../lib/inbox-provider";
+import { useLanguage } from "../../lib/language-provider";
 
 /*
  * Everything about you and the workspace you are in, behind the card at the
@@ -33,25 +34,33 @@ type Section = "information" | "subscription" | "integration";
 const ROWS: {
   icon: IconName;
   label: string;
+  km: string;
   detail: string;
+  detailKm: string;
   section: Section;
 }[] = [
   {
     icon: "person-outline",
     label: "Information",
+    km: "ព័ត៌មាន",
     detail: "Your account and this workspace.",
+    detailKm: "គណនីរបស់អ្នក និងកន្លែងធ្វើការនេះ។",
     section: "information",
   },
   {
     icon: "card-outline",
     label: "Subscription",
+    km: "ការជាវ",
     detail: "The plan, when it renews, and what it allows.",
+    detailKm: "គម្រោង ថ្ងៃបន្ត និងអ្វីដែលអនុញ្ញាត។",
     section: "subscription",
   },
   {
     icon: "link-outline",
     label: "Integration",
+    km: "ការតភ្ជាប់",
     detail: "Facebook pages and Telegram bots.",
+    detailKm: "ទំព័រ Facebook និងបូត Telegram។",
     section: "integration",
   },
 ];
@@ -62,6 +71,7 @@ const EXIT = 220;
 export default function Profile() {
   const { session } = useAuth();
   const { member, workspace } = useInbox();
+  const { t } = useLanguage();
 
   /*
    * Two pieces of state, because they answer different questions: `section`
@@ -95,7 +105,10 @@ export default function Profile() {
 
   return (
     <>
-      <SettingsScreen title="Profile" detail={workspace?.businessName ?? "TENH"}>
+      <SettingsScreen
+        title={t("Profile", "ប្រវត្តិរូប")}
+        detail={workspace?.businessName ?? "TENH"}
+      >
         <View
           style={{
             alignItems: "center",
@@ -114,7 +127,7 @@ export default function Profile() {
           />
 
           <Text style={[styles.heading, { fontSize: 20 }]}>
-            {member?.full_name ?? "You"}
+            {member?.full_name ?? t("You", "អ្នក")}
           </Text>
 
           <Text style={[styles.muted, { fontSize: 13 }]}>
@@ -147,7 +160,7 @@ export default function Profile() {
             <Pressable
               key={row.label}
               accessibilityRole="button"
-              accessibilityLabel={row.label}
+              accessibilityLabel={t(row.label, row.km)}
               onPress={() => show(row.section)}
               style={({ pressed }) => ({
                 flexDirection: "row",
@@ -177,10 +190,10 @@ export default function Profile() {
                 <Text
                   style={{ fontSize: 15, fontWeight: "600", color: colors.ink }}
                 >
-                  {row.label}
+                  {t(row.label, row.km)}
                 </Text>
                 <Text style={[styles.muted, { fontSize: 12.5 }]}>
-                  {row.detail}
+                  {t(row.detail, row.detailKm)}
                 </Text>
               </View>
 

@@ -6,6 +6,7 @@ import { SlidePanel } from "../slide-panel";
 import { IconName, colors, styles } from "../ui";
 import { useAuth } from "../../lib/auth/provider";
 import { useInbox } from "../../lib/inbox-provider";
+import { useLanguage } from "../../lib/language-provider";
 
 /*
  * Your account, and the workspace you are looking at.
@@ -65,6 +66,7 @@ function Row({
 export function InformationPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { session } = useAuth();
   const { member, workspace, workspaces, rooms, roster } = useInbox();
+  const { t } = useLanguage();
 
   // "agent" reads like a typo next to every other value on the screen.
   const role = member?.role
@@ -75,52 +77,55 @@ export function InformationPanel({ open, onClose }: { open: boolean; onClose: ()
     <SlidePanel
       open={open}
       onClose={onClose}
-      title="Information"
-      detail="Your account and workspace"
+      title={t("Information", "ព័ត៌មាន")}
+      detail={t("Your account and workspace", "គណនី និងកន្លែងធ្វើការ")}
     >
-      <SettingsGroup title="You">
+      <SettingsGroup title={t("You", "អ្នក")}>
         <Row
           first
           icon="person-outline"
-          label="Name"
+          label={t("Name", "ឈ្មោះ")}
           value={member?.full_name ?? ""}
         />
         <Row
           icon="mail-outline"
-          label="Email"
+          label={t("Email", "អ៊ីមែល")}
           value={member?.email ?? session?.user.email ?? ""}
         />
         <Row
           icon="ribbon-outline"
-          label="Role here"
+          label={t("Role here", "តួនាទីនៅទីនេះ")}
           value={role}
         />
       </SettingsGroup>
 
-      <SettingsGroup title="Workspace">
+      <SettingsGroup title={t("Workspace", "កន្លែងធ្វើការ")}>
         <Row
           first
           icon="business-outline"
-          label="Name"
+          label={t("Name", "ឈ្មោះ")}
           value={workspace?.businessName ?? ""}
         />
         <Row
           icon="people-outline"
-          label="Team"
+          label={t("Team", "ក្រុម")}
           value={
             roster.length > 0
-              ? `${roster.length} ${roster.length === 1 ? "person" : "people"}`
+              ? t(
+                  roster.length + (roster.length === 1 ? " person" : " people"),
+                  roster.length + " នាក់",
+                )
               : "—"
           }
         />
         <Row
           icon="chatbubbles-outline"
-          label="Team rooms"
+          label={t("Team rooms", "បន្ទប់ក្រុម")}
           value={rooms.length > 0 ? String(rooms.length) : "—"}
         />
         <Row
           icon="albums-outline"
-          label="Workspaces you can reach"
+          label={t("Workspaces you can reach", "កន្លែងធ្វើការដែលអ្នកចូលបាន")}
           value={String(workspaces.length)}
         />
       </SettingsGroup>
@@ -128,9 +133,10 @@ export function InformationPanel({ open, onClose }: { open: boolean; onClose: ()
       <Text
         style={[styles.muted, { fontSize: 12, paddingHorizontal: 2, lineHeight: 18 }]}
       >
-        Changing your name or your password is on the web, under Login and
-        security. Both need a verification step, and this app never shows a
-        password field.
+        {t(
+          "Changing your name is on the web. Your password is under Login and security, on this phone.",
+          "ការប្តូរឈ្មោះ គឺនៅលើគេហទំព័រ។ ពាក្យសម្ងាត់ស្ថិតក្រោម ការចូល និងសុវត្ថិភាព នៅលើទូរស័ព្ទនេះ។",
+        )}
       </Text>
     </SlidePanel>
   );

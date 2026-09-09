@@ -49,7 +49,7 @@ import type {
   TeamMember,
 } from "../../components/customer-panel";
 import { api, ApiError } from "../../lib/api/client";
-import { useDisplay } from "../../lib/display-provider";
+import { CHAT_BASE_COLOR, useDisplay } from "../../lib/display-provider";
 import { useInbox } from "../../lib/inbox-provider";
 import type {
   ConversationStatus,
@@ -826,7 +826,7 @@ export default function Conversation() {
   } = useInbox();
 
   // Whatever background this phone chose in Settings.
-  const { backgroundColor } = useDisplay();
+  const { backgroundUri } = useDisplay();
 
   const conversation = useMemo(
     () => conversations.find((item) => item.id === id) ?? null,
@@ -1688,10 +1688,32 @@ export default function Conversation() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.screen, { paddingTop: insets.top, backgroundColor }]}
+      style={[
+        styles.screen,
+        { paddingTop: insets.top, backgroundColor: CHAT_BASE_COLOR },
+      ]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={insets.top}
     >
+      {/*
+        The wallpaper, behind everything. The header and the composer paint
+        over it, exactly as the rail does on the web, so it shows where the
+        bubbles are and nowhere else. Base colour underneath because a cold
+        thread draws before a megabyte of PNG arrives, and bubbles have to be
+        readable on that first frame.
+      */}
+      <Image
+        source={{ uri: backgroundUri }}
+        resizeMode="cover"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+        }}
+      />
+
       <View style={styles.header}>
         <View style={styles.row}>
           <IconButton icon="chevron-back" label="Back to inbox" onPress={() => router.back()} />
