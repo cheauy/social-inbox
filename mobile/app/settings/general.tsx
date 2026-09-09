@@ -1,33 +1,67 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Linking, Pressable, Switch, Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, Switch, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  SaveBar,
   SettingsGroup,
   SettingsScreen,
 } from "../../components/settings-screen";
 import { colors, styles } from "../../components/ui";
 import { useLanguage } from "../../lib/language-provider";
-import { SOUNDS, useNotificationSound } from "../../lib/notification-sound";
+import {
+  DEFAULT_SOUND,
+  SOUNDS,
+  SoundId,
+  useNotificationSound,
+} from "../../lib/notification-sound";
 
 /*
  * General: the sound a new message makes.
  *
- * The workspace's own name, time zone and contact details are the other half
- * of this page on the web and stay there -- they are typed once when the
- * workspace is set up and changed almost never, and every one of them is a
- * text field an owner wants a keyboard for.
+ * Held as a draft and applied on Save. Tapping a sound plays it -- that is
+ * the only way to know what you are choosing -- but auditioning six tones is
+ * not the same as picking one, and a screen that saved on every tap would
+ * leave you on whichever you happened to hear last.
  */
-
-const WEB = process.env.EXPO_PUBLIC_TENH_API_URL || "https://app.tenhchat.com";
 
 export default function General() {
   const { t } = useLanguage();
   const { sound, enabled, setSound, setEnabled, play } = useNotificationSound();
 
+  const insets = useSafeAreaInsets();
+
+  const [draftSound, setDraftSound] = useState<SoundId>(sound);
+  const [draftEnabled, setDraftEnabled] = useState(enabled);
+
+  const dirty = draftSound !== sound || draftEnabled !== enabled;
+  const isDefault = draftSound === DEFAULT_SOUND && draftEnabled;
+
+  async function save() {
+    await setSound(draftSound);
+    await setEnabled(draftEnabled);
+  }
+
+  async function reset() {
+    setDraftSound(DEFAULT_SOUND);
+    setDraftEnabled(true);
+    await setSound(DEFAULT_SOUND);
+    await setEnabled(true);
+  }
+
   return (
     <SettingsScreen
       title={t("General", "ទូទៅ")}
       detail={t("Sound for new messages", "សំឡេងសម្រាប់សារថ្មី")}
+      footer={
+        <SaveBar
+          dirty={dirty}
+          canReset={!isDefault || dirty}
+          onSave={() => void save()}
+          onReset={() => void reset()}
+        />
+      }
     >
       <SettingsGroup title={t("Notifications", "ការជូនដំណឹង")}>
         <View
@@ -50,7 +84,7 @@ export default function General() {
             }}
           >
             <Ionicons
-              name={enabled ? "volume-high-outline" : "volume-mute-outline"}
+              name={draftEnabled ? "volume-high-outline" : "volume-mute-outline"}
               size={17}
               color={colors.blue}
             />
@@ -69,8 +103,8 @@ export default function General() {
           </View>
 
           <Switch
-            value={enabled}
-            onValueChange={(on) => void setEnabled(on)}
+            value={draftEnabled}
+            onValueChange={setDraftEnabled}
             trackColor={{ true: colors.blue, false: colors.border }}
             thumbColor="white"
           />
@@ -79,7 +113,7 @@ export default function General() {
 
       <SettingsGroup title={t("Notification sound", "សំឡេងជូនដំណឹង")}>
         {SOUNDS.map((option, index) => {
-          const active = option.id === sound;
+          const active = option.id === draftSound;
 
           return (
             <Pressable
@@ -92,7 +126,7 @@ export default function General() {
                 picking a name, and the names here are numbers.
               */
               onPress={() => {
-                void setSound(option.id);
+                setDraftSound(option.id);
                 play(option.id);
               }}
               style={({ pressed }) => ({
@@ -104,7 +138,7 @@ export default function General() {
                 borderTopWidth: index === 0 ? 0 : 1,
                 borderTopColor: colors.border,
                 backgroundColor: pressed ? colors.pale : "transparent",
-                opacity: enabled ? 1 : 0.5,
+                opacity: draftEnabled ? 1 : 0.5,
               })}
             >
               <View
@@ -147,32 +181,12 @@ export default function General() {
         style={[styles.muted, { fontSize: 12, paddingHorizontal: 2, lineHeight: 18 }]}
       >
         {t(
-          "Six of the web's own sounds, by the same numbers. The workspace name, time zone and contact details are on the web.",
-          "សំឡេងទាំងប្រាំមួយដូចនៅលើគេហទំព័រ ដោយប្រើលេខដូចគ្នា។ ឈ្មោះ​កន្លែងធ្វើការ ល្វែងម៉ោង និងព័ត៌មានទំនាក់ទំនង នៅលើគេហទំព័រ។",
+          "Six of the web's own sounds, by the same numbers.",
+          "សំឡេងទាំងប្រាំមួយដូចនៅលើគេហទំព័រ ដោយប្រើលេខដូចគ្នា។",
         )}
       </Text>
 
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => void Linking.openURL(`${WEB}/dashboard/settings/general`)}
-        style={({ pressed }) => ({
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 8,
-          paddingVertical: 14,
-          borderRadius: 14,
-          borderWidth: 1,
-          borderColor: colors.border,
-          backgroundColor: pressed ? colors.pale : "white",
-        })}
-      >
-        <Ionicons name="open-outline" size={16} color={colors.blue} />
-
-        <Text style={{ color: colors.blue, fontSize: 14.5, fontWeight: "700" }}>
-          {t("Workspace details on the web", "ព័ត៌មានកន្លែងធ្វើការនៅលើគេហទំព័រ")}
-        </Text>
-      </Pressable>
+      <View style={{ height: insets.bottom }} />
     </SettingsScreen>
   );
 }

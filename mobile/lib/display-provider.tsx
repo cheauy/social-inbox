@@ -51,7 +51,7 @@ export const CHAT_BASE_COLOR = "#F6F8FC";
 
 const STORAGE_KEY = "display.chat-background";
 
-const DEFAULT: ChatBackgroundId = "theme-1";
+export const DEFAULT_BACKGROUND: ChatBackgroundId = "theme-1";
 
 export const chatBackground = (id: ChatBackgroundId) =>
   CHAT_BACKGROUNDS.find((option) => option.id === id) ?? CHAT_BACKGROUNDS[0];
@@ -75,7 +75,7 @@ export const useDisplay = () => {
 };
 
 export function DisplayProvider({ children }: React.PropsWithChildren) {
-  const [background, setStored] = useState<ChatBackgroundId>(DEFAULT);
+  const [background, setStored] = useState<ChatBackgroundId>(DEFAULT_BACKGROUND);
 
   /*
    * Read once at start. The default is what shows until it arrives, which is

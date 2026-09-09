@@ -50,6 +50,8 @@ export const SOUNDS: {
   })),
 ];
 
+export const DEFAULT_SOUND: SoundId = "default";
+
 const SOUND_KEY = "notifications.sound";
 const ENABLED_KEY = "notifications.sound-enabled";
 
@@ -75,7 +77,7 @@ export const useNotificationSound = () => {
 };
 
 export function NotificationSoundProvider({ children }: React.PropsWithChildren) {
-  const [sound, setStored] = useState<SoundId>("default");
+  const [sound, setStored] = useState<SoundId>(DEFAULT_SOUND);
   const [enabled, setStoredEnabled] = useState(true);
 
   useEffect(() => {

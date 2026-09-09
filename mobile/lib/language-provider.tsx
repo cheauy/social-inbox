@@ -47,7 +47,7 @@ export const LANGUAGES: {
 
 const STORAGE_KEY = "display.language";
 
-const DEFAULT: LanguageId = "en";
+export const DEFAULT_LANGUAGE: LanguageId = "en";
 
 type LanguageState = {
   language: LanguageId;
@@ -73,7 +73,7 @@ export const useLanguage = () => {
 export const useT = () => useLanguage().t;
 
 export function LanguageProvider({ children }: React.PropsWithChildren) {
-  const [language, setStored] = useState<LanguageId>(DEFAULT);
+  const [language, setStored] = useState<LanguageId>(DEFAULT_LANGUAGE);
 
   useEffect(() => {
     let alive = true;

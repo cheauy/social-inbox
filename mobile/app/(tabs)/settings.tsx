@@ -210,6 +210,16 @@ export default function Settings() {
   } = useInbox();
   const { t } = useLanguage();
 
+  /*
+   * Only the ones you can actually open. An expired workspace was listed
+   * greyed out with "renew on the web" under it, which is a row that cannot
+   * be tapped, on a phone that cannot renew it -- it took up the switcher and
+   * answered nothing. The web says so where the renewing happens.
+   */
+  const usable = workspaces.filter(
+    (option) => option.subscriptionOperational,
+  );
+
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState("");
   const [switcher, setSwitcher] = useState(false);
@@ -311,7 +321,7 @@ export default function Settings() {
           <Ionicons name="chevron-forward" size={18} color={colors.muted} />
         </Pressable>
 
-        {workspaces.length > 1 ? (
+        {usable.length > 1 ? (
           <Group title={t("Switch workspace", "ប្តូរកន្លែងធ្វើការ")}>
             <Pressable
               accessibilityRole="button"
@@ -346,8 +356,7 @@ export default function Settings() {
             </Pressable>
 
             {switcher
-              ? workspaces.map((option) => {
-                  const usable = option.subscriptionOperational;
+              ? usable.map((option) => {
                   const active = option.businessId === workspace?.businessId;
 
                   return (
@@ -355,7 +364,7 @@ export default function Settings() {
                       key={option.businessId}
                       accessibilityRole="button"
                       accessibilityState={{ selected: active }}
-                      disabled={!usable || busy}
+                      disabled={busy}
                       onPress={() => void switchTo(option)}
                       style={({ pressed }) => ({
                         flexDirection: "row",
@@ -366,7 +375,6 @@ export default function Settings() {
                         borderTopWidth: 1,
                         borderTopColor: colors.border,
                         backgroundColor: pressed ? colors.pale : "transparent",
-                        opacity: usable ? 1 : 0.5,
                       })}
                     >
                       <View style={{ flex: 1 }}>
@@ -382,12 +390,7 @@ export default function Settings() {
                         </Text>
 
                         <Text style={[styles.muted, { fontSize: 12 }]}>
-                          {usable
-                            ? option.role
-                            : t(
-                                "Subscription expired — renew on the web",
-                                "អស់សុពលភាព — សូមបន្តនៅលើគេហទំព័រ",
-                              )}
+                          {option.role}
                         </Text>
                       </View>
 

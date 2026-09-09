@@ -14,6 +14,8 @@ import {
   SettingsGroup,
   SettingsScreen,
 } from "../../components/settings-screen";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import { Sheet, TagChip, colors, styles } from "../../components/ui";
 import { api } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
@@ -52,6 +54,7 @@ const SWATCHES = [
 ];
 
 export default function Tags() {
+  const insets = useSafeAreaInsets();
   const { workspace, canManageRooms } = useInbox();
 
   const [tags, setTags] = useState<Tag[]>([]);
@@ -201,29 +204,46 @@ export default function Tags() {
       skeleton={[6]}
       error={error}
       onRetry={() => void load()}
+      /*
+        Pinned to the bottom rather than sitting above the list, matching
+        Quick replies: the button is reachable with a thumb, and it stays put
+        while the list it adds to scrolls under it.
+      */
+      footer={
+        canManageRooms ? (
+          <View
+            style={{
+              padding: 14,
+              paddingBottom: insets.bottom + 14,
+              borderTopWidth: 1,
+              borderTopColor: colors.border,
+              backgroundColor: "white",
+            }}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="New tag"
+              onPress={startCreate}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                paddingVertical: 14,
+                borderRadius: 14,
+                backgroundColor: pressed ? "#0072AB" : colors.blue,
+              })}
+            >
+              <Ionicons name="add" size={18} color="white" />
+
+              <Text style={{ color: "white", fontSize: 15, fontWeight: "700" }}>
+                New tag
+              </Text>
+            </Pressable>
+          </View>
+        ) : null
+      }
     >
-      {canManageRooms ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={startCreate}
-          style={({ pressed }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-            paddingVertical: 14,
-            borderRadius: 14,
-            backgroundColor: pressed ? "#0072AB" : colors.blue,
-          })}
-        >
-          <Ionicons name="add" size={18} color="white" />
-
-          <Text style={{ color: "white", fontSize: 15, fontWeight: "700" }}>
-            New tag
-          </Text>
-        </Pressable>
-      ) : null}
-
       <SettingsGroup>
         {tags.length === 0 ? (
           <View style={{ padding: 28, alignItems: "center", gap: 6 }}>

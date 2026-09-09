@@ -1,9 +1,10 @@
 import { useRouter } from "expo-router";
 import { ReactNode, useEffect, useState } from "react";
-import { Animated, ScrollView, Text, View } from "react-native";
+import { Animated, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Empty, ErrorNotice, IconButton, colors, styles } from "./ui";
+import { useLanguage } from "../lib/language-provider";
 import { useInbox } from "../lib/inbox-provider";
 
 /*
@@ -238,6 +239,89 @@ export function SettingsGroup({
       >
         {children}
       </View>
+    </View>
+  );
+}
+
+/*
+ * Save and Reset, in the shape the permission editor already uses: the
+ * destructive-ish one small on the left, the one you came for filling the
+ * rest. Save is dead until something has changed, so the button says whether
+ * there is anything to save without being read.
+ */
+export function SaveBar({
+  dirty,
+  canReset,
+  onSave,
+  onReset,
+}: {
+  dirty: boolean;
+  canReset: boolean;
+  onSave: () => void;
+  onReset: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const { t } = useLanguage();
+
+  const [saved, setSaved] = useState(false);
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        gap: 10,
+        padding: 14,
+        paddingBottom: insets.bottom + 14,
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+        backgroundColor: "white",
+      }}
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t("Reset to default", "កំណត់ដើមឡើងវិញ")}
+        disabled={!canReset}
+        onPress={() => {
+          setSaved(false);
+          onReset();
+        }}
+        style={({ pressed }) => ({
+          paddingHorizontal: 16,
+          paddingVertical: 13,
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: pressed ? colors.pale : "white",
+          opacity: canReset ? 1 : 0.45,
+        })}
+      >
+        <Text style={{ color: colors.ink, fontSize: 14.5, fontWeight: "700" }}>
+          {t("Reset", "កំណត់ដើម")}
+        </Text>
+      </Pressable>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t("Save", "រក្សាទុក")}
+        disabled={!dirty}
+        onPress={() => {
+          onSave();
+          setSaved(true);
+        }}
+        style={({ pressed }) => ({
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingVertical: 13,
+          borderRadius: 14,
+          backgroundColor: pressed ? "#0A6FA8" : colors.blue,
+          opacity: dirty ? 1 : 0.5,
+        })}
+      >
+        <Text style={{ color: "white", fontSize: 15, fontWeight: "700" }}>
+          {saved && !dirty ? t("Saved", "បានរក្សាទុក") : t("Save", "រក្សាទុក")}
+        </Text>
+      </Pressable>
     </View>
   );
 }

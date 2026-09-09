@@ -1,13 +1,25 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 
 import {
+  SaveBar,
   SettingsGroup,
   SettingsScreen,
 } from "../../components/settings-screen";
 import { colors, styles } from "../../components/ui";
-import { CHAT_BACKGROUNDS, useDisplay } from "../../lib/display-provider";
-import { LANGUAGES, useLanguage } from "../../lib/language-provider";
+import {
+  CHAT_BACKGROUNDS,
+  ChatBackgroundId,
+  DEFAULT_BACKGROUND,
+  useDisplay,
+} from "../../lib/display-provider";
+import {
+  DEFAULT_LANGUAGE,
+  LANGUAGES,
+  LanguageId,
+  useLanguage,
+} from "../../lib/language-provider";
 
 /*
  * Display: the chat background, and the language.
@@ -16,20 +28,54 @@ import { LANGUAGES, useLanguage } from "../../lib/language-provider";
  * not on the workspace -- so the phone keeps its own, in the same place it
  * keeps the session. The five backgrounds are the web's five, by the same
  * ids, so a background chosen on a laptop is a background you recognise here.
+ *
+ * Held as a draft and applied on Save, like the web's own display page. The
+ * language especially: switching it the instant a row is touched turns the
+ * screen you are standing on into a language you may have tapped by mistake,
+ * and the way back is now written in it.
  */
 
 export default function Display() {
   const { background, setBackground } = useDisplay();
   const { language, setLanguage, t } = useLanguage();
 
+  const [draftBackground, setDraftBackground] =
+    useState<ChatBackgroundId>(background);
+  const [draftLanguage, setDraftLanguage] = useState<LanguageId>(language);
+
+  const dirty = draftBackground !== background || draftLanguage !== language;
+
+  const isDefault =
+    draftBackground === DEFAULT_BACKGROUND && draftLanguage === DEFAULT_LANGUAGE;
+
+  async function save() {
+    await setBackground(draftBackground);
+    await setLanguage(draftLanguage);
+  }
+
+  async function reset() {
+    setDraftBackground(DEFAULT_BACKGROUND);
+    setDraftLanguage(DEFAULT_LANGUAGE);
+    await setBackground(DEFAULT_BACKGROUND);
+    await setLanguage(DEFAULT_LANGUAGE);
+  }
+
   return (
     <SettingsScreen
       title={t("Display", "ការបង្ហាញ")}
       detail={t("How this phone shows TENH", "របៀបដែលទូរស័ព្ទនេះបង្ហាញ TENH")}
+      footer={
+        <SaveBar
+          dirty={dirty}
+          canReset={!isDefault || dirty}
+          onSave={() => void save()}
+          onReset={() => void reset()}
+        />
+      }
     >
       <SettingsGroup title={t("Chat background", "ផ្ទៃខាងក្រោយឆាត")}>
         {CHAT_BACKGROUNDS.map((option, index) => {
-          const active = option.id === background;
+          const active = option.id === draftBackground;
 
           return (
             <Pressable
@@ -37,7 +83,7 @@ export default function Display() {
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
               accessibilityLabel={option.label}
-              onPress={() => void setBackground(option.id)}
+              onPress={() => setDraftBackground(option.id)}
               style={({ pressed }) => ({
                 flexDirection: "row",
                 alignItems: "center",
@@ -87,7 +133,7 @@ export default function Display() {
 
       <SettingsGroup title={t("Language", "ភាសា")}>
         {LANGUAGES.map((option, index) => {
-          const active = option.id === language;
+          const active = option.id === draftLanguage;
 
           return (
             <Pressable
@@ -95,7 +141,7 @@ export default function Display() {
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
               accessibilityLabel={option.label}
-              onPress={() => void setLanguage(option.id)}
+              onPress={() => setDraftLanguage(option.id)}
               style={({ pressed }) => ({
                 flexDirection: "row",
                 alignItems: "center",
