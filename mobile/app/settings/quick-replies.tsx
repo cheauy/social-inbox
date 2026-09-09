@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -324,20 +325,7 @@ export default function QuickReplies() {
                     </View>
                   ) : null}
 
-                  {reply.attachments?.length ? (
-                    <View
-                      style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
-                    >
-                      <Ionicons
-                        name="image-outline"
-                        size={14}
-                        color={colors.muted}
-                      />
-                      <Text style={[styles.muted, { fontSize: 11 }]}>
-                        {reply.attachments.length}
-                      </Text>
-                    </View>
-                  ) : null}
+
                 </View>
 
                 <Text
@@ -346,6 +334,74 @@ export default function QuickReplies() {
                 >
                   {reply.message_text}
                 </Text>
+
+                {/*
+                  What it sends, under what it says, in the order the customer
+                  will get them. The count on the title said a reply carried
+                  something; it did not say what, and "two images" is not a
+                  thing anybody recognises their own reply by.
+                */}
+                {reply.attachments?.length ? (
+                  <View
+                    style={{ flexDirection: "row", gap: 6, paddingTop: 4 }}
+                  >
+                    {reply.attachments.slice(0, 4).map((attachment) =>
+                      attachment.kind === "image" ? (
+                        <Image
+                          key={attachment.path}
+                          source={{ uri: attachment.url ?? undefined }}
+                          style={{
+                            width: 44,
+                            height: 44,
+                            borderRadius: 8,
+                            backgroundColor: colors.pale,
+                          }}
+                        />
+                      ) : (
+                        <View
+                          key={attachment.path}
+                          style={{
+                            width: 44,
+                            height: 44,
+                            borderRadius: 8,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: colors.pale,
+                          }}
+                        >
+                          <Ionicons
+                            name="videocam"
+                            size={18}
+                            color={colors.blue}
+                          />
+                        </View>
+                      ),
+                    )}
+
+                    {reply.attachments.length > 4 ? (
+                      <View
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 8,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: colors.pale,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: "800",
+                            color: colors.muted,
+                          }}
+                        >
+                          +{reply.attachments.length - 4}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
               </View>
 
               <Pressable

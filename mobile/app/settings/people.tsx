@@ -42,8 +42,15 @@ import type { Member } from "../../lib/types";
  * The invitation goes to their email, so nothing is granted from this screen
  * that the person cannot decline.
  *
- * Reconnecting a Facebook page is still on the web: it is an OAuth round trip
- * that would hand somebody to a browser mid-flow anyway.
+ * Disconnecting is here too, and it is the half that is urgent: a page handed
+ * to the wrong workspace, or a bot somebody has to stop right now, cannot wait
+ * for whoever has the laptop. It is a real release, not a hidden row -- the
+ * Page is unsubscribed from TENH's webhook at Meta, the bot's webhook is
+ * deleted at Telegram, and the stored token is dropped. Nothing keeps
+ * listening afterwards.
+ *
+ * Connecting one back up is still on the web: it is an OAuth round trip that
+ * would hand somebody to a browser mid-flow anyway.
  */
 
 type Invitation = {
@@ -64,7 +71,7 @@ type Channel = {
 
 export default function People() {
   const insets = useSafeAreaInsets();
-  const { workspace } = useInbox();
+  const { workspace, canManageRooms } = useInbox();
   const { t } = useLanguage();
 
   const [members, setMembers] = useState<Member[]>([]);
@@ -79,6 +86,7 @@ export default function People() {
   const [role, setRole] = useState<"agent" | "owner">("agent");
   const [sending, setSending] = useState(false);
   const [inviteError, setInviteError] = useState("");
+  const [releasing, setReleasing] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!workspace) {
@@ -187,6 +195,78 @@ export default function People() {
           ? actError.message
           : "Unable to update that invitation.",
       );
+    }
+  }
+
+  /*
+   * Two taps, and the first one spells out what stops. "Disconnect" on its own
+   * reads like hiding a row; what actually happens is that messages to that
+   * Page or bot stop reaching this workspace, and nobody finds out until a
+   * customer is ignored for a day.
+   */
+  function confirmDisconnect(channel: Channel) {
+    const telegram = channel.platform === "telegram";
+
+    Alert.alert(
+      t("Disconnect " + channel.name + "?", "ផ្តាច់ " + channel.name + "?"),
+      t(
+        telegram
+          ? "TENH deletes the bot's webhook at Telegram and forgets its token. New messages to the bot stop arriving here. Reconnecting means pasting the bot token again."
+          : "TENH unsubscribes from the Page at Meta and forgets its token. New messages and comments stop arriving here. Reconnecting means signing in to Facebook again.",
+        telegram
+          ? "TENH នឹងលុប webhook របស់បូតនៅ Telegram។ សារថ្មីនឹងឈប់មកដល់ទីនេះ។"
+          : "TENH នឹងផ្តាច់ការតភ្ជាប់ជាមួយ Page នៅ Meta។ សារ និងមតិថ្មីនឹងឈប់មកដល់ទីនេះ។",
+      ),
+      [
+        { text: t("Keep connected", "រក្សាការតភ្ជាប់"), style: "cancel" },
+        {
+          text: t("Disconnect", "ផ្តាច់"),
+          style: "destructive",
+          onPress: () => void disconnect(channel),
+        },
+      ],
+    );
+  }
+
+  async function disconnect(channel: Channel) {
+    if (!workspace) return;
+
+    setReleasing(channel.id);
+    setError("");
+
+    try {
+      /*
+       * Each platform releases its own way -- Meta wants the webhook
+       * subscription deleted, Telegram wants deleteWebhook -- and both
+       * endpoints do that before they touch the row, so a failure at the
+       * platform leaves the channel connected here rather than orphaned.
+       */
+      if (channel.platform === "telegram") {
+        await api(
+          "/api/telegram/connection?connectionId=" +
+            encodeURIComponent(channel.id),
+          workspace.businessId,
+          { method: "DELETE" },
+        );
+      } else {
+        await api(
+          "/api/facebook/connections/" +
+            encodeURIComponent(channel.id) +
+            "/disconnect",
+          workspace.businessId,
+          { method: "POST" },
+        );
+      }
+
+      await load();
+    } catch (disconnectError) {
+      setError(
+        disconnectError instanceof Error
+          ? disconnectError.message
+          : "Unable to disconnect that channel.",
+      );
+    } finally {
+      setReleasing(null);
     }
   }
 
@@ -371,6 +451,34 @@ export default function People() {
                       : "Messenger"}
                 </Text>
               </View>
+
+              {/*
+                Owner or admin, which is the test the disconnect endpoints
+                apply. Gating this on the invitation permission instead would
+                hide it from an admin the API would have let through.
+              */}
+              {canManageRooms ? (
+                releasing === channel.id ? (
+                  <ActivityIndicator color={colors.red} />
+                ) : (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t(
+                      "Disconnect " + channel.name,
+                      "ផ្តាច់ " + channel.name,
+                    )}
+                    onPress={() => confirmDisconnect(channel)}
+                    hitSlop={10}
+                    style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+                  >
+                    <Ionicons
+                      name="unlink-outline"
+                      size={19}
+                      color={colors.red}
+                    />
+                  </Pressable>
+                )
+              ) : null}
             </View>
           ))
         )}
