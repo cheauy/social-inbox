@@ -1,12 +1,133 @@
 import React from "react";
 import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { InboxConversation } from "../lib/types";
 
 export const colors = { blue: "#0089CC", ink: "#102238", muted: "#6D7E91", border: "#E3EAF2", pale: "#EAF7FF", background: "#F6F8FC", red: "#B43232" };
 export type IconName = React.ComponentProps<typeof Ionicons>["name"];
-export function IconButton({ icon, label, onPress, disabled = false }: { icon: IconName; label: string; onPress: () => void; disabled?: boolean }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.icon, { opacity: disabled ? 0.35 : pressed ? 0.55 : 1 }]}><Ionicons name={icon} size={23} color={colors.blue} /></Pressable>;
+export function IconButton({ icon, label, onPress, disabled = false, badge = 0 }: { icon: IconName; label: string; onPress: () => void; disabled?: boolean; badge?: number }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.icon, { opacity: disabled ? 0.35 : pressed ? 0.55 : 1 }]}>
+      <Ionicons name={icon} size={23} color={colors.blue} />
+
+      {/*
+        A count on the corner of the icon. Whether a customer is tagged at all
+        is the thing an agent wants at a glance, and the tags themselves are a
+        panel away -- so the button carries the number rather than making them
+        open it to find out there are none.
+      */}
+      {badge > 0 ? (
+        <View style={{ position: "absolute", top: 4, right: 2, minWidth: 16, height: 16, paddingHorizontal: 4, borderRadius: 8, backgroundColor: colors.blue, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "white" }}>
+          <Text style={{ color: "white", fontSize: 9.5, fontWeight: "800" }}>{badge > 9 ? "9+" : badge}</Text>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
+
+/*
+ * The same tag chip used by the website: assigned tags are filled with their
+ * colour and carry a white check, while available tags are outlined. Tag
+ * colours are workspace data, so the label colour is derived for contrast.
+ */
+function readableTagText(background: string) {
+  const compact = background.trim().match(/^#([0-9a-f]{3})$/i);
+  const full = background.trim().match(/^#([0-9a-f]{6})(?:[0-9a-f]{2})?$/i);
+  const hex = compact
+    ? compact[1].split("").map((part) => `${part}${part}`).join("")
+    : full?.[1];
+
+  if (!hex) return "white";
+
+  const linear = (value: number) => {
+    const ratio = value / 255;
+    return ratio <= 0.03928 ? ratio / 12.92 : ((ratio + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance =
+    0.2126 * linear(parseInt(hex.slice(0, 2), 16)) +
+    0.7152 * linear(parseInt(hex.slice(2, 4), 16)) +
+    0.0722 * linear(parseInt(hex.slice(4, 6), 16));
+
+  return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05)
+    ? colors.ink
+    : "white";
+}
+
+export function TagChip({
+  name,
+  color,
+  selected = true,
+  compact = false,
+  showCheck = true,
+}: {
+  name: string;
+  color?: string | null;
+  selected?: boolean;
+  compact?: boolean;
+  showCheck?: boolean;
+}) {
+  const tone = color || colors.blue;
+
+  return (
+    <View
+      style={{
+        maxWidth: compact ? 94 : 190,
+        minHeight: compact ? 22 : 34,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: compact ? 4 : 6,
+        paddingHorizontal: compact ? 8 : 11,
+        paddingVertical: compact ? 2 : 6,
+        borderRadius: compact ? 999 : 12,
+        borderWidth: selected ? 0 : 2,
+        borderColor: tone,
+        backgroundColor: selected ? tone : "white",
+      }}
+    >
+      {!selected ? (
+        <View
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: 4,
+            backgroundColor: tone,
+          }}
+        />
+      ) : null}
+
+      <Text
+        numberOfLines={1}
+        style={{
+          flexShrink: 1,
+          color: selected ? readableTagText(tone) : colors.ink,
+          fontSize: compact ? 11 : 12.5,
+          fontWeight: "700",
+        }}
+      >
+        {name}
+      </Text>
+
+      {selected && showCheck ? (
+        <View
+          style={{
+            width: compact ? 14 : 17,
+            height: compact ? 14 : 17,
+            borderRadius: 9,
+            backgroundColor: "white",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons
+            name="checkmark"
+            size={compact ? 11 : 13}
+            color={tone}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
 }
 export function Button({ title, onPress, busy = false, secondary = false, disabled = false }: { title: string; onPress: () => void; busy?: boolean; secondary?: boolean; disabled?: boolean }) {
   return <Pressable accessibilityRole="button" disabled={disabled || busy} onPress={onPress} style={({ pressed }) => [styles.button, secondary && { backgroundColor: colors.pale }, { opacity: disabled || pressed ? 0.55 : 1 }]}>{busy ? <ActivityIndicator color={secondary ? colors.blue : "white"} /> : <Text style={{ fontWeight: "700", color: secondary ? colors.blue : "white", fontSize: 16 }}>{title}</Text>}</Pressable>;
@@ -68,15 +189,15 @@ export function PlatformMark({ platform, size = 22 }: { platform: Platform; size
  */
 export function ChannelAvatar({ conversation, size = 48 }: { conversation: InboxConversation; size?: number }) {
   const mark = PLATFORM_MARK[platformOf(conversation)];
-  // Large enough to read the mark, and sat far enough into the corner that it
-  // breaks the avatar's outline rather than floating inside it.
-  const badge = Math.round(size * 0.46);
+  // Keep the platform mark small and overlap the avatar edge, matching the
+  // compact Messenger treatment used by the web Inbox.
+  const badge = Math.max(16, Math.round(size * 0.36));
   return (
-    <View>
+    <View style={{ width: size, height: size }}>
       <Avatar name={conversation.contact?.full_name} uri={conversation.contact?.profile_picture_url} size={size} />
-      <View style={{ position: "absolute", right: -3, bottom: -3, width: badge, height: badge, borderRadius: badge / 2, backgroundColor: mark.logo ? "white" : mark.tint, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "white", overflow: "hidden" }}>
+      <View style={{ position: "absolute", right: -1, bottom: -1, width: badge, height: badge, borderRadius: badge / 2, backgroundColor: mark.logo ? "white" : mark.tint, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "white" }}>
         {mark.logo ? (
-          <Image source={mark.logo} style={{ width: badge, height: badge }} resizeMode="cover" />
+          <Image source={mark.logo} style={{ width: badge - 2, height: badge - 2 }} resizeMode="contain" />
         ) : (
           <Ionicons name={mark.icon} size={badge * 0.58} color="white" />
         )}
@@ -101,12 +222,40 @@ export function ChannelBadge({ conversation }: { conversation: InboxConversation
  * quick replies, tags, the customer -- so the shell lives here and each one
  * only writes its own contents.
  */
-export function Sheet({ open, title, detail, onClose, children }: { open: boolean; title: string; detail: string; onClose: () => void; children: React.ReactNode }) {
+export function Sheet({ open, title, detail, onClose, children, floating = false }: { open: boolean; title: string; detail: string; onClose: () => void; children: React.ReactNode; floating?: boolean }) {
+  const insets = useSafeAreaInsets();
+
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable accessibilityLabel={`Close ${title.toLowerCase()}`} onPress={onClose} style={{ flex: 1, backgroundColor: "rgba(16,34,56,0.35)" }} />
 
-      <View style={{ backgroundColor: "white", borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 28, maxHeight: "82%" }}>
+      <View
+        style={{
+          backgroundColor: "white",
+          borderTopLeftRadius: 20,
+          borderTopRightRadius: 20,
+          borderBottomLeftRadius: floating ? 20 : 0,
+          borderBottomRightRadius: floating ? 20 : 0,
+          marginHorizontal: floating ? 10 : 0,
+          marginBottom: floating ? Math.max(insets.bottom, 10) : 0,
+          paddingBottom: floating ? 10 : Math.max(insets.bottom, 28),
+          maxHeight: floating ? "76%" : "82%",
+          overflow: "hidden",
+        }}
+      >
+        {floating ? (
+          <View
+            style={{
+              alignSelf: "center",
+              width: 38,
+              height: 4,
+              borderRadius: 2,
+              backgroundColor: colors.border,
+              marginTop: 8,
+            }}
+          />
+        ) : null}
+
         <View style={{ padding: 18, paddingBottom: 8 }}>
           <Text style={styles.heading}>{title}</Text>
           <Text style={styles.muted}>{detail}</Text>
@@ -121,6 +270,34 @@ export function Empty({ title, detail, icon = "chatbubbles-outline" }: { title: 
   return <View style={styles.empty}><View style={styles.emptyIcon}><Ionicons name={icon} size={34} color={colors.blue} /></View><Text style={styles.heading}>{title}</Text><Text style={[styles.muted, { textAlign: "center", lineHeight: 22 }]}>{detail}</Text></View>;
 }
 export function ErrorNotice({ message, onRetry }: { message: string; onRetry?: () => void }) { return message ? <View accessibilityRole="alert" style={styles.error}><Text style={{ color: colors.red, flex: 1, lineHeight: 20 }}>{message}</Text>{onRetry && <Pressable accessibilityRole="button" onPress={onRetry} style={{ padding: 8 }}><Text style={{ color: colors.red, fontWeight: "700" }}>Retry</Text></Pressable>}</View> : null; }
+export const relativeTime = (value?: string | null) => {
+  if (!value) return "";
+
+  const date = new Date(value);
+  const timestamp = date.getTime();
+
+  if (!Number.isFinite(timestamp)) return "";
+
+  const elapsed = Math.max(0, Date.now() - timestamp);
+  const seconds = Math.floor(elapsed / 1000);
+
+  if (seconds < 60) return "Now";
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days} days ago`;
+
+  return date.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+  });
+};
 export const time = (value?: string | null) => value ? new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
 export const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },

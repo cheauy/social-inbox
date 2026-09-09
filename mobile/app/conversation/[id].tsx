@@ -576,6 +576,34 @@ function QuickReplySheet({
   onPick: (reply: SavedReply) => void;
   onClose: () => void;
 }) {
+  /*
+   * Grouped in the order the server sent them, which is the order the web
+   * shows: a category appears where its first reply does, rather than
+   * alphabetically, so the two read the same. Anything with no category
+   * collects at the end under one heading instead of scattering.
+   */
+  const grouped = useMemo(() => {
+    const byName = new Map<string, SavedReply[]>();
+
+    for (const reply of replies) {
+      const name = reply.category?.trim() || "Uncategorised";
+
+      byName.set(name, [...(byName.get(name) ?? []), reply]);
+    }
+
+    const uncategorised = byName.get("Uncategorised");
+    byName.delete("Uncategorised");
+
+    const groups = [...byName.entries()].map(([name, list]) => ({
+      name,
+      replies: list,
+    }));
+
+    return uncategorised
+      ? [...groups, { name: "Uncategorised", replies: uncategorised }]
+      : groups;
+  }, [replies]);
+
   return (
     <Sheet
       open={open}
@@ -595,7 +623,30 @@ function QuickReplySheet({
         />
       ) : (
         <ScrollView>
-          {replies.map((reply) => (
+          {grouped.map((group) => (
+            <View key={group.name}>
+              {/*
+                Categories, the way they are set on the web. A workspace with
+                forty saved replies is unusable as one flat list, and the
+                category is already on every row -- it was just being thrown
+                away on the way in.
+              */}
+              <Text
+                style={{
+                  paddingHorizontal: 18,
+                  paddingTop: 14,
+                  paddingBottom: 4,
+                  fontSize: 11,
+                  fontWeight: "800",
+                  letterSpacing: 0.6,
+                  textTransform: "uppercase",
+                  color: colors.muted,
+                }}
+              >
+                {group.name}
+              </Text>
+
+              {group.replies.map((reply) => (
             <Pressable
               key={reply.id}
               accessibilityRole="button"
@@ -629,6 +680,8 @@ function QuickReplySheet({
                 {reply.message_text}
               </Text>
             </Pressable>
+              ))}
+            </View>
           ))}
         </ScrollView>
       )}
@@ -647,6 +700,7 @@ function QuickTagSheet({
   assigned,
   busyId,
   loading,
+  error,
   name,
   onToggle,
   onClose,
@@ -656,12 +710,20 @@ function QuickTagSheet({
   assigned: Set<string>;
   busyId: string | null;
   loading: boolean;
+  error: string;
   name: string;
   onToggle: (tag: Tag) => void;
   onClose: () => void;
 }) {
   return (
-    <Sheet open={open} title="Tags" detail={`On ${name}, across every conversation.`} onClose={onClose}>
+    <Sheet
+      open={open}
+      title="Add Tags"
+      detail={`Choose tags for ${name}. Changes apply across every conversation.`}
+      onClose={onClose}
+    >
+      {error ? <ErrorNotice message={error} /> : null}
+
       {loading ? (
         <View style={{ padding: 40 }}>
           <ActivityIndicator color={colors.blue} />
@@ -673,7 +735,11 @@ function QuickTagSheet({
           detail="Tags are created on the web, under Settings. They appear here as soon as they are saved."
         />
       ) : (
-        <ScrollView>
+        <ScrollView
+          style={{ maxHeight: 420 }}
+          contentContainerStyle={{ paddingVertical: 6 }}
+          showsVerticalScrollIndicator={false}
+        >
           {tags.map((tag) => {
             const on = assigned.has(tag.id);
 
@@ -681,16 +747,19 @@ function QuickTagSheet({
               <Pressable
                 key={tag.id}
                 accessibilityRole="button"
+                accessibilityLabel={`${on ? "Remove" : "Add"} ${tag.name} tag`}
                 accessibilityState={{ selected: on }}
                 disabled={busyId === tag.id}
                 onPress={() => onToggle(tag)}
                 style={({ pressed }) => ({
+                  minHeight: 52,
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 12,
-                  paddingHorizontal: 18,
-                  paddingVertical: 13,
+                  paddingHorizontal: 20,
+                  paddingVertical: 10,
                   backgroundColor: pressed ? colors.pale : "transparent",
+                  opacity: busyId === tag.id ? 0.55 : pressed ? 0.72 : 1,
                 })}
               >
                 <View
@@ -698,26 +767,40 @@ function QuickTagSheet({
                     width: 12,
                     height: 12,
                     borderRadius: 6,
-                    backgroundColor: tag.color ?? colors.muted,
+                    backgroundColor: tag.color ?? colors.blue,
                   }}
                 />
 
                 <Text
+                  numberOfLines={1}
                   style={{
                     flex: 1,
                     color: colors.ink,
                     fontSize: 15,
-                    fontWeight: on ? "800" : "500",
+                    fontWeight: on ? "700" : "500",
                   }}
                 >
                   {tag.name}
                 </Text>
 
-                {busyId === tag.id ? (
-                  <ActivityIndicator color={colors.blue} />
-                ) : on ? (
-                  <Ionicons name="checkmark" size={19} color={colors.blue} />
-                ) : null}
+                <View
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: on ? 0 : 1.5,
+                    borderColor: tag.color ?? colors.border,
+                    backgroundColor: on
+                      ? tag.color ?? colors.blue
+                      : "white",
+                  }}
+                >
+                  {on ? (
+                    <Ionicons name="checkmark" size={16} color="white" />
+                  ) : null}
+                </View>
               </Pressable>
             );
           })}
@@ -732,8 +815,14 @@ export default function Conversation() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const { conversations, workspace, member, revision, updateConversation } =
-    useInbox();
+  const {
+    conversations,
+    workspace,
+    member,
+    revision,
+    updateConversation,
+    updateContactTags,
+  } = useInbox();
 
   const conversation = useMemo(
     () => conversations.find((item) => item.id === id) ?? null,
@@ -788,6 +877,7 @@ export default function Conversation() {
     conversation?.social_account?.platform === "telegram" ? "telegram" : "facebook";
 
   const contactId = conversation?.contact?.id ?? null;
+  const tagCount = conversation?.contact?.tags?.length ?? 0;
   const name = conversation?.contact?.full_name ?? "Conversation";
 
   const load = useCallback(async () => {
@@ -1239,6 +1329,26 @@ export default function Conversation() {
       setCustomer(data);
       setAssigned(new Set((data.customer.tags ?? []).map((tag) => tag.id)));
 
+      /*
+       * The conversation's own copy of the tags is caught up here too.
+       *
+       * It arrives with the bootstrap and only changes when this app changes
+       * it, so a tag added from the web -- or from this phone in an earlier
+       * session -- left the header badge and the list row saying one while
+       * the panel said three. This is the freshest reading either of them
+       * gets, so it is the one to trust.
+       */
+      updateContactTags(
+        contactId,
+        (data.customer.tags ?? []).map((tag) => ({
+          id: tag.id,
+          name: tag.name,
+          // CustomerTag has a colour; the panel's copy allows null, and the
+          // chip falls back to the same grey either way.
+          color: tag.color ?? colors.muted,
+        })),
+      );
+
       return data;
     } catch (customerError) {
       setError(
@@ -1251,9 +1361,10 @@ export default function Conversation() {
     } finally {
       setCustomerLoading(false);
     }
-  }, [contactId, workspace?.businessId]);
+  }, [contactId, workspace?.businessId, updateContactTags]);
 
   async function openTags() {
+    setError("");
     setTagOpen(true);
     setTagsLoading(true);
 
@@ -1279,6 +1390,23 @@ export default function Conversation() {
     }
 
     const on = assigned.has(tag.id);
+    const previousConversationTags = conversation?.contact?.tags ?? [];
+    const previousCustomerTags = customer?.customer.tags ?? [];
+    const inboxTag = {
+      id: tag.id,
+      name: tag.name,
+      color: tag.color ?? colors.muted,
+    };
+    const nextConversationTags = on
+      ? previousConversationTags.filter((item) => item.id !== tag.id)
+      : previousConversationTags.some((item) => item.id === tag.id)
+        ? previousConversationTags
+        : [...previousConversationTags, inboxTag];
+    const nextCustomerTags = on
+      ? previousCustomerTags.filter((item) => item.id !== tag.id)
+      : previousCustomerTags.some((item) => item.id === tag.id)
+        ? previousCustomerTags
+        : [...previousCustomerTags, tag];
 
     setBusyTagId(tag.id);
     setError("");
@@ -1295,6 +1423,19 @@ export default function Conversation() {
 
       return next;
     });
+
+    if (contactId) {
+      updateContactTags(contactId, nextConversationTags);
+    }
+
+    setCustomer((current) =>
+      current
+        ? {
+            ...current,
+            customer: { ...current.customer, tags: nextCustomerTags },
+          }
+        : current,
+    );
 
     try {
       if (on) {
@@ -1322,6 +1463,19 @@ export default function Conversation() {
 
         return next;
       });
+
+      if (contactId) {
+        updateContactTags(contactId, previousConversationTags);
+      }
+
+      setCustomer((current) =>
+        current
+          ? {
+              ...current,
+              customer: { ...current.customer, tags: previousCustomerTags },
+            }
+          : current,
+      );
 
       setError(
         toggleError instanceof Error
@@ -1583,10 +1737,23 @@ export default function Conversation() {
           </View>
 
           {/*
-            One control, because there is one panel now. Tags and status
-            moved inside it -- three icons across a header this narrow left
-            no room for the customer's name.
+            The count comes off the conversation rather than the panel's copy
+            of the customer, so it is right before the panel has ever been
+            opened -- and toggling a tag patches the conversation in the
+            provider, which is what makes it move the moment you tap.
           */}
+          <IconButton
+            icon="pricetags-outline"
+            label={
+              tagCount > 0
+                ? `${tagCount} customer ${tagCount === 1 ? "tag" : "tags"}. Add or edit them.`
+                : "Add customer tags"
+            }
+            badge={tagCount}
+            disabled={!contactId}
+            onPress={() => void openTags()}
+          />
+
           <PanelButton disabled={!contactId} onPress={() => void openPanel()} />
         </View>
       </View>
@@ -1631,10 +1798,6 @@ export default function Conversation() {
 
             return (
               <>
-                {startsADay ? (
-                  <DaySeparator label={dayLabel(dayOf(item))} />
-                ) : null}
-
                 <Bubble
                   message={item}
                   onViewPhoto={setPhoto}
@@ -1646,6 +1809,18 @@ export default function Conversation() {
                     onToggle: toggleAudio,
                   }}
                 />
+
+                {/*
+                  After the bubble, not before it. An inverted list mirrors
+                  each cell as well as the list, so the child drawn second is
+                  the one that lands higher up the screen -- and a day's label
+                  belongs above the first message of that day. Written the
+                  natural way round, "Yesterday" sat underneath the message it
+                  was labelling.
+                */}
+                {startsADay ? (
+                  <DaySeparator label={dayLabel(dayOf(item))} />
+                ) : null}
               </>
             );
           }}
@@ -1772,7 +1947,6 @@ export default function Conversation() {
         onAssign={(memberId) => void assign(memberId)}
         onPin={() => void togglePin()}
         onUnread={() => void markUnread()}
-        onEditTags={() => void openTags()}
         onSaveField={saveField}
         error={panelOpen ? error : ""}
         onClose={() => setPanelOpen(false)}
@@ -1784,6 +1958,7 @@ export default function Conversation() {
         assigned={assigned}
         busyId={busyTagId}
         loading={tagsLoading}
+        error={tagOpen ? error : ""}
         name={name}
         onToggle={(tag) => void toggleTag(tag)}
         onClose={() => setTagOpen(false)}

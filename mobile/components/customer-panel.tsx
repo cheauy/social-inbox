@@ -1,4 +1,4 @@
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Avatar, Empty, IconName, colors, styles } from "./ui";
+import { Avatar, Empty, IconName, TagChip, colors, styles } from "./ui";
 import type { ConversationStatus } from "../lib/types";
 
 /*
@@ -222,6 +222,15 @@ function Editable({
         </Text>
 
         {text && !editing ? <CopyButton value={text} label={label} /> : null}
+
+        {/*
+          A pencil, so the field says it can be changed. Both of these read as
+          plain text otherwise, and "Not added" looks like a statement rather
+          than an invitation -- an agent has no reason to try tapping it.
+        */}
+        {editing ? null : (
+          <Ionicons name="pencil" size={13} color={colors.muted} />
+        )}
       </View>
 
       {editing ? (
@@ -344,9 +353,11 @@ function HeaderAction({
         paddingVertical: 12,
         borderRadius: 14,
         borderWidth: 1,
-        borderColor: active ? colors.blue : colors.border,
+        borderColor: active ? colour : colors.border,
         backgroundColor: active
-          ? colors.pale
+          ? tint === "#F04452"
+            ? "#FFF1F2"
+            : colors.pale
           : pressed
             ? colors.pale
             : "white",
@@ -444,7 +455,6 @@ export function CustomerPanel({
   onAssign,
   onPin,
   onUnread,
-  onEditTags,
   onSaveField,
   onClose,
   error,
@@ -465,7 +475,6 @@ export function CustomerPanel({
   onAssign: (memberId: string | null) => void;
   onPin: () => void;
   onUnread: () => void;
-  onEditTags: () => void;
   onSaveField: (field: EditableField, value: string) => Promise<boolean>;
   onClose: () => void;
   error: string;
@@ -682,8 +691,9 @@ export function CustomerPanel({
               */}
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <HeaderAction
-                  icon={pinned ? "pin" : "pin-outline"}
+                  icon={pinned ? "bookmark" : "bookmark-outline"}
                   label={pinned ? "Unpin" : "Pin"}
+                  tint={pinned ? "#F04452" : undefined}
                   active={pinned}
                   busy={busy === "pin"}
                   onPress={onPin}
@@ -733,7 +743,7 @@ export function CustomerPanel({
               ) : null}
 
               <Section title="Tags">
-                <View style={{ paddingVertical: 12, gap: 12 }}>
+                <View style={{ paddingVertical: 12 }}>
                   {customer.tags.length === 0 ? (
                     <Text style={{ fontSize: 14.5, color: colors.muted }}>
                       No tag yet
@@ -743,76 +753,14 @@ export function CustomerPanel({
                       style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
                     >
                       {customer.tags.map((tag) => (
-                        <View
+                        <TagChip
                           key={tag.id}
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            gap: 6,
-                            paddingHorizontal: 11,
-                            paddingVertical: 6,
-                            borderRadius: 999,
-                            backgroundColor: colors.pale,
-                          }}
-                        >
-                          <View
-                            style={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: 4,
-                              backgroundColor: tag.color ?? colors.muted,
-                            }}
-                          />
-
-                          <Text
-                            style={{
-                              color: colors.ink,
-                              fontSize: 12.5,
-                              fontWeight: "700",
-                            }}
-                          >
-                            {tag.name}
-                          </Text>
-                        </View>
+                          name={tag.name}
+                          color={tag.color}
+                        />
                       ))}
                     </View>
                   )}
-
-                  {/*
-                    Add when there are none, Edit when there are. The same
-                    sheet either way, but "Edit tags" over an empty list reads
-                    as a dead end -- there is nothing there to edit.
-                  */}
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={onEditTags}
-                    style={({ pressed }) => ({
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                      alignSelf: "flex-start",
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                      borderRadius: 999,
-                      backgroundColor: pressed ? colors.border : colors.pale,
-                    })}
-                  >
-                    <Ionicons
-                      name="pricetag-outline"
-                      size={15}
-                      color={colors.blue}
-                    />
-
-                    <Text
-                      style={{
-                        color: colors.blue,
-                        fontSize: 13,
-                        fontWeight: "700",
-                      }}
-                    >
-                      {customer.tags.length === 0 ? "Add tags" : "Edit tags"}
-                    </Text>
-                  </Pressable>
                 </View>
               </Section>
 
@@ -973,9 +921,10 @@ export function CustomerPanel({
 /*
  * The button in the thread header that pulls the panel in.
  *
- * A dock icon rather than a person: the panel is no longer only the customer,
- * it is everything to the side of the conversation, and it is the same
- * control whether you tap it or swipe it in from the right.
+ * Three dots rather than a dock: the panel is everything else about this
+ * conversation, and an overflow menu is the one control every phone user
+ * already knows to press when they want the rest of it. The same control
+ * whether you tap it or swipe the panel in from the right.
  */
 export function PanelButton({ onPress, disabled }: { onPress: () => void; disabled?: boolean }) {
   return (
@@ -989,7 +938,7 @@ export function PanelButton({ onPress, disabled }: { onPress: () => void; disabl
         { opacity: disabled ? 0.35 : pressed ? 0.55 : 1 },
       ]}
     >
-      <MaterialCommunityIcons name="dock-right" size={23} color={colors.blue} />
+      <Ionicons name="ellipsis-vertical" size={22} color={colors.blue} />
     </Pressable>
   );
 }
