@@ -198,6 +198,7 @@ export default function Tags() {
       title="Tags"
       detail={`${tags.length} tag${tags.length === 1 ? "" : "s"} on this workspace`}
       loading={loading}
+      skeleton={[6]}
       error={error}
       onRetry={() => void load()}
     >

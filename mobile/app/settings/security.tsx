@@ -241,6 +241,7 @@ export default function Security() {
       loading={loading}
       error={error}
       onRetry={() => void load()}
+      skeleton={[2, 1, 3]}
     >
       <SettingsGroup title={t("Change password", "ប្តូរពាក្យសម្ងាត់")}>
         <View style={{ padding: 14, gap: 12 }}>

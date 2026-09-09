@@ -207,6 +207,7 @@ export default function Roles() {
       loading={loading}
       error={error}
       onRetry={() => void load()}
+      skeleton={[4]}
       footer={
         selected && canManage ? (
           <View

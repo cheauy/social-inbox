@@ -211,13 +211,23 @@ export default function People() {
   return (
     <SettingsScreen
       title={t("People and channels", "មនុស្ស និងឆានែល")}
-      detail={t(
-        members.length + " on the team · " + channels.length + " connected",
-        "ក្រុម " + members.length + " · ភ្ជាប់ " + channels.length,
-      )}
+      /*
+        Counted only once there is something to count. A header that says
+        "0 on the team" while the team is still arriving is a wrong answer,
+        and it is the one thing on this screen that is not a grey bar.
+      */
+      detail={
+        loading
+          ? t("Loading…", "កំពុងផ្ទុក…")
+          : t(
+              members.length + " on the team · " + channels.length + " connected",
+              "ក្រុម " + members.length + " · ភ្ជាប់ " + channels.length,
+            )
+      }
       loading={loading}
       error={error}
       onRetry={() => void load()}
+      skeleton={[4, 2]}
       footer={
         canInvite ? (
           <View

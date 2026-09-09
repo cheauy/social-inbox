@@ -101,6 +101,7 @@ export default function History() {
       title="Change history"
       detail={total > 0 ? `${total} changes recorded` : "Who changed what"}
       loading={loading}
+      skeleton={[6]}
       error={error}
       onRetry={() => void load(1)}
     >

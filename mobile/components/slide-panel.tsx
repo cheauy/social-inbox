@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Animated,
   Dimensions,
   PanResponder,
@@ -11,6 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { SettingsSkeleton } from "./settings-screen";
 import { ErrorNotice, IconButton, colors, styles } from "./ui";
 
 /*
@@ -51,6 +51,7 @@ export function SlidePanel({
   loading,
   error,
   onRetry,
+  skeleton,
   children,
 }: {
   open: boolean;
@@ -60,6 +61,7 @@ export function SlidePanel({
   loading?: boolean;
   error?: string;
   onRetry?: () => void;
+  skeleton?: number[];
   children: React.ReactNode;
 }) {
   const insets = useSafeAreaInsets();
@@ -184,9 +186,7 @@ export function SlidePanel({
         <ErrorNotice message={error ?? ""} onRetry={onRetry} />
 
         {loading ? (
-          <View style={{ padding: 40 }}>
-            <ActivityIndicator color={colors.blue} />
-          </View>
+          <SettingsSkeleton groups={skeleton} />
         ) : (
           <ScrollView
             keyboardShouldPersistTaps="handled"

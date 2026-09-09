@@ -59,6 +59,7 @@ export function SubscriptionPanel({ open, onClose }: { open: boolean; onClose: (
       loading={loading}
       error={error}
       onRetry={reload}
+      skeleton={[3, 2]}
     >
       {!subscription ? (
         <Empty

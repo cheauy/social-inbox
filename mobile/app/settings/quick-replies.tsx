@@ -182,13 +182,15 @@ export default function QuickReplies() {
   return (
     <SettingsScreen
       title={t("Quick replies", "ការឆ្លើយតបរហ័ស")}
-      detail={t(
-        replies.length + " saved",
-        "រក្សាទុក " + replies.length,
-      )}
+      detail={
+        loading
+          ? t("Loading…", "កំពុងផ្ទុក…")
+          : t(replies.length + " saved", "រក្សាទុក " + replies.length)
+      }
       loading={loading}
       error={error}
       onRetry={() => void load()}
+      skeleton={[5]}
       footer={
         <View
           style={{

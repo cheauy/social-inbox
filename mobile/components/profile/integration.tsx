@@ -98,13 +98,15 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
       open={open}
       onClose={onClose}
       title={t("Integration", "ការតភ្ជាប់")}
-      detail={t(
-        channels.length + " connected",
-        "ភ្ជាប់ " + channels.length,
-      )}
+      detail={
+        loading
+          ? t("Loading…", "កំពុងផ្ទុក…")
+          : t(channels.length + " connected", "ភ្ជាប់ " + channels.length)
+      }
       loading={loading}
       error={error}
       onRetry={() => void load()}
+      skeleton={[3, 1]}
     >
       {attention.length > 0 ? (
         <View
