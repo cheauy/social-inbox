@@ -99,6 +99,7 @@ export function LocationPicker({
   const [zoom, setZoom] = useState(15);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [locating, setLocating] = useState(false);
+  const [locateError, setLocateError] = useState("");
   const [asked, setAsked] = useState(false);
 
   /*
@@ -165,28 +166,65 @@ export function LocationPicker({
     })();
   }, [open, asked]);
 
+  /*
+   * Where this phone is, in two steps.
+   *
+   * The cached fix first, because it is instant and almost always the right
+   * street; then a fresh one to refine it. Asking only for a fresh fix is
+   * what this did before, and getCurrentPositionAsync waits for the hardware
+   * with no deadline of its own -- indoors, or on a device whose GPS has not
+   * settled, the button span forever and the map never moved. The failure
+   * arrived as nothing at all: no error, because nothing ever threw.
+   */
   async function goToMe() {
     setLocating(true);
+    setLocateError("");
 
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
 
       if (!permission.granted) {
+        setLocateError(
+          "TENH cannot see where this phone is. Allow location, or drag the pin.",
+        );
         return;
       }
 
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      const cached = await Location.getLastKnownPositionAsync();
 
-      setCentre({
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-      });
+      if (cached) {
+        setCentre({
+          latitude: cached.coords.latitude,
+          longitude: cached.coords.longitude,
+        });
+        setZoom(16);
+      }
 
-      setZoom(16);
+      const fresh = await Promise.race([
+        Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        }),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+      ]);
+
+      if (fresh) {
+        setCentre({
+          latitude: fresh.coords.latitude,
+          longitude: fresh.coords.longitude,
+        });
+        setZoom(16);
+        return;
+      }
+
+      if (!cached) {
+        setLocateError(
+          "Could not get a location fix. Check that location is on, or drag the pin.",
+        );
+      }
     } catch {
-      // Leaving the map where it is says more than an error would.
+      setLocateError(
+        "Could not get a location fix. Check that location is on, or drag the pin.",
+      );
     } finally {
       setLocating(false);
     }
@@ -388,8 +426,21 @@ export function LocationPicker({
             borderTopColor: colors.border,
           }}
         >
-          <Text style={[styles.muted, { fontSize: 12.5 }]}>
-            {centre.latitude.toFixed(5)}, {centre.longitude.toFixed(5)}
+          {/*
+            The coordinates, and anything that went wrong reaching for them.
+            A button that spins and then does nothing is the worst of the
+            three outcomes, because it is indistinguishable from a slow one.
+          */}
+          <Text
+            accessibilityRole={locateError ? "alert" : undefined}
+            style={[
+              styles.muted,
+              { fontSize: 12.5 },
+              locateError ? { color: colors.red, lineHeight: 18 } : null,
+            ]}
+          >
+            {locateError ||
+              centre.latitude.toFixed(5) + ", " + centre.longitude.toFixed(5)}
           </Text>
 
           <Pressable
