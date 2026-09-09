@@ -5,6 +5,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { Empty, colors, styles } from "../components/ui";
 import { AuthProvider, useAuth } from "../lib/auth/provider";
+import { DisplayProvider } from "../lib/display-provider";
 import { InboxProvider } from "../lib/inbox-provider";
 import { configured } from "../lib/supabase/client";
 
@@ -73,9 +74,11 @@ export default function RootLayout() {
 
       {configured ? (
         <AuthProvider>
-          <InboxProvider>
-            <Gate />
-          </InboxProvider>
+          <DisplayProvider>
+            <InboxProvider>
+              <Gate />
+            </InboxProvider>
+          </DisplayProvider>
         </AuthProvider>
       ) : (
         <Unconfigured />

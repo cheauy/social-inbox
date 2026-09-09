@@ -49,6 +49,7 @@ import type {
   TeamMember,
 } from "../../components/customer-panel";
 import { api, ApiError } from "../../lib/api/client";
+import { useDisplay } from "../../lib/display-provider";
 import { useInbox } from "../../lib/inbox-provider";
 import type {
   ConversationStatus,
@@ -823,6 +824,9 @@ export default function Conversation() {
     updateConversation,
     updateContactTags,
   } = useInbox();
+
+  // Whatever background this phone chose in Settings.
+  const { backgroundColor } = useDisplay();
 
   const conversation = useMemo(
     () => conversations.find((item) => item.id === id) ?? null,
@@ -1684,7 +1688,7 @@ export default function Conversation() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.screen, { paddingTop: insets.top }]}
+      style={[styles.screen, { paddingTop: insets.top, backgroundColor }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={insets.top}
     >
