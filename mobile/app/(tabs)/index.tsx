@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Image,
   Modal,
@@ -21,9 +22,10 @@ import {
   ErrorNotice,
   PlatformMark,
   Sheet,
+  TagChip,
   colors,
+  relativeTime,
   styles,
-  time,
 } from "../../components/ui";
 import { useWorkspaceResource } from "../../components/screen";
 import { api } from "../../lib/api/client";
@@ -100,6 +102,87 @@ function WorkspacePicker({
   );
 }
 
+/*
+ * Placeholder rows, shaped like the real ones.
+ *
+ * Switching channel throws away four hundred rows and builds a different set,
+ * and on a mid-range phone that lands as a stall with the old list still on
+ * screen -- which reads as the tap not having worked. Rows that are visibly
+ * not the answer are better than the wrong answer held still.
+ */
+function ListSkeleton() {
+  const pulse = useRef(new Animated.Value(0.5)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.5,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    loop.start();
+
+    return () => loop.stop();
+  }, [pulse]);
+
+  return (
+    <View>
+      {[0, 1, 2, 3, 4, 5, 6, 7].map((row) => (
+        <Animated.View
+          key={row}
+          style={{
+            opacity: pulse,
+            flexDirection: "row",
+            gap: 12,
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+          }}
+        >
+          <View
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 24,
+              backgroundColor: colors.border,
+            }}
+          />
+
+          <View style={{ flex: 1, gap: 8, paddingTop: 6 }}>
+            <View
+              style={{
+                height: 11,
+                width: `${45 + ((row * 13) % 30)}%`,
+                borderRadius: 6,
+                backgroundColor: colors.border,
+              }}
+            />
+
+            <View
+              style={{
+                height: 10,
+                width: `${60 + ((row * 17) % 25)}%`,
+                borderRadius: 5,
+                backgroundColor: colors.background,
+              }}
+            />
+          </View>
+        </Animated.View>
+      ))}
+    </View>
+  );
+}
+
 function ConversationRow({
   conversation,
   onPress,
@@ -108,6 +191,7 @@ function ConversationRow({
   onPress: () => void;
 }) {
   const unread = (conversation.unread_count ?? 0) > 0;
+  const tags = conversation.contact?.tags ?? [];
 
   return (
     <Pressable
@@ -119,7 +203,16 @@ function ConversationRow({
           gap: 12,
           paddingHorizontal: 16,
           paddingVertical: 12,
-          backgroundColor: pressed ? colors.pale : "white",
+          /*
+           * An unread row is tinted, not just bolder. Weight alone is hard to
+           * pick out of a list of four hundred while scrolling, and the badge
+           * is at the far right where the eye is not.
+           */
+          backgroundColor: pressed
+            ? colors.border
+            : unread
+              ? colors.pale
+              : "white",
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
         },
@@ -128,7 +221,7 @@ function ConversationRow({
       <ChannelAvatar conversation={conversation} />
 
       <View style={{ flex: 1, gap: 3 }}>
-        <View style={styles.row}>
+        <View style={[styles.row, { gap: 7 }]}>
           <Text
             numberOfLines={1}
             style={{
@@ -141,8 +234,17 @@ function ConversationRow({
             {conversation.contact?.full_name ?? "Customer"}
           </Text>
 
+          {conversation.is_pinned ? (
+            <Ionicons
+              accessibilityLabel="Pinned conversation"
+              name="bookmark"
+              size={14}
+              color="#F04452"
+            />
+          ) : null}
+
           <Text style={{ fontSize: 12, color: colors.muted }}>
-            {time(conversation.last_message_at)}
+            {relativeTime(conversation.last_message_at)}
           </Text>
         </View>
 
@@ -158,35 +260,73 @@ function ConversationRow({
         </Text>
 
         {/*
-          No channel line. The avatar wears the mark, and a third line
-          repeating it in words pushed the preview up and said nothing the
-          badge had not already said.
+          The customer's tags, under the preview.
+
+          This is the line the channel name used to waste. A tag is why a row
+          matters -- VIP, COD, a complaint -- and the avatar already says
+          which network it came in on.
         */}
-        <View style={styles.row}>
-          {unread ? (
+        {tags.length > 0 || unread ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              marginTop: 1,
+              minHeight: 22,
+            }}
+          >
             <View
               style={{
-                marginLeft: "auto",
-                minWidth: 22,
-                paddingHorizontal: 7,
-                paddingVertical: 2,
-                borderRadius: 11,
-                backgroundColor: colors.blue,
+                flex: 1,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                overflow: "hidden",
               }}
             >
-              <Text
+              {tags.slice(0, 4).map((tag) => (
+                <TagChip
+                  key={tag.id}
+                  name={tag.name}
+                  color={tag.color}
+                  compact
+                  showCheck={false}
+                />
+              ))}
+
+              {tags.length > 4 ? (
+                <Text style={{ fontSize: 11, color: colors.muted }}>
+                  +{tags.length - 4}
+                </Text>
+              ) : null}
+            </View>
+
+            {unread ? (
+              <View
                 style={{
-                  color: "white",
-                  fontSize: 11,
-                  fontWeight: "800",
-                  textAlign: "center",
+                  marginLeft: "auto",
+                  minWidth: 22,
+                  paddingHorizontal: 7,
+                  paddingVertical: 2,
+                  borderRadius: 11,
+                  backgroundColor: colors.blue,
                 }}
               >
-                {conversation.unread_count}
-              </Text>
-            </View>
-          ) : null}
-        </View>
+                <Text
+                  style={{
+                    color: "white",
+                    fontSize: 11,
+                    fontWeight: "800",
+                    textAlign: "center",
+                  }}
+                >
+                  {conversation.unread_count}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -199,6 +339,12 @@ type Channel = {
   platform: "facebook" | "telegram";
   name: string;
   username: string | null;
+};
+
+type Tag = {
+  id: string;
+  name: string;
+  color: string | null;
 };
 
 /*
@@ -323,6 +469,144 @@ function ChannelSheet({
         </ScrollView>
       </View>
     </Modal>
+  );
+}
+
+function TagSheet({
+  open,
+  tags,
+  selectedId,
+  counts,
+  onSelect,
+  onClose,
+}: {
+  open: boolean;
+  tags: Tag[];
+  selectedId: string | null;
+  counts: Record<string, number>;
+  onSelect: (id: string | null) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Sheet
+      open={open}
+      title="Filter by Tags"
+      detail="Show customers with a specific tag."
+      onClose={onClose}
+    >
+      <ScrollView>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ selected: selectedId === null }}
+          onPress={() => {
+            onSelect(null);
+            onClose();
+          }}
+          style={({ pressed }) => ({
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            paddingHorizontal: 18,
+            paddingVertical: 14,
+            backgroundColor: pressed ? colors.pale : "transparent",
+          })}
+        >
+          <View
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 12,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: colors.pale,
+            }}
+          >
+            <Ionicons name="pricetag-outline" size={15} color={colors.blue} />
+          </View>
+
+          <Text
+            style={{
+              flex: 1,
+              color: colors.ink,
+              fontSize: 15,
+              fontWeight: selectedId === null ? "800" : "500",
+            }}
+          >
+            All tags
+          </Text>
+
+          <Text style={[styles.muted, { fontSize: 13 }]}>{counts.all ?? 0}</Text>
+
+          {selectedId === null ? (
+            <Ionicons name="checkmark" size={19} color={colors.blue} />
+          ) : null}
+        </Pressable>
+
+        {tags.map((tag) => {
+          const active = tag.id === selectedId;
+
+          return (
+            <Pressable
+              key={tag.id}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              onPress={() => {
+                onSelect(tag.id);
+                onClose();
+              }}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+                paddingHorizontal: 18,
+                paddingVertical: 14,
+                backgroundColor: pressed ? colors.pale : "transparent",
+              })}
+            >
+              <View
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: colors.pale,
+                }}
+              >
+                <View
+                  style={{
+                    width: 9,
+                    height: 9,
+                    borderRadius: 5,
+                    backgroundColor: tag.color ?? colors.muted,
+                  }}
+                />
+              </View>
+
+              <Text
+                numberOfLines={1}
+                style={{
+                  flex: 1,
+                  color: colors.ink,
+                  fontSize: 15,
+                  fontWeight: active ? "800" : "500",
+                }}
+              >
+                {tag.name}
+              </Text>
+
+              <Text style={[styles.muted, { fontSize: 13 }]}>
+                {counts[tag.id] ?? 0}
+              </Text>
+
+              {active ? (
+                <Ionicons name="checkmark" size={19} color={colors.blue} />
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </Sheet>
   );
 }
 
@@ -795,6 +1079,29 @@ export default function Inbox() {
   const [switching, setSwitching] = useState(false);
   const [channelOpen, setChannelOpen] = useState(false);
   const [channelId, setChannelId] = useState<string | null>(null);
+  const [switchingChannel, setSwitchingChannel] = useState(false);
+  const [tagOpen, setTagOpen] = useState(false);
+  const [tagId, setTagId] = useState<string | null>(null);
+
+  /*
+   * The sheet closes on the tap, before anything is filtered.
+   *
+   * Doing both in one pass meant the sheet sat there through the re-render
+   * and then vanished, so the tap felt ignored and then abrupt. The filter
+   * goes on the next tick behind a skeleton, which is the part that actually
+   * takes time.
+   */
+  const chooseChannel = useCallback((next: string | null) => {
+    setChannelOpen(false);
+    setSwitchingChannel(true);
+
+    setTimeout(() => {
+      setChannelId(next);
+
+      // Long enough that the list has drawn before the skeleton goes.
+      setTimeout(() => setSwitchingChannel(false), 220);
+    }, 16);
+  }, []);
   const [search, setSearch] = useState("");
   const [smartView, setSmartView] = useState<SmartView>("all");
   const [status, setStatus] = useState<StatusKey>("all");
@@ -802,6 +1109,14 @@ export default function Inbox() {
   const [messageMatches, setMessageMatches] = useState<Set<string>>(
     () => new Set(),
   );
+
+  /* Keep relative timestamps moving from Now -> 1 min ago -> 1 hr ago. */
+  const [, setClockTick] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setClockTick((value) => value + 1), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   /*
    * Assignment is recorded against this workspace's member row, so the id
@@ -865,6 +1180,10 @@ export default function Inbox() {
     workspace ? "/api/inbox/channels" : null,
   );
 
+  const { data: tagData } = useWorkspaceResource<{ tags: Tag[] }>(
+    workspace ? "/api/tags?activeOnly=true" : null,
+  );
+
   /*
    * Only this workspace's channels. The endpoint answers for every workspace
    * the member can reach, and offering another one here would filter the list
@@ -874,8 +1193,12 @@ export default function Inbox() {
     (item) => item.businessId === workspace?.businessId,
   );
 
+  const tags = tagData?.tags ?? [];
+
   const selectedChannel =
     channels.find((item) => item.id === channelId) ?? null;
+  const selectedTag = tags.find((item) => item.id === tagId) ?? null;
+  const hasAnyFilter = filtering || Boolean(selectedTag);
 
   const ordered = useMemo(
     () =>
@@ -884,6 +1207,8 @@ export default function Inbox() {
           (conversation) =>
             (!channelId ||
               conversation.social_account?.id === channelId) &&
+            (!tagId ||
+              (conversation.contact?.tags ?? []).some((tag) => tag.id === tagId)) &&
             matchesSmartView(conversation, smartView, memberId) &&
             matchesStatus(conversation, status) &&
             (matchesSearch(conversation, search.trim().toLowerCase()) ||
@@ -908,6 +1233,7 @@ export default function Inbox() {
       search,
       smartView,
       status,
+      tagId,
     ],
   );
 
@@ -924,7 +1250,9 @@ export default function Inbox() {
   const counts = useMemo(() => {
     const inChannel = conversations.filter(
       (conversation) =>
-        !channelId || conversation.social_account?.id === channelId,
+        (!channelId || conversation.social_account?.id === channelId) &&
+        (!tagId ||
+          (conversation.contact?.tags ?? []).some((tag) => tag.id === tagId)),
     );
 
     return {
@@ -951,7 +1279,26 @@ export default function Inbox() {
         {} as Record<StatusKey, number>,
       ),
     };
-  }, [channelId, conversations, memberId, smartView, status]);
+  }, [channelId, conversations, memberId, smartView, status, tagId]);
+
+  const tagCounts = useMemo(() => {
+    const eligible = conversations.filter(
+      (conversation) =>
+        (!channelId || conversation.social_account?.id === channelId) &&
+        matchesSmartView(conversation, smartView, memberId) &&
+        matchesStatus(conversation, status),
+    );
+
+    return tags.reduce(
+      (totals, tag) => ({
+        ...totals,
+        [tag.id]: eligible.filter((conversation) =>
+          (conversation.contact?.tags ?? []).some((item) => item.id === tag.id),
+        ).length,
+      }),
+      { all: eligible.length } as Record<string, number>,
+    );
+  }, [channelId, conversations, memberId, smartView, status, tags]);
 
   if (!session) {
     return <Redirect href="/sign-in" />;
@@ -1056,7 +1403,7 @@ export default function Inbox() {
                   fontWeight: "700",
                 }}
               >
-                {selectedChannel?.name ?? "All"}
+                {selectedChannel?.name ?? "All Channels"}
               </Text>
 
               <Ionicons
@@ -1089,9 +1436,9 @@ export default function Inbox() {
           would be filtering the wrong thing.
         */}
         {workspace ? (
-          <View style={{ gap: 10, marginHorizontal: 16 }}>
+          <View style={{ gap: 10 }}>
             <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
             >
               <View
                 style={{
@@ -1109,7 +1456,7 @@ export default function Inbox() {
                 <TextInput
                   value={search}
                   onChangeText={setSearch}
-                  placeholder="Search name, number or message"
+                  placeholder="Search name or number"
                   placeholderTextColor={colors.muted}
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -1137,6 +1484,17 @@ export default function Inbox() {
                   </Pressable>
                 ) : null}
               </View>
+
+              <FilterButton
+                icon={selectedTag ? "funnel" : "funnel-outline"}
+                label={
+                  selectedTag
+                    ? `Filtered by tag ${selectedTag.name}. Change tag.`
+                    : "Filter by tags"
+                }
+                active={Boolean(selectedTag)}
+                onPress={() => setTagOpen(true)}
+              />
 
               {/*
                 One button, because one sheet holds everything.
@@ -1170,7 +1528,7 @@ export default function Inbox() {
               "something is filtered" but not what, and clearing one should
               not mean opening its sheet again to find All.
             */}
-            {filtering ? (
+            {hasAnyFilter ? (
               <View
                 style={{
                   flexDirection: "row",
@@ -1190,6 +1548,13 @@ export default function Inbox() {
                   <FilterPill
                     label={activeStatus.label}
                     onClear={() => setStatus("all")}
+                  />
+                ) : null}
+
+                {selectedTag ? (
+                  <FilterPill
+                    label={selectedTag.name}
+                    onClear={() => setTagId(null)}
                   />
                 ) : null}
 
@@ -1213,11 +1578,20 @@ export default function Inbox() {
         onClose={() => setStatusOpen(false)}
       />
 
+      <TagSheet
+        open={tagOpen}
+        tags={tags}
+        selectedId={tagId}
+        counts={tagCounts}
+        onSelect={setTagId}
+        onClose={() => setTagOpen(false)}
+      />
+
       <ChannelSheet
         open={channelOpen}
         channels={channels}
         selectedId={channelId}
-        onSelect={setChannelId}
+        onSelect={chooseChannel}
         onClose={() => setChannelOpen(false)}
       />
 
@@ -1235,6 +1609,8 @@ export default function Inbox() {
             busy={switching}
           />
         )
+      ) : switchingChannel ? (
+        <ListSkeleton />
       ) : (
         <FlatList
           data={ordered}
@@ -1275,13 +1651,16 @@ export default function Inbox() {
                 title={
                   search.trim()
                     ? "No match"
-                    : filtering
+                    : hasAnyFilter
                       ? `Nothing ${[
                           smartView !== "all"
                             ? activeSmart?.label.toLowerCase()
                             : null,
                           status !== "all"
                             ? activeStatus?.label.toLowerCase()
+                            : null,
+                          selectedTag
+                            ? `tagged ${selectedTag.name}`
                             : null,
                         ]
                           .filter(Boolean)
@@ -1293,7 +1672,7 @@ export default function Inbox() {
                 detail={
                   search.trim()
                     ? `No customer or message matches "${search.trim()}" here. Searching further back through a thread is on the web.`
-                    : filtering
+                    : hasAnyFilter
                       ? "Tap a filter chip above to clear it and see more."
                       : selectedChannel
                         ? `${selectedChannel.name} has no conversations. Tap the channel button above to see all of them.`

@@ -250,10 +250,15 @@ export type MobileConversation = Pick<
   | "assigned_to"
   | "source_type"
 > & {
-  contact: Pick<
-    InboxContact,
-    "id" | "full_name" | "profile_picture_url" | "phone"
-  > | null;
+  contact:
+    | (Pick<InboxContact, "id" | "full_name" | "profile_picture_url" | "phone"> & {
+        /*
+         * Just enough of a tag to draw a chip. The list shows them under the
+         * preview, and the full record is a request away in the panel.
+         */
+        tags: Pick<CustomerTag, "id" | "name" | "color">[];
+      })
+    | null;
 
   social_account: {
     id: string;

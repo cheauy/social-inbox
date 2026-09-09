@@ -41,6 +41,11 @@ export async function GET(request: NextRequest) {
             full_name: row.contact.full_name,
             profile_picture_url: row.contact.profile_picture_url,
             phone: row.contact.phone,
+            tags: (row.contact.tags ?? []).map((tag) => ({
+              id: tag.id,
+              name: tag.name,
+              color: tag.color,
+            })),
           }
         : null,
 
