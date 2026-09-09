@@ -16,6 +16,12 @@ import {
   SettingsGroup,
   SettingsScreen,
 } from "../../components/settings-screen";
+import {
+  DEFAULT_CATEGORY,
+  Draft,
+  QuickReplyForm,
+  emptyDraft,
+} from "../../components/quick-reply-form";
 import { Empty, colors, styles } from "../../components/ui";
 import { api } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
@@ -31,26 +37,10 @@ import type { SavedReply } from "../../lib/types";
  * it never gets saved. The picker in the composer reads the same list, so a
  * reply added here is usable in the next conversation.
  *
- * Media on a quick reply stays on the web. Attachments are a private bucket,
- * an upload endpoint and a thumbnail grid, and a reply that quietly dropped
- * its image when edited here would be worse than not editing it here.
+ * Images and video come too. The picture of the size chart is taken on this
+ * phone; being told to find a laptop to attach it is how a quick reply ends
+ * up as plain text nobody uses.
  */
-
-type Draft = {
-  id: string | null;
-  title: string;
-  shortcut: string;
-  messageText: string;
-  category: string;
-};
-
-const EMPTY: Draft = {
-  id: null,
-  title: "",
-  shortcut: "",
-  messageText: "",
-  category: "",
-};
 
 export default function QuickReplies() {
   const insets = useSafeAreaInsets();
@@ -61,6 +51,7 @@ export default function QuickReplies() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [categories, setCategories] = useState<string[]>([DEFAULT_CATEGORY]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
@@ -72,12 +63,36 @@ export default function QuickReplies() {
     }
 
     try {
-      const data = await api<{ savedReplies: SavedReply[] }>(
-        "/api/saved-replies",
-        workspace.businessId,
-      );
+      const [data, drawers] = await Promise.all([
+        api<{ savedReplies: SavedReply[] }>(
+          "/api/saved-replies",
+          workspace.businessId,
+        ),
+        api<{ categories: { name: string }[] }>(
+          "/api/saved-reply-categories",
+          workspace.businessId,
+        ).catch(() => ({ categories: [] })),
+      ]);
 
-      setReplies(data.savedReplies ?? []);
+      const replies = data.savedReplies ?? [];
+
+      setReplies(replies);
+
+      /*
+       * General first and always, then whatever has been made, then any
+       * category a reply is already filed under that no longer exists as a
+       * record -- otherwise editing that reply would silently move it.
+       */
+      setCategories([
+        DEFAULT_CATEGORY,
+        ...new Set(
+          [
+            ...(drawers.categories ?? []).map((one) => one.name),
+            ...replies.map((one) => one.category ?? ""),
+          ].filter((name) => name && name !== DEFAULT_CATEGORY),
+        ),
+      ]);
+
       setError("");
     } catch (loadError) {
       setError(
@@ -125,7 +140,8 @@ export default function QuickReplies() {
              * be stored as one and match everything the composer typed.
              */
             shortcut: draft.shortcut.trim() || null,
-            category: draft.category.trim() || null,
+            category: draft.category.trim() || DEFAULT_CATEGORY,
+            attachments: draft.attachments,
           },
         },
       );
@@ -206,7 +222,7 @@ export default function QuickReplies() {
             accessibilityLabel={t("Add a quick reply", "បន្ថែមការឆ្លើយតបរហ័ស")}
             onPress={() => {
               setFormError("");
-              setDraft(EMPTY);
+              setDraft(emptyDraft());
             }}
             style={({ pressed }) => ({
               flexDirection: "row",
@@ -250,7 +266,8 @@ export default function QuickReplies() {
                   title: reply.title,
                   shortcut: reply.shortcut ?? "",
                   messageText: reply.message_text,
-                  category: reply.category ?? "",
+                  category: reply.category ?? DEFAULT_CATEGORY,
+                  attachments: reply.attachments ?? [],
                 });
               }}
               style={({ pressed }) => ({
@@ -308,11 +325,18 @@ export default function QuickReplies() {
                   ) : null}
 
                   {reply.attachments?.length ? (
-                    <Ionicons
-                      name="image-outline"
-                      size={14}
-                      color={colors.muted}
-                    />
+                    <View
+                      style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
+                    >
+                      <Ionicons
+                        name="image-outline"
+                        size={14}
+                        color={colors.muted}
+                      />
+                      <Text style={[styles.muted, { fontSize: 11 }]}>
+                        {reply.attachments.length}
+                      </Text>
+                    </View>
                   ) : null}
                 </View>
 
@@ -383,147 +407,27 @@ export default function QuickReplies() {
               </Pressable>
             </View>
 
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{ padding: 14, paddingTop: 0, gap: 14 }}
-            >
-              {formError ? (
-                <Text
-                  accessibilityRole="alert"
-                  style={{ color: colors.red, fontSize: 13, lineHeight: 19 }}
-                >
-                  {formError}
-                </Text>
-              ) : null}
-
-              <Field
-                label={t("Title", "ចំណងជើង")}
-                value={draft?.title ?? ""}
-                placeholder={t("Delivery times", "ពេលវេលាដឹកជញ្ជូន")}
-                onChange={(title) =>
-                  setDraft((current) =>
-                    current ? { ...current, title } : current,
+            {draft ? (
+              <QuickReplyForm
+                draft={draft}
+                categories={categories}
+                businessId={workspace?.businessId ?? ""}
+                saving={saving}
+                error={formError}
+                onChange={setDraft}
+                onError={setFormError}
+                onCategoryCreated={(name) =>
+                  setCategories((current) =>
+                    current.includes(name) ? current : [...current, name],
                   )
                 }
+                onSave={() => void save()}
               />
+            ) : null}
 
-              <Field
-                label={t("Message", "សារ")}
-                value={draft?.messageText ?? ""}
-                placeholder={t(
-                  "We deliver in Phnom Penh within 24 hours.",
-                  "យើងដឹកជញ្ជូននៅភ្នំពេញក្នុងរយៈពេល ២៤ ម៉ោង។",
-                )}
-                multiline
-                onChange={(messageText) =>
-                  setDraft((current) =>
-                    current ? { ...current, messageText } : current,
-                  )
-                }
-              />
-
-              <Field
-                label={t("Shortcut", "ផ្លូវកាត់")}
-                value={draft?.shortcut ?? ""}
-                placeholder="delivery"
-                onChange={(shortcut) =>
-                  setDraft((current) =>
-                    current ? { ...current, shortcut } : current,
-                  )
-                }
-              />
-
-              <Field
-                label={t("Category", "ប្រភេទ")}
-                value={draft?.category ?? ""}
-                placeholder={t("Shipping", "ការដឹកជញ្ជូន")}
-                onChange={(category) =>
-                  setDraft((current) =>
-                    current ? { ...current, category } : current,
-                  )
-                }
-              />
-
-              <Pressable
-                accessibilityRole="button"
-                disabled={saving}
-                onPress={() => void save()}
-                style={({ pressed }) => ({
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                  paddingVertical: 14,
-                  borderRadius: 14,
-                  backgroundColor: pressed ? "#0A6FA8" : colors.blue,
-                  opacity: saving ? 0.6 : 1,
-                })}
-              >
-                {saving ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text
-                    style={{ color: "white", fontSize: 15, fontWeight: "700" }}
-                  >
-                    {t("Save", "រក្សាទុក")}
-                  </Text>
-                )}
-              </Pressable>
-            </ScrollView>
           </View>
         </View>
       </Modal>
     </SettingsScreen>
-  );
-}
-
-function Field({
-  label,
-  value,
-  placeholder,
-  multiline,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  placeholder: string;
-  multiline?: boolean;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <View style={{ gap: 6 }}>
-      <Text
-        style={{
-          paddingLeft: 4,
-          fontSize: 11,
-          fontWeight: "800",
-          letterSpacing: 0.7,
-          textTransform: "uppercase",
-          color: colors.muted,
-        }}
-      >
-        {label}
-      </Text>
-
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor={colors.muted}
-        multiline={multiline}
-        style={{
-          minHeight: multiline ? 110 : 46,
-          paddingHorizontal: 13,
-          paddingVertical: 12,
-          borderRadius: 13,
-          borderWidth: 1,
-          borderColor: colors.border,
-          backgroundColor: "white",
-          fontSize: 15,
-          color: colors.ink,
-          textAlignVertical: multiline ? "top" : "center",
-        }}
-      />
-    </View>
   );
 }
