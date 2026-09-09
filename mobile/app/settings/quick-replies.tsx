@@ -23,6 +23,7 @@ import {
   QuickReplyForm,
   emptyDraft,
 } from "../../components/quick-reply-form";
+import { OrderMark, SwipeRow } from "../../components/swipe-row";
 import { Empty, colors, styles } from "../../components/ui";
 import { api } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
@@ -53,6 +54,9 @@ export default function QuickReplies() {
   const [error, setError] = useState("");
 
   const [categories, setCategories] = useState<string[]>([DEFAULT_CATEGORY]);
+  const [tab, setTab] = useState<"active" | "disabled">("active");
+  const [swiped, setSwiped] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
@@ -111,6 +115,10 @@ export default function QuickReplies() {
     void load();
   }, [load]);
 
+  const active = replies.filter((reply) => reply.is_active);
+  const disabled = replies.filter((reply) => !reply.is_active);
+  const shown = tab === "active" ? active : disabled;
+
   async function save() {
     if (!draft || !workspace) return;
 
@@ -126,6 +134,10 @@ export default function QuickReplies() {
 
     setSaving(true);
     setFormError("");
+
+    /* A blank or nonsense order is the end of the list, not NaN. */
+    const parsed = Number.parseInt(draft.sortIndex, 10);
+    const order = Number.isFinite(parsed) && parsed >= 0 ? parsed : replies.length;
 
     try {
       await api(
@@ -143,6 +155,7 @@ export default function QuickReplies() {
             shortcut: draft.shortcut.trim() || null,
             category: draft.category.trim() || DEFAULT_CATEGORY,
             attachments: draft.attachments,
+            sortIndex: order,
           },
         },
       );
@@ -157,6 +170,35 @@ export default function QuickReplies() {
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  /*
+   * Out of use rather than gone: the wording somebody spent a morning on is
+   * worth keeping even when the promotion it describes has ended, and it
+   * stops appearing in the composer either way.
+   */
+  async function setActive(reply: SavedReply, active: boolean) {
+    if (!workspace || busy) return;
+
+    setBusy(reply.id);
+    setError("");
+
+    try {
+      await api("/api/saved-replies/" + reply.id, workspace.businessId, {
+        method: "PATCH",
+        body: { isActive: active },
+      });
+
+      await load();
+    } catch (toggleError) {
+      setError(
+        toggleError instanceof Error
+          ? toggleError.message
+          : "Unable to change that quick reply.",
+      );
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -223,7 +265,8 @@ export default function QuickReplies() {
             accessibilityLabel={t("Add a quick reply", "បន្ថែមការឆ្លើយតបរហ័ស")}
             onPress={() => {
               setFormError("");
-              setDraft(emptyDraft());
+              /* Next in line, so a new reply lands at the end of the list. */
+              setDraft({ ...emptyDraft(), sortIndex: String(replies.length) });
             }}
             style={({ pressed }) => ({
               flexDirection: "row",
@@ -244,10 +287,88 @@ export default function QuickReplies() {
         </View>
       }
     >
-      {replies.length === 0 ? (
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        {(["active", "disabled"] as const).map((option) => {
+          const on = tab === option;
+          const count = option === "active" ? active.length : disabled.length;
+
+          return (
+            <Pressable
+              key={option}
+              accessibilityRole="button"
+              accessibilityState={{ selected: on }}
+              onPress={() => {
+                setTab(option);
+                setSwiped(null);
+              }}
+              style={({ pressed }) => ({
+                flex: 1,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 7,
+                paddingVertical: 11,
+                borderRadius: 13,
+                borderWidth: 1,
+                borderColor: on ? colors.blue : colors.border,
+                backgroundColor: on
+                  ? colors.pale
+                  : pressed
+                    ? colors.pale
+                    : "white",
+              })}
+            >
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: on ? "800" : "600",
+                  color: on ? colors.blue : colors.muted,
+                }}
+              >
+                {on
+                  ? t(
+                      option === "active" ? "Active" : "Disabled",
+                      option === "active" ? "កំពុងប្រើ" : "បិទ",
+                    )
+                  : t(
+                      option === "active" ? "Active" : "Disabled",
+                      option === "active" ? "កំពុងប្រើ" : "បិទ",
+                    )}
+              </Text>
+
+              <View
+                style={{
+                  minWidth: 22,
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 999,
+                  backgroundColor: on ? colors.blue : colors.border,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: "800",
+                    color: on ? "white" : colors.muted,
+                    textAlign: "center",
+                  }}
+                >
+                  {count}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {shown.length === 0 ? (
         <Empty
           icon="flash-outline"
-          title={t("No quick replies yet", "មិនទាន់មានការឆ្លើយតបរហ័ស")}
+          title={
+            tab === "active"
+              ? t("No quick replies yet", "មិនទាន់មានការឆ្លើយតបរហ័ស")
+              : t("Nothing disabled", "គ្មានអ្វីបានបិទ")
+          }
           detail={t(
             "Save the sentences you type over and over, and they appear in the composer.",
             "រក្សាទុកឃ្លាដែលអ្នកវាយច្រើនដង នោះវានឹងបង្ហាញក្នុងប្រអប់សរសេរសារ។",
@@ -255,10 +376,10 @@ export default function QuickReplies() {
         />
       ) : (
         <SettingsGroup>
-          {replies.map((reply, index) => (
-            <Pressable
-              key={reply.id}
-              accessibilityRole="button"
+          {shown.map((reply, index) => {
+            const row = (
+              <Pressable
+                accessibilityRole="button"
               accessibilityLabel={t("Edit " + reply.title, "កែ " + reply.title)}
               onPress={() => {
                 setFormError("");
@@ -269,6 +390,7 @@ export default function QuickReplies() {
                   messageText: reply.message_text,
                   category: reply.category ?? DEFAULT_CATEGORY,
                   attachments: reply.attachments ?? [],
+                  sortIndex: String(reply.sort_index ?? 0),
                 });
               }}
               style={({ pressed }) => ({
@@ -279,10 +401,11 @@ export default function QuickReplies() {
                 paddingVertical: 12,
                 borderTopWidth: index === 0 ? 0 : 1,
                 borderTopColor: colors.border,
-                backgroundColor: pressed ? colors.pale : "transparent",
-                opacity: reply.is_active ? 1 : 0.55,
+                backgroundColor: pressed ? colors.pale : "white",
               })}
             >
+              <OrderMark index={reply.sort_index ?? index} />
+
               <View style={{ flex: 1, gap: 2 }}>
                 <View
                   style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
@@ -404,20 +527,45 @@ export default function QuickReplies() {
                 ) : null}
               </View>
 
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={t(
-                  "Delete " + reply.title,
-                  "លុប " + reply.title,
+                {busy === reply.id ? (
+                  <ActivityIndicator color={colors.blue} />
+                ) : (
+                  <Ionicons
+                    name="chevron-forward"
+                    size={17}
+                    color={colors.muted}
+                  />
                 )}
-                onPress={() => confirmDelete(reply)}
-                hitSlop={10}
-                style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
-              >
-                <Ionicons name="trash-outline" size={19} color={colors.red} />
               </Pressable>
-            </Pressable>
-          ))}
+            );
+
+            return (
+              <SwipeRow
+                key={reply.id}
+                id={reply.id}
+                openId={swiped}
+                onOpen={setSwiped}
+                actions={[
+                  {
+                    icon: reply.is_active ? "eye-off-outline" : "eye-outline",
+                    label: reply.is_active
+                      ? t("Disable", "បិទ")
+                      : t("Enable", "បើក"),
+                    tone: reply.is_active ? "#C77700" : "#2FA36B",
+                    onPress: () => void setActive(reply, !reply.is_active),
+                  },
+                  {
+                    icon: "trash-outline",
+                    label: t("Delete", "លុប"),
+                    tone: colors.red,
+                    onPress: () => confirmDelete(reply),
+                  },
+                ]}
+              >
+                {row}
+              </SwipeRow>
+            );
+          })}
         </SettingsGroup>
       )}
 

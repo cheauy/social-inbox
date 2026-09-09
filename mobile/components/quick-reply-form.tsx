@@ -45,6 +45,7 @@ export type Draft = {
   messageText: string;
   category: string;
   attachments: SavedReplyAttachment[];
+  sortIndex: string;
 };
 
 export const emptyDraft = (): Draft => ({
@@ -54,6 +55,7 @@ export const emptyDraft = (): Draft => ({
   messageText: "",
   category: DEFAULT_CATEGORY,
   attachments: [],
+  sortIndex: "0",
 });
 
 export function QuickReplyForm({
@@ -458,6 +460,38 @@ export function QuickReplyForm({
         placeholder="delivery"
         onChange={(shortcut) => onChange({ ...draft, shortcut })}
       />
+
+      <View style={{ gap: 6 }}>
+        <Label>{t("Order", "លំដាប់")}</Label>
+
+        <TextInput
+          value={draft.sortIndex}
+          onChangeText={(value) =>
+            onChange({ ...draft, sortIndex: value.replace(/[^0-9]/g, "") })
+          }
+          placeholder="0"
+          placeholderTextColor={colors.muted}
+          keyboardType="number-pad"
+          maxLength={4}
+          style={{
+            height: 46,
+            paddingHorizontal: 13,
+            borderRadius: 13,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: "white",
+            fontSize: 15,
+            color: colors.ink,
+          }}
+        />
+
+        <Text style={[styles.muted, { fontSize: 12, lineHeight: 17 }]}>
+          {t(
+            "Lower comes first, in this list and in the composer.",
+            "លេខតូចមកមុន ទាំងក្នុងបញ្ជីនេះ និងក្នុងប្រអប់សរសេរសារ។",
+          )}
+        </Text>
+      </View>
 
       <Pressable
         accessibilityRole="button"

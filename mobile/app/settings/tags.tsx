@@ -16,6 +16,7 @@ import {
 } from "../../components/settings-screen";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { OrderMark, SwipeRow } from "../../components/swipe-row";
 import { Sheet, TagChip, colors, styles } from "../../components/ui";
 import { api } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
@@ -26,6 +27,11 @@ import { useInbox } from "../../lib/inbox-provider";
  * Adding one is the settings change an agent most often wants mid-shift --
  * a new promotion, a new courier, a problem worth marking -- and it is small
  * enough to do properly on a phone, which most of Settings is not.
+ *
+ * Retired tags are behind their own tab rather than greyed out in the same
+ * list. A tag is taken out of use far more often than it is deleted -- the
+ * customers carrying it keep it, and the history stays readable -- so the
+ * disabled ones are a real set worth finding, not clutter to scroll past.
  */
 
 type Tag = {
@@ -38,9 +44,10 @@ type Tag = {
 };
 
 /*
- * The web's own swatches. Tag colour carries meaning across a team, so the
- * phone offers the same set rather than a colour wheel that would let one
- * person invent a green nobody else has.
+ * The web's own swatches, offered first: tag colour carries meaning across a
+ * team, and eight shared ones beat everybody inventing their own green. A
+ * workspace whose brand is not in the set can still type a hex, which is what
+ * the API takes anyway.
  */
 const SWATCHES = [
   "#0089CC",
@@ -66,8 +73,15 @@ export default function Tags() {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [color, setColor] = useState(SWATCHES[0]);
+  const [order, setOrder] = useState("0");
+  const [tab, setTab] = useState<"active" | "disabled">("active");
+  const [swiped, setSwiped] = useState<string | null>(null);
 
   const open = creating || editing !== null;
+
+  const active = tags.filter((tag) => tag.is_active);
+  const disabled = tags.filter((tag) => !tag.is_active);
+  const shown = tab === "active" ? active : disabled;
 
   const load = useCallback(async () => {
     if (!workspace) {
@@ -102,6 +116,8 @@ export default function Tags() {
     setCreating(true);
     setName("");
     setColor(SWATCHES[0]);
+    /* Next in line, so a new tag lands at the end rather than on top. */
+    setOrder(String(tags.length));
   }
 
   function startEdit(tag: Tag) {
@@ -109,6 +125,7 @@ export default function Tags() {
     setEditing(tag);
     setName(tag.name);
     setColor(tag.color || SWATCHES[0]);
+    setOrder(String(tag.sort_index ?? 0));
   }
 
   function close() {
@@ -126,17 +143,24 @@ export default function Tags() {
     setBusy("save");
     setError("");
 
+    /* A blank or nonsense order is the end of the list, not NaN. */
+    const parsed = Number.parseInt(order, 10);
+    const sortIndex = Number.isFinite(parsed) && parsed >= 0 ? parsed : tags.length;
+
     try {
       if (editing) {
         await api(
           `/api/tags/${encodeURIComponent(editing.id)}`,
           workspace.businessId,
-          { method: "PATCH", body: { name: trimmed, color } },
+          {
+            method: "PATCH",
+            body: { name: trimmed, color, sortIndex },
+          },
         );
       } else {
         await api("/api/tags", workspace.businessId, {
           method: "POST",
-          body: { name: trimmed, color },
+          body: { name: trimmed, color, sortIndex },
         });
       }
 
@@ -147,6 +171,36 @@ export default function Tags() {
         saveError instanceof Error
           ? saveError.message
           : "Unable to save that tag.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /*
+   * Taking a tag out of use, which is what people actually want nine times in
+   * ten: the customers carrying it keep it and the history still reads, but
+   * nobody can put it on anybody new.
+   */
+  async function setActive(tag: Tag, active: boolean) {
+    if (!workspace || busy) return;
+
+    setBusy(tag.id);
+    setError("");
+
+    try {
+      await api(
+        `/api/tags/${encodeURIComponent(tag.id)}`,
+        workspace.businessId,
+        { method: "PATCH", body: { isActive: active } },
+      );
+
+      await load();
+    } catch (toggleError) {
+      setError(
+        toggleError instanceof Error
+          ? toggleError.message
+          : "Unable to change that tag.",
       );
     } finally {
       setBusy(null);
@@ -244,60 +298,161 @@ export default function Tags() {
         ) : null
       }
     >
+      {/*
+        Two tabs with their counts, so "how many tags do we actually use" is
+        answered by looking rather than by counting greyed-out rows.
+      */}
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        {(["active", "disabled"] as const).map((option) => {
+          const on = tab === option;
+          const count =
+            option === "active" ? active.length : disabled.length;
+
+          return (
+            <Pressable
+              key={option}
+              accessibilityRole="button"
+              accessibilityState={{ selected: on }}
+              onPress={() => {
+                setTab(option);
+                setSwiped(null);
+              }}
+              style={({ pressed }) => ({
+                flex: 1,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 7,
+                paddingVertical: 11,
+                borderRadius: 13,
+                borderWidth: 1,
+                borderColor: on ? colors.blue : colors.border,
+                backgroundColor: on
+                  ? colors.pale
+                  : pressed
+                    ? colors.pale
+                    : "white",
+              })}
+            >
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: on ? "800" : "600",
+                  color: on ? colors.blue : colors.muted,
+                }}
+              >
+                {option === "active" ? "Active" : "Disabled"}
+              </Text>
+
+              <View
+                style={{
+                  minWidth: 22,
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 999,
+                  backgroundColor: on ? colors.blue : colors.border,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: "800",
+                    color: on ? "white" : colors.muted,
+                    textAlign: "center",
+                  }}
+                >
+                  {count}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+
       <SettingsGroup>
-        {tags.length === 0 ? (
+        {shown.length === 0 ? (
           <View style={{ padding: 28, alignItems: "center", gap: 6 }}>
             <Ionicons name="pricetags-outline" size={26} color={colors.muted} />
 
             <Text style={{ fontSize: 15, fontWeight: "700", color: colors.ink }}>
-              No tags yet
+              {tab === "active" ? "No tags yet" : "Nothing disabled"}
             </Text>
 
             <Text style={[styles.muted, { fontSize: 13, textAlign: "center" }]}>
-              A tag is how a customer gets marked as VIP, or paying on delivery,
-              or anything else your team needs to see at a glance.
+              {tab === "active"
+                ? "A tag is how a customer gets marked as VIP, or paying on delivery, or anything else your team needs to see at a glance."
+                : "Tags you take out of use appear here. The customers carrying them keep them."}
             </Text>
           </View>
         ) : (
-          tags.map((tag, index) => (
-            <Pressable
-              key={tag.id}
-              accessibilityRole={canManageRooms ? "button" : "text"}
-              accessibilityLabel={
-                canManageRooms ? `Edit the ${tag.name} tag` : tag.name
-              }
-              disabled={!canManageRooms}
-              onPress={() => startEdit(tag)}
-              style={({ pressed }) => ({
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 12,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                borderTopWidth: index === 0 ? 0 : 1,
-                borderTopColor: colors.border,
-                backgroundColor:
-                  pressed && canManageRooms ? colors.pale : "transparent",
-                opacity: tag.is_active ? 1 : 0.5,
-              })}
-            >
-              <TagChip name={tag.name} color={tag.color} showCheck={false} />
+          shown.map((tag, index) => {
+            const row = (
+              <Pressable
+                accessibilityRole={canManageRooms ? "button" : "text"}
+                accessibilityLabel={
+                  canManageRooms ? `Edit the ${tag.name} tag` : tag.name
+                }
+                disabled={!canManageRooms}
+                onPress={() => startEdit(tag)}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  borderTopWidth: index === 0 ? 0 : 1,
+                  borderTopColor: colors.border,
+                  backgroundColor:
+                    pressed && canManageRooms ? colors.pale : "white",
+                })}
+              >
+                <OrderMark index={tag.sort_index ?? index} />
 
-              <View style={{ flex: 1 }}>
-                {tag.is_active ? null : (
-                  <Text style={[styles.muted, { fontSize: 12 }]}>Inactive</Text>
-                )}
-              </View>
+                <View style={{ flex: 1 }}>
+                  <TagChip name={tag.name} color={tag.color} showCheck={false} />
+                </View>
 
-              {canManageRooms ? (
-                <Ionicons
-                  name="chevron-forward"
-                  size={17}
-                  color={colors.muted}
-                />
-              ) : null}
-            </Pressable>
-          ))
+                {busy === tag.id ? (
+                  <ActivityIndicator color={colors.blue} />
+                ) : canManageRooms ? (
+                  <Ionicons
+                    name="chevron-forward"
+                    size={17}
+                    color={colors.muted}
+                  />
+                ) : null}
+              </Pressable>
+            );
+
+            if (!canManageRooms) {
+              return <View key={tag.id}>{row}</View>;
+            }
+
+            return (
+              <SwipeRow
+                key={tag.id}
+                id={tag.id}
+                openId={swiped}
+                onOpen={setSwiped}
+                actions={[
+                  {
+                    icon: tag.is_active ? "eye-off-outline" : "eye-outline",
+                    label: tag.is_active ? "Disable" : "Enable",
+                    tone: tag.is_active ? "#C77700" : "#2FA36B",
+                    onPress: () => void setActive(tag, !tag.is_active),
+                  },
+                  {
+                    icon: "trash-outline",
+                    label: "Delete",
+                    tone: colors.red,
+                    onPress: () => confirmDelete(tag),
+                  },
+                ]}
+              >
+                {row}
+              </SwipeRow>
+            );
+          })
         )}
       </SettingsGroup>
 
@@ -311,7 +466,7 @@ export default function Tags() {
       <Sheet
         open={open}
         title={editing ? "Edit tag" : "New tag"}
-        detail="Colour carries meaning across the team, so pick from the set."
+        detail="Colour carries meaning across the team. Pick one, or type your own."
         onClose={close}
       >
         <ScrollView keyboardShouldPersistTaps="handled">
@@ -327,8 +482,41 @@ export default function Tags() {
               style={styles.input}
             />
 
-            <View style={{ alignItems: "flex-start" }}>
-              <TagChip name={name.trim() || "Preview"} color={color} />
+            {/*
+              Both states, because a tag is worn two ways -- filled where a
+              customer has it, outlined where they do not -- and a colour that
+              reads in one can vanish in the other.
+            */}
+            <View style={{ gap: 8 }}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "800",
+                  letterSpacing: 0.7,
+                  textTransform: "uppercase",
+                  color: colors.muted,
+                }}
+              >
+                Live preview
+              </Text>
+
+              <View style={{ flexDirection: "row", gap: 14 }}>
+                <View style={{ alignItems: "center", gap: 4 }}>
+                  <TagChip name={name.trim() || "Preview"} color={color} />
+                  <Text style={[styles.muted, { fontSize: 11.5 }]}>Applied</Text>
+                </View>
+
+                <View style={{ alignItems: "center", gap: 4 }}>
+                  <TagChip
+                    name={name.trim() || "Preview"}
+                    color={color}
+                    selected={false}
+                  />
+                  <Text style={[styles.muted, { fontSize: 11.5 }]}>
+                    Not applied
+                  </Text>
+                </View>
+              </View>
             </View>
 
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
@@ -355,6 +543,72 @@ export default function Tags() {
                   ) : null}
                 </Pressable>
               ))}
+            </View>
+
+            {/*
+              Anything the eight do not cover. Validated here as well as at the
+              API, so a half-typed hex does not turn the preview black while
+              somebody is still typing it.
+            */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 19,
+                  backgroundColor: color,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              />
+
+              <TextInput
+                value={color}
+                onChangeText={(value) => {
+                  const next = value.startsWith("#") ? value : `#${value}`;
+                  if (/^#[0-9a-fA-F]{0,6}$/.test(next)) {
+                    setColor(next.toUpperCase());
+                  }
+                }}
+                placeholder="#0089CC"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={7}
+                editable={busy === null}
+                style={[styles.input, { flex: 1 }]}
+              />
+            </View>
+
+            <View style={{ gap: 6 }}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "800",
+                  letterSpacing: 0.7,
+                  textTransform: "uppercase",
+                  color: colors.muted,
+                }}
+              >
+                Order
+              </Text>
+
+              <TextInput
+                value={order}
+                onChangeText={(value) =>
+                  setOrder(value.replace(/[^0-9]/g, ""))
+                }
+                placeholder="0"
+                placeholderTextColor={colors.muted}
+                keyboardType="number-pad"
+                maxLength={4}
+                editable={busy === null}
+                style={styles.input}
+              />
+
+              <Text style={[styles.muted, { fontSize: 12, lineHeight: 17 }]}>
+                Lower comes first, everywhere a tag is listed.
+              </Text>
             </View>
           </View>
         </ScrollView>
