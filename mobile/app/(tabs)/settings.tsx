@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import Constants from "expo-constants";
 import { Redirect, useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -50,6 +51,13 @@ type Row = {
   detailKm: string;
   route: string;
 };
+
+/*
+ * Read from the app config rather than typed here, so the number on this
+ * screen is the number that was built. A second copy in the source is a
+ * second thing to forget on release day.
+ */
+const VERSION = Constants.expoConfig?.version ?? "";
 
 const GROUPS: { title: string; km: string; rows: Row[] }[] = [
   {
@@ -471,6 +479,21 @@ export default function Settings() {
             {t("Sign out", "ចាកចេញ")}
           </Text>
         </Pressable>
+
+        {/*
+          The version, where every app puts it: the last thing under the last
+          button. It is the first question asked when somebody reports that
+          something is broken, and "the one from the link you sent me" is not
+          an answer anybody can act on.
+        */}
+        <Text
+          style={[
+            styles.muted,
+            { fontSize: 12, textAlign: "center", paddingTop: 2 },
+          ]}
+        >
+          {t("TENH Chat ", "TENH Chat ") + VERSION}
+        </Text>
       </ScrollView>
     </View>
   );
