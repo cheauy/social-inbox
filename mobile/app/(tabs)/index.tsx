@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -32,75 +32,6 @@ import { api } from "../../lib/api/client";
 import { useAuth } from "../../lib/auth/provider";
 import { useInbox } from "../../lib/inbox-provider";
 import type { InboxConversation, Workspace } from "../../lib/types";
-
-function WorkspacePicker({
-  workspaces,
-  onSelect,
-  busy,
-}: {
-  workspaces: Workspace[];
-  onSelect: (workspace: Workspace) => void;
-  busy: boolean;
-}) {
-  if (workspaces.length === 0) {
-    return (
-      <Empty
-        icon="briefcase-outline"
-        title="No workspace available"
-        detail="This account is not an active member of any workspace with a live subscription. Open TENH on the web to check."
-      />
-    );
-  }
-
-  return (
-    <View style={{ padding: 16, gap: 10 }}>
-      <Text style={styles.heading}>Choose a workspace</Text>
-
-      {workspaces.map((workspace) => {
-        /*
-         * An expired workspace is listed but not selectable, and says why.
-         * Hiding it would leave somebody who knows they have that workspace
-         * looking for it.
-         */
-        const usable = workspace.subscriptionOperational;
-
-        return (
-          <Pressable
-            key={workspace.businessId}
-            accessibilityRole="button"
-            disabled={!usable || busy}
-            onPress={() => onSelect(workspace)}
-            style={({ pressed }) => [
-              styles.card,
-              { opacity: !usable ? 0.55 : pressed ? 0.7 : 1 },
-            ]}
-          >
-            <View style={styles.row}>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={styles.heading}>
-                  {workspace.businessName}
-                </Text>
-                <Text style={styles.muted}>
-                  {usable
-                    ? workspace.role
-                    : "Subscription expired — renew on the web"}
-                </Text>
-              </View>
-
-              {usable ? (
-                <Ionicons
-                  name="chevron-forward"
-                  size={20}
-                  color={colors.muted}
-                />
-              ) : null}
-            </View>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
 
 /*
  * Placeholder rows, shaped like the real ones.
@@ -183,7 +114,7 @@ function ListSkeleton() {
   );
 }
 
-function ConversationRow({
+const ConversationRow = memo(function ConversationRow({
   conversation,
   onPress,
 }: {
@@ -330,7 +261,7 @@ function ConversationRow({
       </View>
     </Pressable>
   );
-}
+});
 
 
 type Channel = {
@@ -1076,10 +1007,8 @@ export default function Inbox() {
   } = useInbox();
 
   const [refreshing, setRefreshing] = useState(false);
-  const [switching, setSwitching] = useState(false);
   const [channelOpen, setChannelOpen] = useState(false);
   const [channelId, setChannelId] = useState<string | null>(null);
-  const [switchingChannel, setSwitchingChannel] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
   const [tagId, setTagId] = useState<string | null>(null);
 
@@ -1093,16 +1022,10 @@ export default function Inbox() {
    */
   const chooseChannel = useCallback((next: string | null) => {
     setChannelOpen(false);
-    setSwitchingChannel(true);
-
-    setTimeout(() => {
-      setChannelId(next);
-
-      // Long enough that the list has drawn before the skeleton goes.
-      setTimeout(() => setSwitchingChannel(false), 220);
-    }, 16);
+    setChannelId(next);
   }, []);
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const [smartView, setSmartView] = useState<SmartView>("all");
   const [status, setStatus] = useState<StatusKey>("all");
   const [statusOpen, setStatusOpen] = useState(false);
@@ -1189,11 +1112,15 @@ export default function Inbox() {
    * the member can reach, and offering another one here would filter the list
    * down to nothing with no way to tell why.
    */
-  const channels = (channelData?.channels ?? []).filter(
-    (item) => item.businessId === workspace?.businessId,
+  const channels = useMemo(
+    () =>
+      (channelData?.channels ?? []).filter(
+        (item) => item.businessId === workspace?.businessId,
+      ),
+    [channelData?.channels, workspace?.businessId],
   );
 
-  const tags = tagData?.tags ?? [];
+  const tags = useMemo(() => tagData?.tags ?? [], [tagData?.tags]);
 
   const selectedChannel =
     channels.find((item) => item.id === channelId) ?? null;
@@ -1211,7 +1138,7 @@ export default function Inbox() {
               (conversation.contact?.tags ?? []).some((tag) => tag.id === tagId)) &&
             matchesSmartView(conversation, smartView, memberId) &&
             matchesStatus(conversation, status) &&
-            (matchesSearch(conversation, search.trim().toLowerCase()) ||
+            (matchesSearch(conversation, deferredSearch.trim().toLowerCase()) ||
               messageMatches.has(conversation.id)),
         )
         .sort((first, second) => {
@@ -1230,7 +1157,7 @@ export default function Inbox() {
       conversations,
       memberId,
       messageMatches,
-      search,
+      deferredSearch,
       smartView,
       status,
       tagId,
@@ -1304,6 +1231,17 @@ export default function Inbox() {
     return <Redirect href="/sign-in" />;
   }
 
+  /*
+   * Which workspace comes before anything a tab can show, so it is asked on
+   * its own screen rather than under a tab bar whose other four tabs cannot
+   * answer until it is settled. Held until the list has actually loaded --
+   * redirecting on the empty first frame would bounce anybody who already has
+   * a workspace out to a chooser and straight back.
+   */
+  if (!workspace && !loading) {
+    return <Redirect href="/workspaces" />;
+  }
+
   async function pullToRefresh() {
     setRefreshing(true);
 
@@ -1312,18 +1250,6 @@ export default function Inbox() {
       await refresh();
     } finally {
       setRefreshing(false);
-    }
-  }
-
-  async function choose(next: Workspace) {
-    setSwitching(true);
-
-    try {
-      await selectWorkspace(next);
-    } catch {
-      // selectWorkspace already reported it through the provider's error.
-    } finally {
-      setSwitching(false);
     }
   }
 
@@ -1598,19 +1524,14 @@ export default function Inbox() {
       <ErrorNotice message={error} onRetry={() => void pullToRefresh()} />
 
       {!workspace ? (
-        loading ? (
-          <View style={{ padding: 40 }}>
-            <ActivityIndicator color={colors.blue} />
-          </View>
-        ) : (
-          <WorkspacePicker
-            workspaces={workspaces}
-            onSelect={(next) => void choose(next)}
-            busy={switching}
-          />
-        )
-      ) : switchingChannel ? (
-        <ListSkeleton />
+        /*
+         * Nothing to show until a workspace is chosen, and choosing one is a
+         * screen of its own now -- with no tab bar under it, because none of
+         * those tabs mean anything until this question is answered.
+         */
+        <View style={{ padding: 40 }}>
+          <ActivityIndicator color={colors.blue} />
+        </View>
       ) : (
         <FlatList
           data={ordered}
@@ -1684,6 +1605,11 @@ export default function Inbox() {
           contentContainerStyle={
             ordered.length === 0 ? { flexGrow: 1 } : undefined
           }
+          initialNumToRender={14}
+          maxToRenderPerBatch={12}
+          updateCellsBatchingPeriod={24}
+          windowSize={9}
+          removeClippedSubviews
         />
       )}
     </View>

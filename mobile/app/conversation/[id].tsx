@@ -3,10 +3,12 @@ import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import * as DocumentPicker from "expo-document-picker";
 import { File, Paths } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
+import { VideoView, useVideoPlayer } from "expo-video";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   FlatList,
   Image,
@@ -48,11 +50,19 @@ import type {
   EditableField,
   TeamMember,
 } from "../../components/customer-panel";
-import { api, ApiError } from "../../lib/api/client";
+import {
+  api,
+  ApiError,
+  upload as uploadNativeFile,
+  uploadMany,
+} from "../../lib/api/client";
 import { CHAT_BASE_COLOR, useDisplay } from "../../lib/display-provider";
 import { useInbox } from "../../lib/inbox-provider";
+import { useMediaSource } from "../../lib/media";
+import { AuthImage } from "../../components/auth-image";
 import type {
   ConversationStatus,
+  InboxConversation,
   InboxMessage,
   SavedReply,
 } from "../../lib/types";
@@ -165,6 +175,10 @@ function kindOf(mimeType: string, name: string): Pending["kind"] {
 
   if (type.startsWith("video/") || ["mp4", "mov", "m4v", "3gp"].includes(extension)) {
     return "video";
+  }
+
+  if (type.startsWith("audio/") || ["mp3", "m4a", "aac", "wav", "ogg", "opus"].includes(extension)) {
+    return "audio";
   }
 
   return "file";
@@ -389,15 +403,9 @@ function MessagePhoto({
       accessibilityLabel="View photo"
       onPress={() => onOpen(uri)}
     >
-      <Image
-        source={{ uri }}
-        onLoad={(event) => {
-          const { width, height } = event.nativeEvent.source;
-
-          if (width > 0 && height > 0) {
-            setRatio(width / height);
-          }
-        }}
+      <AuthImage
+        uri={uri}
+        onLoad={({ width, height }) => setRatio(width / height)}
         style={{
           width: 208,
           aspectRatio: ratio,
@@ -408,6 +416,397 @@ function MessagePhoto({
         resizeMode="cover"
       />
     </Pressable>
+  );
+}
+
+type MediaPreview = {
+  kind: "image" | "video";
+  uri: string;
+};
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function words(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function facebookCommentId(message: InboxMessage) {
+  const raw = record(message.raw_payload);
+  return words(raw?.comment_id) ?? words(raw?.reply_comment_id) ?? message.platform_message_id?.trim() ?? null;
+}
+
+function facebookParentCommentId(message: InboxMessage) {
+  const raw = record(message.raw_payload);
+  return words(raw?.parent_comment_id) ?? words(record(raw?.comment)?.parent_id);
+}
+
+function messageMedia(message: InboxMessage): MediaPreview[] {
+  const raw = record(message.raw_payload);
+  const payloadMessage = record(raw?.message);
+  const rawAttachments = Array.isArray(payloadMessage?.attachments)
+    ? payloadMessage.attachments
+    : Array.isArray(raw?.attachments)
+      ? raw.attachments
+      : [];
+  const found = rawAttachments.flatMap((value): MediaPreview[] => {
+    const item = record(value);
+    const payload = record(item?.payload);
+    const imageData = record(item?.image_data);
+    const uri = words(payload?.url) ?? words(imageData?.url) ?? words(item?.url);
+    const declared = words(item?.type)?.toLowerCase();
+
+    if (!uri || (declared !== "image" && declared !== "video")) return [];
+    return [{ kind: declared, uri }];
+  });
+
+  if (message.attachment_url && !found.some((item) => item.uri === message.attachment_url)) {
+    found.unshift({
+      kind: message.message_type === "video" ? "video" : "image",
+      uri: message.attachment_url,
+    });
+  }
+
+  return found;
+}
+
+function InlineVideo({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, (instance) => {
+    instance.muted = true;
+  });
+
+  return (
+    <VideoView
+      player={player}
+      nativeControls={false}
+      contentFit="cover"
+      style={{ width: "100%", height: "100%" }}
+    />
+  );
+}
+
+function VideoPreview({ uri }: { uri: string }) {
+  const resolve = useMediaSource();
+  const player = useVideoPlayer(resolve(uri) ?? uri, (instance) => {
+    instance.play();
+  });
+
+  return (
+    <VideoView
+      player={player}
+      nativeControls
+      contentFit="contain"
+      style={{ width: "100%", height: "82%" }}
+    />
+  );
+}
+
+function MediaGrid({
+  items,
+  onOpen,
+}: {
+  items: MediaPreview[];
+  onOpen: (item: MediaPreview) => void;
+}) {
+  const shown = items.slice(0, 9);
+  const width = items.length === 1 ? 224 : items.length === 2 ? 224 : 228;
+  const tile = items.length === 1 ? width : items.length === 2 ? 110 : 73;
+
+  return (
+    <View
+      style={{
+        width,
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 4,
+      }}
+    >
+      {shown.map((item, index) => (
+        <Pressable
+          key={`${item.uri}:${index}`}
+          accessibilityRole="button"
+          accessibilityLabel={`View ${item.kind}`}
+          onPress={() => onOpen(item)}
+          style={{
+            width: tile,
+            height: items.length === 1 ? 220 : tile,
+            overflow: "hidden",
+            borderRadius: items.length === 1 ? 13 : 8,
+            backgroundColor: "#071421",
+          }}
+        >
+          {item.kind === "video" ? (
+            <>
+              <InlineVideo uri={item.uri} />
+              <View
+                pointerEvents="none"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(3,10,20,.16)",
+                }}
+              >
+                <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,.92)" }}>
+                  <Ionicons name="play" size={19} color={colors.blue} />
+                </View>
+              </View>
+            </>
+          ) : (
+            <AuthImage uri={item.uri} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+          )}
+
+          {index === 8 && items.length > 9 ? (
+            <View style={{ position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(16,34,56,.6)" }}>
+              <Text style={{ color: "white", fontSize: 21, fontWeight: "800" }}>+{items.length - 9}</Text>
+            </View>
+          ) : null}
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+function MessageText({ body, outgoing }: { body: string; outgoing: boolean }) {
+  const parts = body.split(/(https?:\/\/[^\s]+)/gi);
+
+  return (
+    <Text style={{ color: outgoing ? "white" : colors.ink, fontSize: 15, lineHeight: 21 }}>
+      {parts.map((part, index) =>
+        /^https?:\/\//i.test(part) ? (
+          <Text
+            key={`${part}:${index}`}
+            accessibilityRole="link"
+            onPress={() => void Linking.openURL(part)}
+            style={{ color: outgoing ? "white" : colors.blue, textDecorationLine: "underline", fontWeight: "600" }}
+          >
+            {part}
+          </Text>
+        ) : (
+          part
+        ),
+      )}
+    </Text>
+  );
+}
+
+function CommentReplyRow({
+  reply,
+  conversation,
+  onOpen,
+  onReply,
+  onAction,
+  busy,
+}: {
+  reply: InboxMessage;
+  conversation: InboxConversation;
+  onOpen: (item: MediaPreview) => void;
+  onReply: (message: InboxMessage) => void;
+  onAction: (message: InboxMessage, action: "like" | "hide" | "delete") => void;
+  busy: boolean;
+}) {
+  const raw = record(reply.raw_payload);
+  const outgoing = reply.direction === "outgoing";
+  const name = outgoing
+    ? conversation.social_account?.account_name || "Facebook Page"
+    : words(raw?.commenter_name) ?? conversation.contact?.full_name ?? "Facebook commenter";
+  const picture = outgoing
+    ? null
+    : words(raw?.commenter_profile_picture_url) ?? conversation.contact?.profile_picture_url;
+  const photo = reply.message_type === "image" ? reply.attachment_url : null;
+
+  return (
+    <View style={{ marginLeft: 48, paddingTop: 11, borderTopWidth: 1, borderTopColor: colors.border, gap: 6 }}>
+      {reply.comment_is_deleted ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 4 }}>
+          <Ionicons name="trash-outline" size={14} color={colors.muted} />
+          <Text style={{ color: colors.muted, fontSize: 12.5, fontStyle: "italic" }}>
+            Reply deleted by {reply.comment_deleted_by === "page" ? "Page" : "commenter"}
+          </Text>
+        </View>
+      ) : (
+        <>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+            <Avatar name={name} uri={picture} size={34} />
+            <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text numberOfLines={1} style={{ flexShrink: 1, color: colors.ink, fontSize: 13.5, fontWeight: "800" }}>{name}</Text>
+              {outgoing ? (
+                <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: colors.pale }}>
+                  <Text style={{ color: colors.blue, fontSize: 10, fontWeight: "800" }}>YOU</Text>
+                </View>
+              ) : null}
+              <Text style={{ marginLeft: "auto", color: colors.muted, fontSize: 11 }}>{time(reply.platform_created_at ?? reply.created_at)}</Text>
+            </View>
+          </View>
+
+          {reply.message_text?.trim() ? <MessageText body={reply.message_text.trim()} outgoing={false} /> : null}
+          {photo ? <MessagePhoto uri={photo} onOpen={(uri) => onOpen({ kind: "image", uri })} /> : null}
+          {reply.comment_is_hidden ? <Text style={{ color: "#9A5B00", fontSize: 11.5, fontWeight: "700" }}>Hidden on Facebook</Text> : null}
+
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 15, paddingBottom: 1 }}>
+            {!outgoing ? (
+              <>
+                <Pressable disabled={reply.comment_is_hidden || busy} onPress={() => onReply(reply)} style={({ pressed }) => ({ opacity: reply.comment_is_hidden || busy ? 0.35 : pressed ? 0.55 : 1 })}>
+                  <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "700" }}>Reply</Text>
+                </Pressable>
+                <Pressable disabled={busy} onPress={() => onAction(reply, "like")} style={({ pressed }) => ({ opacity: busy ? 0.35 : pressed ? 0.55 : 1 })}>
+                  <Text style={{ color: reply.comment_is_liked ? colors.blue : colors.muted, fontSize: 12, fontWeight: "700" }}>{reply.comment_is_liked ? "Unlike" : "Like"}</Text>
+                </Pressable>
+                <Pressable disabled={busy} onPress={() => onAction(reply, "hide")} style={({ pressed }) => ({ opacity: busy ? 0.35 : pressed ? 0.55 : 1 })}>
+                  <Text style={{ color: reply.comment_is_hidden ? "#C77700" : colors.muted, fontSize: 12, fontWeight: "700" }}>{reply.comment_is_hidden ? "Unhide" : "Hide"}</Text>
+                </Pressable>
+              </>
+            ) : null}
+            <Pressable disabled={busy} onPress={() => onAction(reply, "delete")} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 4, opacity: busy ? 0.35 : pressed ? 0.55 : 1 })}>
+              <Ionicons name="trash-outline" size={14} color={colors.muted} />
+              <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "700" }}>Delete</Text>
+            </Pressable>
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+function FacebookCommentCard({
+  message,
+  replies,
+  conversation,
+  onOpen,
+  onReply,
+  onAction,
+  busyAction,
+}: {
+  message: InboxMessage;
+  replies: InboxMessage[];
+  conversation: InboxConversation;
+  onOpen: (item: MediaPreview) => void;
+  onReply: (message: InboxMessage) => void;
+  onAction: (message: InboxMessage, action: "like" | "hide" | "delete") => void;
+  busyAction: string | null;
+}) {
+  const raw = record(message.raw_payload);
+  const savedPost = record(raw?.post);
+  const preview = record(raw?.post_preview) ?? savedPost;
+  const root =
+    message.platform_message_id === conversation.facebook_comment_id ||
+    words(raw?.comment_id) === conversation.facebook_comment_id;
+  const postId =
+    words(raw?.post_id) ??
+    words(preview?.id) ??
+    (root ? conversation.facebook_post_id : null);
+  const postPhoto = words(preview?.full_picture);
+  const postText = words(preview?.message);
+  const postUrl = words(preview?.permalink_url) ?? (postId ? `https://facebook.com/${postId}` : null);
+  const commenter = words(raw?.commenter_name) ?? conversation.contact?.full_name ?? "Facebook commenter";
+  const commenterPhoto = words(raw?.commenter_profile_picture_url) ?? conversation.contact?.profile_picture_url;
+  const commentPhoto = message.message_type === "image" ? message.attachment_url : null;
+
+  if (message.comment_is_deleted) {
+    return (
+      <View style={{ paddingHorizontal: 14, paddingVertical: 5, alignItems: "flex-start" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: "rgba(255,255,255,.9)" }}>
+          <Ionicons name="trash-outline" size={16} color={colors.muted} />
+          <Text style={{ color: colors.muted, fontSize: 13, fontStyle: "italic" }}>Comment deleted by {message.comment_deleted_by === "page" ? "Page" : "commenter"}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ paddingHorizontal: 14, paddingVertical: 6, alignItems: message.direction === "outgoing" ? "flex-end" : "flex-start" }}>
+      <View style={{ width: 370, maxWidth: "96%", overflow: "hidden", borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: "rgba(255,255,255,.97)" }}>
+        {root && (postId || postPhoto || postText) ? (
+          <View style={{ padding: 12, gap: 9, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: "#F8FBFE" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#1877F2", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="logo-facebook" size={16} color="white" />
+              </View>
+              <Text style={{ flex: 1, color: colors.ink, fontSize: 13, fontWeight: "800" }} numberOfLines={1}>
+                Comment on post{postId ? ` #${postId.split("_").pop()}` : ""}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: postPhoto ? "row" : "column", gap: 11, alignItems: "flex-start" }}>
+              {postPhoto ? (
+                <Pressable onPress={() => onOpen({ kind: "image", uri: postPhoto })} style={{ width: 112, height: 112, overflow: "hidden", borderRadius: 12, backgroundColor: colors.border }}>
+                  <Image source={{ uri: postPhoto }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                </Pressable>
+              ) : null}
+              <View style={{ flex: 1, gap: 6 }}>
+                <Text style={{ color: colors.ink, fontSize: 16, fontWeight: "800" }} numberOfLines={2}>
+                  {conversation.social_account?.account_name || "Facebook Page"}
+                </Text>
+                {postText ? <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18 }} numberOfLines={5}>{postText}</Text> : null}
+              </View>
+            </View>
+            {postUrl ? (
+              <Pressable onPress={() => void Linking.openURL(postUrl)} style={({ pressed }) => ({ alignSelf: "flex-start", opacity: pressed ? 0.6 : 1 })}>
+                <Text style={{ color: colors.blue, fontSize: 12.5, fontWeight: "800" }}>View post ↗</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
+        <View style={{ padding: 13, gap: 7 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+            <Avatar name={commenter} uri={commenterPhoto} size={36} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.blue, fontSize: 10.5, fontWeight: "800" }}>FACEBOOK COMMENT</Text>
+              <Text style={{ color: colors.ink, fontSize: 14.5, fontWeight: "800" }} numberOfLines={1}>{commenter}</Text>
+            </View>
+            <Text style={{ color: colors.muted, fontSize: 11 }}>{time(message.platform_created_at ?? message.created_at)}</Text>
+          </View>
+          {message.message_text?.trim() ? <MessageText body={message.message_text.trim()} outgoing={false} /> : null}
+          {commentPhoto ? <MessagePhoto uri={commentPhoto} onOpen={(uri) => onOpen({ kind: "image", uri })} /> : null}
+          {message.comment_is_hidden ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+              <Ionicons name="eye-off-outline" size={13} color="#C77700" />
+              <Text style={{ color: "#9A5B00", fontSize: 11.5, fontWeight: "700" }}>Hidden on Facebook</Text>
+            </View>
+          ) : null}
+
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 16, paddingTop: 2 }}>
+            <Pressable
+              accessibilityRole="button"
+              disabled={message.comment_is_hidden || Boolean(busyAction)}
+              onPress={() => onReply(message)}
+              style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 5, opacity: message.comment_is_hidden || busyAction ? 0.35 : pressed ? 0.55 : 1 })}
+            >
+              <Ionicons name="chatbubble-outline" size={15} color={colors.muted} />
+              <Text style={{ color: colors.muted, fontSize: 12.5, fontWeight: "700" }}>Reply</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" disabled={Boolean(busyAction)} onPress={() => onAction(message, "like")} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 5, opacity: busyAction ? 0.35 : pressed ? 0.55 : 1 })}>
+              <Ionicons name={message.comment_is_liked ? "thumbs-up" : "thumbs-up-outline"} size={15} color={message.comment_is_liked ? colors.blue : colors.muted} />
+              <Text style={{ color: message.comment_is_liked ? colors.blue : colors.muted, fontSize: 12.5, fontWeight: "700" }}>{message.comment_is_liked ? "Unlike" : "Like"}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" disabled={Boolean(busyAction)} onPress={() => onAction(message, "hide")} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 5, opacity: busyAction ? 0.35 : pressed ? 0.55 : 1 })}>
+              <Ionicons name={message.comment_is_hidden ? "eye-outline" : "eye-off-outline"} size={15} color={message.comment_is_hidden ? "#C77700" : colors.muted} />
+              <Text style={{ color: message.comment_is_hidden ? "#C77700" : colors.muted, fontSize: 12.5, fontWeight: "700" }}>{message.comment_is_hidden ? "Unhide" : "Hide"}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" disabled={Boolean(busyAction)} onPress={() => onAction(message, "delete")} style={({ pressed }) => ({ marginLeft: "auto", opacity: busyAction ? 0.35 : pressed ? 0.55 : 1 })}>
+              <Ionicons name="trash-outline" size={16} color={colors.muted} />
+            </Pressable>
+          </View>
+
+          {replies.map((reply) => (
+            <CommentReplyRow
+              key={reply.id}
+              reply={reply}
+              conversation={conversation}
+              onOpen={onOpen}
+              onReply={onReply}
+              onAction={onAction}
+              busy={Boolean(busyAction?.startsWith(`${reply.id}:`))}
+            />
+          ))}
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -460,11 +859,21 @@ function MessageFile({
 
 function Bubble({
   message,
+  commentReplies,
   audio,
-  onViewPhoto,
+  conversation,
+  onViewMedia,
+  onReplyComment,
+  onCommentAction,
+  commentBusy,
 }: {
   message: InboxMessage;
-  onViewPhoto: (uri: string) => void;
+  commentReplies: InboxMessage[];
+  conversation: InboxConversation | null;
+  onViewMedia: (item: MediaPreview) => void;
+  onReplyComment: (message: InboxMessage) => void;
+  onCommentAction: (message: InboxMessage, action: "like" | "hide" | "delete") => void;
+  commentBusy: string | null;
   audio: {
     activeId: string | null;
     playing: boolean;
@@ -476,6 +885,32 @@ function Bubble({
   const outgoing = message.direction === "outgoing";
   const url = message.attachment_url;
   const type = message.message_type;
+  const raw = record(message.raw_payload);
+  const attachmentMeta = record(raw?.tenh_attachment);
+  const attachmentName = words(attachmentMeta?.name);
+  const isComment =
+    conversation?.source_type === "comment" &&
+    Boolean(
+      message.platform_message_id === conversation.facebook_comment_id ||
+        words(raw?.comment_id) ||
+        words(raw?.post_id) ||
+        raw?.item === "comment" ||
+        raw?.source === "facebook_comment_reply",
+    );
+
+  if (isComment && conversation) {
+    return (
+      <FacebookCommentCard
+        message={message}
+        replies={commentReplies}
+        conversation={conversation}
+        onOpen={onViewMedia}
+        onReply={onReplyComment}
+        onAction={onCommentAction}
+        busyAction={commentBusy}
+      />
+    );
+  }
 
   /*
    * The placeholder the webhook writes for a message that is only an
@@ -483,8 +918,23 @@ function Bubble({
    * says nothing.
    */
   const text = message.message_text?.trim() ?? "";
-  const isPlaceholder = /^\[(audio|image|video|file|sticker)\]$/i.test(text);
+  const isPlaceholder =
+    /^\[(audio|voice|image|video|file|sticker)\]$/i.test(text) ||
+    (Boolean(url) && /^sent (?:an? )?(?:photo|video|voice message|audio file|file(?::.*)?)$/i.test(text));
   const body = isPlaceholder ? "" : text;
+  const media = type === "image" || type === "video" || type === "sticker" ? messageMedia(message) : [];
+
+  /*
+   * A sticker is the artwork, not text inside a card -- the same call the web
+   * makes. Telegram, Messenger and WhatsApp all draw one straight onto the
+   * conversation, because a sticker is a transparent cut-out and a coloured
+   * bubble re-adds the rectangle the artist removed. On our blue outgoing
+   * bubble its soft edge reads as a badly cropped photo.
+   *
+   * The bubble comes back the moment there is something to say: a caption, or
+   * a deleted sticker that is now a line of text.
+   */
+  const bare = type === "sticker" && media.length > 0 && !body;
 
   return (
     <View
@@ -497,20 +947,20 @@ function Bubble({
       <View
         style={{
           maxWidth: "82%",
-          backgroundColor: outgoing ? colors.blue : "white",
+          backgroundColor: bare ? "transparent" : outgoing ? colors.blue : "white",
           borderRadius: 18,
-          borderWidth: outgoing ? 0 : 1,
+          borderWidth: bare || outgoing ? 0 : 1,
           borderColor: colors.border,
-          paddingHorizontal: type === "image" && url ? 6 : 14,
-          paddingVertical: type === "image" && url ? 6 : 10,
+          paddingHorizontal: bare ? 0 : type === "image" && url ? 6 : 14,
+          paddingVertical: bare ? 0 : type === "image" && url ? 6 : 10,
           gap: 6,
         }}
       >
-        {url && type === "image" ? (
-          <MessagePhoto uri={url} onOpen={onViewPhoto} />
+        {media.length > 0 ? (
+          <MediaGrid items={media} onOpen={onViewMedia} />
         ) : null}
 
-        {url && type === "audio" ? (
+        {url && (type === "audio" || type === "voice") ? (
           <VoiceMessage
             outgoing={outgoing}
             active={audio.activeId === message.id}
@@ -521,25 +971,14 @@ function Bubble({
           />
         ) : null}
 
-        {url && type === "video" ? (
-          <MessageFile outgoing={outgoing} uri={url} label="Video" icon="videocam" />
-        ) : null}
-
-        {url && type !== "image" && type !== "audio" && type !== "video" ? (
-          <MessageFile outgoing={outgoing} uri={url} label="Attachment" icon="document" />
+        {url && !["image", "audio", "voice", "video", "sticker"].includes(type) ? (
+          <MessageFile outgoing={outgoing} uri={url} label={attachmentName || "File"} icon="document" />
         ) : null}
 
         {body || !url ? (
-          <Text
-            style={{
-              color: outgoing ? "white" : colors.ink,
-              fontSize: 15,
-              lineHeight: 21,
-              paddingHorizontal: type === "image" && url ? 8 : 0,
-            }}
-          >
-            {body || "—"}
-          </Text>
+          <View style={{ paddingHorizontal: media.length > 0 ? 8 : 0 }}>
+            <MessageText body={body || "—"} outgoing={outgoing} />
+          </View>
         ) : null}
 
         <Text
@@ -815,6 +1254,8 @@ export default function Conversation() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const resolveMedia = useMediaSource();
+
 
   const {
     conversations,
@@ -844,10 +1285,13 @@ export default function Conversation() {
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<Pending[]>([]);
   const [sending, setSending] = useState(false);
+  const [replyingToComment, setReplyingToComment] = useState<InboxMessage | null>(null);
+  const [commentBusy, setCommentBusy] = useState<string | null>(null);
 
   const [replyOpen, setReplyOpen] = useState(false);
   const [replies, setReplies] = useState<SavedReply[]>([]);
   const [repliesLoading, setRepliesLoading] = useState(false);
+  const [preparingReply, setPreparingReply] = useState(false);
 
   const [tagOpen, setTagOpen] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -860,7 +1304,7 @@ export default function Conversation() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const [panelOpen, setPanelOpen] = useState(false);
-  const [photo, setPhoto] = useState<string | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
   const [customerLoading, setCustomerLoading] = useState(false);
@@ -881,6 +1325,7 @@ export default function Conversation() {
     conversation?.social_account?.platform === "telegram" ? "telegram" : "facebook";
 
   const contactId = conversation?.contact?.id ?? null;
+  const recipientId = conversation?.contact?.platform_user_id?.trim() ?? "";
   const tagCount = conversation?.contact?.tags?.length ?? 0;
   const name = conversation?.contact?.full_name ?? "Conversation";
 
@@ -1035,7 +1480,12 @@ export default function Conversation() {
     }
 
     setPlayingId(message.id);
-    player.replace(url);
+    /*
+     * Resolved the same way a picture is: a Telegram voice note is proxied
+     * through TENH and needs the origin and the cookie, or the player gets a
+     * 401 and sits at nought seconds forever.
+     */
+    player.replace(resolveMedia(url) ?? url);
     player.play();
   }
 
@@ -1075,43 +1525,55 @@ export default function Conversation() {
   async function pickReply(reply: SavedReply) {
     setDraft(reply.message_text);
 
+    // Public Facebook comment replies are text-only. The saved words are
+    // still useful, while silently attaching the saved photos would make the
+    // eventual send fail Meta validation.
+    if (replyingToComment) {
+      return;
+    }
+
     const withUrls = reply.attachments.filter((item) => item.url);
 
     if (withUrls.length === 0) {
       return;
     }
 
+    setPreparingReply(true);
     const staged: Pending[] = [];
 
-    for (const attachment of withUrls) {
-      try {
-        const safe = attachment.name.replace(/[^\w.-]+/g, "_").slice(-60) || "attachment";
-        const target = new File(Paths.cache, `${Date.now()}-${safe}`);
-        const saved = await File.downloadFileAsync(attachment.url as string, target);
+    try {
+      for (const [index, attachment] of withUrls.entries()) {
+        try {
+          const safe = attachment.name.replace(/[^\w.-]+/g, "_").slice(-60) || "attachment";
+          const target = new File(Paths.cache, `${Date.now()}-${index}-${safe}`);
+          const saved = await File.downloadFileAsync(attachment.url as string, target);
 
-        if (saved) {
-          staged.push({
-            key: `${reply.id}:${attachment.path}`,
-            uri: saved.uri,
-            name: attachment.name || safe,
-            mimeType: attachment.mimeType || "application/octet-stream",
-            kind: attachment.kind === "video" ? "video" : "image",
-          });
+          if (saved) {
+            staged.push({
+              key: `${reply.id}:${attachment.path}`,
+              uri: saved.uri,
+              name: attachment.name || safe,
+              mimeType: attachment.mimeType || "application/octet-stream",
+              kind: attachment.kind === "video" ? "video" : "image",
+            });
+          }
+        } catch {
+          // Counted below rather than thrown: one unreachable file should not
+          // cost the agent the other three and the text.
         }
-      } catch {
-        // Counted below rather than thrown: one unreachable file should not
-        // cost the agent the other three and the text.
       }
-    }
 
-    setPending((current) => [...current, ...staged]);
+      setPending((current) => [...current, ...staged]);
 
-    if (staged.length < withUrls.length) {
-      const missing = withUrls.length - staged.length;
+      if (staged.length < withUrls.length) {
+        const missing = withUrls.length - staged.length;
 
-      setError(
-        `${missing} of this quick reply's ${withUrls.length} attachments could not be loaded. Check what is attached before sending.`,
-      );
+        setError(
+          `${missing} of this quick reply's ${withUrls.length} attachments could not be loaded. Check what is attached before sending.`,
+        );
+      }
+    } finally {
+      setPreparingReply(false);
     }
   }
 
@@ -1168,8 +1630,8 @@ export default function Conversation() {
       {
         key: `voice:${Date.now()}`,
         uri,
-        name: `voice-${Math.round(millis / 1000)}s.m4a`,
-        mimeType: "audio/m4a",
+        name: `voice-message-${Math.round(millis / 1000)}s.m4a`,
+        mimeType: "audio/mp4",
         kind: "audio" as const,
       },
     ]);
@@ -1247,22 +1709,161 @@ export default function Conversation() {
     ]);
   }
 
-  async function upload(file: Pending) {
-    const form = new FormData();
+  async function uploadOne(file: Pending, caption = "") {
+    const photoOrVideo = file.kind === "image" || file.kind === "video";
+    const path =
+      platform === "telegram"
+        ? photoOrVideo
+          ? "/api/telegram/send-photo"
+          : "/api/telegram/send-media"
+        : "/api/facebook/send-attachment";
 
-    form.append("conversationId", String(id));
-    form.append("kind", file.kind);
-    form.append("file", {
-      uri: file.uri,
-      name: file.name,
-      type: file.mimeType,
-    } as unknown as Blob);
+    await uploadNativeFile(path, workspace?.businessId, file, {
+      conversationId: String(id),
+      kind: file.kind,
+      ...(platform === "facebook" ? { recipientId } : {}),
+      ...(caption ? { caption } : {}),
+    });
+  }
 
-    await api(
-      platform === "telegram" ? "/api/telegram/send-media" : "/api/facebook/send-attachment",
+  async function uploadAlbum(files: Pending[], caption = "") {
+    if (platform === "telegram") {
+      await uploadMany(
+        "/api/telegram/send-photo",
+        workspace?.businessId,
+        files.map((file) => ({ ...file, fieldName: "files" })),
+        { conversationId: String(id), ...(caption ? { caption } : {}) },
+      );
+      return;
+    }
+
+    await uploadMany(
+      "/api/facebook/send-attachment",
       workspace?.businessId,
-      { method: "POST", body: form },
+      files.map((file, index) => ({
+        ...file,
+        fieldName: index === 0 ? "file" : "additionalFiles",
+      })),
+      { conversationId: String(id), recipientId, kind: "image" },
     );
+  }
+
+  function beginCommentReply(message: InboxMessage) {
+    if (pending.length > 0) {
+      setError("Remove the queued attachments before replying to a Facebook comment. Comment replies can only contain text.");
+      return;
+    }
+
+    setError("");
+    setReplyingToComment(message);
+  }
+
+  async function performCommentAction(
+    message: InboxMessage,
+    action: "like" | "hide" | "delete",
+  ) {
+    const commentId = facebookCommentId(message);
+    if (!commentId || commentBusy) return;
+
+    const before = new Map(messages.map((item) => [item.id, item]));
+    const affectedIds = new Set(
+      messages
+        .filter(
+          (item) =>
+            item.id === message.id ||
+            (action === "delete" && facebookParentCommentId(item) === commentId),
+        )
+        .map((item) => item.id),
+    );
+    const liked = !message.comment_is_liked;
+    const hidden = !message.comment_is_hidden;
+    setCommentBusy(`${message.id}:${action}`);
+    setError("");
+
+    setMessages((current) =>
+      current.map((item) => {
+        const isTarget = item.id === message.id;
+        const isChild = action === "delete" && facebookParentCommentId(item) === commentId;
+        if (!isTarget && !isChild) return item;
+        if (action === "like" && isTarget) return { ...item, comment_is_liked: liked };
+        if (action === "hide" && isTarget) return { ...item, comment_is_hidden: hidden };
+        return { ...item, comment_is_deleted: true, comment_deleted_by: "page" as const };
+      }),
+    );
+
+    try {
+      await api(`/api/facebook/comments/${action}`, workspace?.businessId, {
+        method: "POST",
+        body: {
+          commentId,
+          ...(action === "like" ? { liked } : {}),
+          ...(action === "hide" ? { hidden } : {}),
+        },
+      });
+      if (action === "delete" && replyingToComment?.id === message.id) {
+        setReplyingToComment(null);
+      }
+    } catch (actionError) {
+      setMessages((current) =>
+        current.map((item) =>
+          affectedIds.has(item.id) ? before.get(item.id) ?? item : item,
+        ),
+      );
+      setError(actionError instanceof Error ? actionError.message : `Unable to ${action} this comment.`);
+    } finally {
+      setCommentBusy(null);
+    }
+  }
+
+  function requestCommentAction(
+    message: InboxMessage,
+    action: "like" | "hide" | "delete",
+  ) {
+    if (action !== "delete") {
+      void performCommentAction(message, action);
+      return;
+    }
+
+    Alert.alert(
+      "Delete comment?",
+      "This removes the comment and its replies from Facebook.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: () => void performCommentAction(message, action) },
+      ],
+    );
+  }
+
+  function optimisticMessage(file: Pending, index: number, at: string): InboxMessage {
+    return {
+      id: `optimistic:inbox:${at}:${index}`,
+      platform_message_id: `optimistic:inbox:${at}:${index}`,
+      conversation_id: String(id),
+      sender_type: "page",
+      sender_platform_id: conversation?.social_account?.platform_account_id ?? "",
+      recipient_platform_id: recipientId,
+      direction: "outgoing",
+      message_type: file.kind,
+      message_text:
+        file.kind === "image"
+          ? "Sent a photo"
+          : file.kind === "video"
+            ? "Sent a video"
+            : file.kind === "audio"
+              ? "Sent a voice message"
+              : `Sent a file: ${file.name}`,
+      attachment_url: file.uri,
+      raw_payload: { tenh_attachment: { name: file.name, type: file.kind, mime_type: file.mimeType } },
+      platform_created_at: at,
+      created_at: at,
+      comment_is_liked: false,
+      comment_is_hidden: false,
+      comment_is_deleted: false,
+      comment_deleted_by: null,
+      delivery_status: null,
+      delivered_at: null,
+      seen_at: null,
+    };
   }
 
   async function send() {
@@ -1272,8 +1873,59 @@ export default function Conversation() {
       return;
     }
 
+    if (replyingToComment) {
+      const target = replyingToComment;
+      const commentId = facebookCommentId(target);
+
+      if (!text || !commentId || sending) return;
+      if (pending.length > 0) {
+        setError("Facebook comment replies can only contain text. Remove the queued attachments first.");
+        return;
+      }
+
+      setSending(true);
+      setError("");
+      setDraft("");
+
+      try {
+        await api("/api/facebook/comments/reply", workspace?.businessId, {
+          method: "POST",
+          body: { conversationId: id, commentId, message: text },
+        });
+        setReplyingToComment(null);
+        updateConversation(String(id), { last_message_text: text, last_message_at: new Date().toISOString() });
+        await load();
+      } catch (replyError) {
+        setDraft((current) => current || text);
+        setError(replyError instanceof Error ? replyError.message : "Unable to reply to this comment.");
+      } finally {
+        setSending(false);
+      }
+
+      return;
+    }
+
+    if (platform === "facebook" && !recipientId) {
+      setError("This Facebook customer has no Messenger recipient ID. Refresh the Inbox and try again.");
+      return;
+    }
+
+    const pendingSnapshot = [...pending];
+    const sentFileKeys = new Set<string>();
+    const sentAt = new Date().toISOString();
+    const optimisticIds = pendingSnapshot.map((_, index) => `optimistic:inbox:${sentAt}:${index}`);
+    const visualFiles = pendingSnapshot.filter((file) => file.kind === "image" || file.kind === "video");
+    const telegramCaption = platform === "telegram" && visualFiles.length === pendingSnapshot.length && text.length <= 1024 ? text : "";
+    const preview = text || (pendingSnapshot[0]?.kind === "audio" ? "You sent a voice message" : pendingSnapshot[0]?.kind === "video" ? "You sent a video" : pendingSnapshot[0]?.kind === "image" ? "You sent a photo" : pendingSnapshot[0] ? `You sent ${pendingSnapshot[0].name}` : "");
+
     setSending(true);
     setError("");
+    setDraft("");
+    setPending([]);
+    if (pendingSnapshot.length > 0) {
+      setMessages((current) => mergeMessages(current, pendingSnapshot.map((file, index) => optimisticMessage(file, index, sentAt))));
+    }
+    updateConversation(String(id), { last_message_text: preview, last_message_at: sentAt });
 
     try {
       /*
@@ -1282,21 +1934,33 @@ export default function Conversation() {
        * messages either way -- this at least puts them in the order they
        * were written.
        */
-      if (text) {
+      const canAlbum =
+        visualFiles.length > 1 &&
+        visualFiles.length === pendingSnapshot.length &&
+        (platform === "telegram" || visualFiles.every((file) => file.kind === "image"));
+
+      if (canAlbum) {
+        await uploadAlbum(visualFiles, telegramCaption);
+        visualFiles.forEach((file) => sentFileKeys.add(file.key));
+      } else {
+        for (const file of pendingSnapshot) {
+          await uploadOne(file, platform === "telegram" && pendingSnapshot.length === 1 ? telegramCaption : "");
+          sentFileKeys.add(file.key);
+        }
+      }
+
+      if (text && !telegramCaption) {
         await api(`/api/${platform}/send`, workspace?.businessId, {
           method: "POST",
-          body: { conversationId: id, message: text },
+          body: {
+            conversationId: id,
+            message: text,
+            ...(platform === "facebook" ? { recipientId } : {}),
+          },
         });
-
-        setDraft("");
       }
 
-      for (const file of pending) {
-        await upload(file);
-
-        setPending((current) => current.filter((item) => item.key !== file.key));
-      }
-
+      setMessages((current) => current.filter((message) => !optimisticIds.includes(message.id)));
       await load();
     } catch (sendError) {
       /*
@@ -1310,6 +1974,18 @@ export default function Conversation() {
           ? sendError.message
           : "Unable to send. Check your connection and try again.",
       );
+
+      setMessages((current) => current.filter((message) => !optimisticIds.includes(message.id)));
+      setDraft((current) => current || text);
+      setPending((current) => {
+        const held = new Set(current.map((file) => file.key));
+        return [
+          ...pendingSnapshot.filter(
+            (file) => !sentFileKeys.has(file.key) && !held.has(file.key),
+          ),
+          ...current,
+        ];
+      });
 
       await load();
     } finally {
@@ -1681,6 +2357,48 @@ export default function Conversation() {
     }
   }
 
+  const commentThreads = useMemo(() => {
+    const byCommentId = new Map<string, InboxMessage>();
+    const childrenByParent = new Map<string, InboxMessage[]>();
+    const nestedIds = new Set<string>();
+
+    for (const item of messages) {
+      const commentId = facebookCommentId(item);
+      if (commentId) byCommentId.set(commentId, item);
+    }
+
+    for (const item of messages) {
+      const parentId = facebookParentCommentId(item);
+      if (!parentId || !byCommentId.has(parentId)) continue;
+      childrenByParent.set(parentId, [...(childrenByParent.get(parentId) ?? []), item]);
+      nestedIds.add(item.id);
+    }
+
+    const repliesByMessageId = new Map<string, InboxMessage[]>();
+    for (const rootMessage of messages) {
+      if (nestedIds.has(rootMessage.id)) continue;
+      const rootId = facebookCommentId(rootMessage);
+      if (!rootId) continue;
+
+      const replies: InboxMessage[] = [];
+      const visit = (parentId: string) => {
+        for (const child of childrenByParent.get(parentId) ?? []) {
+          replies.push(child);
+          const childId = facebookCommentId(child);
+          if (childId) visit(childId);
+        }
+      };
+      visit(rootId);
+      replies.sort((first, second) => sentAt(first) - sentAt(second));
+      if (replies.length > 0) repliesByMessageId.set(rootMessage.id, replies);
+    }
+
+    return {
+      messages: messages.filter((item) => !nestedIds.has(item.id)),
+      repliesByMessageId,
+    };
+  }, [messages]);
+
   const swipe = useThreadSwipe(
     () => void openPanel(),
     Boolean(contactId) && !panelOpen,
@@ -1757,6 +2475,9 @@ export default function Conversation() {
                 >
                   {conversation.social_account?.account_name?.trim() ||
                     channel(conversation)}
+                  {conversation.contact?.platform_user_id
+                    ? `  •  ID: ${conversation.contact.platform_user_id}`
+                    : ""}
                 </Text>
               </View>
             ) : null}
@@ -1811,7 +2532,7 @@ export default function Conversation() {
           // Claims the space between header and composer whether there are
           // three messages or three hundred.
           style={{ flex: 1 }}
-          data={messages}
+          data={commentThreads.messages}
           keyExtractor={(item) => item.id}
           renderItem={({ item, index }) => {
             /*
@@ -1819,14 +2540,19 @@ export default function Conversation() {
              * screen. When it belongs to an earlier day, this message is the
              * first of its own day and the separator goes above it.
              */
-            const older = messages[index + 1];
+            const older = commentThreads.messages[index + 1];
             const startsADay = !older || dayOf(older) !== dayOf(item);
 
             return (
               <>
                 <Bubble
                   message={item}
-                  onViewPhoto={setPhoto}
+                  commentReplies={commentThreads.repliesByMessageId.get(item.id) ?? []}
+                  conversation={conversation}
+                  onViewMedia={setMediaPreview}
+                  onReplyComment={beginCommentReply}
+                  onCommentAction={requestCommentAction}
+                  commentBusy={commentBusy}
                   audio={{
                     activeId: playingId,
                     playing: playerStatus.playing,
@@ -1869,6 +2595,19 @@ export default function Conversation() {
       )}
       </View>
 
+      {replyingToComment ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 9, borderTopWidth: 1, borderTopColor: "#B9DDF1", backgroundColor: "#ECF8FF" }}>
+          <Ionicons name="chatbubble-outline" size={17} color={colors.blue} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.blue, fontSize: 11, fontWeight: "800" }}>REPLYING TO FACEBOOK COMMENT</Text>
+            <Text numberOfLines={1} style={{ color: colors.ink, fontSize: 13 }}>{replyingToComment.message_text?.trim() || "Selected comment"}</Text>
+          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel="Cancel comment reply" onPress={() => setReplyingToComment(null)} hitSlop={10}>
+            <Ionicons name="close" size={20} color={colors.muted} />
+          </Pressable>
+        </View>
+      ) : null}
+
       <Composer
         draft={draft}
         onDraftChange={setDraft}
@@ -1876,7 +2615,7 @@ export default function Conversation() {
         onRemovePending={(key) =>
           setPending((current) => current.filter((item) => item.key !== key))
         }
-        sending={sending}
+        sending={sending || preparingReply}
         bottomInset={insets.bottom}
         onPickImages={() => void pickFromLibrary(["images"], true)}
         onPickVideo={() => void pickFromLibrary(["videos"], false)}
@@ -1885,6 +2624,7 @@ export default function Conversation() {
         onQuickReplies={() => void openReplies()}
         onVoice={stageVoice}
         onSend={() => void send()}
+        attachmentsDisabled={Boolean(replyingToComment)}
       />
 
       <QuickReplySheet
@@ -1908,45 +2648,37 @@ export default function Conversation() {
         and coming back to a thread that had scrolled.
       */}
       <Modal
-        visible={Boolean(photo)}
+        visible={Boolean(mediaPreview)}
         transparent
         animationType="fade"
-        onRequestClose={() => setPhoto(null)}
+        onRequestClose={() => setMediaPreview(null)}
       >
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.94)" }}>
           <Pressable
-            accessibilityLabel="Close the photo"
-            onPress={() => setPhoto(null)}
+            accessibilityLabel="Close media viewer"
+            onPress={() => setMediaPreview(null)}
             style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
           >
-            {photo ? (
-              <Image
-                source={{ uri: photo }}
+            {mediaPreview?.kind === "image" ? (
+              <AuthImage
+                uri={mediaPreview.uri}
                 style={{ width: "100%", height: "100%" }}
                 resizeMode="contain"
               />
+            ) : mediaPreview?.kind === "video" ? (
+              <VideoPreview key={mediaPreview.uri} uri={mediaPreview.uri} />
             ) : null}
           </Pressable>
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Close the photo"
-            onPress={() => setPhoto(null)}
-            hitSlop={12}
-            style={{
-              position: "absolute",
-              top: insets.top + 10,
-              right: 16,
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(255,255,255,0.18)",
-            }}
+            accessibilityLabel="Close media viewer"
+            onPress={() => setMediaPreview(null)}
+            style={{ position: "absolute", top: insets.top + 12, right: 16, width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,.16)" }}
           >
             <Ionicons name="close" size={24} color="white" />
           </Pressable>
+
         </View>
       </Modal>
 
