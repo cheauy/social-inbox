@@ -1,6 +1,7 @@
 import { Text, View } from "react-native";
 
-import { Stat, TabScreen, useWorkspaceResource } from "../../components/screen";
+import { Stat, useWorkspaceResource } from "../../components/screen";
+import { SettingsGroup, SettingsScreen } from "../../components/settings-screen";
 import { Empty, colors, styles } from "../../components/ui";
 
 type Subscription = {
@@ -49,11 +50,12 @@ export default function SubscriptionTab() {
       : (subscription?.current_period_end ?? null);
 
   return (
-    <TabScreen
+    <SettingsScreen
       title="Subscription"
+      detail="The plan this workspace is on"
       loading={loading}
       error={error}
-      onRefresh={reload}
+      onRetry={reload}
     >
       {!subscription ? (
         <Empty
@@ -129,6 +131,6 @@ export default function SubscriptionTab() {
           </Text>
         </>
       )}
-    </TabScreen>
+    </SettingsScreen>
   );
 }

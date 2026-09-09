@@ -259,17 +259,25 @@ export default function Settings() {
       />
 
       <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
-        <View
-          style={{
+        {/*
+          The card is the way in to everything about you and this workspace --
+          your details, the plan, what it is connected to. Those were in three
+          different places, one of them a whole tab along the bottom.
+        */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Your profile, subscription and integrations"
+          onPress={() => router.push("/settings/profile")}
+          style={({ pressed }) => ({
             flexDirection: "row",
             alignItems: "center",
             gap: 12,
             padding: 14,
             borderRadius: 16,
-            backgroundColor: "white",
+            backgroundColor: pressed ? colors.pale : "white",
             borderWidth: 1,
             borderColor: colors.border,
-          }}
+          })}
         >
           <Avatar
             name={member?.full_name}
@@ -285,7 +293,9 @@ export default function Settings() {
               {member?.email ?? session.user.email} · {member?.role ?? "member"}
             </Text>
           </View>
-        </View>
+
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </Pressable>
 
         {workspaces.length > 1 ? (
           <Group title="Workspace in use">
