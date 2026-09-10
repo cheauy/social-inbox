@@ -23,6 +23,37 @@ export type TeamChatRoomRow = {
   updated_at: string;
 };
 
+export const TEAM_CHAT_ROOM_ICONS = [
+  "people",
+  "megaphone",
+  "briefcase",
+  "headset",
+  "cart",
+  "rocket",
+  "heart",
+  "star",
+] as const;
+
+export type TeamChatRoomIcon = (typeof TEAM_CHAT_ROOM_ICONS)[number];
+
+const ROOM_ICON_PREFIX = "icon-";
+
+export function normalizeRoomIcon(value: unknown): TeamChatRoomIcon {
+  return typeof value === "string" &&
+    TEAM_CHAT_ROOM_ICONS.includes(value as TeamChatRoomIcon)
+    ? (value as TeamChatRoomIcon)
+    : "people";
+}
+
+export function roomIconFromSlug(slug: string | null | undefined): TeamChatRoomIcon {
+  const candidate = slug?.split("--", 1)[0]?.replace(ROOM_ICON_PREFIX, "");
+  return normalizeRoomIcon(candidate);
+}
+
+export function slugWithRoomIcon(name: string, icon: unknown): string {
+  return `${ROOM_ICON_PREFIX}${normalizeRoomIcon(icon)}--${slugifyRoomName(name)}-${Date.now().toString(36)}`;
+}
+
 export function canManageTeamChat(
   role: string,
 ): boolean {
@@ -209,7 +240,8 @@ export function slugifyRoomName(name: string): string {
 
 export const TEAM_CHAT_BUCKET = "team-chat";
 
-export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25 MB
+export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25 MB for images/audio/files
+export const MAX_VIDEO_ATTACHMENT_BYTES = 100 * 1024 * 1024; // 100 MB for video
 
 /**
  * Allow-list, not a block-list. Anything not named here is rejected,
@@ -221,11 +253,19 @@ const ALLOWED_MIME: Record<string, "image" | "video" | "audio" | "file"> = {
   "image/gif": "image",
   "image/webp": "image",
   "image/heic": "image",
+  "image/heif": "image",
   "video/mp4": "video",
   "video/webm": "video",
   "video/quicktime": "video",
+  "video/3gpp": "video",
+  "video/x-m4v": "video",
+  "video/mpeg": "video",
+  "application/mp4": "video",
   "audio/mpeg": "audio",
   "audio/mp4": "audio",
+  "audio/m4a": "audio",
+  "audio/x-m4a": "audio",
+  "audio/aac": "audio",
   "audio/webm": "audio",
   "audio/ogg": "audio",
   "audio/wav": "audio",
@@ -242,8 +282,73 @@ const ALLOWED_MIME: Record<string, "image" | "video" | "audio" | "file"> = {
     "file",
 };
 
-export function classifyAttachment(mimeType: string) {
-  return ALLOWED_MIME[mimeType.toLowerCase()] ?? null;
+const MIME_BY_EXTENSION: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  heic: "image/heic",
+  heif: "image/heif",
+  mp4: "video/mp4",
+  m4v: "video/x-m4v",
+  mov: "video/quicktime",
+  webm: "video/webm",
+  '3gp': "video/3gpp",
+  mp3: "audio/mpeg",
+  m4a: "audio/x-m4a",
+  aac: "audio/aac",
+  ogg: "audio/ogg",
+  wav: "audio/wav",
+  pdf: "application/pdf",
+  txt: "text/plain",
+  csv: "text/csv",
+  zip: "application/zip",
+  doc: "application/msword",
+  xls: "application/vnd.ms-excel",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+};
+
+export function normalizeAttachmentMimeType(
+  mimeType: string | null | undefined,
+  fileName?: string | null,
+) {
+  const normalized = (mimeType || "").trim().toLowerCase();
+  if (ALLOWED_MIME[normalized]) return normalized;
+
+  // Android pickers commonly report videos, voice notes and documents as
+  // application/octet-stream. In that case the extension is the safer
+  // signal than rejecting a perfectly valid local file.
+  const extension = fileName?.split(".").pop()?.trim().toLowerCase() ?? "";
+  const extensionMime = MIME_BY_EXTENSION[extension];
+
+  if (
+    extensionMime &&
+    (!normalized ||
+      normalized === "application/octet-stream" ||
+      normalized === "application/mp4" ||
+      normalized === "video/*" ||
+      normalized.startsWith("video/"))
+  ) return extensionMime;
+
+  if (!normalized || normalized === "application/octet-stream") {
+    return "application/octet-stream";
+  }
+
+  return normalized;
+}
+
+export function classifyAttachment(
+  mimeType: string,
+  fileName?: string | null,
+) {
+  return ALLOWED_MIME[normalizeAttachmentMimeType(mimeType, fileName)] ?? null;
+}
+
+export function maxAttachmentBytes(kind: "image" | "video" | "audio" | "file") {
+  return kind === "video" ? MAX_VIDEO_ATTACHMENT_BYTES : MAX_ATTACHMENT_BYTES;
 }
 
 /**
