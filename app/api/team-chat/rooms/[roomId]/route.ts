@@ -110,6 +110,17 @@ export async function PATCH(
     );
   }
 
+  if (room.is_general) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "The General group cannot be renamed. It is the room every workspace has.",
+      },
+      { status: 400 },
+    );
+  }
+
   const name =
     typeof body.name === "string" ? body.name.trim() : room.name ?? "";
 

@@ -742,9 +742,9 @@ export default function GroupChat() {
                         ) : null}
 
                         {/*
-                          When, at the end of the title line rather than beside
-                          the message: it belongs to the room's last activity,
-                          which is what the whole row is sorted and read by.
+                          When, at the end of the title line: it belongs to the
+                          room's last activity, which is what the row is read
+                          for.
                         */}
                         <Text
                           style={{
@@ -757,6 +757,18 @@ export default function GroupChat() {
                             ? relativeTime(room.last_message.created_at)
                             : ""}
                         </Text>
+
+                        {/*
+                          A mention is counted apart from the unread total
+                          because muting a busy room still lets a direct @you
+                          through -- the server's rule, and collapsing the two
+                          would hide it.
+                        */}
+                        {room.mention_count > 0 ? (
+                          <Badge count={room.mention_count} mention />
+                        ) : null}
+
+                        <Badge count={room.badge_count} mention={false} />
 
                         <Ionicons
                           name="chevron-forward"
@@ -782,55 +794,6 @@ export default function GroupChat() {
                     </View>
                   </View>
 
-                  {/*
-                    What was last said in here, on its own line under a rule.
-
-                    The row used to show the sentence somebody typed when they
-                    made the room -- the same words every time you look. A room
-                    list is read to find out what has happened since you were
-                    last in it, so the newest message gets the line, its sender
-                    gets the weight, and the unread count sits at the end of it
-                    where the thing it counts is.
-                  */}
-                  {room.last_message ? (
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 8,
-                        marginTop: 11,
-                        paddingTop: 10,
-                        borderTopWidth: 1,
-                        borderTopColor: colors.border,
-                      }}
-                    >
-                      <Text
-                        numberOfLines={1}
-                        style={{
-                          flexShrink: 0,
-                          maxWidth: 110,
-                          fontSize: 13,
-                          fontWeight: "800",
-                          color: colors.ink,
-                        }}
-                      >
-                        {room.last_message.sender_name}
-                      </Text>
-
-                      <Text
-                        numberOfLines={1}
-                        style={{ flex: 1, fontSize: 13, color: colors.muted }}
-                      >
-                        {room.last_message.text}
-                      </Text>
-
-                      {room.mention_count > 0 ? (
-                        <Badge count={room.mention_count} mention />
-                      ) : null}
-
-                      <Badge count={room.badge_count} mention={false} />
-                    </View>
-                  ) : null}
                 </Pressable>
               </SwipeRow>
             </View>

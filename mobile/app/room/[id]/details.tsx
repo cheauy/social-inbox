@@ -689,7 +689,12 @@ export default function RoomDetails() {
               Edit sits on the card it edits, rather than in the header where
               it would compete with going back.
             */}
-            {canManageRooms ? (
+            {/*
+              Not on General. It is the room every workspace has, named and
+              described by TENH rather than by whoever opened this screen, and
+              the server refuses to delete it for the same reason.
+            */}
+            {canManageRooms && !room.is_general ? (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Edit this group"
