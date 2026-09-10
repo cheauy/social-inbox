@@ -4,7 +4,7 @@ import { authCookieName, supabase } from "../supabase/client";
 import { sessionCookie } from "./session-cookie";
 
 export class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
-export async function api<T>(path: string, workspaceId?: string | null, init: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
+export async function api<T>(path: string, workspaceId?: string | null, init: { method?: string; body?: unknown; signal?: AbortSignal } = {}, retried = false): Promise<T> {
   const base = new URL(process.env.EXPO_PUBLIC_TENH_API_URL || "https://app.tenhchat.com");
   if (base.protocol !== "https:" && !(__DEV__ && ["localhost", "127.0.0.1", "10.0.2.2"].includes(base.hostname))) throw new Error("TENH API must use HTTPS.");
   if (!path.startsWith("/api/") || path.includes("..") || path.includes("\\")) throw new Error("Invalid API path.");
@@ -22,6 +22,34 @@ export async function api<T>(path: string, workspaceId?: string | null, init: { 
       headers: { Accept: "application/json", Cookie: sessionCookie(authCookieName, data.session, workspaceId), ...(init.body && !multipart ? { "Content-Type": "application/json" } : {}) },
       body: init.body ? multipart ? init.body as FormData : JSON.stringify(init.body) : undefined,
     });
+
+    /*
+     * A session the server will not accept.
+     *
+     * getSession() hands back whatever is in storage, and the access token in
+     * it can be one the server has already stopped honouring -- expired while
+     * the app was closed, or superseded because the same account signed in on
+     * another device and rotated the refresh token. The request then comes
+     * back 401 "Unauthorized." and nothing here noticed: the app still held a
+     * session object, so it stayed on the workspace chooser showing an error
+     * with a Retry that could only fail again, and no way to sign in.
+     *
+     * So: refresh once and repeat the request. If the refresh is refused too,
+     * the session is genuinely dead -- sign out, which drops the app back to
+     * the sign-in screen where somebody can do something about it.
+     */
+    if (response.status === 401 && !retried) {
+      const { data: refreshed, error: refreshError } =
+        await supabase.auth.refreshSession();
+
+      if (!refreshError && refreshed.session) {
+        return api<T>(path, workspaceId, init, true);
+      }
+
+      await supabase.auth.signOut();
+      throw new ApiError("Your session has expired. Please sign in again.", 401);
+    }
+
     let result;
     try { result = await response.json(); } catch { throw new ApiError("TENH returned an unexpected response. Check the API address and deployment.", response.status); }
     if (!response.ok || result.success === false) throw new ApiError(result.error || "Request failed. Please try again.", response.status);
