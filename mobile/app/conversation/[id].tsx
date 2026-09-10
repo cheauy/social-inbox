@@ -1,7 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { createAudioPlayer, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
-import { File, Paths } from "expo-file-system";
+import { Directory, File, Paths } from "expo-file-system";
+import * as MediaLibrary from "expo-media-library";
+import * as Sharing from "expo-sharing";
 import * as ImagePicker from "expo-image-picker";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -147,6 +150,25 @@ function DaySeparator({ label }: { label: string }) {
  * away every time a message arrives; merging by id keeps it and still picks
  * up whatever is new.
  */
+/*
+ * A name for a downloaded file when the payload does not carry one.
+ *
+ * Android decides what a file is by its extension, so a photo saved without
+ * one lands in the gallery as an unopenable blob.
+ */
+function extensionFor(message: InboxMessage, uri: string) {
+  const fromUrl = /\.([a-z0-9]{2,4})(?:[?#]|$)/i.exec(uri)?.[1];
+
+  if (fromUrl) return `.${fromUrl.toLowerCase()}`;
+
+  if (message.message_type === "video") return ".mp4";
+  if (message.message_type === "audio" || message.message_type === "voice") {
+    return ".m4a";
+  }
+
+  return ".jpg";
+}
+
 /* A file size somebody can read: 240 KB, 1.8 MB. */
 function readableSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -999,6 +1021,7 @@ function Bubble({
   onViewMedia,
   onReplyComment,
   onCommentAction,
+  onHold,
   commentBusy,
 }: {
   message: InboxMessage;
@@ -1007,6 +1030,7 @@ function Bubble({
   onViewMedia: (item: MediaPreview) => void;
   onReplyComment: (message: InboxMessage) => void;
   onCommentAction: (message: InboxMessage, action: "like" | "hide" | "delete") => void;
+  onHold: (message: InboxMessage) => void;
   commentBusy: string | null;
   audio: {
     activeId: string | null;
@@ -1085,7 +1109,18 @@ function Bubble({
         alignItems: outgoing ? "flex-end" : "flex-start",
       }}
     >
-      <View
+      {/*
+        Hold a message to act on it.
+
+        Everything you can do to one used to be somewhere else: copying a
+        price meant selecting text that is not selectable, saving a photo
+        meant opening it and finding the browser, and quoting a message was
+        not possible at all. A long press is the gesture every chat app has
+        taught, and it costs the bubble nothing -- a tap still opens a photo.
+      */}
+      <Pressable
+        onLongPress={() => onHold(message)}
+        delayLongPress={280}
         style={{
           maxWidth: "82%",
           backgroundColor: bare ? "transparent" : outgoing ? colors.blue : "white",
@@ -1167,8 +1202,142 @@ function Bubble({
               : time(message.platform_created_at ?? message.created_at)}
           </Text>
         </View>
-      </View>
+      </Pressable>
     </View>
+  );
+}
+
+/*
+ * What you can do to one message, floating over the thread.
+ *
+ * Held rather than tapped, because a tap already means something on half of
+ * these -- opening a photo, playing a clip -- and because holding is what
+ * every chat app has taught. The actions are the ones that exist: quoting a
+ * message where the platform can carry a quote, copying its words, and saving
+ * what it carries. Nothing here pretends to do something the network behind it
+ * cannot.
+ */
+function MessageMenu({
+  message,
+  canReply,
+  saving,
+  onReply,
+  onCopy,
+  onDownload,
+  onPin,
+  onClose,
+}: {
+  message: InboxMessage | null;
+  canReply: boolean;
+  saving: boolean;
+  onReply: () => void;
+  onCopy: () => void;
+  onDownload: () => void;
+  onPin: () => void;
+  onClose: () => void;
+}) {
+  if (!message) return null;
+
+  const text = message.message_text?.trim() ?? "";
+  const url = message.attachment_url;
+  const media = ["image", "video", "sticker", "audio", "voice", "file"].includes(
+    message.message_type,
+  );
+
+  const rows: {
+    icon: React.ComponentProps<typeof Ionicons>["name"];
+    label: string;
+    detail: string;
+    run: () => void;
+  }[] = [];
+
+  if (canReply) {
+    rows.push({
+      icon: "arrow-undo-outline",
+      label: "Reply",
+      detail: "Quote this message in your next reply",
+      run: onReply,
+    });
+  }
+
+  rows.push({
+    icon: "bookmark-outline",
+    label: "Pin",
+    detail: "Keep this conversation at the top of the Inbox",
+    run: onPin,
+  });
+
+  if (text) {
+    rows.push({
+      icon: "copy-outline",
+      label: "Copy",
+      detail: "Put the words on the clipboard",
+      run: onCopy,
+    });
+  }
+
+  if (url && media) {
+    rows.push({
+      icon: "download-outline",
+      label: "Download",
+      detail:
+        message.message_type === "video"
+          ? "Save the video to this phone"
+          : message.message_type === "image" || message.message_type === "sticker"
+            ? "Save the picture to this phone"
+            : "Save the file to this phone",
+      run: onDownload,
+    });
+  }
+
+  return (
+    <Sheet
+      open={Boolean(message)}
+      title="Message"
+      detail={
+        text
+          ? text.length > 70
+            ? `${text.slice(0, 70)}…`
+            : text
+          : "Choose what to do with it."
+      }
+      onClose={onClose}
+      floating
+    >
+      <View style={{ paddingBottom: 6 }}>
+        {rows.map((row) => (
+          <Pressable
+            key={row.label}
+            accessibilityRole="button"
+            accessibilityLabel={row.label}
+            disabled={saving}
+            onPress={row.run}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 14,
+              paddingHorizontal: 20,
+              paddingVertical: 14,
+              backgroundColor: pressed ? colors.pale : "transparent",
+            })}
+          >
+            <Ionicons name={row.icon} size={20} color={colors.ink} />
+
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15.5, fontWeight: "700", color: colors.ink }}>
+                {row.label}
+              </Text>
+
+              <Text style={[styles.muted, { fontSize: 12.5 }]}>{row.detail}</Text>
+            </View>
+
+            {saving && row.label === "Download" ? (
+              <ActivityIndicator color={colors.blue} />
+            ) : null}
+          </Pressable>
+        ))}
+      </View>
+    </Sheet>
   );
 }
 
@@ -1637,6 +1806,15 @@ export default function Conversation() {
   const [pending, setPending] = useState<Pending[]>([]);
   const [sending, setSending] = useState(false);
   const [voiceReady, setVoiceReady] = useState(0);
+
+  /* The message being acted on, and whether a download is in flight. */
+  const [held, setHeld] = useState<InboxMessage | null>(null);
+
+  /*
+   * The message the next send will quote. Telegram only -- see `replyable`.
+   */
+  const [quoted, setQuoted] = useState<InboxMessage | null>(null);
+  const [saving, setSaving] = useState(false);
   const [replyingToComment, setReplyingToComment] = useState<InboxMessage | null>(null);
   const [commentBusy, setCommentBusy] = useState<string | null>(null);
 
@@ -2302,6 +2480,7 @@ export default function Conversation() {
     }
 
     const pendingSnapshot = [...pending];
+    const quotedSnapshot = quoted;
     const sentFileKeys = new Set<string>();
     const sentAt = new Date().toISOString();
     const textId = `optimistic:text:${sentAt}`;
@@ -2317,6 +2496,7 @@ export default function Conversation() {
     setError("");
     setDraft("");
     setPending([]);
+    setQuoted(null);
     /*
      * Drawn before the request, not after it.
      *
@@ -2364,6 +2544,14 @@ export default function Conversation() {
             conversationId: id,
             message: text,
             ...(platform === "facebook" ? { recipientId } : {}),
+            /*
+             * The quote, when there is one. Telegram takes the TENH message
+             * id and resolves it to its own; nothing else in TENH can carry a
+             * quote, which is why the action is only offered there.
+             */
+            ...(platform === "telegram" && quotedSnapshot
+              ? { replyToMessageId: quotedSnapshot.id }
+              : {}),
           },
         });
       }
@@ -2450,6 +2638,99 @@ export default function Conversation() {
       setCustomerLoading(false);
     }
   }, [contactId, scopeId, updateContactTags]);
+
+  /*
+   * Quoting a message.
+   *
+   * Telegram carries a real reply -- the send endpoint takes the TENH message
+   * id and resolves it to the Telegram one, so the customer sees the quote in
+   * their own app. Messenger has nothing of the kind in this codebase, so the
+   * action is not offered there rather than pretending: a quote the customer
+   * never sees is a promise the app cannot keep.
+   */
+  const replyable =
+    conversation?.social_account?.platform === "telegram" &&
+    conversation.source_type !== "comment";
+
+  function copyMessage(message: InboxMessage) {
+    const text = message.message_text?.trim();
+
+    if (!text) return;
+
+    void Clipboard.setStringAsync(text);
+    setHeld(null);
+  }
+
+  /*
+   * Saving what a message carries.
+   *
+   * Downloaded with the session cookie when the file is proxied through TENH,
+   * because that is the only way those bytes come out at all. A picture or a
+   * clip goes to the phone's gallery, where somebody expects to find it;
+   * anything else is handed to the share sheet, which is Android's own answer
+   * to "where should this go".
+   */
+  async function downloadMessage(message: InboxMessage) {
+    const url = message.attachment_url;
+
+    if (!url || saving) return;
+
+    setSaving(true);
+
+    try {
+      const target = resolveMedia(url);
+
+      if (!target) throw new Error("This attachment has no address.");
+
+      const folder = new Directory(Paths.cache, "tenh-downloads");
+
+      if (!folder.exists) folder.create({ intermediates: true });
+
+      const name =
+        words(record(record(message.raw_payload)?.tenh_attachment)?.name) ||
+        `tenh-${message.id.slice(0, 8)}${extensionFor(message, target.uri)}`;
+
+      const file = new File(folder, name);
+
+      if (file.exists) file.delete();
+
+      const saved = await File.downloadFileAsync(target.uri, file, {
+        headers: target.headers,
+        idempotent: true,
+      });
+
+      const picture =
+        message.message_type === "image" ||
+        message.message_type === "sticker" ||
+        message.message_type === "video";
+
+      if (picture) {
+        const permission = await MediaLibrary.requestPermissionsAsync();
+
+        if (permission.granted) {
+          await MediaLibrary.saveToLibraryAsync(saved.uri);
+          setError("");
+          Alert.alert("Saved", "It is in your gallery.");
+          setHeld(null);
+          return;
+        }
+      }
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(saved.uri);
+      }
+
+      setHeld(null);
+    } catch (downloadError) {
+      setError(
+        downloadError instanceof Error
+          ? downloadError.message
+          : "Unable to save that.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
 
   /*
    * A reminder, on the same endpoint the website's follow-up panel uses.
@@ -3126,6 +3407,7 @@ export default function Conversation() {
                   onViewMedia={setMediaPreview}
                   onReplyComment={beginCommentReply}
                   onCommentAction={requestCommentAction}
+                  onHold={setHeld}
                   commentBusy={commentBusy}
                   audio={{
                     activeId: playingId,
@@ -3182,6 +3464,57 @@ export default function Conversation() {
         </View>
       ) : null}
 
+      {/*
+        What the next message will quote, with a way to change your mind.
+        Above the composer rather than inside it, the way every chat app puts
+        it, so the box you type in is still the box you type in.
+      */}
+      {quoted ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+            paddingHorizontal: 14,
+            paddingVertical: 9,
+            backgroundColor: "white",
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+          }}
+        >
+          <View
+            style={{ width: 3, alignSelf: "stretch", borderRadius: 2, backgroundColor: colors.blue }}
+          />
+
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 11.5, fontWeight: "800", color: colors.blue }}>
+              Replying to{" "}
+              {quoted.direction === "outgoing"
+                ? "your message"
+                : (conversation?.contact?.full_name ?? "the customer")}
+            </Text>
+
+            <Text numberOfLines={1} style={[styles.muted, { fontSize: 12.5 }]}>
+              {quoted.message_text?.trim() ||
+                (quoted.message_type === "image"
+                  ? "Photo"
+                  : quoted.message_type === "video"
+                    ? "Video"
+                    : "Attachment")}
+            </Text>
+          </View>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Do not quote this message"
+            hitSlop={10}
+            onPress={() => setQuoted(null)}
+          >
+            <Ionicons name="close" size={18} color={colors.muted} />
+          </Pressable>
+        </View>
+      ) : null}
+
       <Composer
         draft={draft}
         onDraftChange={setDraft}
@@ -3199,6 +3532,23 @@ export default function Conversation() {
         onVoice={stageVoice}
         onSend={() => void send()}
         attachmentsDisabled={Boolean(replyingToComment)}
+      />
+
+      <MessageMenu
+        message={held}
+        canReply={replyable}
+        saving={saving}
+        onReply={() => {
+          setQuoted(held);
+          setHeld(null);
+        }}
+        onCopy={() => held && copyMessage(held)}
+        onDownload={() => held && void downloadMessage(held)}
+        onPin={() => {
+          setHeld(null);
+          void togglePin();
+        }}
+        onClose={() => setHeld(null)}
       />
 
       <QuickReplySheet
