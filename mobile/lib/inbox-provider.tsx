@@ -10,6 +10,16 @@ import type { InboxConversation, Member, TeamRoom, Workspace } from "./types";
 type InboxState = {
   workspaces: Workspace[]; workspace: Workspace | null; member: Member | null;
   conversations: InboxConversation[]; loading: boolean; error: string; live: boolean; revision: number; settingsRevision: number;
+
+  /*
+   * What this member is allowed to do here, as the server resolved it.
+   *
+   * The bootstrap has always carried this and the app has always thrown it
+   * away, so every screen offered every button and let the server refuse --
+   * which is safe and reads as broken. A level of "view" means read-only;
+   * "manage" means the button is worth showing.
+   */
+  permissions: Record<string, string | boolean>;
   refresh: () => Promise<void>; loadWorkspaces: () => Promise<void>; selectWorkspace: (workspace: Workspace) => Promise<void>;
 
   /*
@@ -64,6 +74,7 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [merged, setMerged] = useState<string[]>([]);
   const [member, setMember] = useState<Member | null>(null);
+  const [permissions, setPermissions] = useState<Record<string, string | boolean>>({});
   const [conversations, setConversations] = useState<InboxConversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -96,7 +107,7 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     alive.current = true;
     return () => { alive.current = false; generation.current++; };
   }, []);
-  const clear = useCallback(() => { workspaceRef.current = null; setWorkspace(null); mergedRef.current = []; setMerged([]); setMember(null); setConversations([]); setRooms([]); setRoomsLoading(true); setRoomsBadge(0); setAlertsBadge(0); setRoster([]); setCanManageRooms(false); }, []);
+  const clear = useCallback(() => { workspaceRef.current = null; setWorkspace(null); mergedRef.current = []; setMerged([]); setMember(null); setPermissions({}); setConversations([]); setRooms([]); setRoomsLoading(true); setRoomsBadge(0); setAlertsBadge(0); setRoster([]); setCanManageRooms(false); }, []);
   const loadWorkspaces = useCallback(async (quiet = false) => {
     if (!session) {
       generation.current++;
@@ -186,9 +197,9 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     const current = generation.current, sequence = ++request.current;
     try {
       const ids = mergedRef.current.length > 0 ? mergedRef.current : [selected.businessId];
-      const data = await api<{ conversations: InboxConversation[]; member: Member }>(`/api/mobile/bootstrap?workspaceIds=${encodeURIComponent(ids.join(","))}`, selected.businessId);
+      const data = await api<{ conversations: InboxConversation[]; member: Member; permissions?: Record<string, string | boolean> }>(`/api/mobile/bootstrap?workspaceIds=${encodeURIComponent(ids.join(","))}`, selected.businessId);
       if (!alive.current || current !== generation.current || sequence !== request.current) return;
-      setConversations(data.conversations); setMember(data.member); setError("");
+      setConversations(data.conversations); setMember(data.member); setPermissions(data.permissions ?? {}); setError("");
     } catch (e) {
       if (!alive.current || current !== generation.current || sequence !== request.current) return;
       setError(e instanceof Error ? e.message : "Unable to load Inbox.");
@@ -350,5 +361,5 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       ),
     );
   }, []);
-  return <Context.Provider value={{ workspaces, workspace, member, conversations, loading, error, live, revision, settingsRevision, refresh, loadWorkspaces, selectWorkspace, merged, openWorkspaces, updateConversation, updateContactTags, rooms, roomsLoading, roomsBadge, alertsBadge, alertsRevision, refreshAlerts, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ workspaces, workspace, member, conversations, permissions, loading, error, live, revision, settingsRevision, refresh, loadWorkspaces, selectWorkspace, merged, openWorkspaces, updateConversation, updateContactTags, rooms, roomsLoading, roomsBadge, alertsBadge, alertsRevision, refreshAlerts, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
 }

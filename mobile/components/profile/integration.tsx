@@ -78,7 +78,16 @@ const COMING: { key: string; name: string; icon: IconName; tone: string; detail:
 ];
 
 export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { workspace, settingsRevision, loadWorkspaces } = useInbox();
+  const { workspace, settingsRevision, loadWorkspaces, permissions } = useInbox();
+
+  /*
+   * Connecting, reconnecting and disconnecting all sit behind the same
+   * permission on the server -- channels: manage -- and it refuses politely
+   * either way. Offering the buttons anyway means an agent taps Connect,
+   * waits for a browser to open, signs into Facebook, picks a Page and is
+   * then told no. Better to say so before any of that.
+   */
+  const canManageChannels = permissions.channels === "manage";
   const { t } = useLanguage();
 
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -152,8 +161,15 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
    */
   async function connectFacebook() {
     try {
+      /*
+       * Straight at the route that starts the handshake, not at the page that
+       * has a button which starts it: one fewer screen to find your way
+       * through on a phone. If the browser has no TENH session it lands on
+       * the integrations page with Meta's own reason, which is the same place
+       * the button would have taken you.
+       */
       await WebBrowser.openAuthSessionAsync(
-        `${WEB}/dashboard/integrations?connect=facebook`,
+        `${WEB}/api/facebook/oauth/connect`,
         `${WEB}/dashboard/integrations`,
       );
     } catch {
@@ -362,11 +378,14 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
                   ? colors.red
                   : "#2FA36B"
               }
-              onDisconnect={() => confirmDisconnect(channel)}
+              onDisconnect={
+                canManageChannels ? () => confirmDisconnect(channel) : null
+              }
             />
           ))
         )}
 
+        {canManageChannels ? (
         <Connect
           icon="logo-facebook"
           tone="#1877F2"
@@ -378,6 +397,7 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
           first={messenger.length === 0}
           onPress={() => void connectFacebook()}
         />
+        ) : null}
       </SettingsGroup>
 
       <SettingsGroup title={"Telegram · " + telegram.length}>
@@ -399,12 +419,14 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
               name={channel.name}
               detail={channel.username ? `@${channel.username}` : "Telegram bot"}
               tone={colors.muted}
-              onDisconnect={() => confirmDisconnect(channel)}
+              onDisconnect={
+                canManageChannels ? () => confirmDisconnect(channel) : null
+              }
             />
           ))
         )}
 
-        {botOpen ? (
+        {!canManageChannels ? null : botOpen ? (
           <View
             style={{
               gap: 10,
@@ -576,7 +598,8 @@ function ChannelRow({
   detail: string;
   tone: string;
   first: boolean;
-  onDisconnect: () => void;
+  /* Null for a member who may look but not change. */
+  onDisconnect: (() => void) | null;
 }) {
   return (
     <View
@@ -605,6 +628,7 @@ function ChannelRow({
         </Text>
       </View>
 
+      {onDisconnect ? (
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Disconnect ${name}`}
@@ -621,6 +645,7 @@ function ChannelRow({
           Disconnect
         </Text>
       </Pressable>
+      ) : null}
     </View>
   );
 }
