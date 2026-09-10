@@ -1059,6 +1059,13 @@ function Bubble({
    */
   const bare = type === "sticker" && media.length > 0 && !body;
 
+  /*
+   * Still on its way. Optimistic messages are the ones this screen drew
+   * itself the moment send was pressed; they are replaced by the real row
+   * when the thread reloads, and dropped if the send fails.
+   */
+  const pending = message.id.startsWith("optimistic:");
+
   return (
     <View
       style={{
@@ -1111,16 +1118,44 @@ function Bubble({
           </View>
         ) : null}
 
-        <Text
+        {/*
+          The time, or "Sending" while it is still on its way.
+
+          A message that has left the box but not yet reached Facebook has no
+          time worth printing -- it would be the moment the send button was
+          pressed, shown as though the customer already had it. On a slow
+          connection that is the difference between "it is going" and "did
+          that send?", which is the question that makes somebody send it
+          twice.
+        */}
+        <View
           style={{
-            fontSize: 11,
-            color: outgoing ? "rgba(255,255,255,0.75)" : colors.muted,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
             alignSelf: "flex-end",
             paddingHorizontal: type === "image" && url ? 8 : 0,
           }}
         >
-          {time(message.platform_created_at ?? message.created_at)}
-        </Text>
+          {pending ? (
+            <Ionicons
+              name="time-outline"
+              size={11}
+              color={outgoing ? "rgba(255,255,255,0.75)" : colors.muted}
+            />
+          ) : null}
+
+          <Text
+            style={{
+              fontSize: 11,
+              color: outgoing ? "rgba(255,255,255,0.75)" : colors.muted,
+            }}
+          >
+            {pending
+              ? "Sending…"
+              : time(message.platform_created_at ?? message.created_at)}
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -1978,15 +2013,34 @@ export default function Conversation() {
     );
   }
 
-  function optimisticMessage(file: Pending, index: number, at: string): InboxMessage {
+  /* The fields every message this screen draws for itself shares. */
+  function optimisticBase(messageId: string, at: string) {
     return {
-      id: `optimistic:inbox:${at}:${index}`,
-      platform_message_id: `optimistic:inbox:${at}:${index}`,
+      id: messageId,
+      platform_message_id: messageId,
       conversation_id: String(id),
       sender_type: "page",
       sender_platform_id: conversation?.social_account?.platform_account_id ?? "",
       recipient_platform_id: recipientId,
       direction: "outgoing",
+      platform_created_at: at,
+      created_at: at,
+      comment_is_liked: false,
+      comment_is_hidden: false,
+      comment_is_deleted: false,
+      comment_deleted_by: null,
+      delivery_status: null,
+      delivered_at: null,
+      seen_at: null,
+    } satisfies Omit<
+      InboxMessage,
+      "message_type" | "message_text" | "attachment_url" | "raw_payload"
+    >;
+  }
+
+  function optimisticMessage(file: Pending, index: number, at: string): InboxMessage {
+    return {
+      ...optimisticBase(`optimistic:inbox:${at}:${index}`, at),
       message_type: file.kind,
       message_text:
         file.kind === "image"
@@ -1998,15 +2052,16 @@ export default function Conversation() {
               : `Sent a file: ${file.name}`,
       attachment_url: file.uri,
       raw_payload: { tenh_attachment: { name: file.name, type: file.kind, mime_type: file.mimeType } },
-      platform_created_at: at,
-      created_at: at,
-      comment_is_liked: false,
-      comment_is_hidden: false,
-      comment_is_deleted: false,
-      comment_deleted_by: null,
-      delivery_status: null,
-      delivered_at: null,
-      seen_at: null,
+    };
+  }
+
+  function optimisticText(body: string, messageId: string, at: string): InboxMessage {
+    return {
+      ...optimisticBase(messageId, at),
+      message_type: "text",
+      message_text: body,
+      attachment_url: null,
+      raw_payload: null,
     };
   }
 
@@ -2057,7 +2112,11 @@ export default function Conversation() {
     const pendingSnapshot = [...pending];
     const sentFileKeys = new Set<string>();
     const sentAt = new Date().toISOString();
-    const optimisticIds = pendingSnapshot.map((_, index) => `optimistic:inbox:${sentAt}:${index}`);
+    const textId = `optimistic:text:${sentAt}`;
+    const optimisticIds = [
+      ...pendingSnapshot.map((_, index) => `optimistic:inbox:${sentAt}:${index}`),
+      textId,
+    ];
     const visualFiles = pendingSnapshot.filter((file) => file.kind === "image" || file.kind === "video");
     const telegramCaption = platform === "telegram" && visualFiles.length === pendingSnapshot.length && text.length <= 1024 ? text : "";
     const preview = text || (pendingSnapshot[0]?.kind === "audio" ? "You sent a voice message" : pendingSnapshot[0]?.kind === "video" ? "You sent a video" : pendingSnapshot[0]?.kind === "image" ? "You sent a photo" : pendingSnapshot[0] ? `You sent ${pendingSnapshot[0].name}` : "");
@@ -2066,8 +2125,21 @@ export default function Conversation() {
     setError("");
     setDraft("");
     setPending([]);
-    if (pendingSnapshot.length > 0) {
-      setMessages((current) => mergeMessages(current, pendingSnapshot.map((file, index) => optimisticMessage(file, index, sentAt))));
+    /*
+     * Drawn before the request, not after it.
+     *
+     * Attachments already appeared straight away; a typed message did not --
+     * it left the box and nothing took its place until the send came back and
+     * the thread reloaded, which on a Cambodian mobile connection is a couple
+     * of seconds of a screen that looks like it ate the message.
+     */
+    const drawn: InboxMessage[] = [
+      ...(text ? [optimisticText(text, textId, sentAt)] : []),
+      ...pendingSnapshot.map((file, index) => optimisticMessage(file, index, sentAt)),
+    ];
+
+    if (drawn.length > 0) {
+      setMessages((current) => mergeMessages(current, drawn));
     }
     updateConversation(String(id), { last_message_text: preview, last_message_at: sentAt });
 
