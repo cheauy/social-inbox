@@ -6,6 +6,7 @@ import {
   Alert,
   Animated,
   Dimensions,
+  Keyboard,
   Linking,
   Modal,
   PanResponder,
@@ -2358,6 +2359,9 @@ export function CustomerPanel({
                         accessibilityRole="button"
                         accessibilityState={{ selected: active }}
                         onPress={() => {
+                          /* Done writing the note: choosing when it should
+                             land is the next step, so the keyboard goes. */
+                          Keyboard.dismiss();
                           setRemindWhen(option.key);
 
                           /* Choosing "Pick a date" opens the calendar, rather
@@ -2413,7 +2417,10 @@ export function CustomerPanel({
                       day: "numeric",
                       month: "short",
                     })}
-                    onPress={() => setPicking("date")}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setPicking("date");
+                    }}
                   />
 
                   <PickerButton
@@ -2422,7 +2429,10 @@ export function CustomerPanel({
                       hour: "numeric",
                       minute: "2-digit",
                     })}
-                    onPress={() => setPicking("time")}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setPicking("time");
+                    }}
                   />
                 </View>
               ) : null}

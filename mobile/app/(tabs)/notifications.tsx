@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   Linking,
   Pressable,
   RefreshControl,
@@ -480,7 +481,10 @@ function ReminderEditor({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Change the date"
-            onPress={() => setPicking("date")}
+            onPress={() => {
+              Keyboard.dismiss();
+              setPicking("date");
+            }}
             style={({ pressed }) => ({
               flex: 1,
               flexDirection: "row",
@@ -511,7 +515,10 @@ function ReminderEditor({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Change the time"
-            onPress={() => setPicking("time")}
+            onPress={() => {
+              Keyboard.dismiss();
+              setPicking("time");
+            }}
             style={({ pressed }) => ({
               flex: 1,
               flexDirection: "row",
