@@ -10,7 +10,8 @@ import {
   ensureGeneralRoom,
   loadActiveBusinessMembers,
   safeDetails,
-  slugifyRoomName,
+  roomIconFromSlug,
+  slugWithRoomIcon,
 } from "@/lib/team/team-chat-server";
 
 export const runtime = "nodejs";
@@ -178,6 +179,49 @@ export async function GET() {
 
         const isMuted = Boolean(myMembership?.muted_at);
 
+        /*
+         * What was last said in here, and by whom.
+         *
+         * The list showed each room's description -- the sentence somebody
+         * typed when they created it, months ago, identical every time you
+         * look. A room list is read to find out what has happened since you
+         * last looked, and that is the newest message.
+         */
+        const { data: latest } = await supabaseAdmin
+          .from("team_chat_messages")
+          .select("id,message_text,sender_member_id,created_at")
+          .eq("business_id", currentMember.business_id)
+          .eq("room_id", room.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const sender = latest
+          ? members.find(
+              (member) => member.id === latest.sender_member_id,
+            )
+          : null;
+
+        const lastMessage = latest
+          ? {
+              id: latest.id,
+              /*
+               * A message with only an attachment has no words, so it says
+               * what it is rather than leaving the row blank.
+               */
+              text:
+                typeof latest.message_text === "string" &&
+                latest.message_text.trim()
+                  ? latest.message_text.trim()
+                  : "Attachment",
+              sender_name:
+                latest.sender_member_id === currentMember.id
+                  ? "You"
+                  : (sender?.full_name ?? "Someone"),
+              created_at: latest.created_at,
+            }
+          : null;
+
         // Mentions are counted separately and deliberately IGNORE mute:
         // muting a busy group must not mean missing a direct @you.
         const { count: mentionCount } = await supabaseAdmin
@@ -199,6 +243,7 @@ export async function GET() {
 
         return {
           ...room,
+          icon: room.is_general ? "people" : roomIconFromSlug(room.slug),
           member_ids: roomMemberIds,
           member_count: roomMemberIds.length,
           unread_count: unreadCount,
@@ -207,6 +252,7 @@ export async function GET() {
           badge_count: isMuted ? mentionCount ?? 0 : unreadCount,
           mention_count: mentionCount ?? 0,
           is_muted: isMuted,
+          last_message: lastMessage,
         };
       }),
     );
@@ -273,6 +319,7 @@ export async function POST(request: NextRequest) {
     name?: string;
     description?: string | null;
     memberIds?: unknown;
+    icon?: unknown;
   };
 
   try {
@@ -333,7 +380,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const slug = `${slugifyRoomName(name)}-${Date.now().toString(36)}`;
+  const slug = slugWithRoomIcon(name, body.icon);
 
   const { data: room, error: roomError } =
     await supabaseAdmin
@@ -400,6 +447,7 @@ export async function POST(request: NextRequest) {
     success: true,
     room: {
       ...room,
+      icon: roomIconFromSlug(room.slug),
       member_ids: (validMembers ?? []).map(
         (member) => member.id,
       ),

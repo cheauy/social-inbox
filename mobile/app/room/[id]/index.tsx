@@ -21,8 +21,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { FileLibrary } from "../../../components/file-library";
+import type { CustomerFile } from "../../../components/file-library";
 import {
   Avatar,
+  Dialog,
   Empty,
   ErrorNotice,
   IconButton,
@@ -355,65 +358,68 @@ function ThreadSkeleton() {
   );
 }
 
-function SharedItemsSheet({
+/*
+ * A room's files, drawn the way a customer's are.
+ *
+ * This was its own list -- a grid of squares, then a column of documents,
+ * everything from the beginning of the room in one scroll. The Inbox answers
+ * the same question with tabs and months, and two answers that look different
+ * are two things to learn, so this hands the same component the same shape of
+ * data.
+ */
+function SharedItemsDialog({
   open,
   messages,
   onClose,
-  onPreview,
 }: {
   open: boolean;
   messages: RoomMessage[];
   onClose: () => void;
-  onPreview: (preview: MediaPreview) => void;
 }) {
-  // Voice notes stay in the conversation only. Plain links stay in the
-  // message bubble only; neither belongs in Files/Documents.
-  const attachments = messages
-    .flatMap((message) => message.attachments ?? [])
-    .filter((item) => item.kind !== "audio");
-  const media = attachments.filter((item) => (item.kind === "image" || item.kind === "video") && item.url);
-  const files = attachments.filter((item) => item.kind === "file");
+  const files: CustomerFile[] = messages
+    .flatMap((message) =>
+      (message.attachments ?? []).map((item) => ({
+        id: item.id,
+        /* Voice notes stay in the conversation: see the Inbox library. */
+        kind:
+          item.kind === "image"
+            ? ("image" as const)
+            : item.kind === "video"
+              ? ("video" as const)
+              : ("file" as const),
+        name: item.file_name || "File",
+        url: item.url ?? null,
+        detail: fileSize(item.byte_size) || null,
+        createdAt: message.created_at,
+        /* The attachment row outlives whatever signed link it arrived with. */
+        cacheKey: item.id,
+      })),
+    )
+    .filter(
+      (file) =>
+        file.url &&
+        !messages.some(
+          (message) =>
+            (message.attachments ?? []).some(
+              (item) => item.id === file.id && item.kind === "audio",
+            ),
+        ),
+    )
+    .sort(
+      (first, second) =>
+        new Date(second.createdAt).getTime() -
+        new Date(first.createdAt).getTime(),
+    );
 
   return (
-    <Sheet open={open} title="Files & media" detail="Photos, videos and documents shared in this room." onClose={onClose} half>
-      <ScrollView keyboardDismissMode="on-drag" style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 18, paddingBottom: 18, gap: 16 }}>
-        {attachments.length === 0 ? (
-          <View style={{ alignItems: "center", paddingVertical: 34, gap: 9 }}><Ionicons name="folder-open-outline" size={30} color={colors.muted} /><Text style={styles.muted}>Nothing has been shared yet.</Text></View>
-        ) : null}
-        {media.length > 0 ? (
-          <View style={{ gap: 8 }}>
-            <Text style={{ color: colors.ink, fontSize: 13, fontWeight: "800" }}>Media</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-              {media.map((item) => (
-                <Pressable
-                  key={item.id}
-                  onPress={() => item.url && onPreview({ kind: item.kind as "image" | "video", url: item.url })}
-                  style={{ width: 94, height: 94, borderRadius: 12, overflow: "hidden", backgroundColor: colors.border, alignItems: "center", justifyContent: "center" }}
-                >
-                  {item.kind === "image" ? (
-                    <Image source={{ uri: item.url ?? undefined }} style={{ width: 94, height: 94 }} resizeMode="cover" />
-                  ) : (
-                    <><Ionicons name="play-circle" size={34} color={colors.blue} /><Text numberOfLines={1} style={{ paddingHorizontal: 5, marginTop: 4, color: colors.muted, fontSize: 10 }}>{item.file_name}</Text></>
-                  )}
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ) : null}
-        {files.length > 0 ? (
-          <View style={{ gap: 8 }}>
-            <Text style={{ color: colors.ink, fontSize: 13, fontWeight: "800" }}>Files and documents</Text>
-            {files.map((item) => (
-              <Pressable key={item.id} disabled={!item.url} onPress={() => item.url && void Linking.openURL(item.url)} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 11, padding: 12, borderRadius: 14, backgroundColor: pressed ? colors.pale : "#F7F9FC", borderWidth: 1, borderColor: colors.border })}>
-                <Ionicons name="document-text-outline" size={20} color={colors.blue} />
-                <View style={{ flex: 1 }}><Text numberOfLines={1} style={{ color: colors.ink, fontWeight: "700" }}>{item.file_name}</Text><Text style={{ color: colors.muted, fontSize: 11 }}>{fileSize(item.byte_size) || "Document"}</Text></View>
-                <Ionicons name="open-outline" size={17} color={colors.muted} />
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-      </ScrollView>
-    </Sheet>
+    <Dialog
+      open={open}
+      title="Files & media"
+      detail="Photos, videos and documents shared in this room."
+      onClose={onClose}
+    >
+      <FileLibrary files={files} />
+    </Dialog>
   );
 }
 
@@ -1301,14 +1307,10 @@ export default function RoomScreen() {
         onSend={() => void send()}
       />
 
-      <SharedItemsSheet
+      <SharedItemsDialog
         open={sharedOpen}
         messages={messages}
         onClose={() => setSharedOpen(false)}
-        onPreview={(next) => {
-          setSharedOpen(false);
-          setPreview(next);
-        }}
       />
 
       <MediaPreviewModal preview={preview} onClose={() => setPreview(null)} />

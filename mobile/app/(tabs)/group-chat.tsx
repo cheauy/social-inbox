@@ -3,6 +3,9 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  Dimensions,
+  Modal,
   Pressable,
   ScrollView,
   Text,
@@ -11,7 +14,16 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Empty, ErrorNotice, Sheet, colors, styles } from "../../components/ui";
+import {
+  Empty,
+  ErrorNotice,
+  IconName,
+  Sheet,
+  colors,
+  relativeTime,
+  styles,
+} from "../../components/ui";
+import { SwipeRow } from "../../components/swipe-row";
 import { api } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
 import type { Member, TeamRoom } from "../../lib/types";
@@ -63,6 +75,128 @@ function Badge({ count, mention }: { count: number; mention: boolean }) {
  * and the web asks the same question at the same moment. The creator is
  * always in it; the server adds them whether or not they tick themselves.
  */
+/*
+ * A room's actions, held rather than dragged, and drawn where the finger is.
+ *
+ * The same card the Inbox opens on a message: two gestures for the same two
+ * actions, because both are taught -- Messenger holds, Mail swipes -- and
+ * somebody who reaches for one should not have to discover the other.
+ */
+const ROOM_MENU_WIDTH = 190;
+
+function RoomMenu({
+  held,
+  onClose,
+  onAction,
+}: {
+  held: { room: TeamRoom; at: { x: number; y: number } } | null;
+  onClose: () => void;
+  onAction: (room: TeamRoom, action: "mute" | "delete") => void;
+}) {
+  const screen = Dimensions.get("window");
+
+  if (!held) return null;
+
+  const { room, at } = held;
+
+  const rows: { icon: IconName; label: string; tone?: string; run: () => void }[] =
+    [
+      {
+        icon: room.is_muted
+          ? "notifications-outline"
+          : "notifications-off-outline",
+        label: room.is_muted ? "Unmute" : "Mute",
+        run: () => onAction(room, "mute"),
+      },
+    ];
+
+  if (!room.is_general) {
+    rows.push({
+      icon: "trash-outline",
+      label: "Delete",
+      tone: colors.red,
+      run: () => onAction(room, "delete"),
+    });
+  }
+
+  const height = rows.length * 46 + 10;
+  const below = at.y + 12;
+  const top =
+    below + height > screen.height - 24
+      ? Math.max(24, at.y - height - 12)
+      : below;
+
+  const left = Math.min(
+    Math.max(10, at.x - ROOM_MENU_WIDTH / 2),
+    screen.width - ROOM_MENU_WIDTH - 10,
+  );
+
+  return (
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <Pressable
+        accessibilityLabel="Close room actions"
+        onPress={onClose}
+        style={{ flex: 1, backgroundColor: "rgba(16,34,56,0.18)" }}
+      />
+
+      <View
+        style={{
+          position: "absolute",
+          top,
+          left,
+          width: ROOM_MENU_WIDTH,
+          paddingVertical: 5,
+          borderRadius: 16,
+          backgroundColor: "white",
+          elevation: 14,
+          shadowColor: "#102238",
+          shadowOpacity: 0.24,
+          shadowRadius: 20,
+          shadowOffset: { width: 0, height: 8 },
+        }}
+      >
+        {rows.map((row, index) => (
+          <Pressable
+            key={row.label}
+            accessibilityRole="button"
+            accessibilityLabel={row.label}
+            onPress={row.run}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 13,
+              paddingHorizontal: 16,
+              height: 46,
+              borderTopWidth: index === 0 ? 0 : 1,
+              borderTopColor: colors.border,
+              backgroundColor: pressed ? colors.pale : "transparent",
+            })}
+          >
+            <Ionicons name={row.icon} size={19} color={row.tone ?? colors.ink} />
+
+            <Text
+              style={{
+                flex: 1,
+                fontSize: 15,
+                fontWeight: "600",
+                color: row.tone ?? colors.ink,
+              }}
+            >
+              {row.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </Modal>
+  );
+}
+
 function CreateGroupSheet({
   open,
   roster,
@@ -243,6 +377,20 @@ export default function GroupChat() {
     useInbox();
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [busyRoom, setBusyRoom] = useState<string | null>(null);
+  const [held, setHeld] = useState<{
+    room: TeamRoom;
+    at: { x: number; y: number };
+  } | null>(null);
+
+  const needle = query.trim().toLowerCase();
+  const shown = needle
+    ? rooms.filter((room) =>
+        (room.name?.trim() || "General").toLowerCase().includes(needle),
+      )
+    : rooms;
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
@@ -287,6 +435,105 @@ export default function GroupChat() {
       );
     } finally {
       setCreating(false);
+    }
+  }
+
+  /*
+   * A room's own actions: mute it, or -- if you may -- delete it.
+   *
+   * Archive is not here. Nothing in TENH archives a room: there is no column
+   * for it and no endpoint, so a button would either lie or delete. Muting is
+   * what "I do not want to hear from this" means today.
+   */
+  function roomActions(room: TeamRoom) {
+    const actions = [
+      {
+        icon: (room.is_muted
+          ? "notifications-outline"
+          : "notifications-off-outline") as IconName,
+        label: room.is_muted ? "Unmute" : "Mute",
+        tone: colors.blue,
+        onPress: () => {
+          setOpenId(null);
+          void runRoomAction(room, "mute");
+        },
+      },
+    ];
+
+    if (canManageRooms && !room.is_general) {
+      actions.push({
+        icon: "trash-outline" as IconName,
+        label: "Delete",
+        tone: colors.red,
+        onPress: () => {
+          setOpenId(null);
+          void runRoomAction(room, "delete");
+        },
+      });
+    }
+
+    return actions;
+  }
+
+  async function runRoomAction(room: TeamRoom, action: "mute" | "delete") {
+    if (!workspace || busyRoom) return;
+
+    if (action === "delete") {
+      Alert.alert(
+        `Delete ${room.name?.trim() || "this room"}?`,
+        "Everything said in it goes with it, for everybody. This cannot be undone.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => void deleteRoom(room),
+          },
+        ],
+      );
+
+      return;
+    }
+
+    setBusyRoom(room.id);
+
+    try {
+      await api(`/api/team-chat/rooms/${room.id}/mute`, workspace.businessId, {
+        method: "PATCH",
+        body: { muted: !room.is_muted },
+      });
+
+      await refreshRooms();
+    } catch (muteError) {
+      setError(
+        muteError instanceof Error
+          ? muteError.message
+          : "Unable to change that room.",
+      );
+    } finally {
+      setBusyRoom(null);
+    }
+  }
+
+  async function deleteRoom(room: TeamRoom) {
+    if (!workspace) return;
+
+    setBusyRoom(room.id);
+
+    try {
+      await api(`/api/team-chat/rooms/${room.id}`, workspace.businessId, {
+        method: "DELETE",
+      });
+
+      await refreshRooms();
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Unable to delete that room.",
+      );
+    } finally {
+      setBusyRoom(null);
     }
   }
 
@@ -337,6 +584,49 @@ export default function GroupChat() {
             </Pressable>
           ) : null}
         </View>
+
+        {/*
+          Search, once there are enough rooms to lose one in. A workspace with
+          three rooms does not need a box that tells you it has three rooms.
+        */}
+        {rooms.length > 3 ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 9,
+              marginTop: 10,
+              paddingHorizontal: 13,
+              height: 44,
+              borderRadius: 14,
+              backgroundColor: colors.background,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Ionicons name="search" size={17} color={colors.muted} />
+
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search a group"
+              placeholderTextColor={colors.muted}
+              autoCorrect={false}
+              style={{ flex: 1, fontSize: 15, color: colors.ink }}
+            />
+
+            {query ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Clear search"
+                onPress={() => setQuery("")}
+                hitSlop={8}
+              >
+                <Ionicons name="close-circle" size={17} color={colors.muted} />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
       </View>
 
       <ErrorNotice message={error} onRetry={() => void refreshRooms()} />
@@ -363,75 +653,177 @@ export default function GroupChat() {
               : "Team rooms an owner adds you to appear here."
           }
         />
+      ) : shown.length === 0 ? (
+        <Empty
+          icon="search-outline"
+          title="Nothing matches"
+          detail="No room here is called that."
+        />
       ) : (
-        <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={{ padding: 14, gap: 9 }}>
-          {rooms.map((room) => (
-            <Pressable
-              key={room.id}
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${room.name?.trim() || "General"}`}
-              onPress={() =>
-                router.push({
-                  pathname: "/room/[id]",
-                  params: {
-                    id: room.id,
-                    name: room.name ?? "",
-                    muted: room.is_muted ? "1" : "0",
-                  },
-                })
-              }
-              style={({ pressed }) => [
-                styles.card,
-                { opacity: pressed ? 0.72 : 1, borderRadius: 18, padding: 13, borderColor: room.badge_count > 0 ? "#B7DCF3" : colors.border, backgroundColor: room.badge_count > 0 ? "#F0F9FF" : "white" },
-              ]}
-            >
-              <View style={styles.row}>
-                <TeamRoomIcon icon={room.icon} size={48} />
-                <View style={{ flex: 1, gap: 3 }}>
+        <ScrollView
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ padding: 14, gap: 9 }}
+        >
+          {shown.map((room) => (
+            <View key={room.id} style={{ borderRadius: 18, overflow: "hidden" }}>
+              {/*
+                Mute and Delete off the right-hand edge, the same drag the
+                tag, quick-reply and reminder lists use. A room is a tap
+                target first; the things that change it should cost a
+                deliberate gesture.
+              */}
+              <SwipeRow
+                id={room.id}
+                openId={openId}
+                onOpen={setOpenId}
+                actions={roomActions(room)}
+              >
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${room.name?.trim() || "General"}`}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/room/[id]",
+                      params: {
+                        id: room.id,
+                        name: room.name ?? "",
+                        muted: room.is_muted ? "1" : "0",
+                      },
+                    })
+                  }
+                  onLongPress={(event) =>
+                    setHeld({
+                      room,
+                      at: {
+                        x: event.nativeEvent.pageX,
+                        y: event.nativeEvent.pageY,
+                      },
+                    })
+                  }
+                  delayLongPress={280}
+                  style={({ pressed }) => [
+                    styles.card,
+                    {
+                      opacity: pressed ? 0.72 : 1,
+                      borderRadius: 18,
+                      padding: 13,
+                      borderColor:
+                        room.badge_count > 0 ? "#B7DCF3" : colors.border,
+                      backgroundColor:
+                        room.badge_count > 0 ? "#F0F9FF" : "white",
+                    },
+                  ]}
+                >
                   <View style={styles.row}>
-                    <Text style={styles.heading} numberOfLines={1}>
-                      {room.name?.trim() || "General"}
-                    </Text>
+                    <TeamRoomIcon icon={room.icon} size={48} />
 
-                    {room.is_muted ? (
+                    <View style={{ flex: 1, gap: 3 }}>
+                      <View style={styles.row}>
+                        <Text style={styles.heading} numberOfLines={1}>
+                          {room.name?.trim() || "General"}
+                        </Text>
+
+                        {room.is_muted ? (
+                          <Ionicons
+                            name="notifications-off"
+                            size={14}
+                            color={colors.muted}
+                          />
+                        ) : null}
+                      </View>
+
+                      <Text style={styles.muted} numberOfLines={1}>
+                        {room.description?.trim() ||
+                          "Internal team conversation"}
+                      </Text>
+
+                      <Text style={{ color: colors.muted, fontSize: 11 }}>
+                        {room.member_count} member
+                        {room.member_count === 1 ? "" : "s"}
+                      </Text>
+                    </View>
+
+                    {/*
+                      A mention is shown apart from the unread count because
+                      muting a busy room still lets a direct @you through --
+                      that is the rule the server applies, and collapsing the
+                      two would hide it.
+                    */}
+                    {room.mention_count > 0 ? (
+                      <Badge count={room.mention_count} mention />
+                    ) : null}
+
+                    <Badge count={room.badge_count} mention={false} />
+
+                    <Ionicons
+                      name="chevron-forward"
+                      size={18}
+                      color={colors.muted}
+                    />
+                  </View>
+
+                  {/*
+                    What was last said in here.
+
+                    The row showed the sentence somebody typed when they made
+                    the room -- the same words every time you look. A room
+                    list is read to find out what has happened since you were
+                    last in it, which is the newest message and who sent it.
+                  */}
+                  {room.last_message ? (
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 7,
+                        marginTop: 11,
+                        paddingTop: 10,
+                        borderTopWidth: 1,
+                        borderTopColor: colors.border,
+                      }}
+                    >
                       <Ionicons
-                        name="notifications-off"
+                        name="chatbubble-ellipses-outline"
                         size={14}
                         color={colors.muted}
                       />
-                    ) : null}
-                  </View>
 
-                  <Text style={styles.muted} numberOfLines={1}>
-                    {room.description?.trim() || "Internal team conversation"}
-                  </Text>
-                  <Text style={{ color: colors.muted, fontSize: 11 }}>
-                    {room.member_count} member{room.member_count === 1 ? "" : "s"}
-                  </Text>
-                </View>
+                      <Text
+                        numberOfLines={1}
+                        style={{ flex: 1, fontSize: 12.5, color: colors.muted }}
+                      >
+                        <Text style={{ fontWeight: "800", color: colors.ink }}>
+                          {room.last_message.sender_name}:
+                        </Text>{" "}
+                        {room.last_message.text}
+                      </Text>
 
-                {/*
-                  A mention is shown apart from the unread count because
-                  muting a busy room still lets a direct @you through -- that
-                  is the rule the server applies, and collapsing the two would
-                  hide it.
-                */}
-                {room.mention_count > 0 ? (
-                  <Badge count={room.mention_count} mention />
-                ) : null}
-
-                <Badge count={room.badge_count} mention={false} />
-
-                <Ionicons
-                  name="chevron-forward"
-                  size={18}
-                  color={colors.muted}
-                />
-              </View>
-            </Pressable>
+                      <Text style={{ fontSize: 11, color: colors.muted }}>
+                        {relativeTime(room.last_message.created_at)}
+                      </Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+              </SwipeRow>
+            </View>
           ))}
         </ScrollView>
       )}
+
+      {/*
+        The same actions again, held rather than dragged. Both gestures exist
+        because both are taught: Messenger holds, Mail swipes, and somebody
+        who reaches for one should not have to learn the other.
+      */}
+      <RoomMenu
+        held={held}
+        onClose={() => setHeld(null)}
+        onAction={(room: TeamRoom, action: "mute" | "delete") => {
+          setHeld(null);
+          runRoomAction(room, action);
+        }}
+      />
 
       <CreateGroupSheet
         open={createOpen}

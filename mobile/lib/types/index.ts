@@ -30,4 +30,12 @@ export type TeamRoom = {
   unread_count: number;
   mention_count: number;
   badge_count: number;
+
+  /* The newest thing said in the room, for the list to show. */
+  last_message: {
+    id: string;
+    text: string;
+    sender_name: string;
+    created_at: string;
+  } | null;
 };
