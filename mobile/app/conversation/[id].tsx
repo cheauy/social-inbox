@@ -1882,17 +1882,23 @@ export default function Conversation() {
    * was invisible in that warning: a colleague at a desk could not tell that
    * this thread was already being answered from somebody's hand.
    */
-  const { setViewing, setTyping } = usePresence();
+  const { setViewing, leaveViewing, setTyping } = usePresence();
   const viewers = useViewers(id ? String(id) : null);
 
   /* Of those, the ones with something already in their box. */
   const typists = viewers.filter((viewer) => viewer.is_typing);
 
   useEffect(() => {
-    setViewing(id ? String(id) : null);
+    const thread = id ? String(id) : null;
 
-    return () => setViewing(null);
-  }, [id, setViewing]);
+    setViewing(thread);
+
+    /* Named, because the next thread may already have claimed presence by the
+       time this one is torn down. */
+    return () => {
+      if (thread) leaveViewing(thread);
+    };
+  }, [id, setViewing, leaveViewing]);
 
 
   const {

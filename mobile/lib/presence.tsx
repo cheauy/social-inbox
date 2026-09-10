@@ -52,8 +52,17 @@ export type Viewer = {
 type PresenceState = {
   /* Everybody in the workspace who is present, this device excluded. */
   others: Viewer[];
-  /* Called by a thread when it opens and again when it closes. */
+  /* Called by a thread when it opens. */
   setViewing: (conversationId: string | null) => void;
+
+  /*
+   * Called by a thread when it closes, naming itself.
+   *
+   * A stack mounts the next screen before it unmounts the last, so a plain
+   * "stop viewing" from the old thread would arrive after the new one had
+   * already said where it is -- and wipe it.
+   */
+  leaveViewing: (conversationId: string) => void;
 
   /*
    * Whether this device has an unsent reply in the open thread.
@@ -69,6 +78,7 @@ type PresenceState = {
 const Context = createContext<PresenceState>({
   others: [],
   setViewing: () => {},
+  leaveViewing: () => {},
   setTyping: () => {},
 });
 
@@ -118,18 +128,40 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
     };
   }, [userId, member?.id, member?.full_name, member?.email, account.name, account.email, account.avatar]);
 
-  const publish = useCallback(async () => {
-    const payload = self();
+  /*
+   * One track at a time, and each one reads the state as it is when its turn
+   * comes rather than when it was asked for.
+   *
+   * Leaving one conversation and opening another fires two of these a
+   * millisecond apart. Sent in parallel they can land out of order, and the
+   * loser is whichever the server writes last -- so a teammate would sit on
+   * the thread you had just left, invisible on the one you were actually in,
+   * until the next heartbeat fifteen seconds later. That is the "sometimes it
+   * does not update" and the "second conversation shows nobody".
+   */
+  const queueRef = useRef<Promise<void>>(Promise.resolve());
 
-    if (!channelRef.current || !payload) return;
+  const publishRef = useRef<() => Promise<void>>(async () => {});
 
-    try {
-      await channelRef.current.track(payload);
-    } catch {
-      /* A failed heartbeat is not worth a message on screen: the next one is
-         fifteen seconds away, and presence going quiet is itself the truth. */
-    }
+  const publish = useCallback(() => {
+    queueRef.current = queueRef.current.then(async () => {
+      const payload = self();
+
+      if (!channelRef.current || !payload) return;
+
+      try {
+        await channelRef.current.track(payload);
+      } catch {
+        /* A failed heartbeat is not worth a message on screen: the next one
+           is fifteen seconds away, and presence going quiet is itself the
+           truth. */
+      }
+    });
+
+    return queueRef.current;
   }, [self]);
+
+  publishRef.current = publish;
 
   const setViewing = useCallback(
     (conversationId: string | null) => {
@@ -138,6 +170,17 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
       viewingRef.current = conversationId;
       /* A draft belongs to the thread it was typed in, so leaving one stops
          typing on it rather than carrying the flag to the next. */
+      typingRef.current = false;
+      void publish();
+    },
+    [publish],
+  );
+
+  const leaveViewing = useCallback(
+    (conversationId: string) => {
+      if (viewingRef.current !== conversationId) return;
+
+      viewingRef.current = null;
       typingRef.current = false;
       void publish();
     },
@@ -207,10 +250,10 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
     });
 
     void channel.subscribe((status) => {
-      if (status === "SUBSCRIBED") void publish();
+      if (status === "SUBSCRIBED") void publishRef.current();
     });
 
-    const beat = setInterval(() => void publish(), HEARTBEAT_MS);
+    const beat = setInterval(() => void publishRef.current(), HEARTBEAT_MS);
 
     /*
      * A backgrounded app is not viewing anything. Android keeps the socket up
@@ -219,13 +262,13 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
      */
     const appState = AppState.addEventListener("change", (state) => {
       if (state === "active") {
-        void publish();
+        void publishRef.current();
         return;
       }
 
       viewingRef.current = null;
       typingRef.current = false;
-      void publish();
+      void publishRef.current();
     });
 
     return () => {
@@ -237,10 +280,16 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
       void supabase.removeChannel(channel);
       setOthers([]);
     };
-  }, [businessId, userId, publish]);
+    /*
+     * Only the workspace and the person rebuild this socket. It used to
+     * depend on the publisher as well, so anything that changed a name or a
+     * photo tore the channel down and joined it again -- and for the second
+     * or two that took, everybody on it saw nobody.
+     */
+  }, [businessId, userId]);
 
   return (
-    <Context.Provider value={{ others, setViewing, setTyping }}>
+    <Context.Provider value={{ others, setViewing, leaveViewing, setTyping }}>
       {children}
     </Context.Provider>
   );
