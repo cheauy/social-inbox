@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  Modal,
   PanResponder,
   Pressable,
   ScrollView,
@@ -103,11 +104,11 @@ function stamp(value?: string | null) {
  */
 type WhenKey = "hour" | "evening" | "tomorrow" | "week";
 
-const WHEN: { key: WhenKey; label: string }[] = [
-  { key: "hour", label: "In 1 hour" },
-  { key: "evening", label: "In 3 hours" },
-  { key: "tomorrow", label: "Tomorrow 9am" },
-  { key: "week", label: "Next week" },
+const WHEN: { key: WhenKey; label: string; icon: IconName }[] = [
+  { key: "hour", label: "In 1 hour", icon: "hourglass-outline" },
+  { key: "evening", label: "In 3 hours", icon: "cafe-outline" },
+  { key: "tomorrow", label: "Tomorrow 9am", icon: "sunny-outline" },
+  { key: "week", label: "Next week", icon: "calendar-outline" },
 ];
 
 function whenToStamp(key: WhenKey) {
@@ -146,6 +147,105 @@ export type TimelineItem = {
  * catch on and the headings did all the work. Cards give each group an edge,
  * and match how every other screen in the app is built.
  */
+/*
+ * A question in the middle of the screen.
+ *
+ * The panel is already a surface sliding over the thread; unfolding a form
+ * inside it pushed the record it belongs to half a screen down and left two
+ * things competing for the same column. A dialog sits above both, dims what
+ * it interrupts, and has one way in and one way out.
+ */
+function Dialog({
+  open,
+  title,
+  detail,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  detail: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Modal
+      visible={open}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          padding: 20,
+          backgroundColor: "rgba(16,34,56,0.45)",
+        }}
+      >
+        {/* The backdrop closes it, and it is the whole screen behind the card. */}
+        <Pressable
+          accessibilityLabel={`Close ${title.toLowerCase()}`}
+          onPress={onClose}
+          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+        />
+
+        <View
+          /* Stops a tap inside the card reaching the backdrop under it. */
+          onStartShouldSetResponder={() => true}
+          style={{
+            width: "100%",
+            maxWidth: 460,
+            alignSelf: "center",
+            borderRadius: 20,
+            backgroundColor: "white",
+            overflow: "hidden",
+            elevation: 12,
+            shadowColor: "#102238",
+            shadowOpacity: 0.22,
+            shadowRadius: 24,
+            shadowOffset: { width: 0, height: 10 },
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "flex-start",
+              gap: 12,
+              padding: 18,
+              paddingBottom: 12,
+            }}
+          >
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={{ fontSize: 17, fontWeight: "800", color: colors.ink }}>
+                {title}
+              </Text>
+
+              {detail ? (
+                <Text numberOfLines={1} style={{ fontSize: 12.5, color: colors.muted }}>
+                  {detail}
+                </Text>
+              ) : null}
+            </View>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              hitSlop={10}
+              onPress={onClose}
+            >
+              <Ionicons name="close" size={21} color={colors.muted} />
+            </Pressable>
+          </View>
+
+          {children}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function Section({
   title,
   children,
@@ -849,205 +949,22 @@ export function CustomerPanel({
               </View>
 
               {reminded && !remindOpen ? (
-                <Text style={{ fontSize: 12.5, color: "#26875C" }}>
-                  {reminded}
-                </Text>
-              ) : null}
-
-              {remindOpen ? (
                 <View
                   style={{
-                    gap: 10,
-                    backgroundColor: "white",
-                    borderRadius: 14,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    padding: 14,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 7,
+                    paddingHorizontal: 12,
+                    paddingVertical: 9,
+                    borderRadius: 12,
+                    backgroundColor: "#E7F6EE",
                   }}
                 >
-                  <TextInput
-                    value={remindNote}
-                    onChangeText={setRemindNote}
-                    placeholder="What needs doing? e.g. Follow up on the size"
-                    placeholderTextColor={colors.muted}
-                    multiline
-                    editable={!reminding}
-                    style={[styles.input, { minHeight: 68, textAlignVertical: "top" }]}
-                  />
+                  <Ionicons name="checkmark-circle" size={15} color="#26875C" />
 
-                  {/*
-                    Four times rather than a date picker. A follow-up is
-                    almost always later today or tomorrow morning, and picking
-                    a minute for something that will be read as "soon" is work
-                    for nothing.
-                  */}
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                    {WHEN.map((option) => {
-                      const active = option.key === remindWhen;
-
-                      return (
-                        <Pressable
-                          key={option.key}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: active }}
-                          onPress={() => setRemindWhen(option.key)}
-                          style={{
-                            paddingHorizontal: 12,
-                            paddingVertical: 8,
-                            borderRadius: 999,
-                            borderWidth: 1,
-                            borderColor: active ? colors.blue : colors.border,
-                            backgroundColor: active ? colors.pale : "white",
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 12.5,
-                              fontWeight: "700",
-                              color: active ? colors.blue : colors.ink,
-                            }}
-                          >
-                            {option.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={reminding || !remindNote.trim()}
-                    onPress={() => void saveReminder()}
-                    style={({ pressed }) => ({
-                      alignItems: "center",
-                      paddingVertical: 12,
-                      borderRadius: 12,
-                      opacity: remindNote.trim() ? 1 : 0.45,
-                      backgroundColor: pressed ? "#0A6FA8" : colors.blue,
-                    })}
-                  >
-                    {reminding ? (
-                      <ActivityIndicator color="white" />
-                    ) : (
-                      <Text
-                        style={{ fontSize: 14.5, fontWeight: "800", color: "white" }}
-                      >
-                        Remind me
-                      </Text>
-                    )}
-                  </Pressable>
-                </View>
-              ) : null}
-
-              {historyOpen ? (
-                <Section title="Customer history">
-                  {historyLoading ? (
-                    <View style={{ paddingVertical: 20 }}>
-                      <ActivityIndicator color={colors.blue} />
-                    </View>
-                  ) : !history || history.length === 0 ? (
-                    <Text
-                      style={{
-                        paddingVertical: 14,
-                        fontSize: 14,
-                        color: colors.muted,
-                      }}
-                    >
-                      Nothing has happened to this customer yet.
-                    </Text>
-                  ) : (
-                    history.map((item, index) => (
-                      <View
-                        key={item.id}
-                        style={{
-                          flexDirection: "row",
-                          gap: 10,
-                          paddingVertical: 11,
-                          borderTopWidth: index === 0 ? 0 : 1,
-                          borderTopColor: colors.border,
-                        }}
-                      >
-                        {/*
-                          A rail down the left, so a list of thirty events
-                          reads as one thread of time rather than thirty
-                          separate rows.
-                        */}
-                        <View style={{ alignItems: "center", width: 14 }}>
-                          <View
-                            style={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: 4,
-                              marginTop: 5,
-                              backgroundColor: colors.blue,
-                            }}
-                          />
-
-                          {index < history.length - 1 ? (
-                            <View
-                              style={{
-                                flex: 1,
-                                width: 1.5,
-                                marginTop: 3,
-                                backgroundColor: colors.border,
-                              }}
-                            />
-                          ) : null}
-                        </View>
-
-                        <View style={{ flex: 1, gap: 2 }}>
-                          <Text
-                            style={{
-                              fontSize: 14,
-                              fontWeight: "700",
-                              color: colors.ink,
-                            }}
-                          >
-                            {item.title}
-                          </Text>
-
-                          {item.detail ? (
-                            <Text style={{ fontSize: 12.5, color: colors.muted }}>
-                              {item.detail}
-                            </Text>
-                          ) : null}
-
-                          <Text style={{ fontSize: 11.5, color: colors.muted }}>
-                            {[stamp(item.createdAt), item.actorName]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </Text>
-                        </View>
-                      </View>
-                    ))
-                  )}
-                </Section>
-              ) : null}
-
-              {statusOpen ? (
-                <View
-                  style={{
-                    backgroundColor: "white",
-                    borderRadius: 14,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    paddingHorizontal: 14,
-                    paddingVertical: 4,
-                  }}
-                >
-                  {STATUSES.map((option) => (
-                    <ChoiceRow
-                      key={option.key}
-                      icon={option.icon}
-                      label={option.label}
-                      active={status === option.key}
-                      busy={busy === `status:${option.key}`}
-                      onPress={() => {
-                        onStatus(option.key);
-                        setStatusOpen(false);
-                      }}
-                    />
-                  ))}
+                  <Text style={{ flex: 1, fontSize: 12.5, color: "#1F6B4A" }}>
+                    {reminded}
+                  </Text>
                 </View>
               ) : null}
 
@@ -1222,6 +1139,259 @@ export function CustomerPanel({
             </>
           )}
         </ScrollView>
+
+          {/*
+            A reminder and a history, each in the middle of the screen rather
+            than unfolded inside the record.
+
+            Both used to push the panel's own content down: setting a
+            reminder shoved Tags, Information and everything else half a
+            screen away, and a history of thirty events buried the record it
+            belonged to. They are separate questions with their own answer and
+            their own way out, which is what a dialog is for.
+          */}
+          <Dialog
+            open={remindOpen}
+            title="Set a reminder"
+            detail={detail ? `About ${detail.customer.fullName}` : ""}
+            onClose={() => setRemindOpen(false)}
+          >
+            <View style={{ padding: 18, gap: 14 }}>
+              <TextInput
+                value={remindNote}
+                onChangeText={setRemindNote}
+                placeholder="What needs doing? e.g. Follow up on the size"
+                placeholderTextColor={colors.muted}
+                multiline
+                editable={!reminding}
+                style={[
+                  styles.input,
+                  { minHeight: 84, paddingTop: 12, textAlignVertical: "top" },
+                ]}
+              />
+
+              <View style={{ gap: 8 }}>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: "800",
+                    letterSpacing: 0.6,
+                    textTransform: "uppercase",
+                    color: colors.muted,
+                  }}
+                >
+                  Remind me
+                </Text>
+
+                {/*
+                  Four times rather than a date picker. A follow-up here is
+                  almost always later today or first thing tomorrow, and
+                  picking a minute for something that will be read as "soon"
+                  is four taps before the note is even written.
+                */}
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  {WHEN.map((option) => {
+                    const active = option.key === remindWhen;
+
+                    return (
+                      <Pressable
+                        key={option.key}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                        onPress={() => setRemindWhen(option.key)}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 6,
+                          paddingHorizontal: 12,
+                          paddingVertical: 9,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: active ? colors.blue : colors.border,
+                          backgroundColor: active ? colors.pale : "white",
+                        }}
+                      >
+                        <Ionicons
+                          name={option.icon}
+                          size={14}
+                          color={active ? colors.blue : colors.muted}
+                        />
+
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: "700",
+                            color: active ? colors.blue : colors.ink,
+                          }}
+                        >
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/*
+                The chip says "Tomorrow 9am"; this says which day that is.
+                Cheap to draw and it removes the one doubt somebody has before
+                pressing a button that promises to interrupt them later.
+              */}
+              <Text style={{ fontSize: 12.5, color: colors.muted }}>
+                {stamp(whenToStamp(remindWhen))}
+              </Text>
+            </View>
+
+            <View
+              style={{
+                flexDirection: "row",
+                gap: 10,
+                padding: 18,
+                paddingTop: 0,
+              }}
+            >
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setRemindOpen(false)}
+                style={({ pressed }) => ({
+                  paddingHorizontal: 18,
+                  paddingVertical: 13,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: pressed ? colors.pale : "white",
+                })}
+              >
+                <Text
+                  style={{ fontSize: 14.5, fontWeight: "700", color: colors.ink }}
+                >
+                  Cancel
+                </Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                disabled={reminding || !remindNote.trim()}
+                onPress={() => void saveReminder()}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  paddingVertical: 13,
+                  borderRadius: 12,
+                  opacity: remindNote.trim() ? 1 : 0.45,
+                  backgroundColor: pressed ? "#0A6FA8" : colors.blue,
+                })}
+              >
+                {reminding ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <>
+                    <Ionicons name="alarm" size={16} color="white" />
+
+                    <Text
+                      style={{ fontSize: 14.5, fontWeight: "800", color: "white" }}
+                    >
+                      Set reminder
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          </Dialog>
+
+          <Dialog
+            open={historyOpen}
+            title="Customer history"
+            detail={detail ? detail.customer.fullName : ""}
+            onClose={() => setHistoryOpen(false)}
+          >
+            {historyLoading ? (
+              <View style={{ paddingVertical: 44 }}>
+                <ActivityIndicator color={colors.blue} />
+              </View>
+            ) : !history || history.length === 0 ? (
+              <View style={{ alignItems: "center", padding: 34, gap: 8 }}>
+                <Ionicons name="time-outline" size={26} color={colors.muted} />
+
+                <Text
+                  style={{
+                    fontSize: 13.5,
+                    color: colors.muted,
+                    textAlign: "center",
+                  }}
+                >
+                  Nothing has happened to this customer yet.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                style={{ maxHeight: 420 }}
+                contentContainerStyle={{ padding: 18, paddingTop: 6 }}
+              >
+                {history.map((item, index) => (
+                  <View key={item.id} style={{ flexDirection: "row", gap: 12 }}>
+                    {/*
+                      A rail down the left, so thirty events read as one
+                      history rather than thirty separate rows.
+                    */}
+                    <View style={{ alignItems: "center", width: 16 }}>
+                      <View
+                        style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: 5,
+                          marginTop: 14,
+                          borderWidth: 2.5,
+                          borderColor: index === 0 ? colors.blue : colors.border,
+                          backgroundColor: "white",
+                        }}
+                      />
+
+                      {index < history.length - 1 ? (
+                        <View
+                          style={{
+                            flex: 1,
+                            width: 1.5,
+                            marginTop: 2,
+                            backgroundColor: colors.border,
+                          }}
+                        />
+                      ) : null}
+                    </View>
+
+                    <View style={{ flex: 1, paddingVertical: 11, gap: 3 }}>
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: "700",
+                          color: colors.ink,
+                        }}
+                      >
+                        {item.title}
+                      </Text>
+
+                      {item.detail ? (
+                        <Text
+                          style={{ fontSize: 12.5, color: colors.ink, opacity: 0.75 }}
+                        >
+                          {item.detail}
+                        </Text>
+                      ) : null}
+
+                      <Text style={{ fontSize: 11.5, color: colors.muted }}>
+                        {[stamp(item.createdAt), item.actorName]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+          </Dialog>
       </Animated.View>
     </View>
   );
