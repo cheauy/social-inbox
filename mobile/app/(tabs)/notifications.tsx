@@ -55,6 +55,23 @@ type Announcement = {
   created_at: string | null;
 };
 
+/*
+ * A reminder somebody set on a conversation and has not dealt with yet.
+ *
+ * The alert only appears when one falls due, which is the wrong time to find
+ * out you have eleven of them. The endpoint answers with every open one --
+ * an owner sees the team's, everybody else sees their own -- so the tab can
+ * say what is coming as well as what has arrived.
+ */
+type Reminder = {
+  id: string;
+  conversation_id: string;
+  note: string;
+  remind_at: string;
+  contact: { id: string; full_name: string | null } | null;
+  assigned_member: { id: string; full_name: string | null } | null;
+};
+
 type Subscription = {
   status: string;
   plan_code: string | null;
@@ -94,6 +111,26 @@ function daysUntil(value: string | null) {
   return Number.isFinite(days) ? days : null;
 }
 
+/*
+ * Four ways to read the same pile.
+ *
+ * Everything arrived as one list, so a mention from a colleague sat between a
+ * payment receipt and a Facebook token warning, and a reminder was only
+ * visible in the seconds after it fired. The tabs are what people actually
+ * come here for: everything, the operational alerts, the times somebody said
+ * your name, and what you have promised to do.
+ */
+type Tab = "all" | "alerts" | "team" | "remind";
+
+const TABS: { key: Tab; label: string; icon: IconName }[] = [
+  { key: "all", label: "All", icon: "albums-outline" },
+  { key: "alerts", label: "Alerts", icon: "notifications-outline" },
+  { key: "team", label: "Team", icon: "at-outline" },
+  { key: "remind", label: "Remind", icon: "alarm-outline" },
+];
+
+const MENTION = "team_chat_mention";
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={{ gap: 8 }}>
@@ -115,13 +152,194 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+/*
+ * What somebody has promised to do, and when.
+ *
+ * Sorted by the time it is due, soonest first, so the top of the list is the
+ * next thing rather than the newest thing. An overdue one is amber and says
+ * how late it is; the rest say when they land. Tapping opens the conversation
+ * it was set on, which is the only reason anybody set it.
+ */
+function Reminders({
+  reminders,
+  busyId,
+  onOpen,
+  onComplete,
+}: {
+  reminders: Reminder[];
+  busyId: string | null;
+  onOpen: (reminder: Reminder) => void;
+  onComplete: (id: string) => void;
+}) {
+  if (reminders.length === 0) {
+    return (
+      <View
+        style={{
+          padding: 28,
+          borderRadius: 16,
+          backgroundColor: "white",
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        <Ionicons name="alarm-outline" size={26} color={colors.muted} />
+
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.ink }}>
+          Nothing to chase
+        </Text>
+
+        <Text style={[styles.muted, { fontSize: 13, textAlign: "center" }]}>
+          Open a conversation, tap Remind in the customer panel, and it appears
+          here until it is done.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={{
+        borderRadius: 16,
+        backgroundColor: "white",
+        borderWidth: 1,
+        borderColor: colors.border,
+        overflow: "hidden",
+      }}
+    >
+      {reminders.map((reminder, index) => {
+        const due = new Date(reminder.remind_at).getTime();
+        const late = due <= Date.now();
+
+        return (
+          <Pressable
+            key={reminder.id}
+            accessibilityRole="button"
+            accessibilityLabel={`${reminder.note}, ${
+              late ? "overdue" : "due"
+            } ${relativeTime(reminder.remind_at)}`}
+            onPress={() => onOpen(reminder)}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              gap: 12,
+              paddingHorizontal: 14,
+              paddingVertical: 13,
+              borderTopWidth: index === 0 ? 0 : 1,
+              borderTopColor: colors.border,
+              backgroundColor: pressed
+                ? colors.border
+                : late
+                  ? "#FBF6EA"
+                  : "white",
+            })}
+          >
+            <View
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 11,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: late ? "#F7E6C4" : colors.background,
+              }}
+            >
+              <Ionicons
+                name={late ? "alarm" : "alarm-outline"}
+                size={17}
+                color={late ? "#C77700" : colors.muted}
+              />
+            </View>
+
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text
+                numberOfLines={2}
+                style={{ fontSize: 14.5, fontWeight: "700", color: colors.ink }}
+              >
+                {reminder.note}
+              </Text>
+
+              <Text numberOfLines={1} style={[styles.muted, { fontSize: 13 }]}>
+                {reminder.contact?.full_name ?? "Customer"}
+                {reminder.assigned_member?.full_name
+                  ? ` · ${reminder.assigned_member.full_name}`
+                  : ""}
+              </Text>
+
+              <Text
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: late ? "800" : "400",
+                  color: late ? "#C77700" : colors.muted,
+                }}
+              >
+                {late
+                  ? `Due ${relativeTime(reminder.remind_at).toLowerCase()}`
+                  : `In ${untilLabel(due)}`}
+              </Text>
+            </View>
+
+            {/*
+              Done, as its own button. Tapping the row opens the conversation,
+              which is the usual move; closing a reminder without looking at
+              the thread is the rarer one and should not be what a stray tap
+              on a row does.
+            */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Mark this reminder done"
+              hitSlop={8}
+              disabled={busyId === reminder.id}
+              onPress={() => onComplete(reminder.id)}
+              style={({ pressed }) => ({
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: pressed ? colors.pale : "transparent",
+              })}
+            >
+              {busyId === reminder.id ? (
+                <ActivityIndicator color={colors.blue} />
+              ) : (
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={21}
+                  color="#2FA36B"
+                />
+              )}
+            </Pressable>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/* "3 hr", "2 days" -- how long until a reminder lands. */
+function untilLabel(due: number) {
+  const minutes = Math.max(1, Math.round((due - Date.now()) / 60000));
+
+  if (minutes < 60) return `${minutes} min`;
+
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hr`;
+
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
 export default function Notifications() {
   const { session } = useAuth();
   const { workspace } = useInbox();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  const [tab, setTab] = useState<Tab>("all");
   const [items, setItems] = useState<Notification[]>([]);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [reminderBusy, setReminderBusy] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
@@ -141,7 +359,7 @@ export default function Notifications() {
        * failing should not cost the alerts, so each is allowed to come back
        * empty rather than taking the screen down.
        */
-      const [alerts, current, plan] = await Promise.all([
+      const [alerts, current, plan, pending] = await Promise.all([
         api<{ notifications: Notification[] }>(
           "/api/team-notifications",
           workspace.businessId,
@@ -154,11 +372,22 @@ export default function Notifications() {
           "/api/subscription/current",
           workspace.businessId,
         ).catch(() => ({ subscription: null })),
+        api<{ reminders: Reminder[] }>(
+          "/api/reminders",
+          workspace.businessId,
+        ).catch(() => ({ reminders: [] })),
       ]);
 
       setItems(alerts.notifications ?? []);
       setAnnouncement(current.announcement ?? null);
       setSubscription(plan.subscription ?? null);
+      setReminders(
+        [...(pending.reminders ?? [])].sort(
+          (first, second) =>
+            new Date(first.remind_at).getTime() -
+            new Date(second.remind_at).getTime(),
+        ),
+      );
       setError("");
     } catch (loadError) {
       setError(
@@ -177,6 +406,23 @@ export default function Notifications() {
   }, [load]);
 
   const unread = items.filter((item) => !item.is_read).length;
+
+  const mentions = items.filter((item) => item.notification_type === MENTION);
+  const alerts = items.filter((item) => item.notification_type !== MENTION);
+
+  /* A reminder whose time has come, against one still to come. */
+  const overdue = reminders.filter(
+    (one) => new Date(one.remind_at).getTime() <= Date.now(),
+  ).length;
+
+  const counts: Record<Tab, number> = {
+    all: unread,
+    alerts: alerts.filter((item) => !item.is_read).length,
+    team: mentions.filter((item) => !item.is_read).length,
+    remind: reminders.length,
+  };
+
+  const shown = tab === "team" ? mentions : tab === "alerts" ? alerts : items;
 
   async function markRead(id: string) {
     if (!workspace) {
@@ -221,6 +467,33 @@ export default function Notifications() {
       await load();
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function completeReminder(id: string) {
+    if (!workspace || reminderBusy) return;
+
+    setReminderBusy(id);
+
+    /* Gone from the list on the tap: a reminder somebody has just dealt with
+       should not sit there while a request goes out and comes back. */
+    const previous = reminders;
+    setReminders((current) => current.filter((one) => one.id !== id));
+
+    try {
+      await api(`/api/reminders/${encodeURIComponent(id)}`, workspace.businessId, {
+        method: "PATCH",
+        body: { action: "complete" },
+      });
+    } catch (completeError) {
+      setReminders(previous);
+      setError(
+        completeError instanceof Error
+          ? completeError.message
+          : "Unable to close that reminder.",
+      );
+    } finally {
+      setReminderBusy(null);
     }
   }
 
@@ -313,7 +586,7 @@ export default function Notifications() {
             </Text>
           </View>
 
-          {unread > 0 ? (
+          {unread > 0 && tab !== "remind" ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Mark all ${unread} as read`}
@@ -338,6 +611,82 @@ export default function Notifications() {
             </Pressable>
           ) : null}
         </View>
+
+        {workspace ? (
+          <View style={{ flexDirection: "row", gap: 6, marginTop: 12 }}>
+            {TABS.map((one) => {
+              const active = one.key === tab;
+              const count = counts[one.key];
+
+              return (
+                <Pressable
+                  key={one.key}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={
+                    count > 0 ? `${one.label}, ${count}` : one.label
+                  }
+                  onPress={() => setTab(one.key)}
+                  style={{
+                    flex: 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 5,
+                    paddingVertical: 9,
+                    borderRadius: 12,
+                    backgroundColor: active ? colors.pale : colors.background,
+                  }}
+                >
+                  <Ionicons
+                    name={one.icon}
+                    size={14}
+                    color={active ? colors.blue : colors.muted}
+                  />
+
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      fontSize: 12,
+                      fontWeight: "800",
+                      color: active ? colors.blue : colors.muted,
+                    }}
+                  >
+                    {one.label}
+                  </Text>
+
+                  {/*
+                    The count is what is waiting, not what exists: unread for
+                    the alert tabs, still-open for reminders. A number that
+                    never goes down is furniture.
+                  */}
+                  {count > 0 ? (
+                    <View
+                      style={{
+                        minWidth: 17,
+                        paddingHorizontal: 4,
+                        height: 17,
+                        borderRadius: 9,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor:
+                          one.key === "remind" && overdue > 0
+                            ? "#C77700"
+                            : colors.blue,
+                      }}
+                    >
+                      <Text
+                        style={{ color: "white", fontSize: 10, fontWeight: "800" }}
+                      >
+                        {count > 9 ? "9+" : count}
+                      </Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
       </View>
 
       <ErrorNotice message={error} onRetry={() => void load()} />
@@ -367,7 +716,7 @@ export default function Notifications() {
             />
           }
         >
-          {announcement ? (
+          {announcement && tab === "all" ? (
             <Section title="From TENH">
               <View
                 style={{
@@ -447,7 +796,7 @@ export default function Notifications() {
             </Section>
           ) : null}
 
-          {planWarning ? (
+          {planWarning && tab === "all" ? (
             <Section title="Subscription">
               <View
                 style={{
@@ -487,8 +836,39 @@ export default function Notifications() {
             </Section>
           ) : null}
 
-          <Section title={unread > 0 ? `Alerts · ${unread} unread` : "Alerts"}>
-            {items.length === 0 ? (
+          {tab === "remind" ? (
+            <Section
+              title={
+                reminders.length === 0
+                  ? "Reminders"
+                  : overdue > 0
+                    ? `Reminders · ${overdue} due`
+                    : `Reminders · ${reminders.length} pending`
+              }
+            >
+              <Reminders
+                reminders={reminders}
+                busyId={reminderBusy}
+                onOpen={(reminder) =>
+                  router.push({
+                    pathname: "/conversation/[id]",
+                    params: { id: reminder.conversation_id },
+                  })
+                }
+                onComplete={(id) => void completeReminder(id)}
+              />
+            </Section>
+          ) : (
+          <Section
+            title={
+              tab === "team"
+                ? "Mentions"
+                : counts[tab] > 0
+                  ? `Alerts · ${counts[tab]} unread`
+                  : "Alerts"
+            }
+          >
+            {shown.length === 0 ? (
               <View
                 style={{
                   padding: 28,
@@ -507,12 +887,13 @@ export default function Notifications() {
                 />
 
                 <Text style={{ fontSize: 15, fontWeight: "700", color: colors.ink }}>
-                  Nothing waiting
+                  {tab === "team" ? "No mentions" : "Nothing waiting"}
                 </Text>
 
                 <Text style={[styles.muted, { fontSize: 13, textAlign: "center" }]}>
-                  Mentions, reminders and anything TENH needs you to know appear
-                  here.
+                  {tab === "team"
+                    ? "When somebody writes your name in a team room, it lands here."
+                    : "Payments, page warnings and anything TENH needs you to know appear here."}
                 </Text>
               </View>
             ) : (
@@ -525,7 +906,7 @@ export default function Notifications() {
                   overflow: "hidden",
                 }}
               >
-                {items.map((item, index) => {
+                {shown.map((item, index) => {
                   const visual = visualOf(item.notification_type);
 
                   return (
@@ -610,6 +991,7 @@ export default function Notifications() {
               </View>
             )}
           </Section>
+          )}
         </ScrollView>
       )}
     </View>
