@@ -49,6 +49,7 @@ import type {
   CustomerDetail,
   EditableField,
   TeamMember,
+  TimelineItem,
 } from "../../components/customer-panel";
 import {
   api,
@@ -2259,6 +2260,65 @@ export default function Conversation() {
     }
   }, [contactId, scopeId, updateContactTags]);
 
+  /*
+   * A reminder, on the same endpoint the website's follow-up panel uses.
+   *
+   * Assigned to whoever is setting it. The web lets an owner hand a follow-up
+   * to somebody else, which is a picker and a decision; on a phone, the
+   * person who just read the message is the person who will chase it, and
+   * assigning it anywhere else is a job for the desk.
+   */
+  async function createReminder(note: string, remindAt: string) {
+    if (!contactId || !member?.id) {
+      setError("Reminders need a customer and a signed-in member.");
+      return false;
+    }
+
+    try {
+      await api("/api/reminders", scopeId, {
+        method: "POST",
+        body: {
+          conversationId: String(id),
+          contactId,
+          assignedTo: member.id,
+          note,
+          remindAt,
+        },
+      });
+
+      return true;
+    } catch (remindError) {
+      setError(
+        remindError instanceof Error
+          ? remindError.message
+          : "Unable to set that reminder.",
+      );
+
+      return false;
+    }
+  }
+
+  async function loadHistory(): Promise<TimelineItem[]> {
+    if (!contactId) return [];
+
+    try {
+      const data = await api<{ items: TimelineItem[] }>(
+        `/api/customers/${encodeURIComponent(contactId)}/timeline`,
+        scopeId,
+      );
+
+      return data.items ?? [];
+    } catch (historyError) {
+      setError(
+        historyError instanceof Error
+          ? historyError.message
+          : "Unable to load this customer's history.",
+      );
+
+      return [];
+    }
+  }
+
   async function openTags() {
     setError("");
     setTagOpen(true);
@@ -2919,6 +2979,8 @@ export default function Conversation() {
         onPin={() => void togglePin()}
         onUnread={() => void markUnread()}
         onSaveField={saveField}
+        onRemind={createReminder}
+        onHistory={loadHistory}
         error={panelOpen ? error : ""}
         onClose={() => setPanelOpen(false)}
       />

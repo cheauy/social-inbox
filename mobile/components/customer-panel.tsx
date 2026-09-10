@@ -94,6 +94,51 @@ function stamp(value?: string | null) {
 }
 
 /*
+ * A reminder's time, chosen from four rather than typed.
+ *
+ * A follow-up in this app is almost always "later today" or "first thing
+ * tomorrow" -- picking a minute for something that will be read as "soon" is
+ * work for nothing, and a date picker on a phone is four taps before the
+ * note has even been written.
+ */
+type WhenKey = "hour" | "evening" | "tomorrow" | "week";
+
+const WHEN: { key: WhenKey; label: string }[] = [
+  { key: "hour", label: "In 1 hour" },
+  { key: "evening", label: "In 3 hours" },
+  { key: "tomorrow", label: "Tomorrow 9am" },
+  { key: "week", label: "Next week" },
+];
+
+function whenToStamp(key: WhenKey) {
+  const when = new Date();
+
+  if (key === "hour") {
+    when.setHours(when.getHours() + 1);
+  } else if (key === "evening") {
+    when.setHours(when.getHours() + 3);
+  } else if (key === "tomorrow") {
+    when.setDate(when.getDate() + 1);
+    when.setHours(9, 0, 0, 0);
+  } else {
+    when.setDate(when.getDate() + 7);
+    when.setHours(9, 0, 0, 0);
+  }
+
+  return when.toISOString();
+}
+
+/* One event in a customer's history, as the timeline endpoint sends it. */
+export type TimelineItem = {
+  id: string;
+  type: string;
+  createdAt: string;
+  title: string;
+  detail: string | null;
+  actorName: string | null;
+};
+
+/*
  * A titled group, drawn as a card on the panel's tinted ground.
  *
  * The sections used to be separated by hairlines on white, which left the
@@ -456,6 +501,8 @@ export function CustomerPanel({
   onPin,
   onUnread,
   onSaveField,
+  onRemind,
+  onHistory,
   onClose,
   error,
 }: {
@@ -476,6 +523,10 @@ export function CustomerPanel({
   onPin: () => void;
   onUnread: () => void;
   onSaveField: (field: EditableField, value: string) => Promise<boolean>;
+  /* Both answered by the conversation screen, which owns the workspace the
+     requests have to be made in. */
+  onRemind: (note: string, remindAt: string) => Promise<boolean>;
+  onHistory: () => Promise<TimelineItem[]>;
   onClose: () => void;
   error: string;
 }) {
@@ -485,6 +536,52 @@ export function CustomerPanel({
   const [mounted, setMounted] = useState(open);
   const [statusOpen, setStatusOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
+
+  const [remindOpen, setRemindOpen] = useState(false);
+  const [remindNote, setRemindNote] = useState("");
+  const [remindWhen, setRemindWhen] = useState<WhenKey>("tomorrow");
+  const [reminding, setReminding] = useState(false);
+  const [reminded, setReminded] = useState("");
+
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<TimelineItem[] | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  async function saveReminder() {
+    const note = remindNote.trim();
+
+    if (!note || reminding) return;
+
+    setReminding(true);
+
+    try {
+      if (await onRemind(note, whenToStamp(remindWhen))) {
+        setRemindNote("");
+        setRemindOpen(false);
+        setReminded(`Reminder set for ${WHEN.find((one) => one.key === remindWhen)?.label.toLowerCase()}.`);
+      }
+    } finally {
+      setReminding(false);
+    }
+  }
+
+  async function openHistory() {
+    const next = !historyOpen;
+
+    setHistoryOpen(next);
+
+    /* Loaded the first time it is opened and kept, because a timeline of a
+       customer's whole history does not change while the panel is open. */
+    if (!next || history !== null || historyLoading) return;
+
+    setHistoryLoading(true);
+
+    try {
+      setHistory(await onHistory());
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (open) {
@@ -499,6 +596,9 @@ export function CustomerPanel({
       if (finished && !open) {
         setMounted(false);
         setStatusOpen(false);
+        setRemindOpen(false);
+        setHistoryOpen(false);
+        setReminded("");
         setAssignOpen(false);
       }
     });
@@ -720,6 +820,209 @@ export function CustomerPanel({
                   onPress={() => setStatusOpen((current) => !current)}
                 />
               </View>
+
+              {/*
+                The two that are about the customer rather than the
+                conversation: something to be done later, and everything that
+                has already been done. On their own row because the row above
+                is three things you do to this thread right now.
+              */}
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <HeaderAction
+                  icon="alarm-outline"
+                  label="Remind"
+                  active={remindOpen}
+                  busy={false}
+                  onPress={() => {
+                    setReminded("");
+                    setRemindOpen((current) => !current);
+                  }}
+                />
+
+                <HeaderAction
+                  icon="time-outline"
+                  label="History"
+                  active={historyOpen}
+                  busy={false}
+                  onPress={() => void openHistory()}
+                />
+              </View>
+
+              {reminded && !remindOpen ? (
+                <Text style={{ fontSize: 12.5, color: "#26875C" }}>
+                  {reminded}
+                </Text>
+              ) : null}
+
+              {remindOpen ? (
+                <View
+                  style={{
+                    gap: 10,
+                    backgroundColor: "white",
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    padding: 14,
+                  }}
+                >
+                  <TextInput
+                    value={remindNote}
+                    onChangeText={setRemindNote}
+                    placeholder="What needs doing? e.g. Follow up on the size"
+                    placeholderTextColor={colors.muted}
+                    multiline
+                    editable={!reminding}
+                    style={[styles.input, { minHeight: 68, textAlignVertical: "top" }]}
+                  />
+
+                  {/*
+                    Four times rather than a date picker. A follow-up is
+                    almost always later today or tomorrow morning, and picking
+                    a minute for something that will be read as "soon" is work
+                    for nothing.
+                  */}
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                    {WHEN.map((option) => {
+                      const active = option.key === remindWhen;
+
+                      return (
+                        <Pressable
+                          key={option.key}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: active }}
+                          onPress={() => setRemindWhen(option.key)}
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            borderRadius: 999,
+                            borderWidth: 1,
+                            borderColor: active ? colors.blue : colors.border,
+                            backgroundColor: active ? colors.pale : "white",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 12.5,
+                              fontWeight: "700",
+                              color: active ? colors.blue : colors.ink,
+                            }}
+                          >
+                            {option.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={reminding || !remindNote.trim()}
+                    onPress={() => void saveReminder()}
+                    style={({ pressed }) => ({
+                      alignItems: "center",
+                      paddingVertical: 12,
+                      borderRadius: 12,
+                      opacity: remindNote.trim() ? 1 : 0.45,
+                      backgroundColor: pressed ? "#0A6FA8" : colors.blue,
+                    })}
+                  >
+                    {reminding ? (
+                      <ActivityIndicator color="white" />
+                    ) : (
+                      <Text
+                        style={{ fontSize: 14.5, fontWeight: "800", color: "white" }}
+                      >
+                        Remind me
+                      </Text>
+                    )}
+                  </Pressable>
+                </View>
+              ) : null}
+
+              {historyOpen ? (
+                <Section title="Customer history">
+                  {historyLoading ? (
+                    <View style={{ paddingVertical: 20 }}>
+                      <ActivityIndicator color={colors.blue} />
+                    </View>
+                  ) : !history || history.length === 0 ? (
+                    <Text
+                      style={{
+                        paddingVertical: 14,
+                        fontSize: 14,
+                        color: colors.muted,
+                      }}
+                    >
+                      Nothing has happened to this customer yet.
+                    </Text>
+                  ) : (
+                    history.map((item, index) => (
+                      <View
+                        key={item.id}
+                        style={{
+                          flexDirection: "row",
+                          gap: 10,
+                          paddingVertical: 11,
+                          borderTopWidth: index === 0 ? 0 : 1,
+                          borderTopColor: colors.border,
+                        }}
+                      >
+                        {/*
+                          A rail down the left, so a list of thirty events
+                          reads as one thread of time rather than thirty
+                          separate rows.
+                        */}
+                        <View style={{ alignItems: "center", width: 14 }}>
+                          <View
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: 4,
+                              marginTop: 5,
+                              backgroundColor: colors.blue,
+                            }}
+                          />
+
+                          {index < history.length - 1 ? (
+                            <View
+                              style={{
+                                flex: 1,
+                                width: 1.5,
+                                marginTop: 3,
+                                backgroundColor: colors.border,
+                              }}
+                            />
+                          ) : null}
+                        </View>
+
+                        <View style={{ flex: 1, gap: 2 }}>
+                          <Text
+                            style={{
+                              fontSize: 14,
+                              fontWeight: "700",
+                              color: colors.ink,
+                            }}
+                          >
+                            {item.title}
+                          </Text>
+
+                          {item.detail ? (
+                            <Text style={{ fontSize: 12.5, color: colors.muted }}>
+                              {item.detail}
+                            </Text>
+                          ) : null}
+
+                          <Text style={{ fontSize: 11.5, color: colors.muted }}>
+                            {[stamp(item.createdAt), item.actorName]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </Text>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </Section>
+              ) : null}
 
               {statusOpen ? (
                 <View
