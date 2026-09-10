@@ -25,6 +25,7 @@ import {
   relativeTime,
   styles,
 } from "../../components/ui";
+import { SwipeRow } from "../../components/swipe-row";
 import { api } from "../../lib/api/client";
 import { useAuth } from "../../lib/auth/provider";
 import { useInbox } from "../../lib/inbox-provider";
@@ -44,6 +45,8 @@ type Notification = {
   id: string;
   business_id: string;
   notification_type: string;
+  /* Set on the alerts that belong to a thread -- a mention, a reminder. */
+  conversation_id: string | null;
   title: string | null;
   body: string | null;
   link: string | null;
@@ -136,6 +139,7 @@ const TABS: { key: Tab; label: string; icon: IconName }[] = [
 ];
 
 const MENTION = "team_chat_mention";
+const REMINDER = "conversation_reminder";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -171,14 +175,19 @@ function Reminders({
   busyId,
   onOpen,
   onComplete,
+  onDelete,
   onEdit,
 }: {
   reminders: Reminder[];
   busyId: string | null;
   onOpen: (reminder: Reminder) => void;
   onComplete: (id: string) => void;
+  onDelete: (reminder: Reminder) => void;
   onEdit: (reminder: Reminder) => void;
 }) {
+  /* One row's drawer at a time; two open drawers is two half-read lists. */
+  const [openId, setOpenId] = useState<string | null>(null);
+
   if (reminders.length === 0) {
     return (
       <View
@@ -221,120 +230,139 @@ function Reminders({
         const late = due <= Date.now();
 
         return (
-          <Pressable
+          <View
             key={reminder.id}
-            accessibilityRole="button"
-            accessibilityLabel={`${reminder.note}, ${
-              late ? "overdue" : "due"
-            } ${relativeTime(reminder.remind_at)}`}
-            onPress={() => onOpen(reminder)}
-            style={({ pressed }) => ({
-              flexDirection: "row",
-              gap: 12,
-              paddingHorizontal: 14,
-              paddingVertical: 13,
+            style={{
               borderTopWidth: index === 0 ? 0 : 1,
               borderTopColor: colors.border,
-              backgroundColor: pressed
-                ? colors.border
-                : late
-                  ? "#FBF6EA"
-                  : "white",
-            })}
+            }}
           >
-            <View
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 11,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: late ? "#F7E6C4" : colors.background,
-              }}
-            >
-              <Ionicons
-                name={late ? "alarm" : "alarm-outline"}
-                size={17}
-                color={late ? "#C77700" : colors.muted}
-              />
-            </View>
-
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text
-                numberOfLines={2}
-                style={{ fontSize: 14.5, fontWeight: "700", color: colors.ink }}
-              >
-                {reminder.note}
-              </Text>
-
-              <Text numberOfLines={1} style={[styles.muted, { fontSize: 13 }]}>
-                {reminder.contact?.full_name ?? "Customer"}
-                {reminder.assigned_member?.full_name
-                  ? ` · ${reminder.assigned_member.full_name}`
-                  : ""}
-              </Text>
-
-              <Text
-                style={{
-                  fontSize: 11.5,
-                  fontWeight: late ? "800" : "400",
-                  color: late ? "#C77700" : colors.muted,
-                }}
-              >
-                {late
-                  ? `Due ${relativeTime(reminder.remind_at).toLowerCase()}`
-                  : `In ${untilLabel(due)}`}
-              </Text>
-            </View>
-
             {/*
-              Change it, and finish it. Tapping the row opens the conversation,
-              which is the usual move; the other two are rarer and get their
-              own targets rather than being what a stray tap does.
-            */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Change this reminder"
-              hitSlop={8}
-              onPress={() => onEdit(reminder)}
-              style={({ pressed }) => ({
-                width: 34,
-                height: 34,
-                borderRadius: 17,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: pressed ? colors.pale : "transparent",
-              })}
-            >
-              <Ionicons name="pencil" size={17} color={colors.muted} />
-            </Pressable>
+              Done and Delete live off the right-hand edge.
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Mark this reminder done"
-              hitSlop={8}
-              disabled={busyId === reminder.id}
-              onPress={() => onComplete(reminder.id)}
-              style={({ pressed }) => ({
-                width: 34,
-                height: 34,
-                borderRadius: 17,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: pressed ? colors.pale : "transparent",
-              })}
+              They sat on the row as buttons, six millimetres from the tap that
+              opens the conversation -- and one of them throws a reminder away.
+              Behind a deliberate drag, neither is something a thumb does by
+              accident, and the row goes back to being a row.
+            */}
+            <SwipeRow
+              id={reminder.id}
+              openId={openId}
+              onOpen={setOpenId}
+              actions={[
+                {
+                  icon: "checkmark-done-outline",
+                  label: "Done",
+                  tone: "#2FA36B",
+                  onPress: () => {
+                    setOpenId(null);
+                    onComplete(reminder.id);
+                  },
+                },
+                {
+                  icon: "trash-outline",
+                  label: "Delete",
+                  tone: colors.red,
+                  onPress: () => {
+                    setOpenId(null);
+                    onDelete(reminder);
+                  },
+                },
+              ]}
             >
-              {busyId === reminder.id ? (
-                <ActivityIndicator color={colors.blue} />
-              ) : (
-                <Ionicons
-                  name="checkmark-circle-outline"
-                  size={21}
-                  color="#2FA36B"
-                />
-              )}
-            </Pressable>
-          </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${reminder.note}, ${
+                  late ? "overdue" : "due"
+                } ${relativeTime(reminder.remind_at)}`}
+                onPress={() => onOpen(reminder)}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingHorizontal: 14,
+                  paddingVertical: 13,
+                  backgroundColor: pressed
+                    ? colors.border
+                    : late
+                      ? "#FBF6EA"
+                      : "white",
+                })}
+              >
+                <View
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 11,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: late ? "#F7E6C4" : colors.background,
+                  }}
+                >
+                  {busyId === reminder.id ? (
+                    <ActivityIndicator color={colors.blue} />
+                  ) : (
+                    <Ionicons
+                      name={late ? "alarm" : "alarm-outline"}
+                      size={17}
+                      color={late ? "#C77700" : colors.muted}
+                    />
+                  )}
+                </View>
+
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text
+                    numberOfLines={2}
+                    style={{ fontSize: 14.5, fontWeight: "700", color: colors.ink }}
+                  >
+                    {reminder.note}
+                  </Text>
+
+                  <Text numberOfLines={1} style={[styles.muted, { fontSize: 13 }]}>
+                    {reminder.contact?.full_name ?? "Customer"}
+                    {reminder.assigned_member?.full_name
+                      ? ` · ${reminder.assigned_member.full_name}`
+                      : ""}
+                  </Text>
+
+                  <Text
+                    style={{
+                      fontSize: 11.5,
+                      fontWeight: late ? "800" : "400",
+                      color: late ? "#C77700" : colors.muted,
+                    }}
+                  >
+                    {late
+                      ? `Due ${relativeTime(reminder.remind_at).toLowerCase()}`
+                      : `In ${untilLabel(due)}`}
+                  </Text>
+                </View>
+
+                {/*
+                  The pencil stays on the row, at the far right: changing a
+                  reminder is the safe action, and hiding it behind the same
+                  drag as Delete would make the harmless thing as much work as
+                  the destructive one.
+                */}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Change this reminder"
+                  hitSlop={10}
+                  onPress={() => onEdit(reminder)}
+                  style={({ pressed }) => ({
+                    width: 34,
+                    height: 34,
+                    borderRadius: 17,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: pressed ? colors.pale : "transparent",
+                  })}
+                >
+                  <Ionicons name="pencil" size={17} color={colors.muted} />
+                </Pressable>
+              </Pressable>
+            </SwipeRow>
+          </View>
         );
       })}
     </View>
@@ -756,6 +784,8 @@ export default function Notifications() {
   async function completeReminder(id: string) {
     if (!workspace || reminderBusy) return;
 
+    const reminder = reminders.find((one) => one.id === id);
+
     setReminderBusy(id);
 
     /* Gone from the list on the tap: a reminder somebody has just dealt with
@@ -768,6 +798,16 @@ export default function Notifications() {
         method: "PATCH",
         body: { action: "complete" },
       });
+
+      /*
+       * The alert it raised goes with it.
+       *
+       * A reminder that has come due writes a notification, and finishing the
+       * reminder left that notification sitting unread -- a bell on the tab
+       * for a job already done, which somebody then has to dismiss a second
+       * time in a different list.
+       */
+      if (reminder) void clearReminderAlerts(reminder.conversation_id);
     } catch (completeError) {
       setReminders(previous);
       setError(
@@ -778,6 +818,48 @@ export default function Notifications() {
     } finally {
       setReminderBusy(null);
     }
+  }
+
+  /*
+   * Deleting from the row asks first. The editor's own bin already does, and
+   * a swipe is easier to make by accident than a button in a dialog.
+   */
+  function confirmDelete(reminder: Reminder) {
+    Alert.alert(
+      "Delete this reminder?",
+      "It disappears from everybody's list. Nothing about the conversation changes.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => void deleteReminder(reminder.id),
+        },
+      ],
+    );
+  }
+
+  async function clearReminderAlerts(conversationId: string) {
+    const stale = items.filter(
+      (item) =>
+        !item.is_read &&
+        item.notification_type === REMINDER &&
+        item.conversation_id === conversationId,
+    );
+
+    if (stale.length === 0) return;
+
+    setItems((current) =>
+      current.map((item) =>
+        stale.some((one) => one.id === item.id)
+          ? { ...item, is_read: true }
+          : item,
+      ),
+    );
+
+    await Promise.all(stale.map((item) => markRead(item.id))).catch(() => {
+      // The next load restores the truth either way.
+    });
   }
 
   async function saveReminder(id: string, note: string, remindAt: string) {
@@ -1244,6 +1326,7 @@ export default function Notifications() {
                   })
                 }
                 onComplete={(id) => void completeReminder(id)}
+                onDelete={confirmDelete}
                 onEdit={setEditing}
               />
             </Section>
