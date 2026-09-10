@@ -284,7 +284,7 @@ export default function Settings() {
         onRetry={() => void loadWorkspaces()}
       />
 
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
+      <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={{ padding: 16, gap: 16 }}>
         {/*
           The card is the way in to everything about you and this workspace --
           your details, the plan, what it is connected to. Those were in three

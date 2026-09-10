@@ -229,7 +229,7 @@ export function ChannelBadge({ conversation }: { conversation: InboxConversation
  * quick replies, tags, the customer -- so the shell lives here and each one
  * only writes its own contents.
  */
-export function Sheet({ open, title, detail, onClose, children, floating = false, fullHeight = false }: { open: boolean; title: string; detail: string; onClose: () => void; children: React.ReactNode; floating?: boolean; fullHeight?: boolean }) {
+export function Sheet({ open, title, detail, onClose, children, floating = false, fullHeight = false, half = false }: { open: boolean; title: string; detail: string; onClose: () => void; children: React.ReactNode; floating?: boolean; fullHeight?: boolean; half?: boolean }) {
   const insets = useSafeAreaInsets();
 
   /*
@@ -273,8 +273,8 @@ export function Sheet({ open, title, detail, onClose, children, floating = false
           marginHorizontal: floating ? 10 : 0,
           marginBottom: floating ? Math.max(insets.bottom, 10) : 0,
           paddingBottom: floating ? 10 : Math.max(insets.bottom, 28),
-          height: fullHeight ? "94%" : undefined,
-          maxHeight: fullHeight ? "94%" : floating ? "76%" : "82%",
+          height: fullHeight ? "94%" : half ? "56%" : undefined,
+          maxHeight: fullHeight ? "94%" : half ? "56%" : floating ? "76%" : "82%",
           overflow: "hidden",
         }}
       >

@@ -6,7 +6,6 @@ import {
   Animated,
   FlatList,
   Image,
-  Linking,
   Pressable,
   Text,
   TextInput,
@@ -35,8 +34,6 @@ import type { Workspace } from "../lib/types";
  * gesture both come here, so somebody who works across two shops is one
  * gesture from the other one.
  */
-
-const WEB = process.env.EXPO_PUBLIC_TENH_API_URL || "https://app.tenhchat.com";
 
 /*
  * The mark a workspace wears.
@@ -233,9 +230,7 @@ export default function Workspaces() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t("Buy a subscription", "ទិញការជាវ")}
-            onPress={() =>
-              void Linking.openURL(`${WEB}/dashboard/settings/subscription`)
-            }
+            onPress={() => router.push("/settings/subscription")}
             style={({ pressed }) => ({
               width: 40,
               height: 40,
@@ -369,8 +364,8 @@ export default function Workspaces() {
                 )
               : expired > 0
                 ? t(
-                    "Every workspace you belong to has an expired subscription. Renewing is on the web, and the button above starts it.",
-                    "កន្លែងធ្វើការទាំងអស់អស់សុពលភាព។ សូមបន្តនៅលើគេហទំព័រ។",
+                    "Every workspace you belong to has an expired subscription. Use the button above to renew or buy a plan.",
+                    "កន្លែងធ្វើការទាំងអស់អស់សុពលភាព។ ប្រើប៊ូតុងខាងលើដើម្បីបន្ត ឬទិញគម្រោង។",
                   )
                 : t(
                     "This account is not an active member of any workspace.",
@@ -391,6 +386,7 @@ export default function Workspaces() {
         </View>
       ) : (
         <FlatList
+          keyboardDismissMode="on-drag"
           data={shown}
           keyExtractor={(item) => item.businessId}
           contentContainerStyle={{
@@ -532,7 +528,7 @@ export default function Workspaces() {
                     (expired === 1
                       ? " workspace has an expired plan and is not listed."
                       : " workspaces have expired plans and are not listed.") +
-                    " Renewing is on the web.",
+                    " Open Subscription above to renew.",
                   "កន្លែងធ្វើការ " + expired + " អស់សុពលភាព ហើយមិនបានបង្ហាញទេ។",
                 )}
               </Text>

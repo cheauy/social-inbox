@@ -189,6 +189,7 @@ export function SlidePanel({
           <SettingsSkeleton groups={skeleton} />
         ) : (
           <ScrollView
+          keyboardDismissMode="on-drag"
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={{
               padding: 14,

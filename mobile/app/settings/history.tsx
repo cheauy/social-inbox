@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 import {
@@ -43,7 +43,7 @@ const ICONS: Record<string, IconName> = {
 };
 
 export default function History() {
-  const { workspace } = useInbox();
+  const { workspace, settingsRevision } = useInbox();
 
   const [items, setItems] = useState<Activity[]>([]);
   const [page, setPage] = useState(1);
@@ -95,6 +95,13 @@ export default function History() {
     setLoading(true);
     void load(1);
   }, [load]);
+
+  const seenSettingsRevision = useRef(settingsRevision);
+  useEffect(() => {
+    if (seenSettingsRevision.current === settingsRevision) return;
+    seenSettingsRevision.current = settingsRevision;
+    void load(1);
+  }, [settingsRevision, load]);
 
   return (
     <SettingsScreen

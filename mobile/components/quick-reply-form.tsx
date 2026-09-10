@@ -222,6 +222,7 @@ export function QuickReplyForm({
 
   return (
     <ScrollView
+          keyboardDismissMode="on-drag"
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={{ padding: 14, paddingTop: 0, gap: 16 }}
     >
@@ -260,6 +261,7 @@ export function QuickReplyForm({
 
         {draft.attachments.length > 0 ? (
           <ScrollView
+          keyboardDismissMode="on-drag"
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ gap: 8, paddingVertical: 2 }}

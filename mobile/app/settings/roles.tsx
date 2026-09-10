@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -75,7 +75,7 @@ const TONE: Record<string, string> = {
 
 export default function Roles() {
   const insets = useSafeAreaInsets();
-  const { workspace } = useInbox();
+  const { workspace, settingsRevision } = useInbox();
   const { t } = useLanguage();
 
   const [groups, setGroups] = useState<Group[]>([]);
@@ -120,6 +120,13 @@ export default function Roles() {
     setLoading(true);
     void load();
   }, [load]);
+
+  const seenSettingsRevision = useRef(settingsRevision);
+  useEffect(() => {
+    if (seenSettingsRevision.current === settingsRevision) return;
+    seenSettingsRevision.current = settingsRevision;
+    void load();
+  }, [settingsRevision, load]);
 
   const definitions = useMemo(
     () => groups.flatMap((group) => group.permissions),

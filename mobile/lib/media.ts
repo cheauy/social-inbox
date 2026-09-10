@@ -27,7 +27,18 @@ const BASE = process.env.EXPO_PUBLIC_TENH_API_URL || "https://app.tenhchat.com";
 
 export type MediaSource = { uri: string; headers?: Record<string, string> };
 
-const isOurs = (uri: string) => uri.startsWith("/") || uri.startsWith(BASE);
+const STORAGE = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
+
+/*
+ * Ours means TENH's own API, and nothing else.
+ *
+ * Any leading slash used to count, which swept up Supabase's signed storage
+ * links: those are minted against the storage host, and resolving one against
+ * the API origin produced a URL that answers 404 -- so a quick reply's photo
+ * sat on its placeholder for ever, with our session cookie attached to a
+ * request that was never going to work.
+ */
+const isOurs = (uri: string) => uri.startsWith("/api/") || uri.startsWith(BASE);
 
 /*
  * The session, kept as a plain string beside the provider.
@@ -47,7 +58,13 @@ export function useMediaSource() {
     if (!uri) return null;
 
     if (!isOurs(uri)) {
-      return { uri };
+      /* A relative link from Supabase storage belongs to the storage host. */
+      return {
+        uri:
+          uri.startsWith("/") && STORAGE
+            ? new URL(uri, STORAGE).toString()
+            : uri,
+      };
     }
 
     const absolute = uri.startsWith("/") ? new URL(uri, BASE).toString() : uri;

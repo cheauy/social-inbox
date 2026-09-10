@@ -326,6 +326,7 @@ function AnalyticsSkeleton() {
 
   return (
     <ScrollView
+          keyboardDismissMode="on-drag"
       showsVerticalScrollIndicator={false}
       contentContainerStyle={{ padding: 16, gap: 12 }}
     >
@@ -1107,6 +1108,7 @@ export default function Analytics() {
         </View>
 
         <ScrollView
+          keyboardDismissMode="on-drag"
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ gap: 8 }}

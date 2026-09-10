@@ -1,6 +1,7 @@
 import { Directory, File, Paths } from "expo-file-system";
 import { useEffect, useState } from "react";
-import { Image, ImageStyle, StyleProp } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Image, ImageStyle, StyleProp, View, ViewStyle } from "react-native";
 
 import { useMediaSource } from "../lib/media";
 
@@ -63,9 +64,11 @@ export function AuthImage({
 }) {
   const resolve = useMediaSource();
   const [source, setSource] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let alive = true;
+    setFailed(false);
     const target = resolve(uri);
 
     if (!target) {
@@ -105,7 +108,10 @@ export function AuthImage({
          * Left as the placeholder. A retry button on every tile would be
          * noise, and the thread reloads whenever the screen is reopened.
          */
-        if (alive) setSource(null);
+        if (alive) {
+          setSource(null);
+          setFailed(true);
+        }
       }
     })();
 
@@ -114,10 +120,31 @@ export function AuthImage({
     };
   }, [uri, cacheKey]);
 
+  /*
+   * A broken picture says it is broken.
+   *
+   * <Image/> with nothing to draw is an empty box, which is exactly what a
+   * picture still downloading looks like -- so a thumbnail that had failed
+   * read as one that was taking a long time, for ever.
+   */
+  if (failed) {
+    return (
+      <View
+        style={[
+          { alignItems: "center", justifyContent: "center" },
+          style as StyleProp<ViewStyle>,
+        ]}
+      >
+        <Ionicons name="image-outline" size={18} color="#6D7E91" />
+      </View>
+    );
+  }
+
   return (
     <Image
       source={source ? { uri: source } : undefined}
       resizeMode={resizeMode}
+      onError={() => setFailed(true)}
       onLoad={(event) => {
         const { width, height } = event.nativeEvent.source;
 

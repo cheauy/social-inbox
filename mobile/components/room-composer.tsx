@@ -189,6 +189,7 @@ export function RoomComposer({
     <>
       {pending.length > 0 ? (
         <ScrollView
+          keyboardDismissMode="on-drag"
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{

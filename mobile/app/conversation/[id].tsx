@@ -1512,6 +1512,7 @@ function QuickTagSheet({
         />
       ) : (
         <ScrollView
+          keyboardDismissMode="on-drag"
           style={{ maxHeight: 420 }}
           contentContainerStyle={{ paddingVertical: 6 }}
           showsVerticalScrollIndicator={false}
@@ -1635,6 +1636,7 @@ export default function Conversation() {
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<Pending[]>([]);
   const [sending, setSending] = useState(false);
+  const [voiceReady, setVoiceReady] = useState(0);
   const [replyingToComment, setReplyingToComment] = useState<InboxMessage | null>(null);
   const [commentBusy, setCommentBusy] = useState<string | null>(null);
 
@@ -1974,6 +1976,18 @@ export default function Conversation() {
    * A recorded voice note joins the queue like any other attachment, so it
    * can go with a sentence rather than instead of one.
    */
+  /*
+   * A voice note goes the moment the thumb lifts.
+   *
+   * It used to be staged like a picked photo and wait for the send button,
+   * which is the wrong shape for hold-to-talk: the gesture already said
+   * "send this", and what an agent saw instead was their recording sitting in
+   * the composer marked as an attachment while the customer got nothing.
+   *
+   * Staged and then sent on the next render rather than in one breath,
+   * because send() reads the staged list out of state -- calling it here
+   * would send the list as it was before this note was added to it.
+   */
   function stageVoice(uri: string, millis: number) {
     setPending((current) => [
       ...current,
@@ -1985,7 +1999,14 @@ export default function Conversation() {
         kind: "audio" as const,
       },
     ]);
+
+    setVoiceReady((count) => count + 1);
   }
+
+  useEffect(() => {
+    if (voiceReady > 0) void send();
+    // send() is rebuilt every render; the ticket is what marks a new recording.
+  }, [voiceReady]);
 
   /*
    * Where this phone is, sent the way the web sends it.
@@ -3077,6 +3098,10 @@ export default function Conversation() {
         </View>
       ) : (
         <FlatList
+          keyboardDismissMode="on-drag"
+          /* A tap on the thread, not on a control, puts the keyboard away --
+             the same rule every scroller in the app now follows. */
+          keyboardShouldPersistTaps="handled"
           inverted
           // Claims the space between header and composer whether there are
           // three messages or three hundred.

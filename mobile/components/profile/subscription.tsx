@@ -55,7 +55,7 @@ export function SubscriptionPanel({ open, onClose }: { open: boolean; onClose: (
     "/api/subscription/current",
   );
 
-  const { workspace } = useInbox();
+  const { workspace, settingsRevision } = useInbox();
 
   /*
    * The plan you are on, when this workspace is not the one paying for it.
@@ -101,7 +101,7 @@ export function SubscriptionPanel({ open, onClose }: { open: boolean; onClose: (
     } catch {
       /* The panel already says there is no plan here; that stays true. */
     }
-  }, [workspace?.businessId]);
+  }, [workspace?.businessId, settingsRevision]);
 
   useEffect(() => {
     void findJoined();

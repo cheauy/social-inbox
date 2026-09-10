@@ -351,6 +351,7 @@ function FileLibrary({ files }: { files: CustomerFile[] }) {
         </View>
       ) : (
         <ScrollView
+          keyboardDismissMode="on-drag"
           style={{ maxHeight: 430 }}
           contentContainerStyle={{ paddingBottom: 14 }}
         >
@@ -1785,6 +1786,7 @@ export function CustomerPanel({
         ) : null}
 
         <ScrollView
+          keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
             paddingTop: error ? 14 : insets.top + 14,
@@ -2564,6 +2566,7 @@ export function CustomerPanel({
               </View>
             ) : (
               <ScrollView
+          keyboardDismissMode="on-drag"
                 style={{ maxHeight: 420 }}
                 contentContainerStyle={{ padding: 18, paddingTop: 6 }}
               >

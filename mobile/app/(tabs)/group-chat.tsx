@@ -97,7 +97,7 @@ function CreateGroupSheet({
       detail="Everyone you add can read it from the beginning."
       onClose={onClose}
     >
-      <ScrollView keyboardShouldPersistTaps="handled">
+      <ScrollView keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
         <View style={{ paddingHorizontal: 18, gap: 12 }}>
           <TextInput
             value={name}
@@ -111,7 +111,7 @@ function CreateGroupSheet({
 
           <View style={{ gap: 9 }}>
             <Text style={{ color: colors.ink, fontSize: 13, fontWeight: "700" }}>Group icon</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9 }}>
+            <ScrollView keyboardDismissMode="on-drag" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9 }}>
               {TEAM_ROOM_ICON_OPTIONS.map((option) => {
                 const selected = icon === option.key;
                 return (
@@ -364,7 +364,7 @@ export default function GroupChat() {
           }
         />
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 14, gap: 9 }}>
+        <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={{ padding: 14, gap: 9 }}>
           {rooms.map((room) => (
             <Pressable
               key={room.id}

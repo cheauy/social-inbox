@@ -375,8 +375,8 @@ function SharedItemsSheet({
   const files = attachments.filter((item) => item.kind === "file");
 
   return (
-    <Sheet open={open} title="Files & media" detail="Photos, videos and documents shared in this room." onClose={onClose} fullHeight>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 18, paddingBottom: 18, gap: 16 }}>
+    <Sheet open={open} title="Files & media" detail="Photos, videos and documents shared in this room." onClose={onClose} half>
+      <ScrollView keyboardDismissMode="on-drag" style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 18, paddingBottom: 18, gap: 16 }}>
         {attachments.length === 0 ? (
           <View style={{ alignItems: "center", paddingVertical: 34, gap: 9 }}><Ionicons name="folder-open-outline" size={30} color={colors.muted} /><Text style={styles.muted}>Nothing has been shared yet.</Text></View>
         ) : null}
@@ -1199,6 +1199,10 @@ export default function RoomScreen() {
         </View>
       ) : (
         <FlatList
+          keyboardDismissMode="on-drag"
+          /* A tap on the thread, not on a control, puts the keyboard away --
+             the same rule every scroller in the app now follows. */
+          keyboardShouldPersistTaps="handled"
           inverted
           style={{ flex: 1 }}
           data={messages}

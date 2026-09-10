@@ -23,6 +23,7 @@ export function SettingsScreen({
   onRetry,
   footer,
   skeleton,
+  allowWithoutWorkspace = false,
   children,
 }: {
   title: string;
@@ -33,6 +34,8 @@ export function SettingsScreen({
   footer?: ReactNode;
   /* Rows per group, so the wait is the shape of the answer. */
   skeleton?: number[];
+  /** Billing can create the first paid workspace, so it has no workspace prerequisite. */
+  allowWithoutWorkspace?: boolean;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -62,7 +65,7 @@ export function SettingsScreen({
 
       <ErrorNotice message={error ?? ""} onRetry={onRetry} />
 
-      {!workspace ? (
+      {!workspace && !allowWithoutWorkspace ? (
         <Empty
           icon="briefcase-outline"
           title="Choose a workspace"
@@ -72,6 +75,7 @@ export function SettingsScreen({
         <SettingsSkeleton groups={skeleton} />
       ) : (
         <ScrollView
+          keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
             padding: 16,

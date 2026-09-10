@@ -9,7 +9,7 @@ import type { InboxConversation, Member, TeamRoom, Workspace } from "./types";
 
 type InboxState = {
   workspaces: Workspace[]; workspace: Workspace | null; member: Member | null;
-  conversations: InboxConversation[]; loading: boolean; error: string; live: boolean; revision: number;
+  conversations: InboxConversation[]; loading: boolean; error: string; live: boolean; revision: number; settingsRevision: number;
   refresh: () => Promise<void>; loadWorkspaces: () => Promise<void>; selectWorkspace: (workspace: Workspace) => Promise<void>;
 
   /*
@@ -50,6 +50,8 @@ type InboxState = {
    * not the screen is mounted.
    */
   alertsBadge: number;
+  alertsRevision: number;
+  refreshAlerts: () => Promise<void>;
   roster: Member[];
   canManageRooms: boolean;
   refreshRooms: () => Promise<void>;
@@ -67,10 +69,12 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
   const [error, setError] = useState("");
   const [live, setLive] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [settingsRevision, setSettingsRevision] = useState(0);
   const [rooms, setRooms] = useState<TeamRoom[]>([]);
   const [roomsLoading, setRoomsLoading] = useState(true);
   const [roomsBadge, setRoomsBadge] = useState(0);
   const [alertsBadge, setAlertsBadge] = useState(0);
+  const [alertsRevision, setAlertsRevision] = useState(0);
   const [roster, setRoster] = useState<Member[]>([]);
   const [canManageRooms, setCanManageRooms] = useState(false);
   const generation = useRef(0), request = useRef(0), alive = useRef(true);
@@ -85,12 +89,26 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
   const mergedRef = useRef<string[]>([]);
   const storageKey = `workspace.${session?.user.id}`;
   const mergeKey = `merged.${session?.user.id}`;
-  useEffect(() => () => { alive.current = false; generation.current++; }, []);
+  useEffect(() => {
+    // React Strict Mode runs setup, cleanup, setup in development. Resetting
+    // this flag in setup keeps the second mount alive instead of making every
+    // completed request look as though the provider was unmounted.
+    alive.current = true;
+    return () => { alive.current = false; generation.current++; };
+  }, []);
   const clear = useCallback(() => { workspaceRef.current = null; setWorkspace(null); mergedRef.current = []; setMerged([]); setMember(null); setConversations([]); setRooms([]); setRoomsLoading(true); setRoomsBadge(0); setAlertsBadge(0); setRoster([]); setCanManageRooms(false); }, []);
-  const loadWorkspaces = useCallback(async () => {
-    if (!session) { setLoading(false); return; }
+  const loadWorkspaces = useCallback(async (quiet = false) => {
+    if (!session) {
+      generation.current++;
+      setWorkspaces([]);
+      clear();
+      setError("");
+      setLoading(false);
+      return;
+    }
     const current = generation.current;
-    setLoading(true); setError("");
+    if (!quiet) setLoading(true);
+    setError("");
     try {
       const data = await api<{ workspaces: Workspace[] }>("/api/workspaces", workspaceRef.current?.businessId);
       if (!alive.current || current !== generation.current) return;
@@ -113,7 +131,7 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       } else clear();
     } catch (e) { if (alive.current && current === generation.current) { setError(e instanceof Error ? e.message : "Unable to load workspaces."); if (e instanceof ApiError && [401, 403].includes(e.status)) clear(); } }
     finally { if (alive.current && current === generation.current) setLoading(false); }
-  }, [session?.user.id, storageKey, clear]);
+  }, [session, storageKey, mergeKey, clear]);
   useEffect(() => { void loadWorkspaces(); }, [loadWorkspaces]);
   /*
    * Make `next` the workspace that writes go to. Kept separate from choosing,
@@ -121,26 +139,44 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
    * opens a thread belonging to the other shop -- so it must not blank the
    * list it was tapped from.
    */
-  const activate = useCallback(async (next: Workspace) => {
-    await api("/api/workspaces/switch", next.businessId, { method: "POST", body: { businessId: next.businessId } });
-    await sessionStorage.setItem(storageKey, next.businessId);
-    workspaceRef.current = next; setWorkspace(next);
-  }, [storageKey]);
-
   const openWorkspaces = useCallback(async (chosen: Workspace[]) => {
     const live = chosen.filter(one => one.subscriptionOperational);
     if (live.length === 0) return;
     const current = ++generation.current;
-    clear(); setLoading(true); setError("");
+    setLoading(true); setError("");
     try {
       const ids = live.map(one => one.businessId);
-      await activate(live[0]);
+      /*
+       * Keep the current workspace visible until the server accepts the new
+       * one. Clearing first turned a temporary network failure into an empty
+       * app, while the website correctly leaves the previous workspace open.
+       */
+      await api("/api/workspaces/switch", live[0].businessId, {
+        method: "POST",
+        body: { businessId: live[0].businessId },
+      });
       if (!alive.current || current !== generation.current) return;
-      await sessionStorage.setItem(mergeKey, ids.join(","));
+      await Promise.all([
+        sessionStorage.setItem(storageKey, live[0].businessId),
+        sessionStorage.setItem(mergeKey, ids.join(",")),
+      ]);
+      if (!alive.current || current !== generation.current) return;
+
+      // Apply the accepted switch as one state transition so no row from the
+      // previous workspace is briefly shown under the new workspace name.
+      setMember(null);
+      setConversations([]);
+      setRooms([]);
+      setRoomsLoading(true);
+      setRoomsBadge(0);
+      setAlertsBadge(0);
+      setRoster([]);
+      setCanManageRooms(false);
+      workspaceRef.current = live[0]; setWorkspace(live[0]);
       mergedRef.current = ids; setMerged(ids);
     } catch (e) { if (alive.current && current === generation.current) setError(e instanceof Error ? e.message : "Unable to switch workspace."); throw e; }
     finally { if (alive.current && current === generation.current) setLoading(false); }
-  }, [clear, activate, mergeKey]);
+  }, [storageKey, mergeKey]);
 
   const selectWorkspace = useCallback((next: Workspace) => openWorkspaces([next]), [openWorkspaces]);
 
@@ -164,16 +200,15 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     if (!selected) return;
     const current = generation.current;
     try {
-      const [alerts, reminders] = await Promise.all([
+      const [alerts, announcement] = await Promise.all([
         api<{ notifications: { is_read: boolean }[] }>("/api/team-notifications", selected.businessId),
-        api<{ reminders: { remind_at: string }[] }>("/api/reminders", selected.businessId).catch(() => ({ reminders: [] })),
+        api<{ announcement: { id: string } | null }>("/api/system-announcements/current", selected.businessId).catch(() => ({ announcement: null })),
       ]);
       if (!alive.current || current !== generation.current) return;
       const unread = (alerts.notifications ?? []).filter(one => !one.is_read).length;
-      /* Only the ones that have actually come due: a reminder set for Friday
-         is not something to badge a tab about on Tuesday. */
-      const due = (reminders.reminders ?? []).filter(one => new Date(one.remind_at).getTime() <= Date.now()).length;
-      setAlertsBadge(unread + due);
+      // Due reminders are already materialized by /api/team-notifications.
+      // Counting /api/reminders as well doubled the badge for every reminder.
+      setAlertsBadge(unread + (announcement.announcement ? 1 : 0));
     } catch {
       // The tab draws no dot rather than taking the app down over a count.
     }
@@ -202,6 +237,10 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     setLoading(true); setRoomsLoading(true); void refresh(); void refreshRooms(); void refreshAlerts();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const changed = () => { clearTimeout(timer); timer = setTimeout(() => { setRevision(v => v + 1); void refresh(); void refreshRooms(); void refreshAlerts(); }, 300); };
+    const settingsChanged = () => {
+      setSettingsRevision(value => value + 1);
+      changed();
+    };
     /*
      * Every workspace in the merged list is listened to, not just the active
      * one: a message arriving in the other shop belongs in this list too, and
@@ -219,11 +258,80 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     for (const id of listening)
       channel = channel.on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `business_id=eq.${id}` }, payload => { if ((payload.new as { direction?: string } | null)?.direction === "incoming") alert.current(); });
     for (const id of listening)
-      for (const table of ["team_members", "business_subscriptions", "social_accounts", "team_notifications", "conversation_reminders"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${id}` }, () => { void loadWorkspaces(); changed(); });
+      for (const table of ["social_accounts", "tags", "saved_replies", "saved_reply_categories"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${id}` }, settingsChanged);
     channel.subscribe(status => { setLive(status === "SUBSCRIBED"); if (status === "SUBSCRIBED") changed(); });
-    const listener = AppState.addEventListener("change", state => { if (state === "active") { void loadWorkspaces(); changed(); } });
-    return () => { clearTimeout(timer); void supabase.removeChannel(channel); listener.remove(); setLive(false); };
-  }, [workspace?.businessId, merged.join(","), refresh, refreshRooms, refreshAlerts, loadWorkspaces]);
+    return () => { clearTimeout(timer); void supabase.removeChannel(channel); setLive(false); };
+  }, [workspace?.businessId, merged.join(","), refresh, refreshRooms, refreshAlerts]);
+
+  /*
+   * Workspace access and subscription state can be changed by an Owner or a
+   * TENH administrator while this phone is open. The web listens without a
+   * selected-workspace filter and polls as a fallback; mobile now does the
+   * same, so a renamed, suspended, restored, added or removed workspace does
+   * not stay stale just because it is not the one currently open.
+   */
+  useEffect(() => {
+    if (!session) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const sync = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        setRevision(value => value + 1);
+        setSettingsRevision(value => value + 1);
+        setAlertsRevision(value => value + 1);
+        void loadWorkspaces(true);
+      }, 120);
+    };
+    let channel = supabase.channel(`tenh-mobile-workspaces-${session.user.id}`);
+    for (const table of ["businesses", "business_subscriptions", "team_members"])
+      channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, sync);
+    channel.subscribe();
+    const poll = setInterval(() => void loadWorkspaces(true), 20_000);
+    const listener = AppState.addEventListener("change", state => {
+      if (state === "active") sync();
+    });
+    return () => {
+      clearTimeout(timer);
+      clearInterval(poll);
+      listener.remove();
+      void supabase.removeChannel(channel);
+    };
+  }, [session?.user.id, loadWorkspaces]);
+
+  /*
+   * Alerts are account-wide on the website: the API returns notifications
+   * from every operational workspace the member can access. Subscribe by
+   * membership id, not by the selected workspace, and keep a 30-second poll
+   * for reminders and system announcements that are created server-side.
+   */
+  const notificationMembers = workspaces.map(one => one.memberId).sort().join("|");
+  useEffect(() => {
+    if (!session || !workspace) return;
+    const memberIds = notificationMembers ? notificationMembers.split("|") : [];
+    const updated = () => {
+      setAlertsRevision(value => value + 1);
+      void refreshAlerts();
+    };
+    const channels = memberIds.map(memberId =>
+      supabase
+        .channel(`tenh-mobile-alerts-${memberId}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "team_notifications", filter: `recipient_member_id=eq.${memberId}` }, payload => {
+          const row = payload.new as { is_read?: boolean; notification_type?: string } | null;
+          if (payload.eventType === "INSERT" && row?.is_read === false && ["team_chat_mention", "conversation_reminder"].includes(row.notification_type ?? "")) alert.current();
+          updated();
+        })
+        .subscribe(),
+    );
+    const poll = setInterval(updated, 30_000);
+    const listener = AppState.addEventListener("change", state => {
+      if (state === "active") updated();
+    });
+    return () => {
+      clearInterval(poll);
+      listener.remove();
+      for (const channel of channels) void supabase.removeChannel(channel);
+    };
+  }, [session?.user.id, workspace?.businessId, notificationMembers, refreshAlerts]);
   const updateConversation = useCallback((id: string, patch: Partial<InboxConversation>) => setConversations(items => items.map(c => c.id === id ? { ...c, ...patch } : c)), []);
   const updateContactTags = useCallback((contactId: string, tags: NonNullable<InboxConversation["contact"]>["tags"]) => {
     setConversations((items) =>
@@ -234,5 +342,5 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       ),
     );
   }, []);
-  return <Context.Provider value={{ workspaces, workspace, member, conversations, loading, error, live, revision, refresh, loadWorkspaces, selectWorkspace, merged, openWorkspaces, updateConversation, updateContactTags, rooms, roomsLoading, roomsBadge, alertsBadge, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ workspaces, workspace, member, conversations, loading, error, live, revision, settingsRevision, refresh, loadWorkspaces, selectWorkspace, merged, openWorkspaces, updateConversation, updateContactTags, rooms, roomsLoading, roomsBadge, alertsBadge, alertsRevision, refreshAlerts, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
 }

@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -46,7 +46,7 @@ import type { SavedReply } from "../../lib/types";
 
 export default function QuickReplies() {
   const insets = useSafeAreaInsets();
-  const { workspace } = useInbox();
+  const { workspace, settingsRevision } = useInbox();
   const { t } = useLanguage();
 
   const [replies, setReplies] = useState<SavedReply[]>([]);
@@ -114,6 +114,13 @@ export default function QuickReplies() {
     setLoading(true);
     void load();
   }, [load]);
+
+  const seenSettingsRevision = useRef(settingsRevision);
+  useEffect(() => {
+    if (seenSettingsRevision.current === settingsRevision) return;
+    seenSettingsRevision.current = settingsRevision;
+    void load();
+  }, [settingsRevision, load]);
 
   const active = replies.filter((reply) => reply.is_active);
   const disabled = replies.filter((reply) => !reply.is_active);

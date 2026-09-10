@@ -1,10 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { InformationPanel } from "../../components/profile/information";
 import { IntegrationPanel } from "../../components/profile/integration";
-import { SubscriptionPanel } from "../../components/profile/subscription";
 import {
   SettingsGroup,
   SettingsScreen,
@@ -30,7 +30,7 @@ import { useLanguage } from "../../lib/language-provider";
  * up, and a flick to the right puts it away.
  */
 
-type Section = "information" | "subscription" | "integration";
+type Section = "information" | "integration";
 
 const ROWS: {
   icon: IconName;
@@ -38,7 +38,8 @@ const ROWS: {
   km: string;
   detail: string;
   detailKm: string;
-  section: Section;
+  section?: Section;
+  route?: "/settings/subscription";
 }[] = [
   {
     icon: "person-outline",
@@ -54,7 +55,7 @@ const ROWS: {
     km: "ការជាវ",
     detail: "The plan, when it renews, and what it allows.",
     detailKm: "គម្រោង ថ្ងៃបន្ត និងអ្វីដែលអនុញ្ញាត។",
-    section: "subscription",
+    route: "/settings/subscription",
   },
   {
     icon: "link-outline",
@@ -70,6 +71,7 @@ const ROWS: {
 const EXIT = 220;
 
 export default function Profile() {
+  const router = useRouter();
   const { session } = useAuth();
   const { member, workspace } = useInbox();
   const { t } = useLanguage();
@@ -163,7 +165,7 @@ export default function Profile() {
               key={row.label}
               accessibilityRole="button"
               accessibilityLabel={t(row.label, row.km)}
-              onPress={() => show(row.section)}
+              onPress={() => row.route ? router.push(row.route) : row.section ? show(row.section) : undefined}
               style={({ pressed }) => ({
                 flexDirection: "row",
                 alignItems: "center",
@@ -207,10 +209,6 @@ export default function Profile() {
 
       {section === "information" ? (
         <InformationPanel open={open} onClose={close} />
-      ) : null}
-
-      {section === "subscription" ? (
-        <SubscriptionPanel open={open} onClose={close} />
       ) : null}
 
       {section === "integration" ? (

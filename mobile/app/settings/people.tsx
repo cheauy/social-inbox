@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -71,7 +71,7 @@ type Channel = {
 
 export default function People() {
   const insets = useSafeAreaInsets();
-  const { workspace, canManageRooms } = useInbox();
+  const { workspace, canManageRooms, settingsRevision } = useInbox();
   const { t } = useLanguage();
 
   const [members, setMembers] = useState<Member[]>([]);
@@ -143,6 +143,13 @@ export default function People() {
     setLoading(true);
     void load();
   }, [load]);
+
+  const seenSettingsRevision = useRef(settingsRevision);
+  useEffect(() => {
+    if (seenSettingsRevision.current === settingsRevision) return;
+    seenSettingsRevision.current = settingsRevision;
+    void load();
+  }, [settingsRevision, load]);
 
   async function invite() {
     if (!workspace) return;
@@ -595,6 +602,7 @@ export default function People() {
             </View>
 
             <ScrollView
+          keyboardDismissMode="on-drag"
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={{ padding: 14, paddingTop: 0, gap: 14 }}
             >

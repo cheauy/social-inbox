@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -42,6 +42,7 @@ import { useInbox } from "../../lib/inbox-provider";
 
 type Notification = {
   id: string;
+  business_id: string;
   notification_type: string;
   title: string | null;
   body: string | null;
@@ -593,7 +594,14 @@ function ReminderEditor({
 
 export default function Notifications() {
   const { session } = useAuth();
-  const { workspace } = useInbox();
+  const {
+    workspace,
+    workspaces,
+    merged,
+    selectWorkspace,
+    alertsRevision,
+    refreshAlerts,
+  } = useInbox();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -609,7 +617,7 @@ export default function Notifications() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (quiet = false) => {
     if (!workspace) {
       setLoading(false);
       return;
@@ -658,7 +666,7 @@ export default function Notifications() {
           : "Unable to load notifications.",
       );
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [workspace?.businessId]);
 
@@ -666,6 +674,16 @@ export default function Notifications() {
     setLoading(true);
     void load();
   }, [load]);
+
+  /* Realtime and the 30-second fallback refresh in place. Replacing the
+     whole screen with a loader on every alert update made a live screen look
+     less live than a stale one. */
+  const seenAlertsRevision = useRef(alertsRevision);
+  useEffect(() => {
+    if (seenAlertsRevision.current === alertsRevision) return;
+    seenAlertsRevision.current = alertsRevision;
+    void load(true);
+  }, [alertsRevision, load]);
 
   const unread = items.filter((item) => !item.is_read).length;
 
@@ -701,9 +719,11 @@ export default function Notifications() {
     await api("/api/team-notifications", workspace.businessId, {
       method: "PATCH",
       body: { action: "mark_read", notificationId: id },
-    }).catch(() => {
-      // The next load restores the truth either way.
-    });
+    })
+      .then(() => refreshAlerts())
+      .catch(() => {
+        // The next load restores the truth either way.
+      });
   }
 
   async function markAllRead() {
@@ -719,6 +739,7 @@ export default function Notifications() {
         method: "PATCH",
         body: { action: "mark_all_read" },
       });
+      await refreshAlerts();
     } catch (markError) {
       setError(
         markError instanceof Error
@@ -828,9 +849,11 @@ export default function Notifications() {
     await api("/api/system-announcements/current", workspace.businessId, {
       method: "POST",
       body: { action: "dismiss", announcementId: dismissed.id },
-    }).catch(() => {
-      setAnnouncement(dismissed);
-    });
+    })
+      .then(() => refreshAlerts())
+      .catch(() => {
+        setAnnouncement(dismissed);
+      });
   }
 
   /*
@@ -839,12 +862,45 @@ export default function Notifications() {
    * open are followed; the rest just mark themselves read, because sending
    * somebody to a browser to read a payment receipt is not an improvement.
    */
-  function open(item: Notification) {
+  async function open(item: Notification) {
     void markRead(item.id);
 
     const link = item.link ?? "";
     const conversation = /[?&]conversation=([0-9a-f-]{36})/i.exec(link);
     const room = /[?&]room=([0-9a-f-]{36})/i.exec(link);
+
+    /*
+     * The notification API is account-wide, just like the website's bell.
+     * A room always needs its own workspace active; an Inbox conversation
+     * only needs switching when it is outside the currently merged Inbox.
+     */
+    const needsWorkspace =
+      Boolean(room && item.business_id !== workspace?.businessId) ||
+      Boolean(conversation && !merged.includes(item.business_id));
+
+    if (needsWorkspace) {
+      const target = workspaces.find(
+        (one) =>
+          one.businessId === item.business_id &&
+          one.subscriptionOperational,
+      );
+
+      if (!target) {
+        setError(
+          "This alert belongs to a workspace that is no longer available.",
+        );
+        await load();
+        return;
+      }
+
+      try {
+        await selectWorkspace(target);
+      } catch {
+        setError("Unable to open the workspace for this alert.");
+        await load();
+        return;
+      }
+    }
 
     if (conversation) {
       router.push({
@@ -853,6 +909,10 @@ export default function Notifications() {
       });
     } else if (room) {
       router.push({ pathname: "/room/[id]", params: { id: room[1] } });
+    } else if (/^https?:\/\//i.test(link)) {
+      void Linking.openURL(link);
+    } else if (link.includes("subscription")) {
+      router.push("/settings/profile");
     }
   }
 
@@ -1030,6 +1090,7 @@ export default function Notifications() {
         </View>
       ) : (
         <ScrollView
+          keyboardDismissMode="on-drag"
           contentContainerStyle={{ padding: 16, gap: 16 }}
           refreshControl={
             <RefreshControl

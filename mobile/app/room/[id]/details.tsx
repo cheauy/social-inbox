@@ -140,7 +140,7 @@ function AddMembersSheet({
       onClose={onClose}
       floating
     >
-      <ScrollView keyboardShouldPersistTaps="handled">
+      <ScrollView keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
         {available.length === 0 ? (
           <View style={{ paddingHorizontal: 18, paddingVertical: 28, alignItems: "center", gap: 8 }}>
             <Ionicons name="people-outline" size={28} color={colors.muted} />
@@ -416,7 +416,7 @@ export default function RoomDetails() {
           detail="It may have been deleted, or you may no longer be a member."
         />
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
+        <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={{ padding: 16, gap: 16 }}>
           <View
             style={{
               alignItems: "center",

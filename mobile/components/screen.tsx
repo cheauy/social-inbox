@@ -21,7 +21,7 @@ import { useInbox } from "../lib/inbox-provider";
  * answer 403. Saying so beats four different empty states.
  */
 export function useWorkspaceResource<T>(path: string | null) {
-  const { workspace, revision } = useInbox();
+  const { workspace, settingsRevision } = useInbox();
 
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,10 +47,11 @@ export function useWorkspaceResource<T>(path: string | null) {
     }
   }, [path, workspace?.businessId]);
 
-  // revision ticks when Realtime reports a change in this workspace.
+  // Refresh only for workspace/settings changes. Incoming chat messages have
+  // their own revision and must not repeatedly reload Settings screens.
   useEffect(() => {
     void load();
-  }, [load, revision]);
+  }, [load, settingsRevision]);
 
   /*
    * And again whenever the tab comes back into view.
@@ -134,6 +135,7 @@ export function TabScreen({
         )
       ) : (
         <ScrollView
+          keyboardDismissMode="on-drag"
           contentContainerStyle={{ padding: 16, gap: 12 }}
           refreshControl={
             <RefreshControl

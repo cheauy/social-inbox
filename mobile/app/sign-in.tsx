@@ -169,6 +169,7 @@ export default function SignIn() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView
+          keyboardDismissMode="on-drag"
         contentContainerStyle={{
           padding: 24,
           paddingTop: insets.top + 40,

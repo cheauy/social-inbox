@@ -335,6 +335,7 @@ export function Composer({
       */}
       {pending.length > 0 ? (
         <ScrollView
+          keyboardDismissMode="on-drag"
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ gap: 8, paddingHorizontal: 12, paddingTop: 10 }}

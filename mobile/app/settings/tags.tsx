@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -62,7 +62,7 @@ const SWATCHES = [
 
 export default function Tags() {
   const insets = useSafeAreaInsets();
-  const { workspace, canManageRooms } = useInbox();
+  const { workspace, canManageRooms, settingsRevision } = useInbox();
 
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,6 +110,13 @@ export default function Tags() {
     setLoading(true);
     void load();
   }, [load]);
+
+  const seenSettingsRevision = useRef(settingsRevision);
+  useEffect(() => {
+    if (seenSettingsRevision.current === settingsRevision) return;
+    seenSettingsRevision.current = settingsRevision;
+    void load();
+  }, [settingsRevision, load]);
 
   function startCreate() {
     setEditing(null);
@@ -469,7 +476,7 @@ export default function Tags() {
         detail="Colour carries meaning across the team. Pick one, or type your own."
         onClose={close}
       >
-        <ScrollView keyboardShouldPersistTaps="handled">
+        <ScrollView keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
           <View style={{ paddingHorizontal: 18, gap: 14 }}>
             <TextInput
               value={name}

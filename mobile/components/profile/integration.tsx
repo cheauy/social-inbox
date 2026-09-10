@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, Pressable, Text, View } from "react-native";
 
 import { SettingsGroup } from "../settings-screen";
@@ -36,7 +36,7 @@ type AttentionPage = { id: string; name: string; status: string };
 const WEB = process.env.EXPO_PUBLIC_TENH_API_URL || "https://app.tenhchat.com";
 
 export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { workspace } = useInbox();
+  const { workspace, settingsRevision } = useInbox();
   const { t } = useLanguage();
 
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -85,6 +85,13 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
     setLoading(true);
     void load();
   }, [load]);
+
+  const seenSettingsRevision = useRef(settingsRevision);
+  useEffect(() => {
+    if (seenSettingsRevision.current === settingsRevision) return;
+    seenSettingsRevision.current = settingsRevision;
+    void load();
+  }, [settingsRevision, load]);
 
   const messenger = channels.filter(
     (channel) => channel.platform !== "telegram",

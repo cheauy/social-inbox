@@ -1895,6 +1895,10 @@ export default function Inbox() {
         </View>
       ) : (
         <FlatList
+          keyboardDismissMode="on-drag"
+          /* A tap on the thread, not on a control, puts the keyboard away --
+             the same rule every scroller in the app now follows. */
+          keyboardShouldPersistTaps="handled"
           data={ordered}
           keyExtractor={(item) => item.id}
           /*
