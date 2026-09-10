@@ -538,6 +538,28 @@ const WAVE = [
 ];
 
 /*
+ * What became of a message we sent.
+ *
+ * Messenger reports back: delivered when it reaches the phone, seen when the
+ * customer opens it, and TENH writes both onto the row. Telegram's Bot API
+ * reports neither for a private chat -- a bot is told the message was
+ * accepted and nothing after that -- so a Telegram message says "Sent" and
+ * stops, rather than claiming a delivery nobody confirmed.
+ */
+function receipt(message: InboxMessage, conversation: InboxConversation | null) {
+  if (conversation && platformOf(conversation) === "telegram") {
+    return "✓ Sent";
+  }
+
+  if (message.delivery_status === "seen" || message.seen_at) return "✓✓ Seen";
+  if (message.delivery_status === "delivered" || message.delivered_at) {
+    return "✓✓ Delivered";
+  }
+
+  return "✓ Sent";
+}
+
+/*
  * A photo at its own shape.
  *
  * The intrinsic size only arrives with the image, so it starts square and
@@ -1273,6 +1295,25 @@ function Bubble({
               ? "Sending…"
               : time(message.platform_created_at ?? message.created_at)}
           </Text>
+
+          {/*
+            What happened to it after it left, on our own messages only.
+            The same three the website shows, and the same reasoning behind
+            them: Telegram's Bot API gives a bot no delivery or read receipts
+            for a private chat, so a Telegram message can only ever honestly
+            say it was sent.
+          */}
+          {outgoing && !pending ? (
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: receipt(message, conversation) === "✓✓ Seen" ? "800" : "400",
+                color: "rgba(255,255,255,0.85)",
+              }}
+            >
+              {receipt(message, conversation)}
+            </Text>
+          ) : null}
         </View>
       </Pressable>
     </View>
