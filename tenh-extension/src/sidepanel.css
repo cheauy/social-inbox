@@ -1,0 +1,5 @@
+/* The panel is the popup, given room to breathe in a column beside Facebook. */
+body.panel {
+  width: auto;
+  min-height: 100vh;
+}

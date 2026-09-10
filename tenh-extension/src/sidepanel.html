@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>TENH</title>
+    <link rel="stylesheet" href="popup.css" />
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body class="panel">
+    <header>
+      <span class="mark">T</span>
+      <div>
+        <h1>TENH</h1>
+        <p class="version" id="pairState">Checking…</p>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="row">
+        <span class="label">Facebook</span>
+        <span class="state" id="facebookState">Unknown</span>
+      </div>
+      <p class="detail" id="pageName"></p>
+      <p class="detail" id="composerState"></p>
+    </section>
+
+    <section class="card">
+      <p class="detail">
+        This panel reports what the Facebook tab beside it is showing. Answering,
+        tagging and notes are in TENH itself, where the record is kept.
+      </p>
+      <button id="openTenh" class="primary">Open TENH Inbox</button>
+      <button id="openFacebook">Open Facebook inbox</button>
+    </section>
+
+    <p class="footnote">
+      TENH Companion never types into Facebook. If Facebook has disabled a reply
+      box, it says so and stops there.
+    </p>
+
+    <script src="sidepanel.js"></script>
+  </body>
+</html>

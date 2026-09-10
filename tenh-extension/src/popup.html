@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>TENH Companion</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <span class="mark">T</span>
+      <div>
+        <h1>TENH Companion</h1>
+        <p class="version" id="version">—</p>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="row">
+        <span class="label">This browser</span>
+        <span class="state" id="pairState">Checking…</span>
+      </div>
+      <p class="detail" id="deviceName"></p>
+    </section>
+
+    <section class="card">
+      <div class="row">
+        <span class="label">Facebook</span>
+        <span class="state" id="facebookState">Unknown</span>
+      </div>
+      <p class="detail" id="pageName">No Facebook tab open</p>
+      <p class="detail" id="composerState"></p>
+    </section>
+
+    <section class="card" id="pairCard">
+      <p class="detail">
+        Open TENH → Settings → Integrations → TENH Companion, press
+        <strong>Pair browser</strong>, and paste the code here.
+      </p>
+      <input id="code" placeholder="ABCDE-FGHIJ" autocomplete="off" spellcheck="false" />
+      <button id="pair" class="primary">Pair this browser</button>
+      <p class="detail error" id="error"></p>
+    </section>
+
+    <section class="card" id="pairedCard" hidden>
+      <button id="openTenh" class="primary">Open TENH Inbox</button>
+      <button id="openFacebook">Open Facebook inbox</button>
+      <button id="unpair" class="danger">Disconnect this browser</button>
+    </section>
+
+    <p class="footnote">
+      Reads only what a Facebook tab already shows. Never touches Facebook
+      passwords or cookies, and TENH works without it.
+    </p>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

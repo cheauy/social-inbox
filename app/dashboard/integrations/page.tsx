@@ -4,6 +4,7 @@ import { WorkspaceLanguageText } from "@/components/display/workspace-language-t
 import { IntegrationWorkspace } from "@/components/integrations/integration-workspace";
 import { FacebookDisconnectButton } from "@/components/integrations/facebook-disconnect-button";
 import { FacebookPageAvatar } from "@/components/integrations/facebook-page-avatar";
+import { TenhCompanionCard } from "@/components/integrations/tenh-companion-card";
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { memberHasPermission } from "@/lib/auth/require-permission";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -413,6 +414,16 @@ export default async function IntegrationsPage({
           )}
         </div>
       </IntegrationWorkspace>
+
+      {/*
+        The companion, under the channels it assists and never in front of
+        them. It is optional: this card is the only thing on the page that
+        knows the extension exists, and nothing above it changes whether one
+        is installed or not.
+      */}
+      <div className="mt-6">
+        <TenhCompanionCard />
+      </div>
     </main>
   );
 }
