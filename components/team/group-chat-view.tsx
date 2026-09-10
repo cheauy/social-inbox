@@ -11,11 +11,13 @@ import { useSearchParams } from "next/navigation";
 import {
   Bell,
   BellOff,
+  BriefcaseBusiness,
+  Heart,
   Filter,
   FileText,
   Image as ImageIcon,
-  Link2,
   Mic,
+  Megaphone,
   PanelRightClose,
   PanelRightOpen,
   Paperclip,
@@ -23,12 +25,16 @@ import {
   Search,
   Send,
   Settings2,
+  ShoppingCart,
   Smile,
+  Star,
   Trash2,
   UserRoundPlus,
   Users,
   Video,
   X,
+  Headphones,
+  Rocket,
 } from "lucide-react";
 
 import EmojiPicker from "emoji-picker-react";
@@ -48,6 +54,7 @@ type TeamMember = {
 
 type TeamRoom = {
   id: string;
+  icon?: RoomIconKey;
   business_id: string;
   name: string;
   slug: string;
@@ -64,6 +71,24 @@ type TeamRoom = {
   mention_count?: number;
   is_muted?: boolean;
 };
+
+type RoomIconKey = "people" | "megaphone" | "briefcase" | "headset" | "cart" | "rocket" | "heart" | "star";
+
+const ROOM_ICON_OPTIONS: Array<{ key: RoomIconKey; label: string; Icon: typeof Users }> = [
+  { key: "people", label: "Team", Icon: Users },
+  { key: "megaphone", label: "Announcements", Icon: Megaphone },
+  { key: "briefcase", label: "Work", Icon: BriefcaseBusiness },
+  { key: "headset", label: "Support", Icon: Headphones },
+  { key: "cart", label: "Sales", Icon: ShoppingCart },
+  { key: "rocket", label: "Launch", Icon: Rocket },
+  { key: "heart", label: "Community", Icon: Heart },
+  { key: "star", label: "Featured", Icon: Star },
+];
+
+function RoomIcon({ icon, className = "h-5 w-5" }: { icon?: RoomIconKey; className?: string }) {
+  const Icon = ROOM_ICON_OPTIONS.find((item) => item.key === icon)?.Icon ?? Users;
+  return <Icon className={className} strokeWidth={2.1} />;
+}
 
 type TeamAttachment = {
   id: string;
@@ -189,17 +214,60 @@ type SharedStorageItem = {
   id: string;
   label: string;
   url: string;
-  kind: "file" | "link" | "image" | "video";
+  kind: "file" | "image" | "video";
   meta?: string;
   createdAt: string;
 };
+
+type MediaPreview = {
+  kind: "image" | "video";
+  url: string;
+  label: string;
+};
+
+const DELETED_MESSAGE_PREFIX = "__TENH_DELETED_BY__:";
+const URL_PATTERN = /(https?:\/\/[^\s]+)/gi;
+
+function deletedBy(messageText: string | null | undefined) {
+  if (!messageText?.startsWith(DELETED_MESSAGE_PREFIX)) return null;
+  return messageText.slice(DELETED_MESSAGE_PREFIX.length).trim() || "Team member";
+}
+
+function cleanLinkTarget(value: string) {
+  return value.replace(/[),.!?]+$/, "");
+}
+
+function LinkedMessageText({ value, mine }: { value: string; mine: boolean }) {
+  return (
+    <>
+      {value.split(URL_PATTERN).map((part, index) =>
+        /^https?:\/\//i.test(part) ? (
+          <a
+            key={`${index}:${part}`}
+            href={cleanLinkTarget(part)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`break-all underline underline-offset-2 ${mine ? "text-white" : "text-blue-600"}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {part}
+          </a>
+        ) : (
+          <span key={`${index}:${part}`}>{part}</span>
+        ),
+      )}
+    </>
+  );
+}
 
 function collectSharedItems(sourceMessages: TeamMessage[]): SharedStorageItem[] {
   const items: SharedStorageItem[] = [];
 
   for (const message of [...sourceMessages].reverse()) {
     for (const attachment of message.attachments ?? []) {
-      if (!attachment.url) continue;
+      // Voice notes remain playable in the conversation, not in Storage.
+      // Plain links also stay only in the message bubble.
+      if (!attachment.url || attachment.kind === "audio") continue;
       items.push({
         id: `attachment-${attachment.id}`,
         label: attachment.file_name,
@@ -214,18 +282,6 @@ function collectSharedItems(sourceMessages: TeamMessage[]): SharedStorageItem[] 
         createdAt: message.created_at,
       });
     }
-
-    const urls = message.message_text.match(/https?:\/\/[^\s<]+/gi) ?? [];
-    urls.forEach((rawUrl, index) => {
-      const url = rawUrl.replace(/[),.!?]+$/, "");
-      items.push({
-        id: `link-${message.id}-${index}`,
-        label: url,
-        url,
-        kind: "link",
-        createdAt: message.created_at,
-      });
-    });
   }
 
   return items;
@@ -303,6 +359,7 @@ export function GroupChatView() {
     useState("");
   const [createMemberIds, setCreateMemberIds] =
     useState<string[]>([]);
+  const [createIcon, setCreateIcon] = useState<RoomIconKey>("people");
   const [manageMembersOpen, setManageMembersOpen] =
     useState(false);
   const [manageMemberIds, setManageMemberIds] =
@@ -355,6 +412,7 @@ export function GroupChatView() {
   const [storageError, setStorageError] = useState<string | null>(null);
   const [storageQuery, setStorageQuery] = useState("");
   const [storageTab, setStorageTab] = useState<"file" | "image" | "video">("file");
+  const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
 
   const [callBusy, setCallBusy] = useState(false);
   const [callNotice, setCallNotice] =
@@ -526,7 +584,7 @@ export function GroupChatView() {
     return storageItems.filter((item) => {
       const matchesTab =
         storageTab === "file"
-          ? item.kind === "file" || item.kind === "link"
+          ? item.kind === "file"
           : item.kind === storageTab;
       if (!matchesTab) return false;
       if (!query) return true;
@@ -538,9 +596,7 @@ export function GroupChatView() {
 
   const storageCounts = useMemo(
     () => ({
-      file: storageItems.filter(
-        (item) => item.kind === "file" || item.kind === "link",
-      ).length,
+      file: storageItems.filter((item) => item.kind === "file").length,
       image: storageItems.filter((item) => item.kind === "image").length,
       video: storageItems.filter((item) => item.kind === "video").length,
     }),
@@ -1213,52 +1269,102 @@ export function GroupChatView() {
       return [];
     }
 
-    const uploaded: TeamAttachment[] = [];
     setUploading(true);
     setError(null);
 
-    try {
-      for (const file of files.slice(0, 10)) {
-        const form = new FormData();
-        form.append("roomId", roomId);
-        form.append("file", file);
+    const supabase = createClient();
+    const uploaded: TeamAttachment[] = [];
 
-        const response = await fetch(
-          "/api/team-chat/attachments",
-          { method: "POST", body: form },
+    async function uploadOne(file: File): Promise<TeamAttachment> {
+      const prepareResponse = await fetch("/api/team-chat/attachments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "prepare",
+          roomId,
+          fileName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          byteSize: file.size,
+        }),
+      });
+
+      const prepared = await readJsonResponse<{
+        success?: boolean;
+        error?: string;
+        attachment?: TeamAttachment;
+        upload?: { path: string; token: string; signedUrl: string };
+      }>(prepareResponse, "Unable to prepare file upload");
+
+      if (
+        !prepareResponse.ok ||
+        !prepared.success ||
+        !prepared.attachment ||
+        !prepared.upload
+      ) {
+        throw new Error(prepared.error ?? "Unable to prepare file upload.");
+      }
+
+      const attachmentId = prepared.attachment.id;
+
+      try {
+        const { error: uploadError } = await supabase.storage
+          .from("team-chat")
+          .uploadToSignedUrl(
+            prepared.upload.path,
+            prepared.upload.token,
+            file,
+            {
+              contentType: prepared.attachment.mime_type,
+              cacheControl: "3600",
+            },
+          );
+
+        if (uploadError) {
+          throw new Error(uploadError.message || "Unable to upload file.");
+        }
+
+        const signedResponse = await fetch(
+          `/api/team-chat/attachments?attachmentId=${encodeURIComponent(attachmentId)}`,
+          { cache: "no-store" },
         );
-
-        const result = await readJsonResponse<{
+        const signed = await readJsonResponse<{
           success?: boolean;
           error?: string;
           attachment?: TeamAttachment;
-        }>(response, "Unable to upload file");
+        }>(signedResponse, "Unable to finish file upload");
 
-        if (!response.ok || !result.success || !result.attachment) {
-          throw new Error(
-            result.error ?? "Unable to upload file.",
-          );
+        if (!signedResponse.ok || !signed.success || !signed.attachment) {
+          throw new Error(signed.error ?? "Unable to finish file upload.");
         }
 
-        const uploadedAttachment = result.attachment as TeamAttachment;
+        return signed.attachment;
+      } catch (uploadError) {
+        await fetch(
+          `/api/team-chat/attachments?attachmentId=${encodeURIComponent(attachmentId)}`,
+          { method: "DELETE" },
+        ).catch(() => undefined);
+        throw uploadError;
+      }
+    }
 
-        // If the user switched rooms while an upload was in flight, do
-        // not carry an attachment from the old room into the new draft.
-        if (selectedRoomIdRef.current !== roomId) {
-          await fetch(
-            `/api/team-chat/attachments?attachmentId=${encodeURIComponent(
-              uploadedAttachment.id,
-            )}`,
-            { method: "DELETE" },
-          ).catch(() => undefined);
-          continue;
+    try {
+      const chosen = files.slice(0, 10);
+
+      for (let index = 0; index < chosen.length; index += 3) {
+        const batch = await Promise.all(chosen.slice(index, index + 3).map(uploadOne));
+
+        for (const uploadedAttachment of batch) {
+          if (selectedRoomIdRef.current !== roomId) {
+            await fetch(
+              `/api/team-chat/attachments?attachmentId=${encodeURIComponent(uploadedAttachment.id)}`,
+              { method: "DELETE" },
+            ).catch(() => undefined);
+            continue;
+          }
+
+          setPendingAttachments((current) => [...current, uploadedAttachment]);
+          uploaded.push(uploadedAttachment);
         }
-
-        setPendingAttachments((current) => [
-          ...current,
-          uploadedAttachment,
-        ]);
-        uploaded.push(uploadedAttachment);
       }
 
       return uploaded;
@@ -1268,7 +1374,7 @@ export function GroupChatView() {
           ? uploadError.message
           : "Unable to upload file.",
       );
-      return [];
+      return uploaded;
     } finally {
       setUploading(false);
 
@@ -1685,6 +1791,7 @@ export function GroupChatView() {
             name: createName,
             description: createDescription,
             memberIds: createMemberIds,
+            icon: createIcon,
           }),
         },
       );
@@ -1706,6 +1813,7 @@ export function GroupChatView() {
       setCreateName("");
       setCreateDescription("");
       setCreateMemberIds([]);
+      setCreateIcon("people");
 
       if (result.room?.id) {
         // Select the new room immediately. loadRooms() now preserves the
@@ -1904,40 +2012,54 @@ export function GroupChatView() {
   }
 
   async function deleteMessage(message: TeamMessage) {
-    if (deleteMessageBusy) {
+    if (deleteMessageBusy || !currentMember) {
       return;
     }
 
+    const optimistic: TeamMessage = {
+      ...message,
+      message_text: `${DELETED_MESSAGE_PREFIX}${currentMember.full_name || "Team member"}`,
+      edited_at: null,
+      attachments: [],
+    };
+
     setDeleteMessageBusy(true);
     setError(null);
+    setMessages((current) =>
+      current.map((item) => (item.id === message.id ? optimistic : item)),
+    );
 
     try {
       const response = await fetch(
-        `/api/team-chat/messages/${encodeURIComponent(
-          message.id,
-        )}`,
+        `/api/team-chat/messages/${encodeURIComponent(message.id)}`,
         { method: "DELETE" },
       );
       const result = await readJsonResponse<{
         success?: boolean;
         error?: string;
+        message?: TeamMessage;
       }>(response, "Unable to delete team message");
 
       if (!response.ok || !result.success) {
-        throw new Error(
-          result.error ?? "Unable to delete team message.",
-        );
+        throw new Error(result.error ?? "Unable to delete team message.");
       }
 
       if (editingMessageId === message.id) {
         cancelEditMessage();
       }
 
-      setMessages((current) =>
-        current.filter((item) => item.id !== message.id),
-      );
+      if (result.message) {
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === message.id ? (result.message as TeamMessage) : item,
+          ),
+        );
+      }
       setDeleteMessageTarget(null);
     } catch (deleteError) {
+      setMessages((current) =>
+        current.map((item) => (item.id === message.id ? message : item)),
+      );
       setError(
         deleteError instanceof Error
           ? deleteError.message
@@ -1955,8 +2077,21 @@ export function GroupChatView() {
 
   if (loadingRooms) {
     return (
-      <div className="flex h-full items-center justify-center bg-slate-50 text-sm text-slate-500">
-        {t("Loading internal team chat...", "កំពុងផ្ទុកការជជែកក្រុមខាងក្នុង...")}
+      <div className="flex h-full min-h-0 overflow-hidden bg-white" aria-label={t("Loading group chat", "កំពុងផ្ទុកការជជែកក្រុម")}>
+        <aside className="w-[280px] shrink-0 border-r border-slate-200 p-5">
+          <div className="h-7 w-32 animate-pulse rounded-lg bg-slate-200" />
+          <div className="mt-3 h-4 w-44 animate-pulse rounded bg-slate-100" />
+          <div className="mt-8 h-11 animate-pulse rounded-xl bg-blue-100" />
+          <div className="mt-7 space-y-3">
+            {[0, 1, 2, 3, 4].map((item) => <div key={item} className="h-16 animate-pulse rounded-2xl bg-slate-100" />)}
+          </div>
+        </aside>
+        <main className="flex min-w-0 flex-1 flex-col">
+          <div className="h-[82px] border-b border-slate-200 px-6 py-5"><div className="h-7 w-56 animate-pulse rounded-lg bg-slate-200" /></div>
+          <div className="flex-1 space-y-5 p-8">
+            {["w-64", "ml-auto w-72", "w-80", "ml-auto w-52"].map((width, item) => <div key={item} className={`h-16 ${width} animate-pulse rounded-2xl bg-slate-100`} />)}
+          </div>
+        </main>
       </div>
     );
   }
@@ -2067,7 +2202,7 @@ export function GroupChatView() {
                         : "bg-slate-400"
                   }`}
                 >
-                  #
+                  <RoomIcon icon={room.icon} />
                 </span>
 
                 <span className="min-w-0 flex-1">
@@ -2112,7 +2247,7 @@ export function GroupChatView() {
             <header className="flex min-h-[82px] shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl font-extrabold text-slate-900">#</span>
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><RoomIcon icon={selectedRoom.icon} /></span>
                   <h2 className="truncate text-[24px] font-extrabold tracking-[-0.03em] text-slate-950">
                     {roomDisplayName(selectedRoom)}
                   </h2>
@@ -2335,8 +2470,10 @@ export function GroupChatView() {
 
             <div className="min-h-0 flex-1 overflow-y-auto bg-white px-5 py-5">
               {loadingMessages ? (
-                <div className="py-8 text-center text-sm text-slate-500">
-                  {t("Loading messages...", "កំពុងផ្ទុកសារ...")}
+                <div className="mx-auto max-w-4xl space-y-5 py-4" aria-label={t("Loading messages", "កំពុងផ្ទុកសារ")}>
+                  {["w-64", "ml-auto w-72", "w-80", "ml-auto w-48", "w-60"].map((width, item) => (
+                    <div key={item} className={`h-16 ${width} animate-pulse rounded-2xl bg-slate-100`} />
+                  ))}
                 </div>
               ) : messages.length === 0 ? (
                 <div className="mx-auto mt-16 max-w-md text-center">
@@ -2372,7 +2509,8 @@ export function GroupChatView() {
                     const mine =
                       message.sender_member_id === currentMember?.id;
                     const canDelete = mine || canManage;
-                    const attachments = message.attachments ?? [];
+                    const deletedName = deletedBy(message.message_text);
+                    const attachments = deletedName ? [] : (message.attachments ?? []);
                     const imageAttachments = attachments.filter(
                       (attachment) =>
                         attachment.kind === "image" && Boolean(attachment.url),
@@ -2420,7 +2558,11 @@ export function GroupChatView() {
                             </div>
                           ) : null}
 
-                          {message.message_text ? (
+                          {deletedName ? (
+                            <div className="mt-1.5 inline-flex max-w-[760px] items-center rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm italic text-slate-500">
+                              {t("Message deleted by", "សារត្រូវបានលុបដោយ")} {deletedName}
+                            </div>
+                          ) : message.message_text ? (
                             <div
                               className={`inline-block max-w-[760px] whitespace-pre-wrap break-words border px-4 pb-2 pt-3 text-left text-sm leading-6 shadow-[0_2px_8px_rgba(15,23,42,0.06)] ${
                                 mine
@@ -2438,7 +2580,12 @@ export function GroupChatView() {
                                   : undefined
                               }
                             >
-                              <div>{message.message_text}</div>
+                              <div className="break-all">
+                                <LinkedMessageText
+                                  value={message.message_text}
+                                  mine={mine}
+                                />
+                              </div>
                               <div
                                 className={`mt-1 flex items-center gap-1.5 text-[10px] leading-none ${
                                   mine
@@ -2478,12 +2625,19 @@ export function GroupChatView() {
                                 >
                                   {imageAttachments.slice(0, 9).map(
                                     (attachment, index) => (
-                                      <a
+                                      <button
+                                        type="button"
                                         key={attachment.id}
-                                        href={attachment.url ?? undefined}
-                                        target="_blank"
-                                        rel="noreferrer"
+                                        onClick={() =>
+                                          attachment.url &&
+                                          setMediaPreview({
+                                            kind: "image",
+                                            url: attachment.url,
+                                            label: attachment.file_name,
+                                          })
+                                        }
                                         className="relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm"
+                                        aria-label={t("View image", "មើលរូបភាព")}
                                       >
                                         <img
                                           src={attachment.url ?? ""}
@@ -2498,7 +2652,7 @@ export function GroupChatView() {
                                             +{imageAttachments.length - 9}
                                           </span>
                                         ) : null}
-                                      </a>
+                                      </button>
                                     ),
                                   )}
                                 </div>
@@ -2524,12 +2678,32 @@ export function GroupChatView() {
 
                                     if (attachment.kind === "video") {
                                       return (
-                                        <video
+                                        <button
+                                          type="button"
                                           key={attachment.id}
-                                          src={attachment.url}
-                                          controls
-                                          className="block max-h-[320px] w-full max-w-[360px] rounded-2xl border border-slate-200 bg-slate-950 shadow-sm"
-                                        />
+                                          onClick={() =>
+                                            setMediaPreview({
+                                              kind: "video",
+                                              url: attachment.url as string,
+                                              label: attachment.file_name,
+                                            })
+                                          }
+                                          className="group/video relative block w-full max-w-[360px] overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 shadow-sm"
+                                          aria-label={t("View video", "មើលវីដេអូ")}
+                                        >
+                                          <video
+                                            src={attachment.url}
+                                            muted
+                                            playsInline
+                                            preload="metadata"
+                                            className="aspect-video w-full bg-slate-950 object-contain"
+                                          />
+                                          <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/15 transition group-hover/video:bg-slate-950/25">
+                                            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-blue-600 shadow-lg">
+                                              <Video className="h-5 w-5" />
+                                            </span>
+                                          </span>
+                                        </button>
                                       );
                                     }
 
@@ -2567,7 +2741,7 @@ export function GroupChatView() {
                             </div>
                           ) : null}
 
-                          {mine ? (
+                          {!deletedName && mine ? (
                             <div className="mt-1 flex min-h-6 items-center justify-end gap-1.5">
                               {!message.message_text ? (
                                 <span className="text-[11px] text-slate-400">
@@ -2594,7 +2768,7 @@ export function GroupChatView() {
                                 </button>
                               </div>
                             </div>
-                          ) : canDelete ? (
+                          ) : !deletedName && canDelete ? (
                             <div className="mt-1 flex min-h-6 items-center gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
                               <button
                                 type="button"
@@ -3199,7 +3373,7 @@ export function GroupChatView() {
             <section className="border-t border-slate-200 py-5">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <p className="text-sm font-bold text-slate-900">
-                  {t("Files, documents & links", "ឯកសារ ឯកសារសំខាន់ និងតំណ")}
+                  {t("Files & media", "ឯកសារ និងមេឌៀ")}
                 </p>
                 <button
                   type="button"
@@ -3212,45 +3386,122 @@ export function GroupChatView() {
 
               {sharedPreviewItems.length > 0 ? (
                 <div className="space-y-2">
-                  {sharedPreviewItems.map((item) => (
-                    <a
-                      key={item.id}
-                      href={item.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition hover:bg-slate-50"
-                    >
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-                        {item.kind === "link" ? (
-                          <Link2 className="h-4 w-4" />
-                        ) : (
-                          <FileText className="h-4 w-4" />
-                        )}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs font-semibold text-slate-700">
-                          {item.label}
+                  {sharedPreviewItems.map((item) => {
+                    const content = (
+                      <>
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                          {item.kind === "image" ? (
+                            <ImageIcon className="h-4 w-4" />
+                          ) : item.kind === "video" ? (
+                            <Video className="h-4 w-4" />
+                          ) : (
+                            <FileText className="h-4 w-4" />
+                          )}
                         </span>
-                        <span className="mt-0.5 block text-[11px] text-slate-400">
-                          {item.kind === "link"
-                            ? t("Link", "តំណ")
-                            : (item.meta ?? t("File", "ឯកសារ"))}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-semibold text-slate-700">
+                            {item.label}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-slate-400">
+                            {item.kind === "image"
+                              ? t("Image", "រូបភាព")
+                              : item.kind === "video"
+                                ? t("Video", "វីដេអូ")
+                                : (item.meta ?? t("File", "ឯកសារ"))}
+                          </span>
                         </span>
-                      </span>
-                    </a>
-                  ))}
+                      </>
+                    );
+
+                    return item.kind === "file" ? (
+                      <a
+                        key={item.id}
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition hover:bg-slate-50"
+                      >
+                        {content}
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        key={item.id}
+                        onClick={() =>
+                          setMediaPreview({
+                            kind: item.kind === "video" ? "video" : "image",
+                            url: item.url,
+                            label: item.label,
+                          })
+                        }
+                        className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left transition hover:bg-slate-50"
+                      >
+                        {content}
+                      </button>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-400">
                   {t(
-                    "Files and links shared in this group will appear here.",
-                    "ឯកសារ និងតំណដែលបានចែករំលែកក្នុងក្រុមនេះនឹងបង្ហាញនៅទីនេះ។",
+                    "Files and media shared in this group will appear here.",
+                    "ឯកសារ និងមេឌៀដែលបានចែករំលែកក្នុងក្រុមនេះនឹងបង្ហាញនៅទីនេះ។",
                   )}
                 </div>
               )}
             </section>
           </div>
         </aside>
+      ) : null}
+
+      {mediaPreview ? (
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/90 p-4 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label={
+            mediaPreview.kind === "image"
+              ? t("Image preview", "មើលរូបភាព")
+              : t("Video preview", "មើលវីដេអូ")
+          }
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setMediaPreview(null);
+            }
+          }}
+        >
+          <div className="relative flex max-h-[92vh] w-full max-w-5xl flex-col items-center justify-center overflow-hidden rounded-2xl bg-slate-950 shadow-2xl">
+            <button
+              type="button"
+              onClick={() => setMediaPreview(null)}
+              className="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur transition hover:bg-white/25"
+              aria-label={t("Close preview", "បិទការមើល")}
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex min-h-0 w-full flex-1 items-center justify-center p-3 sm:p-5">
+              {mediaPreview.kind === "image" ? (
+                <img
+                  src={mediaPreview.url}
+                  alt={mediaPreview.label}
+                  className="max-h-[78vh] max-w-full object-contain"
+                />
+              ) : (
+                <video
+                  key={mediaPreview.url}
+                  src={mediaPreview.url}
+                  controls
+                  autoPlay
+                  playsInline
+                  preload="metadata"
+                  className="max-h-[78vh] w-full max-w-5xl bg-black object-contain"
+                />
+              )}
+            </div>
+
+          </div>
+        </div>
       ) : null}
 
       {storageOpen && selectedRoom ? (
@@ -3275,7 +3526,7 @@ export function GroupChatView() {
                       TENH Storage
                     </h2>
                     <p className="truncate text-xs text-slate-500">
-                      #{roomDisplayName(selectedRoom)} · {t("Files, documents & links", "ឯកសារ ឯកសារសំខាន់ និងតំណ")}
+                      #{roomDisplayName(selectedRoom)} · {t("Files & media", "ឯកសារ និងមេឌៀ")}
                     </p>
                   </div>
                 </div>
@@ -3346,13 +3597,14 @@ export function GroupChatView() {
                 storageTab === "image" ? (
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     {filteredStorageItems.map((item) => (
-                      <a
+                      <button
+                        type="button"
                         key={item.id}
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                        onClick={() =>
+                          setMediaPreview({ kind: "image", url: item.url, label: item.label })
+                        }
                         className="group/storage relative aspect-square overflow-hidden rounded-2xl border border-slate-200 bg-slate-100"
-                        aria-label={t("Open image", "បើករូបភាព")}
+                        aria-label={t("View image", "មើលរូបភាព")}
                       >
                         <img
                           src={item.url}
@@ -3361,23 +3613,34 @@ export function GroupChatView() {
                           loading="lazy"
                           decoding="async"
                         />
-                      </a>
+                      </button>
                     ))}
                   </div>
                 ) : storageTab === "video" ? (
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {filteredStorageItems.map((item) => (
-                      <div
+                      <button
+                        type="button"
                         key={item.id}
-                        className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950"
+                        onClick={() =>
+                          setMediaPreview({ kind: "video", url: item.url, label: item.label })
+                        }
+                        className="group/storage relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-950"
+                        aria-label={t("View video", "មើលវីដេអូ")}
                       >
                         <video
                           src={item.url}
-                          controls
+                          muted
+                          playsInline
                           preload="metadata"
                           className="aspect-video w-full bg-slate-950 object-contain"
                         />
-                      </div>
+                        <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/20">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/90 text-blue-600 shadow-lg">
+                            <Video className="h-5 w-5" />
+                          </span>
+                        </span>
+                      </button>
                     ))}
                   </div>
                 ) : (
@@ -3391,20 +3654,14 @@ export function GroupChatView() {
                         className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 transition hover:border-blue-200 hover:bg-blue-50/40"
                       >
                         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
-                          {item.kind === "link" ? (
-                            <Link2 className="h-4 w-4" />
-                          ) : (
-                            <FileText className="h-4 w-4" />
-                          )}
+                          <FileText className="h-4 w-4" />
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-semibold text-slate-800">
                             {item.label}
                           </span>
                           <span className="mt-0.5 block text-xs text-slate-400">
-                            {item.kind === "link"
-                              ? t("Link", "តំណ")
-                              : (item.meta ?? t("File", "ឯកសារ"))}
+                            {item.meta ?? t("File", "ឯកសារ")}
                             {" · "}
                             {formatMessageTime(item.createdAt)}
                           </span>
@@ -3421,7 +3678,7 @@ export function GroupChatView() {
                       ? t("No images have been shared in this group yet.", "មិនទាន់មានរូបភាពត្រូវបានចែករំលែកក្នុងក្រុមនេះទេ។")
                       : storageTab === "video"
                         ? t("No videos have been shared in this group yet.", "មិនទាន់មានវីដេអូត្រូវបានចែករំលែកក្នុងក្រុមនេះទេ។")
-                        : t("No files or links have been shared in this group yet.", "មិនទាន់មានឯកសារ ឬតំណត្រូវបានចែករំលែកក្នុងក្រុមនេះទេ។")}
+                        : t("No files have been shared in this group yet.", "មិនទាន់មានឯកសារត្រូវបានចែករំលែកក្នុងក្រុមនេះទេ។")}
                 </div>
               )}
             </div>
@@ -3497,6 +3754,8 @@ export function GroupChatView() {
           onNameChange={setCreateName}
           description={createDescription}
           onDescriptionChange={setCreateDescription}
+          icon={createIcon}
+          onIconChange={setCreateIcon}
           showRoomFields
           busy={modalBusy}
           confirmLabel={t("Create group", "បង្កើតក្រុម")}
@@ -3621,6 +3880,8 @@ type RoomMembersModalProps = {
   onNameChange?: (value: string) => void;
   description?: string;
   onDescriptionChange?: (value: string) => void;
+  icon?: RoomIconKey;
+  onIconChange?: (value: RoomIconKey) => void;
   showRoomFields?: boolean;
   busy: boolean;
   confirmLabel: string;
@@ -3637,6 +3898,8 @@ function RoomMembersModal({
   onNameChange,
   description = "",
   onDescriptionChange,
+  icon = "people",
+  onIconChange,
   showRoomFields = false,
   busy,
   confirmLabel,
@@ -3696,6 +3959,26 @@ function RoomMembersModal({
                   placeholder={t("Support Team", "ក្រុមគាំទ្រ")}
                   className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-slate-700">
+                  {t("Group icon", "រូបតំណាងក្រុម")}
+                </label>
+                <div className="mt-2 grid grid-cols-4 gap-2">
+                  {ROOM_ICON_OPTIONS.map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => onIconChange?.(option.key)}
+                      aria-label={option.label}
+                      aria-pressed={icon === option.key}
+                      className={`flex h-12 items-center justify-center rounded-xl border transition ${icon === option.key ? "border-blue-500 bg-blue-50 text-blue-600 ring-2 ring-blue-100" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}
+                    >
+                      <option.Icon className="h-5 w-5" strokeWidth={2.1} />
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div>

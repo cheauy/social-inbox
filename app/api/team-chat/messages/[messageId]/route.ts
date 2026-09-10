@@ -8,11 +8,14 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
   canManageTeamChat,
   getAccessibleRoom,
+  loadAttachmentsForMessages,
   safeDetails,
 } from "@/lib/team/team-chat-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const DELETED_MESSAGE_PREFIX = "__TENH_DELETED_BY__:";
 
 type RouteContext = {
   params: Promise<{ messageId: string }>;
@@ -72,6 +75,13 @@ export async function PATCH(
     return NextResponse.json(
       { success: false, error: "Team chat room not found." },
       { status: 404 },
+    );
+  }
+
+  if (String(message.message_text ?? "").startsWith(DELETED_MESSAGE_PREFIX)) {
+    return NextResponse.json(
+      { success: false, error: "A deleted message cannot be edited." },
+      { status: 409 },
     );
   }
 
@@ -137,6 +147,7 @@ export async function PATCH(
       sender:team_members!team_chat_messages_sender_member_id_fkey (
         id,
         full_name,
+        email,
         role,
         profile_picture_url
       )
@@ -154,9 +165,16 @@ export async function PATCH(
     );
   }
 
+  const attachmentsByMessage = await loadAttachmentsForMessages([
+    updated.id as string,
+  ]);
+
   return NextResponse.json({
     success: true,
-    message: updated,
+    message: {
+      ...updated,
+      attachments: attachmentsByMessage.get(updated.id as string) ?? [],
+    },
   });
 }
 
@@ -213,21 +231,77 @@ export async function DELETE(
     );
   }
 
-  const { error } = await supabaseAdmin
-    .from("team_chat_messages")
-    .delete()
-    .eq("id", message.id);
+  if (String(message.message_text ?? "").startsWith(DELETED_MESSAGE_PREFIX)) {
+    return NextResponse.json({ success: true, message });
+  }
 
-  if (error) {
+  // Keep a lightweight tombstone instead of physically removing the row.
+  // Everyone then sees who deleted it after realtime/reload, while the
+  // original attachment bytes are removed from private storage.
+  const { data: attachments } = await supabaseAdmin
+    .from("team_chat_attachments")
+    .select("id, storage_path")
+    .eq("message_id", message.id)
+    .eq("business_id", currentMember.business_id);
+
+  const storagePaths = (attachments ?? [])
+    .map((item) => item.storage_path as string | null)
+    .filter((value): value is string => Boolean(value));
+
+  if (storagePaths.length > 0) {
+    await supabaseAdmin.storage
+      .from("team-chat")
+      .remove(storagePaths);
+  }
+
+  if ((attachments?.length ?? 0) > 0) {
+    await supabaseAdmin
+      .from("team_chat_attachments")
+      .delete()
+      .eq("message_id", message.id)
+      .eq("business_id", currentMember.business_id);
+  }
+
+  const now = new Date().toISOString();
+  const deletedBy = currentMember.full_name?.trim() || "Team member";
+
+  const { data: updated, error } = await supabaseAdmin
+    .from("team_chat_messages")
+    .update({
+      message_text: `${DELETED_MESSAGE_PREFIX}${deletedBy}`,
+      edited_at: null,
+      updated_at: now,
+    })
+    .eq("id", message.id)
+    .select(`
+      id,
+      business_id,
+      room_id,
+      sender_member_id,
+      message_text,
+      edited_at,
+      created_at,
+      updated_at,
+      sender:team_members!team_chat_messages_sender_member_id_fkey (
+        id,
+        full_name,
+        email,
+        role,
+        profile_picture_url
+      )
+    `)
+    .single();
+
+  if (error || !updated) {
     return NextResponse.json(
       {
         success: false,
         error: "Unable to delete team message.",
-        ...safeDetails(error.message),
+        ...safeDetails(error?.message),
       },
       { status: 500 },
     );
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, message: { ...updated, attachments: [] } });
 }

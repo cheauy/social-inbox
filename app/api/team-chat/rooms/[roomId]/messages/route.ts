@@ -10,6 +10,7 @@ import {
   getAccessibleRoom,
   getRoomAudienceMemberIds,
   loadAttachmentsForMessages,
+  roomIconFromSlug,
   safeDetails,
 } from "@/lib/team/team-chat-server";
 
@@ -127,7 +128,10 @@ export async function GET(
 
     return NextResponse.json({
       success: true,
-      room,
+      room: {
+        ...room,
+        icon: room.is_general ? "people" : roomIconFromSlug(room.slug),
+      },
       messages: ordered.map((message) => ({
         ...message,
         attachments:
