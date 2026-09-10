@@ -249,7 +249,15 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     const listening = merged.length > 0 ? merged : [workspace.businessId];
     let channel = supabase.channel(`tenh-mobile-${listening.join("-")}`);
     for (const id of listening)
-      for (const table of ["messages", "conversations", "contacts", "team_chat_messages", "team_chat_rooms"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${id}` }, changed);
+      /*
+       * team_chat_room_members is in here because being added to a private
+       * room is a change to what this phone may see, and nothing else reports
+       * it: the room's own row does not change, no message has arrived yet,
+       * and the list would keep saying the room does not exist until somebody
+       * happened to reopen the app. Removal is the same fact in reverse, and
+       * matters more.
+       */
+      for (const table of ["messages", "conversations", "contacts", "team_chat_messages", "team_chat_rooms", "team_chat_room_members"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${id}` }, changed);
     /*
      * The alert tone, on the arrival itself rather than on the reload the
      * arrival triggers: `changed` is debounced and fires for edits, reads and
