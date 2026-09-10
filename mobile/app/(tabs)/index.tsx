@@ -443,37 +443,56 @@ function ChannelSheet({
   );
 }
 
+/*
+ * Tags to filter by -- more than one at a time.
+ *
+ * It used to close on the first tap and show one tag's customers, which is
+ * the wrong shape for the question people actually ask here: "who has bought
+ * and is COD", or "show me VIP and complaints together". Several ticked tags
+ * mean a customer carrying any of them, the same rule the website's tag
+ * filter uses, and the sheet stays open until it is done being answered.
+ */
 function TagSheet({
   open,
   tags,
   workspaceNames,
-  selectedId,
+  selectedIds,
   counts,
-  onSelect,
+  onToggle,
+  onClear,
   onClose,
 }: {
   open: boolean;
   tags: ScopedTag[];
   /* Empty unless more than one workspace is open. */
   workspaceNames: Record<string, string>;
-  selectedId: string | null;
+  selectedIds: string[];
   counts: Record<string, number>;
-  onSelect: (id: string | null) => void;
+  onToggle: (id: string) => void;
+  onClear: () => void;
   onClose: () => void;
 }) {
+  const chosen = selectedIds.length;
+
   return (
     <Sheet
       open={open}
       title="Filter by Tags"
-      detail="Show customers with a specific tag."
+      detail={
+        chosen === 0
+          ? "Pick one or more tags. A customer with any of them is shown."
+          : chosen === 1
+            ? "1 tag picked. A customer with any picked tag is shown."
+            : `${chosen} tags picked. A customer with any of them is shown.`
+      }
       onClose={onClose}
     >
       <ScrollView>
         <Pressable
           accessibilityRole="button"
-          accessibilityState={{ selected: selectedId === null }}
+          accessibilityState={{ selected: chosen === 0 }}
           onPress={() => {
-            onSelect(null);
+            onClear();
             onClose();
           }}
           style={({ pressed }) => ({
@@ -503,7 +522,7 @@ function TagSheet({
               flex: 1,
               color: colors.ink,
               fontSize: 15,
-              fontWeight: selectedId === null ? "800" : "500",
+              fontWeight: chosen === 0 ? "800" : "500",
             }}
           >
             All tags
@@ -511,23 +530,21 @@ function TagSheet({
 
           <Text style={[styles.muted, { fontSize: 13 }]}>{counts.all ?? 0}</Text>
 
-          {selectedId === null ? (
+          {chosen === 0 ? (
             <Ionicons name="checkmark" size={19} color={colors.blue} />
           ) : null}
         </Pressable>
 
         {tags.map((tag) => {
-          const active = tag.id === selectedId;
+          const active = selectedIds.includes(tag.id);
 
           return (
             <Pressable
               key={tag.id}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              onPress={() => {
-                onSelect(tag.id);
-                onClose();
-              }}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: active }}
+              /* No close: picking a second tag is the point. */
+              onPress={() => onToggle(tag.id)}
               style={({ pressed }) => ({
                 flexDirection: "row",
                 alignItems: "center",
@@ -585,13 +602,84 @@ function TagSheet({
                 {counts[tag.id] ?? 0}
               </Text>
 
-              {active ? (
-                <Ionicons name="checkmark" size={19} color={colors.blue} />
-              ) : null}
+              {/*
+                A box rather than a tick, because a tick that appears and
+                disappears reads as "this one" where a row of boxes reads as
+                "as many as you like".
+              */}
+              <View
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 7,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: active ? 0 : 1.5,
+                  borderColor: colors.border,
+                  backgroundColor: active ? colors.blue : "transparent",
+                }}
+              >
+                {active ? (
+                  <Ionicons name="checkmark" size={14} color="white" />
+                ) : null}
+              </View>
             </Pressable>
           );
         })}
       </ScrollView>
+
+      {/*
+        Done, once anything is ticked. The sheet no longer closes itself, so
+        there has to be a way out that is not the backdrop -- and it says what
+        it is about to leave behind.
+      */}
+      {chosen > 0 ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+            padding: 16,
+            paddingBottom: 4,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+          }}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Clear tag filter"
+            onPress={onClear}
+            style={({ pressed }) => ({
+              paddingHorizontal: 16,
+              paddingVertical: 13,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: pressed ? colors.pale : "white",
+            })}
+          >
+            <Text style={{ fontSize: 14, fontWeight: "700", color: colors.ink }}>
+              Clear
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={onClose}
+            style={({ pressed }) => ({
+              flex: 1,
+              alignItems: "center",
+              paddingVertical: 13,
+              borderRadius: 12,
+              backgroundColor: pressed ? "#0A6FA8" : colors.blue,
+            })}
+          >
+            <Text style={{ fontSize: 15, fontWeight: "800", color: "white" }}>
+              Show {chosen === 1 ? "1 tag" : `${chosen} tags`}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </Sheet>
   );
 }
@@ -804,11 +892,15 @@ function FilterButton({
   icon,
   label,
   active,
+  badge = 0,
   onPress,
 }: {
   icon: React.ComponentProps<typeof Ionicons>["name"];
   label: string;
   active: boolean;
+  /* How many tags are picked. Nothing is drawn for one: the button is
+     already filled, and "1" beside a funnel is a number nobody needs. */
+  badge?: number;
   onPress: () => void;
 }) {
   return (
@@ -828,6 +920,29 @@ function FilterButton({
       })}
     >
       <Ionicons name={icon} size={20} color={active ? "white" : colors.ink} />
+
+      {badge > 1 ? (
+        <View
+          style={{
+            position: "absolute",
+            top: -5,
+            right: -5,
+            minWidth: 18,
+            height: 18,
+            paddingHorizontal: 4,
+            borderRadius: 9,
+            alignItems: "center",
+            justifyContent: "center",
+            borderWidth: 1.5,
+            borderColor: "white",
+            backgroundColor: colors.ink,
+          }}
+        >
+          <Text style={{ color: "white", fontSize: 10, fontWeight: "800" }}>
+            {badge}
+          </Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -1075,7 +1190,15 @@ export default function Inbox() {
   const [channelOpen, setChannelOpen] = useState(false);
   const [channelId, setChannelId] = useState<string | null>(null);
   const [tagOpen, setTagOpen] = useState(false);
-  const [tagId, setTagId] = useState<string | null>(null);
+  const [tagIds, setTagIds] = useState<string[]>([]);
+
+  const toggleTagFilter = useCallback((id: string) => {
+    setTagIds((current) =>
+      current.includes(id)
+        ? current.filter((one) => one !== id)
+        : [...current, id],
+    );
+  }, []);
 
   /*
    * The sheet closes on the tap, before anything is filtered.
@@ -1276,7 +1399,23 @@ export default function Inbox() {
 
   const selectedChannel =
     channels.find((item) => item.id === channelId) ?? null;
-  const selectedTag = tags.find((item) => item.id === tagId) ?? null;
+  const selectedTags = useMemo(
+    () => tags.filter((item) => tagIds.includes(item.id)),
+    [tags, tagIds],
+  );
+
+  /*
+   * A conversation passes the tag filter when its customer carries any one of
+   * the picked tags -- the same rule the website uses. "All of them" sounds
+   * stricter and more useful and is neither: two tags that rarely co-occur
+   * give an empty list and no clue why.
+   */
+  const matchesTags = useCallback(
+    (conversation: InboxConversation) =>
+      tagIds.length === 0 ||
+      (conversation.contact?.tags ?? []).some((tag) => tagIds.includes(tag.id)),
+    [tagIds],
+  );
 
   /*
    * Names to label tags with, and only when there is something to tell apart:
@@ -1291,7 +1430,7 @@ export default function Inbox() {
         .map((one) => [one.businessId, one.businessName]),
     );
   }, [scope, workspaces]);
-  const hasAnyFilter = filtering || Boolean(selectedTag);
+  const hasAnyFilter = filtering || selectedTags.length > 0;
 
   const ordered = useMemo(
     () =>
@@ -1300,8 +1439,7 @@ export default function Inbox() {
           (conversation) =>
             (!channelId ||
               conversation.social_account?.id === channelId) &&
-            (!tagId ||
-              (conversation.contact?.tags ?? []).some((tag) => tag.id === tagId)) &&
+            matchesTags(conversation) &&
             matchesSmartView(conversation, smartView, memberIdFor(conversation.business_id)) &&
             matchesStatus(conversation, status) &&
             (matchesSearch(conversation, deferredSearch.trim().toLowerCase()) ||
@@ -1326,7 +1464,7 @@ export default function Inbox() {
       deferredSearch,
       smartView,
       status,
-      tagId,
+      matchesTags,
     ],
   );
 
@@ -1344,8 +1482,7 @@ export default function Inbox() {
     const inChannel = conversations.filter(
       (conversation) =>
         (!channelId || conversation.social_account?.id === channelId) &&
-        (!tagId ||
-          (conversation.contact?.tags ?? []).some((tag) => tag.id === tagId)),
+        matchesTags(conversation),
     );
 
     return {
@@ -1372,7 +1509,7 @@ export default function Inbox() {
         {} as Record<StatusKey, number>,
       ),
     };
-  }, [channelId, conversations, memberIdFor, smartView, status, tagId]);
+  }, [channelId, conversations, memberIdFor, smartView, status, matchesTags]);
 
   const tagCounts = useMemo(() => {
     const eligible = conversations.filter(
@@ -1613,13 +1750,14 @@ export default function Inbox() {
               </View>
 
               <FilterButton
-                icon={selectedTag ? "funnel" : "funnel-outline"}
+                icon={selectedTags.length > 0 ? "funnel" : "funnel-outline"}
                 label={
-                  selectedTag
-                    ? `Filtered by tag ${selectedTag.name}. Change tag.`
+                  selectedTags.length > 0
+                    ? `Filtered by ${selectedTags.map((tag) => tag.name).join(", ")}. Change tags.`
                     : "Filter by tags"
                 }
-                active={Boolean(selectedTag)}
+                active={selectedTags.length > 0}
+                badge={selectedTags.length}
                 onPress={() => openFilter(() => setTagOpen(true))}
               />
 
@@ -1678,12 +1816,18 @@ export default function Inbox() {
                   />
                 ) : null}
 
-                {selectedTag ? (
+                {/*
+                  One pill per tag, each clearable on its own. A single pill
+                  reading "3 tags" makes taking one of them back off an
+                  all-or-nothing job.
+                */}
+                {selectedTags.map((tag) => (
                   <FilterPill
-                    label={selectedTag.name}
-                    onClear={() => setTagId(null)}
+                    key={tag.id}
+                    label={tag.name}
+                    onClear={() => toggleTagFilter(tag.id)}
                   />
-                ) : null}
+                ))}
 
                 <Text style={[styles.muted, { fontSize: 12.5 }]}>
                   {ordered.length}{" "}
@@ -1709,9 +1853,10 @@ export default function Inbox() {
         open={tagOpen}
         tags={tags}
         workspaceNames={tagWorkspaceNames}
-        selectedId={tagId}
+        selectedIds={tagIds}
         counts={tagCounts}
-        onSelect={setTagId}
+        onToggle={toggleTagFilter}
+        onClear={() => setTagIds([])}
         onClose={() => setTagOpen(false)}
       />
 
@@ -1783,8 +1928,10 @@ export default function Inbox() {
                           status !== "all"
                             ? activeStatus?.label.toLowerCase()
                             : null,
-                          selectedTag
-                            ? `tagged ${selectedTag.name}`
+                          selectedTags.length > 0
+                            ? `tagged ${selectedTags
+                                .map((tag) => tag.name)
+                                .join(" or ")}`
                             : null,
                         ]
                           .filter(Boolean)
