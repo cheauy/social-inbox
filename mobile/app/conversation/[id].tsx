@@ -1882,8 +1882,11 @@ export default function Conversation() {
    * was invisible in that warning: a colleague at a desk could not tell that
    * this thread was already being answered from somebody's hand.
    */
-  const { setViewing } = usePresence();
+  const { setViewing, setTyping } = usePresence();
   const viewers = useViewers(id ? String(id) : null);
+
+  /* Of those, the ones with something already in their box. */
+  const typists = viewers.filter((viewer) => viewer.is_typing);
 
   useEffect(() => {
     setViewing(id ? String(id) : null);
@@ -1933,6 +1936,18 @@ export default function Conversation() {
   const [error, setError] = useState("");
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<Pending[]>([]);
+
+  /* Set for exactly one send, by somebody who has been asked and said yes. */
+  const confirmedOverlapRef = useRef(false);
+
+  /*
+   * An unsent reply is what "typing" means here, the same as on the website:
+   * words in the box, not recent keypresses. Clearing it or sending stops it
+   * at once, which is what makes the other end trustworthy.
+   */
+  useEffect(() => {
+    setTyping(draft.trim().length > 0);
+  }, [draft, setTyping]);
   const [sending, setSending] = useState(false);
   const [voiceReady, setVoiceReady] = useState(0);
 
@@ -2565,7 +2580,45 @@ export default function Conversation() {
     };
   }
 
+  /*
+   * The last check before two answers reach one customer.
+   *
+   * Presence already says who else is in the thread, but a strip above the
+   * composer is read by somebody looking at the composer -- and by the time a
+   * reply is written the eye has been on the keyboard for a minute. So when a
+   * colleague has a half-written reply of their own, sending asks once.
+   *
+   * Only for a colleague who is actually writing. Somebody merely reading the
+   * thread is not a reason to interrupt: a confirmation that appears when
+   * nothing is wrong is one people learn to tap through.
+   */
   async function send() {
+    if (typists.length > 0 && !confirmedOverlapRef.current) {
+      const who =
+        typists.length === 1
+          ? typists[0].name
+          : `${typists.length} teammates`;
+
+      Alert.alert(
+        `${who} ${typists.length === 1 ? "is" : "are"} writing a reply`,
+        "Send yours as well, or wait and see what they say?",
+        [
+          { text: "Wait", style: "cancel" },
+          {
+            text: "Send anyway",
+            onPress: () => {
+              confirmedOverlapRef.current = true;
+              void send().finally(() => {
+                confirmedOverlapRef.current = false;
+              });
+            },
+          },
+        ],
+      );
+
+      return;
+    }
+
     const text = draft.trim();
 
     if ((!text && pending.length === 0) || !id || sending) {
@@ -3662,16 +3715,41 @@ export default function Conversation() {
             ) : null}
           </View>
 
+          {/*
+            Typing outranks viewing. Somebody reading the thread is worth
+            knowing; somebody with a half-written reply in the box is the
+            thing that makes two answers arrive at once, so it is what the
+            line says whenever it is true.
+          */}
           <Text
             numberOfLines={1}
-            style={{ flex: 1, fontSize: 12, color: colors.muted }}
+            style={{
+              flex: 1,
+              fontSize: 12,
+              color: typists.length > 0 ? "#C77700" : colors.muted,
+            }}
           >
-            <Text style={{ fontWeight: "800", color: colors.ink }}>
-              {viewers.length === 1
-                ? viewers[0].name
-                : `${viewers.length} people`}
+            <Text
+              style={{
+                fontWeight: "800",
+                color: typists.length > 0 ? "#C77700" : colors.ink,
+              }}
+            >
+              {typists.length === 1
+                ? typists[0].name
+                : typists.length > 1
+                  ? `${typists.length} people`
+                  : viewers.length === 1
+                    ? viewers[0].name
+                    : `${viewers.length} people`}
             </Text>{" "}
-            {viewers.length === 1 ? "is viewing this" : "are viewing this"}
+            {typists.length === 1
+              ? "is writing a reply…"
+              : typists.length > 1
+                ? "are writing replies…"
+                : viewers.length === 1
+                  ? "is viewing this"
+                  : "are viewing this"}
           </Text>
         </View>
       ) : null}

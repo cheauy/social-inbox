@@ -54,11 +54,22 @@ type PresenceState = {
   others: Viewer[];
   /* Called by a thread when it opens and again when it closes. */
   setViewing: (conversationId: string | null) => void;
+
+  /*
+   * Whether this device has an unsent reply in the open thread.
+   *
+   * The same rule the website publishes: a draft in the box means typing, an
+   * empty box does not, and sending or leaving stops it at once. It is not
+   * keypress-based -- only the change is published, so a fast typist does not
+   * flood the channel.
+   */
+  setTyping: (typing: boolean) => void;
 };
 
 const Context = createContext<PresenceState>({
   others: [],
   setViewing: () => {},
+  setTyping: () => {},
 });
 
 export const usePresence = () => useContext(Context);
@@ -75,6 +86,7 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const viewingRef = useRef<string | null>(null);
+  const typingRef = useRef(false);
   const revisionRef = useRef(0);
   const keyRef = useRef<string | null>(null);
 
@@ -98,7 +110,7 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
       email: account.email ?? member?.email ?? null,
       profile_picture_url: account.avatar ?? member?.profile_picture_url ?? null,
       conversation_id: viewingRef.current,
-      is_typing: false,
+      is_typing: typingRef.current,
       availability: "online",
       revision: revisionRef.current,
       online_at: new Date().toISOString(),
@@ -124,6 +136,19 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
       if (viewingRef.current === conversationId) return;
 
       viewingRef.current = conversationId;
+      /* A draft belongs to the thread it was typed in, so leaving one stops
+         typing on it rather than carrying the flag to the next. */
+      typingRef.current = false;
+      void publish();
+    },
+    [publish],
+  );
+
+  const setTyping = useCallback(
+    (typing: boolean) => {
+      if (typingRef.current === typing) return;
+
+      typingRef.current = typing;
       void publish();
     },
     [publish],
@@ -199,6 +224,7 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
       }
 
       viewingRef.current = null;
+      typingRef.current = false;
       void publish();
     });
 
@@ -214,7 +240,7 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
   }, [businessId, userId, publish]);
 
   return (
-    <Context.Provider value={{ others, setViewing }}>
+    <Context.Provider value={{ others, setViewing, setTyping }}>
       {children}
     </Context.Provider>
   );
