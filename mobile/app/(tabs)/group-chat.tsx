@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  Avatar,
   Empty,
   ErrorNotice,
   IconName,
@@ -385,6 +386,17 @@ export default function GroupChat() {
     at: { x: number; y: number };
   } | null>(null);
 
+  /*
+   * The faces to put on a room's row.
+   *
+   * The roster is the whole workspace, and a room carries the ids of its own
+   * members -- General carries everybody's. Missing people simply do not draw:
+   * a row is not worth failing over somebody who left this morning.
+   */
+  function faces(room: TeamRoom) {
+    return roster.filter((member) => room.member_ids.includes(member.id));
+  }
+
   const needle = query.trim().toLowerCase();
   const shown = needle
     ? rooms.filter((room) =>
@@ -715,12 +727,21 @@ export default function GroupChat() {
                     },
                   ]}
                 >
-                  <View style={styles.row}>
+                  <View style={{ flexDirection: "row", gap: 12 }}>
                     <TeamRoomIcon icon={room.icon} size={48} />
 
-                    <View style={{ flex: 1, gap: 3 }}>
-                      <View style={styles.row}>
-                        <Text style={styles.heading} numberOfLines={1}>
+                    <View style={{ flex: 1, gap: 4 }}>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        <Text
+                          style={[styles.heading, { flexShrink: 1 }]}
+                          numberOfLines={1}
+                        >
                           {room.name?.trim() || "General"}
                         </Text>
 
@@ -731,6 +752,29 @@ export default function GroupChat() {
                             color={colors.muted}
                           />
                         ) : null}
+
+                        {/*
+                          When, at the end of the title line rather than beside
+                          the message: it belongs to the room's last activity,
+                          which is what the whole row is sorted and read by.
+                        */}
+                        <Text
+                          style={{
+                            marginLeft: "auto",
+                            fontSize: 11.5,
+                            color: colors.muted,
+                          }}
+                        >
+                          {room.last_message
+                            ? relativeTime(room.last_message.created_at)
+                            : ""}
+                        </Text>
+
+                        <Ionicons
+                          name="chevron-forward"
+                          size={16}
+                          color={colors.muted}
+                        />
                       </View>
 
                       <Text style={styles.muted} numberOfLines={1}>
@@ -738,70 +782,130 @@ export default function GroupChat() {
                           "Internal team conversation"}
                       </Text>
 
-                      <Text style={{ color: colors.muted, fontSize: 11 }}>
-                        {room.member_count} member
-                        {room.member_count === 1 ? "" : "s"}
-                      </Text>
+                      {/*
+                        Who is in here, as faces rather than a number. A room
+                        is people, and three of them plus a count says more
+                        about whether this is the room you meant than "4
+                        members" ever did -- which is still there, in the
+                        corner, for when it is the number you want.
+                      */}
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                          marginTop: 2,
+                        }}
+                      >
+                        <View style={{ flexDirection: "row" }}>
+                          {faces(room)
+                            .slice(0, 3)
+                            .map((member, index) => (
+                              <View
+                                key={member.id}
+                                style={{
+                                  marginLeft: index === 0 ? 0 : -9,
+                                  borderRadius: 13,
+                                  borderWidth: 2,
+                                  borderColor: "white",
+                                }}
+                              >
+                                <Avatar
+                                  name={member.full_name}
+                                  uri={member.profile_picture_url}
+                                  size={22}
+                                />
+                              </View>
+                            ))}
+
+                          {room.member_count > 3 ? (
+                            <View
+                              style={{
+                                marginLeft: -9,
+                                width: 26,
+                                height: 26,
+                                borderRadius: 13,
+                                borderWidth: 2,
+                                borderColor: "white",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                backgroundColor: colors.background,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 9.5,
+                                  fontWeight: "800",
+                                  color: colors.muted,
+                                }}
+                              >
+                                +{room.member_count - 3}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+
+                        <Text
+                          style={{
+                            marginLeft: "auto",
+                            fontSize: 11.5,
+                            color: colors.muted,
+                          }}
+                        >
+                          {room.member_count} member
+                          {room.member_count === 1 ? "" : "s"}
+                        </Text>
+                      </View>
                     </View>
-
-                    {/*
-                      A mention is shown apart from the unread count because
-                      muting a busy room still lets a direct @you through --
-                      that is the rule the server applies, and collapsing the
-                      two would hide it.
-                    */}
-                    {room.mention_count > 0 ? (
-                      <Badge count={room.mention_count} mention />
-                    ) : null}
-
-                    <Badge count={room.badge_count} mention={false} />
-
-                    <Ionicons
-                      name="chevron-forward"
-                      size={18}
-                      color={colors.muted}
-                    />
                   </View>
 
                   {/*
-                    What was last said in here.
+                    What was last said in here, on its own line under a rule.
 
-                    The row showed the sentence somebody typed when they made
-                    the room -- the same words every time you look. A room
+                    The row used to show the sentence somebody typed when they
+                    made the room -- the same words every time you look. A room
                     list is read to find out what has happened since you were
-                    last in it, which is the newest message and who sent it.
+                    last in it, so the newest message gets the line, its sender
+                    gets the weight, and the unread count sits at the end of it
+                    where the thing it counts is.
                   */}
                   {room.last_message ? (
                     <View
                       style={{
                         flexDirection: "row",
                         alignItems: "center",
-                        gap: 7,
+                        gap: 8,
                         marginTop: 11,
                         paddingTop: 10,
                         borderTopWidth: 1,
                         borderTopColor: colors.border,
                       }}
                     >
-                      <Ionicons
-                        name="chatbubble-ellipses-outline"
-                        size={14}
-                        color={colors.muted}
-                      />
+                      <Text
+                        numberOfLines={1}
+                        style={{
+                          flexShrink: 0,
+                          maxWidth: 110,
+                          fontSize: 13,
+                          fontWeight: "800",
+                          color: colors.ink,
+                        }}
+                      >
+                        {room.last_message.sender_name}
+                      </Text>
 
                       <Text
                         numberOfLines={1}
-                        style={{ flex: 1, fontSize: 12.5, color: colors.muted }}
+                        style={{ flex: 1, fontSize: 13, color: colors.muted }}
                       >
-                        <Text style={{ fontWeight: "800", color: colors.ink }}>
-                          {room.last_message.sender_name}:
-                        </Text>{" "}
                         {room.last_message.text}
                       </Text>
 
-                      <Text style={{ fontSize: 11, color: colors.muted }}>
-                        {relativeTime(room.last_message.created_at)}
-                      </Text>
+                      {room.mention_count > 0 ? (
+                        <Badge count={room.mention_count} mention />
+                      ) : null}
+
+                      <Badge count={room.badge_count} mention={false} />
                     </View>
                   ) : null}
                 </Pressable>
