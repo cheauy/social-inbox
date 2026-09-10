@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { TENH_EXTENSION_STORE_URL } from "@/lib/extension/store-listing";
+
 export const metadata: Metadata = {
   title: "TENH v1",
   description:
@@ -7,20 +9,23 @@ export const metadata: Metadata = {
 };
 
 /*
- * The page the Integrations card links to.
+ * The page a customer is sent to, and nothing more than that.
  *
- * It exists because that link was pointing at nothing, and because an
- * extension somebody has to install needs its steps written down somewhere a
- * person can reach without a terminal. Everything here is also in
- * tenh-extension/README.md, which is where a developer will look.
+ * It used to carry the developer's route in -- Developer mode, Load unpacked,
+ * pick this folder -- which is the wrong thing to put in front of somebody who
+ * bought a product. Chrome warns about unpacked extensions, they vanish on
+ * restart in some setups, and nobody should be asked to turn on a developer
+ * switch to use a feature. So: the Web Store, or an honest wait for it.
+ *
+ * The unpacked route still exists for us, in tenh-extension/README.md.
  */
 
 const steps = [
   {
-    title: "Install it",
+    title: "Add it to Chrome",
     body: [
-      "From the Chrome Web Store: search for TENH v1 and choose Add to Chrome.",
-      "Not on the store yet? Open chrome://extensions, turn on Developer mode, choose Load unpacked, and select the tenh-extension folder.",
+      "Open the TENH v1 listing on the Chrome Web Store and choose Add to Chrome.",
+      "Confirm when Chrome asks. It installs in a few seconds.",
       "Pin TENH v1 to the toolbar so you can see it.",
     ],
   },
@@ -57,6 +62,39 @@ export default function TenhCompanionPage() {
         — messages still arrive through Meta&apos;s webhook and still send
         through the official API.
       </p>
+
+      {TENH_EXTENSION_STORE_URL ? (
+        <a
+          href={TENH_EXTENSION_STORE_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+        >
+          Add to Chrome
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.9"
+            className="h-4 w-4"
+            aria-hidden="true"
+          >
+            <path d="M14 4h6v6M20 4l-9 9" strokeLinecap="round" />
+            <path
+              d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"
+              strokeLinecap="round"
+            />
+          </svg>
+        </a>
+      ) : (
+        /* No pretend button. A dead link to a listing that does not exist is
+           worse than a sentence saying so. */
+        <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900">
+          <strong className="font-semibold">Not on the Chrome Web Store yet.</strong>{" "}
+          It is with Google for review. The install button appears here the day
+          it is approved — nothing else on this page changes.
+        </p>
+      )}
 
       <div className="mt-10 space-y-8">
         {steps.map((step, index) => (

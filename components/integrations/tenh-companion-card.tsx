@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { TENH_EXTENSION_STORE_URL } from "@/lib/extension/store-listing";
+
 /*
  * TENH v1, from the website's side.
  *
@@ -172,9 +174,9 @@ export function TenhCompanionCard() {
           <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
             An optional Chrome extension. It puts this customer&apos;s TENH
             tags, notes and quick replies beside Facebook, and opens the right
-            conversation. Install it while signed in here and it connects
-            itself — no code, and no connecting again tomorrow. Everything in
-            TENH works exactly the same without it.
+            conversation. Add it from the Chrome Web Store, open TENH signed in,
+            and it connects itself — no code, and no connecting again tomorrow.
+            Everything in TENH works exactly the same without it.
           </p>
         </div>
 
@@ -204,12 +206,29 @@ export function TenhCompanionCard() {
         </p>
       ) : null}
 
-      <div className="mt-5 flex flex-wrap gap-3">
+      <div className="mt-5 flex flex-wrap items-center gap-3">
+        {/* Straight to the store when there is one: an install is two clicks,
+            and a page of instructions in front of it only adds a third. */}
+        {TENH_EXTENSION_STORE_URL ? (
+          <a
+            href={TENH_EXTENSION_STORE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+          >
+            Add to Chrome
+          </a>
+        ) : (
+          <span className="rounded-xl bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-800">
+            Coming to the Chrome Web Store
+          </span>
+        )}
+
         <a
           href="/tenh-companion"
-          className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+          className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
         >
-          Installation steps
+          How it works
         </a>
       </div>
 

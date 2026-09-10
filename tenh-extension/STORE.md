@@ -170,6 +170,27 @@ First review usually takes a few days. Later versions go faster.
 
 ---
 
+## The day it is approved
+
+Set the listing URL so TENH starts pointing customers at it:
+
+1. Copy the listing URL — it looks like
+   `https://chromewebstore.google.com/detail/tenh-v1/<id>`.
+2. In Vercel → Settings → Environment Variables, add
+   `NEXT_PUBLIC_TENH_EXTENSION_STORE_URL` with that value, for Production.
+3. Redeploy. It is a `NEXT_PUBLIC_` variable, so it is baked in at build time
+   and a redeploy is what makes it take effect.
+
+Until that is set, **Settings → Integrations** says "Coming to the Chrome Web
+Store" and `/tenh-companion` says it is in review. Neither shows an install
+button that does not work, and neither tells a customer to load an unpacked
+folder — that route is for us, and it is in README.md.
+
+The URL is validated: anything that is not a `chromewebstore.google.com` link
+is ignored, and the pages fall back to the waiting state.
+
+---
+
 ## Releasing an update
 
 1. Raise `version` in `manifest.json` (the store refuses a repeat).
