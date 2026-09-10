@@ -1261,6 +1261,15 @@ export function CustomerPanel({
                 }}
               >
                 <ActionTile
+                  icon={statusIcon}
+                  label={statusLabel}
+                  tint={STATUS_TONE[status ?? "open"]}
+                  active={statusOpen}
+                  busy={Boolean(busy?.startsWith("status:"))}
+                  onPress={() => setStatusOpen((current) => !current)}
+                />
+
+                <ActionTile
                   icon={pinned ? "bookmark" : "bookmark-outline"}
                   label={pinned ? "Pinned" : "Pin"}
                   tint={pinned ? colors.pin : undefined}
@@ -1274,15 +1283,6 @@ export function CustomerPanel({
                   label="Unread"
                   busy={busy === "unread"}
                   onPress={onUnread}
-                />
-
-                <ActionTile
-                  icon={statusIcon}
-                  label={statusLabel}
-                  tint={STATUS_TONE[status ?? "open"]}
-                  active={statusOpen}
-                  busy={Boolean(busy?.startsWith("status:"))}
-                  onPress={() => setStatusOpen((current) => !current)}
                 />
 
                 <ActionTile
