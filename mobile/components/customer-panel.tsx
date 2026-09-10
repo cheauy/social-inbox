@@ -1429,29 +1429,6 @@ export function CustomerPanel({
                 />
               </Section>
 
-              {/*
-                The two things that are neither a fact about the customer nor
-                a thing you do to the thread: everything they have sent, and
-                the way out when they should not have sent any of it. The web
-                keeps them together under "Other" at the foot of the profile.
-              */}
-              <Section title="Other">
-                <OtherRow
-                  icon="folder-open-outline"
-                  label="Files, documents & links"
-                  onPress={() => void openFiles()}
-                />
-
-                <Divider />
-
-                <OtherRow
-                  icon="alert-circle-outline"
-                  label="Report spam"
-                  tone={colors.red}
-                  onPress={reportSpam}
-                />
-              </Section>
-
               <Section title="Assigned to">
                 {/*
                   The assignee as a person rather than a value in a row: a
@@ -1598,6 +1575,29 @@ export function CustomerPanel({
                     </View>
                   </>
                 ) : null}
+              </Section>
+
+              {/*
+                The two things that are neither a fact about the customer nor
+                a thing you do to the thread: everything they have sent, and
+                the way out when they should not have sent any of it. The web
+                keeps them together under "Other" at the foot of the profile.
+              */}
+              <Section title="Other">
+                <OtherRow
+                  icon="folder-open-outline"
+                  label="Files, documents & links"
+                  onPress={() => void openFiles()}
+                />
+
+                <Divider />
+
+                <OtherRow
+                  icon="alert-circle-outline"
+                  label="Report spam"
+                  tone={colors.red}
+                  onPress={reportSpam}
+                />
               </Section>
             </>
           )}
