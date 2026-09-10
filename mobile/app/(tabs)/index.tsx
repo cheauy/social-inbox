@@ -147,15 +147,18 @@ const ConversationRow = memo(function ConversationRow({
               ? colors.pale
               : "white",
           /*
-            The status as a stripe down the left edge.
+            The status as a stripe down the right edge.
 
             Whether a conversation is open, waiting on somebody, resolved or
             spam was invisible until you opened it -- the row said who and
             when and nothing about where the thread had got to. A three-point
-            edge costs no room and colours the whole list at a glance.
+            edge costs no room and colours the whole list at a glance. On the
+            right, where the time and the unread count already are, rather
+            than the left, where the avatar has to breathe.
           */
-          borderLeftWidth: 3,
-          borderLeftColor: STATUS_TONE[conversation.status ?? "open"] ?? colors.border,
+          borderRightWidth: 3,
+          borderRightColor:
+            STATUS_TONE[conversation.status ?? "open"] ?? colors.border,
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
         },

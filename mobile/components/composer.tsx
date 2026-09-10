@@ -553,9 +553,11 @@ export function Composer({
             />
 
             {/*
-              A message with a bolt through it: the Ionicons set has nothing
-              for a saved reply, and both a plain bolt and a plain speech
-              bubble were guesses at it.
+              A bolt in a speech bubble, at the same weight as the paperclip
+              beside it. The message-with-a-bolt glyph was drawn heavier and
+              a couple of points larger than everything else on the row, so it
+              read as the loudest control in a composer where the send button
+              is meant to be.
             */}
             <Pressable
               accessibilityRole="button"
@@ -572,11 +574,7 @@ export function Composer({
                 opacity: sending ? 0.35 : 1,
               })}
             >
-              <MaterialCommunityIcons
-                name="message-flash-outline"
-                size={23}
-                color={colors.blue}
-              />
+              <Ionicons name="flash-outline" size={21} color={colors.blue} />
             </Pressable>
 
             {/*

@@ -67,6 +67,7 @@ import type {
   InboxConversation,
   InboxMessage,
   SavedReply,
+  SavedReplyAttachment,
 } from "../../lib/types";
 
 /*
@@ -1294,6 +1295,17 @@ function QuickReplySheet({
               <Text numberOfLines={2} style={[styles.muted, { fontSize: 13.5 }]}>
                 {reply.message_text}
               </Text>
+
+              {/*
+                The pictures, under the words.
+
+                A reply that carries a photo said "1" beside a paperclip,
+                which is a count of something nobody can see -- and a saved
+                reply's picture is usually the whole point of it: the size
+                chart, the price list, the map to the shop. They are already
+                signed for this request, so drawing them costs nothing extra.
+              */}
+              <ReplyThumbs attachments={reply.attachments} />
             </Pressable>
               ))}
             </View>
@@ -1301,6 +1313,49 @@ function QuickReplySheet({
         </ScrollView>
       )}
     </Sheet>
+  );
+}
+
+/* The pictures a saved reply carries, as a row of thumbnails. */
+function ReplyThumbs({ attachments }: { attachments: SavedReplyAttachment[] }) {
+  const pictures = attachments.filter(
+    (file) => file.kind === "image" && file.url,
+  );
+
+  if (pictures.length === 0) return null;
+
+  return (
+    <View style={{ flexDirection: "row", gap: 6, marginTop: 5 }}>
+      {pictures.slice(0, 4).map((picture) => (
+        <AuthImage
+          key={picture.path}
+          uri={picture.url as string}
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 10,
+            backgroundColor: colors.background,
+          }}
+        />
+      ))}
+
+      {pictures.length > 4 ? (
+        <View
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 10,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: colors.background,
+          }}
+        >
+          <Text style={{ fontSize: 12, fontWeight: "800", color: colors.muted }}>
+            +{pictures.length - 4}
+          </Text>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -2350,8 +2405,20 @@ export default function Conversation() {
         createdAt: file.createdAt,
       }));
 
-      const sent: CustomerFile[] = (data.conversationAttachments ?? []).map(
-        (attachment) => ({
+      /*
+       * Voice notes are left out.
+       *
+       * A customer who sends five voice messages a day fills this list with
+       * rows that all read the same and open a player -- and somebody opening
+       * "Files, documents & links" is looking for a receipt or an address,
+       * not for a recording they can already hear in the thread.
+       */
+      const sent: CustomerFile[] = (data.conversationAttachments ?? [])
+        .filter(
+          (attachment) =>
+            !["audio", "voice"].includes(attachment.messageType ?? ""),
+        )
+        .map((attachment) => ({
           id: `sent:${attachment.id}`,
           kind: "attachment",
           name:
@@ -2360,8 +2427,7 @@ export default function Conversation() {
           url: attachment.attachmentUrl,
           detail: "Sent in a conversation",
           createdAt: attachment.createdAt,
-        }),
-      );
+        }));
 
       return [...saved, ...sent].sort(
         (first, second) =>
