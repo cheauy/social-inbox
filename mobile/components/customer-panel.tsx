@@ -464,6 +464,311 @@ function FileLibrary({ files }: { files: CustomerFile[] }) {
   );
 }
 
+/*
+ * The wait, drawn as the thing being waited for.
+ *
+ * A spinner in the middle of an empty surface says something is happening and
+ * nothing about what, and then the answer lands somewhere else entirely and
+ * the whole thing jumps. These are the shapes each of these screens actually
+ * draws, so the layout is right before the content arrives.
+ */
+function Pulse({ children }: { children: React.ReactNode }) {
+  const [pulse] = useState(() => new Animated.Value(0.45));
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 0.9,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.45,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    animation.start();
+    return () => animation.stop();
+  }, [pulse]);
+
+  return (
+    <Animated.View
+      /* Not announced: "loading, loading, loading" as the bars pulse is worse
+         than the silence the spinner left behind. */
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={{ opacity: pulse }}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+/** A grey bar standing in for a line of text. */
+function Bar({
+  width,
+  height = 12,
+  radius = 6,
+}: {
+  width: number | string;
+  height?: number;
+  radius?: number;
+}) {
+  return (
+    <View
+      style={{
+        width: width as number,
+        height,
+        borderRadius: radius,
+        backgroundColor: colors.border,
+      }}
+    />
+  );
+}
+
+/** A card the panel draws: white, bordered, with rows inside it. */
+function SkeletonCard({
+  children,
+  padding = 16,
+}: {
+  children: React.ReactNode;
+  padding?: number;
+}) {
+  return (
+    <View
+      style={{
+        padding,
+        borderRadius: 18,
+        backgroundColor: "white",
+        borderWidth: 1,
+        borderColor: colors.border,
+      }}
+    >
+      {children}
+    </View>
+  );
+}
+
+function PanelSkeleton() {
+  return (
+    <Pulse>
+      <View style={{ gap: 16 }}>
+        {/* The identity card: avatar, name, page chip, two facts, the id. */}
+        <SkeletonCard>
+          <View style={{ flexDirection: "row", gap: 13 }}>
+            <View
+              style={{
+                width: 54,
+                height: 54,
+                borderRadius: 27,
+                backgroundColor: colors.border,
+              }}
+            />
+
+            <View style={{ flex: 1, gap: 8, paddingTop: 4 }}>
+              <Bar width="66%" height={16} radius={8} />
+              <Bar width={124} height={20} radius={999} />
+            </View>
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
+            {[0, 1].map((fact) => (
+              <View
+                key={fact}
+                style={{
+                  flex: 1,
+                  gap: 6,
+                  paddingHorizontal: 11,
+                  paddingVertical: 10,
+                  borderRadius: 12,
+                  backgroundColor: colors.background,
+                }}
+              >
+                <Bar width="70%" height={9} />
+                <Bar width="52%" height={12} />
+              </View>
+            ))}
+          </View>
+
+          <View style={{ marginTop: 14 }}>
+            <Bar width="58%" height={10} />
+          </View>
+        </SkeletonCard>
+
+        {/* The action strip. */}
+        <SkeletonCard padding={10}>
+          <View style={{ flexDirection: "row" }}>
+            {[0, 1, 2, 3, 4].map((tile) => (
+              <View key={tile} style={{ flex: 1, alignItems: "center", gap: 6 }}>
+                <View
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 7,
+                    backgroundColor: colors.border,
+                  }}
+                />
+
+                <Bar width={30} height={9} />
+              </View>
+            ))}
+          </View>
+        </SkeletonCard>
+
+        {/* Tags, then Information, then the assignee. */}
+        {[
+          { title: 44, rows: 1, chips: true },
+          { title: 78, rows: 2, chips: false },
+          { title: 68, rows: 1, chips: false },
+        ].map((group, index) => (
+          <View key={index} style={{ gap: 8 }}>
+            <View style={{ paddingLeft: 4 }}>
+              <Bar width={group.title} height={9} />
+            </View>
+
+            <SkeletonCard padding={14}>
+              {group.chips ? (
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <Bar width={72} height={26} radius={999} />
+                  <Bar width={58} height={26} radius={999} />
+                  <Bar width={64} height={26} radius={999} />
+                </View>
+              ) : (
+                Array.from({ length: group.rows }, (_, row) => (
+                  <View
+                    key={row}
+                    style={{
+                      gap: 7,
+                      paddingVertical: 10,
+                      borderTopWidth: row === 0 ? 0 : 1,
+                      borderTopColor: colors.border,
+                    }}
+                  >
+                    <Bar width={row % 2 === 0 ? 62 : 48} height={10} />
+                    <Bar width={row % 2 === 0 ? "72%" : "54%"} height={13} />
+                  </View>
+                ))
+              )}
+            </SkeletonCard>
+          </View>
+        ))}
+      </View>
+    </Pulse>
+  );
+}
+
+function LibrarySkeleton() {
+  return (
+    <Pulse>
+      {/* The three tabs, then a month of thumbnails. */}
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 6,
+          paddingHorizontal: 18,
+          paddingBottom: 12,
+        }}
+      >
+        {[0, 1, 2].map((tab) => (
+          <View
+            key={tab}
+            style={{
+              flex: 1,
+              alignItems: "center",
+              gap: 5,
+              paddingVertical: 11,
+              borderRadius: 12,
+              backgroundColor: colors.background,
+            }}
+          >
+            <View
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: 6,
+                backgroundColor: colors.border,
+              }}
+            />
+
+            <Bar width={46} height={9} />
+          </View>
+        ))}
+      </View>
+
+      <View style={{ paddingHorizontal: 18, paddingBottom: 8 }}>
+        <Bar width={84} height={13} />
+      </View>
+
+      <View
+        style={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          gap: 3,
+          paddingHorizontal: 15,
+          paddingBottom: 16,
+        }}
+      >
+        {Array.from({ length: 6 }, (_, tile) => (
+          <View
+            key={tile}
+            style={{
+              width: "32.4%",
+              aspectRatio: 1,
+              borderRadius: 8,
+              backgroundColor: colors.border,
+            }}
+          />
+        ))}
+      </View>
+    </Pulse>
+  );
+}
+
+function HistorySkeleton() {
+  return (
+    <Pulse>
+      <View style={{ padding: 18, paddingTop: 6 }}>
+        {Array.from({ length: 5 }, (_, row) => (
+          <View key={row} style={{ flexDirection: "row", gap: 12 }}>
+            {/* The rail the real timeline hangs off. */}
+            <View style={{ alignItems: "center", width: 16 }}>
+              <View
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 5,
+                  marginTop: 14,
+                  backgroundColor: colors.border,
+                }}
+              />
+
+              {row < 4 ? (
+                <View
+                  style={{
+                    flex: 1,
+                    width: 1.5,
+                    marginTop: 2,
+                    backgroundColor: colors.border,
+                  }}
+                />
+              ) : null}
+            </View>
+
+            <View style={{ flex: 1, gap: 6, paddingVertical: 11 }}>
+              <Bar width={row % 2 === 0 ? "58%" : "44%"} height={13} />
+              <Bar width={row % 3 === 0 ? "76%" : "36%"} height={10} />
+            </View>
+          </View>
+        ))}
+      </View>
+    </Pulse>
+  );
+}
+
 function Dialog({
   open,
   title,
@@ -1384,9 +1689,7 @@ export function CustomerPanel({
           }}
         >
           {loading && !customer ? (
-            <View style={{ paddingVertical: 60 }}>
-              <ActivityIndicator color={colors.blue} />
-            </View>
+            <PanelSkeleton />
           ) : !customer ? (
             <Empty
               icon="person-outline"
@@ -2057,13 +2360,7 @@ export function CustomerPanel({
             detail={detail ? detail.customer.fullName : ""}
             onClose={() => setFilesOpen(false)}
           >
-            {filesLoading ? (
-              <View style={{ paddingVertical: 44 }}>
-                <ActivityIndicator color={colors.blue} />
-              </View>
-            ) : (
-              <FileLibrary files={files ?? []} />
-            )}
+            {filesLoading ? <LibrarySkeleton /> : <FileLibrary files={files ?? []} />}
           </Dialog>
 
           <Dialog
@@ -2073,9 +2370,7 @@ export function CustomerPanel({
             onClose={() => setHistoryOpen(false)}
           >
             {historyLoading ? (
-              <View style={{ paddingVertical: 44 }}>
-                <ActivityIndicator color={colors.blue} />
-              </View>
+              <HistorySkeleton />
             ) : !history || history.length === 0 ? (
               <View style={{ alignItems: "center", padding: 34, gap: 8 }}>
                 <Ionicons name="time-outline" size={26} color={colors.muted} />
