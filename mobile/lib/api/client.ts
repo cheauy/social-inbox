@@ -4,6 +4,29 @@ import { authCookieName, supabase } from "../supabase/client";
 import { sessionCookie } from "./session-cookie";
 
 export class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
+
+/*
+ * A sentence, whatever shape the server put the failure in.
+ *
+ * Most routes answer { error: "..." }, some answer { error: { message } } and
+ * a few nest the platform's own reply. Handing any of those straight to
+ * Error() produced "[object Object]" on screen -- a failure that tells
+ * somebody nothing at all, and tells whoever they report it to even less.
+ */
+export function describeError(value: unknown, fallback: string): string {
+  if (typeof value === "string" && value.trim()) return value.trim();
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+
+    for (const key of ["message", "error", "details", "description"]) {
+      const nested = describeError(record[key], "");
+      if (nested) return nested;
+    }
+  }
+
+  return fallback;
+}
 export async function api<T>(path: string, workspaceId?: string | null, init: { method?: string; body?: unknown; signal?: AbortSignal } = {}, retried = false): Promise<T> {
   const base = new URL(process.env.EXPO_PUBLIC_TENH_API_URL || "https://app.tenhchat.com");
   if (base.protocol !== "https:" && !(__DEV__ && ["localhost", "127.0.0.1", "10.0.2.2"].includes(base.hostname))) throw new Error("TENH API must use HTTPS.");
@@ -52,7 +75,7 @@ export async function api<T>(path: string, workspaceId?: string | null, init: { 
 
     let result;
     try { result = await response.json(); } catch { throw new ApiError("TENH returned an unexpected response. Check the API address and deployment.", response.status); }
-    if (!response.ok || result.success === false) throw new ApiError(result.error || "Request failed. Please try again.", response.status);
+    if (!response.ok || result.success === false) throw new ApiError(describeError(result.error ?? result, "Request failed. Please try again."), response.status);
     return result as T;
   } finally { clearTimeout(timeout); init.signal?.removeEventListener("abort", abort); }
 }
@@ -84,7 +107,7 @@ export async function upload<T>(path: string, workspaceId: string | null | undef
   });
   let body;
   try { body = JSON.parse(result.body); } catch { throw new ApiError("TENH returned an unexpected response.", result.status); }
-  if (result.status >= 400 || body.success === false) throw new ApiError(body.error || "Upload failed. Please try again.", result.status);
+  if (result.status >= 400 || body.success === false) throw new ApiError(describeError(body.error ?? body, "Upload failed. Please try again."), result.status);
   return body as T;
 }
 

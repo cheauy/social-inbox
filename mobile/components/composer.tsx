@@ -152,6 +152,7 @@ export function Composer({
   onQuickReplies,
   onVoice,
   onSend,
+  onClearAll,
   attachmentsDisabled = false,
 }: {
   draft: string;
@@ -167,6 +168,7 @@ export function Composer({
   onQuickReplies: () => void;
   onVoice: (uri: string, millis: number) => void;
   onSend: () => void;
+  onClearAll: () => void;
   attachmentsDisabled?: boolean;
 }) {
   const [attachOpen, setAttachOpen] = useState(false);
@@ -333,6 +335,57 @@ export function Composer({
         the width of three of them to say it. Files keep their name, because
         for a file the name is the whole of what it is.
       */}
+      {/*
+        Take it all back.
+        A quick reply drops words and up to ten pictures into the composer in
+        one tap, and undoing that was ten taps -- one per attachment -- with
+        the text still to select and delete. One button, and only while there
+        is something to clear.
+      */}
+      {pending.length > 0 || draft.trim().length > 0 ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 12,
+            paddingTop: 8,
+            backgroundColor: "white",
+          }}
+        >
+          <Text style={{ flex: 1, fontSize: 12, color: colors.muted }}>
+            {pending.length > 0
+              ? `${pending.length} ${pending.length === 1 ? "attachment" : "attachments"} ready`
+              : "Draft"}
+          </Text>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Clear the reply and its attachments"
+            disabled={sending}
+            onPress={onClearAll}
+            hitSlop={8}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 5,
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+              borderRadius: 999,
+              opacity: sending ? 0.4 : 1,
+              backgroundColor: pressed ? colors.pale : "transparent",
+            })}
+          >
+            <Ionicons name="close-circle-outline" size={14} color={colors.red} />
+
+            <Text
+              style={{ fontSize: 12, fontWeight: "800", color: colors.red }}
+            >
+              Clear all
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       {pending.length > 0 ? (
         <ScrollView
           keyboardDismissMode="on-drag"
@@ -341,7 +394,9 @@ export function Composer({
           contentContainerStyle={{ gap: 8, paddingHorizontal: 12, paddingTop: 10 }}
           style={{ maxHeight: 76, backgroundColor: "white" }}
         >
-          {pending.map((file) => {
+          {pending
+            .filter((file) => file.kind !== "audio")
+            .map((file) => {
             const visual = file.kind === "image" || file.kind === "video";
 
             return (
@@ -616,7 +671,16 @@ export function Composer({
                 placeholder="Write a reply…"
                 placeholderTextColor={colors.muted}
                 multiline
-                editable={!sending}
+                /*
+                 * Still writable while the last one is going.
+                 *
+                 * A send takes a round trip and an upload can take several
+                 * seconds; locking the box for that long stops somebody
+                 * writing the next sentence while the customer is still
+                 * reading the first. The send button is what guards against
+                 * a double send, not the keyboard.
+                 */
+                editable
               />
 
               {/*

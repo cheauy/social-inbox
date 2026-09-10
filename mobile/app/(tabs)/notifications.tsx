@@ -1019,10 +1019,10 @@ export default function Notifications() {
       });
     } else if (room) {
       router.push({ pathname: "/room/[id]", params: { id: room[1] } });
+    } else if (link.includes("subscription")) {
+      router.push("/settings/subscription");
     } else if (/^https?:\/\//i.test(link)) {
       void Linking.openURL(link);
-    } else if (link.includes("subscription")) {
-      router.push("/settings/profile");
     }
   }
 
@@ -1061,7 +1061,7 @@ export default function Notifications() {
                   ? "Your plan has ended"
                   : `Plan renews in ${endsIn} day${endsIn === 1 ? "" : "s"}`
                 : `Subscription ${subscription.status}`,
-          body: "Renewing and changing a plan are on the web. TENH bills in advance, so access continues until the date on your plan.",
+          body: "Open Subscription to renew or change the plan in this app. TENH bills in advance, so access continues until the date on your plan.",
         }
       : null;
 
@@ -1330,6 +1330,24 @@ export default function Notifications() {
                 <Text style={[styles.muted, { fontSize: 13, lineHeight: 19 }]}>
                   {planWarning.body}
                 </Text>
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Open Subscription"
+                  onPress={() => router.push("/settings/subscription")}
+                  style={({ pressed }) => ({
+                    alignSelf: "flex-start",
+                    marginTop: 3,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 10,
+                    backgroundColor: pressed ? "#0873AD" : colors.blue,
+                  })}
+                >
+                  <Text style={{ color: "white", fontSize: 12.5, fontWeight: "800" }}>
+                    Open Subscription
+                  </Text>
+                </Pressable>
               </View>
             </Section>
           ) : null}

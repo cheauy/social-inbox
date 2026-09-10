@@ -3931,6 +3931,12 @@ export default function Conversation() {
         onQuickReplies={() => void openReplies()}
         onVoice={stageVoice}
         onSend={() => void send()}
+        onClearAll={() => {
+          setDraft("");
+          setPending([]);
+          setQuoted(null);
+          setError("");
+        }}
         attachmentsDisabled={Boolean(replyingToComment)}
       />
 

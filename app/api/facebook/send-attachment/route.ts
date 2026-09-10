@@ -5,6 +5,12 @@ import {
 } from "next/server";
 
 import {
+  TELEGRAM_MESSAGE_MEDIA_BUCKET,
+  telegramMessageMediaStoragePath,
+  telegramMessageMediaUrl,
+} from "@/lib/telegram/telegram-message-media";
+
+import {
   getInboxConversationAccess,
 } from "@/lib/inbox/get-inbox-resource-access";
 import {
@@ -1069,6 +1075,13 @@ export async function POST(
           kind,
         message_text:
           messageText,
+        /*
+         * Filled in below, once the bytes are safely in storage. A row
+         * written with null here is a bubble that says "Sent a photo" and
+         * shows nothing, which is what every attachment sent from TENH looked
+         * like unless Meta happened to echo it back with a CDN link -- and on
+         * a Page where another app holds the webhook, that echo never comes.
+         */
         attachment_url:
           null,
         is_echo:
@@ -1128,6 +1141,71 @@ export async function POST(
 
     savedMessage =
       insertedMessage;
+
+    /*
+     * Keep the bytes we just sent.
+     *
+     * Meta gives back an attachment id, not a URL, and its echo of our own
+     * message -- which does carry a CDN link -- only arrives on a Page whose
+     * webhook TENH actually holds. Where another app holds it, every photo,
+     * video, voice note and file this workspace sent was a bubble that said
+     * "Sent a photo" and showed nothing, for ever.
+     *
+     * So the file goes into the same private bucket the Telegram media uses,
+     * under the same scheme, and the row points at the route that serves it.
+     * Best effort: a storage hiccup must not fail a message Meta has already
+     * delivered, it just leaves the bubble as it was before this existed.
+     */
+    if (insertedMessage?.id) {
+      try {
+        const storagePath = telegramMessageMediaStoragePath({
+          businessId: currentMember.business_id,
+          messageId: insertedMessage.id as string,
+          mediaKind:
+            kind === "image"
+              ? "photo"
+              : kind === "video"
+                ? "video"
+                : kind === "audio"
+                  ? "audio"
+                  : "file",
+        });
+
+        const { error: storeError } = await supabaseAdmin.storage
+          .from(TELEGRAM_MESSAGE_MEDIA_BUCKET)
+          .upload(
+            storagePath,
+            new Uint8Array(await file.arrayBuffer()),
+            {
+              contentType: file.type || "application/octet-stream",
+              upsert: true,
+            },
+          );
+
+        if (!storeError) {
+          const { data: withMedia } = await supabaseAdmin
+            .from("messages")
+            .update({
+              attachment_url: telegramMessageMediaUrl(
+                insertedMessage.id as string,
+              ),
+            })
+            .eq("id", insertedMessage.id as string)
+            .eq("business_id", currentMember.business_id)
+            .select("*")
+            .single();
+
+          if (withMedia) {
+            savedMessage = withMedia;
+          }
+        }
+      } catch (storeError) {
+        console.error(
+          "[TENH attachments] Unable to keep a copy of an outgoing file:",
+          storeError instanceof Error ? storeError.message : storeError,
+        );
+      }
+    }
   }
 
   const {

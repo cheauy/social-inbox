@@ -22,13 +22,14 @@ import { api } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
 import { supabase } from "../../lib/supabase/client";
 
-type PlanCode = "mini" | "standard" | "pro";
+type FixedPlanCode = "mini" | "standard" | "pro";
+type PlanCode = FixedPlanCode | "custom";
 type BillingCycle = "monthly" | "3-months" | "6-months" | "12-months";
 type PaymentMethod = "payway" | "manual";
 type PaymentState = "idle" | "waiting" | "approved" | "pending" | "declined" | "cancelled" | "failed";
 
 type Plan = {
-  id: PlanCode;
+  id: FixedPlanCode;
   name: string;
   description: string;
   channels: number;
@@ -55,6 +56,14 @@ type ManualConfig = {
 type Catalog = {
   plans: Plan[];
   cycles: Cycle[];
+  custom: {
+    extraConnectionCents: number;
+    extraUserCents: number;
+    minConnections: number;
+    maxConnections: number;
+    minUsers: number;
+    maxUsers: number;
+  };
   manualPayment: ManualConfig;
 };
 
@@ -110,7 +119,7 @@ type Checkout = {
   businessId: string;
 };
 
-const RANK: Record<string, number> = { mini: 1, standard: 2, pro: 3 };
+const RANK: Record<string, number> = { mini: 1, standard: 2, pro: 3, custom: 4 };
 
 function money(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
@@ -118,6 +127,17 @@ function money(cents: number) {
 
 function total(plan: Plan, cycle: Cycle) {
   return Math.round(plan.monthlyCents * cycle.months * (1 - cycle.discount));
+}
+
+function customMonthly(connections: number, users: number, catalog: Catalog) {
+  return Math.min(
+    ...catalog.plans.map(
+      (plan) =>
+        plan.monthlyCents +
+        Math.max(0, connections - plan.channels) * catalog.custom.extraConnectionCents +
+        Math.max(0, users - plan.users) * catalog.custom.extraUserCents,
+    ),
+  );
 }
 
 function formatDate(value: string | null) {
@@ -190,6 +210,45 @@ function Choice({
   );
 }
 
+function CapacityChoice({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <View style={[styles.row, { paddingVertical: 6 }]}>
+      <Text style={{ flex: 1, color: colors.ink, fontWeight: "700" }}>{label}</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Remove one ${label.toLowerCase()}`}
+        disabled={value <= min}
+        onPress={() => onChange(Math.max(min, value - 1))}
+        style={{ width: 36, height: 36, borderRadius: 11, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", opacity: value <= min ? 0.4 : 1 }}
+      >
+        <Ionicons name="remove" size={18} color={colors.blue} />
+      </Pressable>
+      <Text style={{ width: 38, textAlign: "center", color: colors.ink, fontSize: 16, fontWeight: "900" }}>{value}</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Add one ${label.toLowerCase()}`}
+        disabled={value >= max}
+        onPress={() => onChange(Math.min(max, value + 1))}
+        style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: colors.pale, alignItems: "center", justifyContent: "center", opacity: value >= max ? 0.4 : 1 }}
+      >
+        <Ionicons name="add" size={18} color={colors.blue} />
+      </Pressable>
+    </View>
+  );
+}
+
 export default function SubscriptionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -208,7 +267,10 @@ export default function SubscriptionScreen() {
   const [manualRequest, setManualRequest] = useState<ManualRequest | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<PlanCode>("mini");
   const [selectedCycle, setSelectedCycle] = useState<BillingCycle>("monthly");
+  const [customConnections, setCustomConnections] = useState(3);
+  const [customUsers, setCustomUsers] = useState(1);
   const [method, setMethod] = useState<PaymentMethod>("payway");
+  const [buyNew, setBuyNew] = useState(false);
   const [proof, setProof] = useState<Proof | null>(null);
   const [note, setNote] = useState("");
   const [checkout, setCheckout] = useState<Checkout | null>(null);
@@ -219,6 +281,7 @@ export default function SubscriptionScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const approved = useRef(false);
+  const initializedSelection = useRef(false);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -242,6 +305,17 @@ export default function SubscriptionScreen() {
       setCurrent(subscription);
       setSecurity(planState);
       setManualRequest(manual.request ?? null);
+      if (!initializedSelection.current) {
+        const savedPlan = subscription.subscription?.plan_code;
+        const savedCycle = subscription.subscription?.billing_cycle;
+        if (savedPlan === "mini" || savedPlan === "standard" || savedPlan === "pro") {
+          setSelectedPlan(savedPlan);
+        }
+        if (savedCycle === "monthly" || savedCycle === "3-months" || savedCycle === "6-months" || savedCycle === "12-months") {
+          setSelectedCycle(savedCycle);
+        }
+        initializedSelection.current = true;
+      }
       setError("");
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load subscription.");
@@ -330,18 +404,33 @@ export default function SubscriptionScreen() {
 
   const plan = catalog?.plans.find((one) => one.id === selectedPlan) ?? null;
   const cycle = catalog?.cycles.find((one) => one.id === selectedCycle) ?? null;
-  const amount = plan && cycle ? total(plan, cycle) : 0;
+  const customMonthlyCents = catalog
+    ? customMonthly(customConnections, customUsers, catalog)
+    : 0;
+  const fullAmount = cycle
+    ? selectedPlan === "custom"
+      ? Math.round(customMonthlyCents * cycle.months * (1 - cycle.discount))
+      : plan
+        ? total(plan, cycle)
+        : 0
+    : 0;
   const subscription = current?.subscription ?? null;
   const currentRank = RANK[security?.currentPlan ?? ""] ?? 0;
   const selectedRank = RANK[selectedPlan] ?? 0;
   const fits = Boolean(
-    plan &&
-      (security?.usage.members ?? 0) <= plan.users &&
-      (security?.usage.channels ?? 0) <= plan.channels,
+    (selectedPlan === "custom"
+      ? (security?.usage.members ?? 0) <= customUsers &&
+        (security?.usage.channels ?? 0) <= customConnections
+      : plan &&
+        (security?.usage.members ?? 0) <= plan.users &&
+        (security?.usage.channels ?? 0) <= plan.channels),
   );
 
   const action = useMemo(() => {
-    if (!workspace || !security) return "buy-new" as const;
+    if (buyNew || !workspace || !security) return "buy-new" as const;
+    // The website uses a separate prorated Custom Upgrade quote. Keep this
+    // compact native builder on the safe new-workspace purchase path.
+    if (selectedPlan === "custom") return "buy-new" as const;
     if (security.mode === "suspended" || security.mode === "unmanaged") return "blocked" as const;
     if (security.mode === "subscribe") {
       return security.isOwner && fits ? ("subscribe" as const) : ("buy-new" as const);
@@ -349,7 +438,15 @@ export default function SubscriptionScreen() {
     if (selectedRank === currentRank) return "current" as const;
     if (selectedRank > currentRank && security.canManage && fits) return "upgrade" as const;
     return "buy-new" as const;
-  }, [workspace?.businessId, security, fits, selectedRank, currentRank]);
+  }, [buyNew, workspace?.businessId, security, selectedPlan, fits, selectedRank, currentRank]);
+
+  const currentPlanDefinition = catalog?.plans.find(
+    (one) => one.id === security?.currentPlan,
+  );
+  const amount =
+    action === "upgrade" && currentPlanDefinition && cycle
+      ? Math.max(0, fullAmount - total(currentPlanDefinition, cycle))
+      : fullAmount;
 
   async function ensureTarget() {
     if (action !== "buy-new" && workspace) return workspace.businessId;
@@ -357,14 +454,23 @@ export default function SubscriptionScreen() {
     const created = await api<{ businessId: string }>(
       "/api/workspaces/create-subscription",
       workspace?.businessId,
-      { method: "POST", body: { planCode: selectedPlan, billingCycle: selectedCycle } },
+      {
+        method: "POST",
+        body: {
+          planCode: selectedPlan,
+          billingCycle: selectedCycle,
+          ...(selectedPlan === "custom"
+            ? { connections: customConnections, users: customUsers }
+            : {}),
+        },
+      },
     );
     setPurchaseBusinessId(created.businessId);
     return created.businessId;
   }
 
   async function startPayWay() {
-    if (!plan || !cycle || busy || action === "current" || action === "blocked") return;
+    if ((!plan && selectedPlan !== "custom") || !cycle || busy || action === "current" || action === "blocked") return;
     setBusy(true);
     setError("");
     approved.current = false;
@@ -381,6 +487,7 @@ export default function SubscriptionScreen() {
           billingCycle: selectedCycle,
           paymentMethod: "abapay_khqr",
           purchaseBusinessId: target,
+          ...(selectedPlan === "custom" ? { connections: customConnections, users: customUsers } : {}),
         },
       });
       setPurchaseBusinessId(target);
@@ -407,16 +514,23 @@ export default function SubscriptionScreen() {
     });
     if (result.canceled) return;
     const asset = result.assets[0];
+    const size = asset.size ?? new FileSystemFile(asset.uri).size;
+    if (size > 10 * 1024 * 1024) {
+      setProof(null);
+      setError("Payment proof must be 10 MB or smaller.");
+      return;
+    }
+    setError("");
     setProof({
       uri: asset.uri,
       name: asset.name || "payment-proof",
       mimeType: asset.mimeType || "application/octet-stream",
-      size: asset.size ?? new FileSystemFile(asset.uri).size,
+      size,
     });
   }
 
   async function submitManual() {
-    if (!plan || !cycle || !proof || busy || action === "current" || action === "blocked") return;
+    if ((!plan && selectedPlan !== "custom") || !cycle || !proof || busy || action === "current" || action === "blocked") return;
     setBusy(true);
     setError("");
     try {
@@ -425,6 +539,7 @@ export default function SubscriptionScreen() {
         planCode: selectedPlan,
         billingCycle: selectedCycle,
         purchaseBusinessId: target,
+        ...(selectedPlan === "custom" ? { connections: customConnections, users: customUsers } : {}),
         fileName: proof.name,
         mimeType: proof.mimeType,
         sizeBytes: proof.size,
@@ -500,6 +615,15 @@ export default function SubscriptionScreen() {
   const ends = subscription?.status === "trialing"
     ? subscription.trial_ends_at ?? subscription.current_period_end
     : subscription?.current_period_end ?? null;
+  const pendingPurchase =
+    manualRequest?.status === "submitted" ||
+    (Boolean(transactionId) && ["waiting", "pending"].includes(paymentState));
+  const purchaseDisabled =
+    busy ||
+    pendingPurchase ||
+    action === "current" ||
+    action === "blocked" ||
+    (method === "manual" && !proof);
 
   return (
     <SettingsScreen
@@ -549,6 +673,29 @@ export default function SubscriptionScreen() {
         </View>
       </SettingsGroup>
 
+      {workspace ? (
+        <SettingsGroup title="Purchase for">
+          <View style={{ padding: 12, flexDirection: "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <Choice
+                selected={!buyNew}
+                title="This workspace"
+                detail={workspace.businessName}
+                onPress={() => setBuyNew(false)}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Choice
+                selected={buyNew}
+                title="New workspace"
+                detail="Keep this one unchanged"
+                onPress={() => setBuyNew(true)}
+              />
+            </View>
+          </View>
+        </SettingsGroup>
+      ) : null}
+
       <View style={{ gap: 10 }}>
         <Text style={{ paddingLeft: 4, fontSize: 11, fontWeight: "800", letterSpacing: 0.7, textTransform: "uppercase", color: colors.muted }}>
           Choose a plan
@@ -583,6 +730,50 @@ export default function SubscriptionScreen() {
             </Pressable>
           );
         })}
+
+        {catalog ? (
+          <Pressable
+            onPress={() => setSelectedPlan("custom")}
+            style={({ pressed }) => ({
+              padding: 15,
+              gap: 8,
+              borderRadius: 16,
+              borderWidth: selectedPlan === "custom" ? 2 : 1,
+              borderColor: selectedPlan === "custom" ? colors.blue : colors.border,
+              backgroundColor: selectedPlan === "custom" ? colors.pale : pressed ? "#F8FAFC" : "white",
+            })}
+          >
+            <View style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.heading, { fontSize: 17 }]}>Custom</Text>
+                <Text style={[styles.muted, { fontSize: 12.5, lineHeight: 18 }]}>Choose your own connection and team limits.</Text>
+              </View>
+              <Text style={{ color: colors.blue, fontSize: 17, fontWeight: "900" }}>
+                {money(cycle ? Math.round(customMonthlyCents * cycle.months * (1 - cycle.discount)) : customMonthlyCents)}
+              </Text>
+            </View>
+
+            {selectedPlan === "custom" ? (
+              <View style={{ marginTop: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
+                <CapacityChoice
+                  label="Connections"
+                  value={customConnections}
+                  min={catalog.custom.minConnections}
+                  max={catalog.custom.maxConnections}
+                  onChange={setCustomConnections}
+                />
+                <CapacityChoice
+                  label="Team members"
+                  value={customUsers}
+                  min={catalog.custom.minUsers}
+                  max={catalog.custom.maxUsers}
+                  onChange={setCustomUsers}
+                />
+                <Text style={[styles.muted, { fontSize: 11.5, marginTop: 3 }]}>A Custom purchase creates a separate workspace and keeps the current one unchanged.</Text>
+              </View>
+            ) : null}
+          </Pressable>
+        ) : null}
       </View>
 
       {security && !security.canManage && action !== "buy-new" ? (
@@ -643,18 +834,30 @@ export default function SubscriptionScreen() {
           ) : null}
 
           <Pressable
-            disabled={busy || action === "current" || action === "blocked" || (method === "manual" && !proof)}
+            disabled={purchaseDisabled}
             onPress={() => method === "payway" ? void startPayWay() : void submitManual()}
             style={({ pressed }) => ({
               minHeight: 48,
               borderRadius: 13,
               alignItems: "center",
               justifyContent: "center",
-              opacity: action === "current" || action === "blocked" || (method === "manual" && !proof) ? 0.45 : 1,
+              opacity: purchaseDisabled ? 0.45 : 1,
               backgroundColor: pressed ? "#0873AD" : colors.blue,
             })}
           >
-            {busy ? <ActivityIndicator color="white" /> : <Text style={{ color: "white", fontSize: 15, fontWeight: "800" }}>{method === "manual" ? `Submit ${money(amount)} proof` : buttonTitle}</Text>}
+            {busy ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Text style={{ color: "white", fontSize: 15, fontWeight: "800" }}>
+                {pendingPurchase
+                  ? manualRequest?.status === "submitted"
+                    ? "Waiting for payment review"
+                    : "Verifying ABA PayWay payment"
+                  : method === "manual"
+                    ? `Submit ${money(amount)} proof`
+                    : buttonTitle}
+              </Text>
+            )}
           </Pressable>
 
           {transactionId && ["waiting", "pending"].includes(paymentState) ? (

@@ -109,8 +109,15 @@ export async function GET(
     ].includes(
       message.message_type,
     ) ||
-    !message.platform_message_id
-      .startsWith("telegram:")
+    /*
+     * Telegram media is stored on the way in; a Messenger attachment we sent
+     * is stored on the way out, under the same scheme. Both are private
+     * objects served through here, so the test is whether a copy exists --
+     * which the signed-URL call below answers -- not which network it came
+     * from. Requiring a telegram: id meant every photo this workspace sent
+     * through Messenger drew as a bubble with no picture in it.
+     */
+    false
   ) {
     return new NextResponse(
       null,
