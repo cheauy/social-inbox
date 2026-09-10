@@ -1101,6 +1101,72 @@ function Bubble({
    */
   const pending = message.id.startsWith("optimistic:");
 
+  /*
+   * A message that is gone, however it went.
+   *
+   * Three things end a message and they were reported three ways: Telegram
+   * writes tenh_deleted into the payload, a deleted Facebook comment flips
+   * comment_is_deleted, and a Page unsending a Messenger message leaves the
+   * row with its text replaced. Only comments were drawn as deleted -- the
+   * other two kept the ordinary bubble, so "Message deleted by Page" arrived
+   * in the same blue as a real reply and read like something the Page had
+   * just said.
+   */
+  const deleted =
+    Boolean(raw?.tenh_deleted) ||
+    message.comment_is_deleted === true ||
+    /^message deleted( by .+)?$/i.test(body);
+
+  if (deleted) {
+    return (
+      <View
+        style={{
+          paddingHorizontal: 14,
+          paddingVertical: 4,
+          alignItems: outgoing ? "flex-end" : "flex-start",
+        }}
+      >
+        {/*
+          The same grey on both sides, and nothing to hold: a deleted message
+          is not somebody speaking, so it wears neither speaker's colour, and
+          there is nothing left to reply to, copy or save.
+        */}
+        <View
+          style={{
+            maxWidth: "82%",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 7,
+            paddingHorizontal: 12,
+            paddingVertical: 9,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderStyle: "dashed",
+            borderColor: colors.border,
+            backgroundColor: "rgba(246,248,252,0.92)",
+          }}
+        >
+          <Ionicons name="trash-outline" size={14} color={colors.muted} />
+
+          <Text
+            style={{
+              flexShrink: 1,
+              fontSize: 13,
+              fontStyle: "italic",
+              color: colors.muted,
+            }}
+          >
+            {/^message deleted/i.test(body) ? body : "Message deleted"}
+          </Text>
+
+          <Text style={{ fontSize: 11, color: colors.muted }}>
+            {time(message.platform_created_at ?? message.created_at)}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View
       style={{

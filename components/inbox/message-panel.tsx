@@ -3326,6 +3326,29 @@ export function MessagePanel({
                     ?.tenh_deleted,
                 );
 
+              /*
+               * A message that is gone, however it went.
+               *
+               * Three things end a message and they were reported three ways:
+               * Telegram writes tenh_deleted into the payload, a deleted
+               * Facebook comment flips comment_is_deleted, and a Page
+               * unsending a Messenger message leaves the row with its text
+               * replaced. Only the first was drawn as deleted -- the other two
+               * kept the ordinary bubble, so "Message deleted by Page" arrived
+               * in the same blue as a real reply and read like something the
+               * Page had just said.
+               */
+              const isDeletedMessage =
+                telegramDeleted ||
+                message.comment_is_deleted ===
+                  true ||
+                /^message deleted( by .+)?$/i.test(
+                  (
+                    message.message_text ??
+                    ""
+                  ).trim(),
+                );
+
               const attachmentUrl =
                 message.attachment_url;
 
@@ -3473,7 +3496,7 @@ export function MessagePanel({
                 !message.id.startsWith(
                   "optimistic:",
                 ) &&
-                !telegramDeleted;
+                !isDeletedMessage;
 
               const canEditTelegram =
                 canReplyToTelegram &&
@@ -4747,7 +4770,18 @@ export function MessagePanel({
                       className={`text-sm transition ${
                         isBareSticker
                           ? "rounded-[18px] text-slate-900"
-                          : `overflow-hidden border shadow-[0_2px_8px_rgba(15,23,42,0.06)] ${
+                          : isDeletedMessage
+                            ? /*
+                               * The same grey on both sides. A deleted message
+                               * is not somebody speaking, so it should not
+                               * wear either speaker's colour.
+                               */
+                              `overflow-hidden border border-dashed border-slate-300 bg-slate-100 italic text-slate-500 ${
+                                isOutgoing
+                                  ? "rounded-[18px] rounded-br-[5px]"
+                                  : "rounded-[18px] rounded-bl-[5px]"
+                              }`
+                            : `overflow-hidden border shadow-[0_2px_8px_rgba(15,23,42,0.06)] ${
                               isOutgoing
                                 ? "rounded-[18px] rounded-br-[5px] text-white"
                                 : "rounded-[18px] rounded-bl-[5px] border-slate-200/90 bg-white text-slate-900"
@@ -4761,7 +4795,8 @@ export function MessagePanel({
                             : ""
                       }`}
                       style={
-                        onColoredBubble
+                        onColoredBubble &&
+                        !isDeletedMessage
                           ? {
                               backgroundColor:
                                 "var(--tenh-primary, #2563EB)",
@@ -5016,15 +5051,17 @@ export function MessagePanel({
                               </span>
                             </div>
                           </a>
-                        ) : telegramDeleted ? (
-                          <p
-                            className={`whitespace-pre-wrap italic ${
-                              isOutgoing
-                                ? "text-white/75"
-                                : "text-slate-500"
-                            }`}
-                          >
-                            Message deleted
+                        ) : isDeletedMessage ? (
+                          <p className="flex items-center gap-1.5 whitespace-pre-wrap italic text-slate-500">
+                            <span aria-hidden>🗑</span>
+                            {(
+                              message.message_text ?? ""
+                            )
+                              .trim()
+                              .toLowerCase()
+                              .startsWith("message deleted")
+                              ? message.message_text?.trim()
+                              : "Message deleted"}
                           </p>
                         ) : isStickerMessage ? (
                           /*
