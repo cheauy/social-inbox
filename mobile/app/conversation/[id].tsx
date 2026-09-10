@@ -2487,6 +2487,7 @@ export default function Conversation() {
           displayName: string | null;
           externalUrl: string | null;
           previewUrl: string | null;
+          mimeType: string | null;
           sizeBytes: number | null;
           description: string | null;
           createdAt: string;
@@ -2500,15 +2501,30 @@ export default function Conversation() {
         }[];
       }>(`/api/customers/${encodeURIComponent(contactId)}/files`, scopeId);
 
+      /*
+       * A saved file is filed by what it actually is, not by the two buckets
+       * the endpoint stores it in: a photo somebody saved to the record
+       * belongs with the photos, not in a list of documents named after
+       * their file names.
+       */
       const saved: CustomerFile[] = (data.savedFiles ?? []).map((file) => ({
         id: `saved:${file.id}`,
-        kind: file.itemType,
+        kind:
+          file.itemType === "link"
+            ? "link"
+            : file.mimeType?.startsWith("image/")
+              ? "image"
+              : file.mimeType?.startsWith("video/")
+                ? "video"
+                : "file",
         name: file.displayName || (file.itemType === "link" ? "Link" : "File"),
         url: file.previewUrl ?? file.externalUrl,
         detail:
           file.description ||
           (file.sizeBytes ? readableSize(file.sizeBytes) : null),
         createdAt: file.createdAt,
+        /* The row id outlives the signed preview link the thumbnail uses. */
+        cacheKey: `saved:${file.id}`,
       }));
 
       /*
@@ -2526,13 +2542,20 @@ export default function Conversation() {
         )
         .map((attachment) => ({
           id: `sent:${attachment.id}`,
-          kind: "attachment",
+          kind:
+            attachment.messageType === "image" ||
+            attachment.messageType === "sticker"
+              ? ("image" as const)
+              : attachment.messageType === "video"
+                ? ("video" as const)
+                : ("file" as const),
           name:
             attachment.messageText?.trim() ||
             `${attachment.messageType || "Attachment"} in the conversation`,
           url: attachment.attachmentUrl,
           detail: "Sent in a conversation",
           createdAt: attachment.createdAt,
+          cacheKey: `sent:${attachment.id}`,
         }));
 
       return [...saved, ...sent].sort(

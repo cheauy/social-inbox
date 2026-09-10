@@ -28,6 +28,7 @@ import {
   styles,
 } from "./ui";
 import type { ConversationStatus } from "../lib/types";
+import { AuthImage } from "./auth-image";
 
 /*
  * The customer, as a panel that slides in from the right.
@@ -142,11 +143,13 @@ function whenToStamp(key: WhenKey) {
  */
 export type CustomerFile = {
   id: string;
-  kind: "file" | "link" | "attachment";
+  kind: "image" | "video" | "file" | "link";
   name: string;
   url: string | null;
   detail: string | null;
   createdAt: string;
+  /* Stable across signed links, so a thumbnail is downloaded once. */
+  cacheKey?: string;
 };
 
 /* One event in a customer's history, as the timeline endpoint sends it. */
@@ -175,6 +178,292 @@ export type TimelineItem = {
  * things competing for the same column. A dialog sits above both, dims what
  * it interrupts, and has one way in and one way out.
  */
+/*
+ * Everything a customer has sent, in the three shapes people look for it in.
+ *
+ * One flat list meant a photo from March and a PDF from yesterday were the
+ * same kind of row, and a picture reduced to its file name is a picture
+ * nobody recognises. Media becomes a grid of the pictures themselves, grouped
+ * by the month they arrived -- which is how somebody actually remembers
+ * ("that was around August") -- and documents and links keep the list, where
+ * the name is the thing you read.
+ */
+type LibraryTab = "media" | "files" | "links";
+
+const TABS: { key: LibraryTab; label: string; icon: IconName }[] = [
+  { key: "media", label: "Photos & videos", icon: "images-outline" },
+  { key: "files", label: "Files", icon: "document-outline" },
+  { key: "links", label: "Links", icon: "link-outline" },
+];
+
+function monthOf(value: string) {
+  const at = new Date(value);
+
+  if (!Number.isFinite(at.getTime())) return "Earlier";
+
+  const now = new Date();
+
+  return at.getFullYear() === now.getFullYear()
+    ? at.toLocaleDateString(undefined, { month: "long" })
+    : at.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+}
+
+function FileLibrary({ files }: { files: CustomerFile[] }) {
+  const [tab, setTab] = useState<LibraryTab>("media");
+
+  const media = files.filter(
+    (file) => file.kind === "image" || file.kind === "video",
+  );
+  const documents = files.filter((file) => file.kind === "file");
+  const links = files.filter((file) => file.kind === "link");
+
+  const counts: Record<LibraryTab, number> = {
+    media: media.length,
+    files: documents.length,
+    links: links.length,
+  };
+
+  const shown = tab === "media" ? media : tab === "files" ? documents : links;
+
+  /* Months in the order they arrived, newest first, as the list already is. */
+  const months: { name: string; items: CustomerFile[] }[] = [];
+
+  for (const item of shown) {
+    const name = monthOf(item.createdAt);
+    const last = months[months.length - 1];
+
+    if (last && last.name === name) {
+      last.items.push(item);
+    } else {
+      months.push({ name, items: [item] });
+    }
+  }
+
+  return (
+    <>
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 6,
+          paddingHorizontal: 18,
+          paddingBottom: 12,
+        }}
+      >
+        {TABS.map((one) => {
+          const active = one.key === tab;
+
+          return (
+            <Pressable
+              key={one.key}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              onPress={() => setTab(one.key)}
+              style={{
+                flex: 1,
+                alignItems: "center",
+                gap: 3,
+                paddingVertical: 9,
+                borderRadius: 12,
+                backgroundColor: active ? colors.pale : colors.background,
+              }}
+            >
+              <Ionicons
+                name={one.icon}
+                size={16}
+                color={active ? colors.blue : colors.muted}
+              />
+
+              <Text
+                numberOfLines={1}
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: "800",
+                  color: active ? colors.blue : colors.muted,
+                }}
+              >
+                {one.label}
+              </Text>
+
+              <Text style={{ fontSize: 10, color: colors.muted }}>
+                {counts[one.key]}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {shown.length === 0 ? (
+        <View style={{ alignItems: "center", padding: 34, gap: 8 }}>
+          <Ionicons
+            name={TABS.find((one) => one.key === tab)?.icon ?? "folder-outline"}
+            size={26}
+            color={colors.muted}
+          />
+
+          <Text
+            style={{ fontSize: 13.5, color: colors.muted, textAlign: "center" }}
+          >
+            {tab === "media"
+              ? "No photos or videos from this customer yet."
+              : tab === "files"
+                ? "No documents have been sent or saved."
+                : "No links have been saved for this customer."}
+          </Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={{ maxHeight: 430 }}
+          contentContainerStyle={{ paddingBottom: 14 }}
+        >
+          {months.map((month) => (
+            <View key={month.name}>
+              <Text
+                style={{
+                  paddingHorizontal: 18,
+                  paddingTop: 10,
+                  paddingBottom: 8,
+                  fontSize: 13,
+                  fontWeight: "800",
+                  color: colors.ink,
+                }}
+              >
+                {month.name}
+              </Text>
+
+              {tab === "media" ? (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    flexWrap: "wrap",
+                    gap: 3,
+                    paddingHorizontal: 15,
+                  }}
+                >
+                  {month.items.map((item) => (
+                    <Pressable
+                      key={item.id}
+                      accessibilityRole="imagebutton"
+                      accessibilityLabel={`Open ${item.name}`}
+                      disabled={!item.url}
+                      onPress={() => {
+                        if (item.url) void Linking.openURL(item.url);
+                      }}
+                      style={{
+                        width: "32.4%",
+                        aspectRatio: 1,
+                        borderRadius: 8,
+                        overflow: "hidden",
+                        backgroundColor: colors.background,
+                      }}
+                    >
+                      {item.url ? (
+                        <AuthImage
+                          uri={item.url}
+                          cacheKey={item.cacheKey}
+                          style={{ width: "100%", height: "100%" }}
+                        />
+                      ) : null}
+
+                      {/*
+                        A video says so on the tile. There is no frame to show
+                        -- the payload carries a link, not a thumbnail -- so
+                        the mark sits over whatever the tile has.
+                      */}
+                      {item.kind === "video" ? (
+                        <View
+                          style={{
+                            ...FILL,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: "rgba(16,34,56,0.28)",
+                          }}
+                        >
+                          <Ionicons name="play-circle" size={26} color="white" />
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  ))}
+                </View>
+              ) : (
+                month.items.map((item) => (
+                  <Pressable
+                    key={item.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${item.name}`}
+                    disabled={!item.url}
+                    onPress={() => {
+                      if (item.url) void Linking.openURL(item.url);
+                    }}
+                    style={({ pressed }) => ({
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 12,
+                      paddingHorizontal: 18,
+                      paddingVertical: 11,
+                      backgroundColor: pressed ? colors.pale : "transparent",
+                    })}
+                  >
+                    <View
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 12,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: colors.background,
+                      }}
+                    >
+                      <Ionicons
+                        name={
+                          item.kind === "link"
+                            ? "link-outline"
+                            : "document-text-outline"
+                        }
+                        size={18}
+                        color={colors.blue}
+                      />
+                    </View>
+
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text
+                        numberOfLines={1}
+                        style={{
+                          fontSize: 14,
+                          fontWeight: "700",
+                          color: colors.ink,
+                        }}
+                      >
+                        {item.name}
+                      </Text>
+
+                      <Text
+                        numberOfLines={1}
+                        style={{ fontSize: 11.5, color: colors.muted }}
+                      >
+                        {[item.detail, stamp(item.createdAt)]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Text>
+                    </View>
+
+                    {item.url ? (
+                      <Ionicons
+                        name="open-outline"
+                        size={16}
+                        color={colors.muted}
+                      />
+                    ) : null}
+                  </Pressable>
+                ))
+              )}
+            </View>
+          ))}
+        </ScrollView>
+      )}
+    </>
+  );
+}
+
 function Dialog({
   open,
   title,
@@ -1772,104 +2061,8 @@ export function CustomerPanel({
               <View style={{ paddingVertical: 44 }}>
                 <ActivityIndicator color={colors.blue} />
               </View>
-            ) : !files || files.length === 0 ? (
-              <View style={{ alignItems: "center", padding: 34, gap: 8 }}>
-                <Ionicons
-                  name="folder-open-outline"
-                  size={26}
-                  color={colors.muted}
-                />
-
-                <Text
-                  style={{
-                    fontSize: 13.5,
-                    color: colors.muted,
-                    textAlign: "center",
-                  }}
-                >
-                  Nothing has been sent or saved for this customer yet.
-                </Text>
-              </View>
             ) : (
-              <ScrollView
-                style={{ maxHeight: 420 }}
-                contentContainerStyle={{ paddingBottom: 12 }}
-              >
-                {files.map((file, index) => (
-                  <Pressable
-                    key={file.id}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Open ${file.name}`}
-                    disabled={!file.url}
-                    onPress={() => {
-                      if (file.url) void Linking.openURL(file.url);
-                    }}
-                    style={({ pressed }) => ({
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 12,
-                      paddingHorizontal: 18,
-                      paddingVertical: 12,
-                      borderTopWidth: index === 0 ? 0 : 1,
-                      borderTopColor: colors.border,
-                      backgroundColor: pressed ? colors.pale : "transparent",
-                    })}
-                  >
-                    <View
-                      style={{
-                        width: 38,
-                        height: 38,
-                        borderRadius: 12,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        backgroundColor: colors.background,
-                      }}
-                    >
-                      <Ionicons
-                        name={
-                          file.kind === "link"
-                            ? "link-outline"
-                            : file.kind === "attachment"
-                              ? "image-outline"
-                              : "document-outline"
-                        }
-                        size={18}
-                        color={colors.blue}
-                      />
-                    </View>
-
-                    <View style={{ flex: 1, gap: 2 }}>
-                      <Text
-                        numberOfLines={1}
-                        style={{
-                          fontSize: 14,
-                          fontWeight: "700",
-                          color: colors.ink,
-                        }}
-                      >
-                        {file.name}
-                      </Text>
-
-                      <Text
-                        numberOfLines={1}
-                        style={{ fontSize: 11.5, color: colors.muted }}
-                      >
-                        {[file.detail, stamp(file.createdAt)]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </Text>
-                    </View>
-
-                    {file.url ? (
-                      <Ionicons
-                        name="open-outline"
-                        size={16}
-                        color={colors.muted}
-                      />
-                    ) : null}
-                  </Pressable>
-                ))}
-              </ScrollView>
+              <FileLibrary files={files ?? []} />
             )}
           </Dialog>
 
