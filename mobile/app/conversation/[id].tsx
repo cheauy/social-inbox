@@ -1304,7 +1304,13 @@ function MessageMenu({
 
   rows.push({ icon: "bookmark-outline", label: "Pin", run: onPin });
 
-  if (text) {
+  /*
+   * Copy is for words. A photo, a clip, a voice note or a file has nothing to
+   * put on a clipboard -- what somebody wants from those is the file itself,
+   * which is what Download is for, and offering both made the menu longer
+   * without making it more useful.
+   */
+  if (text && !media) {
     rows.push({ icon: "copy-outline", label: "Copy", run: onCopy });
   }
 
