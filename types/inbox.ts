@@ -242,6 +242,7 @@ parent_comment_id:
 export type MobileConversation = Pick<
   InboxConversation,
   | "id"
+  | "business_id"
   | "status"
   | "unread_count"
   | "last_message_text"
@@ -249,9 +250,12 @@ export type MobileConversation = Pick<
   | "is_pinned"
   | "assigned_to"
   | "source_type"
+  | "facebook_post_id"
+  | "facebook_comment_id"
+  | "parent_comment_id"
 > & {
   contact:
-    | (Pick<InboxContact, "id" | "full_name" | "profile_picture_url" | "phone"> & {
+    | (Pick<InboxContact, "id" | "full_name" | "profile_picture_url" | "phone" | "platform_user_id"> & {
         /*
          * Just enough of a tag to draw a chip. The list shows them under the
          * preview, and the full record is a request away in the panel.
@@ -263,6 +267,7 @@ export type MobileConversation = Pick<
   social_account: {
     id: string;
     platform?: string;
+    platform_account_id: string;
 
     // The Page's name, shown in the customer panel's Facebook section.
     account_name: string;

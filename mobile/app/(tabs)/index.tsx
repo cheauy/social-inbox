@@ -116,9 +116,16 @@ function ListSkeleton() {
 
 const ConversationRow = memo(function ConversationRow({
   conversation,
+  workspaceName,
   onPress,
 }: {
   conversation: InboxConversation;
+  /*
+   * Only set when more than one workspace is open at once. In a merged list
+   * two shops' customers sit in one column, and without the shop's name on
+   * the row there is no way to tell whose "Where is my order?" this is.
+   */
+  workspaceName?: string;
   onPress: () => void;
 }) {
   const unread = (conversation.unread_count ?? 0) > 0;
@@ -164,6 +171,34 @@ const ConversationRow = memo(function ConversationRow({
           >
             {conversation.contact?.full_name ?? "Customer"}
           </Text>
+
+          {/*
+            Which shop, when two are open at once. Beside the name rather than
+            down with the tags, because it changes who the row is about, and
+            that has to be read before the preview is.
+          */}
+          {workspaceName ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 3,
+                paddingHorizontal: 6,
+                paddingVertical: 2,
+                borderRadius: 999,
+                backgroundColor: colors.background,
+              }}
+            >
+              <Ionicons name="business-outline" size={10} color={colors.muted} />
+
+              <Text
+                numberOfLines={1}
+                style={{ fontSize: 10.5, fontWeight: "700", color: colors.muted, maxWidth: 96 }}
+              >
+                {workspaceName}
+              </Text>
+            </View>
+          ) : null}
 
           {conversation.is_pinned ? (
             <Ionicons
@@ -997,6 +1032,8 @@ export default function Inbox() {
   const {
     workspaces,
     workspace,
+    merged,
+    ensureActive,
     conversations,
     loading,
     error,
@@ -1563,12 +1600,30 @@ export default function Inbox() {
           renderItem={({ item }) => (
             <ConversationRow
               conversation={item}
-              onPress={() =>
-                router.push({
-                  pathname: "/conversation/[id]",
-                  params: { id: item.id },
-                })
+              workspaceName={
+                merged.length > 1
+                  ? workspaces.find(
+                      (one) => one.businessId === item.business_id,
+                    )?.businessName
+                  : undefined
               }
+              onPress={() => {
+                /*
+                 * The workspace this thread belongs to becomes the active one
+                 * before the thread opens. Every write on the server -- send,
+                 * assign, tag, mark read -- is scoped by the active workspace,
+                 * so opening a merged list's other shop without this would
+                 * show one shop's conversation and post the reply into the
+                 * other one.
+                 */
+                void (async () => {
+                  await ensureActive(item.business_id);
+                  router.push({
+                    pathname: "/conversation/[id]",
+                    params: { id: item.id },
+                  });
+                })();
+              }}
             />
           )}
           refreshControl={

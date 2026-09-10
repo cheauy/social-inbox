@@ -11,6 +11,20 @@ type InboxState = {
   workspaces: Workspace[]; workspace: Workspace | null; member: Member | null;
   conversations: InboxConversation[]; loading: boolean; error: string; live: boolean; revision: number;
   refresh: () => Promise<void>; loadWorkspaces: () => Promise<void>; selectWorkspace: (workspace: Workspace) => Promise<void>;
+
+  /*
+   * Merging.
+   *
+   * Somebody who runs two shops can open both at once and read one list.
+   * `merged` is the set of workspace ids that list is drawn from; `workspace`
+   * stays the one being written to, because every write on the server is
+   * scoped by the active-business cookie. Opening a conversation that belongs
+   * to one of the others switches that cookie first -- see `useConversation`
+   * on the thread screen -- so a reply can never land in the wrong shop.
+   */
+  merged: string[];
+  openWorkspaces: (chosen: Workspace[]) => Promise<void>;
+  ensureActive: (businessId: string) => Promise<void>;
   updateConversation: (id: string, value: Partial<InboxConversation>) => void;
   updateContactTags: (contactId: string, tags: NonNullable<InboxConversation["contact"]>["tags"]) => void;
 
@@ -33,6 +47,7 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
   const { session } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [merged, setMerged] = useState<string[]>([]);
   const [member, setMember] = useState<Member | null>(null);
   const [conversations, setConversations] = useState<InboxConversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,9 +68,11 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
   const alert = useRef(() => {});
   alert.current = () => { if (soundOn) play(); };
   const workspaceRef = useRef<Workspace | null>(null);
+  const mergedRef = useRef<string[]>([]);
   const storageKey = `workspace.${session?.user.id}`;
+  const mergeKey = `merged.${session?.user.id}`;
   useEffect(() => () => { alive.current = false; generation.current++; }, []);
-  const clear = useCallback(() => { workspaceRef.current = null; setWorkspace(null); setMember(null); setConversations([]); setRooms([]); setRoomsLoading(true); setRoomsBadge(0); setRoster([]); setCanManageRooms(false); }, []);
+  const clear = useCallback(() => { workspaceRef.current = null; setWorkspace(null); mergedRef.current = []; setMerged([]); setMember(null); setConversations([]); setRooms([]); setRoomsLoading(true); setRoomsBadge(0); setRoster([]); setCanManageRooms(false); }, []);
   const loadWorkspaces = useCallback(async () => {
     if (!session) { setLoading(false); return; }
     const current = generation.current;
@@ -67,29 +84,66 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       const saved = workspaceRef.current?.businessId || await sessionStorage.getItem(storageKey);
       if (!alive.current || current !== generation.current) return;
       const selected = data.workspaces.find(w => w.businessId === saved && w.subscriptionOperational);
-      if (selected) { workspaceRef.current = selected; setWorkspace(selected); } else clear();
+      if (selected) {
+        workspaceRef.current = selected; setWorkspace(selected);
+        /*
+         * The merged set is filtered against what is still live: a workspace
+         * whose plan lapsed since the last launch drops out of the list
+         * rather than making every load fail with a 403.
+         */
+        const stored = (await sessionStorage.getItem(mergeKey))?.split(",").filter(Boolean) ?? [];
+        if (!alive.current || current !== generation.current) return;
+        const live = stored.filter(id => data.workspaces.some(w => w.businessId === id && w.subscriptionOperational));
+        const next = live.includes(selected.businessId) ? live : [selected.businessId];
+        mergedRef.current = next; setMerged(next);
+      } else clear();
     } catch (e) { if (alive.current && current === generation.current) { setError(e instanceof Error ? e.message : "Unable to load workspaces."); if (e instanceof ApiError && [401, 403].includes(e.status)) clear(); } }
     finally { if (alive.current && current === generation.current) setLoading(false); }
   }, [session?.user.id, storageKey, clear]);
   useEffect(() => { void loadWorkspaces(); }, [loadWorkspaces]);
-  const selectWorkspace = useCallback(async (next: Workspace) => {
+  /*
+   * Make `next` the workspace that writes go to. Kept separate from choosing,
+   * because in a merged list this happens on its own, mid-tap, when somebody
+   * opens a thread belonging to the other shop -- so it must not blank the
+   * list it was tapped from.
+   */
+  const activate = useCallback(async (next: Workspace) => {
+    await api("/api/workspaces/switch", next.businessId, { method: "POST", body: { businessId: next.businessId } });
+    await sessionStorage.setItem(storageKey, next.businessId);
+    workspaceRef.current = next; setWorkspace(next);
+  }, [storageKey]);
+
+  const openWorkspaces = useCallback(async (chosen: Workspace[]) => {
+    const live = chosen.filter(one => one.subscriptionOperational);
+    if (live.length === 0) return;
     const current = ++generation.current;
     clear(); setLoading(true); setError("");
     try {
-      await api("/api/workspaces/switch", next.businessId, { method: "POST", body: { businessId: next.businessId } });
+      const ids = live.map(one => one.businessId);
+      await activate(live[0]);
       if (!alive.current || current !== generation.current) return;
-      await sessionStorage.setItem(storageKey, next.businessId);
-      if (!alive.current || current !== generation.current) return;
-      workspaceRef.current = next; setWorkspace(next);
+      await sessionStorage.setItem(mergeKey, ids.join(","));
+      mergedRef.current = ids; setMerged(ids);
     } catch (e) { if (alive.current && current === generation.current) setError(e instanceof Error ? e.message : "Unable to switch workspace."); throw e; }
     finally { if (alive.current && current === generation.current) setLoading(false); }
-  }, [clear, storageKey]);
+  }, [clear, activate, mergeKey]);
+
+  const selectWorkspace = useCallback((next: Workspace) => openWorkspaces([next]), [openWorkspaces]);
+
+  const ensureActive = useCallback(async (businessId: string) => {
+    if (!businessId || workspaceRef.current?.businessId === businessId) return;
+    const next = workspaces.find(one => one.businessId === businessId);
+    if (!next || !mergedRef.current.includes(businessId)) return;
+    await activate(next);
+  }, [workspaces, activate]);
+
   const refresh = useCallback(async () => {
     const selected = workspaceRef.current;
     if (!selected) return;
     const current = generation.current, sequence = ++request.current;
     try {
-      const data = await api<{ conversations: InboxConversation[]; member: Member }>(`/api/mobile/bootstrap?workspaceId=${encodeURIComponent(selected.businessId)}`, selected.businessId);
+      const ids = mergedRef.current.length > 0 ? mergedRef.current : [selected.businessId];
+      const data = await api<{ conversations: InboxConversation[]; member: Member }>(`/api/mobile/bootstrap?workspaceIds=${encodeURIComponent(ids.join(","))}`, selected.businessId);
       if (!alive.current || current !== generation.current || sequence !== request.current) return;
       setConversations(data.conversations); setMember(data.member); setError("");
     } catch (e) {
@@ -121,19 +175,28 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     setLoading(true); setRoomsLoading(true); void refresh(); void refreshRooms();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const changed = () => { clearTimeout(timer); timer = setTimeout(() => { setRevision(v => v + 1); void refresh(); void refreshRooms(); }, 300); };
-    let channel = supabase.channel(`tenh-mobile-${workspace.businessId}`);
-    for (const table of ["messages", "conversations", "contacts", "team_chat_messages", "team_chat_rooms"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${workspace.businessId}` }, changed);
+    /*
+     * Every workspace in the merged list is listened to, not just the active
+     * one: a message arriving in the other shop belongs in this list too, and
+     * without its own filter it would sit there unread until the next pull.
+     */
+    const listening = merged.length > 0 ? merged : [workspace.businessId];
+    let channel = supabase.channel(`tenh-mobile-${listening.join("-")}`);
+    for (const id of listening)
+      for (const table of ["messages", "conversations", "contacts", "team_chat_messages", "team_chat_rooms"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${id}` }, changed);
     /*
      * The alert tone, on the arrival itself rather than on the reload the
      * arrival triggers: `changed` is debounced and fires for edits, reads and
      * the agent's own sends, all of which would make a noise for nothing.
      */
-    channel = channel.on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `business_id=eq.${workspace.businessId}` }, payload => { if ((payload.new as { direction?: string } | null)?.direction === "incoming") alert.current(); });
-    for (const table of ["team_members", "business_subscriptions", "social_accounts"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${workspace.businessId}` }, () => { void loadWorkspaces(); changed(); });
+    for (const id of listening)
+      channel = channel.on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `business_id=eq.${id}` }, payload => { if ((payload.new as { direction?: string } | null)?.direction === "incoming") alert.current(); });
+    for (const id of listening)
+      for (const table of ["team_members", "business_subscriptions", "social_accounts"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${id}` }, () => { void loadWorkspaces(); changed(); });
     channel.subscribe(status => { setLive(status === "SUBSCRIBED"); if (status === "SUBSCRIBED") changed(); });
     const listener = AppState.addEventListener("change", state => { if (state === "active") { void loadWorkspaces(); changed(); } });
     return () => { clearTimeout(timer); void supabase.removeChannel(channel); listener.remove(); setLive(false); };
-  }, [workspace?.businessId, refresh, refreshRooms, loadWorkspaces]);
+  }, [workspace?.businessId, merged.join(","), refresh, refreshRooms, loadWorkspaces]);
   const updateConversation = useCallback((id: string, patch: Partial<InboxConversation>) => setConversations(items => items.map(c => c.id === id ? { ...c, ...patch } : c)), []);
   const updateContactTags = useCallback((contactId: string, tags: NonNullable<InboxConversation["contact"]>["tags"]) => {
     setConversations((items) =>
@@ -144,5 +207,5 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       ),
     );
   }, []);
-  return <Context.Provider value={{ workspaces, workspace, member, conversations, loading, error, live, revision, refresh, loadWorkspaces, selectWorkspace, updateConversation, updateContactTags, rooms, roomsLoading, roomsBadge, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ workspaces, workspace, member, conversations, loading, error, live, revision, refresh, loadWorkspaces, selectWorkspace, merged, openWorkspaces, ensureActive, updateConversation, updateContactTags, rooms, roomsLoading, roomsBadge, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
 }

@@ -87,11 +87,23 @@ export default function Workspaces() {
     loading,
     error,
     selectWorkspace,
+    openWorkspaces,
     loadWorkspaces,
   } = useInbox();
 
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+
+  /*
+   * Ticked workspaces, and nothing is ticked to start with.
+   *
+   * Merging is opt-in and stays opt-in: opening every shop somebody belongs
+   * to by default would hand a five-shop agency one list of five shops'
+   * customers and no way to tell whose message is whose. Tapping a row still
+   * opens that one workspace on its own; the tick boxes and the bar at the
+   * bottom are the way to ask for more than one.
+   */
+  const [picked, setPicked] = useState<string[]>([]);
 
   if (!session) {
     return <Redirect href="/sign-in" />;
@@ -112,6 +124,32 @@ export default function Workspaces() {
   const shown = needle
     ? open.filter((one) => one.businessName.toLowerCase().includes(needle))
     : open;
+
+  function toggle(id: string) {
+    setPicked((current) =>
+      current.includes(id)
+        ? current.filter((one) => one !== id)
+        : [...current, id],
+    );
+  }
+
+  async function openMerged() {
+    if (busy) return;
+
+    const chosen = open.filter((one) => picked.includes(one.businessId));
+    if (chosen.length === 0) return;
+
+    setBusy(chosen[0].businessId);
+
+    try {
+      await openWorkspaces(chosen);
+      router.push("/(tabs)");
+    } catch {
+      // The provider reports on its own error line.
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function choose(next: Workspace) {
     if (busy) return;
@@ -189,7 +227,8 @@ export default function Workspaces() {
           </Pressable>
         </View>
 
-        <View style={{ marginTop: 14, gap: 2 }}>
+        <View style={{ marginTop: 14, flexDirection: "row", alignItems: "flex-end" }}>
+          <View style={{ flex: 1, gap: 2 }}>
           <Text style={[styles.title, { fontSize: 22 }]}>
             {t("Choose a workspace", "ជ្រើសកន្លែងធ្វើការ")}
           </Text>
@@ -208,6 +247,35 @@ export default function Workspaces() {
                     "មានកន្លែងធ្វើការ " + open.length,
                   )}
             </Text>
+          ) : null}
+          </View>
+
+          {/*
+            Select all, once there is more than one thing to select. It reads
+            as its own opposite when everything is already ticked, so the same
+            button undoes the selection rather than needing a second one.
+          */}
+          {open.length > 1 ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() =>
+                setPicked(
+                  picked.length === open.length
+                    ? []
+                    : open.map((one) => one.businessId),
+                )
+              }
+              hitSlop={8}
+              style={{ paddingVertical: 4, paddingLeft: 10 }}
+            >
+              <Text
+                style={{ fontSize: 13, fontWeight: "800", color: colors.blue }}
+              >
+                {picked.length === open.length
+                  ? t("Clear", "សម្អាត")
+                  : t("Select all", "ជ្រើសទាំងអស់")}
+              </Text>
+            </Pressable>
           ) : null}
         </View>
 
@@ -302,6 +370,7 @@ export default function Workspaces() {
           renderItem={({ item }) => {
             const mark = markFor(item.businessName);
             const current = item.businessId === workspace?.businessId;
+            const chosen = picked.includes(item.businessId);
 
             return (
               <Pressable
@@ -316,7 +385,7 @@ export default function Workspaces() {
                   styles.card,
                   {
                     padding: 14,
-                    borderColor: current ? colors.blue : colors.border,
+                    borderColor: chosen || current ? colors.blue : colors.border,
                     backgroundColor: pressed ? colors.pale : "white",
                     opacity: busy && busy !== item.businessId ? 0.5 : 1,
                   },
@@ -325,6 +394,39 @@ export default function Workspaces() {
                 <View
                   style={{ flexDirection: "row", alignItems: "center", gap: 13 }}
                 >
+                  {/*
+                    The tick, with its own touch target. It is a separate
+                    press from the row so one tap still opens one workspace --
+                    what almost everybody wants -- and merging costs a
+                    deliberate tap on the box.
+                  */}
+                  {open.length > 1 ? (
+                    <Pressable
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: chosen }}
+                      accessibilityLabel={t(
+                        "Merge " + item.businessName,
+                        "បញ្ច៎ល " + item.businessName,
+                      )}
+                      onPress={() => toggle(item.businessId)}
+                      hitSlop={10}
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: 8,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderWidth: chosen ? 0 : 1.5,
+                        borderColor: colors.border,
+                        backgroundColor: chosen ? colors.blue : "transparent",
+                      }}
+                    >
+                      {chosen ? (
+                        <Ionicons name="checkmark" size={15} color="white" />
+                      ) : null}
+                    </Pressable>
+                  ) : null}
+
                   <View
                     style={{
                       width: 48,
@@ -410,6 +512,54 @@ export default function Workspaces() {
           }
         />
       )}
+
+      {/*
+        The merge itself, as a bar rather than a button in the list: it acts
+        on the whole selection, so it belongs where the selection can be seen,
+        and it says how many it is about to open before it opens them.
+      */}
+      {picked.length > 0 ? (
+        <View
+          style={{
+            padding: 12,
+            paddingBottom: insets.bottom + 12,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            backgroundColor: "white",
+          }}
+        >
+          <Pressable
+            accessibilityRole="button"
+            disabled={busy !== null}
+            onPress={() => void openMerged()}
+            style={({ pressed }) => ({
+              height: 50,
+              borderRadius: 15,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              opacity: busy ? 0.7 : 1,
+              backgroundColor: pressed ? "#0A6FA8" : colors.blue,
+            })}
+          >
+            {busy ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Ionicons name="layers-outline" size={18} color="white" />
+            )}
+
+            <Text style={{ fontSize: 15, fontWeight: "800", color: "white" }}>
+              {picked.length === 1
+                ? t("Open 1 workspace", "បើកកន្លែងធ្វើការ ១")
+                : t(
+                    "Open " + picked.length + " workspaces together",
+                    "បើកកន្លែងធ្វើការ " + picked.length + " ជាមួយគ្នា",
+                  )}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
