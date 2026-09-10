@@ -6103,6 +6103,17 @@ export function MessagePanel({
             ? "Unhide this comment and its parent before replying."
             : facebookMessengerBlockedReason}
           blockedTitle={facebookMessengerBlockedTitle}
+          canOpenInFacebook={Boolean(
+            facebookMessengerBlockedReason &&
+              !replyingToCommentId &&
+              activeConversation?.social_account
+                ?.platform === "facebook",
+          )}
+          facebookPageId={
+            activeConversation
+              ?.social_account
+              ?.platform_account_id ?? null
+          }
 
           onReplyChange={
             onReplyChange

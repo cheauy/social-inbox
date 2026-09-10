@@ -10,6 +10,7 @@ import {
 
 import EmojiPicker from "emoji-picker-react";
 
+import { CompanionFacebookAction } from "@/components/inbox/companion-facebook-action";
 import { CustomerTagSelector } from "@/components/inbox/customer-tag-selector";
 import {
   LocationPickerDialog,
@@ -53,6 +54,14 @@ type ReplyBoxProps = {
   blockedTitle?: string | null;
   advisoryReason?: string | null;
   advisoryTitle?: string | null;
+
+  /*
+   * Offered inside the blocked notice, and only when the block is Meta's
+   * messaging window on a Facebook conversation. It opens Facebook; it does
+   * not lift the window, and TENH's composer stays disabled either way.
+   */
+  canOpenInFacebook?: boolean;
+  facebookPageId?: string | null;
 
   contactId: string;
   businessId: string;
@@ -321,6 +330,8 @@ export function ReplyBox({
   typingAgents = [],
   onTagsChange,
   conversationId,
+  canOpenInFacebook = false,
+  facebookPageId = null,
   allowAttachments = true,
   onReplyChange,
   onSubmit,
@@ -2203,6 +2214,13 @@ export function ReplyBox({
                 <p className="mt-0.5 text-[11px] leading-4 text-amber-800">
                   {blockedReason ?? advisoryReason}
                 </p>
+
+                {canOpenInFacebook ? (
+                  <CompanionFacebookAction
+                    conversationId={conversationId}
+                    pageId={facebookPageId}
+                  />
+                ) : null}
               </div>
             </div>
           </div>
