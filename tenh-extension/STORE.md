@@ -61,6 +61,8 @@ leaving you to guess.
 
 WHAT IT DOES
 
+• Prepares a Facebook tab for you when a feature needs one — you never have to
+  keep Business Suite open
 • Shows the customer's TENH tags, notes and assignment beside Facebook
 • Puts your TENH quick replies into Facebook's reply box — you press Send
 • Opens the right Facebook conversation from TENH, reusing a tab you have open
@@ -106,8 +108,8 @@ whether replies sent from Facebook reached TENH.
 | `storage` | Stores the connection token for this browser and the last observed state of the Facebook tab. Nothing belonging to Facebook is stored. |
 | `notifications` | Alerts the user to unread TENH conversations, only when no TENH tab is open to alert them itself. |
 | `sidePanel` | The panel that displays the user's TENH records beside Facebook. |
-| `tabs` | Finds and focuses a Facebook tab the user already has open, instead of opening duplicates, and checks whether a TENH tab exists before notifying. |
-| `alarms` | Schedules a heartbeat every 30 seconds so TENH can show the browser as connected. |
+| `tabs` | Finds and reuses a Facebook tab the user already has open; when there is none and a companion feature needs one, opens a single background tab (`active: false`) to Business Suite's inbox so the user is not asked to keep Facebook open themselves. Also checks whether a TENH tab exists before notifying, to avoid duplicate alerts. |
+| `alarms` | Schedules a heartbeat every 30 seconds so TENH can show the browser as connected, and — only if the user enables "Keep Facebook companion active" — a five-minute check that one Facebook tab is still loaded. |
 | Host: `app.tenhchat.com` | The extension's own backend: connecting, heartbeat, and reading the user's TENH records. |
 | Host: `www.facebook.com`, `business.facebook.com` | Reads the accessibility layer of the Facebook page the user already has open to identify the Page and conversation and whether a reply box is enabled, and inserts a saved reply the user chose. |
 | Remote code | No. All code is in the package. |

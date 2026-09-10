@@ -92,11 +92,22 @@ export function useCompanion() {
     });
   }, []);
 
-  /** Bring the Facebook tab for this Page forward, or open one. */
+  /**
+   * Bring the Facebook tab for this Page forward, or open one.
+   *
+   * `threadId` is the customer's page-scoped id -- the one Business Suite puts
+   * in its own URL -- so this can land on the actual conversation rather than
+   * the top of the inbox. TENH's conversation id means nothing to Facebook.
+   */
   const openInFacebook = useCallback(
-    async (options: { pageId?: string | null; conversationId?: string | null }) => {
+    async (options: {
+      pageId?: string | null;
+      threadId?: string | null;
+      conversationId?: string | null;
+    }) => {
       const requestId = post("OPEN_IN_FACEBOOK", {
         pageId: options.pageId ?? undefined,
+        threadId: options.threadId ?? undefined,
         conversationId: options.conversationId ?? undefined,
       });
 

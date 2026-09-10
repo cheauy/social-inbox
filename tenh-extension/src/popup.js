@@ -23,6 +23,10 @@ const view = {
   unpair: document.getElementById("unpair"),
   openTenh: document.getElementById("openTenh"),
   openFacebook: document.getElementById("openFacebook"),
+  signIn: document.getElementById("signIn"),
+  retry: document.getElementById("retry"),
+  keepActive: document.getElementById("keepActive"),
+  keepActiveNote: document.getElementById("keepActiveNote"),
   redetect: document.getElementById("redetect"),
   test: document.getElementById("test"),
   repairResult: document.getElementById("repairResult"),
@@ -60,33 +64,81 @@ async function render() {
     view.pairedCard.hidden = true;
   }
 
-  const facebook = status.facebook;
+  view.keepActive.checked = status.keepCompanionActive === true;
+  view.keepActiveNote.textContent =
+    status.keepCompanionActive === true
+      ? "A Facebook tab stays loaded in the background."
+      : "Facebook starts only when a feature needs it.";
 
-  if (!facebook) {
-    setState(view.facebookState, "No tab", "off");
-    view.pageName.textContent = "No Facebook tab open";
-    view.composerState.textContent = "";
+  renderFacebook(status);
+}
+
+/*
+ * What to tell somebody about Facebook.
+ *
+ * These five states are the whole vocabulary, and none of them is "no tab".
+ * "No tab" was true and useless: it described the extension's situation, not
+ * the customer's, and it read like a fault when nothing was wrong. Sleeping is
+ * the normal, correct state of a browser doing ordinary TENH work.
+ *
+ * Every one of them ends up saying the same thing in different words: TENH is
+ * fine either way.
+ */
+function renderFacebook(status) {
+  const companion = status.companion ?? { state: "sleeping" };
+
+  view.signIn.hidden = true;
+  view.retry.hidden = true;
+
+  if (companion.state === "ready") {
+    setState(view.facebookState, "Ready", "on");
+
+    view.pageName.textContent =
+      companion.pageName ??
+      (companion.pageId ? `Page ${companion.pageId}` : "Companion active");
+
+    view.composerState.textContent =
+      companion.composerState === "available"
+        ? "Facebook is showing an enabled reply box."
+        : companion.composerState === "unavailable"
+          ? "Facebook is showing a reply box it has disabled."
+          : "Companion active.";
+
     return;
   }
 
-  setState(
-    view.facebookState,
-    facebook.loggedIn ? "Signed in" : "Signed out",
-    facebook.loggedIn ? "on" : "warn",
-  );
+  if (companion.state === "connecting") {
+    setState(view.facebookState, "Connecting…", "warn");
+    view.pageName.textContent = "Preparing Facebook companion.";
+    view.composerState.textContent = "";
 
-  view.pageName.textContent = facebook.pageName
-    ? facebook.pageName
-    : facebook.pageId
-      ? `Page ${facebook.pageId}`
-      : "No Page identified on this tab";
+    return;
+  }
 
-  view.composerState.textContent =
-    facebook.composerState === "available"
-      ? "Facebook is showing an enabled reply box."
-      : facebook.composerState === "unavailable"
-        ? "Facebook is showing a reply box it has disabled."
-        : "No reply box on this tab.";
+  if (companion.state === "sign_in_required") {
+    setState(view.facebookState, "Sign-in required", "warn");
+    view.pageName.textContent =
+      "Sign in to Facebook once on this browser to enable companion features.";
+    view.composerState.textContent = "";
+    view.signIn.hidden = false;
+
+    return;
+  }
+
+  if (companion.state === "error") {
+    setState(view.facebookState, "Connection issue", "warn");
+    view.pageName.textContent =
+      "Facebook companion unavailable. Normal TENH messaging is still working.";
+    view.composerState.textContent = "";
+    view.retry.hidden = false;
+
+    return;
+  }
+
+  setState(view.facebookState, "Sleeping", "off");
+  view.pageName.textContent =
+    "Facebook will start automatically when a companion feature is needed.";
+  view.composerState.textContent = "";
 }
 
 /*
@@ -99,6 +151,39 @@ async function render() {
 view.connect.addEventListener("click", () => {
   void chrome.tabs.create({ url: `${TENH_ORIGIN}/dashboard/inbox` });
   window.close();
+});
+
+/*
+ * Sign-in is a person's job, always.
+ *
+ * This brings the Facebook tab forward -- the only moment the extension is
+ * allowed to move somebody's screen without them pressing "open Facebook" --
+ * and then does nothing at all. It does not read the form, fill it, or look at
+ * a cookie afterwards.
+ */
+view.signIn.addEventListener("click", async () => {
+  await ask({ type: "TENH_SIGN_IN_FACEBOOK" });
+  window.close();
+});
+
+view.retry.addEventListener("click", async () => {
+  setState(view.facebookState, "Connecting…", "warn");
+  view.pageName.textContent = "Preparing Facebook companion.";
+  view.retry.hidden = true;
+
+  await ask({ type: "TENH_PREPARE_FACEBOOK" });
+  await render();
+});
+
+view.keepActive.addEventListener("change", async (event) => {
+  const enabled = event.target.checked === true;
+
+  view.keepActiveNote.textContent = enabled
+    ? "Preparing a Facebook tab…"
+    : "Facebook starts only when a feature needs it.";
+
+  await ask({ type: "TENH_SET_KEEP_ACTIVE", enabled });
+  await render();
 });
 
 view.unpair.addEventListener("click", async () => {

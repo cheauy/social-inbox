@@ -60,32 +60,51 @@ function element(tag, className, text) {
   return node;
 }
 
+/*
+ * The same five states the popup uses, in the same words.
+ *
+ * Two surfaces describing one situation differently is how a customer ends up
+ * unsure which to believe, so the wording lives in one vocabulary even though
+ * it is rendered twice.
+ */
 function renderFacebook(status) {
-  const facebook = status.facebook;
+  const companion = status.companion ?? { state: "sleeping" };
 
   view.pairState.textContent = status.paired
     ? status.device?.name ?? "Connected"
     : "Not connected — open TENH and sign in";
 
-  view.facebookState.textContent = facebook?.loggedIn
-    ? "Signed in"
-    : facebook
-      ? "Signed out"
-      : "No tab";
-  view.facebookState.className = `state ${facebook?.loggedIn ? "on" : "off"}`;
+  const labels = {
+    ready: ["Ready", "on"],
+    connecting: ["Connecting…", "warn"],
+    sign_in_required: ["Sign-in required", "warn"],
+    error: ["Connection issue", "warn"],
+    sleeping: ["Sleeping", "off"],
+  };
 
-  view.pageName.textContent = facebook?.pageName
-    ? facebook.pageName
-    : facebook?.pageId
-      ? `Page ${facebook.pageId}`
-      : "No Page identified";
+  const [label, tone] = labels[companion.state] ?? labels.sleeping;
+
+  view.facebookState.textContent = label;
+  view.facebookState.className = `state ${tone}`;
+
+  view.pageName.textContent =
+    companion.state === "ready"
+      ? companion.pageName ??
+        (companion.pageId ? `Page ${companion.pageId}` : "Companion active")
+      : companion.state === "connecting"
+        ? "Preparing Facebook companion."
+        : companion.state === "sign_in_required"
+          ? "Sign in to Facebook once on this browser."
+          : companion.state === "error"
+            ? "Companion unavailable. Normal TENH messaging is still working."
+            : "Facebook starts automatically when a companion feature is needed.";
 
   view.composerState.textContent =
-    facebook?.composerState === "available"
+    companion.composerState === "available"
       ? "Facebook is showing an enabled reply box."
-      : facebook?.composerState === "unavailable"
+      : companion.composerState === "unavailable"
         ? "Facebook is showing a reply box it has disabled."
-        : "No reply box on this tab.";
+        : "";
 }
 
 function renderTags() {

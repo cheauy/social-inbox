@@ -26,13 +26,15 @@ let timer = null;
 let observer = null;
 
 function inspect() {
-  const loggedIn = selectors.detectFacebookLogin();
+  const loginRequired = selectors.detectLoginRequired();
+  const loggedIn = !loginRequired && selectors.detectFacebookLogin();
   const { pageId, pageName } = selectors.detectCurrentPage();
   const conversationId = selectors.detectCurrentConversation();
   const composer = selectors.findMessengerComposer();
 
   return {
     facebookConnected: loggedIn,
+    loginRequired,
     pageId,
     pageName,
     conversationId,
@@ -51,6 +53,7 @@ function report(event) {
   const state = inspect();
   const signature = [
     state.facebookConnected,
+    state.loginRequired,
     state.pageId,
     state.conversationId,
     state.composerFound,

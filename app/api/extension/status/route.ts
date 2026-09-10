@@ -12,6 +12,32 @@ export const dynamic = "force-dynamic";
 const ONLINE_WITHIN_MS = 90_000;
 
 /*
+ * Spelled out because the column list is chosen at runtime, which costs the
+ * inferred row type. Everything past facebook_state is optional: it is absent
+ * before the migration and absent for a browser running an older build.
+ */
+type DeviceRow = {
+  id: string;
+  member_id: string;
+  device_name: string;
+  extension_version: string | null;
+  status: string;
+  facebook_connected: boolean | null;
+  current_page_id: string | null;
+  current_page_name: string | null;
+  current_url: string | null;
+  composer_state: string | null;
+  paired_at: string;
+  last_seen_at: string | null;
+  facebook_state?: string | null;
+  keep_companion_active?: boolean | null;
+  member:
+    | { id: string; full_name: string | null; email: string | null }
+    | { id: string; full_name: string | null; email: string | null }[]
+    | null;
+};
+
+/*
  * The browsers paired to this workspace, and what each last reported.
  *
  * Two callers, one route. A signed-in person gets the list for their
@@ -52,10 +78,14 @@ export async function GET(request: Request) {
   const member = authResult.member;
   const admin = canManageTeamChat(member.role);
 
-  let query = supabaseAdmin
-    .from("extension_devices")
-    .select(
-      `
+  /*
+   * Two shapes, because a deploy can land before its migration.
+   *
+   * The companion-state columns are read when they exist and skipped when they
+   * do not, so this list keeps working either way -- a status panel is not
+   * worth a 500 over a column that is one migration behind.
+   */
+  const COLUMNS = `
       id,
       member_id,
       device_name,
@@ -72,18 +102,39 @@ export async function GET(request: Request) {
         id,
         full_name,
         email
-      )
-    `,
-    )
-    .eq("business_id", member.business_id)
-    .eq("status", "active")
-    .order("last_seen_at", { ascending: false, nullsFirst: false });
+      )`;
 
-  if (!admin) {
-    query = query.eq("member_id", member.id);
+  const WITH_COMPANION = `${COLUMNS},
+      facebook_state,
+      keep_companion_active`;
+
+  async function load(columns: string) {
+    let query = supabaseAdmin
+      .from("extension_devices")
+      .select(columns)
+      .eq("business_id", member.business_id)
+      .eq("status", "active")
+      .order("last_seen_at", { ascending: false, nullsFirst: false });
+
+    if (!admin) {
+      query = query.eq("member_id", member.id);
+    }
+
+    return query;
   }
 
-  const { data, error } = await query;
+  let { data, error } = await load(WITH_COMPANION);
+
+  if (
+    error &&
+    (error.code === "42703" ||
+      error.code === "PGRST204" ||
+      /column .* does not exist|could not find the .* column/i.test(
+        error.message ?? "",
+      ))
+  ) {
+    ({ data, error } = await load(COLUMNS));
+  }
 
   if (error) {
     return NextResponse.json(
@@ -94,7 +145,7 @@ export async function GET(request: Request) {
 
   const now = Date.now();
 
-  const devices = (data ?? []).map((row) => {
+  const devices = ((data ?? []) as unknown as DeviceRow[]).map((row) => {
     const owner = Array.isArray(row.member) ? row.member[0] : row.member;
     const lastSeen = row.last_seen_at
       ? new Date(row.last_seen_at).getTime()
@@ -112,6 +163,14 @@ export async function GET(request: Request) {
       pageName: row.current_page_name,
       url: row.current_url,
       composerState: row.composer_state ?? "unknown",
+
+      /*
+       * What the browser calls its own Facebook state. Absent until the
+       * migration lands, and absent for an older extension -- both read as
+       * "unknown", which the card renders from facebookConnected as before.
+       */
+      facebookState: row.facebook_state ?? null,
+      keepCompanionActive: row.keep_companion_active === true,
       pairedAt: row.paired_at,
       lastSeenAt: row.last_seen_at,
     };

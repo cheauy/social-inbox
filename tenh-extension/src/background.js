@@ -11,8 +11,23 @@
  * exactly as it does for somebody who has not installed anything.
  */
 
+import {
+  askFacebook,
+  ensureFacebookTab,
+  focusFacebookTab,
+  getFacebookTabStatus,
+  handleTabNavigated,
+  handleTabRemoved,
+  openFacebookInbox,
+} from "./facebook-tab-manager.js";
+
 const TENH_ORIGIN = "https://app.tenhchat.com";
 const HEARTBEAT_ALARM = "tenh-heartbeat";
+const COMPANION_ALARM = "tenh-companion-active";
+
+/* Rare on purpose. Keep-active exists so the bridge is there when something
+   needs it, not so a tab is policed every minute. */
+const COMPANION_MINUTES = 5;
 
 /* Half a minute is often enough to look live and rare enough to be free. */
 const HEARTBEAT_MINUTES = 0.5;
@@ -27,6 +42,8 @@ async function readState() {
     "device",
     "installationId",
     "facebook",
+    "facebookState",
+    "keepCompanionActive",
     "notificationsEnabled",
   ]);
 
@@ -103,6 +120,8 @@ async function heartbeat(event) {
       pageName: facebook.pageName ?? null,
       url: facebook.url ?? null,
       composerState: facebook.composerState ?? "unknown",
+      facebookState: state.facebookState ?? null,
+      keepCompanionActive: state.keepCompanionActive === true,
       extensionVersion: VERSION,
       event: event ?? null,
     },
@@ -187,6 +206,19 @@ async function maybeNotify(unreadTotal, state) {
   }
 }
 
+/*
+ * Remember the companion state and let the next heartbeat carry it.
+ *
+ * Written to storage rather than sent immediately: the service worker can be
+ * suspended between a state changing and the next heartbeat, and a state kept
+ * only in memory would be a status panel that goes blank for no reason the
+ * customer can see.
+ */
+async function reportCompanionState(companion) {
+  await chrome.storage.local.set({ facebookState: companion?.state ?? null });
+  await heartbeat(null);
+}
+
 function deviceName() {
   const platform = navigator.userAgentData?.platform ?? "";
 
@@ -195,82 +227,40 @@ function deviceName() {
 
 /* -------------------------------------------------------------- Facebook */
 
-/** Ask every Facebook tab what it can see, and take the most complete answer. */
-async function askFacebook(message) {
-  const tabs = await chrome.tabs.query({
-    url: ["https://www.facebook.com/*", "https://business.facebook.com/*"],
-  });
-
-  const answers = [];
-
-  for (const tab of tabs) {
-    if (!tab.id) continue;
-
-    try {
-      const reply = await chrome.tabs.sendMessage(tab.id, message);
-
-      if (reply) answers.push({ ...reply, tabId: tab.id });
-    } catch {
-      /* A tab with no content script yet -- loading, or a page the manifest
-         does not cover. Not an error worth reporting. */
-    }
-  }
-
-  if (answers.length === 0) {
-    return {
-      facebookConnected: false,
-      conversationVisible: false,
-      composerFound: false,
-      composerEnabled: false,
-      reason: "no_facebook_tab",
-    };
-  }
-
-  answers.sort((left, right) => score(right) - score(left));
-
-  return answers[0];
-}
-
-function score(answer) {
-  return (
-    (answer.composerEnabled ? 8 : 0) +
-    (answer.composerFound ? 4 : 0) +
-    (answer.conversationVisible ? 2 : 0) +
-    (answer.facebookConnected ? 1 : 0)
-  );
-}
-
-/**
- * Bring the right Facebook tab forward, or open one.
+/*
+ * Every Facebook tab decision now lives in facebook-tab-manager.js. What is
+ * left here is the question of *when* a tab is worth having, which is a
+ * product decision rather than a browser one:
  *
- * Never closes a tab and never opens a second one for a page that is already
- * there: an agent with fifteen tabs open does not need TENH adding to them.
+ *   On demand (default) -- open one at the moment a capability needs it.
+ *   Keep active         -- keep one loaded while Chrome runs, so browser-side
+ *                          detection and send observation are actually live.
+ *
+ * Neither mode is required for TENH. With no tab, no extension and no Chrome
+ * at all, messages still arrive through Meta's webhook and still send through
+ * the API.
  */
-async function openFacebook({ pageId, conversationId } = {}) {
-  const target = pageId
-    ? `https://business.facebook.com/latest/inbox/all?asset_id=${encodeURIComponent(pageId)}`
-    : "https://business.facebook.com/latest/inbox/all";
 
-  const tabs = await chrome.tabs.query({
-    url: ["https://www.facebook.com/*", "https://business.facebook.com/*"],
-  });
+async function keepCompanionActive() {
+  const { keepCompanionActive } = await chrome.storage.local.get(
+    "keepCompanionActive",
+  );
 
-  const existing = pageId
-    ? tabs.find((tab) => (tab.url ?? "").includes(pageId))
-    : tabs[0];
+  return keepCompanionActive === true;
+}
 
-  if (existing?.id) {
-    await chrome.tabs.update(existing.id, { active: true, url: target });
-    if (existing.windowId) {
-      await chrome.windows.update(existing.windowId, { focused: true });
-    }
+/*
+ * The state TENH is told about, in the same words the popup uses.
+ *
+ * Read-only by default: asking for status must never be the thing that opens
+ * a tab, or every heartbeat would load Facebook whether anybody needed it or
+ * not. Keep-active mode is the exception, and it is the exception the customer
+ * asked for by switching it on.
+ */
+async function companionStatus({ create = null } = {}) {
+  const shouldCreate = create ?? (await keepCompanionActive());
 
-    return { opened: true, focused: true, conversationId: conversationId ?? null };
-  }
-
-  await chrome.tabs.create({ url: target, active: true });
-
-  return { opened: true, focused: false, conversationId: conversationId ?? null };
+  return getFacebookTabStatus({ create: shouldCreate });
 }
 
 /* ------------------------------------------------------------- messaging */
@@ -327,13 +317,81 @@ async function handle(message, sender) {
     case "TENH_STATUS": {
       const state = await readState();
 
+      /*
+       * create:false. Opening the popup is not a companion feature, and a
+       * status panel that loads Facebook every time somebody glances at it
+       * would be the same imposition in a nicer wrapper -- unless keep-active
+       * is on, which is a customer saying "yes, keep it loaded".
+       */
+      const companion = await companionStatus();
+
       return {
         version: VERSION,
         paired: Boolean(state.token),
         device: state.device ?? null,
         facebook: state.facebook ?? null,
+        companion,
+        keepCompanionActive: await keepCompanionActive(),
         notificationsEnabled: state.notificationsEnabled !== false,
       };
+    }
+
+    /*
+     * Keep-active, from the popup.
+     *
+     * Switching it on prepares a tab immediately, because a setting that only
+     * takes effect at the next Chrome restart reads as broken. Switching it
+     * off leaves whatever is open alone: closing a tab somebody may be reading
+     * is not this extension's business.
+     */
+    case "TENH_SET_KEEP_ACTIVE": {
+      const enabled = message.enabled === true;
+
+      await chrome.storage.local.set({ keepCompanionActive: enabled });
+
+      if (enabled) {
+        chrome.alarms.create(COMPANION_ALARM, {
+          periodInMinutes: COMPANION_MINUTES,
+        });
+
+        const companion = await companionStatus({ create: true });
+
+        await reportCompanionState(companion);
+
+        return { keepCompanionActive: true, companion };
+      }
+
+      await chrome.alarms.clear(COMPANION_ALARM);
+
+      return { keepCompanionActive: false, companion: await companionStatus() };
+    }
+
+    /*
+     * Facebook wants a sign-in, and only a person can give it one.
+     *
+     * This brings the tab forward and stops. Nothing here reads a password,
+     * fills a form, or touches a cookie -- the customer signs in to Facebook
+     * exactly as they always do, and the next inspection notices.
+     */
+    case "TENH_SIGN_IN_FACEBOOK": {
+      const prepared = await ensureFacebookTab({ create: true });
+
+      if (!prepared.tabId) {
+        return { opened: false, reason: prepared.reason ?? "unavailable" };
+      }
+
+      await focusFacebookTab(prepared.tabId);
+
+      return { opened: true };
+    }
+
+    /* "Prepare Facebook now", from the popup's retry. */
+    case "TENH_PREPARE_FACEBOOK": {
+      const companion = await companionStatus({ create: true });
+
+      await reportCompanionState(companion);
+
+      return { companion };
     }
 
     case "TENH_SET_NOTIFICATIONS":
@@ -341,17 +399,31 @@ async function handle(message, sender) {
 
       return { notificationsEnabled: message.enabled === true };
 
+    /* A person pressed a button that says "take me to Facebook", so this is
+       the one path allowed to move the screen. */
     case "OPEN_IN_FACEBOOK":
-      return openFacebook({
+      return openFacebookInbox({
         pageId: message.pageId,
+        threadId: message.threadId,
         conversationId: message.conversationId,
+        activate: true,
       });
 
+    /*
+     * The old-conversation check, and the reason this whole tab manager
+     * exists. TENH asks whether Facebook is offering a reply box; answering
+     * used to require the customer to have Business Suite already open, and
+     * telling somebody "open Facebook first, then ask again" is not an
+     * answer. Now a tab is prepared, inactive, and the question is answered.
+     */
     case "CHECK_FACEBOOK_REPLY_AVAILABILITY": {
-      const answer = await askFacebook({
-        type: "FB_INSPECT",
-        conversationId: message.conversationId ?? null,
-      });
+      const answer = await askFacebook(
+        {
+          type: "FB_INSPECT",
+          conversationId: message.conversationId ?? null,
+        },
+        { create: true, pageId: message.pageId ?? null },
+      );
 
       /* Reported, not acted on. TENH decides what to say about it. */
       await heartbeat(
@@ -419,16 +491,22 @@ async function handle(message, sender) {
 
     /* Puts a TENH quick reply into Facebook's box. Insert only -- the agent
        reads it and presses Send, or does not. */
+    /*
+     * A quick reply goes into one tab, chosen by the manager -- never
+     * broadcast. With three Facebook tabs open, a broadcast puts the reply
+     * into whichever answers first, which is how a message meant for one
+     * customer ends up drafted to another.
+     *
+     * A tab is created if there is none, because choosing a quick reply is a
+     * person asking for one. But an insert needs the right conversation on
+     * screen, and a freshly opened inbox has none: an enabled composer is the
+     * condition, and where there is not one this says so.
+     */
     case "TENH_INSERT_QUICK_REPLY": {
-      /*
-       * Asked of one tab, not broadcast. With three Facebook tabs open, a
-       * broadcast would put the reply into whichever answered first, which is
-       * how a message meant for one customer ends up drafted to another.
-       */
-      const found = await askFacebook({ type: "FB_INSPECT" });
+      const found = await askFacebook({ type: "FB_INSPECT" }, { create: true });
 
       if (!found?.tabId) {
-        return { inserted: false, reason: "no_facebook_tab" };
+        return { inserted: false, reason: found?.reason ?? "no_facebook_tab" };
       }
 
       if (!found.composerEnabled) {
@@ -446,7 +524,7 @@ async function handle(message, sender) {
           reason: answer?.reason ?? null,
         };
       } catch {
-        return { inserted: false, reason: "no_facebook_tab" };
+        return { inserted: false, reason: "bridge_unresponsive" };
       }
     }
 
@@ -476,10 +554,10 @@ async function handle(message, sender) {
 
     /* ------------------------------------------------------------ repair */
 
-    /* Ask every Facebook tab to look again, now, and report what it finds.
-       The button for "it stopped noticing me". */
+    /* Look again, now, and report what is found -- preparing a tab if there
+       is none, because this is somebody pressing "it stopped noticing me". */
     case "TENH_REDETECT": {
-      const answer = await askFacebook({ type: "FB_INSPECT" });
+      const answer = await askFacebook({ type: "FB_INSPECT" }, { create: true });
 
       const facebook = {
         loggedIn: answer.facebookConnected === true,
@@ -577,13 +655,70 @@ chrome.runtime.onInstalled.addListener(() => {
   }
 });
 
+/*
+ * Chrome starting is not a reason to open Facebook. On demand stays quiet
+ * until something needs the page; only a customer who switched keep-active on
+ * gets a tab prepared here, which is what they asked for.
+ */
 chrome.runtime.onStartup.addListener(() => {
   chrome.alarms.create(HEARTBEAT_ALARM, { periodInMinutes: HEARTBEAT_MINUTES });
   void heartbeat("extension_connected");
+
+  void (async () => {
+    if (!(await keepCompanionActive())) return;
+
+    chrome.alarms.create(COMPANION_ALARM, {
+      periodInMinutes: COMPANION_MINUTES,
+    });
+
+    const state = await readState();
+
+    if (state.token) {
+      await reportCompanionState(await companionStatus({ create: true }));
+    }
+  })();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === HEARTBEAT_ALARM) void heartbeat(null);
+
+  /*
+   * Keep-active's whole job: make sure a Facebook page is loaded so the
+   * bridge is there when something needs it -- including outgoing send
+   * detection, which cannot see anything at all without a live document.
+   */
+  if (alarm.name === COMPANION_ALARM) {
+    void (async () => {
+      if (!(await keepCompanionActive())) {
+        await chrome.alarms.clear(COMPANION_ALARM);
+
+        return;
+      }
+
+      const state = await readState();
+
+      /* No pairing, nothing to keep active for. */
+      if (!state.token) return;
+
+      await reportCompanionState(await companionStatus({ create: true }));
+    })();
+  }
+});
+
+/*
+ * A managed tab that is closed, or navigated off Facebook, stops being ours.
+ *
+ * On demand, that is the end of it: the customer closed a tab and the
+ * extension does not argue. The next capability that needs Facebook opens one.
+ * Keep-active restores it at its next alarm rather than instantly, so closing
+ * a tab does not turn into a fight with something that reopens it.
+ */
+chrome.tabs.onRemoved.addListener((tabId) => {
+  void handleTabRemoved(tabId);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.url) void handleTabNavigated(tabId, changeInfo.url);
 });
 
 /* A notification takes somebody to TENH, which is where the work is. */

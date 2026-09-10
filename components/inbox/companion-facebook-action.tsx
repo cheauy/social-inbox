@@ -26,11 +26,19 @@ import { useCompanion } from "@/lib/extension/use-companion";
 type Props = {
   conversationId: string;
   pageId: string | null;
+
+  /* The customer's page-scoped id. Facebook's own URL uses it to select a
+     thread, so with it this opens the conversation rather than the inbox. */
+  threadId: string | null;
 };
 
 const FACEBOOK_INBOX = "https://business.facebook.com/latest/inbox/all";
 
-export function CompanionFacebookAction({ conversationId, pageId }: Props) {
+export function CompanionFacebookAction({
+  conversationId,
+  pageId,
+  threadId,
+}: Props) {
   const { installed, openInFacebook, checkReplyAvailability } = useCompanion();
 
   /* Null while the question is still out. "Checking" is that, rendered --
@@ -70,17 +78,19 @@ export function CompanionFacebookAction({ conversationId, pageId }: Props) {
   async function open() {
     /* The companion focuses a tab that is already open rather than stacking
        another one. Without it, an ordinary new tab is the honest fallback. */
-    if (installed && (await openInFacebook({ pageId, conversationId }))) {
+    if (
+      installed &&
+      (await openInFacebook({ pageId, threadId, conversationId }))
+    ) {
       return;
     }
 
-    window.open(
-      pageId
-        ? `${FACEBOOK_INBOX}?asset_id=${encodeURIComponent(pageId)}`
-        : FACEBOOK_INBOX,
-      "_blank",
-      "noopener,noreferrer",
-    );
+    const url = new URL(FACEBOOK_INBOX);
+
+    if (pageId) url.searchParams.set("asset_id", pageId);
+    if (threadId) url.searchParams.set("selected_item_id", threadId);
+
+    window.open(url.toString(), "_blank", "noopener,noreferrer");
   }
 
   return (

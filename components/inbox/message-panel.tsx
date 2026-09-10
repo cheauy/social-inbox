@@ -6114,6 +6114,11 @@ export function MessagePanel({
               ?.social_account
               ?.platform_account_id ?? null
           }
+          facebookThreadId={
+            activeConversation
+              ?.contact
+              ?.platform_user_id ?? null
+          }
 
           onReplyChange={
             onReplyChange

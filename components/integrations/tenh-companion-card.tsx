@@ -28,6 +28,8 @@ type Device = {
   pageName: string | null;
   url: string | null;
   composerState: string;
+  facebookState: string | null;
+  keepCompanionActive: boolean;
   pairedAt: string;
   lastSeenAt: string | null;
 };
@@ -53,6 +55,72 @@ function relative(value: string | null) {
   if (elapsed < 86_400_000) return `${Math.round(elapsed / 3_600_000)} hr ago`;
 
   return `${Math.round(elapsed / 86_400_000)} days ago`;
+}
+
+/*
+ * How the website talks about a browser's Facebook state.
+ *
+ * "Sleeping" is not a warning and is not styled as one: it means that browser
+ * has no Facebook page loaded because nothing has needed one, which is the
+ * ordinary state of an agent doing ordinary work. Only a sign-in actually
+ * needs somebody, and only that gets an amber dot.
+ *
+ * Nothing here is ever presented as a TENH error, because it is not one --
+ * every message still arrives through Meta's webhook and still sends through
+ * the API with this line reading whatever it likes.
+ */
+function FacebookLine({ device }: { device: Device }) {
+  const state =
+    device.facebookState ??
+    /* An older extension, or a heartbeat from before the columns existed. Fall
+       back to what those builds did report. */
+    (device.facebookConnected ? "ready" : "sleeping");
+
+  const tone =
+    state === "ready"
+      ? "bg-emerald-600"
+      : state === "sign_in_required" || state === "error"
+        ? "bg-amber-500"
+        : "bg-slate-300";
+
+  const label =
+    state === "ready"
+      ? "Facebook ready"
+      : state === "connecting"
+        ? "Facebook starting"
+        : state === "sign_in_required"
+          ? "Facebook sign-in required"
+          : state === "error"
+            ? "Facebook companion unavailable"
+            : "Facebook sleeping";
+
+  const detail =
+    state === "ready"
+      ? [
+          device.pageName,
+          device.composerState === "available"
+            ? "reply box available"
+            : device.composerState === "unavailable"
+              ? "reply box disabled by Facebook"
+              : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : state === "sign_in_required"
+        ? "Sign in to Facebook once in that browser."
+        : state === "error"
+          ? "Normal TENH messaging is unaffected."
+          : device.keepCompanionActive
+            ? "Starting automatically."
+            : "Starts automatically when needed.";
+
+  return (
+    <p className="mt-1 text-sm text-slate-500">
+      <span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${tone}`} />
+      {label}
+      {detail ? ` · ${detail}` : ""}
+    </p>
+  );
 }
 
 export function TenhCompanionCard() {
@@ -273,16 +341,7 @@ export function TenhCompanionCard() {
                     {device.online ? "Online" : `Last seen ${relative(device.lastSeenAt)}`}
                   </p>
 
-                  <p className="mt-1 text-sm text-slate-500">
-                    Facebook{" "}
-                    {device.facebookConnected ? "signed in" : "not detected"}
-                    {device.pageName ? ` · ${device.pageName}` : ""}
-                    {device.composerState === "available"
-                      ? " · reply box available"
-                      : device.composerState === "unavailable"
-                        ? " · reply box disabled by Facebook"
-                        : ""}
-                  </p>
+                  <FacebookLine device={device} />
                 </div>
 
                 <button

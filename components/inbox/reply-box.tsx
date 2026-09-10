@@ -62,6 +62,7 @@ type ReplyBoxProps = {
    */
   canOpenInFacebook?: boolean;
   facebookPageId?: string | null;
+  facebookThreadId?: string | null;
 
   contactId: string;
   businessId: string;
@@ -332,6 +333,7 @@ export function ReplyBox({
   conversationId,
   canOpenInFacebook = false,
   facebookPageId = null,
+  facebookThreadId = null,
   allowAttachments = true,
   onReplyChange,
   onSubmit,
@@ -2219,6 +2221,7 @@ export function ReplyBox({
                   <CompanionFacebookAction
                     conversationId={conversationId}
                     pageId={facebookPageId}
+                    threadId={facebookThreadId}
                   />
                 ) : null}
               </div>

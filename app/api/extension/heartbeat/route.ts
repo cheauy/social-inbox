@@ -12,6 +12,26 @@ export const dynamic = "force-dynamic";
 
 const MAX_TEXT = 300;
 
+/* The words the extension shows its own customer, kept identical here so the
+   website cannot describe the same browser differently. */
+const COMPANION_STATES = new Set([
+  "ready",
+  "sleeping",
+  "connecting",
+  "sign_in_required",
+  "error",
+]);
+
+function isUnknownColumn(error: { code?: string; message?: string }) {
+  return (
+    error.code === "42703" ||
+    error.code === "PGRST204" ||
+    /column .* does not exist|could not find the .* column/i.test(
+      error.message ?? "",
+    )
+  );
+}
+
 function clean(value: unknown) {
   return typeof value === "string" && value.trim()
     ? value.trim().slice(0, MAX_TEXT)
@@ -46,6 +66,8 @@ export async function POST(request: Request) {
     pageName?: unknown;
     url?: unknown;
     composerState?: unknown;
+    facebookState?: unknown;
+    keepCompanionActive?: unknown;
     extensionVersion?: unknown;
     event?: unknown;
   };
@@ -72,25 +94,54 @@ export async function POST(request: Request) {
   }
 
   const composerState = clean(body.composerState);
+  const facebookState = clean(body.facebookState);
 
-  const { error } = await supabaseAdmin
+  const base = {
+    last_seen_at: now,
+    updated_at: now,
+    facebook_connected: body.facebookConnected === true,
+    current_page_id: clean(body.pageId),
+    current_page_name: clean(body.pageName),
+    current_url: url,
+    composer_state:
+      composerState === "available" ||
+      composerState === "unavailable" ||
+      composerState === "unknown"
+        ? composerState
+        : "unknown",
+    extension_version: clean(body.extensionVersion) ?? device.extension_version,
+  };
+
+  const withCompanionState = {
+    ...base,
+    facebook_state: COMPANION_STATES.has(facebookState ?? "")
+      ? facebookState
+      : null,
+    keep_companion_active: body.keepCompanionActive === true,
+  };
+
+  /*
+   * Written with the newer columns when the database has them, and without
+   * when it does not.
+   *
+   * A heartbeat is the thing that keeps a browser looking alive, and code
+   * reaches production before a migration does. Failing the whole request over
+   * a column that is one migration away would take every paired browser
+   * offline on the website for no reason a customer could act on -- so the
+   * richer write is attempted, and a missing column falls back rather than
+   * 500s. The fallback stops being reached the moment the migration lands.
+   */
+  let { error } = await supabaseAdmin
     .from("extension_devices")
-    .update({
-      last_seen_at: now,
-      updated_at: now,
-      facebook_connected: body.facebookConnected === true,
-      current_page_id: clean(body.pageId),
-      current_page_name: clean(body.pageName),
-      current_url: url,
-      composer_state:
-        composerState === "available" ||
-        composerState === "unavailable" ||
-        composerState === "unknown"
-          ? composerState
-          : "unknown",
-      extension_version: clean(body.extensionVersion) ?? device.extension_version,
-    })
+    .update(withCompanionState)
     .eq("id", device.id);
+
+  if (error && isUnknownColumn(error)) {
+    ({ error } = await supabaseAdmin
+      .from("extension_devices")
+      .update(base)
+      .eq("id", device.id));
+  }
 
   if (error) {
     return NextResponse.json(

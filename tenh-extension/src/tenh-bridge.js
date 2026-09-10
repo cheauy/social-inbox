@@ -36,6 +36,7 @@ window.addEventListener("message", (event) => {
     {
       type: data.type,
       pageId: typeof data.pageId === "string" ? data.pageId : undefined,
+      threadId: typeof data.threadId === "string" ? data.threadId : undefined,
       conversationId:
         typeof data.conversationId === "string" ? data.conversationId : undefined,
     },

@@ -16,7 +16,7 @@
 
     <section class="card">
       <div class="row">
-        <span class="label">This browser</span>
+        <span class="label">TENH</span>
         <span class="state" id="pairState">Checking…</span>
       </div>
       <p class="detail" id="deviceName"></p>
@@ -25,10 +25,13 @@
     <section class="card">
       <div class="row">
         <span class="label">Facebook</span>
-        <span class="state" id="facebookState">Unknown</span>
+        <span class="state" id="facebookState">Checking…</span>
       </div>
-      <p class="detail" id="pageName">No Facebook tab open</p>
+      <p class="detail" id="pageName"></p>
       <p class="detail" id="composerState"></p>
+
+      <button id="signIn" class="primary" hidden>Sign in to Facebook</button>
+      <button id="retry" hidden>Retry</button>
     </section>
 
     <section class="card" id="pairCard">
@@ -38,8 +41,16 @@
     </section>
 
     <section class="card" id="pairedCard" hidden>
+      <label class="toggle" for="keepActive">
+        <span>
+          Keep Facebook companion active
+          <span class="toggle-note" id="keepActiveNote"></span>
+        </span>
+        <input type="checkbox" id="keepActive" />
+      </label>
+
       <button id="openTenh" class="primary">Open TENH Inbox</button>
-      <button id="openFacebook">Open Facebook inbox</button>
+      <button id="openFacebook">Open Facebook</button>
       <button id="unpair" class="danger">Disconnect this browser</button>
     </section>
 
