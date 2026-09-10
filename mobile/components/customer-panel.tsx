@@ -15,7 +15,15 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Avatar, Empty, IconName, TagChip, colors, styles } from "./ui";
+import {
+  Avatar,
+  Empty,
+  IconName,
+  TagChip,
+  colors,
+  relativeTime,
+  styles,
+} from "./ui";
 import type { ConversationStatus } from "../lib/types";
 
 /*
@@ -467,7 +475,7 @@ function Editable({
  * separate decisions, one of them is a toggle that stays on, and a strip gave
  * no way to show which. An active pin now reads as a filled card.
  */
-function HeaderAction({
+function ActionTile({
   icon,
   label,
   tint,
@@ -495,17 +503,15 @@ function HeaderAction({
         flex: 1,
         alignItems: "center",
         gap: 5,
-        paddingVertical: 12,
-        borderRadius: 14,
-        borderWidth: 1,
-        borderColor: active ? colour : colors.border,
+        paddingVertical: 10,
+        borderRadius: 13,
         backgroundColor: active
           ? tint === colors.pin
             ? colors.pinWash
             : colors.pale
           : pressed
-            ? colors.pale
-            : "white",
+            ? colors.background
+            : "transparent",
       })}
     >
       {busy ? (
@@ -516,12 +522,70 @@ function HeaderAction({
 
       <Text
         numberOfLines={1}
-        style={{ fontSize: 11.5, fontWeight: "800", color: colour }}
+        style={{ fontSize: 10.5, fontWeight: "700", color: colour }}
       >
         {label}
       </Text>
     </Pressable>
   );
+}
+
+/*
+ * One fact about the customer, on the tinted ground inside their card.
+ *
+ * Two of these side by side say more about a relationship than the same two
+ * lines further down a record: how long they have been a customer, and
+ * whether they were here this morning.
+ */
+function Fact({
+  icon,
+  label,
+  value,
+}: {
+  icon: IconName;
+  label: string;
+  value: string;
+}) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        gap: 3,
+        paddingHorizontal: 11,
+        paddingVertical: 9,
+        borderRadius: 12,
+        backgroundColor: colors.background,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+        <Ionicons name={icon} size={11} color={colors.muted} />
+
+        <Text style={{ fontSize: 10.5, color: colors.muted }}>{label}</Text>
+      </View>
+
+      <Text
+        numberOfLines={1}
+        style={{ fontSize: 13, fontWeight: "700", color: colors.ink }}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+/* A date without the time: nobody needs the minute somebody became a customer. */
+function since(value?: string | null) {
+  if (!value) return "—";
+
+  const at = new Date(value);
+
+  return Number.isFinite(at.getTime())
+    ? at.toLocaleDateString(undefined, {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : "—";
 }
 
 function ChoiceRow({
@@ -828,127 +892,216 @@ export function CustomerPanel({
             />
           ) : (
             <>
+              {/*
+                The customer, as a card that leads with who they are.
+
+                It was an avatar, a name, a platform id and a page name at the
+                same weight, so the line an agent never reads -- a
+                seventeen-digit Facebook id -- sat directly under the one they
+                always do. The name is the heading; the page is a chip beside
+                the channel it came in on; the id is a row you can copy and
+                otherwise ignore.
+              */}
               <View
                 style={{
-                  flexDirection: "row",
-                  gap: 12,
-                  padding: 14,
-                  borderRadius: 16,
+                  padding: 16,
+                  gap: 14,
+                  borderRadius: 18,
                   backgroundColor: "white",
                   borderWidth: 1,
                   borderColor: colors.border,
                 }}
               >
-                <Avatar
-                  name={customer.fullName}
-                  uri={customer.profilePictureUrl}
-                  size={46}
-                />
+                <View style={{ flexDirection: "row", gap: 13 }}>
+                  <Avatar
+                    name={customer.fullName}
+                    uri={customer.profilePictureUrl}
+                    size={54}
+                  />
 
-                <View style={{ flex: 1, gap: 3 }}>
-                  <View
-                    style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
-                  >
-                    <Text style={styles.heading} numberOfLines={2}>
+                  <View style={{ flex: 1, gap: 6 }}>
+                    <Text
+                      numberOfLines={2}
+                      style={{
+                        fontSize: 18,
+                        fontWeight: "800",
+                        color: colors.ink,
+                        lineHeight: 23,
+                      }}
+                    >
                       {customer.fullName}
                     </Text>
 
-                    <CopyButton value={customer.fullName} label="the name" />
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        alignSelf: "flex-start",
+                        gap: 5,
+                        paddingHorizontal: 9,
+                        paddingVertical: 4,
+                        borderRadius: 999,
+                        backgroundColor: colors.pale,
+                      }}
+                    >
+                      <Ionicons name={channelIcon} size={12} color={colors.blue} />
+
+                      <Text
+                        numberOfLines={1}
+                        style={{
+                          fontSize: 11.5,
+                          fontWeight: "700",
+                          color: colors.blue,
+                          maxWidth: 160,
+                        }}
+                      >
+                        {channelName ?? "Unknown page"}
+                      </Text>
+                    </View>
                   </View>
 
-                  {customer.platformUserId ? (
-                    <Text
-                      numberOfLines={1}
-                      style={{ fontSize: 12, color: colors.muted }}
-                    >
-                      ID: {customer.platformUserId}
-                    </Text>
-                  ) : null}
-
-                  {/* The page this customer reached, the way the web names it. */}
-                  <View
-                    style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Close customer details"
+                    hitSlop={10}
+                    onPress={onClose}
                   >
-                    <Ionicons name={channelIcon} size={13} color={colors.blue} />
-
-                    <Text
-                      numberOfLines={1}
-                      style={{ fontSize: 12.5, color: colors.ink, flexShrink: 1 }}
-                    >
-                      {channelName ?? "—"}
-                    </Text>
-                  </View>
+                    <Ionicons name="close" size={22} color={colors.muted} />
+                  </Pressable>
                 </View>
 
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Close customer details"
-                  hitSlop={10}
-                  onPress={onClose}
-                >
-                  <Ionicons name="close" size={22} color={colors.muted} />
-                </Pressable>
+                {/*
+                  Two facts about the relationship rather than about the
+                  record: how long they have been a customer, and whether they
+                  were here this morning or in March.
+                */}
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  <Fact
+                    icon="calendar-outline"
+                    label="Customer since"
+                    value={since(customer.createdAt)}
+                  />
+
+                  <Fact
+                    icon="pulse-outline"
+                    label="Last active"
+                    value={relativeTime(customer.lastActiveAt) || "—"}
+                  />
+                </View>
+
+                {customer.platformUserId ? (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      paddingTop: 2,
+                    }}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={{ flex: 1, fontSize: 11.5, color: colors.muted }}
+                    >
+                      ID {customer.platformUserId}
+                    </Text>
+
+                    <CopyButton
+                      value={customer.platformUserId}
+                      label="the customer id"
+                    />
+                  </View>
+                ) : null}
               </View>
 
               {/*
-                The three things you do to a conversation, at the top where a
-                toolbar belongs, rather than in a section at the bottom you
-                have to scroll a record to reach.
+                Everything you can do, on one strip.
+
+                Five actions in two rows of big cards took a third of the
+                panel before a single fact about the customer appeared. As
+                tiles on one row they still name themselves, and the record
+                starts above the fold.
               */}
-              <View style={{ flexDirection: "row", gap: 10 }}>
-                <HeaderAction
+              <View
+                style={{
+                  flexDirection: "row",
+                  padding: 6,
+                  borderRadius: 18,
+                  backgroundColor: "white",
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <ActionTile
                   icon={pinned ? "bookmark" : "bookmark-outline"}
-                  label={pinned ? "Unpin" : "Pin"}
+                  label={pinned ? "Pinned" : "Pin"}
                   tint={pinned ? colors.pin : undefined}
                   active={pinned}
                   busy={busy === "pin"}
                   onPress={onPin}
                 />
 
-                <HeaderAction
+                <ActionTile
                   icon="mail-unread-outline"
                   label="Unread"
                   busy={busy === "unread"}
                   onPress={onUnread}
                 />
 
-                <HeaderAction
+                <ActionTile
                   icon={statusIcon}
                   label={statusLabel}
                   tint={STATUS_TONE[status ?? "open"]}
+                  active={statusOpen}
                   busy={Boolean(busy?.startsWith("status:"))}
                   onPress={() => setStatusOpen((current) => !current)}
                 />
-              </View>
 
-              {/*
-                The two that are about the customer rather than the
-                conversation: something to be done later, and everything that
-                has already been done. On their own row because the row above
-                is three things you do to this thread right now.
-              */}
-              <View style={{ flexDirection: "row", gap: 10 }}>
-                <HeaderAction
+                <ActionTile
                   icon="alarm-outline"
                   label="Remind"
-                  active={remindOpen}
                   busy={false}
                   onPress={() => {
                     setReminded("");
-                    setRemindOpen((current) => !current);
+                    setRemindOpen(true);
                   }}
                 />
 
-                <HeaderAction
+                <ActionTile
                   icon="time-outline"
                   label="History"
-                  active={historyOpen}
                   busy={false}
                   onPress={() => void openHistory()}
                 />
               </View>
 
-              {reminded && !remindOpen ? (
+              {statusOpen ? (
+                <View
+                  style={{
+                    backgroundColor: "white",
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    paddingHorizontal: 14,
+                    paddingVertical: 4,
+                  }}
+                >
+                  {STATUSES.map((option) => (
+                    <ChoiceRow
+                      key={option.key}
+                      icon={option.icon}
+                      label={option.label}
+                      active={status === option.key}
+                      busy={busy === `status:${option.key}`}
+                      onPress={() => {
+                        onStatus(option.key);
+                        setStatusOpen(false);
+                      }}
+                    />
+                  ))}
+                </View>
+              ) : null}
+
+              {reminded ? (
                 <View
                   style={{
                     flexDirection: "row",
@@ -968,11 +1121,18 @@ export function CustomerPanel({
                 </View>
               ) : null}
 
-              <Section title="Tags">
-                <View style={{ paddingVertical: 12 }}>
+              <Section
+                title={
+                  customer.tags.length > 0
+                    ? `Tags · ${customer.tags.length}`
+                    : "Tags"
+                }
+              >
+                <View style={{ paddingVertical: 13 }}>
                   {customer.tags.length === 0 ? (
-                    <Text style={{ fontSize: 14.5, color: colors.muted }}>
-                      No tag yet
+                    <Text style={{ fontSize: 13.5, color: colors.muted }}>
+                      No tags yet. The tag button in the thread header adds
+                      them.
                     </Text>
                   ) : (
                     <View
@@ -1017,124 +1177,152 @@ export function CustomerPanel({
                 </View>
               </Section>
 
-              <Section title="Conversation">
-                <View
-                  style={{
+              <Section title="Assigned to">
+                {/*
+                  The assignee as a person rather than a value in a row: a
+                  face and a name is what somebody is looking for when they
+                  ask who has this, and "Unassigned" is a state worth seeing
+                  as clearly as a name.
+                */}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Change who this is assigned to"
+                  onPress={() => setAssignOpen((current) => !current)}
+                  style={({ pressed }) => ({
                     flexDirection: "row",
                     alignItems: "center",
-                    gap: 8,
-                    paddingVertical: 12,
-                  }}
+                    gap: 11,
+                    paddingVertical: 13,
+                    marginHorizontal: -14,
+                    paddingHorizontal: 14,
+                    backgroundColor: pressed ? colors.pale : "transparent",
+                  })}
                 >
-                  <Ionicons name="person-outline" size={13} color={colors.muted} />
-
-                  <Text style={{ fontSize: 12.5, color: colors.muted, flex: 1 }}>
-                    Assigned to
-                  </Text>
-
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Change who this is assigned to"
-                    onPress={() => setAssignOpen((current) => !current)}
-                    style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
-                  >
-                    <Text
+                  {assignedTo ? (
+                    <Avatar name={assignedName ?? "?"} size={34} />
+                  ) : (
+                    <View
                       style={{
-                        fontSize: 14,
-                        color: assignedTo ? colors.ink : colors.muted,
+                        width: 34,
+                        height: 34,
+                        borderRadius: 17,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: colors.background,
+                      }}
+                    >
+                      <Ionicons
+                        name="person-outline"
+                        size={16}
+                        color={colors.muted}
+                      />
+                    </View>
+                  )}
+
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        fontSize: 15,
                         fontWeight: assignedTo ? "700" : "500",
+                        color: assignedTo ? colors.ink : colors.muted,
                       }}
                     >
                       {assignedName ?? (assignedTo ? "Someone" : "Unassigned")}
                     </Text>
 
-                    <Ionicons
-                      name={assignOpen ? "chevron-up" : "chevron-down"}
-                      size={14}
-                      color={colors.muted}
-                    />
-                  </Pressable>
-                </View>
-
-                {currentMemberId && assignedTo !== currentMemberId ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={busy === `assign:${currentMemberId}`}
-                    onPress={() => onAssign(currentMemberId)}
-                    style={({ pressed }) => ({
-                      alignSelf: "flex-start",
-                      marginBottom: 12,
-                      paddingHorizontal: 12,
-                      paddingVertical: 7,
-                      borderRadius: 8,
-                      backgroundColor: pressed ? colors.border : colors.pale,
-                    })}
-                  >
-                    {busy === `assign:${currentMemberId}` ? (
-                      <ActivityIndicator color={colors.blue} />
-                    ) : (
-                      <Text
-                        style={{
-                          color: colors.blue,
-                          fontSize: 13,
-                          fontWeight: "700",
-                        }}
-                      >
-                        Assign to me
-                      </Text>
-                    )}
-                  </Pressable>
-                ) : null}
-
-                {assignOpen ? (
-                  membersLoading ? (
-                    <ActivityIndicator color={colors.blue} />
-                  ) : (
-                    <>
-                      <ChoiceRow
-                        icon="person-remove-outline"
-                        label="Nobody"
-                        active={!assignedTo}
-                        busy={busy === "assign:none"}
-                        onPress={() => onAssign(null)}
-                      />
-
-                      {members.map((member) => (
-                        <ChoiceRow
-                          key={member.id}
-                          icon="person-outline"
-                          label={member.full_name ?? "Team member"}
-                          detail={member.role ?? undefined}
-                          active={assignedTo === member.id}
-                          busy={busy === `assign:${member.id}`}
-                          onPress={() => onAssign(member.id)}
-                        />
-                      ))}
-                    </>
-                  )
-                ) : null}
-
-                <Divider />
-
-                <View style={{ gap: 3, paddingVertical: 12 }}>
-                  <View
-                    style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
-                  >
-                    <Ionicons
-                      name="calendar-outline"
-                      size={13}
-                      color={colors.muted}
-                    />
-
-                    <Text style={{ fontSize: 12.5, color: colors.muted }}>
-                      Customer since
+                    <Text style={{ fontSize: 12, color: colors.muted }}>
+                      {assignedTo
+                        ? "Tap to hand it to somebody else"
+                        : "Nobody is looking after this yet"}
                     </Text>
                   </View>
 
-                  <Text style={{ fontSize: 15, color: colors.ink }}>
-                    {stamp(customer.createdAt)}
-                  </Text>
-                </View>
+                  <Ionicons
+                    name={assignOpen ? "chevron-up" : "chevron-down"}
+                    size={16}
+                    color={colors.muted}
+                  />
+                </Pressable>
+
+                {currentMemberId && assignedTo !== currentMemberId ? (
+                  <>
+                    <Divider />
+
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={busy === `assign:${currentMemberId}`}
+                      onPress={() => onAssign(currentMemberId)}
+                      style={({ pressed }) => ({
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 7,
+                        paddingVertical: 13,
+                        marginHorizontal: -14,
+                        backgroundColor: pressed ? colors.pale : "transparent",
+                      })}
+                    >
+                      {busy === `assign:${currentMemberId}` ? (
+                        <ActivityIndicator color={colors.blue} />
+                      ) : (
+                        <>
+                          <Ionicons
+                            name="person-add-outline"
+                            size={15}
+                            color={colors.blue}
+                          />
+
+                          <Text
+                            style={{
+                              color: colors.blue,
+                              fontSize: 14,
+                              fontWeight: "800",
+                            }}
+                          >
+                            Assign to me
+                          </Text>
+                        </>
+                      )}
+                    </Pressable>
+                  </>
+                ) : null}
+
+                {assignOpen ? (
+                  <>
+                    <Divider />
+
+                    <View style={{ paddingVertical: 4 }}>
+                      {membersLoading ? (
+                        <View style={{ paddingVertical: 14 }}>
+                          <ActivityIndicator color={colors.blue} />
+                        </View>
+                      ) : (
+                        <>
+                          <ChoiceRow
+                            icon="person-remove-outline"
+                            label="Nobody"
+                            active={!assignedTo}
+                            busy={busy === "assign:none"}
+                            onPress={() => onAssign(null)}
+                          />
+
+                          {members.map((member) => (
+                            <ChoiceRow
+                              key={member.id}
+                              icon="person-outline"
+                              label={member.full_name ?? "Team member"}
+                              detail={member.role ?? undefined}
+                              active={assignedTo === member.id}
+                              busy={busy === `assign:${member.id}`}
+                              onPress={() => onAssign(member.id)}
+                            />
+                          ))}
+                        </>
+                      )}
+                    </View>
+                  </>
+                ) : null}
               </Section>
             </>
           )}
