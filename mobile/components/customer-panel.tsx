@@ -1372,6 +1372,10 @@ export function CustomerPanel({
                           key={tag.id}
                           name={tag.name}
                           color={tag.color}
+                          /* No tick: nothing here is being chosen. A check
+                             belongs in the picker, where it says which tags
+                             a tap would remove. */
+                          showCheck={false}
                         />
                       ))}
                     </View>
