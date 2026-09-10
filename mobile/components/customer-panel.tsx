@@ -27,8 +27,11 @@ import {
   relativeTime,
   styles,
 } from "./ui";
+import { VideoView, useVideoPlayer } from "expo-video";
+
 import type { ConversationStatus } from "../lib/types";
 import { AuthImage } from "./auth-image";
+import { useMediaSource } from "../lib/media";
 
 /*
  * The customer, as a panel that slides in from the right.
@@ -210,6 +213,22 @@ function monthOf(value: string) {
 
 function FileLibrary({ files }: { files: CustomerFile[] }) {
   const [tab, setTab] = useState<LibraryTab>("media");
+  const [preview, setPreview] = useState<CustomerFile | null>(null);
+
+  /*
+   * A picture is looked at here; a document or a link is opened where it can
+   * actually be read.
+   */
+  function open(item: CustomerFile) {
+    if (!item.url) return;
+
+    if (item.kind === "image" || item.kind === "video") {
+      setPreview(item);
+      return;
+    }
+
+    void Linking.openURL(item.url);
+  }
 
   const media = files.filter(
     (file) => file.kind === "image" || file.kind === "video",
@@ -345,9 +364,7 @@ function FileLibrary({ files }: { files: CustomerFile[] }) {
                       accessibilityRole="imagebutton"
                       accessibilityLabel={`Open ${item.name}`}
                       disabled={!item.url}
-                      onPress={() => {
-                        if (item.url) void Linking.openURL(item.url);
-                      }}
+                      onPress={() => open(item)}
                       style={{
                         width: "32.4%",
                         aspectRatio: 1,
@@ -391,9 +408,7 @@ function FileLibrary({ files }: { files: CustomerFile[] }) {
                     accessibilityRole="button"
                     accessibilityLabel={`Open ${item.name}`}
                     disabled={!item.url}
-                    onPress={() => {
-                      if (item.url) void Linking.openURL(item.url);
-                    }}
+                    onPress={() => open(item)}
                     style={({ pressed }) => ({
                       flexDirection: "row",
                       alignItems: "center",
@@ -460,6 +475,8 @@ function FileLibrary({ files }: { files: CustomerFile[] }) {
           ))}
         </ScrollView>
       )}
+
+      <MediaViewer item={preview} onClose={() => setPreview(null)} />
     </>
   );
 }
@@ -766,6 +783,116 @@ function HistorySkeleton() {
         ))}
       </View>
     </Pulse>
+  );
+}
+
+/*
+ * A photo or a clip, full screen, inside the app.
+ *
+ * Tapping one used to hand its URL to the phone's browser, which is a
+ * different app, a loading bar, and often a login page for a link that was
+ * signed for this session and nobody else -- to look at a picture that was
+ * already downloaded. Documents and links still leave, because a PDF or a
+ * shop's website is what a browser is for.
+ */
+function MediaViewer({
+  item,
+  onClose,
+}: {
+  item: CustomerFile | null;
+  onClose: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <Modal
+      visible={Boolean(item)}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <View style={{ flex: 1, backgroundColor: "rgba(8,16,28,0.96)" }}>
+        <Pressable
+          accessibilityLabel="Close"
+          onPress={onClose}
+          style={{ ...FILL }}
+        />
+
+        {item?.kind === "video" && item.url ? (
+          <ViewerVideo uri={item.url} />
+        ) : item?.url ? (
+          <AuthImage
+            uri={item.url}
+            cacheKey={item.cacheKey}
+            resizeMode="contain"
+            style={{ width: "100%", height: "100%" }}
+          />
+        ) : null}
+
+        <View
+          style={{
+            position: "absolute",
+            left: 16,
+            right: 16,
+            top: insets.top + 12,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <Text
+            numberOfLines={1}
+            style={{
+              flex: 1,
+              color: "white",
+              fontSize: 14,
+              fontWeight: "700",
+            }}
+          >
+            {item?.name ?? ""}
+          </Text>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            onPress={onClose}
+            hitSlop={12}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 19,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(255,255,255,0.16)",
+            }}
+          >
+            <Ionicons name="close" size={21} color="white" />
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function ViewerVideo({ uri }: { uri: string }) {
+  /*
+   * Resolved the same way a picture is: an attachment proxied through TENH
+   * needs the origin and the session cookie, or the player gets a 401 and
+   * shows a black rectangle.
+   */
+  const resolve = useMediaSource();
+  const player = useVideoPlayer(resolve(uri) ?? uri, (instance) => {
+    instance.play();
+  });
+
+  return (
+    <VideoView
+      player={player}
+      nativeControls
+      contentFit="contain"
+      style={{ width: "100%", height: "100%" }}
+    />
   );
 }
 
