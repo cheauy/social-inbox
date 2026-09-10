@@ -15,7 +15,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  Avatar,
   Empty,
   ErrorNotice,
   IconName,
@@ -385,17 +384,6 @@ export default function GroupChat() {
     room: TeamRoom;
     at: { x: number; y: number };
   } | null>(null);
-
-  /*
-   * The faces to put on a room's row.
-   *
-   * The roster is the whole workspace, and a room carries the ids of its own
-   * members -- General carries everybody's. Missing people simply do not draw:
-   * a row is not worth failing over somebody who left this morning.
-   */
-  function faces(room: TeamRoom) {
-    return roster.filter((member) => room.member_ids.includes(member.id));
-  }
 
   const needle = query.trim().toLowerCase();
   const shown = needle
@@ -782,80 +770,15 @@ export default function GroupChat() {
                           "Internal team conversation"}
                       </Text>
 
-                      {/*
-                        Who is in here, as faces rather than a number. A room
-                        is people, and three of them plus a count says more
-                        about whether this is the room you meant than "4
-                        members" ever did -- which is still there, in the
-                        corner, for when it is the number you want.
-                      */}
-                      <View
+                      <Text
                         style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 8,
-                          marginTop: 2,
+                          fontSize: 11.5,
+                          color: colors.muted,
                         }}
                       >
-                        <View style={{ flexDirection: "row" }}>
-                          {faces(room)
-                            .slice(0, 3)
-                            .map((member, index) => (
-                              <View
-                                key={member.id}
-                                style={{
-                                  marginLeft: index === 0 ? 0 : -9,
-                                  borderRadius: 13,
-                                  borderWidth: 2,
-                                  borderColor: "white",
-                                }}
-                              >
-                                <Avatar
-                                  name={member.full_name}
-                                  uri={member.profile_picture_url}
-                                  size={22}
-                                />
-                              </View>
-                            ))}
-
-                          {room.member_count > 3 ? (
-                            <View
-                              style={{
-                                marginLeft: -9,
-                                width: 26,
-                                height: 26,
-                                borderRadius: 13,
-                                borderWidth: 2,
-                                borderColor: "white",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                backgroundColor: colors.background,
-                              }}
-                            >
-                              <Text
-                                style={{
-                                  fontSize: 9.5,
-                                  fontWeight: "800",
-                                  color: colors.muted,
-                                }}
-                              >
-                                +{room.member_count - 3}
-                              </Text>
-                            </View>
-                          ) : null}
-                        </View>
-
-                        <Text
-                          style={{
-                            marginLeft: "auto",
-                            fontSize: 11.5,
-                            color: colors.muted,
-                          }}
-                        >
-                          {room.member_count} member
-                          {room.member_count === 1 ? "" : "s"}
-                        </Text>
-                      </View>
+                        {room.member_count} member
+                        {room.member_count === 1 ? "" : "s"}
+                      </Text>
                     </View>
                   </View>
 
