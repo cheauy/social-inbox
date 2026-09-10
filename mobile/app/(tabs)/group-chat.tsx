@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -15,6 +15,7 @@ import { Empty, ErrorNotice, Sheet, colors, styles } from "../../components/ui";
 import { api } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
 import type { Member, TeamRoom } from "../../lib/types";
+import { TEAM_ROOM_ICON_OPTIONS, TeamRoomIcon, type TeamRoomIconKey } from "../../components/team-room-icon";
 
 /*
  * The rooms this workspace has, and a way to make another.
@@ -72,12 +73,22 @@ function CreateGroupSheet({
   open: boolean;
   roster: Member[];
   busy: boolean;
-  onCreate: (name: string, description: string, memberIds: string[]) => void;
+  onCreate: (name: string, description: string, memberIds: string[], icon: TeamRoomIconKey) => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const [icon, setIcon] = useState<TeamRoomIconKey>("people");
+
+  useEffect(() => {
+    if (!open) {
+      setName("");
+      setDescription("");
+      setPicked(new Set());
+      setIcon("people");
+    }
+  }, [open]);
 
   return (
     <Sheet
@@ -97,6 +108,27 @@ function CreateGroupSheet({
             editable={!busy}
             style={styles.input}
           />
+
+          <View style={{ gap: 9 }}>
+            <Text style={{ color: colors.ink, fontSize: 13, fontWeight: "700" }}>Group icon</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9 }}>
+              {TEAM_ROOM_ICON_OPTIONS.map((option) => {
+                const selected = icon === option.key;
+                return (
+                  <Pressable
+                    key={option.key}
+                    accessibilityRole="button"
+                    accessibilityLabel={option.label}
+                    accessibilityState={{ selected }}
+                    onPress={() => setIcon(option.key)}
+                    style={{ width: 48, height: 48, borderRadius: 15, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: selected ? colors.blue : colors.border, backgroundColor: selected ? colors.pale : "white" }}
+                  >
+                    <Ionicons name={option.icon} size={21} color={selected ? colors.blue : colors.muted} />
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
 
           <TextInput
             value={description}
@@ -181,7 +213,7 @@ function CreateGroupSheet({
         <Pressable
           accessibilityRole="button"
           disabled={busy || name.trim().length === 0}
-          onPress={() => onCreate(name.trim(), description.trim(), [...picked])}
+          onPress={() => onCreate(name.trim(), description.trim(), [...picked], icon)}
           style={({ pressed }) => [
             styles.button,
             {
@@ -207,7 +239,7 @@ export default function GroupChat() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const { workspace, rooms, roomsBadge, roster, canManageRooms, refreshRooms } =
+  const { workspace, rooms, roomsLoading, roomsBadge, roster, canManageRooms, refreshRooms } =
     useInbox();
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -218,6 +250,7 @@ export default function GroupChat() {
     name: string,
     description: string,
     memberIds: string[],
+    icon: TeamRoomIconKey,
   ) {
     if (!workspace) {
       return;
@@ -230,7 +263,7 @@ export default function GroupChat() {
       const data = await api<{ room: TeamRoom }>(
         "/api/team-chat/rooms",
         workspace.businessId,
-        { method: "POST", body: { name, description, memberIds } },
+        { method: "POST", body: { name, description, memberIds, icon } },
       );
 
       await refreshRooms();
@@ -314,6 +347,12 @@ export default function GroupChat() {
           title="Choose a workspace"
           detail="Open the Inbox tab and pick a workspace. Everything else is scoped to it."
         />
+      ) : roomsLoading ? (
+        <View style={{ padding: 16, gap: 12 }} accessibilityLabel="Loading groups">
+          {[0, 1, 2, 3, 4, 5].map((item) => (
+            <View key={item} style={{ height: 78, borderRadius: 18, backgroundColor: item % 2 ? "#EDF2F7" : "#E7EEF6", opacity: 0.75 }} />
+          ))}
+        </View>
       ) : rooms.length === 0 ? (
         <Empty
           icon="people-outline"
@@ -325,7 +364,7 @@ export default function GroupChat() {
           }
         />
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+        <ScrollView contentContainerStyle={{ padding: 14, gap: 9 }}>
           {rooms.map((room) => (
             <Pressable
               key={room.id}
@@ -343,10 +382,11 @@ export default function GroupChat() {
               }
               style={({ pressed }) => [
                 styles.card,
-                { opacity: pressed ? 0.7 : 1 },
+                { opacity: pressed ? 0.72 : 1, borderRadius: 18, padding: 13, borderColor: room.badge_count > 0 ? "#B7DCF3" : colors.border, backgroundColor: room.badge_count > 0 ? "#F0F9FF" : "white" },
               ]}
             >
               <View style={styles.row}>
+                <TeamRoomIcon icon={room.icon} size={48} />
                 <View style={{ flex: 1, gap: 3 }}>
                   <View style={styles.row}>
                     <Text style={styles.heading} numberOfLines={1}>
@@ -363,8 +403,10 @@ export default function GroupChat() {
                   </View>
 
                   <Text style={styles.muted} numberOfLines={1}>
-                    {room.description?.trim() ||
-                      `${room.member_count} member${room.member_count === 1 ? "" : "s"}`}
+                    {room.description?.trim() || "Internal team conversation"}
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 11 }}>
+                    {room.member_count} member{room.member_count === 1 ? "" : "s"}
                   </Text>
                 </View>
 
@@ -395,8 +437,8 @@ export default function GroupChat() {
         open={createOpen}
         roster={roster}
         busy={creating}
-        onCreate={(name, description, memberIds) =>
-          void create(name, description, memberIds)
+        onCreate={(name, description, memberIds, icon) =>
+          void create(name, description, memberIds, icon)
         }
         onClose={() => setCreateOpen(false)}
       />

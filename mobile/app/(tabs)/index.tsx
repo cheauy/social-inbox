@@ -314,6 +314,16 @@ type Tag = {
 };
 
 /*
+ * A tag, and the workspace it belongs to.
+ *
+ * Tags are workspace data. With two workspaces merged into one list there can
+ * be two "VIP"s, and which one is being filtered on changes the answer, so
+ * the workspace travels with the tag rather than being assumed from whichever
+ * one happens to be active.
+ */
+type ScopedTag = Tag & { businessId: string };
+
+/*
  * The channel filter, as a sheet rather than a dropdown.
  *
  * A phone has no room for the web's sidebar picker, and the list of channels
@@ -323,12 +333,15 @@ type Tag = {
 function ChannelSheet({
   open,
   channels,
+  workspaceNames,
   selectedId,
   onSelect,
   onClose,
 }: {
   open: boolean;
   channels: Channel[];
+  /* Empty unless more than one workspace is open. */
+  workspaceNames: Record<string, string>;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onClose: () => void;
@@ -411,14 +424,24 @@ function ChannelSheet({
                     {item === null ? "All Channels" : item.name}
                   </Text>
 
-                  <Text style={[styles.muted, { fontSize: 12 }]}>
+                  <Text style={[styles.muted, { fontSize: 12 }]} numberOfLines={1}>
                     {item === null
                       ? "Messenger and Telegram"
-                      : item.username
-                        ? `@${item.username}`
-                        : item.platform === "telegram"
-                          ? "Telegram"
-                          : "Messenger"}
+                      : /*
+                          The workspace's name is appended when two are open:
+                          a Page belongs to one of them, and two shops can
+                          easily run Pages with similar names.
+                        */
+                        [
+                          item.username
+                            ? `@${item.username}`
+                            : item.platform === "telegram"
+                              ? "Telegram"
+                              : "Messenger",
+                          workspaceNames[item.businessId],
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                   </Text>
                 </View>
 
@@ -441,13 +464,16 @@ function ChannelSheet({
 function TagSheet({
   open,
   tags,
+  workspaceNames,
   selectedId,
   counts,
   onSelect,
   onClose,
 }: {
   open: boolean;
-  tags: Tag[];
+  tags: ScopedTag[];
+  /* Empty unless more than one workspace is open. */
+  workspaceNames: Record<string, string>;
   selectedId: string | null;
   counts: Record<string, number>;
   onSelect: (id: string | null) => void;
@@ -549,17 +575,29 @@ function TagSheet({
                 />
               </View>
 
-              <Text
-                numberOfLines={1}
-                style={{
-                  flex: 1,
-                  color: colors.ink,
-                  fontSize: 15,
-                  fontWeight: active ? "800" : "500",
-                }}
-              >
-                {tag.name}
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    color: colors.ink,
+                    fontSize: 15,
+                    fontWeight: active ? "800" : "500",
+                  }}
+                >
+                  {tag.name}
+                </Text>
+
+                {/*
+                  Which workspace's tag this is, when two are open. Two shops
+                  both have a VIP, and picking the wrong one filters the list
+                  to nothing for no visible reason.
+                */}
+                {workspaceNames[tag.businessId] ? (
+                  <Text numberOfLines={1} style={[styles.muted, { fontSize: 11.5 }]}>
+                    {workspaceNames[tag.businessId]}
+                  </Text>
+                ) : null}
+              </View>
 
               <Text style={[styles.muted, { fontSize: 13 }]}>
                 {counts[tag.id] ?? 0}
@@ -1033,7 +1071,7 @@ export default function Inbox() {
     workspaces,
     workspace,
     merged,
-    ensureActive,
+    revision,
     conversations,
     loading,
     error,
@@ -1084,6 +1122,32 @@ export default function Inbox() {
    */
   const memberId = workspace?.memberId ?? null;
 
+  /*
+   * "Mine" means a different row in every workspace.
+   *
+   * Assignment is recorded against a team_members row, and somebody who
+   * belongs to two workspaces has two of them. With both merged into one list,
+   * comparing everything against the active workspace's id would quietly hide
+   * every conversation assigned to them in the other shop.
+   */
+  const memberIdFor = useCallback(
+    (businessId: string) =>
+      workspaces.find((one) => one.businessId === businessId)?.memberId ??
+      memberId,
+    [workspaces, memberId],
+  );
+
+  /*
+   * The workspaces this list is drawn from: the merged set, or just the one.
+   * Everything the Inbox asks the server for is asked once per workspace in
+   * it, because every one of those answers -- tags, channels, search -- is
+   * workspace data and belongs to exactly one of them.
+   */
+  const scope = useMemo(
+    () => (merged.length > 0 ? merged : workspace ? [workspace.businessId] : []),
+    [merged, workspace?.businessId],
+  );
+
   const activeSmart = SMART_VIEWS.find((option) => option.key === smartView);
   const activeStatus = STATUSES.find((option) => option.key === status);
   const filtering = smartView !== "all" || status !== "all";
@@ -1113,14 +1177,22 @@ export default function Inbox() {
 
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      void api<{ conversationIds?: string[] }>(
-        `/api/inbox/search-messages?q=${encodeURIComponent(keyword)}`,
-        workspace.businessId,
-        { signal: controller.signal },
+      /*
+       * One search per open workspace, unioned. The endpoint answers for the
+       * workspace the request carries, so a merged list searching only the
+       * active one would find a phone number in one shop's history and
+       * silently miss the identical one in the other's.
+       */
+      void Promise.all(
+        scope.map((businessId) =>
+          api<{ conversationIds?: string[] }>(
+            `/api/inbox/search-messages?q=${encodeURIComponent(keyword)}`,
+            businessId,
+            { signal: controller.signal },
+          ).then((result) => result.conversationIds ?? []),
+        ),
       )
-        .then((result) =>
-          setMessageMatches(new Set(result.conversationIds ?? [])),
-        )
+        .then((lists) => setMessageMatches(new Set(lists.flat())))
         .catch(() => {
           /*
            * An aborted request is the normal case, and a failed one must not
@@ -1134,34 +1206,84 @@ export default function Inbox() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [search, workspace?.businessId]);
+  }, [search, scope]);
 
   const { data: channelData } = useWorkspaceResource<{ channels: Channel[] }>(
     workspace ? "/api/inbox/channels" : null,
   );
 
-  const { data: tagData } = useWorkspaceResource<{ tags: Tag[] }>(
-    workspace ? "/api/tags?activeOnly=true" : null,
-  );
-
   /*
-   * Only this workspace's channels. The endpoint answers for every workspace
-   * the member can reach, and offering another one here would filter the list
-   * down to nothing with no way to tell why.
+   * Only the channels of the workspaces actually open. The endpoint answers
+   * for every workspace the member can reach, and offering one that is not in
+   * the list would filter it down to nothing with no way to tell why.
    */
   const channels = useMemo(
     () =>
-      (channelData?.channels ?? []).filter(
-        (item) => item.businessId === workspace?.businessId,
+      (channelData?.channels ?? []).filter((item) =>
+        scope.includes(item.businessId),
       ),
-    [channelData?.channels, workspace?.businessId],
+    [channelData?.channels, scope],
   );
 
-  const tags = useMemo(() => tagData?.tags ?? [], [tagData?.tags]);
+  /*
+   * Tags, per workspace, exactly as the website scopes them.
+   *
+   * A tag belongs to one workspace: two shops both have a "VIP" and they are
+   * two different rows with two different ids and often two different
+   * colours. One request per open workspace keeps them apart -- the endpoint
+   * takes a businessId and checks the membership behind it -- and each tag
+   * carries the workspace it came from, so the filter sheet can say which
+   * "VIP" it is about and the count beside it can only ever count that
+   * workspace's customers.
+   */
+  const [tags, setTags] = useState<ScopedTag[]>([]);
+
+  useEffect(() => {
+    if (scope.length === 0) {
+      setTags([]);
+      return;
+    }
+
+    let alive = true;
+
+    void Promise.all(
+      scope.map((businessId) =>
+        api<{ tags: Tag[] }>(
+          `/api/tags?activeOnly=true&businessId=${encodeURIComponent(businessId)}`,
+          businessId,
+        )
+          .then((data) =>
+            (data.tags ?? []).map((tag) => ({ ...tag, businessId })),
+          )
+          /* One workspace failing must not empty the other one's tags. */
+          .catch(() => [] as ScopedTag[]),
+      ),
+    ).then((lists) => {
+      if (alive) setTags(lists.flat());
+    });
+
+    return () => {
+      alive = false;
+    };
+  }, [scope, revision]);
 
   const selectedChannel =
     channels.find((item) => item.id === channelId) ?? null;
   const selectedTag = tags.find((item) => item.id === tagId) ?? null;
+
+  /*
+   * Names to label tags with, and only when there is something to tell apart:
+   * a single workspace's tags do not need its name repeated down the sheet.
+   */
+  const tagWorkspaceNames = useMemo(() => {
+    if (scope.length < 2) return {};
+
+    return Object.fromEntries(
+      workspaces
+        .filter((one) => scope.includes(one.businessId))
+        .map((one) => [one.businessId, one.businessName]),
+    );
+  }, [scope, workspaces]);
   const hasAnyFilter = filtering || Boolean(selectedTag);
 
   const ordered = useMemo(
@@ -1173,7 +1295,7 @@ export default function Inbox() {
               conversation.social_account?.id === channelId) &&
             (!tagId ||
               (conversation.contact?.tags ?? []).some((tag) => tag.id === tagId)) &&
-            matchesSmartView(conversation, smartView, memberId) &&
+            matchesSmartView(conversation, smartView, memberIdFor(conversation.business_id)) &&
             matchesStatus(conversation, status) &&
             (matchesSearch(conversation, deferredSearch.trim().toLowerCase()) ||
               messageMatches.has(conversation.id)),
@@ -1225,7 +1347,7 @@ export default function Inbox() {
           ...totals,
           [option.key]: inChannel.filter(
             (conversation) =>
-              matchesSmartView(conversation, option.key, memberId) &&
+              matchesSmartView(conversation, option.key, memberIdFor(conversation.business_id)) &&
               matchesStatus(conversation, status),
           ).length,
         }),
@@ -1236,20 +1358,20 @@ export default function Inbox() {
           ...totals,
           [option.key]: inChannel.filter(
             (conversation) =>
-              matchesSmartView(conversation, smartView, memberId) &&
+              matchesSmartView(conversation, smartView, memberIdFor(conversation.business_id)) &&
               matchesStatus(conversation, option.key),
           ).length,
         }),
         {} as Record<StatusKey, number>,
       ),
     };
-  }, [channelId, conversations, memberId, smartView, status, tagId]);
+  }, [channelId, conversations, memberIdFor, smartView, status, tagId]);
 
   const tagCounts = useMemo(() => {
     const eligible = conversations.filter(
       (conversation) =>
         (!channelId || conversation.social_account?.id === channelId) &&
-        matchesSmartView(conversation, smartView, memberId) &&
+        matchesSmartView(conversation, smartView, memberIdFor(conversation.business_id)) &&
         matchesStatus(conversation, status),
     );
 
@@ -1262,7 +1384,7 @@ export default function Inbox() {
       }),
       { all: eligible.length } as Record<string, number>,
     );
-  }, [channelId, conversations, memberId, smartView, status, tags]);
+  }, [channelId, conversations, memberIdFor, smartView, status, tags]);
 
   if (!session) {
     return <Redirect href="/sign-in" />;
@@ -1328,7 +1450,9 @@ export default function Inbox() {
             accessibilityRole="button"
             accessibilityLabel={
               workspace
-                ? `${workspace.businessName}. Switch workspace.`
+                ? merged.length > 1
+                  ? `${merged.length} workspaces merged. Switch workspace.`
+                  : `${workspace.businessName}. Switch workspace.`
                 : "Choose a workspace"
             }
             onPress={() => router.push("/workspaces")}
@@ -1339,8 +1463,15 @@ export default function Inbox() {
             <View
               style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
             >
+              {/*
+                What this list is of. With several workspaces merged, naming
+                only the active one would describe a third of what is on
+                screen and read as a bug.
+              */}
               <Text style={styles.muted} numberOfLines={1}>
-                {workspace?.businessName ?? "Choose a workspace"}
+                {merged.length > 1
+                  ? `${merged.length} workspaces merged`
+                  : (workspace?.businessName ?? "Choose a workspace")}
               </Text>
 
               <Ionicons name="swap-horizontal" size={13} color={colors.muted} />
@@ -1568,6 +1699,7 @@ export default function Inbox() {
       <TagSheet
         open={tagOpen}
         tags={tags}
+        workspaceNames={tagWorkspaceNames}
         selectedId={tagId}
         counts={tagCounts}
         onSelect={setTagId}
@@ -1577,6 +1709,7 @@ export default function Inbox() {
       <ChannelSheet
         open={channelOpen}
         channels={channels}
+        workspaceNames={tagWorkspaceNames}
         selectedId={channelId}
         onSelect={chooseChannel}
         onClose={() => setChannelOpen(false)}
@@ -1607,23 +1740,12 @@ export default function Inbox() {
                     )?.businessName
                   : undefined
               }
-              onPress={() => {
-                /*
-                 * The workspace this thread belongs to becomes the active one
-                 * before the thread opens. Every write on the server -- send,
-                 * assign, tag, mark read -- is scoped by the active workspace,
-                 * so opening a merged list's other shop without this would
-                 * show one shop's conversation and post the reply into the
-                 * other one.
-                 */
-                void (async () => {
-                  await ensureActive(item.business_id);
-                  router.push({
-                    pathname: "/conversation/[id]",
-                    params: { id: item.id },
-                  });
-                })();
-              }}
+              onPress={() =>
+                router.push({
+                  pathname: "/conversation/[id]",
+                  params: { id: item.id },
+                })
+              }
             />
           )}
           refreshControl={

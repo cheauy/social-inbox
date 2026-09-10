@@ -16,15 +16,17 @@ type InboxState = {
    * Merging.
    *
    * Somebody who runs two shops can open both at once and read one list.
-   * `merged` is the set of workspace ids that list is drawn from; `workspace`
-   * stays the one being written to, because every write on the server is
-   * scoped by the active-business cookie. Opening a conversation that belongs
-   * to one of the others switches that cookie first -- see `useConversation`
-   * on the thread screen -- so a reply can never land in the wrong shop.
+   * `merged` is the set of workspace ids that list is drawn from.
+   *
+   * Nothing about a merged list relies on which workspace is "active": every
+   * request the app makes carries the workspace it is for, and the server
+   * checks that membership before answering. So a thread scopes itself to the
+   * conversation's own business -- its messages, its tags, its quick replies,
+   * its send -- and a reply cannot land in the other shop even while the
+   * chooser's pick sits somewhere else.
    */
   merged: string[];
   openWorkspaces: (chosen: Workspace[]) => Promise<void>;
-  ensureActive: (businessId: string) => Promise<void>;
   updateConversation: (id: string, value: Partial<InboxConversation>) => void;
   updateContactTags: (contactId: string, tags: NonNullable<InboxConversation["contact"]>["tags"]) => void;
 
@@ -130,13 +132,6 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
 
   const selectWorkspace = useCallback((next: Workspace) => openWorkspaces([next]), [openWorkspaces]);
 
-  const ensureActive = useCallback(async (businessId: string) => {
-    if (!businessId || workspaceRef.current?.businessId === businessId) return;
-    const next = workspaces.find(one => one.businessId === businessId);
-    if (!next || !mergedRef.current.includes(businessId)) return;
-    await activate(next);
-  }, [workspaces, activate]);
-
   const refresh = useCallback(async () => {
     const selected = workspaceRef.current;
     if (!selected) return;
@@ -207,5 +202,5 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       ),
     );
   }, []);
-  return <Context.Provider value={{ workspaces, workspace, member, conversations, loading, error, live, revision, refresh, loadWorkspaces, selectWorkspace, merged, openWorkspaces, ensureActive, updateConversation, updateContactTags, rooms, roomsLoading, roomsBadge, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ workspaces, workspace, member, conversations, loading, error, live, revision, refresh, loadWorkspaces, selectWorkspace, merged, openWorkspaces, updateConversation, updateContactTags, rooms, roomsLoading, roomsBadge, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
 }

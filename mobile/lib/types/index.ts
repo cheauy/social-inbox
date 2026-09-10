@@ -20,6 +20,7 @@ export type Member = { id: string; full_name: string; email: string; role: strin
  */
 export type TeamRoom = {
   id: string;
+  icon?: "people" | "megaphone" | "briefcase" | "headset" | "cart" | "rocket" | "heart" | "star";
   name: string | null;
   description: string | null;
   is_general: boolean;

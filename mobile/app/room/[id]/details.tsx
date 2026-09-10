@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,11 +16,14 @@ import {
   Empty,
   ErrorNotice,
   IconButton,
+  Sheet,
   colors,
   styles,
 } from "../../../components/ui";
 import { api } from "../../../lib/api/client";
 import { useInbox } from "../../../lib/inbox-provider";
+import type { Member } from "../../../lib/types";
+import { TeamRoomIcon } from "../../../components/team-room-icon";
 
 /*
  * What a group is, and who is in it.
@@ -37,25 +40,54 @@ import { useInbox } from "../../../lib/inbox-provider";
 
 function Section({
   title,
+  action,
   children,
 }: {
   title: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <View style={{ gap: 8 }}>
-      <Text
-        style={{
-          paddingLeft: 4,
-          fontSize: 11,
-          fontWeight: "800",
-          letterSpacing: 0.7,
-          textTransform: "uppercase",
-          color: colors.muted,
-        }}
-      >
-        {title}
-      </Text>
+      {action ? (
+        <View
+          style={{
+            minHeight: 28,
+            paddingHorizontal: 4,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: "800",
+              letterSpacing: 0.7,
+              textTransform: "uppercase",
+              color: colors.muted,
+            }}
+          >
+            {title}
+          </Text>
+
+          {action}
+        </View>
+      ) : (
+        <Text
+          style={{
+            paddingLeft: 4,
+            fontSize: 11,
+            fontWeight: "800",
+            letterSpacing: 0.7,
+            textTransform: "uppercase",
+            color: colors.muted,
+          }}
+        >
+          {title}
+        </Text>
+      )}
 
       <View
         style={{
@@ -69,6 +101,126 @@ function Section({
         {children}
       </View>
     </View>
+  );
+}
+
+function AddMembersSheet({
+  open,
+  roster,
+  currentIds,
+  busy,
+  onAdd,
+  onClose,
+}: {
+  open: boolean;
+  roster: Member[];
+  currentIds: Set<string>;
+  busy: boolean;
+  onAdd: (memberIds: string[]) => void;
+  onClose: () => void;
+}) {
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    if (!open) {
+      setPicked(new Set());
+    }
+  }, [open]);
+
+  const available = useMemo(
+    () => roster.filter((member) => !currentIds.has(member.id)),
+    [roster, currentIds],
+  );
+
+  return (
+    <Sheet
+      open={open}
+      title="Add members"
+      detail="Select people who are not in this group yet."
+      onClose={onClose}
+      floating
+    >
+      <ScrollView keyboardShouldPersistTaps="handled">
+        {available.length === 0 ? (
+          <View style={{ paddingHorizontal: 18, paddingVertical: 28, alignItems: "center", gap: 8 }}>
+            <Ionicons name="people-outline" size={28} color={colors.muted} />
+            <Text style={{ color: colors.ink, fontSize: 15, fontWeight: "700" }}>
+              Everyone is already in this group
+            </Text>
+          </View>
+        ) : (
+          available.map((member, index) => {
+            const selected = picked.has(member.id);
+
+            return (
+              <Pressable
+                key={member.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                disabled={busy}
+                onPress={() =>
+                  setPicked((current) => {
+                    const next = new Set(current);
+                    if (next.has(member.id)) next.delete(member.id);
+                    else next.add(member.id);
+                    return next;
+                  })
+                }
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingHorizontal: 18,
+                  paddingVertical: 13,
+                  borderTopWidth: index === 0 ? 0 : 1,
+                  borderTopColor: colors.border,
+                  backgroundColor: pressed ? colors.pale : "transparent",
+                })}
+              >
+                <Avatar
+                  name={member.full_name}
+                  uri={member.profile_picture_url}
+                  size={40}
+                />
+
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.ink, fontSize: 15, fontWeight: "600" }}>
+                    {member.full_name || member.email}
+                  </Text>
+                  <Text style={[styles.muted, { fontSize: 12 }]}>{member.role}</Text>
+                </View>
+
+                <Ionicons
+                  name={selected ? "checkbox" : "square-outline"}
+                  size={22}
+                  color={selected ? colors.blue : colors.muted}
+                />
+              </Pressable>
+            );
+          })
+        )}
+      </ScrollView>
+
+      <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: colors.border }}>
+        <Pressable
+          accessibilityRole="button"
+          disabled={busy || picked.size === 0}
+          onPress={() => onAdd([...picked])}
+          style={({ pressed }) => [
+            styles.button,
+            { opacity: busy || picked.size === 0 ? 0.4 : pressed ? 0.8 : 1 },
+          ]}
+        >
+          {busy ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={{ color: "white", fontSize: 16, fontWeight: "700" }}>
+              Add{picked.size > 0 ? ` ${picked.size}` : ""}
+            </Text>
+          )}
+        </Pressable>
+      </View>
+    </Sheet>
   );
 }
 
@@ -86,10 +238,23 @@ export default function RoomDetails() {
 
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [addMembersOpen, setAddMembersOpen] = useState(false);
+  const [localMemberIds, setLocalMemberIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!room) {
+      setLocalMemberIds([]);
+      return;
+    }
+
+    setLocalMemberIds(
+      room.is_general ? roster.map((member) => member.id) : room.member_ids,
+    );
+  }, [room?.id, room?.member_ids, room?.is_general, roster]);
 
   const memberIds = useMemo(
-    () => new Set(room?.member_ids ?? []),
-    [room?.member_ids],
+    () => new Set(localMemberIds),
+    [localMemberIds],
   );
 
   /*
@@ -98,11 +263,25 @@ export default function RoomDetails() {
    */
   const editable = canManageRooms && Boolean(room) && !room?.is_general;
 
+  const visibleMembers = useMemo(
+    () =>
+      room?.is_general
+        ? roster
+        : roster.filter((member) => memberIds.has(member.id)),
+    [room?.is_general, roster, memberIds],
+  );
+
   async function setMembers(nextIds: string[]) {
     if (!id || !workspace || busy) {
-      return;
+      return false;
     }
 
+    const previousIds = localMemberIds;
+    const normalized = [...new Set(nextIds)];
+
+    // Update the group details immediately; the server remains authoritative
+    // and rolls this back if it rejects the change.
+    setLocalMemberIds(normalized);
     setBusy("members");
     setError("");
 
@@ -110,18 +289,31 @@ export default function RoomDetails() {
       await api(
         `/api/team-chat/rooms/${encodeURIComponent(id)}/members`,
         workspace.businessId,
-        { method: "PUT", body: { memberIds: nextIds } },
+        { method: "PUT", body: { memberIds: normalized } },
       );
 
-      await refreshRooms();
+      void refreshRooms();
+      return true;
     } catch (memberError) {
+      setLocalMemberIds(previousIds);
       setError(
         memberError instanceof Error
           ? memberError.message
           : "Unable to change who is in this group.",
       );
+      return false;
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function addMembers(memberIdsToAdd: string[]) {
+    const changed = await setMembers([
+      ...new Set([...memberIds, ...memberIdsToAdd]),
+    ]);
+
+    if (changed) {
+      setAddMembersOpen(false);
     }
   }
 
@@ -236,18 +428,7 @@ export default function RoomDetails() {
               borderColor: colors.border,
             }}
           >
-            <View
-              style={{
-                width: 62,
-                height: 62,
-                borderRadius: 20,
-                backgroundColor: colors.pale,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons name="people" size={30} color={colors.blue} />
-            </View>
+            <TeamRoomIcon icon={room.icon} size={62} />
 
             <Text style={[styles.heading, { fontSize: 20 }]}>
               {room.name?.trim() || "General"}
@@ -266,7 +447,7 @@ export default function RoomDetails() {
             </Text>
 
             <Text style={[styles.muted, { fontSize: 12.5 }]}>
-              {room.member_count} member{room.member_count === 1 ? "" : "s"}
+              {localMemberIds.length} member{localMemberIds.length === 1 ? "" : "s"}
             </Text>
           </View>
 
@@ -304,24 +485,39 @@ export default function RoomDetails() {
             </Pressable>
           </Section>
 
-          <Section title={editable ? "Members — tap to add or remove" : "Members"}>
-            {roster.map((member, index) => {
-              const inRoom = room.is_general || memberIds.has(member.id);
-
-              return (
+          <Section
+            title="Members"
+            action={
+              editable ? (
                 <Pressable
-                  key={member.id}
-                  accessibilityRole={editable ? "button" : "text"}
-                  accessibilityState={{ selected: inRoom }}
-                  disabled={!editable || busy === "members"}
-                  onPress={() =>
-                    void setMembers(
-                      inRoom
-                        ? [...memberIds].filter((one) => one !== member.id)
-                        : [...memberIds, member.id],
-                    )
-                  }
+                  accessibilityRole="button"
+                  accessibilityLabel="Add people to this group"
+                  disabled={busy === "members"}
+                  onPress={() => setAddMembersOpen(true)}
                   style={({ pressed }) => ({
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 5,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 999,
+                    backgroundColor: pressed ? "#E7F5FD" : colors.pale,
+                    opacity: busy === "members" ? 0.5 : 1,
+                  })}
+                >
+                  <Ionicons name="person-add-outline" size={16} color={colors.blue} />
+                  <Text style={{ color: colors.blue, fontSize: 12.5, fontWeight: "800" }}>
+                    Add person
+                  </Text>
+                </Pressable>
+              ) : null
+            }
+          >
+            {visibleMembers.map((member, index) => {
+              return (
+                <View
+                  key={member.id}
+                  style={{
                     flexDirection: "row",
                     alignItems: "center",
                     gap: 12,
@@ -329,10 +525,8 @@ export default function RoomDetails() {
                     paddingVertical: 12,
                     borderTopWidth: index === 0 ? 0 : 1,
                     borderTopColor: colors.border,
-                    backgroundColor:
-                      pressed && editable ? colors.pale : "transparent",
-                    opacity: inRoom ? 1 : 0.55,
-                  })}
+                    backgroundColor: "transparent",
+                  }}
                 >
                   <Avatar
                     name={member.full_name}
@@ -355,20 +549,30 @@ export default function RoomDetails() {
                     </Text>
                   </View>
 
-                  {inRoom ? (
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={20}
-                      color={colors.blue}
-                    />
-                  ) : editable ? (
-                    <Ionicons
-                      name="add-circle-outline"
-                      size={20}
-                      color={colors.muted}
-                    />
+                  {editable ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${member.full_name || member.email} from this group`}
+                      disabled={busy === "members"}
+                      onPress={() =>
+                        void setMembers(
+                          [...memberIds].filter((one) => one !== member.id),
+                        )
+                      }
+                      style={({ pressed }) => ({
+                        paddingHorizontal: 8,
+                        paddingVertical: 7,
+                        borderRadius: 8,
+                        backgroundColor: pressed ? "#FFF1EF" : "transparent",
+                        opacity: busy === "members" ? 0.45 : 1,
+                      })}
+                    >
+                      <Text style={{ color: colors.red, fontSize: 13, fontWeight: "800" }}>
+                        Remove
+                      </Text>
+                    </Pressable>
                   ) : null}
-                </Pressable>
+                </View>
               );
             })}
           </Section>
@@ -406,6 +610,19 @@ export default function RoomDetails() {
           ) : null}
         </ScrollView>
       )}
+
+      {room && editable ? (
+        <AddMembersSheet
+          open={addMembersOpen}
+          roster={roster}
+          currentIds={memberIds}
+          busy={busy === "members"}
+          onAdd={(ids) => void addMembers(ids)}
+          onClose={() => {
+            if (busy !== "members") setAddMembersOpen(false);
+          }}
+        />
+      ) : null}
     </View>
   );
 }

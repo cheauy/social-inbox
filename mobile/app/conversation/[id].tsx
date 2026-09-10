@@ -1274,6 +1274,20 @@ export default function Conversation() {
     [conversations, id],
   );
 
+  /*
+   * The workspace this thread belongs to -- not whichever one is active.
+   *
+   * Two workspaces can be merged into one Inbox, so the row above this screen
+   * may belong to the other shop. Every request the app makes carries the
+   * workspace it is for, and the server checks the membership behind it, so
+   * scoping by the conversation's own business is both correct and safe: the
+   * message goes to the Page that received it, the tag list offered is that
+   * workspace's tags, and a quick reply written for one shop cannot be
+   * offered in the other. It is the same thing the website does when it opens
+   * a conversation from a merged view.
+   */
+  const scopeId = conversation?.business_id ?? workspace?.businessId;
+
   const [messages, setMessages] = useState<InboxMessage[]>([]);
   const [cursor, setCursor] = useState<{ sentAt: string; id: string } | null>(
     null,
@@ -1343,7 +1357,7 @@ export default function Conversation() {
         nextCursor: { sentAt: string; id: string } | null;
       }>(
         `/api/conversations/${encodeURIComponent(id)}/messages?limit=${PAGE_SIZE}`,
-        workspace?.businessId,
+        scopeId,
       );
 
       // A slower earlier request must not overwrite a newer one.
@@ -1376,7 +1390,7 @@ export default function Conversation() {
         setLoading(false);
       }
     }
-  }, [id, workspace?.businessId]);
+  }, [id, scopeId]);
 
   // revision ticks when Realtime reports a change in this workspace.
   useEffect(() => {
@@ -1410,7 +1424,7 @@ export default function Conversation() {
         nextCursor: { sentAt: string; id: string } | null;
       }>(
         `/api/conversations/${encodeURIComponent(id)}/messages?${query.toString()}`,
-        workspace?.businessId,
+        scopeId,
       );
 
       setMessages((current) => mergeMessages(current, data.messages ?? []));
@@ -1425,7 +1439,7 @@ export default function Conversation() {
     } finally {
       setLoadingOlder(false);
     }
-  }, [cursor, hasMore, id, loadingOlder, workspace?.businessId]);
+  }, [cursor, hasMore, id, loadingOlder, scopeId]);
 
   /*
    * Marked read once per conversation, not on every realtime tick. The server
@@ -1447,13 +1461,13 @@ export default function Conversation() {
 
     void api(
       `/api/conversations/${encodeURIComponent(id)}/read`,
-      workspace?.businessId,
+      scopeId,
       { method: "PATCH" },
     ).catch(() => {
       // Leaving the badge cleared locally is the lesser wrong: the next
       // bootstrap restores the truth either way.
     });
-  }, [id, conversation, workspace?.businessId, updateConversation]);
+  }, [id, conversation, scopeId, updateConversation]);
 
   // A clip that reached its end is no longer the one playing.
   useEffect(() => {
@@ -1501,7 +1515,7 @@ export default function Conversation() {
     try {
       const data = await api<{ savedReplies: SavedReply[] }>(
         "/api/saved-replies?activeOnly=true",
-        workspace?.businessId,
+        scopeId,
       );
 
       setReplies(data.savedReplies ?? []);
@@ -1660,12 +1674,12 @@ export default function Conversation() {
 
     try {
       if (platform === "telegram") {
-        await api("/api/telegram/send-location", workspace?.businessId, {
+        await api("/api/telegram/send-location", scopeId, {
           method: "POST",
           body: { conversationId: id, latitude, longitude },
         });
       } else {
-        await api("/api/facebook/send", workspace?.businessId, {
+        await api("/api/facebook/send", scopeId, {
           method: "POST",
           body: {
             conversationId: id,
@@ -1718,7 +1732,7 @@ export default function Conversation() {
           : "/api/telegram/send-media"
         : "/api/facebook/send-attachment";
 
-    await uploadNativeFile(path, workspace?.businessId, file, {
+    await uploadNativeFile(path, scopeId, file, {
       conversationId: String(id),
       kind: file.kind,
       ...(platform === "facebook" ? { recipientId } : {}),
@@ -1730,7 +1744,7 @@ export default function Conversation() {
     if (platform === "telegram") {
       await uploadMany(
         "/api/telegram/send-photo",
-        workspace?.businessId,
+        scopeId,
         files.map((file) => ({ ...file, fieldName: "files" })),
         { conversationId: String(id), ...(caption ? { caption } : {}) },
       );
@@ -1739,7 +1753,7 @@ export default function Conversation() {
 
     await uploadMany(
       "/api/facebook/send-attachment",
-      workspace?.businessId,
+      scopeId,
       files.map((file, index) => ({
         ...file,
         fieldName: index === 0 ? "file" : "additionalFiles",
@@ -1792,7 +1806,7 @@ export default function Conversation() {
     );
 
     try {
-      await api(`/api/facebook/comments/${action}`, workspace?.businessId, {
+      await api(`/api/facebook/comments/${action}`, scopeId, {
         method: "POST",
         body: {
           commentId,
@@ -1888,7 +1902,7 @@ export default function Conversation() {
       setDraft("");
 
       try {
-        await api("/api/facebook/comments/reply", workspace?.businessId, {
+        await api("/api/facebook/comments/reply", scopeId, {
           method: "POST",
           body: { conversationId: id, commentId, message: text },
         });
@@ -1950,7 +1964,7 @@ export default function Conversation() {
       }
 
       if (text && !telegramCaption) {
-        await api(`/api/${platform}/send`, workspace?.businessId, {
+        await api(`/api/${platform}/send`, scopeId, {
           method: "POST",
           body: {
             conversationId: id,
@@ -2003,7 +2017,7 @@ export default function Conversation() {
     try {
       const data = await api<CustomerDetail>(
         `/api/customers/${encodeURIComponent(contactId)}`,
-        workspace?.businessId,
+        scopeId,
       );
 
       setCustomer(data);
@@ -2041,7 +2055,7 @@ export default function Conversation() {
     } finally {
       setCustomerLoading(false);
     }
-  }, [contactId, workspace?.businessId, updateContactTags]);
+  }, [contactId, scopeId, updateContactTags]);
 
   async function openTags() {
     setError("");
@@ -2050,7 +2064,7 @@ export default function Conversation() {
 
     try {
       const [tagList] = await Promise.all([
-        api<{ tags: Tag[] }>("/api/tags?activeOnly=true", workspace?.businessId),
+        api<{ tags: Tag[] }>("/api/tags?activeOnly=true", scopeId),
         loadCustomer(),
       ]);
 
@@ -2121,13 +2135,13 @@ export default function Conversation() {
       if (on) {
         await api(
           `/api/contacts/${encodeURIComponent(contactId)}/tags/${encodeURIComponent(tag.id)}`,
-          workspace?.businessId,
+          scopeId,
           { method: "DELETE" },
         );
       } else {
         await api(
           `/api/contacts/${encodeURIComponent(contactId)}/tags`,
-          workspace?.businessId,
+          scopeId,
           { method: "POST", body: { tagId: tag.id, conversationId: id } },
         );
       }
@@ -2236,7 +2250,7 @@ export default function Conversation() {
     try {
       await api(
         `/api/contacts/${encodeURIComponent(contactId)}`,
-        workspace?.businessId,
+        scopeId,
         {
           method: "PATCH",
           /*
@@ -2277,7 +2291,7 @@ export default function Conversation() {
     try {
       const data = await api<{ members: TeamMember[] }>(
         "/api/team/members",
-        workspace?.businessId,
+        scopeId,
       );
 
       setMembers(data.members ?? []);
@@ -2304,7 +2318,7 @@ export default function Conversation() {
      * The badge above the list changes where you can see it.
      */
     await runAction(`status:${next}`, { status: next }, () =>
-      api(`/api/conversations/${encodeURIComponent(String(id))}/status`, workspace?.businessId, {
+      api(`/api/conversations/${encodeURIComponent(String(id))}/status`, scopeId, {
         method: "PATCH",
         body: { status: next },
       }),
@@ -2322,7 +2336,7 @@ export default function Conversation() {
       () =>
         api(
           `/api/conversations/${encodeURIComponent(String(id))}/assignment`,
-          workspace?.businessId,
+          scopeId,
           { method: "PATCH", body: { assignedTo: memberId } },
         ),
     );
@@ -2332,7 +2346,7 @@ export default function Conversation() {
     const next = !conversation?.is_pinned;
 
     await runAction("pin", { is_pinned: next }, () =>
-      api(`/api/conversations/${encodeURIComponent(String(id))}/pin`, workspace?.businessId, {
+      api(`/api/conversations/${encodeURIComponent(String(id))}/pin`, scopeId, {
         method: "PATCH",
         body: { isPinned: next },
       }),
@@ -2341,7 +2355,7 @@ export default function Conversation() {
 
   async function markUnread() {
     const done = await runAction("unread", { unread_count: 1 }, () =>
-      api(`/api/conversations/${encodeURIComponent(String(id))}/unread`, workspace?.businessId, {
+      api(`/api/conversations/${encodeURIComponent(String(id))}/unread`, scopeId, {
         method: "PATCH",
       }),
     );
