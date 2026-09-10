@@ -64,6 +64,7 @@ import {
 import { CHAT_BASE_COLOR, useDisplay } from "../../lib/display-provider";
 import { useInbox } from "../../lib/inbox-provider";
 import { useMediaSource } from "../../lib/media";
+import { warmMedia } from "../../lib/media-cache";
 import { usePresence, useViewers } from "../../lib/presence";
 import { AuthImage } from "../../components/auth-image";
 import type {
@@ -2226,7 +2227,34 @@ export default function Conversation() {
         scopeId,
       );
 
-      setReplies(data.savedReplies ?? []);
+      const list = data.savedReplies ?? [];
+      setReplies(list);
+
+      /*
+       * Start pulling the pictures down now, while somebody is still reading
+       * the titles.
+       *
+       * A saved reply's photo in this workspace is a 2.6 MB PNG drawn into a
+       * 52-point square, and the server signs it afresh on every request, so
+       * nothing was ever reused: each open of the picker fetched the same
+       * megabytes again and the tiles sat grey until they landed. Cached on
+       * disk under the storage path, the first open has a head start and
+       * every open after it is instant.
+       */
+      void warmMedia(
+        list
+          .flatMap((reply) => reply.attachments ?? [])
+          .filter((file) => file.kind === "image" && file.url)
+          .map((file) => {
+            const target = resolveMedia(file.url as string);
+
+            return {
+              uri: target?.uri ?? (file.url as string),
+              key: file.path,
+              headers: target?.headers,
+            };
+          }),
+      );
     } catch (replyError) {
       setError(
         replyError instanceof Error

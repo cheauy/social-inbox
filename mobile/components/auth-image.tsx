@@ -1,8 +1,8 @@
-import { Directory, File, Paths } from "expo-file-system";
 import { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Image, ImageStyle, StyleProp, View, ViewStyle } from "react-native";
 
+import { cacheMedia } from "../lib/media-cache";
 import { useMediaSource } from "../lib/media";
 
 /*
@@ -26,20 +26,6 @@ import { useMediaSource } from "../lib/media";
  * file. It downloads once per image per install; the second look is a disk
  * read.
  */
-
-/* Its own folder, so clearing media never touches a staged upload. */
-const FOLDER = "tenh-media";
-
-/* A file name that is stable for a URL and safe on disk. */
-function keyFor(uri: string) {
-  let hash = 0;
-
-  for (let index = 0; index < uri.length; index += 1) {
-    hash = (Math.imul(hash, 31) + uri.charCodeAt(index)) | 0;
-  }
-
-  return "m" + (hash >>> 0).toString(36);
-}
 
 export function AuthImage({
   uri,
@@ -107,36 +93,23 @@ export function AuthImage({
     }
 
     void (async () => {
-      try {
-        const folder = new Directory(Paths.cache, FOLDER);
+      const local = await cacheMedia(target.uri, cacheKey ?? target.uri, target.headers);
 
-        if (!folder.exists) {
-          folder.create({ intermediates: true });
-        }
+      if (!alive) return;
 
-        const file = new File(folder, keyFor(cacheKey ?? target.uri));
-
-        if (file.exists) {
-          if (alive) setSource(file.uri);
-          return;
-        }
-
-        const saved = await File.downloadFileAsync(target.uri, file, {
-          ...(target.headers ? { headers: target.headers } : {}),
-          idempotent: true,
-        });
-
-        if (alive) setSource(saved.uri);
-      } catch {
-        /*
-         * Left as the placeholder. A retry button on every tile would be
-         * noise, and the thread reloads whenever the screen is reopened.
-         */
-        if (alive) {
-          setSource(null);
-          setFailed(true);
-        }
+      if (local) {
+        setSource(local);
+        return;
       }
+
+      /*
+       * No disk copy. A picture that needs no session can still be drawn from
+       * its link; one that does has nothing left to try.
+       */
+      if (!target.headers) return;
+
+      setSource(null);
+      setFailed(true);
     })();
 
     return () => {
