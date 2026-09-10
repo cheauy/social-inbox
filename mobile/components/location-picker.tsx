@@ -328,31 +328,79 @@ export function LocationPicker({
             Said once, plainly, rather than leaving somebody to wonder why the
             map is blank. Everything else on this screen still works.
           */}
+          {/*
+            No imagery, so lead with the thing that works.
+
+            TENH ships with no map key -- every provider worth using wants an
+            account, and quietly borrowing somebody else's tiles is a service
+            that stops working the day they notice. Without one, dragging a
+            pin over a blank rectangle is guesswork, so the screen offers what
+            is certain instead: this phone's own position, which is what a
+            shop sending a location almost always means. The pin can still be
+            dragged for anybody who knows the ground.
+          */}
           {TILE_URL ? null : (
             <View
-              pointerEvents="none"
               style={{
                 position: "absolute",
-                left: 24,
-                right: 24,
-                top: 24,
-                padding: 14,
-                borderRadius: 14,
+                left: 20,
+                right: 20,
+                top: 20,
+                padding: 16,
+                borderRadius: 16,
                 backgroundColor: "white",
                 borderWidth: 1,
                 borderColor: colors.border,
-                gap: 4,
+                gap: 10,
               }}
             >
-              <Text style={{ fontSize: 13.5, fontWeight: "700", color: colors.ink }}>
-                No map imagery configured
-              </Text>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
+                <Ionicons name="navigate-circle" size={18} color={colors.blue} />
+
+                <Text
+                  style={{ flex: 1, fontSize: 14.5, fontWeight: "800", color: colors.ink }}
+                >
+                  Send where this phone is
+                </Text>
+              </View>
 
               <Text style={[styles.muted, { fontSize: 12.5, lineHeight: 18 }]}>
-                Set EXPO_PUBLIC_MAP_TILE_URL to a tile provider to see the map.
-                You can still drag to move the pin, or use the button below to
-                jump to where this phone is.
+                The map picture needs a provider key, which this build has not
+                been given -- so there is nothing to look at, though the pin
+                and everything below still work.
               </Text>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Use where this phone is"
+                disabled={locating}
+                onPress={() => void goToMe()}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  paddingVertical: 11,
+                  borderRadius: 12,
+                  backgroundColor: pressed ? "#0A6FA8" : colors.blue,
+                })}
+              >
+                {locating ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <>
+                    <Ionicons name="locate" size={16} color="white" />
+
+                    <Text
+                      style={{ fontSize: 14, fontWeight: "800", color: "white" }}
+                    >
+                      Use my location
+                    </Text>
+                  </>
+                )}
+              </Pressable>
             </View>
           )}
 

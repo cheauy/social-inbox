@@ -64,6 +64,7 @@ import {
 import { CHAT_BASE_COLOR, useDisplay } from "../../lib/display-provider";
 import { useInbox } from "../../lib/inbox-provider";
 import { useMediaSource } from "../../lib/media";
+import { shrinkImage } from "../../lib/shrink";
 import { warmMedia } from "../../lib/media-cache";
 import { usePresence, useViewers } from "../../lib/presence";
 import { AuthImage } from "../../components/auth-image";
@@ -2006,6 +2007,13 @@ export default function Conversation() {
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<Pending[]>([]);
 
+  /*
+   * Whether what is in the box came from a quick reply. It is the only case
+   * that earns a Clear all: one tap put it there, so one tap should take it
+   * away again.
+   */
+  const [fromQuickReply, setFromQuickReply] = useState(false);
+
   /* Set for exactly one send, by somebody who has been asked and said yes. */
   const confirmedOverlapRef = useRef(false);
 
@@ -2295,6 +2303,7 @@ export default function Conversation() {
    */
   async function pickReply(reply: SavedReply) {
     setDraft(reply.message_text);
+    setFromQuickReply(true);
 
     // Public Facebook comment replies are text-only. The saved words are
     // still useful, while silently attaching the saved photos would make the
@@ -2513,7 +2522,33 @@ export default function Conversation() {
     ]);
   }
 
-  async function uploadOne(file: Pending, caption = "") {
+  /*
+   * The version of this file that will fit through the door.
+   *
+   * The deployment caps a request body at 4.5 MB and counts the whole
+   * multipart request, so two 2.6 MB photos in one album came back "Request
+   * Entity Too Large" and took the message with them. Photos over the
+   * threshold are resized on the way out; video and files are sent as they
+   * are, because re-encoding those is a different job with different
+   * trade-offs.
+   */
+  async function sendable(file: Pending): Promise<Pending> {
+    if (file.kind !== "image") return file;
+
+    const smaller = await shrinkImage(file.uri);
+
+    if (!smaller.shrank) return file;
+
+    return {
+      ...file,
+      uri: smaller.uri,
+      mimeType: smaller.mimeType || file.mimeType,
+      name: file.name.replace(/\.[a-z0-9]+$/i, "") + ".jpg",
+    };
+  }
+
+  async function uploadOne(original: Pending, caption = "") {
+    const file = await sendable(original);
     const photoOrVideo = file.kind === "image" || file.kind === "video";
     const path =
       platform === "telegram"
@@ -2530,7 +2565,9 @@ export default function Conversation() {
     });
   }
 
-  async function uploadAlbum(files: Pending[], caption = "") {
+  async function uploadAlbum(originals: Pending[], caption = "") {
+    const files = await Promise.all(originals.map(sendable));
+
     if (platform === "telegram") {
       await uploadMany(
         "/api/telegram/send-photo",
@@ -2790,6 +2827,7 @@ export default function Conversation() {
     setDraft("");
     setPending([]);
     setQuoted(null);
+    setFromQuickReply(false);
     /*
      * Drawn before the request, not after it.
      *
@@ -3931,10 +3969,12 @@ export default function Conversation() {
         onQuickReplies={() => void openReplies()}
         onVoice={stageVoice}
         onSend={() => void send()}
+        fromQuickReply={fromQuickReply}
         onClearAll={() => {
           setDraft("");
           setPending([]);
           setQuoted(null);
+          setFromQuickReply(false);
           setError("");
         }}
         attachmentsDisabled={Boolean(replyingToComment)}

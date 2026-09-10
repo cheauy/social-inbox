@@ -152,6 +152,7 @@ export function Composer({
   onQuickReplies,
   onVoice,
   onSend,
+  fromQuickReply,
   onClearAll,
   attachmentsDisabled = false,
 }: {
@@ -168,6 +169,8 @@ export function Composer({
   onQuickReplies: () => void;
   onVoice: (uri: string, millis: number) => void;
   onSend: () => void;
+  /* Set while the box holds a quick reply nobody has edited away yet. */
+  fromQuickReply: boolean;
   onClearAll: () => void;
   attachmentsDisabled?: boolean;
 }) {
@@ -336,13 +339,15 @@ export function Composer({
         for a file the name is the whole of what it is.
       */}
       {/*
-        Take it all back.
-        A quick reply drops words and up to ten pictures into the composer in
-        one tap, and undoing that was ten taps -- one per attachment -- with
-        the text still to select and delete. One button, and only while there
-        is something to clear.
+        Take a quick reply back.
+
+        It drops words and up to ten pictures into the composer in one tap,
+        and undoing that was one tap per picture with the text still to select
+        and delete. Only for a quick reply: a sentence somebody typed
+        themselves does not need a button to erase it, and offering one over
+        every draft is a way to lose a message.
       */}
-      {pending.length > 0 || draft.trim().length > 0 ? (
+      {fromQuickReply ? (
         <View
           style={{
             flexDirection: "row",
@@ -601,10 +606,18 @@ export function Composer({
               reaching for a saved greeting was crossing the whole composer
               to find it.
             */}
+            {/*
+              Attaching, quick replies and the microphone stay live while the
+              last message is on its way. A send is a round trip and an upload
+              can be several seconds; freezing every control for that long
+              means somebody stands still holding a phone. Only the send
+              button itself waits, because that is what a double send comes
+              from.
+            */}
             <Round
               icon="attach-outline"
               label="Attach a photo, video, file or location"
-              disabled={sending || attachmentsDisabled}
+              disabled={attachmentsDisabled}
               onPress={() => setAttachOpen(true)}
             />
 
@@ -618,7 +631,6 @@ export function Composer({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Quick replies"
-              disabled={sending}
               onPress={onQuickReplies}
               style={({ pressed }) => ({
                 width: ROW,
@@ -627,7 +639,6 @@ export function Composer({
                 alignItems: "center",
                 justifyContent: "center",
                 backgroundColor: pressed ? colors.pale : "transparent",
-                opacity: sending ? 0.35 : 1,
               })}
             >
               <Ionicons name="flash-outline" size={21} color={colors.blue} />
@@ -694,13 +705,13 @@ export function Composer({
                   accessibilityRole="button"
                   accessibilityLabel="Hold to record a voice message, slide away to cancel"
                   accessibilityHint="Double tap and hold, then release to send"
-                  {...(sending || attachmentsDisabled ? {} : hold.panHandlers)}
+                  {...(attachmentsDisabled ? {} : hold.panHandlers)}
                   style={{
                     width: 36,
                     height: ROW - 2,
                     alignItems: "center",
                     justifyContent: "center",
-                    opacity: sending || attachmentsDisabled ? 0.35 : 1,
+                    opacity: attachmentsDisabled ? 0.35 : 1,
                   }}
                 >
                   <Ionicons name="mic-outline" size={22} color={colors.blue} />
@@ -750,7 +761,6 @@ export function Composer({
           leaves the view that is listening to it.
         */}
         {(!canSend || recording.isRecording || finishing) &&
-        !sending &&
         !attachmentsDisabled ? (
           <View
             {...hold.panHandlers}
