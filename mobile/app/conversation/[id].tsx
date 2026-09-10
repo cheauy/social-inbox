@@ -30,7 +30,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Avatar,
   ChannelAvatar,
-  TagChip,
   Empty,
   ErrorNotice,
   IconButton,
@@ -3578,85 +3577,6 @@ export default function Conversation() {
             <Ionicons name="close" size={20} color={colors.muted} />
           </Pressable>
         </View>
-      ) : null}
-
-      {/*
-        Who you are writing to, within reach of the thumb.
-
-        The customer's name and face are at the top of the screen, which is
-        where a header belongs and where nobody is looking once a thread has
-        been scrolled: the eye and the hand are both at the bottom, on the box.
-        This says who is on the other end without scrolling back up, carries
-        their tags -- VIP, COD, the ones that change how you answer -- and
-        opens the full record on a tap.
-      */}
-      {conversation?.contact && !replyingToComment ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`View ${conversation.contact.full_name ?? "customer"}'s profile`}
-          onPress={() => void openPanel()}
-          style={({ pressed }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 9,
-            paddingHorizontal: 14,
-            paddingVertical: 7,
-            backgroundColor: pressed ? colors.pale : "white",
-            borderTopWidth: 1,
-            borderTopColor: colors.border,
-          })}
-        >
-          <Avatar
-            name={conversation.contact.full_name}
-            uri={conversation.contact.profile_picture_url}
-            size={26}
-          />
-
-          <Text
-            numberOfLines={1}
-            style={{
-              flexShrink: 0,
-              maxWidth: 150,
-              fontSize: 13,
-              fontWeight: "800",
-              color: colors.ink,
-            }}
-          >
-            {conversation.contact.full_name ?? "Customer"}
-          </Text>
-
-          {/*
-            The tags, if there are any and there is room. They are the reason
-            this strip is worth its height: how somebody is answered depends
-            on whether they are a VIP or a repeat complaint, and that was two
-            taps away.
-          */}
-          <View
-            style={{
-              flex: 1,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 5,
-              overflow: "hidden",
-            }}
-          >
-            {(conversation.contact.tags ?? []).slice(0, 2).map((tag) => (
-              <TagChip
-                key={tag.id}
-                name={tag.name}
-                color={tag.color}
-                compact
-                showCheck={false}
-              />
-            ))}
-          </View>
-
-          <Text style={{ fontSize: 11.5, fontWeight: "700", color: colors.blue }}>
-            View profile
-          </Text>
-
-          <Ionicons name="chevron-up" size={14} color={colors.blue} />
-        </Pressable>
       ) : null}
 
       {/*
