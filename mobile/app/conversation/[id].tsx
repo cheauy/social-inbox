@@ -47,6 +47,7 @@ import {
 } from "../../components/customer-panel";
 import type {
   CustomerDetail,
+  CustomerFile,
   EditableField,
   TeamMember,
   TimelineItem,
@@ -145,6 +146,14 @@ function DaySeparator({ label }: { label: string }) {
  * away every time a message arrives; merging by id keeps it and still picks
  * up whatever is new.
  */
+/* A file size somebody can read: 240 KB, 1.8 MB. */
+function readableSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function mergeMessages(current: InboxMessage[], incoming: InboxMessage[]) {
   const byId = new Map(current.map((message) => [message.id, message]));
 
@@ -2298,6 +2307,78 @@ export default function Conversation() {
     }
   }
 
+  /*
+   * Everything this customer has sent or had saved against them.
+   *
+   * The endpoint answers with two lists -- files somebody saved to the record
+   * and every attachment that came through a conversation -- and they are
+   * flattened into one here. "Where is that receipt" is one question, and
+   * which of the two lists holds the answer is not the customer's problem.
+   */
+  async function loadFiles(): Promise<CustomerFile[]> {
+    if (!contactId) return [];
+
+    try {
+      const data = await api<{
+        savedFiles?: {
+          id: string;
+          itemType: "file" | "link";
+          displayName: string | null;
+          externalUrl: string | null;
+          previewUrl: string | null;
+          sizeBytes: number | null;
+          description: string | null;
+          createdAt: string;
+        }[];
+        conversationAttachments?: {
+          id: string;
+          messageType: string;
+          messageText: string | null;
+          attachmentUrl: string;
+          createdAt: string;
+        }[];
+      }>(`/api/customers/${encodeURIComponent(contactId)}/files`, scopeId);
+
+      const saved: CustomerFile[] = (data.savedFiles ?? []).map((file) => ({
+        id: `saved:${file.id}`,
+        kind: file.itemType,
+        name: file.displayName || (file.itemType === "link" ? "Link" : "File"),
+        url: file.previewUrl ?? file.externalUrl,
+        detail:
+          file.description ||
+          (file.sizeBytes ? readableSize(file.sizeBytes) : null),
+        createdAt: file.createdAt,
+      }));
+
+      const sent: CustomerFile[] = (data.conversationAttachments ?? []).map(
+        (attachment) => ({
+          id: `sent:${attachment.id}`,
+          kind: "attachment",
+          name:
+            attachment.messageText?.trim() ||
+            `${attachment.messageType || "Attachment"} in the conversation`,
+          url: attachment.attachmentUrl,
+          detail: "Sent in a conversation",
+          createdAt: attachment.createdAt,
+        }),
+      );
+
+      return [...saved, ...sent].sort(
+        (first, second) =>
+          new Date(second.createdAt).getTime() -
+          new Date(first.createdAt).getTime(),
+      );
+    } catch (filesError) {
+      setError(
+        filesError instanceof Error
+          ? filesError.message
+          : "Unable to load this customer's files.",
+      );
+
+      return [];
+    }
+  }
+
   async function loadHistory(): Promise<TimelineItem[]> {
     if (!contactId) return [];
 
@@ -2981,6 +3062,7 @@ export default function Conversation() {
         onSaveField={saveField}
         onRemind={createReminder}
         onHistory={loadHistory}
+        onFiles={loadFiles}
         error={panelOpen ? error : ""}
         onClose={() => setPanelOpen(false)}
       />

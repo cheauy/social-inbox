@@ -3,8 +3,10 @@ import * as Clipboard from "expo-clipboard";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Dimensions,
+  Linking,
   Modal,
   PanResponder,
   Pressable,
@@ -136,6 +138,23 @@ function whenToStamp(key: WhenKey) {
 
   return when.toISOString();
 }
+
+/*
+ * Something this customer has sent or had saved against them.
+ *
+ * Two lists on the server -- files somebody saved to the record, and every
+ * attachment that came through a conversation -- flattened into one here,
+ * because "where is that receipt" is one question and the answer does not
+ * depend on which of the two it happens to be.
+ */
+export type CustomerFile = {
+  id: string;
+  kind: "file" | "link" | "attachment";
+  name: string;
+  url: string | null;
+  detail: string | null;
+  createdAt: string;
+};
 
 /* One event in a customer's history, as the timeline endpoint sends it. */
 export type TimelineItem = {
@@ -531,6 +550,46 @@ function Information({
   );
 }
 
+/* A row that leads somewhere else: a list, or a decision. */
+function OtherRow({
+  icon,
+  label,
+  tone,
+  onPress,
+}: {
+  icon: IconName;
+  label: string;
+  tone?: string;
+  onPress: () => void;
+}) {
+  const colour = tone ?? colors.ink;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 11,
+        paddingVertical: 14,
+        marginHorizontal: -14,
+        paddingHorizontal: 14,
+        backgroundColor: pressed ? colors.pale : "transparent",
+      })}
+    >
+      <Ionicons name={icon} size={17} color={tone ?? colors.muted} />
+
+      <Text style={{ flex: 1, fontSize: 14.5, color: colour, fontWeight: "600" }}>
+        {label}
+      </Text>
+
+      <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+    </Pressable>
+  );
+}
+
 function FieldLabel({ icon, label }: { icon: IconName; label: string }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -773,6 +832,7 @@ export function CustomerPanel({
   onSaveField,
   onRemind,
   onHistory,
+  onFiles,
   onClose,
   error,
 }: {
@@ -797,6 +857,7 @@ export function CustomerPanel({
      requests have to be made in. */
   onRemind: (note: string, remindAt: string) => Promise<boolean>;
   onHistory: () => Promise<TimelineItem[]>;
+  onFiles: () => Promise<CustomerFile[]>;
   onClose: () => void;
   error: string;
 }) {
@@ -814,6 +875,10 @@ export function CustomerPanel({
   const [reminded, setReminded] = useState("");
 
   const [infoEditing, setInfoEditing] = useState(false);
+
+  const [filesOpen, setFilesOpen] = useState(false);
+  const [files, setFiles] = useState<CustomerFile[] | null>(null);
+  const [filesLoading, setFilesLoading] = useState(false);
 
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<TimelineItem[] | null>(null);
@@ -834,6 +899,52 @@ export function CustomerPanel({
       }
     } finally {
       setReminding(false);
+    }
+  }
+
+  /*
+   * Spam, with the question asked first.
+   *
+   * It moves the conversation to the Spam status, which is what the web's
+   * spam view reads and what takes it out of everybody's Inbox. Confirmed
+   * because it is the one status change that reads as an accusation, and an
+   * accidental one is a customer nobody answers.
+   */
+  function reportSpam() {
+    if (status === "spam") {
+      Alert.alert(
+        "Already marked as spam",
+        "This conversation is already in the Spam view. Change its status to bring it back.",
+      );
+
+      return;
+    }
+
+    Alert.alert(
+      "Report as spam?",
+      "The conversation moves to Spam and leaves the Inbox. You can change its status again at any time.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Report spam",
+          style: "destructive",
+          onPress: () => onStatus("spam"),
+        },
+      ],
+    );
+  }
+
+  async function openFiles() {
+    setFilesOpen(true);
+
+    if (files !== null || filesLoading) return;
+
+    setFilesLoading(true);
+
+    try {
+      setFiles(await onFiles());
+    } finally {
+      setFilesLoading(false);
     }
   }
 
@@ -870,6 +981,7 @@ export function CustomerPanel({
         setStatusOpen(false);
         setRemindOpen(false);
         setHistoryOpen(false);
+        setFilesOpen(false);
         setInfoEditing(false);
         setReminded("");
         setAssignOpen(false);
@@ -1317,6 +1429,29 @@ export function CustomerPanel({
                 />
               </Section>
 
+              {/*
+                The two things that are neither a fact about the customer nor
+                a thing you do to the thread: everything they have sent, and
+                the way out when they should not have sent any of it. The web
+                keeps them together under "Other" at the foot of the profile.
+              */}
+              <Section title="Other">
+                <OtherRow
+                  icon="folder-open-outline"
+                  label="Files, documents & links"
+                  onPress={() => void openFiles()}
+                />
+
+                <Divider />
+
+                <OtherRow
+                  icon="alert-circle-outline"
+                  label="Report spam"
+                  tone={colors.red}
+                  onPress={reportSpam}
+                />
+              </Section>
+
               <Section title="Assigned to">
                 {/*
                   The assignee as a person rather than a value in a row: a
@@ -1628,6 +1763,117 @@ export function CustomerPanel({
                 )}
               </Pressable>
             </View>
+          </Dialog>
+
+          <Dialog
+            open={filesOpen}
+            title="Files, documents & links"
+            detail={detail ? detail.customer.fullName : ""}
+            onClose={() => setFilesOpen(false)}
+          >
+            {filesLoading ? (
+              <View style={{ paddingVertical: 44 }}>
+                <ActivityIndicator color={colors.blue} />
+              </View>
+            ) : !files || files.length === 0 ? (
+              <View style={{ alignItems: "center", padding: 34, gap: 8 }}>
+                <Ionicons
+                  name="folder-open-outline"
+                  size={26}
+                  color={colors.muted}
+                />
+
+                <Text
+                  style={{
+                    fontSize: 13.5,
+                    color: colors.muted,
+                    textAlign: "center",
+                  }}
+                >
+                  Nothing has been sent or saved for this customer yet.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                style={{ maxHeight: 420 }}
+                contentContainerStyle={{ paddingBottom: 12 }}
+              >
+                {files.map((file, index) => (
+                  <Pressable
+                    key={file.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${file.name}`}
+                    disabled={!file.url}
+                    onPress={() => {
+                      if (file.url) void Linking.openURL(file.url);
+                    }}
+                    style={({ pressed }) => ({
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 12,
+                      paddingHorizontal: 18,
+                      paddingVertical: 12,
+                      borderTopWidth: index === 0 ? 0 : 1,
+                      borderTopColor: colors.border,
+                      backgroundColor: pressed ? colors.pale : "transparent",
+                    })}
+                  >
+                    <View
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 12,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: colors.background,
+                      }}
+                    >
+                      <Ionicons
+                        name={
+                          file.kind === "link"
+                            ? "link-outline"
+                            : file.kind === "attachment"
+                              ? "image-outline"
+                              : "document-outline"
+                        }
+                        size={18}
+                        color={colors.blue}
+                      />
+                    </View>
+
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text
+                        numberOfLines={1}
+                        style={{
+                          fontSize: 14,
+                          fontWeight: "700",
+                          color: colors.ink,
+                        }}
+                      >
+                        {file.name}
+                      </Text>
+
+                      <Text
+                        numberOfLines={1}
+                        style={{ fontSize: 11.5, color: colors.muted }}
+                      >
+                        {[file.detail, stamp(file.createdAt)]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Text>
+                    </View>
+
+                    {file.url ? (
+                      <Ionicons
+                        name="open-outline"
+                        size={16}
+                        color={colors.muted}
+                      />
+                    ) : null}
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
           </Dialog>
 
           <Dialog
