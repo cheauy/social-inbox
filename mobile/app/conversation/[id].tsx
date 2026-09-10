@@ -1298,7 +1298,11 @@ function MessageMenu({
     run: () => void;
   }[] = [];
 
-  if (canReply) {
+  /*
+   * Not on a message still on its way: it has no id on the network yet, so
+   * the quote would be dropped on the way out and nobody would know why.
+   */
+  if (canReply && !message.id.startsWith("optimistic:")) {
     rows.push({ icon: "arrow-undo-outline", label: "Reply", run: onReply });
   }
 
@@ -2614,11 +2618,12 @@ export default function Conversation() {
             message: text,
             ...(platform === "facebook" ? { recipientId } : {}),
             /*
-             * The quote, when there is one. Telegram takes the TENH message
-             * id and resolves it to its own; nothing else in TENH can carry a
-             * quote, which is why the action is only offered there.
+             * The quote, when there is one. Both send routes take a TENH
+             * message id and resolve it to the platform's own -- Telegram's
+             * message id, Messenger's mid -- and both ignore one that does
+             * not belong to this conversation.
              */
-            ...(platform === "telegram" && quotedSnapshot
+            ...(quotedSnapshot
               ? { replyToMessageId: quotedSnapshot.id }
               : {}),
           },
@@ -2709,17 +2714,18 @@ export default function Conversation() {
   }, [contactId, scopeId, updateContactTags]);
 
   /*
-   * Quoting a message.
+   * Quoting a message, on either side of the thread.
    *
-   * Telegram carries a real reply -- the send endpoint takes the TENH message
-   * id and resolves it to the Telegram one, so the customer sees the quote in
-   * their own app. Messenger has nothing of the kind in this codebase, so the
-   * action is not offered there rather than pretending: a quote the customer
-   * never sees is a promise the app cannot keep.
+   * Both networks carry a real reply: Telegram takes the message id and
+   * Messenger takes the mid, and each resolves ours to theirs server-side, so
+   * the customer sees the quote in their own app rather than a quote that
+   * only exists in TENH.
+   *
+   * Not on a Facebook comment thread, which has its own reply -- a comment is
+   * answered under the post, and mixing the two would put a reply in the
+   * wrong place.
    */
-  const replyable =
-    conversation?.social_account?.platform === "telegram" &&
-    conversation.source_type !== "comment";
+  const replyable = conversation?.source_type !== "comment";
 
   function copyMessage(message: InboxMessage) {
     const text = message.message_text?.trim();
