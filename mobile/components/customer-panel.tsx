@@ -351,51 +351,212 @@ function CopyButton({ value, label }: { value: string; label: string }) {
  * message arrives. Sending them to the web for that is how a phone number
  * ends up only in the thread.
  */
-function Editable({
+/*
+ * Phone and note: read, copy, or edit -- but one thing at a time.
+ *
+ * Each field used to own its own editor, which meant its own Save and its own
+ * Cancel, so a card holding two facts showed two of each and it was never
+ * clear which pair was about to act on what. The card is now either being
+ * read or being edited: the pencil in the section header turns it over, both
+ * fields become inputs, and one Save at the bottom writes whatever changed.
+ *
+ * The values are not tappable. A field that silently turns into an editor
+ * when brushed is how a note gets rewritten by somebody who was only trying
+ * to scroll.
+ */
+function Information({
+  phone,
+  note,
+  busy,
+  editing,
+  onEditing,
+  onSaveField,
+}: {
+  phone: string | null;
+  note: string | null;
+  busy: string | null;
+  editing: boolean;
+  onEditing: (next: boolean) => void;
+  onSaveField: (field: EditableField, value: string) => Promise<boolean>;
+}) {
+  const [phoneDraft, setPhoneDraft] = useState(phone ?? "");
+  const [noteDraft, setNoteDraft] = useState(note ?? "");
+  const [saving, setSaving] = useState(false);
+
+  /* The drafts follow the record while it is being read, never while it is
+     being written -- a realtime update mid-edit would wipe what was typed. */
+  useEffect(() => {
+    if (!editing) {
+      setPhoneDraft(phone ?? "");
+      setNoteDraft(note ?? "");
+    }
+  }, [phone, note, editing]);
+
+  const dirty =
+    phoneDraft.trim() !== (phone ?? "").trim() ||
+    noteDraft.trim() !== (note ?? "").trim();
+
+  async function save() {
+    if (saving) return;
+
+    setSaving(true);
+
+    try {
+      /*
+       * Only what changed, and one at a time: each field is its own request
+       * on the server, and sending an unchanged note back would overwrite
+       * whatever somebody at the desk wrote in the meantime.
+       */
+      if (phoneDraft.trim() !== (phone ?? "").trim()) {
+        if (!(await onSaveField("phone", phoneDraft.trim()))) return;
+      }
+
+      if (noteDraft.trim() !== (note ?? "").trim()) {
+        if (!(await onSaveField("customerNote", noteDraft.trim()))) return;
+      }
+
+      onEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <>
+        <InfoRow
+          icon="call-outline"
+          label="Phone"
+          value={phone}
+          empty="Not added"
+        />
+
+        <Divider />
+
+        <InfoRow
+          icon="document-text-outline"
+          label="Note"
+          value={note}
+          empty="No customer note has been added."
+        />
+      </>
+    );
+  }
+
+  return (
+    <View style={{ paddingVertical: 14, gap: 14 }}>
+      <View style={{ gap: 6 }}>
+        <FieldLabel icon="call-outline" label="Phone" />
+
+        <TextInput
+          value={phoneDraft}
+          onChangeText={setPhoneDraft}
+          keyboardType="phone-pad"
+          placeholder="Not added"
+          placeholderTextColor={colors.muted}
+          editable={!saving}
+          style={[styles.input, { fontSize: 15, paddingVertical: 10 }]}
+        />
+      </View>
+
+      <View style={{ gap: 6 }}>
+        <FieldLabel icon="document-text-outline" label="Note" />
+
+        <TextInput
+          value={noteDraft}
+          onChangeText={setNoteDraft}
+          multiline
+          placeholder="Anything worth remembering about this customer."
+          placeholderTextColor={colors.muted}
+          editable={!saving}
+          style={[
+            styles.input,
+            {
+              fontSize: 15,
+              minHeight: 84,
+              paddingTop: 10,
+              textAlignVertical: "top",
+            },
+          ]}
+        />
+      </View>
+
+      {/* One pair, for the card. */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <Pressable
+          accessibilityRole="button"
+          disabled={saving || !dirty}
+          onPress={() => void save()}
+          style={({ pressed }) => ({
+            flex: 1,
+            alignItems: "center",
+            paddingVertical: 12,
+            borderRadius: 12,
+            opacity: dirty ? 1 : 0.45,
+            backgroundColor: pressed ? "#0072AB" : colors.blue,
+          })}
+        >
+          {saving || Boolean(busy?.startsWith("field:")) ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={{ color: "white", fontSize: 14.5, fontWeight: "800" }}>
+              Save
+            </Text>
+          )}
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          disabled={saving}
+          onPress={() => {
+            setPhoneDraft(phone ?? "");
+            setNoteDraft(note ?? "");
+            onEditing(false);
+          }}
+          style={({ pressed }) => ({
+            paddingHorizontal: 18,
+            paddingVertical: 12,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: pressed ? colors.pale : "white",
+          })}
+        >
+          <Text style={{ color: colors.ink, fontSize: 14.5, fontWeight: "700" }}>
+            Cancel
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function FieldLabel({ icon, label }: { icon: IconName; label: string }) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+      <Ionicons name={icon} size={13} color={colors.muted} />
+
+      <Text style={{ fontSize: 12.5, color: colors.muted }}>{label}</Text>
+    </View>
+  );
+}
+
+/* A field being read, with its own copy button. */
+function InfoRow({
   icon,
   label,
   value,
   empty,
-  multiline,
-  busy,
-  open,
-  onSave,
 }: {
   icon: IconName;
   label: string;
   value: string | null;
   empty: string;
-  multiline?: boolean;
-  busy: boolean;
-  /* Opened from the section's own pencil rather than by tapping this row. */
-  open?: boolean;
-  onSave: (next: string) => Promise<boolean>;
 }) {
-  const [selfEditing, setSelfEditing] = useState(false);
-  const [draft, setDraft] = useState(value ?? "");
-
-  const editing = open || selfEditing;
   const text = value?.trim() ?? "";
 
-  useEffect(() => {
-    if (!editing) {
-      setDraft(value ?? "");
-    }
-  }, [value, editing]);
-
-  /*
-   * Leaving the editor.
-   *
-   * While the whole section is open from its own pencil, saving one field
-   * must not close the other -- somebody halfway through a note would lose
-   * it. The field stays editable and the section's own Done is what ends it.
-   */
-  function close() {
-    if (!open) setSelfEditing(false);
-  }
-
   return (
-    <View style={{ gap: 4 }}>
+    <View style={{ paddingVertical: 12, gap: 4 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
         <Ionicons name={icon} size={13} color={colors.muted} />
 
@@ -403,97 +564,23 @@ function Editable({
           {label}
         </Text>
 
+        {/* Only when there is something to copy. */}
+        {text ? <CopyButton value={text} label={label} /> : null}
       </View>
 
-      {editing ? (
-        <View style={{ gap: 8 }}>
-          <TextInput
-            value={draft}
-            onChangeText={setDraft}
-            autoFocus
-            multiline={multiline}
-            keyboardType={multiline ? "default" : "phone-pad"}
-            placeholder={empty}
-            placeholderTextColor={colors.muted}
-            editable={!busy}
-            style={[
-              styles.input,
-              { fontSize: 15, paddingVertical: 10, minHeight: multiline ? 78 : 0 },
-            ]}
-          />
-
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <Pressable
-              accessibilityRole="button"
-              disabled={busy}
-              onPress={async () => {
-                if (await onSave(draft.trim())) {
-                  close();
-                }
-              }}
-              style={({ pressed }) => ({
-                paddingHorizontal: 14,
-                paddingVertical: 8,
-                borderRadius: 8,
-                backgroundColor: pressed ? "#0072AB" : colors.blue,
-              })}
-            >
-              {busy ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <Text
-                  style={{ color: "white", fontSize: 13, fontWeight: "700" }}
-                >
-                  Save
-                </Text>
-              )}
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              disabled={busy}
-              onPress={() => {
-                setDraft(value ?? "");
-                close();
-              }}
-              style={{ paddingHorizontal: 14, paddingVertical: 8 }}
-            >
-              <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "700" }}>
-                Cancel
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={
-            text ? `${label}: ${text}. Edit it.` : `Add a ${label.toLowerCase()}`
-          }
-          onPress={() => setSelfEditing(true)}
-        >
-          <Text
-            style={{
-              fontSize: 15,
-              lineHeight: 21,
-              color: text ? colors.ink : colors.muted,
-            }}
-          >
-            {text || empty}
-          </Text>
-        </Pressable>
-      )}
+      <Text
+        style={{
+          fontSize: 15,
+          lineHeight: 21,
+          color: text ? colors.ink : colors.muted,
+        }}
+      >
+        {text || empty}
+      </Text>
     </View>
   );
 }
 
-/*
- * One of the three things you can do to a conversation.
- *
- * A card each rather than three icons sharing one grey strip: they are
- * separate decisions, one of them is a toggle that stays on, and a strip gave
- * no way to show which. An active pin now reads as a filled card.
- */
 function ActionTile({
   icon,
   label,
@@ -1189,58 +1276,45 @@ export function CustomerPanel({
                 read aloud or dialled, not pasted. The pencil opens both
                 fields at once; tapping a field still opens that one.
               */}
+              {/*
+                One pencil for the group, and one Save for the card. Every
+                field used to carry a pencil, a copy button, a Save and a
+                Cancel of its own -- eight controls for two facts.
+              */}
               <Section
                 title="Information"
                 action={
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      infoEditing ? "Stop editing information" : "Edit information"
-                    }
-                    hitSlop={10}
-                    onPress={() => setInfoEditing((current) => !current)}
-                    style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
-                  >
-                    <Ionicons
-                      name={infoEditing ? "close" : "pencil"}
-                      size={13}
-                      color={colors.blue}
-                    />
-
-                    <Text
-                      style={{ fontSize: 11, fontWeight: "800", color: colors.blue }}
+                  infoEditing ? null : (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Edit information"
+                      hitSlop={10}
+                      onPress={() => setInfoEditing(true)}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
                     >
-                      {infoEditing ? "DONE" : "EDIT"}
-                    </Text>
-                  </Pressable>
+                      <Ionicons name="pencil" size={13} color={colors.blue} />
+
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: "800",
+                          color: colors.blue,
+                        }}
+                      >
+                        EDIT
+                      </Text>
+                    </Pressable>
+                  )
                 }
               >
-                <View style={{ paddingVertical: 12 }}>
-                  <Editable
-                    icon="call-outline"
-                    label="Phone"
-                    value={customer.phone}
-                    empty="Not added"
-                    busy={busy === "field:phone"}
-                    open={infoEditing}
-                    onSave={(next) => onSaveField("phone", next)}
-                  />
-                </View>
-
-                <Divider />
-
-                <View style={{ paddingVertical: 12 }}>
-                  <Editable
-                    icon="document-text-outline"
-                    label="Note"
-                    value={customer.customerNote}
-                    empty="No customer note has been added."
-                    multiline
-                    busy={busy === "field:customerNote"}
-                    open={infoEditing}
-                    onSave={(next) => onSaveField("customerNote", next)}
-                  />
-                </View>
+                <Information
+                  phone={customer.phone}
+                  note={customer.customerNote}
+                  busy={busy}
+                  editing={infoEditing}
+                  onEditing={setInfoEditing}
+                  onSaveField={onSaveField}
+                />
               </Section>
 
               <Section title="Assigned to">
