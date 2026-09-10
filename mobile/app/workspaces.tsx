@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Linking,
   Pressable,
   Text,
@@ -134,27 +135,34 @@ export default function Workspaces() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
+        {/*
+          The brand, first.
+
+          This screen is the first thing after signing in, and it used to open
+          on a bare question -- "Choose a workspace" -- with no sign of which
+          app was asking. The logo, the name and what the app is for go on the
+          top row with the one button; the question moves to a second row,
+          where it reads as the heading of the list under it rather than as
+          the title of the app.
+        */}
         <View style={styles.row}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={styles.title}>
-              {t("Choose a workspace", "ជ្រើសកន្លែងធ្វើការ")}
+          <Image
+            source={require("../assets/tenh-logo.png")}
+            style={{ width: 34, height: 34, borderRadius: 9 }}
+            resizeMode="contain"
+          />
+
+          <View style={{ flex: 1, marginLeft: 10, gap: 1 }}>
+            <Text
+              numberOfLines={1}
+              style={{ fontSize: 16, fontWeight: "800", color: colors.ink }}
+            >
+              TENH Chat
             </Text>
 
-            {/*
-              Silent when there is nothing to count and something went wrong:
-              "0 workspaces are ready" under an Unauthorized banner reads as a
-              second, wrong explanation for the same thing.
-            */}
-            {open.length > 0 || !error ? (
-              <Text style={styles.muted} numberOfLines={1}>
-                {open.length === 1
-                  ? t("One workspace is ready", "មានកន្លែងធ្វើការមួយ")
-                  : t(
-                      open.length + " workspaces are ready",
-                      "មានកន្លែងធ្វើការ " + open.length,
-                    )}
-              </Text>
-            ) : null}
+            <Text numberOfLines={1} style={[styles.muted, { fontSize: 12 }]}>
+              {t("Customer messaging", "ការផ្ញើសារអតិថិជន")}
+            </Text>
           </View>
 
           {/*
@@ -164,10 +172,7 @@ export default function Workspaces() {
           */}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t(
-              "Buy a subscription",
-              "ទិញការជាវ",
-            )}
+            accessibilityLabel={t("Buy a subscription", "ទិញការជាវ")}
             onPress={() =>
               void Linking.openURL(`${WEB}/dashboard/settings/subscription`)
             }
@@ -182,6 +187,28 @@ export default function Workspaces() {
           >
             <Ionicons name="add" size={22} color="white" />
           </Pressable>
+        </View>
+
+        <View style={{ marginTop: 14, gap: 2 }}>
+          <Text style={[styles.title, { fontSize: 22 }]}>
+            {t("Choose a workspace", "ជ្រើសកន្លែងធ្វើការ")}
+          </Text>
+
+          {/*
+            Silent when there is nothing to count and something went wrong:
+            "0 workspaces are ready" under an Unauthorized banner reads as a
+            second, wrong explanation for the same thing.
+          */}
+          {open.length > 0 || !error ? (
+            <Text style={styles.muted} numberOfLines={1}>
+              {open.length === 1
+                ? t("One workspace is ready", "មានកន្លែងធ្វើការមួយ")
+                : t(
+                    open.length + " workspaces are ready",
+                    "មានកន្លែងធ្វើការ " + open.length,
+                  )}
+            </Text>
+          ) : null}
         </View>
 
         {/*
@@ -372,8 +399,10 @@ export default function Workspaces() {
               >
                 {t(
                   expired +
-                    (expired === 1 ? " workspace has" : " workspaces have") +
-                    " an expired plan and is not listed. Renewing is on the web.",
+                    (expired === 1
+                      ? " workspace has an expired plan and is not listed."
+                      : " workspaces have expired plans and are not listed.") +
+                    " Renewing is on the web.",
                   "កន្លែងធ្វើការ " + expired + " អស់សុពលភាព ហើយមិនបានបង្ហាញទេ។",
                 )}
               </Text>
