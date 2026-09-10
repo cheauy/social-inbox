@@ -27,6 +27,7 @@ import {
   relativeTime,
   styles,
 } from "./ui";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { VideoView, useVideoPlayer } from "expo-video";
 
 import type { ConversationStatus } from "../lib/types";
@@ -109,31 +110,49 @@ function stamp(value?: string | null) {
  * work for nothing, and a date picker on a phone is four taps before the
  * note has even been written.
  */
-type WhenKey = "hour" | "evening" | "tomorrow" | "week";
+type WhenKey = "hour" | "evening" | "tomorrow" | "custom";
 
 const WHEN: { key: WhenKey; label: string; icon: IconName }[] = [
   { key: "hour", label: "In 1 hour", icon: "hourglass-outline" },
   { key: "evening", label: "In 3 hours", icon: "cafe-outline" },
   { key: "tomorrow", label: "Tomorrow 9am", icon: "sunny-outline" },
-  { key: "week", label: "Next week", icon: "calendar-outline" },
+  { key: "custom", label: "Pick a date", icon: "calendar-outline" },
 ];
 
-function whenToStamp(key: WhenKey) {
+/*
+ * Three shortcuts and a way out of them.
+ *
+ * "Next week" was the fourth shortcut and it was the wrong one: a follow-up
+ * that is not today or tomorrow is usually tied to something real -- a
+ * delivery date, a payday, the day a shipment lands -- and rounding that to
+ * "seven days from now, at nine" makes the reminder arrive on the wrong day.
+ * The picker is for exactly those.
+ */
+function whenToStamp(key: WhenKey, custom: Date) {
+  if (key === "custom") return custom.toISOString();
+
   const when = new Date();
 
   if (key === "hour") {
     when.setHours(when.getHours() + 1);
   } else if (key === "evening") {
     when.setHours(when.getHours() + 3);
-  } else if (key === "tomorrow") {
-    when.setDate(when.getDate() + 1);
-    when.setHours(9, 0, 0, 0);
   } else {
-    when.setDate(when.getDate() + 7);
+    when.setDate(when.getDate() + 1);
     when.setHours(9, 0, 0, 0);
   }
 
   return when.toISOString();
+}
+
+/* Tomorrow at nine, which is where the picker opens if it is ever needed. */
+function defaultCustom() {
+  const when = new Date();
+
+  when.setDate(when.getDate() + 1);
+  when.setHours(9, 0, 0, 0);
+
+  return when;
 }
 
 /*
@@ -1304,6 +1323,46 @@ function OtherRow({
   );
 }
 
+/* A field's current value, as a button that opens the thing that sets it. */
+function PickerButton({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 7,
+        paddingHorizontal: 12,
+        paddingVertical: 11,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: pressed ? colors.pale : "white",
+      })}
+    >
+      <Ionicons name={icon} size={15} color={colors.blue} />
+
+      <Text
+        numberOfLines={1}
+        style={{ fontSize: 13.5, fontWeight: "700", color: colors.ink }}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 function FieldLabel({ icon, label }: { icon: IconName; label: string }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -1585,6 +1644,8 @@ export function CustomerPanel({
   const [remindOpen, setRemindOpen] = useState(false);
   const [remindNote, setRemindNote] = useState("");
   const [remindWhen, setRemindWhen] = useState<WhenKey>("tomorrow");
+  const [remindAt, setRemindAt] = useState<Date>(defaultCustom);
+  const [picking, setPicking] = useState<"date" | "time" | null>(null);
   const [reminding, setReminding] = useState(false);
   const [reminded, setReminded] = useState("");
 
@@ -1598,18 +1659,26 @@ export function CustomerPanel({
   const [history, setHistory] = useState<TimelineItem[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  /* A time already gone is a reminder that never arrives. */
+  const remindReady =
+    remindWhen !== "custom" || remindAt.getTime() > Date.now();
+
   async function saveReminder() {
     const note = remindNote.trim();
 
-    if (!note || reminding) return;
+    if (!note || !remindReady || reminding) return;
 
     setReminding(true);
 
     try {
-      if (await onRemind(note, whenToStamp(remindWhen))) {
+      if (await onRemind(note, whenToStamp(remindWhen, remindAt))) {
         setRemindNote("");
         setRemindOpen(false);
-        setReminded(`Reminder set for ${WHEN.find((one) => one.key === remindWhen)?.label.toLowerCase()}.`);
+        setReminded(
+          remindWhen === "custom"
+            ? `Reminder set for ${stamp(remindAt.toISOString())}.`
+            : `Reminder set for ${WHEN.find((one) => one.key === remindWhen)?.label.toLowerCase()}.`,
+        );
       }
     } finally {
       setReminding(false);
@@ -2377,7 +2446,14 @@ export function CustomerPanel({
                         key={option.key}
                         accessibilityRole="button"
                         accessibilityState={{ selected: active }}
-                        onPress={() => setRemindWhen(option.key)}
+                        onPress={() => {
+                          setRemindWhen(option.key);
+
+                          /* Choosing "Pick a date" opens the calendar, rather
+                             than selecting a chip that then has to be pressed
+                             again to do anything. */
+                          if (option.key === "custom") setPicking("date");
+                        }}
                         style={{
                           flexDirection: "row",
                           alignItems: "center",
@@ -2412,12 +2488,77 @@ export function CustomerPanel({
               </View>
 
               {/*
+                The date and the time as two buttons rather than one picker.
+                A phone's date picker and its clock are separate dialogs
+                anyway, and somebody changing a reminder from Thursday 9am to
+                Thursday 4pm should not have to walk past the calendar.
+              */}
+              {remindWhen === "custom" ? (
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <PickerButton
+                    icon="calendar-outline"
+                    label={remindAt.toLocaleDateString(undefined, {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "short",
+                    })}
+                    onPress={() => setPicking("date")}
+                  />
+
+                  <PickerButton
+                    icon="time-outline"
+                    label={remindAt.toLocaleTimeString([], {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                    onPress={() => setPicking("time")}
+                  />
+                </View>
+              ) : null}
+
+              {picking ? (
+                <DateTimePicker
+                  value={remindAt}
+                  mode={picking}
+                  /* Nothing in the past: a reminder that has already happened
+                     is one that never arrives. */
+                  minimumDate={picking === "date" ? new Date() : undefined}
+                  onChange={(event, next) => {
+                    setPicking(null);
+
+                    if (event.type !== "set" || !next) return;
+
+                    const merged = new Date(remindAt);
+
+                    if (picking === "date") {
+                      merged.setFullYear(
+                        next.getFullYear(),
+                        next.getMonth(),
+                        next.getDate(),
+                      );
+                    } else {
+                      merged.setHours(next.getHours(), next.getMinutes(), 0, 0);
+                    }
+
+                    setRemindAt(merged);
+                  }}
+                />
+              ) : null}
+
+              {/*
                 The chip says "Tomorrow 9am"; this says which day that is.
                 Cheap to draw and it removes the one doubt somebody has before
                 pressing a button that promises to interrupt them later.
               */}
-              <Text style={{ fontSize: 12.5, color: colors.muted }}>
-                {stamp(whenToStamp(remindWhen))}
+              <Text
+                style={{
+                  fontSize: 12.5,
+                  color: remindReady ? colors.muted : colors.red,
+                }}
+              >
+                {remindReady
+                  ? stamp(whenToStamp(remindWhen, remindAt))
+                  : "That time has already passed."}
               </Text>
             </View>
 
@@ -2450,7 +2591,7 @@ export function CustomerPanel({
 
               <Pressable
                 accessibilityRole="button"
-                disabled={reminding || !remindNote.trim()}
+                disabled={reminding || !remindNote.trim() || !remindReady}
                 onPress={() => void saveReminder()}
                 style={({ pressed }) => ({
                   flex: 1,
@@ -2460,7 +2601,7 @@ export function CustomerPanel({
                   gap: 8,
                   paddingVertical: 13,
                   borderRadius: 12,
-                  opacity: remindNote.trim() ? 1 : 0.45,
+                  opacity: remindNote.trim() && remindReady ? 1 : 0.45,
                   backgroundColor: pressed ? "#0A6FA8" : colors.blue,
                 })}
               >
