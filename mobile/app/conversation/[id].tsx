@@ -64,6 +64,7 @@ import {
 import { CHAT_BASE_COLOR, useDisplay } from "../../lib/display-provider";
 import { useInbox } from "../../lib/inbox-provider";
 import { useMediaSource } from "../../lib/media";
+import { usePresence, useViewers } from "../../lib/presence";
 import { AuthImage } from "../../components/auth-image";
 import type {
   ConversationStatus,
@@ -1873,6 +1874,23 @@ export default function Conversation() {
   const insets = useSafeAreaInsets();
   const resolveMedia = useMediaSource();
 
+  /*
+   * Say which conversation this phone is on, and watch who else is on it.
+   *
+   * Two people answering one customer at once is the oldest failure in a
+   * shared inbox, and the website has warned about it for a while. The phone
+   * was invisible in that warning: a colleague at a desk could not tell that
+   * this thread was already being answered from somebody's hand.
+   */
+  const { setViewing } = usePresence();
+  const viewers = useViewers(id ? String(id) : null);
+
+  useEffect(() => {
+    setViewing(id ? String(id) : null);
+
+    return () => setViewing(null);
+  }, [id, setViewing]);
+
 
   const {
     conversations,
@@ -3576,6 +3594,64 @@ export default function Conversation() {
           <Pressable accessibilityRole="button" accessibilityLabel="Cancel comment reply" onPress={() => setReplyingToComment(null)} hitSlop={10}>
             <Ionicons name="close" size={20} color={colors.muted} />
           </Pressable>
+        </View>
+      ) : null}
+
+      {/*
+        Who else has this thread open, where the eye already is.
+
+        The website puts this in the header; a phone's header is at the top of
+        a screen somebody scrolled away from ten messages ago, and the moment
+        this matters is the moment before typing. So it sits on the composer,
+        and it says the name rather than only showing a face: "Sokchan is
+        viewing" is a sentence that stops somebody, a small circle is not.
+      */}
+      {viewers.length > 0 ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            paddingHorizontal: 14,
+            paddingVertical: 7,
+            backgroundColor: "#FBF6EA",
+            borderTopWidth: 1,
+            borderTopColor: "#F0E2C4",
+          }}
+        >
+          <View style={{ flexDirection: "row" }}>
+            {viewers.slice(0, 3).map((viewer, index) => (
+              <View
+                key={viewer.user_id}
+                style={{
+                  marginLeft: index === 0 ? 0 : -8,
+                  borderRadius: 12,
+                  borderWidth: 2,
+                  borderColor: "#FBF6EA",
+                }}
+              >
+                <Avatar
+                  name={viewer.name}
+                  uri={viewer.profile_picture_url}
+                  size={22}
+                />
+              </View>
+            ))}
+          </View>
+
+          <Text
+            numberOfLines={1}
+            style={{ flex: 1, fontSize: 12.5, color: "#8A6412" }}
+          >
+            <Text style={{ fontWeight: "800" }}>
+              {viewers.length === 1
+                ? viewers[0].name
+                : `${viewers[0].name} +${viewers.length - 1}`}
+            </Text>{" "}
+            {viewers.length === 1 ? "is viewing this" : "are viewing this"}
+          </Text>
+
+          <Ionicons name="eye-outline" size={14} color="#C77700" />
         </View>
       ) : null}
 

@@ -9,6 +9,7 @@ import { DisplayProvider } from "../lib/display-provider";
 import { InboxProvider } from "../lib/inbox-provider";
 import { LanguageProvider } from "../lib/language-provider";
 import { NotificationSoundProvider } from "../lib/notification-sound";
+import { PresenceProvider } from "../lib/presence";
 import { configured } from "../lib/supabase/client";
 
 /*
@@ -80,7 +81,14 @@ export default function RootLayout() {
             <DisplayProvider>
               <NotificationSoundProvider>
                 <InboxProvider>
-                  <Gate />
+                  {/*
+                    Inside the Inbox provider, because presence is published
+                    per workspace and it is the thing that knows which one is
+                    open.
+                  */}
+                  <PresenceProvider>
+                    <Gate />
+                  </PresenceProvider>
                 </InboxProvider>
               </NotificationSoundProvider>
             </DisplayProvider>
