@@ -43,9 +43,24 @@ function EditableRow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  /*
+   * What was just saved, until the record catches up.
+   *
+   * The row draws whatever the provider currently holds, and that only
+   * changes when the Inbox reloads. If the reload is slow -- or quietly fails
+   * -- the row snaps back to the old name the instant the editor closes, and
+   * a save that worked perfectly well looks like one that did nothing.
+   */
+  const [saved, setSaved] = useState<string | null>(null);
+  const shown = saved ?? value;
+
   useEffect(() => {
-    if (!editing) setDraft(value);
-  }, [value, editing]);
+    if (!editing) setDraft(shown);
+  }, [shown, editing]);
+
+  useEffect(() => {
+    if (saved !== null && value === saved) setSaved(null);
+  }, [value, saved]);
 
   async function save() {
     const next = draft.trim();
@@ -63,6 +78,7 @@ function EditableRow({
         return;
       }
 
+      setSaved(next);
       setEditing(false);
     } finally {
       setBusy(false);
@@ -73,7 +89,7 @@ function EditableRow({
     return (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${label}: ${value || "not set"}. Change it.`}
+        accessibilityLabel={`${label}: ${shown || "not set"}. Change it.`}
         onPress={() => setEditing(true)}
         style={({ pressed }) => ({
           flexDirection: "row",
@@ -99,11 +115,11 @@ function EditableRow({
             maxWidth: "52%",
             fontSize: 14.5,
             fontWeight: "600",
-            color: value ? colors.ink : colors.muted,
+            color: shown ? colors.ink : colors.muted,
             textAlign: "right",
           }}
         >
-          {value || "—"}
+          {shown || "—"}
         </Text>
 
         <Ionicons name="pencil" size={14} color={colors.muted} />
@@ -167,7 +183,7 @@ function EditableRow({
           accessibilityRole="button"
           disabled={busy}
           onPress={() => {
-            setDraft(value);
+            setDraft(shown);
             setError("");
             setEditing(false);
           }}
