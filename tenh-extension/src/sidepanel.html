@@ -13,6 +13,7 @@
         <h1>TENH</h1>
         <p class="version" id="pairState">Checking…</p>
       </div>
+      <span class="pill" id="liveState">…</span>
     </header>
 
     <section class="card">
@@ -24,18 +25,49 @@
       <p class="detail" id="composerState"></p>
     </section>
 
-    <section class="card">
-      <p class="detail">
-        This panel reports what the Facebook tab beside it is showing. Answering,
-        tagging and notes are in TENH itself, where the record is kept.
+    <section class="card" id="customerCard" hidden>
+      <div class="row">
+        <span class="label">Customer</span>
+        <span class="state" id="conversationStatus"></span>
+      </div>
+      <p class="name" id="customerName"></p>
+      <p class="detail" id="assignedTo"></p>
+
+      <p class="section-label">Tags</p>
+      <div class="chips" id="tagChips"></div>
+      <select id="tagPicker" class="picker">
+        <option value="">Add a tag…</option>
+      </select>
+
+      <p class="section-label">Notes</p>
+      <div id="notes"></div>
+    </section>
+
+    <section class="card" id="unmatchedCard" hidden>
+      <p class="detail" id="unmatchedReason">
+        TENH does not have this Facebook conversation, so there is nothing to
+        show about the customer. Quick replies below still work.
       </p>
+    </section>
+
+    <section class="card">
+      <p class="section-label">Quick replies</p>
+      <p class="detail" id="quickReplyHint">
+        Inserted into Facebook's box. You press Send.
+      </p>
+      <div id="quickReplies"></div>
+    </section>
+
+    <section class="card">
       <button id="openTenh" class="primary">Open TENH Inbox</button>
       <button id="openFacebook">Open Facebook inbox</button>
+      <p class="detail error" id="error"></p>
     </section>
 
     <p class="footnote">
-      TENH Companion never types into Facebook. If Facebook has disabled a reply
-      box, it says so and stops there.
+      Tags, notes and quick replies are TENH's own records — changed here, they
+      change everywhere. TENH Companion never presses Send, and never touches a
+      reply box Facebook has disabled.
     </p>
 
     <script src="sidepanel.js"></script>

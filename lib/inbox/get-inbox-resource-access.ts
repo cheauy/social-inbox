@@ -2,6 +2,10 @@ import "server-only";
 
 import type { User } from "@supabase/supabase-js";
 
+import {
+  isOperationalSubscription,
+  type SubscriptionStateRow,
+} from "@/lib/subscription/is-operational-subscription";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -14,13 +18,6 @@ export type InboxAuthorizedMember = {
   role: string;
   profile_picture_url: string | null;
   is_active: boolean;
-};
-
-type SubscriptionStateRow = {
-  status: string;
-  current_period_end: string | null;
-  trial_ends_at: string | null;
-  created_at: string | null;
 };
 
 type ConversationAccessRow = {
@@ -56,27 +53,7 @@ export type InboxContactAccessSuccess = InboxBusinessAccessSuccess & {
   contact: ContactAccessRow;
 };
 
-const OPERATIONAL_STATUSES = new Set(["active", "trialing"]);
 
-function isPeriodEnded(value: string | null | undefined) {
-  if (!value) return false;
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) && timestamp <= Date.now();
-}
-
-function isOperationalSubscription(subscription: SubscriptionStateRow | null) {
-  // Preserve legacy/unmanaged workspaces until they are migrated.
-  if (!subscription) return true;
-
-  if (!OPERATIONAL_STATUSES.has(subscription.status)) return false;
-
-  const end =
-    subscription.status === "trialing"
-      ? subscription.trial_ends_at ?? subscription.current_period_end
-      : subscription.current_period_end;
-
-  return !isPeriodEnded(end);
-}
 
 async function getAuthenticatedUser(): Promise<
   | { success: true; user: User }

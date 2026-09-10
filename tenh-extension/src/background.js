@@ -140,11 +140,71 @@ async function heartbeat(event) {
 
   if (!ok && (status === 401 || status === 403)) {
     await chrome.storage.local.remove(["token", "device"]);
+    await setBadge(null);
 
     return { paired: false, error: result.error ?? "This browser was disconnected." };
   }
 
-  return { paired: true };
+  if (ok && typeof result.unreadTotal === "number") {
+    await setBadge(result.unreadTotal);
+    await maybeNotify(result.unreadTotal, state);
+  }
+
+  return { paired: true, unreadTotal: result.unreadTotal ?? null };
+}
+
+/* --------------------------------------------------------------- badge */
+
+/*
+ * The number on the toolbar icon is TENH's own unread count, sent back with
+ * each heartbeat. The extension counts nothing itself: a second unread system
+ * is a second number, and the one nobody trusts is whichever is on screen.
+ */
+async function setBadge(total) {
+  const text = total && total > 0 ? (total > 99 ? "99+" : String(total)) : "";
+
+  try {
+    await chrome.action.setBadgeBackgroundColor({ color: "#2563eb" });
+    await chrome.action.setBadgeText({ text });
+  } catch {
+    /* No toolbar icon in this context. Not worth a word. */
+  }
+}
+
+/*
+ * A desktop notification, only when TENH itself could not have shown one.
+ *
+ * TENH already notifies while its tab is open, so notifying again here would
+ * mean two alerts for one message. This fires when no TENH tab exists at all
+ * -- the case the website cannot cover, because it is not running.
+ */
+async function maybeNotify(unreadTotal, state) {
+  if (state.notificationsEnabled === false) return;
+
+  const previous = typeof state.lastUnread === "number" ? state.lastUnread : 0;
+
+  await writeState({ lastUnread: unreadTotal });
+
+  if (unreadTotal <= previous || unreadTotal === 0) return;
+
+  const tenhTabs = await chrome.tabs.query({ url: `${TENH_ORIGIN}/*` });
+
+  if (tenhTabs.length > 0) return;
+
+  try {
+    chrome.notifications.create(`tenh-unread-${Date.now()}`, {
+      type: "basic",
+      iconUrl: chrome.runtime.getURL("icons/icon-128.png"),
+      title: "TENH Chat",
+      message:
+        unreadTotal === 1
+          ? "1 unread conversation is waiting."
+          : `${unreadTotal} unread conversations are waiting.`,
+      silent: false,
+    });
+  } catch {
+    /* Notifications can be off at the system level. Nothing depends on it. */
+  }
 }
 
 function deviceName() {
@@ -296,12 +356,182 @@ async function handle(message, sender) {
       return answer;
     }
 
+    /*
+     * What TENH knows about the thread on screen: the customer, their tags,
+     * the notes, who it is assigned to, and the workspace's quick replies.
+     * Every one of those rows belongs to TENH and is read from TENH. The
+     * panel keeps no copy beyond the moment it is drawn.
+     */
+    case "TENH_CONTEXT": {
+      const state = await readState();
+
+      if (!state.token) return { paired: false };
+
+      const facebook = state.facebook ?? {};
+      const params = new URLSearchParams();
+
+      if (facebook.pageId) params.set("pageId", facebook.pageId);
+      if (facebook.conversationId) {
+        params.set("threadId", facebook.conversationId);
+      }
+
+      const { ok, status, result } = await callTenh(
+        `/api/extension/context?${params.toString()}`,
+        { token: state.token },
+      );
+
+      if (!ok && (status === 401 || status === 403)) {
+        await chrome.storage.local.remove(["token", "device"]);
+
+        return { paired: false, error: result.error };
+      }
+
+      return ok ? { paired: true, ...result } : { paired: true, error: result.error };
+    }
+
+    /* Adds or removes a TENH tag, through TENH, with the member's own
+       permissions. There is no companion tag store. */
+    case "TENH_TAG": {
+      const state = await readState();
+
+      if (!state.token) return { ok: false, error: "This browser is not paired." };
+
+      const facebook = state.facebook ?? {};
+
+      const { ok, result } = await callTenh("/api/extension/tags", {
+        method: "POST",
+        token: state.token,
+        body: {
+          pageId: facebook.pageId ?? null,
+          threadId: facebook.conversationId ?? null,
+          tagId: message.tagId,
+          action: message.action === "remove" ? "remove" : "add",
+        },
+      });
+
+      return { ok, error: ok ? null : result.error };
+    }
+
+    /* Puts a TENH quick reply into Facebook's box. Insert only -- the agent
+       reads it and presses Send, or does not. */
+    case "TENH_INSERT_QUICK_REPLY": {
+      /*
+       * Asked of one tab, not broadcast. With three Facebook tabs open, a
+       * broadcast would put the reply into whichever answered first, which is
+       * how a message meant for one customer ends up drafted to another.
+       */
+      const found = await askFacebook({ type: "FB_INSPECT" });
+
+      if (!found?.tabId) {
+        return { inserted: false, reason: "no_facebook_tab" };
+      }
+
+      if (!found.composerEnabled) {
+        return { inserted: false, reason: "composer_unavailable" };
+      }
+
+      try {
+        const answer = await chrome.tabs.sendMessage(found.tabId, {
+          type: "FB_INSERT_TEXT",
+          text: String(message.text ?? ""),
+        });
+
+        return {
+          inserted: answer?.inserted === true,
+          reason: answer?.reason ?? null,
+        };
+      } catch {
+        return { inserted: false, reason: "no_facebook_tab" };
+      }
+    }
+
+    /*
+     * A reply an agent sent from Facebook. Forwarded to TENH so it can say
+     * whether Meta's webhook ever delivered it -- and nothing more. TENH does
+     * not create a message from this, by design.
+     */
+    case "FB_OUTGOING": {
+      const state = await readState();
+
+      if (!state.token) return { recorded: false };
+
+      const { ok, result } = await callTenh("/api/extension/observed-message", {
+        method: "POST",
+        token: state.token,
+        body: {
+          pageId: message.pageId ?? null,
+          threadId: message.conversationId ?? null,
+          text: message.text ?? "",
+          observedAt: message.observedAt ?? Date.now(),
+        },
+      });
+
+      return { recorded: ok, alreadyInTenh: result.alreadyInTenh === true };
+    }
+
+    /* ------------------------------------------------------------ repair */
+
+    /* Ask every Facebook tab to look again, now, and report what it finds.
+       The button for "it stopped noticing me". */
+    case "TENH_REDETECT": {
+      const answer = await askFacebook({ type: "FB_INSPECT" });
+
+      const facebook = {
+        loggedIn: answer.facebookConnected === true,
+        pageId: answer.pageId ?? null,
+        pageName: answer.pageName ?? null,
+        conversationId: answer.conversationId ?? null,
+        url: null,
+        composerState: answer.composerEnabled
+          ? "available"
+          : answer.composerFound
+            ? "unavailable"
+            : "unknown",
+        seenAt: Date.now(),
+      };
+
+      await writeState({ facebook });
+      await heartbeat("facebook_detected");
+
+      return { facebook, foundTab: answer.reason !== "no_facebook_tab" };
+    }
+
+    /* Does this browser still reach TENH, and does TENH still accept it. */
+    case "TENH_TEST": {
+      const state = await readState();
+
+      if (!state.token) {
+        return { reachable: null, paired: false };
+      }
+
+      try {
+        const { ok, status, result } = await callTenh("/api/extension/status", {
+          token: state.token,
+        });
+
+        if (!ok && (status === 401 || status === 403)) {
+          await chrome.storage.local.remove(["token", "device"]);
+
+          return { reachable: true, paired: false, error: result.error };
+        }
+
+        return { reachable: true, paired: ok, error: ok ? null : result.error };
+      } catch {
+        return {
+          reachable: false,
+          paired: true,
+          error: "TENH could not be reached from this browser.",
+        };
+      }
+    }
+
     /* Sent by the Facebook content script when what it can see changes. */
     case "FB_STATE": {
       const facebook = {
         loggedIn: message.facebookConnected === true,
         pageId: message.pageId ?? null,
         pageName: message.pageName ?? null,
+        conversationId: message.conversationId ?? null,
         url: sender?.tab?.url ?? null,
         composerState: message.composerEnabled
           ? "available"

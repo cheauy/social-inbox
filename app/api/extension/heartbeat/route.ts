@@ -4,6 +4,7 @@ import {
   authenticateDevice,
   recordExtensionEvent,
 } from "@/lib/extension/device-auth";
+import { resolvePage } from "@/lib/extension/facebook-thread";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -119,5 +120,49 @@ export async function POST(request: Request) {
     });
   }
 
-  return NextResponse.json({ success: true, acknowledgedAt: now });
+  /*
+   * Which of the workspace's Pages this browser is on. Recorded by id, never
+   * by name: a Page the workspace has not connected simply does not match, and
+   * the browser is told nothing about it.
+   */
+  const page = await resolvePage(device.business_id, clean(body.pageId));
+
+  if (page) {
+    await supabaseAdmin
+      .from("extension_device_pages")
+      .upsert(
+        {
+          device_id: device.id,
+          business_id: device.business_id,
+          social_account_id: page.socialAccountId,
+          page_id: page.pageId,
+          enabled: true,
+        },
+        { onConflict: "device_id,page_id" },
+      );
+  }
+
+  /*
+   * The badge number, taken from the column the Inbox and the phone already
+   * read. The extension does not count anything itself -- a second unread
+   * system is a second number to disagree with the first.
+   */
+  const { data: unreadRows } = await supabaseAdmin
+    .from("conversations")
+    .select("unread_count")
+    .eq("business_id", device.business_id)
+    .gt("unread_count", 0);
+
+  const unreadTotal = (unreadRows ?? []).reduce(
+    (total, row) => total + Math.max(0, (row.unread_count as number) ?? 0),
+    0,
+  );
+
+  return NextResponse.json({
+    success: true,
+    acknowledgedAt: now,
+    unreadTotal,
+    pageMatched: Boolean(page),
+    pageName: page?.pageName ?? null,
+  });
 }

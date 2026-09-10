@@ -130,6 +130,89 @@ var TenhFacebookSelectors = (() => {
     return messengerThread ? messengerThread[1] : null;
   }
 
+  /*
+   * The text an agent just sent, caught at the composer rather than read back
+   * out of the thread.
+   *
+   * Parsing the message list would mean reading the whole conversation --
+   * every message the customer ever wrote -- to find the one row that is new,
+   * and deciding which side of the thread it sits on from layout. The composer
+   * needs none of that: the text is there, it is unambiguously outgoing, it is
+   * unambiguously this workspace's own, and nothing belonging to the customer
+   * is ever touched.
+   *
+   * Returns null unless the box actually emptied, which is the difference
+   * between a message sent and a stray Enter inside a draft.
+   */
+  function detectOutgoingMessage(snapshot) {
+    const composer = findMessengerComposer();
+
+    if (!snapshot?.text?.trim()) return null;
+
+    const now = readComposerText(composer);
+
+    return now === "" || now !== snapshot.text
+      ? {
+          text: snapshot.text,
+          conversationId: snapshot.conversationId ?? detectCurrentConversation(),
+          pageId: snapshot.pageId ?? detectCurrentPage().pageId,
+          observedAt: snapshot.at ?? Date.now(),
+        }
+      : null;
+  }
+
+  function readComposerText(composer) {
+    const box = composer ?? findMessengerComposer();
+
+    if (!box) return "";
+
+    return (box.innerText ?? box.value ?? "")
+      .replace(/\u00a0/g, " ")
+      .trim();
+  }
+
+  /** Facebook's own send control, by label rather than by class. */
+  function isSendControl(element) {
+    const button = element?.closest?.('[role="button"], button');
+
+    if (!button) return false;
+
+    const label = textOf(button);
+
+    return (
+      label === "send" ||
+      label.startsWith("send ") ||
+      label.includes("press enter to send") ||
+      label.includes("ផ្ញើ") // Khmer: send
+    );
+  }
+
+  /*
+   * Put a quick reply where the agent would have typed it.
+   *
+   * insertText, not innerText: Facebook's composer is a React-controlled
+   * contenteditable, and writing to it directly leaves the framework holding a
+   * different value than the box displays -- which is how a message gets sent
+   * empty. This goes in as though it were typed, and stops there. Nothing here
+   * presses Send; a person reads it and decides.
+   */
+  function insertIntoComposer(text) {
+    const box = findMessengerComposer();
+
+    if (!box || !isComposerEnabled(box) || !text) return false;
+
+    box.focus();
+
+    const inserted = document.execCommand("insertText", false, text);
+
+    if (!inserted && "value" in box) {
+      box.value = `${box.value ?? ""}${text}`;
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    return true;
+  }
+
   function isMessengerSurface() {
     const { host, pathname } = window.location;
 
@@ -145,6 +228,10 @@ var TenhFacebookSelectors = (() => {
     isComposerEnabled,
     detectCurrentPage,
     detectCurrentConversation,
+    detectOutgoingMessage,
+    readComposerText,
+    isSendControl,
+    insertIntoComposer,
     isMessengerSurface,
   };
 })();

@@ -30,6 +30,14 @@ type Device = {
   lastSeenAt: string | null;
 };
 
+type Observation = {
+  id: string;
+  conversationId: string | null;
+  preview: string | null;
+  observedAt: string;
+  state: "in_tenh" | "waiting" | "missing_from_tenh" | "unknown_conversation";
+};
+
 const PING_TIMEOUT_MS = 1200;
 
 function relative(value: string | null) {
@@ -49,6 +57,7 @@ export function TenhCompanionCard() {
   const [installed, setInstalled] = useState<boolean | null>(null);
   const [version, setVersion] = useState<string | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [observations, setObservations] = useState<Observation[]>([]);
   const [code, setCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -111,6 +120,17 @@ export function TenhCompanionCard() {
       if (result?.success) setDevices(result.devices ?? []);
     } catch {
       /* The card is an extra; a failed list must not take the page with it. */
+    }
+
+    try {
+      const response = await fetch("/api/extension/observations", {
+        cache: "no-store",
+      });
+      const result = await response.json();
+
+      if (result?.success) setObservations(result.observations ?? []);
+    } catch {
+      /* Same rule. This section disappears rather than breaking the page. */
     }
   }, []);
 
@@ -329,6 +349,54 @@ export function TenhCompanionCard() {
           </ul>
         )}
       </div>
+
+      {observations.length > 0 ? (
+        <div className="mt-6">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+            Replies typed in Facebook
+          </p>
+
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Replies a paired browser watched somebody send from Facebook
+            itself, and whether Meta&apos;s webhook delivered them to TENH. A
+            reply stuck on &ldquo;not in TENH&rdquo; usually means another app
+            holds this Page&apos;s webhook. Nothing here is added to a
+            conversation: the webhook remains the only thing that writes
+            messages.
+          </p>
+
+          <ul className="mt-3 space-y-2">
+            {observations.slice(0, 8).map((observation) => (
+              <li
+                key={observation.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3 text-sm"
+              >
+                <span className="min-w-0 flex-1 truncate text-slate-700">
+                  {observation.preview ?? "A reply"}
+                </span>
+
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                    observation.state === "in_tenh"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : observation.state === "waiting"
+                        ? "bg-slate-100 text-slate-500"
+                        : "bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  {observation.state === "in_tenh"
+                    ? "In TENH"
+                    : observation.state === "waiting"
+                      ? "Waiting for Meta"
+                      : observation.state === "unknown_conversation"
+                        ? "Page not connected to TENH"
+                        : "Never arrived in TENH"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <p className="mt-5 text-xs leading-5 text-slate-500">
         TENH always sends through the official Messenger API first. The

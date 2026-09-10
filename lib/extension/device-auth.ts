@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 
+import { businessSubscriptionIsOperational } from "@/lib/subscription/is-operational-subscription";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 /*
@@ -13,7 +14,9 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
  * The token is random, stored only as a hash, and checked against the member
  * row on every request -- so an agent who is removed from a workspace, or
  * whose membership is deactivated, loses the browser at the next call rather
- * than at the next deploy.
+ * than at the next deploy. The workspace's subscription is checked with it,
+ * for the same reason the Inbox checks it: an expired workspace stops
+ * everywhere, not everywhere except the browser somebody left open.
  */
 
 export const PAIR_CODE_TTL_MS = 5 * 60_000;
@@ -59,8 +62,20 @@ export type ExtensionDevice = {
   status: string;
 };
 
+/* The member behind the browser, so a route can apply the same permission
+   checks the website applies to that person. */
+export type ExtensionDeviceMember = {
+  id: string;
+  role: string;
+  full_name: string | null;
+};
+
 type DeviceAuthResult =
-  | { success: true; device: ExtensionDevice }
+  | {
+      success: true;
+      device: ExtensionDevice;
+      member: ExtensionDeviceMember;
+    }
   | { success: false; status: number; error: string };
 
 /**
@@ -109,7 +124,7 @@ export async function authenticateDevice(
 
   const { data: member } = await supabaseAdmin
     .from("team_members")
-    .select("id,is_active")
+    .select("id,is_active,role,full_name")
     .eq("id", device.member_id)
     .eq("business_id", device.business_id)
     .maybeSingle();
@@ -136,7 +151,28 @@ export async function authenticateDevice(
     };
   }
 
-  return { success: true, device: device as ExtensionDevice };
+  if (!(await businessSubscriptionIsOperational(device.business_id))) {
+    /*
+     * Not revoked. An expired subscription is a bill, not a betrayal: the
+     * browser stays paired and starts working again the moment the workspace
+     * does.
+     */
+    return {
+      success: false,
+      status: 409,
+      error: "This TENH subscription is not active.",
+    };
+  }
+
+  return {
+    success: true,
+    device: device as ExtensionDevice,
+    member: {
+      id: member.id as string,
+      role: (member.role as string | null) ?? "member",
+      full_name: (member.full_name as string | null) ?? null,
+    },
+  };
 }
 
 /** Write one observation. Never allowed to fail a request. */

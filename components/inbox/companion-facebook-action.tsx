@@ -33,13 +33,11 @@ const FACEBOOK_INBOX = "https://business.facebook.com/latest/inbox/all";
 export function CompanionFacebookAction({ conversationId, pageId }: Props) {
   const { installed, openInFacebook, checkReplyAvailability } = useCompanion();
 
-  const [state, setState] = useState<
-    | { kind: "idle" }
-    | { kind: "checking" }
-    | { kind: "available" }
-    | { kind: "unavailable" }
-    | { kind: "no-tab" }
-  >({ kind: "idle" });
+  /* Null while the question is still out. "Checking" is that, rendered --
+     not a separate state to keep in step with this one. */
+  const [answer, setAnswer] = useState<
+    "available" | "unavailable" | "no-tab" | null
+  >(null);
 
   /*
    * Asked once, when a companion is present and the notice appears. Not
@@ -52,19 +50,16 @@ export function CompanionFacebookAction({ conversationId, pageId }: Props) {
 
     let alive = true;
 
-    setState({ kind: "checking" });
-
-    void checkReplyAvailability(conversationId).then((answer) => {
+    void checkReplyAvailability(conversationId).then((result) => {
       if (!alive) return;
 
-      if (!answer || answer.reason === "no_facebook_tab") {
-        setState({ kind: "no-tab" });
-        return;
-      }
-
-      setState({
-        kind: answer.composerEnabled ? "available" : "unavailable",
-      });
+      setAnswer(
+        !result || result.reason === "no_facebook_tab"
+          ? "no-tab"
+          : result.composerEnabled
+            ? "available"
+            : "unavailable",
+      );
     });
 
     return () => {
@@ -114,11 +109,11 @@ export function CompanionFacebookAction({ conversationId, pageId }: Props) {
 
       {installed ? (
         <span className="text-[11px] leading-4 text-amber-800">
-          {state.kind === "checking"
+          {answer === null
             ? "TENH Companion is checking your Facebook tab…"
-            : state.kind === "available"
+            : answer === "available"
               ? "TENH Companion sees an enabled reply box in Facebook. Whether a message sends is Facebook's decision."
-              : state.kind === "unavailable"
+              : answer === "unavailable"
                 ? "TENH Companion sees a reply box that Facebook has disabled."
                 : "TENH Companion has no Facebook tab open to look at."}
         </span>

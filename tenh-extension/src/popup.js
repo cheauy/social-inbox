@@ -22,6 +22,9 @@ const view = {
   unpair: document.getElementById("unpair"),
   openTenh: document.getElementById("openTenh"),
   openFacebook: document.getElementById("openFacebook"),
+  redetect: document.getElementById("redetect"),
+  test: document.getElementById("test"),
+  repairResult: document.getElementById("repairResult"),
   error: document.getElementById("error"),
 };
 
@@ -124,6 +127,42 @@ view.openTenh.addEventListener("click", () => {
 view.openFacebook.addEventListener("click", async () => {
   await ask({ type: "OPEN_IN_FACEBOOK" });
   window.close();
+});
+
+/*
+ * Repair, for the day Facebook rearranges its page.
+ *
+ * Detection is a best effort against somebody else's interface, and it will
+ * eventually be wrong. When it is, these two buttons say so plainly instead of
+ * leaving a stale green dot, and TENH itself carries on regardless -- messages
+ * still arrive through Meta's webhook and still send through the API.
+ */
+view.redetect.addEventListener("click", async () => {
+  view.repairResult.textContent = "Looking again…";
+
+  const result = await ask({ type: "TENH_REDETECT" });
+
+  view.repairResult.textContent = !result.foundTab
+    ? "No Facebook tab is open in this browser."
+    : result.facebook?.loggedIn
+      ? "Facebook detected again."
+      : "A Facebook tab is open, but this build cannot read it. Normal TENH messaging is still active.";
+
+  await render();
+});
+
+view.test.addEventListener("click", async () => {
+  view.repairResult.textContent = "Testing…";
+
+  const result = await ask({ type: "TENH_TEST" });
+
+  view.repairResult.textContent = !result.reachable
+    ? "TENH could not be reached from this browser."
+    : result.paired
+      ? "Connected to TENH."
+      : result.error ?? "This browser is no longer paired with TENH.";
+
+  await render();
 });
 
 void render();
