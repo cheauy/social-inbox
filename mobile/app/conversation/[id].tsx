@@ -171,6 +171,27 @@ function extensionFor(message: InboxMessage, uri: string) {
   return ".jpg";
 }
 
+/*
+ * The extension a mime type wants, for a file that arrived without one.
+ *
+ * Android decides what a file is by its name, and so does the upload: the
+ * server reads the part's mime type and refuses an album whose parts are not
+ * all image/*. A name with no extension is an octet-stream, and an
+ * octet-stream is a failed send.
+ */
+function extensionForMime(mimeType: string | null | undefined, kind: string) {
+  const type = (mimeType ?? "").toLowerCase();
+
+  if (type === "image/png") return ".png";
+  if (type === "image/webp") return ".webp";
+  if (type === "image/gif") return ".gif";
+  if (type.startsWith("image/")) return ".jpg";
+  if (type === "video/quicktime") return ".mov";
+  if (type.startsWith("video/")) return ".mp4";
+
+  return kind === "video" ? ".mp4" : ".jpg";
+}
+
 /* A file size somebody can read: 240 KB, 1.8 MB. */
 function readableSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -2294,8 +2315,22 @@ export default function Conversation() {
     try {
       for (const [index, attachment] of withUrls.entries()) {
         try {
+          /*
+           * The saved name, and an extension that matches what it actually
+           * is.
+           *
+           * The upload declares no mime type of its own: expo-file-system
+           * reads it back off the file, and the server then checks that the
+           * declared kind matches -- an album refuses outright unless every
+           * part is image/*. A saved reply whose name lost its extension
+           * somewhere therefore uploaded as application/octet-stream and the
+           * whole send failed, text and all.
+           */
           const safe = attachment.name.replace(/[^\w.-]+/g, "_").slice(-60) || "attachment";
-          const target = new File(Paths.cache, `${Date.now()}-${index}-${safe}`);
+          const named = /\.[a-z0-9]{2,5}$/i.test(safe)
+            ? safe
+            : `${safe}${extensionForMime(attachment.mimeType, attachment.kind)}`;
+          const target = new File(Paths.cache, `${Date.now()}-${index}-${named}`);
           const saved = await File.downloadFileAsync(attachment.url as string, target);
 
           if (saved) {
