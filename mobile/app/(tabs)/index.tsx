@@ -116,16 +116,9 @@ function ListSkeleton() {
 
 const ConversationRow = memo(function ConversationRow({
   conversation,
-  workspaceName,
   onPress,
 }: {
   conversation: InboxConversation;
-  /*
-   * Only set when more than one workspace is open at once. In a merged list
-   * two shops' customers sit in one column, and without the shop's name on
-   * the row there is no way to tell whose "Where is my order?" this is.
-   */
-  workspaceName?: string;
   onPress: () => void;
 }) {
   const unread = (conversation.unread_count ?? 0) > 0;
@@ -171,34 +164,6 @@ const ConversationRow = memo(function ConversationRow({
           >
             {conversation.contact?.full_name ?? "Customer"}
           </Text>
-
-          {/*
-            Which shop, when two are open at once. Beside the name rather than
-            down with the tags, because it changes who the row is about, and
-            that has to be read before the preview is.
-          */}
-          {workspaceName ? (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 3,
-                paddingHorizontal: 6,
-                paddingVertical: 2,
-                borderRadius: 999,
-                backgroundColor: colors.background,
-              }}
-            >
-              <Ionicons name="business-outline" size={10} color={colors.muted} />
-
-              <Text
-                numberOfLines={1}
-                style={{ fontSize: 10.5, fontWeight: "700", color: colors.muted, maxWidth: 96 }}
-              >
-                {workspaceName}
-              </Text>
-            </View>
-          ) : null}
 
           {conversation.is_pinned ? (
             <Ionicons
@@ -1733,13 +1698,6 @@ export default function Inbox() {
           renderItem={({ item }) => (
             <ConversationRow
               conversation={item}
-              workspaceName={
-                merged.length > 1
-                  ? workspaces.find(
-                      (one) => one.businessId === item.business_id,
-                    )?.businessName
-                  : undefined
-              }
               onPress={() =>
                 router.push({
                   pathname: "/conversation/[id]",

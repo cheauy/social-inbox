@@ -2489,9 +2489,6 @@ export default function Conversation() {
                 >
                   {conversation.social_account?.account_name?.trim() ||
                     channel(conversation)}
-                  {conversation.contact?.platform_user_id
-                    ? `  •  ID: ${conversation.contact.platform_user_id}`
-                    : ""}
                 </Text>
               </View>
             ) : null}
