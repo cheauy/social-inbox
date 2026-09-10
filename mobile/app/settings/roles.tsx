@@ -61,6 +61,8 @@ type PermissionMember = {
 
 type Response = {
   canManage?: boolean;
+  /* Whose row this is. The server refuses to let anybody edit their own. */
+  currentMemberId?: string;
   groups?: Group[];
   members?: PermissionMember[];
 };
@@ -81,6 +83,7 @@ export default function Roles() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [members, setMembers] = useState<PermissionMember[]>([]);
   const [canManage, setCanManage] = useState(false);
+  const [meId, setMeId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -104,6 +107,7 @@ export default function Roles() {
       setGroups(data.groups ?? []);
       setMembers(data.members ?? []);
       setCanManage(data.canManage === true);
+      setMeId(data.currentMemberId ?? null);
       setError("");
     } catch (loadError) {
       setError(
@@ -163,7 +167,10 @@ export default function Roles() {
     setSaved(false);
 
     try {
-      const result = await api<{ permissions?: MemberPermissions }>(
+      const result = await api<{
+        permissions?: MemberPermissions;
+        hasOverrides?: boolean;
+      }>(
         "/api/team/permissions",
         workspace.businessId,
         {
@@ -181,7 +188,17 @@ export default function Roles() {
       setMembers((current) =>
         current.map((member) =>
           member.id === selected.id
-            ? { ...member, permissions: next, hasOverrides: !reset }
+            ? {
+                ...member,
+                permissions: next,
+                /*
+                 * The server's answer, not an assumption. It is what decides
+                 * whether Reset is offered, and it knows whether anything is
+                 * actually overridden -- this used to infer it from which
+                 * button had been pressed.
+                 */
+                hasOverrides: result.hasOverrides === true,
+              }
             : member,
         ),
       );
@@ -299,7 +316,15 @@ export default function Roles() {
               key={member.id}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
-              disabled={member.isOwner}
+              /*
+               * Not yourself, and not an Owner.
+               *
+               * The server refuses both -- "You cannot change your own
+               * permissions", "The Owner always has full access" -- and a row
+               * that opens an editor whose Save is going to be refused is a
+               * dead end somebody walks into once per workspace.
+               */
+              disabled={member.isOwner || member.id === meId}
               onPress={() => choose(member)}
               style={({ pressed }) => ({
                 flexDirection: "row",
@@ -314,7 +339,7 @@ export default function Roles() {
                   : pressed
                     ? colors.pale
                     : "transparent",
-                opacity: member.isOwner ? 0.6 : 1,
+                opacity: member.isOwner || member.id === meId ? 0.6 : 1,
               })}
             >
               <Avatar
@@ -333,15 +358,20 @@ export default function Roles() {
                 <Text style={[styles.muted, { fontSize: 12 }]}>
                   {member.isOwner
                     ? t("Owner — always full access", "ម្ចាស់ — សិទ្ធិពេញលេញ")
-                    : member.hasOverrides
+                    : member.id === meId
                       ? t(
-                          member.role + " · changed",
-                          member.role + " · បានកែ",
+                          "You — your own permissions come from your role",
+                          "អ្នក — សិទ្ធិមកពីតួនាទីរបស់អ្នក",
                         )
-                      : t(
-                          member.role + " · role defaults",
-                          member.role + " · តាមតួនាទី",
-                        )}
+                      : member.hasOverrides
+                        ? t(
+                            member.role + " · changed",
+                            member.role + " · បានកែ",
+                          )
+                        : t(
+                            member.role + " · role defaults",
+                            member.role + " · តាមតួនាទី",
+                          )}
                 </Text>
               </View>
 
