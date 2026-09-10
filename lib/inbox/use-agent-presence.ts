@@ -484,32 +484,46 @@ export function useAgentPresence({
 
       const emitRemoteAgents = () => {
         /*
-         * Aggregate tabs only after the per-tab cache is stable. Keep one
-         * visible avatar per teammate per conversation and mark the teammate
-         * typing when ANY of their tabs on this conversation is typing.
+         * One entry per teammate, on the newest conversation they are known
+         * to be in.
+         *
+         * This used to key by user AND conversation, which let the same
+         * person exist twice: once on the thread they had moved to, and once
+         * on the thread they left. A phone that loses its socket without a
+         * clean goodbye -- backgrounded, off wifi, killed -- keeps its old
+         * presence key alive for as long as Realtime takes to notice, and
+         * during that time the stale entry was a teammate of its own. The
+         * screen then said somebody was reading a conversation they had left
+         * minutes ago, and no amount of switching cleared it: only a refresh
+         * did, because a refresh threw the cache away.
+         *
+         * A person is in one place. Newest wins, by revision then timestamp,
+         * and typing is merged only between tabs that agree on where they
+         * are.
          */
-        const byUserConversation = new Map<string, AgentPresence>();
+        const byUser = new Map<string, AgentPresence>();
 
         for (const { agent } of remotePresenceCacheRef.current.values()) {
-          const aggregateKey = `${agent.user_id}::${
-            agent.conversation_id ?? "__none__"
-          }`;
-          const current = byUserConversation.get(aggregateKey);
+          const current = byUser.get(agent.user_id);
 
           if (!current) {
-            byUserConversation.set(aggregateKey, agent);
+            byUser.set(agent.user_id, agent);
             continue;
           }
+
+          const sameConversation =
+            current.conversation_id === agent.conversation_id;
 
           const newest =
             isPresenceAtLeastAsNew(agent, current)
               ? agent
               : current;
 
-          byUserConversation.set(aggregateKey, {
+          byUser.set(agent.user_id, {
             ...newest,
-            is_typing:
-              Boolean(current.is_typing) || Boolean(agent.is_typing),
+            is_typing: sameConversation
+              ? Boolean(current.is_typing) || Boolean(agent.is_typing)
+              : Boolean(newest.is_typing),
             availability:
               current.availability !== "away" ||
               agent.availability !== "away"
@@ -518,9 +532,7 @@ export function useAgentPresence({
           });
         }
 
-        const nextRemoteAgents = Array.from(
-          byUserConversation.values(),
-        );
+        const nextRemoteAgents = Array.from(byUser.values());
 
         console.info("[Tenh Presence] sync", {
           remoteAgentCount: nextRemoteAgents.length,

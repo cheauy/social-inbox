@@ -10,6 +10,7 @@ import { AppState } from "react-native";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { useAccount } from "./account";
+import { sessionStorage } from "./auth/secure-storage";
 import { useAuth } from "./auth/provider";
 import { useInbox } from "./inbox-provider";
 import { supabase } from "./supabase/client";
@@ -86,6 +87,26 @@ export const usePresence = () => useContext(Context);
 
 /* The same heartbeat the website keeps, so both age out at the same rate. */
 const HEARTBEAT_MS = 15_000;
+
+/*
+ * Which of two payloads for the same person is the truth.
+ *
+ * The revision counts this device's own updates, so it settles the ordinary
+ * case; the timestamp settles two devices. Equal on both means the later one
+ * seen wins, which is why this returns true on a tie -- an exact draw used to
+ * keep whichever key the socket listed first, and that could be the one the
+ * person had already left.
+ */
+function atLeastAsNew(candidate: Viewer, current: Viewer) {
+  const candidateRevision = candidate.revision ?? 0;
+  const currentRevision = current.revision ?? 0;
+
+  if (candidateRevision !== currentRevision) {
+    return candidateRevision > currentRevision;
+  }
+
+  return (candidate.updated_at ?? "") >= (current.updated_at ?? "");
+}
 
 export function PresenceProvider({ children }: React.PropsWithChildren) {
   const { session } = useAuth();
@@ -204,56 +225,82 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
     }
 
     let alive = true;
+    let channel: RealtimeChannel | null = null;
+    let beat: ReturnType<typeof setInterval> | undefined;
 
-    if (!keyRef.current) {
-      /* One key per install, so a reconnect replaces this device rather than
-         appearing beside it. */
-      keyRef.current = `${userId}:${Math.random().toString(36).slice(2)}`;
-    }
+    /*
+     * A presence key that outlives the app.
+     *
+     * It used to be minted on every mount, so every restart -- and every
+     * reload in development -- arrived as a second device. Realtime keeps the
+     * old key until it notices that socket has gone, which on a phone that
+     * was backgrounded or lost signal takes a long minute, and for that whole
+     * time the person existed twice: once where they are, and once where they
+     * were. That ghost is what makes a teammate look stuck on the conversation
+     * they opened first.
+     *
+     * Remembered, so the server replaces this device rather than adding one.
+     */
+    void (async () => {
+      if (!keyRef.current) {
+        const remembered = await sessionStorage.getItem(`presence.${userId}`);
 
-    const channel = supabase.channel(`tenh-presence:${businessId}`, {
-      config: { private: true, presence: { key: keyRef.current } },
-    });
+        if (!alive) return;
 
-    channelRef.current = channel;
-
-    channel.on("presence", { event: "sync" }, () => {
-      if (!alive) return;
-
-      const state = channel.presenceState<Viewer>();
-      const seen = new Map<string, Viewer>();
-
-      for (const [key, entries] of Object.entries(state)) {
-        if (key === keyRef.current) continue;
-
-        for (const entry of entries) {
-          if (!entry?.user_id || entry.user_id === userId) continue;
-
-          const previous = seen.get(entry.user_id);
-
-          /*
-           * One row per person, newest wins. Somebody with the website open
-           * and the app in their hand is two presence keys and one teammate,
-           * and the thread they are actually looking at is whichever they
-           * touched last.
-           */
-          if (
-            !previous ||
-            (entry.updated_at ?? "") > (previous.updated_at ?? "")
-          ) {
-            seen.set(entry.user_id, entry);
-          }
+        if (remembered) {
+          keyRef.current = remembered;
+        } else {
+          const minted = `${userId}:${Math.random().toString(36).slice(2)}`;
+          keyRef.current = minted;
+          await sessionStorage.setItem(`presence.${userId}`, minted);
         }
       }
 
-      setOthers([...seen.values()]);
-    });
+      if (!alive) return;
 
-    void channel.subscribe((status) => {
-      if (status === "SUBSCRIBED") void publishRef.current();
-    });
+      const joined = supabase.channel(`tenh-presence:${businessId}`, {
+        config: { private: true, presence: { key: keyRef.current } },
+      });
 
-    const beat = setInterval(() => void publishRef.current(), HEARTBEAT_MS);
+      channel = joined;
+      channelRef.current = joined;
+
+      joined.on("presence", { event: "sync" }, () => {
+        if (!alive) return;
+
+        const state = joined.presenceState<Viewer>();
+        const seen = new Map<string, Viewer>();
+
+        for (const [key, entries] of Object.entries(state)) {
+          if (key === keyRef.current) continue;
+
+          for (const entry of entries) {
+            if (!entry?.user_id || entry.user_id === userId) continue;
+
+            const previous = seen.get(entry.user_id);
+
+            /*
+             * One row per person, newest wins -- and a tie goes to whichever
+             * arrived later rather than to whichever the socket happened to
+             * list first. Somebody with the website open and the app in their
+             * hand is two presence keys and one teammate, and the thread they
+             * are in is whichever they touched last.
+             */
+            if (!previous || atLeastAsNew(entry, previous)) {
+              seen.set(entry.user_id, entry);
+            }
+          }
+        }
+
+        setOthers([...seen.values()]);
+      });
+
+      void joined.subscribe((status) => {
+        if (status === "SUBSCRIBED") void publishRef.current();
+      });
+
+      beat = setInterval(() => void publishRef.current(), HEARTBEAT_MS);
+    })();
 
     /*
      * A backgrounded app is not viewing anything. Android keeps the socket up
@@ -273,11 +320,15 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
 
     return () => {
       alive = false;
-      clearInterval(beat);
+      if (beat) clearInterval(beat);
       appState.remove();
       channelRef.current = null;
-      void channel.untrack();
-      void supabase.removeChannel(channel);
+
+      if (channel) {
+        void channel.untrack();
+        void supabase.removeChannel(channel);
+      }
+
       setOthers([]);
     };
     /*
