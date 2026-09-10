@@ -1,5 +1,5 @@
 import React from "react";
-import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Keyboard, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { InboxConversation } from "../lib/types";
@@ -215,6 +215,33 @@ export function ChannelBadge({ conversation }: { conversation: InboxConversation
  */
 export function Sheet({ open, title, detail, onClose, children, floating = false, fullHeight = false }: { open: boolean; title: string; detail: string; onClose: () => void; children: React.ReactNode; floating?: boolean; fullHeight?: boolean }) {
   const insets = useSafeAreaInsets();
+
+  /*
+   * The keyboard stays down, both while this is open and after it closes.
+   *
+   * Android hands focus back to whatever held it before a modal appeared. On
+   * the Inbox that is the search box, so choosing a filter -- a tap that has
+   * nothing to do with typing -- closed the sheet and then threw the keyboard
+   * up over the list somebody had just filtered, looking for all the world
+   * like the app had decided to search on their behalf.
+   *
+   * Dismissed twice on the way out because the focus is restored a frame or
+   * two after the modal goes: one call lands before that and does nothing.
+   */
+  React.useEffect(() => {
+    if (open) {
+      Keyboard.dismiss();
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => Keyboard.dismiss());
+    const later = setTimeout(() => Keyboard.dismiss(), 180);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(later);
+    };
+  }, [open]);
 
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>

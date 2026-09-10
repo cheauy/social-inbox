@@ -3,6 +3,7 @@ import { Redirect, useRouter } from "expo-router";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   Animated,
   FlatList,
   Image,
@@ -311,6 +312,22 @@ function ChannelSheet({
   onSelect: (id: string | null) => void;
   onClose: () => void;
 }) {
+  /* The same keyboard rule the shared Sheet follows -- see Sheet in ui.tsx. */
+  useEffect(() => {
+    if (open) {
+      Keyboard.dismiss();
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => Keyboard.dismiss());
+    const later = setTimeout(() => Keyboard.dismiss(), 180);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(later);
+    };
+  }, [open]);
+
   return (
     <Modal
       visible={open}
@@ -1073,6 +1090,23 @@ export default function Inbox() {
     setChannelId(next);
   }, []);
   const [search, setSearch] = useState("");
+
+  /*
+   * Let go of the search box before a filter sheet opens.
+   *
+   * Android restores focus to whatever had it when a modal closes, and the
+   * sheets dismiss the keyboard on their own way out -- but a field that is
+   * still focused underneath will pull it back up the next time anything
+   * touches focus. Blurring here means the tap that opens a filter also ends
+   * the typing it interrupted, which is what it looks like it should do.
+   */
+  const searchField = useRef<TextInput>(null);
+
+  const openFilter = useCallback((show: () => void) => {
+    searchField.current?.blur();
+    Keyboard.dismiss();
+    show();
+  }, []);
   const deferredSearch = useDeferredValue(search);
   const [smartView, setSmartView] = useState<SmartView>("all");
   const [status, setStatus] = useState<StatusKey>("all");
@@ -1461,7 +1495,7 @@ export default function Inbox() {
                   ? `Channel: ${selectedChannel.name}. Change channel.`
                   : "All channels. Change channel."
               }
-              onPress={() => setChannelOpen(true)}
+              onPress={() => openFilter(() => setChannelOpen(true))}
               style={({ pressed }) => ({
                 flexDirection: "row",
                 alignItems: "center",
@@ -1546,6 +1580,7 @@ export default function Inbox() {
                 <Ionicons name="search" size={17} color={colors.muted} />
 
                 <TextInput
+                  ref={searchField}
                   value={search}
                   onChangeText={setSearch}
                   placeholder="Search name or number"
@@ -1585,7 +1620,7 @@ export default function Inbox() {
                     : "Filter by tags"
                 }
                 active={Boolean(selectedTag)}
-                onPress={() => setTagOpen(true)}
+                onPress={() => openFilter(() => setTagOpen(true))}
               />
 
               {/*
@@ -1611,7 +1646,7 @@ export default function Inbox() {
                     : "Filter conversations"
                 }
                 active={filtering}
-                onPress={() => setStatusOpen(true)}
+                onPress={() => openFilter(() => setStatusOpen(true))}
               />
             </View>
 
