@@ -1,5 +1,5 @@
 import React from "react";
-import { ActivityIndicator, Image, Keyboard, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Keyboard, KeyboardAvoidingView, Modal, Platform as RNPlatform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { InboxConversation } from "../lib/types";
@@ -323,7 +323,13 @@ export function Dialog({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <View
+      {/*
+        The card lifts out of the keyboard's way, and stays scrollable when
+        there is not enough room left for it -- a reminder's Save button was
+        under the keyboard on a small phone, with no way to reach it.
+      */}
+      <KeyboardAvoidingView
+        behavior={RNPlatform.OS === "ios" ? "padding" : "height"}
         style={{
           flex: 1,
           justifyContent: "center",
@@ -338,9 +344,17 @@ export function Dialog({
           style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
         />
 
-        <View
-          /* Stops a tap inside the card reaching the backdrop under it. */
-          onStartShouldSetResponder={() => true}
+        <Pressable
+          /*
+           * Stops a tap inside the card reaching the backdrop under it, and
+           * puts the keyboard away.
+           *
+           * Typing a reminder left the keyboard up over everything below the
+           * note, and the only ways out were the system back button or
+           * guessing that the backdrop -- the part you cannot see -- would do
+           * it. Tapping the card itself is what everybody tries first.
+           */
+          onPress={() => Keyboard.dismiss()}
           style={{
             width: "100%",
             maxWidth: 460,
@@ -387,8 +401,8 @@ export function Dialog({
           </View>
 
           {children}
-        </View>
-      </View>
+        </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
