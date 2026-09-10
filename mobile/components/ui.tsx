@@ -35,32 +35,13 @@ export function IconButton({ icon, label, onPress, disabled = false, badge = 0 }
 
 /*
  * The same tag chip used by the website: assigned tags are filled with their
- * colour and carry a white check, while available tags are outlined. Tag
- * colours are workspace data, so the label colour is derived for contrast.
+ * colour and carry a white check, while available tags are outlined.
+ *
+ * A filled chip's label and dot are white, full stop. They used to be derived
+ * from the fill for contrast, which put white on a green Buy and near-black
+ * on the orange COD beside it -- one row of tags reading as two different
+ * kinds of thing.
  */
-function readableTagText(background: string) {
-  const compact = background.trim().match(/^#([0-9a-f]{3})$/i);
-  const full = background.trim().match(/^#([0-9a-f]{6})(?:[0-9a-f]{2})?$/i);
-  const hex = compact
-    ? compact[1].split("").map((part) => `${part}${part}`).join("")
-    : full?.[1];
-
-  if (!hex) return "white";
-
-  const linear = (value: number) => {
-    const ratio = value / 255;
-    return ratio <= 0.03928 ? ratio / 12.92 : ((ratio + 0.055) / 1.055) ** 2.4;
-  };
-  const luminance =
-    0.2126 * linear(parseInt(hex.slice(0, 2), 16)) +
-    0.7152 * linear(parseInt(hex.slice(2, 4), 16)) +
-    0.0722 * linear(parseInt(hex.slice(4, 6), 16));
-
-  return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05)
-    ? colors.ink
-    : "white";
-}
-
 export function TagChip({
   name,
   color,
@@ -92,22 +73,25 @@ export function TagChip({
         backgroundColor: selected ? tone : "white",
       }}
     >
-      {!selected ? (
-        <View
-          style={{
-            width: 7,
-            height: 7,
-            borderRadius: 4,
-            backgroundColor: tone,
-          }}
-        />
-      ) : null}
+      {/*
+        The dot, on both states. On a filled chip it is white: a small bright
+        mark at the head of the label that says where one tag ends and the
+        next begins, which a row of three touching pills badly needed.
+      */}
+      <View
+        style={{
+          width: 7,
+          height: 7,
+          borderRadius: 4,
+          backgroundColor: selected ? "white" : tone,
+        }}
+      />
 
       <Text
         numberOfLines={1}
         style={{
           flexShrink: 1,
-          color: selected ? readableTagText(tone) : colors.ink,
+          color: selected ? "white" : colors.ink,
           fontSize: compact ? 11 : 12.5,
           fontWeight: "700",
         }}
