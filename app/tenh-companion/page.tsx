@@ -30,7 +30,7 @@ const steps = [
       "Open TENH in the same browser, signed in as usual.",
       "That is the whole step. The extension connects to your TENH account on its own, and stays connected — there is nothing to do again tomorrow.",
       "Your browser then appears under Connected browsers in Settings → Integrations.",
-      "On a computer where you are not signed in to TENH, use Pair another browser with a code instead.",
+      "If it does not appear, sign in to TENH in that browser and use Test connection in the extension.",
     ],
   },
   {
@@ -103,9 +103,9 @@ export default function TenhCompanionPage() {
             only thing that does.
           </li>
           <li>
-            Connecting uses your TENH sign-in on this browser and nothing else.
-            Remove the browser from Settings → Integrations at any time, and it
-            stops.
+            Connecting uses your TENH sign-in on that browser and nothing else
+            — there is no code, and no second way in. Remove the browser from
+            Settings → Integrations at any time, and it stops.
           </li>
         </ul>
       </section>

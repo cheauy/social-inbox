@@ -2,8 +2,10 @@
  * The popup: what this browser is, and the two buttons that change it.
  *
  * It asks the service worker for state and shows it. There is deliberately no
- * Facebook control here -- nothing in this extension types into Facebook, and
- * a popup full of buttons would suggest otherwise.
+ * Facebook control here -- nothing in this extension sends from Facebook, and
+ * a popup full of buttons would suggest otherwise. There is no pairing control
+ * either: a browser signed in to TENH connects itself, so a code to copy would
+ * be a step invented for its own sake.
  */
 
 const TENH_ORIGIN = "https://app.tenhchat.com";
@@ -17,8 +19,7 @@ const view = {
   composerState: document.getElementById("composerState"),
   pairCard: document.getElementById("pairCard"),
   pairedCard: document.getElementById("pairedCard"),
-  code: document.getElementById("code"),
-  pair: document.getElementById("pair"),
+  connect: document.getElementById("connect"),
   unpair: document.getElementById("unpair"),
   openTenh: document.getElementById("openTenh"),
   openFacebook: document.getElementById("openFacebook"),
@@ -88,31 +89,16 @@ async function render() {
         : "No reply box on this tab.";
 }
 
-view.pair.addEventListener("click", async () => {
-  const code = view.code.value.trim().toUpperCase();
-
-  view.error.textContent = "";
-
-  if (!code) {
-    view.error.textContent = "Paste the code from TENH first.";
-    return;
-  }
-
-  view.pair.disabled = true;
-  view.pair.textContent = "Connecting…";
-
-  const result = await ask({ type: "TENH_PAIR", code });
-
-  view.pair.disabled = false;
-  view.pair.textContent = "Use a pairing code";
-
-  if (!result.paired) {
-    view.error.textContent = result.error ?? "Pairing failed.";
-    return;
-  }
-
-  view.code.value = "";
-  await render();
+/*
+ * The only way in, and it is not a button that connects anything.
+ *
+ * Connecting happens on TENH's own page, where the person's session already
+ * is. So this opens TENH and gets out of the way -- there is nothing here to
+ * type, get wrong, or be asked for a second time.
+ */
+view.connect.addEventListener("click", () => {
+  void chrome.tabs.create({ url: `${TENH_ORIGIN}/dashboard/inbox` });
+  window.close();
 });
 
 view.unpair.addEventListener("click", async () => {

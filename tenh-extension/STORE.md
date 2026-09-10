@@ -78,9 +78,10 @@ WHAT IT WILL NOT DO
   thing that does
 • It runs no remote code
 
-You need a TENH Chat account (https://app.tenhchat.com). Install it while signed
-in and it connects itself — no code to copy, and nothing to reconnect tomorrow.
-Remove the browser from Settings → Integrations at any time and it stops.
+You need a TENH Chat account (https://app.tenhchat.com). Install it, open TENH
+signed in, and it connects itself — no code to copy, and nothing to reconnect
+tomorrow. Remove the browser from Settings → Integrations at any time and it
+stops.
 ```
 
 **Category:** Workflow & Planning

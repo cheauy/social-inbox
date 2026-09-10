@@ -10,8 +10,7 @@ the send routes or the mobile app depends on anything this extension produces.
 
 - Tells `app.tenhchat.com` that it is installed, and which version.
 - Connects itself to the TENH account already signed in on that browser, once,
-  and stays connected. A five-minute, single-use code is the fallback for a
-  browser that is not signed in.
+  and stays connected. There is no code to copy and nothing to reconnect.
 - Reports, from an open Facebook tab: whether somebody is signed in, which Page
   the tab is acting as, whether a conversation is open, and whether Facebook is
   showing a reply box and has enabled it.
@@ -48,20 +47,24 @@ the send routes or the mobile app depends on anything this extension produces.
 
 ## Connect
 
-Open `app.tenhchat.com` in the same browser, signed in. That is the whole step:
+Open `app.tenhchat.com` in that browser, signed in. That is the whole step:
 the content script asks `/api/extension/auto-pair` with the session already in
 that browser, and the token it gets back goes straight to the service worker —
 it is never written to the page. The browser appears under **Connected
 browsers** within half a minute and stays there.
+
+There is no other way in, on purpose. A pairing code proved two things — that
+you hold the browser and that you hold the TENH account — and a request from
+TENH's own page with your session on it proves both already. Keeping a code as
+well would be a second door to defend for no gain.
 
 The token is dropped only on a real refusal (revoked in TENH, or removed from
 the workspace). A timeout, a 500, a deploy or an expired subscription leave it
 alone. Even after a revocation, opening TENH signed in reconnects it without
 anybody typing anything.
 
-**On a browser not signed in to TENH:** in TENH go to **Settings → Integrations
-→ Pair another browser with a code**, copy the code, and paste it into the
-extension popup under **Use a pairing code**.
+**Not connecting?** Sign in to TENH in that browser, then use **Test
+connection** in the popup.
 
 ## Testing Facebook detection
 
@@ -120,10 +123,10 @@ detection breaks, that file is the only one to fix.
 
 | Permission | Why |
 |---|---|
-| `storage` | Keeps the pairing token and the last observed Facebook state |
+| `storage` | Keeps the connection token and the last observed Facebook state |
 | `notifications` | Unread alerts, only when no TENH tab is open |
 | `sidePanel` | The compact companion panel |
 | `tabs` | Finding and focusing an already-open Facebook tab |
 | `alarms` | The half-minute heartbeat |
-| `app.tenhchat.com` | Pairing, heartbeat, and the page bridge |
+| `app.tenhchat.com` | Connecting, heartbeat, and the page bridge |
 | `www.facebook.com`, `business.facebook.com` | Reading the tab a person already has open |

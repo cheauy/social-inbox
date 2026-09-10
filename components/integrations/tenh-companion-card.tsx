@@ -10,8 +10,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * the webhooks and every send behave exactly as they always have, and this
  * card offers a download link instead of a status.
  *
- * The only thing that crosses into the extension is a five-minute pairing
- * code. No session, no cookie, nothing belonging to Facebook.
+ * Nothing crosses from this page into the extension. A browser signed in here
+ * connects itself, on its own side, and this card only reports what came back.
  */
 
 type Device = {
@@ -58,10 +58,7 @@ export function TenhCompanionCard() {
   const [version, setVersion] = useState<string | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [observations, setObservations] = useState<Observation[]>([]);
-  const [code, setCode] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
 
   const pending = useRef<number | null>(null);
 
@@ -142,37 +139,6 @@ export function TenhCompanionCard() {
     return () => window.clearInterval(timer);
   }, [loadDevices]);
 
-  async function startPairing() {
-    setBusy(true);
-    setError("");
-    setCopied(false);
-
-    try {
-      const response = await fetch("/api/extension/pair-code", {
-        method: "POST",
-      });
-      const result = await response.json();
-
-      if (!response.ok || !result?.success) {
-        throw new Error(result?.error ?? "Unable to start pairing.");
-      }
-
-      setCode(result.code);
-
-      /* The extension is the only thing that can redeem it, so it is only
-         useful for the five minutes the server gave it. */
-      window.setTimeout(() => setCode(null), 5 * 60_000);
-    } catch (pairError) {
-      setError(
-        pairError instanceof Error
-          ? pairError.message
-          : "Unable to start pairing.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function disconnect(deviceId: string) {
     setError("");
 
@@ -245,49 +211,7 @@ export function TenhCompanionCard() {
         >
           Installation steps
         </a>
-
-        {/* Kept for the browser that is not signed in here -- a shared
-            computer, or somebody pairing a machine they are not on. */}
-        <button
-          type="button"
-          onClick={() => void startPairing()}
-          disabled={busy}
-          className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
-        >
-          {busy ? "Preparing…" : "Pair another browser with a code"}
-        </button>
       </div>
-
-      {code ? (
-        <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50/70 p-5">
-          <p className="text-sm font-semibold text-blue-900">
-            Paste this into the TENH v1 popup on the other browser
-          </p>
-
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <code className="rounded-lg bg-white px-4 py-2 text-lg font-bold tracking-[0.2em] text-slate-900">
-              {code}
-            </code>
-
-            <button
-              type="button"
-              onClick={() => {
-                void navigator.clipboard?.writeText(code);
-                setCopied(true);
-              }}
-              className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700"
-            >
-              {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
-
-          <p className="mt-3 text-xs leading-5 text-blue-800">
-            It works once and expires in five minutes. It pairs a browser to
-            your own TENH account — it is not a password and gives no access to
-            conversations.
-          </p>
-        </div>
-      ) : null}
 
       <div className="mt-6">
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
@@ -296,7 +220,8 @@ export function TenhCompanionCard() {
 
         {devices.length === 0 ? (
           <p className="mt-3 text-sm text-slate-500">
-            No browser is paired with this workspace yet.
+            No browser is connected yet. Install the extension, then open TENH
+            in that browser signed in.
           </p>
         ) : (
           <ul className="mt-3 space-y-3">
@@ -361,7 +286,7 @@ export function TenhCompanionCard() {
           </p>
 
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Replies a paired browser watched somebody send from Facebook
+            Replies a connected browser watched somebody send from Facebook
             itself, and whether Meta&apos;s webhook delivered them to TENH. A
             reply stuck on &ldquo;not in TENH&rdquo; usually means another app
             holds this Page&apos;s webhook. Nothing here is added to a

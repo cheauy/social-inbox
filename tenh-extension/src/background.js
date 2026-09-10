@@ -66,36 +66,6 @@ async function callTenh(path, { method = "GET", body, token } = {}) {
   return { ok: response.ok && result.success !== false, status: response.status, result };
 }
 
-/**
- * Pair this browser with the TENH account that produced the code.
- *
- * The code is all the extension is ever given: no session, no cookie, nothing
- * belonging to Facebook. What comes back is a token that can say hello, report
- * what a tab looks like, and be revoked.
- */
-async function pair(code) {
-  const state = await readState();
-
-  const { ok, result } = await callTenh("/api/extension/pair", {
-    method: "POST",
-    body: {
-      code,
-      browserInstallationId: state.installationId,
-      deviceName: deviceName(),
-      extensionVersion: VERSION,
-    },
-  });
-
-  if (!ok || !result.token) {
-    return { paired: false, error: result.error ?? "Pairing failed." };
-  }
-
-  await writeState({ token: result.token, device: result.device ?? null });
-  await heartbeat("extension_connected");
-
-  return { paired: true, device: result.device ?? null };
-}
-
 async function unpair() {
   const { token } = await readState();
 
@@ -322,9 +292,6 @@ async function handle(message, sender) {
         device: state.device ?? null,
       };
     }
-
-    case "TENH_PAIR":
-      return pair(String(message.code ?? ""));
 
     /* Asked by the content script on app.tenhchat.com, which is the only
        place that can see whether somebody is signed in. */

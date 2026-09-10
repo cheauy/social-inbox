@@ -32,16 +32,8 @@
     </section>
 
     <section class="card" id="pairCard">
-      <p class="detail">
-        <strong>Open TENH and sign in</strong> — this browser connects itself,
-        once, and stays connected.
-      </p>
-      <p class="detail">
-        Not signed in on this computer? Get a code from TENH → Settings →
-        Integrations → <strong>Pair browser</strong>, and paste it here.
-      </p>
-      <input id="code" placeholder="ABCDE-FGHIJ" autocomplete="off" spellcheck="false" />
-      <button id="pair">Use a pairing code</button>
+      <p class="detail">Sign in to TENH in this browser and it connects.</p>
+      <button id="connect" class="primary">Open TENH</button>
       <p class="detail error" id="error"></p>
     </section>
 
@@ -56,10 +48,6 @@
       <button id="redetect">Re-detect Facebook</button>
       <button id="test">Test connection</button>
       <p class="detail" id="repairResult"></p>
-      <p class="detail">
-        TENH keeps working either way. These only affect what this browser can
-        see.
-      </p>
     </section>
 
     <p class="footnote">

@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from "crypto";
+import { createHash, randomBytes } from "crypto";
 
 import { businessSubscriptionIsOperational } from "@/lib/subscription/is-operational-subscription";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -6,7 +6,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 /*
  * The credential a paired browser carries, and how far it gets.
  *
- * A TENH Companion device is not a user. It cannot read conversations, send
+ * A TENH v1 device is not a user. It cannot read conversations, send
  * messages, or change anything: it can say that it is alive, say what the
  * Facebook tab in front of it looks like, and be revoked. Everything it
  * reports is stored as an observation for a person to read.
@@ -19,37 +19,12 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
  * everywhere, not everywhere except the browser somebody left open.
  */
 
-export const PAIR_CODE_TTL_MS = 5 * 60_000;
-
-/* Long enough that guessing is pointless, short enough to type if it ever has
-   to be. Digits and uppercase letters that cannot be confused for each other. */
-const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
-export function generatePairCode() {
-  const bytes = randomBytes(10);
-  let code = "";
-
-  for (const byte of bytes) {
-    code += CODE_ALPHABET[byte % CODE_ALPHABET.length];
-  }
-
-  return `${code.slice(0, 5)}-${code.slice(5)}`;
-}
-
 export function generateDeviceToken() {
   return randomBytes(32).toString("base64url");
 }
 
 export function hashSecret(value: string) {
   return createHash("sha256").update(value.trim()).digest("hex");
-}
-
-/** Constant-time compare, so a wrong token cannot be found one letter at a time. */
-export function secretsMatch(left: string, right: string) {
-  const a = Buffer.from(left);
-  const b = Buffer.from(right);
-
-  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 export type ExtensionDevice = {

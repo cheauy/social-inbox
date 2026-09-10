@@ -6,15 +6,14 @@
  * message that is not one of them -- from an ad frame, a stray library, an
  * injected script -- is dropped without a reply.
  *
- * Nothing sensitive travels this way. TENH sends a five-minute pairing code
- * and asks what a Facebook tab looks like; the extension answers with its
- * version and what it saw. No session, no cookie, no token goes back to the
- * page -- including the one this script fetches for itself below.
+ * Nothing sensitive travels this way. TENH asks whether a companion is there
+ * and what a Facebook tab looks like; the extension answers with its version
+ * and what it saw. No session, no cookie, no token goes back to the page --
+ * including the one this script fetches for itself below.
  */
 
 const ALLOWED = new Set([
   "TENH_EXTENSION_PING",
-  "TENH_PAIR",
   "TENH_UNPAIR",
   "OPEN_IN_FACEBOOK",
   "CHECK_FACEBOOK_REPLY_AVAILABILITY",
@@ -36,7 +35,6 @@ window.addEventListener("message", (event) => {
   chrome.runtime.sendMessage(
     {
       type: data.type,
-      code: typeof data.code === "string" ? data.code : undefined,
       pageId: typeof data.pageId === "string" ? data.pageId : undefined,
       conversationId:
         typeof data.conversationId === "string" ? data.conversationId : undefined,
