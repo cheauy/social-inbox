@@ -559,7 +559,8 @@ export default function RoomScreen() {
 
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { workspace, member, revision, rooms, roster, canManageRooms } = useInbox();
+  const { workspace, member, revision, rooms, roster, canManageRooms, refreshRooms } =
+    useInbox();
 
   const current = rooms.find((item) => item.id === id) ?? null;
 
@@ -618,6 +619,28 @@ export default function RoomScreen() {
         return;
       }
 
+      /*
+       * The room is gone, or this member is no longer in it.
+       *
+       * Both come back as "not found" -- the server does not distinguish, on
+       * purpose, since telling somebody a private room exists is itself a
+       * leak. Either way there is nothing on this screen any more: the
+       * website leaves the room when it hears the same news, and staying here
+       * with an error line over a thread that can no longer be sent to is
+       * worse than being put back in the list.
+       */
+      if (loadError instanceof ApiError && [403, 404].includes(loadError.status)) {
+        await refreshRooms();
+
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace("/(tabs)/group-chat");
+        }
+
+        return;
+      }
+
       setError(
         loadError instanceof Error
           ? loadError.message
@@ -628,7 +651,7 @@ export default function RoomScreen() {
         setLoading(false);
       }
     }
-  }, [id, workspace?.businessId]);
+  }, [id, workspace?.businessId, refreshRooms, router]);
 
   useEffect(() => {
     void load();
