@@ -23,6 +23,7 @@ import {
   ErrorNotice,
   PlatformMark,
   Sheet,
+  STATUS_TONE,
   TagChip,
   colors,
   relativeTime,
@@ -145,6 +146,16 @@ const ConversationRow = memo(function ConversationRow({
             : unread
               ? colors.pale
               : "white",
+          /*
+            The status as a stripe down the left edge.
+
+            Whether a conversation is open, waiting on somebody, resolved or
+            spam was invisible until you opened it -- the row said who and
+            when and nothing about where the thread had got to. A three-point
+            edge costs no room and colours the whole list at a glance.
+          */
+          borderLeftWidth: 3,
+          borderLeftColor: STATUS_TONE[conversation.status ?? "open"] ?? colors.border,
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
         },
@@ -978,14 +989,18 @@ function OptionRow<T extends string>({
       <Ionicons
         name={option.icon}
         size={19}
-        /* Pinned wears the pin's own colour, so the filter and the mark on
-           the rows it filters to are visibly the same thing. */
+        /*
+          A status wears its own colour here, and pinned wears the pin's, so
+          the filter and the mark on the rows it filters to are visibly the
+          same thing. Everything else follows the selection.
+        */
         color={
-          option.key === "pinned"
+          STATUS_TONE[option.key] ??
+          (option.key === "pinned"
             ? colors.pin
             : active
               ? colors.blue
-              : colors.muted
+              : colors.muted)
         }
       />
 

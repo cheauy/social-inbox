@@ -12,6 +12,22 @@ export const colors = { blue: "#0089CC", ink: "#102238", muted: "#6D7E91", borde
    * thread header all take it from here so they cannot drift apart.
    */
   pin: "#E8A317", pinWash: "#FFF6E0" };
+
+/*
+ * What each conversation status looks like, in one place.
+ *
+ * The panel had its own copy and the Inbox had none, so a status was a word
+ * in one screen and a colour in another. The row's left edge, the filter's
+ * icon and the panel's tile all read from here, which is what lets somebody
+ * learn the colour once.
+ */
+export const STATUS_TONE: Record<string, string> = {
+  open: "#2FA36B",
+  pending: "#C77700",
+  resolved: colors.blue,
+  closed: colors.muted,
+  spam: colors.red,
+};
 export type IconName = React.ComponentProps<typeof Ionicons>["name"];
 export function IconButton({ icon, label, onPress, disabled = false, badge = 0 }: { icon: IconName; label: string; onPress: () => void; disabled?: boolean; badge?: number }) {
   return (

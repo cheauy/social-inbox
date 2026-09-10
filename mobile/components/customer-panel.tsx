@@ -21,6 +21,7 @@ import {
   Avatar,
   Empty,
   IconName,
+  STATUS_TONE,
   TagChip,
   colors,
   relativeTime,
@@ -83,14 +84,6 @@ const STATUSES: { key: ConversationStatus; label: string; icon: IconName }[] = [
   { key: "closed", label: "Closed", icon: "archive-outline" },
   { key: "spam", label: "Spam", icon: "alert-circle-outline" },
 ];
-
-const STATUS_TONE: Record<string, string> = {
-  open: "#2FA36B",
-  pending: "#C77700",
-  resolved: colors.blue,
-  closed: colors.muted,
-  spam: colors.red,
-};
 
 function stamp(value?: string | null) {
   if (!value) return "—";
