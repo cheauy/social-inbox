@@ -13,7 +13,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Empty, ErrorNotice, colors, styles } from "../components/ui";
+import { Button, Empty, ErrorNotice, colors, styles } from "../components/ui";
+import { api } from "../lib/api/client";
 import { useAuth } from "../lib/auth/provider";
 import { useInbox } from "../lib/inbox-provider";
 import { useLanguage } from "../lib/language-provider";
@@ -104,6 +105,33 @@ export default function Workspaces() {
    * bottom are the way to ask for more than one.
    */
   const [picked, setPicked] = useState<string[]>([]);
+  const [starting, setStarting] = useState(false);
+
+  /*
+   * The first workspace, for somebody who registered on the phone.
+   *
+   * Registration creates the account; the workspace and its free trial are
+   * provisioned server-side, and on the website that happens on the way back
+   * from the confirmation link. Registering in the app skips that route
+   * entirely, so a brand-new account used to arrive here and be told it
+   * belongs to no workspace -- true, and a dead end. This asks the same
+   * endpoint the website's callback asks.
+   */
+  async function startTrial() {
+    if (starting) return;
+
+    setStarting(true);
+
+    try {
+      await api("/api/onboarding/ensure-workspace", null, { method: "POST" });
+      await loadWorkspaces();
+    } catch {
+      // loadWorkspaces reports on the provider's error line; the endpoint's
+      // own refusal (an unconfirmed email) is shown there too.
+    } finally {
+      setStarting(false);
+    }
+  }
 
   if (!session) {
     return <Redirect href="/sign-in" />;
@@ -331,7 +359,8 @@ export default function Workspaces() {
           <ActivityIndicator color={colors.blue} />
         </View>
       ) : shown.length === 0 ? (
-        <Empty
+        <View style={{ flex: 1 }}>
+          <Empty
           icon="briefcase-outline"
           title={
             needle
@@ -356,7 +385,18 @@ export default function Workspaces() {
                     "គណនីនេះមិនមែនជាសមាជិកសកម្មនៃកន្លែងធ្វើការណាមួយទេ។",
                   )
           }
-        />
+          />
+
+          {workspaces.length === 0 && !error ? (
+            <View style={{ paddingHorizontal: 24 }}>
+              <Button
+                title={t("Start my workspace", "បង្កើតកន្លែងធ្វើការ")}
+                busy={starting}
+                onPress={() => void startTrial()}
+              />
+            </View>
+          ) : null}
+        </View>
       ) : (
         <FlatList
           data={shown}
