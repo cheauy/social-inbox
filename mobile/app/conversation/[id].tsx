@@ -151,33 +151,6 @@ function DaySeparator({ label }: { label: string }) {
  * up whatever is new.
  */
 /*
- * The gallery, if this build has one.
- *
- * expo-media-library talks to a native module that Expo Go does not carry --
- * importing it at the top of this file threw "Cannot find native module
- * ExpoMediaLibraryNext" while the module was still being evaluated, which
- * killed the whole screen: the route lost its default export and the thread
- * would not open at all.
- *
- * Asked for at the moment somebody saves something instead, so a build that
- * has it puts photos in the gallery and Expo Go quietly falls back to the
- * share sheet.
- */
-type Gallery = {
-  requestPermissionsAsync: () => Promise<{ granted: boolean }>;
-  saveToLibraryAsync: (uri: string) => Promise<void>;
-};
-
-function gallery(): Gallery | null {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require("expo-media-library") as Gallery;
-  } catch {
-    return null;
-  }
-}
-
-/*
  * A name for a downloaded file when the payload does not carry one.
  *
  * Android decides what a file is by its extension, so a photo saved without
@@ -2774,33 +2747,17 @@ export default function Conversation() {
         idempotent: true,
       });
 
-      const picture =
-        message.message_type === "image" ||
-        message.message_type === "sticker" ||
-        message.message_type === "video";
-
-      if (picture) {
-        const library = gallery();
-
-        if (library) {
-          try {
-            const permission = await library.requestPermissionsAsync();
-
-            if (permission.granted) {
-              await library.saveToLibraryAsync(saved.uri);
-              setError("");
-              Alert.alert("Saved", "It is in your gallery.");
-              setHeld(null);
-              return;
-            }
-          } catch {
-            /* No gallery here -- the share sheet below is the way out. */
-          }
-        }
-      }
-
+      /*
+       * Handed to Android's own share sheet, which is where "save this" lives
+       * on this phone: Photos, Drive, Files, a chat app, whatever is
+       * installed. Writing to the gallery directly needs expo-media-library,
+       * whose native module Expo Go does not carry -- it threw the moment
+       * anybody pressed Download, which is a worse answer than one extra tap.
+       */
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(saved.uri);
+      } else {
+        Alert.alert("Saved", `It is on this phone as ${name}.`);
       }
 
       setHeld(null);
