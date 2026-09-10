@@ -256,25 +256,39 @@ function Dialog({
 
 function Section({
   title,
+  action,
   children,
 }: {
   title: string;
+  /* A control that belongs to the whole group rather than to one row. */
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <View style={{ gap: 8 }}>
-      <Text
+      <View
         style={{
+          flexDirection: "row",
+          alignItems: "center",
           paddingLeft: 4,
-          fontSize: 11,
-          fontWeight: "800",
-          letterSpacing: 0.7,
-          textTransform: "uppercase",
-          color: colors.muted,
+          minHeight: 18,
         }}
       >
-        {title}
-      </Text>
+        <Text
+          style={{
+            flex: 1,
+            fontSize: 11,
+            fontWeight: "800",
+            letterSpacing: 0.7,
+            textTransform: "uppercase",
+            color: colors.muted,
+          }}
+        >
+          {title}
+        </Text>
+
+        {action}
+      </View>
 
       <View
         style={{
@@ -344,6 +358,7 @@ function Editable({
   empty,
   multiline,
   busy,
+  open,
   onSave,
 }: {
   icon: IconName;
@@ -352,11 +367,14 @@ function Editable({
   empty: string;
   multiline?: boolean;
   busy: boolean;
+  /* Opened from the section's own pencil rather than by tapping this row. */
+  open?: boolean;
   onSave: (next: string) => Promise<boolean>;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [selfEditing, setSelfEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
 
+  const editing = open || selfEditing;
   const text = value?.trim() ?? "";
 
   useEffect(() => {
@@ -364,6 +382,17 @@ function Editable({
       setDraft(value ?? "");
     }
   }, [value, editing]);
+
+  /*
+   * Leaving the editor.
+   *
+   * While the whole section is open from its own pencil, saving one field
+   * must not close the other -- somebody halfway through a note would lose
+   * it. The field stays editable and the section's own Done is what ends it.
+   */
+  function close() {
+    if (!open) setSelfEditing(false);
+  }
 
   return (
     <View style={{ gap: 4 }}>
@@ -374,16 +403,6 @@ function Editable({
           {label}
         </Text>
 
-        {text && !editing ? <CopyButton value={text} label={label} /> : null}
-
-        {/*
-          A pencil, so the field says it can be changed. Both of these read as
-          plain text otherwise, and "Not added" looks like a statement rather
-          than an invitation -- an agent has no reason to try tapping it.
-        */}
-        {editing ? null : (
-          <Ionicons name="pencil" size={13} color={colors.muted} />
-        )}
       </View>
 
       {editing ? (
@@ -409,7 +428,7 @@ function Editable({
               disabled={busy}
               onPress={async () => {
                 if (await onSave(draft.trim())) {
-                  setEditing(false);
+                  close();
                 }
               }}
               style={({ pressed }) => ({
@@ -435,7 +454,7 @@ function Editable({
               disabled={busy}
               onPress={() => {
                 setDraft(value ?? "");
-                setEditing(false);
+                close();
               }}
               style={{ paddingHorizontal: 14, paddingVertical: 8 }}
             >
@@ -451,7 +470,7 @@ function Editable({
           accessibilityLabel={
             text ? `${label}: ${text}. Edit it.` : `Add a ${label.toLowerCase()}`
           }
-          onPress={() => setEditing(true)}
+          onPress={() => setSelfEditing(true)}
         >
           <Text
             style={{
@@ -707,6 +726,8 @@ export function CustomerPanel({
   const [reminding, setReminding] = useState(false);
   const [reminded, setReminded] = useState("");
 
+  const [infoEditing, setInfoEditing] = useState(false);
+
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<TimelineItem[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -762,6 +783,7 @@ export function CustomerPanel({
         setStatusOpen(false);
         setRemindOpen(false);
         setHistoryOpen(false);
+        setInfoEditing(false);
         setReminded("");
         setAssignOpen(false);
       }
@@ -920,17 +942,30 @@ export function CustomerPanel({
                   />
 
                   <View style={{ flex: 1, gap: 6 }}>
-                    <Text
-                      numberOfLines={2}
-                      style={{
-                        fontSize: 18,
-                        fontWeight: "800",
-                        color: colors.ink,
-                        lineHeight: 23,
-                      }}
+                    <View
+                      style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
                     >
-                      {customer.fullName}
-                    </Text>
+                      <Text
+                        numberOfLines={2}
+                        style={{
+                          flexShrink: 1,
+                          fontSize: 18,
+                          fontWeight: "800",
+                          color: colors.ink,
+                          lineHeight: 23,
+                        }}
+                      >
+                        {customer.fullName}
+                      </Text>
+
+                      {/*
+                        The name is the thing worth copying -- it goes into an
+                        order, a delivery note, a search on the web. The
+                        platform id below is TENH's own plumbing; copying it
+                        was an offer nobody took up.
+                      */}
+                      <CopyButton value={customer.fullName} label="the name" />
+                    </View>
 
                     <View
                       style={{
@@ -1004,11 +1039,6 @@ export function CustomerPanel({
                     >
                       ID {customer.platformUserId}
                     </Text>
-
-                    <CopyButton
-                      value={customer.platformUserId}
-                      label="the customer id"
-                    />
                   </View>
                 ) : null}
               </View>
@@ -1150,7 +1180,41 @@ export function CustomerPanel({
                 </View>
               </Section>
 
-              <Section title="Information">
+              {/*
+                One pencil, on the group rather than on every row.
+
+                Each field carried its own pencil and its own copy button, so
+                a card holding two facts held four controls -- and the copy
+                buttons went unused, because a phone number on this screen is
+                read aloud or dialled, not pasted. The pencil opens both
+                fields at once; tapping a field still opens that one.
+              */}
+              <Section
+                title="Information"
+                action={
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      infoEditing ? "Stop editing information" : "Edit information"
+                    }
+                    hitSlop={10}
+                    onPress={() => setInfoEditing((current) => !current)}
+                    style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
+                  >
+                    <Ionicons
+                      name={infoEditing ? "close" : "pencil"}
+                      size={13}
+                      color={colors.blue}
+                    />
+
+                    <Text
+                      style={{ fontSize: 11, fontWeight: "800", color: colors.blue }}
+                    >
+                      {infoEditing ? "DONE" : "EDIT"}
+                    </Text>
+                  </Pressable>
+                }
+              >
                 <View style={{ paddingVertical: 12 }}>
                   <Editable
                     icon="call-outline"
@@ -1158,6 +1222,7 @@ export function CustomerPanel({
                     value={customer.phone}
                     empty="Not added"
                     busy={busy === "field:phone"}
+                    open={infoEditing}
                     onSave={(next) => onSaveField("phone", next)}
                   />
                 </View>
@@ -1172,6 +1237,7 @@ export function CustomerPanel({
                     empty="No customer note has been added."
                     multiline
                     busy={busy === "field:customerNote"}
+                    open={infoEditing}
                     onSave={(next) => onSaveField("customerNote", next)}
                   />
                 </View>
