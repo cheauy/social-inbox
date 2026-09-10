@@ -3,7 +3,6 @@ import { createAudioPlayer, useAudioPlayer, useAudioPlayerStatus } from "expo-au
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import { Directory, File, Paths } from "expo-file-system";
-import * as MediaLibrary from "expo-media-library";
 import * as Sharing from "expo-sharing";
 import * as ImagePicker from "expo-image-picker";
 import { VideoView, useVideoPlayer } from "expo-video";
@@ -151,6 +150,33 @@ function DaySeparator({ label }: { label: string }) {
  * away every time a message arrives; merging by id keeps it and still picks
  * up whatever is new.
  */
+/*
+ * The gallery, if this build has one.
+ *
+ * expo-media-library talks to a native module that Expo Go does not carry --
+ * importing it at the top of this file threw "Cannot find native module
+ * ExpoMediaLibraryNext" while the module was still being evaluated, which
+ * killed the whole screen: the route lost its default export and the thread
+ * would not open at all.
+ *
+ * Asked for at the moment somebody saves something instead, so a build that
+ * has it puts photos in the gallery and Expo Go quietly falls back to the
+ * share sheet.
+ */
+type Gallery = {
+  requestPermissionsAsync: () => Promise<{ granted: boolean }>;
+  saveToLibraryAsync: (uri: string) => Promise<void>;
+};
+
+function gallery(): Gallery | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require("expo-media-library") as Gallery;
+  } catch {
+    return null;
+  }
+}
+
 /*
  * A name for a downloaded file when the payload does not carry one.
  *
@@ -2742,14 +2768,22 @@ export default function Conversation() {
         message.message_type === "video";
 
       if (picture) {
-        const permission = await MediaLibrary.requestPermissionsAsync();
+        const library = gallery();
 
-        if (permission.granted) {
-          await MediaLibrary.saveToLibraryAsync(saved.uri);
-          setError("");
-          Alert.alert("Saved", "It is in your gallery.");
-          setHeld(null);
-          return;
+        if (library) {
+          try {
+            const permission = await library.requestPermissionsAsync();
+
+            if (permission.granted) {
+              await library.saveToLibraryAsync(saved.uri);
+              setError("");
+              Alert.alert("Saved", "It is in your gallery.");
+              setHeld(null);
+              return;
+            }
+          } catch {
+            /* No gallery here -- the share sheet below is the way out. */
+          }
         }
       }
 
