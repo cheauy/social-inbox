@@ -7,6 +7,7 @@ import {
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,8 +23,12 @@ import {
 } from "../../../components/ui";
 import { api } from "../../../lib/api/client";
 import { useInbox } from "../../../lib/inbox-provider";
-import type { Member } from "../../../lib/types";
-import { TeamRoomIcon } from "../../../components/team-room-icon";
+import type { Member, TeamRoom } from "../../../lib/types";
+import {
+  TEAM_ROOM_ICON_OPTIONS,
+  TeamRoomIcon,
+  type TeamRoomIconKey,
+} from "../../../components/team-room-icon";
 
 /*
  * What a group is, and who is in it.
@@ -101,6 +106,198 @@ function Section({
         {children}
       </View>
     </View>
+  );
+}
+
+/*
+ * The three things about a group that were only ever a first guess.
+ *
+ * The icon is drawn as the choices themselves rather than a list of words:
+ * somebody picking one is looking for the cart, not for the word "Sales".
+ */
+function EditGroupSheet({
+  open,
+  room,
+  busy,
+  onSave,
+  onClose,
+}: {
+  open: boolean;
+  room: TeamRoom | null;
+  busy: boolean;
+  onSave: (
+    name: string,
+    description: string,
+    icon: TeamRoomIconKey,
+  ) => Promise<boolean>;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [icon, setIcon] = useState<TeamRoomIconKey>("people");
+
+  /* Reloaded whenever another group is opened, or this one changes. */
+  useEffect(() => {
+    if (!open || !room) return;
+
+    setName(room.name?.trim() ?? "");
+    setDescription(room.description?.trim() ?? "");
+    setIcon(room.icon ?? "people");
+  }, [open, room?.id, room?.name, room?.description, room?.icon]);
+
+  const ready = name.trim().length > 0;
+
+  return (
+    <Sheet
+      open={open}
+      title="Edit group"
+      detail="The name, what it is for, and its mark."
+      onClose={onClose}
+    >
+      <ScrollView keyboardShouldPersistTaps="handled">
+        <View style={{ padding: 18, gap: 16 }}>
+          <View style={{ gap: 7 }}>
+            <Text style={[styles.muted, { fontSize: 12.5 }]}>Name</Text>
+
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder="Sales team"
+              placeholderTextColor={colors.muted}
+              editable={!busy}
+              style={[styles.input, { fontSize: 15, paddingVertical: 11 }]}
+            />
+          </View>
+
+          <View style={{ gap: 7 }}>
+            <Text style={[styles.muted, { fontSize: 12.5 }]}>Description</Text>
+
+            <TextInput
+              value={description}
+              onChangeText={setDescription}
+              placeholder="What this group is for"
+              placeholderTextColor={colors.muted}
+              multiline
+              editable={!busy}
+              style={[
+                styles.input,
+                {
+                  fontSize: 15,
+                  minHeight: 74,
+                  paddingTop: 11,
+                  textAlignVertical: "top",
+                },
+              ]}
+            />
+          </View>
+
+          <View style={{ gap: 9 }}>
+            <Text style={[styles.muted, { fontSize: 12.5 }]}>Icon</Text>
+
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              {TEAM_ROOM_ICON_OPTIONS.map((option) => {
+                const active = option.key === icon;
+
+                return (
+                  <Pressable
+                    key={option.key}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={option.label}
+                    disabled={busy}
+                    onPress={() => setIcon(option.key)}
+                    style={{
+                      width: 62,
+                      alignItems: "center",
+                      gap: 5,
+                      paddingVertical: 9,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: active ? colors.blue : colors.border,
+                      backgroundColor: active ? colors.pale : "white",
+                    }}
+                  >
+                    <Ionicons
+                      name={option.icon}
+                      size={21}
+                      color={active ? colors.blue : colors.ink}
+                    />
+
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        fontSize: 10,
+                        fontWeight: "700",
+                        color: active ? colors.blue : colors.muted,
+                      }}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </View>
+
+        <View
+          style={{
+            flexDirection: "row",
+            gap: 10,
+            paddingHorizontal: 18,
+            paddingBottom: 10,
+          }}
+        >
+          <Pressable
+            accessibilityRole="button"
+            disabled={busy}
+            onPress={onClose}
+            style={({ pressed }) => ({
+              paddingHorizontal: 18,
+              paddingVertical: 13,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: pressed ? colors.pale : "white",
+            })}
+          >
+            <Text
+              style={{ fontSize: 14.5, fontWeight: "700", color: colors.ink }}
+            >
+              Cancel
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            disabled={busy || !ready}
+            onPress={async () => {
+              if (await onSave(name.trim(), description.trim(), icon)) {
+                onClose();
+              }
+            }}
+            style={({ pressed }) => ({
+              flex: 1,
+              alignItems: "center",
+              paddingVertical: 13,
+              borderRadius: 12,
+              opacity: ready ? 1 : 0.45,
+              backgroundColor: pressed ? "#0A6FA8" : colors.blue,
+            })}
+          >
+            {busy ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Text
+                style={{ fontSize: 15, fontWeight: "800", color: "white" }}
+              >
+                Save changes
+              </Text>
+            )}
+          </Pressable>
+        </View>
+      </ScrollView>
+    </Sheet>
   );
 }
 
@@ -239,6 +436,7 @@ export default function RoomDetails() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [addMembersOpen, setAddMembersOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [localMemberIds, setLocalMemberIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -386,6 +584,43 @@ export default function RoomDetails() {
     }
   }
 
+  /*
+   * A group is created in one breath -- a name, an icon and a list of people,
+   * all typed before the room exists -- so every one of those is a first
+   * guess. "TEST" becomes the sales room. Until now the only way to correct
+   * any of it was to delete the group and lose what had been said in it.
+   */
+  async function saveDetails(
+    name: string,
+    description: string,
+    icon: TeamRoomIconKey,
+  ) {
+    if (!workspace || !room) return false;
+
+    setBusy("details");
+
+    try {
+      await api(`/api/team-chat/rooms/${room.id}`, workspace.businessId, {
+        method: "PATCH",
+        body: { name, description, icon },
+      });
+
+      await refreshRooms();
+
+      return true;
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Unable to save those changes.",
+      );
+
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
@@ -449,6 +684,38 @@ export default function RoomDetails() {
             <Text style={[styles.muted, { fontSize: 12.5 }]}>
               {localMemberIds.length} member{localMemberIds.length === 1 ? "" : "s"}
             </Text>
+
+            {/*
+              Edit sits on the card it edits, rather than in the header where
+              it would compete with going back.
+            */}
+            {canManageRooms ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Edit this group"
+                onPress={() => setEditOpen(true)}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                  marginTop: 6,
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: pressed ? colors.pale : "white",
+                })}
+              >
+                <Ionicons name="pencil" size={14} color={colors.blue} />
+
+                <Text
+                  style={{ fontSize: 13, fontWeight: "800", color: colors.blue }}
+                >
+                  Edit group
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
 
           <Section title="Notifications">
@@ -610,6 +877,14 @@ export default function RoomDetails() {
           ) : null}
         </ScrollView>
       )}
+
+      <EditGroupSheet
+        open={editOpen}
+        room={room}
+        busy={busy === "details"}
+        onSave={saveDetails}
+        onClose={() => setEditOpen(false)}
+      />
 
       {room && editable ? (
         <AddMembersSheet
