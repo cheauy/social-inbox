@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   Avatar,
+  Dialog,
   Empty,
   IconName,
   STATUS_TONE,
@@ -914,98 +915,6 @@ function ViewerVideo({ uri }: { uri: string }) {
     />
   );
 }
-
-function Dialog({
-  open,
-  title,
-  detail,
-  onClose,
-  children,
-}: {
-  open: boolean;
-  title: string;
-  detail: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <Modal
-      visible={open}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          padding: 20,
-          backgroundColor: "rgba(16,34,56,0.45)",
-        }}
-      >
-        {/* The backdrop closes it, and it is the whole screen behind the card. */}
-        <Pressable
-          accessibilityLabel={`Close ${title.toLowerCase()}`}
-          onPress={onClose}
-          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
-        />
-
-        <View
-          /* Stops a tap inside the card reaching the backdrop under it. */
-          onStartShouldSetResponder={() => true}
-          style={{
-            width: "100%",
-            maxWidth: 460,
-            alignSelf: "center",
-            borderRadius: 20,
-            backgroundColor: "white",
-            overflow: "hidden",
-            elevation: 12,
-            shadowColor: "#102238",
-            shadowOpacity: 0.22,
-            shadowRadius: 24,
-            shadowOffset: { width: 0, height: 10 },
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "flex-start",
-              gap: 12,
-              padding: 18,
-              paddingBottom: 12,
-            }}
-          >
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={{ fontSize: 17, fontWeight: "800", color: colors.ink }}>
-                {title}
-              </Text>
-
-              {detail ? (
-                <Text numberOfLines={1} style={{ fontSize: 12.5, color: colors.muted }}>
-                  {detail}
-                </Text>
-              ) : null}
-            </View>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-              hitSlop={10}
-              onPress={onClose}
-            >
-              <Ionicons name="close" size={21} color={colors.muted} />
-            </Pressable>
-          </View>
-
-          {children}
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 function Section({
   title,
   action,

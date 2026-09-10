@@ -39,6 +39,17 @@ type InboxState = {
   rooms: TeamRoom[];
   roomsLoading: boolean;
   roomsBadge: number;
+
+  /*
+   * Unread alerts and reminders that have fallen due.
+   *
+   * The Notifications tab is the only one that could not say it had anything
+   * waiting: a mention, a failed payment or a page that had stopped
+   * authorising sat there until somebody happened to open the tab. Counted
+   * here rather than on that screen, because the tab bar needs it whether or
+   * not the screen is mounted.
+   */
+  alertsBadge: number;
   roster: Member[];
   canManageRooms: boolean;
   refreshRooms: () => Promise<void>;
@@ -59,6 +70,7 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
   const [rooms, setRooms] = useState<TeamRoom[]>([]);
   const [roomsLoading, setRoomsLoading] = useState(true);
   const [roomsBadge, setRoomsBadge] = useState(0);
+  const [alertsBadge, setAlertsBadge] = useState(0);
   const [roster, setRoster] = useState<Member[]>([]);
   const [canManageRooms, setCanManageRooms] = useState(false);
   const generation = useRef(0), request = useRef(0), alive = useRef(true);
@@ -74,7 +86,7 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
   const storageKey = `workspace.${session?.user.id}`;
   const mergeKey = `merged.${session?.user.id}`;
   useEffect(() => () => { alive.current = false; generation.current++; }, []);
-  const clear = useCallback(() => { workspaceRef.current = null; setWorkspace(null); mergedRef.current = []; setMerged([]); setMember(null); setConversations([]); setRooms([]); setRoomsLoading(true); setRoomsBadge(0); setRoster([]); setCanManageRooms(false); }, []);
+  const clear = useCallback(() => { workspaceRef.current = null; setWorkspace(null); mergedRef.current = []; setMerged([]); setMember(null); setConversations([]); setRooms([]); setRoomsLoading(true); setRoomsBadge(0); setAlertsBadge(0); setRoster([]); setCanManageRooms(false); }, []);
   const loadWorkspaces = useCallback(async () => {
     if (!session) { setLoading(false); return; }
     const current = generation.current;
@@ -147,6 +159,26 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       if (e instanceof ApiError && [401, 403].includes(e.status)) clear();
     } finally { if (alive.current && current === generation.current && sequence === request.current) setLoading(false); }
   }, [clear]);
+  const refreshAlerts = useCallback(async () => {
+    const selected = workspaceRef.current;
+    if (!selected) return;
+    const current = generation.current;
+    try {
+      const [alerts, reminders] = await Promise.all([
+        api<{ notifications: { is_read: boolean }[] }>("/api/team-notifications", selected.businessId),
+        api<{ reminders: { remind_at: string }[] }>("/api/reminders", selected.businessId).catch(() => ({ reminders: [] })),
+      ]);
+      if (!alive.current || current !== generation.current) return;
+      const unread = (alerts.notifications ?? []).filter(one => !one.is_read).length;
+      /* Only the ones that have actually come due: a reminder set for Friday
+         is not something to badge a tab about on Tuesday. */
+      const due = (reminders.reminders ?? []).filter(one => new Date(one.remind_at).getTime() <= Date.now()).length;
+      setAlertsBadge(unread + due);
+    } catch {
+      // The tab draws no dot rather than taking the app down over a count.
+    }
+  }, []);
+
   const refreshRooms = useCallback(async () => {
     const selected = workspaceRef.current;
     if (!selected) return;
@@ -167,9 +199,9 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
   }, []);
   useEffect(() => {
     if (!workspace?.businessId) return;
-    setLoading(true); setRoomsLoading(true); void refresh(); void refreshRooms();
+    setLoading(true); setRoomsLoading(true); void refresh(); void refreshRooms(); void refreshAlerts();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const changed = () => { clearTimeout(timer); timer = setTimeout(() => { setRevision(v => v + 1); void refresh(); void refreshRooms(); }, 300); };
+    const changed = () => { clearTimeout(timer); timer = setTimeout(() => { setRevision(v => v + 1); void refresh(); void refreshRooms(); void refreshAlerts(); }, 300); };
     /*
      * Every workspace in the merged list is listened to, not just the active
      * one: a message arriving in the other shop belongs in this list too, and
@@ -187,11 +219,11 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     for (const id of listening)
       channel = channel.on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `business_id=eq.${id}` }, payload => { if ((payload.new as { direction?: string } | null)?.direction === "incoming") alert.current(); });
     for (const id of listening)
-      for (const table of ["team_members", "business_subscriptions", "social_accounts"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${id}` }, () => { void loadWorkspaces(); changed(); });
+      for (const table of ["team_members", "business_subscriptions", "social_accounts", "team_notifications", "conversation_reminders"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${id}` }, () => { void loadWorkspaces(); changed(); });
     channel.subscribe(status => { setLive(status === "SUBSCRIBED"); if (status === "SUBSCRIBED") changed(); });
     const listener = AppState.addEventListener("change", state => { if (state === "active") { void loadWorkspaces(); changed(); } });
     return () => { clearTimeout(timer); void supabase.removeChannel(channel); listener.remove(); setLive(false); };
-  }, [workspace?.businessId, merged.join(","), refresh, refreshRooms, loadWorkspaces]);
+  }, [workspace?.businessId, merged.join(","), refresh, refreshRooms, refreshAlerts, loadWorkspaces]);
   const updateConversation = useCallback((id: string, patch: Partial<InboxConversation>) => setConversations(items => items.map(c => c.id === id ? { ...c, ...patch } : c)), []);
   const updateContactTags = useCallback((contactId: string, tags: NonNullable<InboxConversation["contact"]>["tags"]) => {
     setConversations((items) =>
@@ -202,5 +234,5 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       ),
     );
   }, []);
-  return <Context.Provider value={{ workspaces, workspace, member, conversations, loading, error, live, revision, refresh, loadWorkspaces, selectWorkspace, merged, openWorkspaces, updateConversation, updateContactTags, rooms, roomsLoading, roomsBadge, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ workspaces, workspace, member, conversations, loading, error, live, revision, refresh, loadWorkspaces, selectWorkspace, merged, openWorkspaces, updateConversation, updateContactTags, rooms, roomsLoading, roomsBadge, alertsBadge, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
 }

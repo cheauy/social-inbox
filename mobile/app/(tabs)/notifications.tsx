@@ -3,16 +3,21 @@ import { Redirect, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   Pressable,
   RefreshControl,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import DateTimePicker from "@react-native-community/datetimepicker";
+
 import {
+  Dialog,
   Empty,
   ErrorNotice,
   IconName,
@@ -165,11 +170,13 @@ function Reminders({
   busyId,
   onOpen,
   onComplete,
+  onEdit,
 }: {
   reminders: Reminder[];
   busyId: string | null;
   onOpen: (reminder: Reminder) => void;
   onComplete: (id: string) => void;
+  onEdit: (reminder: Reminder) => void;
 }) {
   if (reminders.length === 0) {
     return (
@@ -280,11 +287,27 @@ function Reminders({
             </View>
 
             {/*
-              Done, as its own button. Tapping the row opens the conversation,
-              which is the usual move; closing a reminder without looking at
-              the thread is the rarer one and should not be what a stray tap
-              on a row does.
+              Change it, and finish it. Tapping the row opens the conversation,
+              which is the usual move; the other two are rarer and get their
+              own targets rather than being what a stray tap does.
             */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Change this reminder"
+              hitSlop={8}
+              onPress={() => onEdit(reminder)}
+              style={({ pressed }) => ({
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: pressed ? colors.pale : "transparent",
+              })}
+            >
+              <Ionicons name="pencil" size={17} color={colors.muted} />
+            </Pressable>
+
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Mark this reminder done"
@@ -330,6 +353,244 @@ function untilLabel(due: number) {
   return `${days} day${days === 1 ? "" : "s"}`;
 }
 
+/*
+ * Changing a reminder after the fact.
+ *
+ * Whatever somebody typed at the time was written mid-conversation, in a
+ * hurry, for a moment that has usually moved -- the delivery slipped, the
+ * customer answered, the note reads as nonsense a day later. Editing it is
+ * the same two fields it was set with; deleting it is the honest option when
+ * the thing simply does not need doing.
+ */
+function ReminderEditor({
+  reminder,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  reminder: Reminder | null;
+  onClose: () => void;
+  onSave: (id: string, note: string, remindAt: string) => Promise<boolean>;
+  onDelete: (id: string) => Promise<boolean>;
+}) {
+  const [note, setNote] = useState("");
+  const [at, setAt] = useState(new Date());
+  const [picking, setPicking] = useState<"date" | "time" | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  /* Loaded from whichever reminder was tapped, and reloaded if another is. */
+  useEffect(() => {
+    if (!reminder) return;
+
+    setNote(reminder.note);
+    setAt(new Date(reminder.remind_at));
+    setPicking(null);
+  }, [reminder?.id]);
+
+  const ready = note.trim().length > 0 && at.getTime() > Date.now();
+
+  async function save() {
+    if (!reminder || !ready || busy) return;
+
+    setBusy(true);
+
+    try {
+      if (await onSave(reminder.id, note.trim(), at.toISOString())) onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function remove() {
+    if (!reminder || busy) return;
+
+    Alert.alert(
+      "Delete this reminder?",
+      "It disappears from everybody's list. Nothing about the conversation changes.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            setBusy(true);
+
+            void onDelete(reminder.id)
+              .then((done) => {
+                if (done) onClose();
+              })
+              .finally(() => setBusy(false));
+          },
+        },
+      ],
+    );
+  }
+
+  return (
+    <Dialog
+      open={Boolean(reminder)}
+      title="Edit reminder"
+      detail={reminder?.contact?.full_name ?? ""}
+      onClose={onClose}
+    >
+      <View style={{ padding: 18, gap: 14 }}>
+        <TextInput
+          value={note}
+          onChangeText={setNote}
+          placeholder="What needs doing?"
+          placeholderTextColor={colors.muted}
+          multiline
+          editable={!busy}
+          style={[
+            styles.input,
+            { minHeight: 84, paddingTop: 12, textAlignVertical: "top" },
+          ]}
+        />
+
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Change the date"
+            onPress={() => setPicking("date")}
+            style={({ pressed }) => ({
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 7,
+              paddingHorizontal: 12,
+              paddingVertical: 11,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: pressed ? colors.pale : "white",
+            })}
+          >
+            <Ionicons name="calendar-outline" size={15} color={colors.blue} />
+
+            <Text
+              numberOfLines={1}
+              style={{ fontSize: 13.5, fontWeight: "700", color: colors.ink }}
+            >
+              {at.toLocaleDateString(undefined, {
+                weekday: "short",
+                day: "numeric",
+                month: "short",
+              })}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Change the time"
+            onPress={() => setPicking("time")}
+            style={({ pressed }) => ({
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 7,
+              paddingHorizontal: 12,
+              paddingVertical: 11,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: pressed ? colors.pale : "white",
+            })}
+          >
+            <Ionicons name="time-outline" size={15} color={colors.blue} />
+
+            <Text
+              numberOfLines={1}
+              style={{ fontSize: 13.5, fontWeight: "700", color: colors.ink }}
+            >
+              {at.toLocaleTimeString([], {
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </Text>
+          </Pressable>
+        </View>
+
+        {picking ? (
+          <DateTimePicker
+            value={at}
+            mode={picking}
+            minimumDate={picking === "date" ? new Date() : undefined}
+            onChange={(event, next) => {
+              setPicking(null);
+
+              if (event.type !== "set" || !next) return;
+
+              const merged = new Date(at);
+
+              if (picking === "date") {
+                merged.setFullYear(
+                  next.getFullYear(),
+                  next.getMonth(),
+                  next.getDate(),
+                );
+              } else {
+                merged.setHours(next.getHours(), next.getMinutes(), 0, 0);
+              }
+
+              setAt(merged);
+            }}
+          />
+        ) : null}
+
+        {!ready && note.trim() ? (
+          <Text style={{ fontSize: 12.5, color: colors.red }}>
+            That time has already passed.
+          </Text>
+        ) : null}
+      </View>
+
+      <View
+        style={{ flexDirection: "row", gap: 10, padding: 18, paddingTop: 0 }}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Delete this reminder"
+          disabled={busy}
+          onPress={remove}
+          style={({ pressed }) => ({
+            width: 48,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: pressed ? "#FBEAEA" : "white",
+          })}
+        >
+          <Ionicons name="trash-outline" size={18} color={colors.red} />
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          disabled={busy || !ready}
+          onPress={() => void save()}
+          style={({ pressed }) => ({
+            flex: 1,
+            alignItems: "center",
+            paddingVertical: 13,
+            borderRadius: 12,
+            opacity: ready ? 1 : 0.45,
+            backgroundColor: pressed ? "#0A6FA8" : colors.blue,
+          })}
+        >
+          {busy ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={{ fontSize: 14.5, fontWeight: "800", color: "white" }}>
+              Save changes
+            </Text>
+          )}
+        </Pressable>
+      </View>
+    </Dialog>
+  );
+}
+
 export default function Notifications() {
   const { session } = useAuth();
   const { workspace } = useInbox();
@@ -340,6 +601,7 @@ export default function Notifications() {
   const [items, setItems] = useState<Notification[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [reminderBusy, setReminderBusy] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Reminder | null>(null);
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
@@ -494,6 +756,64 @@ export default function Notifications() {
       );
     } finally {
       setReminderBusy(null);
+    }
+  }
+
+  async function saveReminder(id: string, note: string, remindAt: string) {
+    if (!workspace) return false;
+
+    try {
+      await api(
+        `/api/reminders/manage/${encodeURIComponent(id)}`,
+        workspace.businessId,
+        { method: "PATCH", body: { note, remindAt } },
+      );
+
+      setReminders((current) =>
+        [...current]
+          .map((one) =>
+            one.id === id ? { ...one, note, remind_at: remindAt } : one,
+          )
+          .sort(
+            (first, second) =>
+              new Date(first.remind_at).getTime() -
+              new Date(second.remind_at).getTime(),
+          ),
+      );
+
+      return true;
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Unable to change that reminder.",
+      );
+
+      return false;
+    }
+  }
+
+  async function deleteReminder(id: string) {
+    if (!workspace) return false;
+
+    const previous = reminders;
+    setReminders((current) => current.filter((one) => one.id !== id));
+
+    try {
+      await api(`/api/reminders/${encodeURIComponent(id)}`, workspace.businessId, {
+        method: "DELETE",
+      });
+
+      return true;
+    } catch (deleteError) {
+      setReminders(previous);
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Unable to delete that reminder.",
+      );
+
+      return false;
     }
   }
 
@@ -691,6 +1011,13 @@ export default function Notifications() {
 
       <ErrorNotice message={error} onRetry={() => void load()} />
 
+      <ReminderEditor
+        reminder={editing}
+        onClose={() => setEditing(null)}
+        onSave={saveReminder}
+        onDelete={deleteReminder}
+      />
+
       {!workspace ? (
         <Empty
           icon="briefcase-outline"
@@ -856,6 +1183,7 @@ export default function Notifications() {
                   })
                 }
                 onComplete={(id) => void completeReminder(id)}
+                onEdit={setEditing}
               />
             </Section>
           ) : (

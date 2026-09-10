@@ -51,6 +51,17 @@ function RoomsBadge() {
   return roomsBadge === 0 ? null : <Dot />;
 }
 
+/*
+ * The same dot on Notifications: an unread alert, or a reminder that has come
+ * due. Both are things somebody is meant to act on, and until now the only
+ * way to find out either had happened was to open the tab and look.
+ */
+function AlertsBadge() {
+  const { alertsBadge } = useInbox();
+
+  return alertsBadge === 0 ? null : <Dot />;
+}
+
 function TabIcon({
   name,
   color,
@@ -60,13 +71,14 @@ function TabIcon({
   // What Tabs hands the callback is a ColorValue, not a string, and Ionicons
   // takes the same union -- so borrow its type rather than narrowing.
   color: React.ComponentProps<typeof Ionicons>["color"];
-  badge?: "inbox" | "rooms";
+  badge?: "inbox" | "rooms" | "alerts";
 }) {
   return (
     <View>
       <Ionicons name={name} size={23} color={color} />
       {badge === "inbox" ? <InboxBadge /> : null}
       {badge === "rooms" ? <RoomsBadge /> : null}
+      {badge === "alerts" ? <AlertsBadge /> : null}
     </View>
   );
 }
@@ -128,7 +140,7 @@ export default function TabsLayout() {
         options={{
           title: t("Notifications", "ការជូនដំណឹង"),
           tabBarIcon: ({ color }) => (
-            <TabIcon name="notifications" color={color} />
+            <TabIcon name="notifications" color={color} badge="alerts" />
           ),
         }}
       />
