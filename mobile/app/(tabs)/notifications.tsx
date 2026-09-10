@@ -720,10 +720,31 @@ export default function Notifications() {
     void load(true);
   }, [alertsRevision, load]);
 
-  const unread = items.filter((item) => !item.is_read).length;
+  /*
+   * A mention and a reminder are errands, not records.
+   *
+   * Somebody said your name in a room, or something you promised to do has
+   * come due: both are asking you to go somewhere, and once you have been the
+   * asking is finished. Leaving them on the list afterwards means the list
+   * only ever grows, and a screen you have to prune is a screen nobody reads.
+   *
+   * Everything else stays after it is read. A payment result or a Page that
+   * has stopped authorising is a fact about the workspace, and somebody may
+   * well want to look at it twice.
+   */
+  const visible = items.filter(
+    (item) =>
+      !item.is_read ||
+      (item.notification_type !== MENTION &&
+        item.notification_type !== REMINDER),
+  );
 
-  const mentions = items.filter((item) => item.notification_type === MENTION);
-  const alerts = items.filter((item) => item.notification_type !== MENTION);
+  const unread = visible.filter((item) => !item.is_read).length;
+
+  const mentions = visible.filter(
+    (item) => item.notification_type === MENTION,
+  );
+  const alerts = visible.filter((item) => item.notification_type !== MENTION);
 
   /* A reminder whose time has come, against one still to come. */
   const overdue = reminders.filter(
@@ -737,7 +758,7 @@ export default function Notifications() {
     remind: reminders.length,
   };
 
-  const shown = tab === "team" ? mentions : tab === "alerts" ? alerts : items;
+  const shown = tab === "team" ? mentions : tab === "alerts" ? alerts : visible;
 
   async function markRead(id: string) {
     if (!workspace) {
