@@ -6,7 +6,7 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from "expo-audio";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -36,6 +36,7 @@ export type RoomPending = {
   name: string;
   mimeType: string;
   kind: "image" | "video" | "file" | "audio";
+  byteSize?: number;
 };
 
 const ROW = 44;
@@ -112,37 +113,25 @@ export function RoomComposer({
   const [attachOpen, setAttachOpen] = useState(false);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [cancelRecording, setCancelRecording] = useState(false);
+  const holdingRef = useRef(false);
+  const recordingStartedRef = useRef(false);
+  const cancelRef = useRef(false);
+  const pressOriginRef = useRef<{ x: number; y: number } | null>(null);
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recording = useAudioRecorderState(recorder, 250);
 
   const canSend = draft.trim().length > 0 || pending.length > 0;
 
-  async function toggleRecording() {
-    if (recording.isRecording) {
-      setFinishing(true);
-
-      try {
-        await recorder.stop();
-
-        const uri = recorder.uri;
-        const millis = recording.durationMillis;
-
-        if (uri && millis >= 1000) {
-          onVoice(uri, millis);
-        }
-      } finally {
-        setFinishing(false);
-      }
-
-      return;
-    }
-
+  async function beginHoldingVoice() {
+    if (sending || finishing || canSend) return;
+    holdingRef.current = true;
+    cancelRef.current = false;
+    setCancelRecording(false);
     const { granted } = await requestRecordingPermissionsAsync();
 
-    if (!granted) {
-      return;
-    }
+    if (!granted || !holdingRef.current) return;
 
     await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
 
@@ -160,7 +149,40 @@ export function RoomComposer({
       // Already prepared. Nothing to do but record.
     }
 
+    if (!holdingRef.current) return;
     recorder.record();
+    recordingStartedRef.current = true;
+  }
+
+  async function finishHoldingVoice(forceDiscard = false) {
+    holdingRef.current = false;
+    if (!recordingStartedRef.current || finishing) return;
+
+    recordingStartedRef.current = false;
+    setFinishing(true);
+
+    try {
+      await recorder.stop();
+      const uri = recorder.uri;
+      const millis = recording.durationMillis;
+
+      if (!forceDiscard && !cancelRef.current && uri && millis >= 350) {
+        onVoice(uri, millis);
+      }
+    } finally {
+      cancelRef.current = false;
+      setCancelRecording(false);
+      setFinishing(false);
+      void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+    }
+  }
+
+  function trackVoiceDrag(pageX: number, pageY: number) {
+    const origin = pressOriginRef.current;
+    if (!origin || !holdingRef.current) return;
+    const outside = Math.abs(pageX - origin.x) > 72 || Math.abs(pageY - origin.y) > 72;
+    cancelRef.current = outside;
+    setCancelRecording(outside);
   }
 
   return (
@@ -181,7 +203,11 @@ export function RoomComposer({
 
             return (
               <View key={file.key}>
-                {visual ? (
+                {file.kind === "video" ? (
+                  <View style={{ width: 58, height: 58, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#102238" }}>
+                    <Ionicons name="play" size={21} color="white" />
+                  </View>
+                ) : visual ? (
                   <View
                     style={{
                       width: 58,
@@ -284,7 +310,10 @@ export function RoomComposer({
               accessibilityRole="button"
               accessibilityLabel="Discard this recording"
               disabled={finishing}
-              onPress={() => void recorder.stop()}
+              onPress={() => {
+                cancelRef.current = true;
+                void finishHoldingVoice(true);
+              }}
               hitSlop={8}
             >
               <Ionicons name="trash-outline" size={22} color={colors.red} />
@@ -299,31 +328,20 @@ export function RoomComposer({
               }}
             />
 
+            <View style={{ flex: 1 }}>
             <Text
               style={{
-                flex: 1,
                 fontSize: 15,
                 fontWeight: "700",
-                color: colors.ink,
+                color: cancelRecording ? colors.red : colors.ink,
                 fontVariant: ["tabular-nums"],
               }}
             >
               {clock(recording.durationMillis)}
             </Text>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Stop recording and attach it"
-              disabled={finishing}
-              onPress={() => void toggleRecording()}
-              style={[styles.button, { minWidth: 52, paddingHorizontal: 16 }]}
-            >
-              {finishing ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <Ionicons name="checkmark" size={20} color="white" />
-              )}
-            </Pressable>
+            <Text style={{ marginTop: 2, color: cancelRecording ? colors.red : colors.muted, fontSize: 11.5 }}>{cancelRecording ? "Release to discard" : "Release to send · slide away to cancel"}</Text>
+            </View>
+            {finishing ? <ActivityIndicator color={colors.blue} /> : <Ionicons name={cancelRecording ? "close-circle" : "send"} size={22} color={cancelRecording ? colors.red : colors.blue} />}
           </View>
         ) : (
           <>
@@ -379,7 +397,12 @@ export function RoomComposer({
                   accessibilityRole="button"
                   accessibilityLabel="Record a voice message"
                   disabled={sending}
-                  onPress={() => void toggleRecording()}
+                  onPressIn={(event) => {
+                    pressOriginRef.current = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
+                    void beginHoldingVoice();
+                  }}
+                  onTouchMove={(event) => trackVoiceDrag(event.nativeEvent.pageX, event.nativeEvent.pageY)}
+                  onPressOut={() => void finishHoldingVoice()}
                   hitSlop={6}
                   style={({ pressed }) => ({
                     width: 36,

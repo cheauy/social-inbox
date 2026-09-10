@@ -170,7 +170,7 @@ const ConversationRow = memo(function ConversationRow({
               accessibilityLabel="Pinned conversation"
               name="bookmark"
               size={14}
-              color="#F04452"
+              color={colors.pin}
             />
           ) : null}
 
@@ -846,7 +846,15 @@ function OptionRow<T extends string>({
       <Ionicons
         name={option.icon}
         size={19}
-        color={active ? colors.blue : colors.muted}
+        /* Pinned wears the pin's own colour, so the filter and the mark on
+           the rows it filters to are visibly the same thing. */
+        color={
+          option.key === "pinned"
+            ? colors.pin
+            : active
+              ? colors.blue
+              : colors.muted
+        }
       />
 
       <Text
@@ -1378,7 +1386,7 @@ export default function Inbox() {
   }
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <View style={styles.screen}>
       {/*
         Header, search and filters are one white surface.
 
@@ -1390,6 +1398,7 @@ export default function Inbox() {
       <View
         style={[
           styles.header,
+          { paddingTop: insets.top + 16 },
           workspace
             ? { borderBottomWidth: 0, paddingBottom: 12, gap: 12 }
             : null,

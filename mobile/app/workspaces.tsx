@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Image,
   Linking,
@@ -38,11 +39,17 @@ import type { Workspace } from "../lib/types";
 const WEB = process.env.EXPO_PUBLIC_TENH_API_URL || "https://app.tenhchat.com";
 
 /*
- * A workspace has no logo anywhere in TENH -- there is no field for one -- so
- * this builds one from the name: its initials on a colour hashed from that
- * name. Stable is the whole point. "Demo Online Shop" is the same green on
- * every device, every launch, so after a day nobody reads the list any more,
- * they reach for the green one.
+ * The mark a workspace wears.
+ *
+ * There is no logo to show: `businesses` has a name and nothing else, and no
+ * channel carries a picture either, so nothing in TENH knows what any of
+ * these shops look like. Initials were the stand-in, and they read as text to
+ * be deciphered -- "DO", "TP" -- rather than a thing to point at.
+ *
+ * A glyph on a colour hashed from the name is the honest version: the same
+ * shop is the same colour on every device and every launch, so after a day
+ * nobody reads the list, they reach for the green one. When a workspace can
+ * carry a real logo, it goes here and the glyph becomes the fallback.
  */
 const MARKS = [
   { tint: "#0089CC", wash: "#E3F3FB" },
@@ -61,19 +68,6 @@ function markFor(name: string) {
   }
 
   return MARKS[hash % MARKS.length];
-}
-
-/* Two letters when the name gives two words, one when it does not. */
-function initials(name: string) {
-  const words = name
-    .replace(/[^\p{L}\p{N} ]/gu, " ")
-    .trim()
-    .split(/\s+/);
-
-  if (words.length === 0 || !words[0]) return "?";
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-
-  return (words[0][0] + words[1][0]).toUpperCase();
 }
 
 export default function Workspaces() {
@@ -199,8 +193,8 @@ export default function Workspaces() {
   }
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
+    <View style={styles.screen}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         {/*
           The brand, first.
 
@@ -355,9 +349,7 @@ export default function Workspaces() {
       <ErrorNotice message={error} onRetry={() => void loadWorkspaces()} />
 
       {loading && workspaces.length === 0 ? (
-        <View style={{ padding: 40 }}>
-          <ActivityIndicator color={colors.blue} />
-        </View>
+        <WorkspaceSkeleton />
       ) : shown.length === 0 ? (
         <View style={{ flex: 1 }}>
           <Empty
@@ -477,15 +469,11 @@ export default function Workspaces() {
                       backgroundColor: mark.wash,
                     }}
                   >
-                    <Text
-                      style={{
-                        fontSize: 17,
-                        fontWeight: "800",
-                        color: mark.tint,
-                      }}
-                    >
-                      {initials(item.businessName)}
-                    </Text>
+                    <Ionicons
+                      name="storefront"
+                      size={23}
+                      color={mark.tint}
+                    />
                   </View>
 
                   <View style={{ flex: 1, gap: 5 }}>
@@ -601,6 +589,87 @@ export default function Workspaces() {
         </View>
       ) : null}
     </View>
+  );
+}
+
+/*
+ * The wait, drawn as the thing being waited for.
+ *
+ * This screen is the first thing after signing in and it opened on a spinner
+ * in the middle of nothing, then jumped to a list. Three grey cards the shape
+ * of the real ones say what is coming and leave the answer where the wait
+ * was.
+ */
+function WorkspaceSkeleton() {
+  const [pulse] = useState(() => new Animated.Value(0.45));
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 0.9,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.45,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    animation.start();
+    return () => animation.stop();
+  }, [pulse]);
+
+  return (
+    <Animated.View
+      /* Not announced: "loading, loading, loading" as the bars pulse is
+         worse than the silence the spinner left behind. */
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={{ padding: 16, gap: 12, opacity: pulse }}
+    >
+      {[0, 1, 2].map((row) => (
+        <View
+          key={row}
+          style={[
+            styles.card,
+            { padding: 14, flexDirection: "row", alignItems: "center", gap: 13 },
+          ]}
+        >
+          <View
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 15,
+              backgroundColor: colors.border,
+            }}
+          />
+
+          <View style={{ flex: 1, gap: 8 }}>
+            <View
+              style={{
+                width: row === 1 ? "52%" : "68%",
+                height: 13,
+                borderRadius: 7,
+                backgroundColor: colors.border,
+              }}
+            />
+
+            <View
+              style={{
+                width: 78,
+                height: 19,
+                borderRadius: 999,
+                backgroundColor: colors.border,
+              }}
+            />
+          </View>
+        </View>
+      ))}
+    </Animated.View>
   );
 }
 

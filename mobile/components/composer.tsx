@@ -6,10 +6,11 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from "expo-audio";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  PanResponder,
   Pressable,
   ScrollView,
   Text,
@@ -151,6 +152,7 @@ export function Composer({
   onQuickReplies,
   onVoice,
   onSend,
+  attachmentsDisabled = false,
 }: {
   draft: string;
   onDraftChange: (next: string) => void;
@@ -165,6 +167,7 @@ export function Composer({
   onQuickReplies: () => void;
   onVoice: (uri: string, millis: number) => void;
   onSend: () => void;
+  attachmentsDisabled?: boolean;
 }) {
   const [attachOpen, setAttachOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
@@ -182,35 +185,31 @@ export function Composer({
   const canSend = hasSomething;
 
   /*
-   * Tap to start, tap to stop. Not hold-to-talk: an agent recording a reply is
-   * usually reading the customer's message at the same time, and a gesture
-   * that ends the moment a thumb lifts loses the recording every time they
-   * scroll back to check something.
+   * Hold the microphone to record; let go to send; drag away to throw it away.
+   *
+   * It used to be tap to start and tap again to stop, which is two deliberate
+   * acts for one message and leaves the app recording if the second tap never
+   * comes -- an agent who got distracted mid-thread came back to a four-minute
+   * take of their own office. Holding is the gesture everybody already has
+   * from Messenger and Telegram, and it cannot be left running: the recording
+   * ends when the thumb does.
+   *
+   * Dragging away before letting go cancels. Left towards the bin or upwards,
+   * either one, because a thumb on the right edge of a phone travels those two
+   * ways easily and neither is a direction you move by accident while holding
+   * still.
    */
-  async function toggleRecording() {
-    if (recording.isRecording) {
-      setFinishing(true);
+  const CANCEL_DISTANCE = 70;
 
-      try {
-        await recorder.stop();
+  const [armed, setArmed] = useState(false);
+  const armedRef = useRef(false);
+  const holding = useRef(false);
 
-        const uri = recorder.uri;
-        const millis = recording.durationMillis;
 
-        // Under a second is a mis-tap, not a message.
-        if (uri && millis >= 1000) {
-          onVoice(uri, millis);
-        }
-      } finally {
-        setFinishing(false);
-      }
-
-      return;
-    }
-
+  async function startRecording() {
     const { granted } = await requestRecordingPermissionsAsync();
 
-    if (!granted) {
+    if (!granted || !holding.current) {
       return;
     }
 
@@ -230,24 +229,94 @@ export function Composer({
       // Already prepared. Nothing to do but record.
     }
 
+    /* Let go during the permission round trip: nothing to record any more. */
+    if (!holding.current) {
+      return;
+    }
+
     recorder.record();
   }
 
-  async function cancelRecording() {
-    if (!recording.isRecording) {
+  async function finishRecording(keep: boolean) {
+    armedRef.current = false;
+
+    if (!recorder.isRecording) {
+      setArmed(false);
       return;
     }
 
     setFinishing(true);
 
     try {
-      // Stopped and thrown away: stop() is the only way to release the
+      // Stopped either way: stop() is the only thing that releases the
       // hardware, so a cancel is a stop whose file is never used.
       await recorder.stop();
+
+      const uri = recorder.uri;
+      const millis = recording.durationMillis;
+
+      // Under a second is a slip of the thumb, not a message.
+      if (keep && uri && millis >= 1000) {
+        onVoice(uri, millis);
+      }
     } finally {
       setFinishing(false);
+      setArmed(false);
     }
   }
+
+  /*
+   * The handlers, through a ref that is rewritten every render.
+   *
+   * A PanResponder is created once and holds the closures it was created
+   * with, so the version of finishRecording it captured would be the first
+   * render's -- reading a duration of nought for every take and discarding
+   * all of them as slips of the thumb.
+   */
+  const act = useRef({ start: startRecording, finish: finishRecording });
+  act.current = { start: startRecording, finish: finishRecording };
+
+  const hold = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+
+      onPanResponderGrant: () => {
+        holding.current = true;
+        armedRef.current = false;
+        setArmed(false);
+        void act.current.start();
+      },
+
+      onPanResponderMove: (
+        _event: unknown,
+        gesture: { dx: number; dy: number },
+      ) => {
+        const next =
+          gesture.dx < -CANCEL_DISTANCE || gesture.dy < -CANCEL_DISTANCE;
+
+        if (next !== armedRef.current) {
+          armedRef.current = next;
+          setArmed(next);
+        }
+      },
+
+      onPanResponderRelease: () => {
+        holding.current = false;
+        void act.current.finish(!armedRef.current);
+      },
+
+      /*
+       * A responder can be taken away mid-gesture -- a system dialog, a call.
+       * Treated as a cancel rather than a send: a recording nobody chose to
+       * end is not one they meant to deliver.
+       */
+      onPanResponderTerminate: () => {
+        holding.current = false;
+        void act.current.finish(false);
+      },
+    }),
+  ).current;
 
   return (
     <>
@@ -381,6 +450,7 @@ export function Composer({
           flexDirection: "row",
           alignItems: "flex-end",
           gap: 0,
+          position: "relative",
           paddingHorizontal: 6,
           paddingTop: 8,
           paddingBottom: 8 + bottomInset,
@@ -405,50 +475,67 @@ export function Composer({
               paddingLeft: 6,
             }}
           >
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Discard this recording"
-              disabled={finishing}
-              onPress={() => void cancelRecording()}
-              hitSlop={8}
-            >
-              <Ionicons name="trash-outline" size={22} color={colors.red} />
-            </Pressable>
-
+            {/*
+              The bin lights up as the thumb approaches it, so the state the
+              gesture is in is visible without reading the words: red bin and
+              "Release to cancel" means letting go throws it away.
+            */}
             <View
               style={{
-                width: 9,
-                height: 9,
-                borderRadius: 5,
-                backgroundColor: colors.red,
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: armed ? "#FBEAEA" : "transparent",
               }}
-            />
+            >
+              <Ionicons
+                name={armed ? "trash" : "trash-outline"}
+                size={21}
+                color={armed ? colors.red : colors.muted}
+              />
+            </View>
+
+            {!armed ? (
+              <View
+                style={{
+                  width: 9,
+                  height: 9,
+                  borderRadius: 5,
+                  backgroundColor: colors.red,
+                }}
+              />
+            ) : null}
 
             <Text
               style={{
-                flex: 1,
                 fontSize: 15,
                 fontWeight: "700",
-                color: colors.ink,
+                color: armed ? colors.red : colors.ink,
                 fontVariant: ["tabular-nums"],
               }}
             >
               {clock(recording.durationMillis)}
             </Text>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Stop recording and attach it"
-              disabled={finishing}
-              onPress={() => void toggleRecording()}
-              style={[styles.button, { minWidth: 52, paddingHorizontal: 16 }]}
+            <Text
+              numberOfLines={1}
+              style={{
+                flex: 1,
+                textAlign: "right",
+                fontSize: 12.5,
+                color: armed ? colors.red : colors.muted,
+              }}
             >
-              {finishing ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <Ionicons name="checkmark" size={20} color="white" />
-              )}
-            </Pressable>
+              {finishing
+                ? "Finishing…"
+                : armed
+                  ? "Release to cancel"
+                  : "Slide away to cancel · release to send"}
+            </Text>
+
+            {finishing ? <ActivityIndicator color={colors.blue} /> : null}
           </View>
         ) : (
           <>
@@ -461,7 +548,7 @@ export function Composer({
             <Round
               icon="attach-outline"
               label="Attach a photo, video, file or location"
-              disabled={sending}
+              disabled={sending || attachmentsDisabled}
               onPress={() => setAttachOpen(true)}
             />
 
@@ -540,22 +627,21 @@ export function Composer({
                 sending them.
               */}
               {canSend ? null : (
-                <Pressable
+                <View
                   accessibilityRole="button"
-                  accessibilityLabel="Record a voice message"
-                  disabled={sending}
-                  onPress={() => void toggleRecording()}
-                  hitSlop={6}
-                  style={({ pressed }) => ({
+                  accessibilityLabel="Hold to record a voice message, slide away to cancel"
+                  accessibilityHint="Double tap and hold, then release to send"
+                  {...(sending || attachmentsDisabled ? {} : hold.panHandlers)}
+                  style={{
                     width: 36,
                     height: ROW - 2,
                     alignItems: "center",
                     justifyContent: "center",
-                    opacity: sending ? 0.35 : pressed ? 0.5 : 1,
-                  })}
+                    opacity: sending || attachmentsDisabled ? 0.35 : 1,
+                  }}
                 >
                   <Ionicons name="mic-outline" size={22} color={colors.blue} />
-                </Pressable>
+                </View>
               )}
             </View>
 
@@ -588,6 +674,32 @@ export function Composer({
             ) : null}
           </>
         )}
+
+        {/*
+          The hold zone, over the microphone and mounted whatever the row is
+          showing.
+
+          The gesture has to outlive the layout it started in: the moment
+          recording begins this row swaps the composer for the timer, and a
+          responder whose view has just been unmounted is terminated -- which
+          would cancel every recording a fraction of a second after it began.
+          This sits above both layouts in the same place, so the thumb never
+          leaves the view that is listening to it.
+        */}
+        {(!canSend || recording.isRecording || finishing) &&
+        !sending &&
+        !attachmentsDisabled ? (
+          <View
+            {...hold.panHandlers}
+            style={{
+              position: "absolute",
+              right: 4,
+              top: 0,
+              bottom: 0,
+              width: 58,
+            }}
+          />
+        ) : null}
       </View>
 
       <Sheet

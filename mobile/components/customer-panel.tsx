@@ -355,8 +355,8 @@ function HeaderAction({
         borderWidth: 1,
         borderColor: active ? colour : colors.border,
         backgroundColor: active
-          ? tint === "#F04452"
-            ? "#FFF1F2"
+          ? tint === colors.pin
+            ? colors.pinWash
             : colors.pale
           : pressed
             ? colors.pale
@@ -699,7 +699,7 @@ export function CustomerPanel({
                 <HeaderAction
                   icon={pinned ? "bookmark" : "bookmark-outline"}
                   label={pinned ? "Unpin" : "Pin"}
-                  tint={pinned ? "#F04452" : undefined}
+                  tint={pinned ? colors.pin : undefined}
                   active={pinned}
                   busy={busy === "pin"}
                   onPress={onPin}

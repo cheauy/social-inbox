@@ -83,12 +83,14 @@ export function useWorkspaceResource<T>(path: string | null) {
 export function TabScreen({
   title,
   loading,
+  loadingFallback,
   error,
   onRefresh,
   children,
 }: {
   title: string;
   loading: boolean;
+  loadingFallback?: ReactNode;
   error: string;
   onRefresh: () => Promise<void> | void;
   children: ReactNode;
@@ -108,8 +110,8 @@ export function TabScreen({
   }
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
+    <View style={styles.screen}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.muted}>
           {workspace?.businessName ?? "No workspace selected"}
@@ -125,9 +127,11 @@ export function TabScreen({
           detail="Open the Inbox tab and pick a workspace. Everything else is scoped to it."
         />
       ) : loading ? (
-        <View style={{ padding: 40 }}>
-          <ActivityIndicator color={colors.blue} />
-        </View>
+        loadingFallback ?? (
+          <View style={{ padding: 40 }}>
+            <ActivityIndicator color={colors.blue} />
+          </View>
+        )
       ) : (
         <ScrollView
           contentContainerStyle={{ padding: 16, gap: 12 }}

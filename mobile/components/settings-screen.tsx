@@ -40,8 +40,8 @@ export function SettingsScreen({
   const { workspace } = useInbox();
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
+    <View style={styles.screen}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View style={styles.row}>
           <IconButton
             icon="chevron-back"

@@ -271,8 +271,8 @@ export default function Settings() {
   }
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
+    <View style={styles.screen}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <Text style={styles.title}>{t("Settings", "ការកំណត់")}</Text>
         <Text style={styles.muted} numberOfLines={1}>
           {workspace?.businessName ?? t("No workspace selected", "មិនបានជ្រើសកន្លែងធ្វើការ")}

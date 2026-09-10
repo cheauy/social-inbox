@@ -291,8 +291,8 @@ export default function GroupChat() {
   }
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
+    <View style={styles.screen}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View style={styles.row}>
           <View style={{ flex: 1 }}>
             <View

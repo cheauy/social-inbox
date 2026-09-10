@@ -4,7 +4,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { InboxConversation } from "../lib/types";
 
-export const colors = { blue: "#0089CC", ink: "#102238", muted: "#6D7E91", border: "#E3EAF2", pale: "#EAF7FF", background: "#F6F8FC", red: "#B43232" };
+export const colors = { blue: "#0089CC", ink: "#102238", muted: "#6D7E91", border: "#E3EAF2", pale: "#EAF7FF", background: "#F6F8FC", red: "#B43232",
+  /*
+   * Pinned. Red read as an alert -- something wrong with the conversation --
+   * when all it means is somebody put it at the top on purpose. Amber is the
+   * bookmark colour everywhere in the app: the row, the panel button and the
+   * thread header all take it from here so they cannot drift apart.
+   */
+  pin: "#E8A317", pinWash: "#FFF6E0" };
 export type IconName = React.ComponentProps<typeof Ionicons>["name"];
 export function IconButton({ icon, label, onPress, disabled = false, badge = 0 }: { icon: IconName; label: string; onPress: () => void; disabled?: boolean; badge?: number }) {
   return (
@@ -222,7 +229,7 @@ export function ChannelBadge({ conversation }: { conversation: InboxConversation
  * quick replies, tags, the customer -- so the shell lives here and each one
  * only writes its own contents.
  */
-export function Sheet({ open, title, detail, onClose, children, floating = false }: { open: boolean; title: string; detail: string; onClose: () => void; children: React.ReactNode; floating?: boolean }) {
+export function Sheet({ open, title, detail, onClose, children, floating = false, fullHeight = false }: { open: boolean; title: string; detail: string; onClose: () => void; children: React.ReactNode; floating?: boolean; fullHeight?: boolean }) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -239,7 +246,8 @@ export function Sheet({ open, title, detail, onClose, children, floating = false
           marginHorizontal: floating ? 10 : 0,
           marginBottom: floating ? Math.max(insets.bottom, 10) : 0,
           paddingBottom: floating ? 10 : Math.max(insets.bottom, 28),
-          maxHeight: floating ? "76%" : "82%",
+          height: fullHeight ? "94%" : undefined,
+          maxHeight: fullHeight ? "94%" : floating ? "76%" : "82%",
           overflow: "hidden",
         }}
       >

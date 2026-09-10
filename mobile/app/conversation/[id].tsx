@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+import { createAudioPlayer, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import * as DocumentPicker from "expo-document-picker";
 import { File, Paths } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
@@ -310,12 +310,96 @@ function ThreadSkeleton() {
  * clip you tapped. Ten bubbles each holding their own would be ten remote
  * files opened at once, and two of them could play over each other.
  */
+/*
+ * How long a voice note is, before anybody plays it.
+ *
+ * Telegram says so in the update -- tenh_attachment.duration, in seconds --
+ * and that is free. Facebook says nothing at all, so the clip is opened by a
+ * player that never plays it, asked how long it is, and thrown away. It costs
+ * one metadata read per voice note on screen and it means the bubble can say
+ * "0:14" the moment it draws, which is the thing somebody uses to decide
+ * whether they have time to listen right now.
+ */
+function useClipSeconds(uri: string | null, hint: number) {
+  const [seconds, setSeconds] = useState(hint);
+
+  useEffect(() => {
+    if (hint > 0) {
+      setSeconds(hint);
+      return;
+    }
+
+    if (!uri) return;
+
+    let alive = true;
+    let player: ReturnType<typeof createAudioPlayer> | null = null;
+    let timer: ReturnType<typeof setInterval> | undefined;
+
+    try {
+      player = createAudioPlayer(uri);
+    } catch {
+      /* A clip that will not open has no length to report; the bubble simply
+         shows no time, exactly as it did before. */
+      return;
+    }
+
+    /*
+     * Polled rather than awaited: duration is filled in when the header has
+     * been read, and there is no promise to wait on. Given up on after four
+     * seconds so a dead CDN link cannot leave an interval running.
+     */
+    let waited = 0;
+
+    timer = setInterval(() => {
+      waited += 250;
+
+      const value = player?.duration ?? 0;
+
+      if (value > 0) {
+        if (alive) setSeconds(value);
+        clearInterval(timer);
+        player?.remove();
+        player = null;
+      } else if (waited >= 4000) {
+        clearInterval(timer);
+        player?.remove();
+        player = null;
+      }
+    }, 250);
+
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      player?.remove();
+    };
+  }, [uri, hint]);
+
+  return seconds;
+}
+
+/*
+ * A voice note.
+ *
+ * The old one was a small play glyph, a fixed 96-point rule and a time that
+ * only appeared once you pressed play -- so an unplayed note was a blue
+ * lozenge with a line through it, the same width whether it held two seconds
+ * or two minutes, and the only way to find out which was to listen to it.
+ *
+ * This one leads with a play button big enough to hit without looking, draws
+ * the clip as a waveform whose bars fill as it plays, and prints the length
+ * from the moment it arrives -- counting down to nought while playing, which
+ * is what tells you how much is left rather than how much is gone. The whole
+ * thing is sized to its content, so the bubble is as wide as the control and
+ * not a point wider.
+ */
 function VoiceMessage({
   outgoing,
   active,
   playing,
   position,
   duration,
+  uri,
+  hintSeconds,
   onToggle,
 }: {
   outgoing: boolean;
@@ -323,62 +407,101 @@ function VoiceMessage({
   playing: boolean;
   position: number;
   duration: number;
+  uri: string | null;
+  hintSeconds: number;
   onToggle: () => void;
 }) {
+  const known = useClipSeconds(uri, hintSeconds);
+
+  /* While it is playing the player is the authority; otherwise the metadata. */
+  const total = active && duration > 0 ? duration : known;
+  const progress = active && total > 0 ? Math.min(1, position / total) : 0;
+  const remaining = active && total > 0 ? Math.max(0, total - position) : total;
+
   const tint = outgoing ? "white" : colors.blue;
-  const track = outgoing ? "rgba(255,255,255,0.35)" : colors.border;
-  const progress = active && duration > 0 ? Math.min(1, position / duration) : 0;
+  const idle = outgoing ? "rgba(255,255,255,0.42)" : "#C7DCEA";
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={playing ? "Pause voice message" : "Play voice message"}
+      accessibilityLabel={
+        playing
+          ? "Pause voice message"
+          : `Play voice message${total > 0 ? `, ${clock(total)}` : ""}`
+      }
       onPress={onToggle}
       style={({ pressed }) => ({
         flexDirection: "row",
         alignItems: "center",
-        gap: 9,
-        opacity: pressed ? 0.7 : 1,
+        gap: 10,
+        opacity: pressed ? 0.75 : 1,
       })}
     >
-      <Ionicons name={playing ? "pause-circle" : "play-circle"} size={30} color={tint} />
-
-      {/*
-        Sized to the clip, not to a guess. It was a fixed 128-point track with
-        the words "Voice message" under it, which made a two-second note as
-        wide as a sentence and left a bubble that was mostly empty. The track
-        is the width it needs and the time sits beside it.
-      */}
-      <View style={{ width: 96, height: 4, borderRadius: 2, backgroundColor: track }}>
-        <View
-          style={{
-            width: `${progress * 100}%`,
-            height: 4,
-            borderRadius: 2,
-            backgroundColor: tint,
-          }}
+      <View
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: outgoing ? "rgba(255,255,255,0.22)" : colors.pale,
+        }}
+      >
+        <Ionicons
+          name={playing ? "pause" : "play"}
+          size={19}
+          color={tint}
+          /* Nudged, because a triangle's visual centre is left of its box. */
+          style={{ marginLeft: playing ? 0 : 2 }}
         />
       </View>
 
-      {/*
-        Only once there is a time to show. A clip's length is not known until
-        it has been loaded into the player, and printing 0:00 before then
-        claims every unplayed voice note is empty.
-      */}
-      {active && duration > 0 ? (
+      <View style={{ gap: 5 }}>
+        {/*
+          A waveform rather than a rule. Fixed bars from a fixed pattern --
+          the real amplitudes are not in the payload and downloading a clip to
+          draw them would cost more than it tells anybody -- but it reads as
+          speech, and the filled part is the honest bit: it is the position.
+        */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 2.5 }}>
+          {WAVE.map((height, index) => (
+            <View
+              key={index}
+              style={{
+                width: 2.5,
+                height,
+                borderRadius: 2,
+                backgroundColor:
+                  index / WAVE.length <= progress ? tint : idle,
+              }}
+            />
+          ))}
+        </View>
+
         <Text
           style={{
-            fontSize: 12,
+            fontSize: 11.5,
             fontVariant: ["tabular-nums"],
             color: outgoing ? "rgba(255,255,255,0.85)" : colors.muted,
           }}
         >
-          {clock(position)}
+          {remaining > 0 ? clock(remaining) : "Voice message"}
         </Text>
-      ) : null}
+      </View>
     </Pressable>
   );
 }
+
+/*
+ * The shape of the bars. Twenty-eight of them at about 130 points, which is
+ * the width of two words of a message bubble -- wide enough to see the
+ * position move, narrow enough that a voice note does not take a whole row of
+ * the thread.
+ */
+const WAVE = [
+  7, 11, 16, 22, 14, 9, 13, 19, 26, 17, 10, 14, 21, 27, 18, 12, 8, 15, 23, 16,
+  10, 13, 20, 25, 15, 9, 12, 7,
+];
 
 /*
  * A photo at its own shape.
@@ -967,6 +1090,13 @@ function Bubble({
             playing={audio.activeId === message.id && audio.playing}
             position={audio.position}
             duration={audio.duration}
+            uri={url}
+            /* Telegram declares the length; Facebook does not. */
+            hintSeconds={
+              typeof attachmentMeta?.duration === "number"
+                ? attachmentMeta.duration
+                : 0
+            }
             onToggle={() => audio.onToggle(message)}
           />
         ) : null}
@@ -2422,7 +2552,7 @@ export default function Conversation() {
     <KeyboardAvoidingView
       style={[
         styles.screen,
-        { paddingTop: insets.top, backgroundColor: CHAT_BASE_COLOR },
+        { backgroundColor: CHAT_BASE_COLOR },
       ]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={insets.top}
@@ -2446,7 +2576,7 @@ export default function Conversation() {
         }}
       />
 
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View style={styles.row}>
           <IconButton icon="chevron-back" label="Back to inbox" onPress={() => router.back()} />
 
