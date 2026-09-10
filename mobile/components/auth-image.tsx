@@ -44,11 +44,21 @@ export function AuthImage({
   uri,
   style,
   resizeMode = "cover",
+  cacheKey,
   onLoad,
 }: {
   uri: string;
   style?: StyleProp<ImageStyle>;
   resizeMode?: "cover" | "contain";
+  /*
+   * What to file the download under, when the URL itself is not stable.
+   *
+   * A saved reply's picture arrives behind a signed link that is minted fresh
+   * on every request, so keying the cache on the URL means downloading the
+   * same photo again every time the picker is opened. Callers that know the
+   * underlying file -- a storage path, an attachment id -- pass it here.
+   */
+  cacheKey?: string;
   onLoad?: (size: { width: number; height: number }) => void;
 }) {
   const resolve = useMediaSource();
@@ -77,7 +87,7 @@ export function AuthImage({
           folder.create({ intermediates: true });
         }
 
-        const file = new File(folder, keyFor(target.uri));
+        const file = new File(folder, keyFor(cacheKey ?? target.uri));
 
         if (file.exists) {
           if (alive) setSource(file.uri);
@@ -102,7 +112,7 @@ export function AuthImage({
     return () => {
       alive = false;
     };
-  }, [uri]);
+  }, [uri, cacheKey]);
 
   return (
     <Image

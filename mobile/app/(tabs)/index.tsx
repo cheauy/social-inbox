@@ -708,7 +708,10 @@ function TagSheet({
  * icon in the header and get that back.
  *
  * The smart views are the web's own, in the web's order: the three rail tabs,
- * then the four Default Smart Views from the panel. Personal saved views are
+ * then the Default Smart Views from the panel -- less "Open conversation",
+ * which asked the same question as the Open status directly below it and
+ * answered it with a different number whenever the two were combined.
+ * Personal saved views are
  * not here -- they carry workspace scope, tag sets and channel rules that the
  * phone has no filter engine for, and half-honouring a saved view would be
  * worse than not offering it.
@@ -719,8 +722,7 @@ type SmartView =
   | "pinned"
   | "my"
   | "unassigned"
-  | "comment"
-  | "open";
+  | "comment";
 
 type StatusKey = "all" | "open" | "pending" | "resolved" | "closed" | "spam";
 
@@ -767,12 +769,6 @@ const SMART_VIEWS: FilterOption<SmartView>[] = [
     label: "Facebook Comment",
     group: "Default Smart Views",
     icon: "chatbox-ellipses-outline",
-  },
-  {
-    key: "open",
-    label: "Open conversation",
-    group: "Default Smart Views",
-    icon: "chatbubbles-outline",
   },
 ];
 
@@ -834,7 +830,6 @@ function matchesSmartView(
   }
   if (view === "unassigned") return !conversation.assigned_to;
   if (view === "comment") return conversation.source_type === "comment";
-  if (view === "open") return conversation.status === "open";
   return true;
 }
 
@@ -1902,6 +1897,12 @@ export default function Inbox() {
         <FlatList
           data={ordered}
           keyExtractor={(item) => item.id}
+          /*
+            No scroll bar. It sat over the status stripe on the right edge --
+            two thin vertical marks in the same place, one of which means
+            something. Scrolling itself is untouched.
+          */
+          showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
             <ConversationRow
               conversation={item}

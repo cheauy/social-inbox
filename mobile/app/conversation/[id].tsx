@@ -1228,9 +1228,7 @@ function QuickReplySheet({
       onClose={onClose}
     >
       {loading ? (
-        <View style={{ padding: 40 }}>
-          <ActivityIndicator color={colors.blue} />
-        </View>
+        <SheetSkeleton rows={4} thumbs />
       ) : replies.length === 0 ? (
         <Empty
           icon="flash-outline"
@@ -1316,20 +1314,130 @@ function QuickReplySheet({
   );
 }
 
+/*
+ * The wait, drawn as the thing being waited for.
+ *
+ * Both sheets opened on a spinner in the middle of an empty panel: it says
+ * something is happening and nothing about what, and the answer then lands
+ * somewhere else entirely. These are the rows those sheets actually draw --
+ * a title, a line of body, and for quick replies the pictures under it -- so
+ * the shape is right before the content arrives and nothing jumps.
+ */
+function SheetSkeleton({ rows, thumbs }: { rows: number; thumbs?: boolean }) {
+  const [pulse] = useState(() => new Animated.Value(0.45));
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 0.9,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.45,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    animation.start();
+    return () => animation.stop();
+  }, [pulse]);
+
+  return (
+    <Animated.View
+      /* Not announced: "loading, loading, loading" as the bars pulse is worse
+         than the silence the spinner left behind. */
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={{ paddingHorizontal: 18, paddingTop: 14, opacity: pulse }}
+    >
+      {Array.from({ length: rows }, (_, row) => (
+        <View key={row} style={{ paddingVertical: 12, gap: 8 }}>
+          <View
+            style={{
+              width: row % 2 === 0 ? "42%" : "34%",
+              height: 13,
+              borderRadius: 7,
+              backgroundColor: colors.border,
+            }}
+          />
+
+          <View
+            style={{
+              width: row % 3 === 0 ? "88%" : "68%",
+              height: 11,
+              borderRadius: 6,
+              backgroundColor: colors.border,
+            }}
+          />
+
+          {thumbs && row % 2 === 0 ? (
+            <View style={{ flexDirection: "row", gap: 6, marginTop: 2 }}>
+              {[0, 1].map((thumb) => (
+                <View
+                  key={thumb}
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: 10,
+                    backgroundColor: colors.border,
+                  }}
+                />
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ))}
+    </Animated.View>
+  );
+}
+
 /* The pictures a saved reply carries, as a row of thumbnails. */
 function ReplyThumbs({ attachments }: { attachments: SavedReplyAttachment[] }) {
+  /*
+   * Pictures and videos both. A reply that carries a clip of the product
+   * showed nothing at all, and "video" is a thing somebody recognises by its
+   * frame -- there is no thumbnail in the payload, so it wears a play mark on
+   * the tinted tile rather than pretending to have one.
+   */
   const pictures = attachments.filter(
-    (file) => file.kind === "image" && file.url,
+    (file) => (file.kind === "image" || file.kind === "video") && file.url,
   );
 
   if (pictures.length === 0) return null;
 
   return (
     <View style={{ flexDirection: "row", gap: 6, marginTop: 5 }}>
-      {pictures.slice(0, 4).map((picture) => (
+      {pictures.slice(0, 4).map((picture) =>
+        picture.kind === "video" ? (
+          <View
+            key={picture.path}
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 10,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "#102238",
+            }}
+          >
+            <Ionicons name="play" size={19} color="white" />
+          </View>
+        ) : (
         <AuthImage
           key={picture.path}
           uri={picture.url as string}
+          /*
+            Cached against the file, not against its link. A saved reply's
+            picture arrives behind a signed URL that is different on every
+            request, so keying the cache on the URL downloaded the same photo
+            again every time the sheet was opened. The storage path is the
+            thing that does not change.
+          */
+          cacheKey={picture.path}
           style={{
             width: 52,
             height: 52,
@@ -1395,9 +1503,7 @@ function QuickTagSheet({
       {error ? <ErrorNotice message={error} /> : null}
 
       {loading ? (
-        <View style={{ padding: 40 }}>
-          <ActivityIndicator color={colors.blue} />
-        </View>
+        <SheetSkeleton rows={5} />
       ) : tags.length === 0 ? (
         <Empty
           icon="pricetag-outline"
