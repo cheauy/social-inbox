@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "TENH Companion",
+  title: "TENH v1",
   description:
-    "How to install and pair the optional TENH Companion browser extension.",
+    "How to install the optional TENH v1 browser extension for TENH Chat.",
 };
 
 /*
  * The page the Integrations card links to.
  *
  * It exists because that link was pointing at nothing, and because an
- * extension somebody has to load unpacked needs its steps written down
- * somewhere a person can reach without a terminal. Everything here is also in
+ * extension somebody has to install needs its steps written down somewhere a
+ * person can reach without a terminal. Everything here is also in
  * tenh-extension/README.md, which is where a developer will look.
  */
 
@@ -19,19 +19,18 @@ const steps = [
   {
     title: "Install it",
     body: [
-      "Open chrome://extensions in Chrome.",
-      "Turn on Developer mode, top right.",
-      "Choose Load unpacked, and select the tenh-extension folder.",
-      "Pin TENH Companion to the toolbar so you can see it.",
+      "From the Chrome Web Store: search for TENH v1 and choose Add to Chrome.",
+      "Not on the store yet? Open chrome://extensions, turn on Developer mode, choose Load unpacked, and select the tenh-extension folder.",
+      "Pin TENH v1 to the toolbar so you can see it.",
     ],
   },
   {
-    title: "Pair this browser",
+    title: "It connects itself",
     body: [
-      "In TENH: Settings → Integrations → TENH Companion → Pair browser.",
-      "Copy the code. It works once and expires in five minutes.",
-      "Open the extension, paste it, and press Pair this browser.",
-      "The browser appears in the card as online within half a minute.",
+      "Open TENH in the same browser, signed in as usual.",
+      "That is the whole step. The extension connects to your TENH account on its own, and stays connected — there is nothing to do again tomorrow.",
+      "Your browser then appears under Connected browsers in Settings → Integrations.",
+      "On a computer where you are not signed in to TENH, use Pair another browser with a code instead.",
     ],
   },
   {
@@ -47,7 +46,7 @@ const steps = [
 export default function TenhCompanionPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-14">
-      <h1 className="text-3xl font-bold text-slate-900">TENH Companion</h1>
+      <h1 className="text-3xl font-bold text-slate-900">TENH v1</h1>
 
       <p className="mt-3 text-base leading-7 text-slate-600">
         An optional Chrome extension. It reads what a Facebook tab is already
@@ -102,6 +101,11 @@ export default function TenhCompanionPage() {
           <li>
             It never creates a message in TENH. Meta&apos;s webhook remains the
             only thing that does.
+          </li>
+          <li>
+            Connecting uses your TENH sign-in on this browser and nothing else.
+            Remove the browser from Settings → Integrations at any time, and it
+            stops.
           </li>
         </ul>
       </section>

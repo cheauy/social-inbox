@@ -1,4 +1,4 @@
-# TENH Companion
+# TENH v1
 
 An optional Chrome extension for TENH Chat. It reads what a Facebook tab is
 already showing and puts TENH's own records beside it.
@@ -8,8 +8,10 @@ the send routes or the mobile app depends on anything this extension produces.
 
 ## What it does
 
-- Tells `app.tenhchat.com` that a companion is installed, and which version.
-- Pairs a browser to one TENH member with a five-minute, single-use code.
+- Tells `app.tenhchat.com` that it is installed, and which version.
+- Connects itself to the TENH account already signed in on that browser, once,
+  and stays connected. A five-minute, single-use code is the fallback for a
+  browser that is not signed in.
 - Reports, from an open Facebook tab: whether somebody is signed in, which Page
   the tab is acting as, whether a conversation is open, and whether Facebook is
   showing a reply box and has enabled it.
@@ -42,14 +44,24 @@ the send routes or the mobile app depends on anything this extension produces.
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode**.
 3. **Load unpacked** → choose this `tenh-extension` folder.
-4. Pin **TENH Companion** to the toolbar.
+4. Pin **TENH v1** to the toolbar.
 
-## Pair
+## Connect
 
-1. In TENH: **Settings → Integrations → TENH Companion → Pair browser**.
-2. Copy the code (five minutes, one use).
-3. Open the extension popup, paste it, press **Pair this browser**.
-4. The card in TENH lists the browser as online within half a minute.
+Open `app.tenhchat.com` in the same browser, signed in. That is the whole step:
+the content script asks `/api/extension/auto-pair` with the session already in
+that browser, and the token it gets back goes straight to the service worker —
+it is never written to the page. The browser appears under **Connected
+browsers** within half a minute and stays there.
+
+The token is dropped only on a real refusal (revoked in TENH, or removed from
+the workspace). A timeout, a 500, a deploy or an expired subscription leave it
+alone. Even after a revocation, opening TENH signed in reconnects it without
+anybody typing anything.
+
+**On a browser not signed in to TENH:** in TENH go to **Settings → Integrations
+→ Pair another browser with a code**, copy the code, and paste it into the
+extension popup under **Use a pairing code**.
 
 ## Testing Facebook detection
 
@@ -76,7 +88,7 @@ Nothing is guessed.
 ## Testing send detection
 
 1. From Facebook itself, reply to a customer.
-2. In TENH: **Settings → Integrations → TENH Companion**. The reply is listed
+2. In TENH: **Settings → Integrations → TENH v1**. The reply is listed
    under **Replies typed in Facebook**.
 3. Within a minute it should read **In TENH** — Meta's webhook delivered it.
 4. If it stays on **Never arrived in TENH**, the webhook is not reaching this

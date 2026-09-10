@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /*
- * TENH Companion, from the website's side.
+ * TENH v1, from the website's side.
  *
  * Everything here is optional and says so. The card detects the extension by
  * asking the page for it and waiting a moment; if nothing answers, the Inbox,
@@ -202,10 +202,12 @@ export function TenhCompanionCard() {
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold text-slate-900">TENH Companion</h2>
+          <h2 className="text-lg font-bold text-slate-900">TENH v1</h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
-            An optional Chrome extension. It reports what your Facebook tab is
-            showing and opens the right conversation from TENH. Everything in
+            An optional Chrome extension. It puts this customer&apos;s TENH
+            tags, notes and quick replies beside Facebook, and opens the right
+            conversation. Install it while signed in here and it connects
+            itself — no code, and no connecting again tomorrow. Everything in
             TENH works exactly the same without it.
           </p>
         </div>
@@ -237,27 +239,29 @@ export function TenhCompanionCard() {
       ) : null}
 
       <div className="mt-5 flex flex-wrap gap-3">
+        <a
+          href="/tenh-companion"
+          className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+        >
+          Installation steps
+        </a>
+
+        {/* Kept for the browser that is not signed in here -- a shared
+            computer, or somebody pairing a machine they are not on. */}
         <button
           type="button"
           onClick={() => void startPairing()}
           disabled={busy}
-          className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+          className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
         >
-          {busy ? "Preparing…" : "Pair browser"}
+          {busy ? "Preparing…" : "Pair another browser with a code"}
         </button>
-
-        <a
-          href="/tenh-companion"
-          className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-        >
-          Installation steps
-        </a>
       </div>
 
       {code ? (
         <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50/70 p-5">
           <p className="text-sm font-semibold text-blue-900">
-            Paste this into the TENH Companion popup
+            Paste this into the TENH v1 popup on the other browser
           </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-3">

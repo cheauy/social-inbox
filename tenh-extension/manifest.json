@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "TENH Companion",
-  "version": "0.2.0",
-  "description": "An optional browser companion for TENH Chat: it reports what your Facebook tab looks like and opens the right conversation. TENH works without it.",
+  "name": "TENH v1",
+  "version": "1.0.0",
+  "description": "Your TENH Chat customer, tags, notes and quick replies beside Facebook. Optional — TENH works exactly the same without it.",
   "minimum_chrome_version": "116",
   "permissions": ["storage", "notifications", "sidePanel", "tabs", "alarms"],
   "host_permissions": [
@@ -36,7 +36,7 @@
     "128": "icons/icon-128.png"
   },
   "action": {
-    "default_title": "TENH Companion",
+    "default_title": "TENH v1",
     "default_popup": "src/popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",

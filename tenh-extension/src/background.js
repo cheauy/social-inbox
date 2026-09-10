@@ -1,5 +1,5 @@
 /*
- * TENH Companion — the part that remembers.
+ * TENH v1 — the part that remembers.
  *
  * The service worker holds the pairing, talks to TENH's own API, and passes
  * questions between the two content scripts. It keeps no Facebook data of its
@@ -139,6 +139,16 @@ async function heartbeat(event) {
   });
 
   if (!ok && (status === 401 || status === 403)) {
+    /*
+     * Only a real refusal clears the pairing: revoked here, or removed from
+     * the workspace. A timeout, a 500, a deploy in progress or an expired
+     * subscription all leave the token alone -- dropping it on a bad minute is
+     * what turns "install once" into "pair again every morning".
+     *
+     * Even a real refusal is not the end: the next time this browser opens
+     * TENH while signed in, the content script pairs it again without asking
+     * anybody for anything.
+     */
     await chrome.storage.local.remove(["token", "device"]);
     await setBadge(null);
 
@@ -315,6 +325,34 @@ async function handle(message, sender) {
 
     case "TENH_PAIR":
       return pair(String(message.code ?? ""));
+
+    /* Asked by the content script on app.tenhchat.com, which is the only
+       place that can see whether somebody is signed in. */
+    case "TENH_PAIRING_STATE": {
+      const state = await readState();
+
+      return {
+        paired: Boolean(state.token),
+        installationId: state.installationId,
+        deviceName: deviceName(),
+      };
+    }
+
+    /*
+     * A token the content script obtained with the person's own TENH session.
+     * Stored exactly like a code-paired one -- from here on there is no
+     * difference between the two, including how it is revoked.
+     */
+    case "TENH_AUTO_PAIRED": {
+      if (typeof message.token !== "string" || !message.token) {
+        return { paired: false };
+      }
+
+      await writeState({ token: message.token, device: message.device ?? null });
+      await heartbeat("extension_connected");
+
+      return { paired: true, device: message.device ?? null };
+    }
 
     case "TENH_UNPAIR":
       return unpair();

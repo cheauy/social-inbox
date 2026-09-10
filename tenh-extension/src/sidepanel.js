@@ -64,8 +64,8 @@ function renderFacebook(status) {
   const facebook = status.facebook;
 
   view.pairState.textContent = status.paired
-    ? status.device?.name ?? "Paired"
-    : "Not paired — open the extension to pair";
+    ? status.device?.name ?? "Connected"
+    : "Not connected — open TENH and sign in";
 
   view.facebookState.textContent = facebook?.loggedIn
     ? "Signed in"
@@ -189,7 +189,7 @@ async function refresh() {
   renderFacebook(status);
 
   if (!status.paired) {
-    view.liveState.textContent = "Not paired";
+    view.liveState.textContent = "Not connected";
     view.liveState.className = "pill off";
     context = null;
 

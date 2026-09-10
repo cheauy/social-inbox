@@ -48,12 +48,12 @@ async function render() {
   view.version.textContent = status.version ? `Version ${status.version}` : "";
 
   if (status.paired) {
-    setState(view.pairState, "Paired", "on");
+    setState(view.pairState, "Connected", "on");
     view.deviceName.textContent = status.device?.name ?? "";
     view.pairCard.hidden = true;
     view.pairedCard.hidden = false;
   } else {
-    setState(view.pairState, "Not paired", "off");
+    setState(view.pairState, "Not connected", "off");
     view.deviceName.textContent = "";
     view.pairCard.hidden = false;
     view.pairedCard.hidden = true;
@@ -99,12 +99,12 @@ view.pair.addEventListener("click", async () => {
   }
 
   view.pair.disabled = true;
-  view.pair.textContent = "Pairing…";
+  view.pair.textContent = "Connecting…";
 
   const result = await ask({ type: "TENH_PAIR", code });
 
   view.pair.disabled = false;
-  view.pair.textContent = "Pair this browser";
+  view.pair.textContent = "Use a pairing code";
 
   if (!result.paired) {
     view.error.textContent = result.error ?? "Pairing failed.";

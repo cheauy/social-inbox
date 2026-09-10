@@ -13,7 +13,7 @@ import { useCompanion } from "@/lib/extension/use-companion";
  * Page administrator can look at the conversation in Facebook, and that
  * Facebook itself decides what it lets them do there.
  *
- * So this offers to open it, and -- only when TENH Companion is installed --
+ * So this offers to open it, and -- only when TENH v1 is installed --
  * reports what the browser can see: whether Facebook is showing a reply box
  * and whether Facebook has enabled it. That is a description of somebody
  * else's interface, not a permission and not a promise. Nothing here types,
@@ -110,12 +110,12 @@ export function CompanionFacebookAction({ conversationId, pageId }: Props) {
       {installed ? (
         <span className="text-[11px] leading-4 text-amber-800">
           {answer === null
-            ? "TENH Companion is checking your Facebook tab…"
+            ? "TENH v1 is checking your Facebook tab…"
             : answer === "available"
-              ? "TENH Companion sees an enabled reply box in Facebook. Whether a message sends is Facebook's decision."
+              ? "TENH v1 sees an enabled reply box in Facebook. Whether a message sends is Facebook's decision."
               : answer === "unavailable"
-                ? "TENH Companion sees a reply box that Facebook has disabled."
-                : "TENH Companion has no Facebook tab open to look at."}
+                ? "TENH v1 sees a reply box that Facebook has disabled."
+                : "TENH v1 has no Facebook tab open to look at."}
         </span>
       ) : null}
     </div>

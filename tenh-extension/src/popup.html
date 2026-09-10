@@ -2,14 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>TENH Companion</title>
+    <title>TENH v1</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <header>
-      <span class="mark">T</span>
+      <img class="mark" src="../icons/icon-128.png" alt="" />
       <div>
-        <h1>TENH Companion</h1>
+        <h1>TENH v1</h1>
         <p class="version" id="version">—</p>
       </div>
     </header>
@@ -33,11 +33,15 @@
 
     <section class="card" id="pairCard">
       <p class="detail">
-        Open TENH → Settings → Integrations → TENH Companion, press
-        <strong>Pair browser</strong>, and paste the code here.
+        <strong>Open TENH and sign in</strong> — this browser connects itself,
+        once, and stays connected.
+      </p>
+      <p class="detail">
+        Not signed in on this computer? Get a code from TENH → Settings →
+        Integrations → <strong>Pair browser</strong>, and paste it here.
       </p>
       <input id="code" placeholder="ABCDE-FGHIJ" autocomplete="off" spellcheck="false" />
-      <button id="pair" class="primary">Pair this browser</button>
+      <button id="pair">Use a pairing code</button>
       <p class="detail error" id="error"></p>
     </section>
 
