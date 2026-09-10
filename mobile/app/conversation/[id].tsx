@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Dimensions,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -1030,7 +1031,7 @@ function Bubble({
   onViewMedia: (item: MediaPreview) => void;
   onReplyComment: (message: InboxMessage) => void;
   onCommentAction: (message: InboxMessage, action: "like" | "hide" | "delete") => void;
-  onHold: (message: InboxMessage) => void;
+  onHold: (message: InboxMessage, at: { x: number; y: number }) => void;
   commentBusy: string | null;
   audio: {
     activeId: string | null;
@@ -1119,7 +1120,12 @@ function Bubble({
         taught, and it costs the bubble nothing -- a tap still opens a photo.
       */}
       <Pressable
-        onLongPress={() => onHold(message)}
+        onLongPress={(event) =>
+          onHold(message, {
+            x: event.nativeEvent.pageX,
+            y: event.nativeEvent.pageY,
+          })
+        }
         delayLongPress={280}
         style={{
           maxWidth: "82%",
@@ -1217,8 +1223,21 @@ function Bubble({
  * what it carries. Nothing here pretends to do something the network behind it
  * cannot.
  */
+/*
+ * What you can do to one message, floating where the message is.
+ *
+ * A bottom sheet answers a question about the screen; this is a question
+ * about one bubble three quarters of the way up it, and an answer that opens
+ * at the bottom makes you look away from the thing you are acting on. So the
+ * card opens at the thumb: beside the bubble, above the finger when there is
+ * no room below it, and always inside the screen.
+ */
+const MENU_WIDTH = 186;
+const MENU_MARGIN = 10;
+
 function MessageMenu({
   message,
+  at,
   canReply,
   saving,
   onReply,
@@ -1228,6 +1247,7 @@ function MessageMenu({
   onClose,
 }: {
   message: InboxMessage | null;
+  at: { x: number; y: number } | null;
   canReply: boolean;
   saving: boolean;
   onReply: () => void;
@@ -1236,7 +1256,9 @@ function MessageMenu({
   onPin: () => void;
   onClose: () => void;
 }) {
-  if (!message) return null;
+  const screen = Dimensions.get("window");
+
+  if (!message || !at) return null;
 
   const text = message.message_text?.trim() ?? "";
   const url = message.attachment_url;
@@ -1247,65 +1269,74 @@ function MessageMenu({
   const rows: {
     icon: React.ComponentProps<typeof Ionicons>["name"];
     label: string;
-    detail: string;
     run: () => void;
   }[] = [];
 
   if (canReply) {
-    rows.push({
-      icon: "arrow-undo-outline",
-      label: "Reply",
-      detail: "Quote this message in your next reply",
-      run: onReply,
-    });
+    rows.push({ icon: "arrow-undo-outline", label: "Reply", run: onReply });
   }
 
-  rows.push({
-    icon: "bookmark-outline",
-    label: "Pin",
-    detail: "Keep this conversation at the top of the Inbox",
-    run: onPin,
-  });
+  rows.push({ icon: "bookmark-outline", label: "Pin", run: onPin });
 
   if (text) {
-    rows.push({
-      icon: "copy-outline",
-      label: "Copy",
-      detail: "Put the words on the clipboard",
-      run: onCopy,
-    });
+    rows.push({ icon: "copy-outline", label: "Copy", run: onCopy });
   }
 
   if (url && media) {
     rows.push({
       icon: "download-outline",
       label: "Download",
-      detail:
-        message.message_type === "video"
-          ? "Save the video to this phone"
-          : message.message_type === "image" || message.message_type === "sticker"
-            ? "Save the picture to this phone"
-            : "Save the file to this phone",
       run: onDownload,
     });
   }
 
+  /*
+   * Placed against the corner the finger is nearest, then pulled back inside
+   * the screen. A menu that opens half off the edge is a menu with an action
+   * nobody can reach.
+   */
+  const height = rows.length * 46 + 10;
+  const below = at.y + 12;
+  const top =
+    below + height > screen.height - 24 ? Math.max(24, at.y - height - 12) : below;
+
+  const left = Math.min(
+    Math.max(MENU_MARGIN, at.x - MENU_WIDTH / 2),
+    screen.width - MENU_WIDTH - MENU_MARGIN,
+  );
+
   return (
-    <Sheet
-      open={Boolean(message)}
-      title="Message"
-      detail={
-        text
-          ? text.length > 70
-            ? `${text.slice(0, 70)}…`
-            : text
-          : "Choose what to do with it."
-      }
-      onClose={onClose}
-      floating
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
     >
-      <View style={{ paddingBottom: 6 }}>
-        {rows.map((row) => (
+      {/* Anywhere else closes it, which is what a tap outside a menu means. */}
+      <Pressable
+        accessibilityLabel="Close message actions"
+        onPress={onClose}
+        style={{ flex: 1, backgroundColor: "rgba(16,34,56,0.18)" }}
+      />
+
+      <View
+        style={{
+          position: "absolute",
+          top,
+          left,
+          width: MENU_WIDTH,
+          paddingVertical: 5,
+          borderRadius: 16,
+          backgroundColor: "white",
+          elevation: 14,
+          shadowColor: "#102238",
+          shadowOpacity: 0.24,
+          shadowRadius: 20,
+          shadowOffset: { width: 0, height: 8 },
+        }}
+      >
+        {rows.map((row, index) => (
           <Pressable
             key={row.label}
             accessibilityRole="button"
@@ -1315,21 +1346,26 @@ function MessageMenu({
             style={({ pressed }) => ({
               flexDirection: "row",
               alignItems: "center",
-              gap: 14,
-              paddingHorizontal: 20,
-              paddingVertical: 14,
+              gap: 13,
+              paddingHorizontal: 16,
+              height: 46,
+              borderTopWidth: index === 0 ? 0 : 1,
+              borderTopColor: colors.border,
               backgroundColor: pressed ? colors.pale : "transparent",
             })}
           >
-            <Ionicons name={row.icon} size={20} color={colors.ink} />
+            <Ionicons name={row.icon} size={19} color={colors.ink} />
 
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 15.5, fontWeight: "700", color: colors.ink }}>
-                {row.label}
-              </Text>
-
-              <Text style={[styles.muted, { fontSize: 12.5 }]}>{row.detail}</Text>
-            </View>
+            <Text
+              style={{
+                flex: 1,
+                fontSize: 15,
+                fontWeight: "600",
+                color: colors.ink,
+              }}
+            >
+              {row.label}
+            </Text>
 
             {saving && row.label === "Download" ? (
               <ActivityIndicator color={colors.blue} />
@@ -1337,7 +1373,7 @@ function MessageMenu({
           </Pressable>
         ))}
       </View>
-    </Sheet>
+    </Modal>
   );
 }
 
@@ -1809,6 +1845,7 @@ export default function Conversation() {
 
   /* The message being acted on, and whether a download is in flight. */
   const [held, setHeld] = useState<InboxMessage | null>(null);
+  const [heldAt, setHeldAt] = useState<{ x: number; y: number } | null>(null);
 
   /*
    * The message the next send will quote. Telegram only -- see `replyable`.
@@ -3407,7 +3444,10 @@ export default function Conversation() {
                   onViewMedia={setMediaPreview}
                   onReplyComment={beginCommentReply}
                   onCommentAction={requestCommentAction}
-                  onHold={setHeld}
+                  onHold={(message, at) => {
+                    setHeld(message);
+                    setHeldAt(at);
+                  }}
                   commentBusy={commentBusy}
                   audio={{
                     activeId: playingId,
@@ -3536,6 +3576,7 @@ export default function Conversation() {
 
       <MessageMenu
         message={held}
+        at={heldAt}
         canReply={replyable}
         saving={saving}
         onReply={() => {
