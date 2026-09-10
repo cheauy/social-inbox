@@ -2687,18 +2687,24 @@ export default function Conversation() {
   }, [contactId, scopeId, updateContactTags]);
 
   /*
-   * Quoting a message, on either side of the thread.
+   * Quoting a message -- on Telegram, on either side of the thread.
    *
-   * Both networks carry a real reply: Telegram takes the message id and
-   * Messenger takes the mid, and each resolves ours to theirs server-side, so
-   * the customer sees the quote in their own app rather than a quote that
-   * only exists in TENH.
+   * Telegram carries a real reply: its send route takes the TENH message id,
+   * resolves it to Telegram's own, and the customer sees the quote in their
+   * app. Messenger cannot. reply_to is something Meta reports on the way in,
+   * on webhooks and in the Conversations API; passing it to the Send API is
+   * refused outright -- "(#100) Invalid keys reply_to were found in param
+   * message" -- which failed the whole send, so a reply that would have
+   * arrived plainly did not arrive at all.
    *
-   * Not on a Facebook comment thread, which has its own reply -- a comment is
-   * answered under the post, and mixing the two would put a reply in the
-   * wrong place.
+   * Offering it there anyway would mean a menu item that breaks the message
+   * it is attached to, so it is offered where it works.
+   *
+   * Facebook comment threads have their own reply, under the post.
    */
-  const replyable = conversation?.source_type !== "comment";
+  const replyable =
+    conversation?.social_account?.platform === "telegram" &&
+    conversation.source_type !== "comment";
 
   function copyMessage(message: InboxMessage) {
     const text = message.message_text?.trim();

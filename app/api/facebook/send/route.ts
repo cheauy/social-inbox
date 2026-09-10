@@ -34,13 +34,17 @@ type SendMessageBody = {
   message?: string;
 
   /*
-   * A TENH message id to quote.
+   * Accepted and ignored.
    *
-   * Messenger carries replies: the Send API takes the mid of the message
-   * being answered and the customer sees the quote above ours, exactly as
-   * they would in Messenger itself. The phone sends the TENH id -- the mid is
-   * ours to look up, and an id from the client is not something to hand
-   * Facebook unchecked.
+   * Messenger has no way to send a reply to a particular message: reply_to is
+   * something Meta reports on the way in -- on message and echo webhooks, and
+   * in the Conversations API -- and the Send API rejects the whole request
+   * when it is passed, "(#100) Invalid keys reply_to were found in param
+   * message". Telegram's send route takes this field and means it.
+   *
+   * Named here so the phone can send one body to both platforms without
+   * knowing which of them can honour it, and so the next person to try does
+   * not have to learn this from a customer's failed message.
    */
   replyToMessageId?: string;
 };
@@ -89,10 +93,6 @@ export async function POST(
     body.recipientId?.trim();
   const message =
     body.message?.trim();
-
-  const replyToMessageId =
-    body.replyToMessageId?.trim() ??
-    "";
 
   if (!conversationId) {
     return NextResponse.json(
@@ -507,33 +507,6 @@ export async function POST(
   }: {
     useHumanAgentTag: boolean;
   }) {
-    /*
-     * The quoted message's Messenger id, looked up rather than trusted.
-     *
-     * A missing or foreign id simply means no quote: a reply that arrives
-     * without its quote is a small loss, and a reply Facebook refuses to
-     * deliver is the message never arriving at all.
-     */
-    let replyToMid: string | null = null;
-
-    if (replyToMessageId) {
-      const { data: quoted } = await supabaseAdmin
-        .from("messages")
-        .select("platform_message_id,conversation_id")
-        .eq("id", replyToMessageId)
-        .eq("business_id", currentMember.business_id)
-        .maybeSingle();
-
-      if (
-        quoted &&
-        quoted.conversation_id === conversationId &&
-        typeof quoted.platform_message_id === "string" &&
-        quoted.platform_message_id.startsWith("m_")
-      ) {
-        replyToMid = quoted.platform_message_id;
-      }
-    }
-
     const response =
       await fetch(graphUrl, {
         method: "POST",
@@ -557,15 +530,6 @@ export async function POST(
               }),
           message: {
             text: message,
-            /*
-             * Only when the quoted message is one of this conversation's own
-             * and actually reached Messenger. A mid from another thread, or
-             * from a message we drew before the send came back, is one
-             * Facebook rejects the whole request over.
-             */
-            ...(replyToMid
-              ? { reply_to: { mid: replyToMid } }
-              : {}),
           },
         }),
         cache: "no-store",
