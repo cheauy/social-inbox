@@ -162,16 +162,6 @@ export function SlidePanel({
       >
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <View style={styles.row}>
-            {/*
-              Forward, not back: the button does what the swipe does, which is
-              push the panel off to the right.
-            */}
-            <IconButton
-              icon="chevron-forward"
-              label={`Close ${title}`}
-              onPress={onClose}
-            />
-
             <View style={{ flex: 1 }}>
               <Text numberOfLines={1} style={styles.heading}>
                 {title}
@@ -180,6 +170,19 @@ export function SlidePanel({
                 {detail}
               </Text>
             </View>
+
+            {/*
+              A close mark on the right, where the customer panel keeps its
+              own. It was a chevron pointing off to the right at the head of
+              the title, which read as "there is more this way" -- an arrow
+              into the panel you are already inside -- rather than as the way
+              out of it.
+            */}
+            <IconButton
+              icon="close"
+              label={`Close ${title}`}
+              onPress={onClose}
+            />
           </View>
         </View>
 
