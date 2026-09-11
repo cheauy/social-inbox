@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 /*
  * Asking the browser whether TENH Companion is there, and asking it for things.
@@ -65,7 +65,7 @@ function awaitAnswer<T>(
       if (!data || typeof data !== "object") return;
       if (data.source !== "TENH_EXTENSION") return;
       if (data.type !== type) return;
-      if (data.requestId && data.requestId !== requestId) return;
+      if (data.requestId !== requestId || data.error || data.requiresRefresh) return;
 
       done(data as T);
     };
@@ -79,24 +79,27 @@ function awaitAnswer<T>(
 export function useCompanion() {
   const [installed, setInstalled] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
-  const asked = useRef(false);
-
   useEffect(() => {
-    if (asked.current) return;
-
-    asked.current = true;
-
-    const requestId = post("TENH_EXTENSION_PING");
-
-    void awaitAnswer<{ version?: string }>(
-      "TENH_EXTENSION_PONG",
-      requestId,
-    ).then((answer) => {
-      if (!answer) return;
-
+    const detect = () => { post("TENH_EXTENSION_PING"); };
+    const receive = (event: MessageEvent) => {
+      if (event.source !== window || event.origin !== window.location.origin) return;
+      const data = event.data;
+      if (!data || data.source !== "TENH_EXTENSION") return;
+      if (!["TENH_EXTENSION_PONG", "TENH_EXTENSION_READY"].includes(data.type)) return;
+      // Invalidated scripts can still answer after a reload. Only live replies count.
+      if (data.error || data.requiresRefresh || typeof data.version !== "string") return;
       setInstalled(true);
-      setVersion(answer.version ?? null);
-    });
+      setVersion(data.version);
+    };
+    window.addEventListener("message", receive);
+    window.addEventListener("focus", detect);
+    const timer = window.setInterval(detect, 15000);
+    detect();
+    return () => {
+      window.removeEventListener("message", receive);
+      window.removeEventListener("focus", detect);
+      window.clearInterval(timer);
+    };
   }, []);
 
   /**
@@ -121,6 +124,7 @@ export function useCompanion() {
       const answer = await awaitAnswer<{ opened?: boolean }>(
         "OPEN_IN_FACEBOOK_RESULT",
         requestId,
+        10000,
       );
 
       return answer?.opened === true;
@@ -151,7 +155,7 @@ export function useCompanion() {
       return awaitAnswer<FacebookProfileOpenResult>(
         "OPEN_FACEBOOK_PROFILE_RESULT",
         requestId,
-        18000,
+        60000,
       );
     },
     [],

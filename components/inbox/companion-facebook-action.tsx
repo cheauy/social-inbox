@@ -40,6 +40,8 @@ export function CompanionFacebookAction({
   threadId,
 }: Props) {
   const { installed, openInFacebook, checkReplyAvailability } = useCompanion();
+  const [opening, setOpening] = useState(false);
+  const [openFailed, setOpenFailed] = useState(false);
 
   /* Null while the question is still out. "Checking" is that, rendered --
      not a separate state to keep in step with this one. */
@@ -79,22 +81,23 @@ export function CompanionFacebookAction({
     };
   }, [installed, conversationId, pageId, threadId, checkReplyAvailability]);
 
+  const url = new URL(FACEBOOK_INBOX);
+  if (pageId) url.searchParams.set("asset_id", pageId);
+  if (threadId) url.searchParams.set("selected_item_id", threadId);
+
   async function open() {
-    /* The companion focuses a tab that is already open rather than stacking
-       another one. Without it, an ordinary new tab is the honest fallback. */
-    if (
-      installed &&
-      (await openInFacebook({ pageId, threadId, conversationId }))
-    ) {
+    if (opening) return;
+    if (!installed) {
+      window.open(url.toString(), "_blank", "noopener,noreferrer");
       return;
     }
-
-    const url = new URL(FACEBOOK_INBOX);
-
-    if (pageId) url.searchParams.set("asset_id", pageId);
-    if (threadId) url.searchParams.set("selected_item_id", threadId);
-
-    window.open(url.toString(), "_blank", "noopener,noreferrer");
+    setOpening(true);
+    setOpenFailed(false);
+    try {
+      setOpenFailed(!(await openInFacebook({ pageId, threadId, conversationId })));
+    } finally {
+      setOpening(false);
+    }
   }
 
   return (
@@ -102,6 +105,7 @@ export function CompanionFacebookAction({
       <button
         type="button"
         onClick={() => void open()}
+        disabled={opening}
         className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-amber-900 transition hover:bg-amber-100"
       >
         <svg
@@ -118,8 +122,15 @@ export function CompanionFacebookAction({
             strokeLinecap="round"
           />
         </svg>
-        Open in Facebook
+        {opening ? "Opening Facebook…" : "Open in Facebook"}
       </button>
+
+      {openFailed ? (
+        <a href={url.toString()} target="_blank" rel="noopener noreferrer"
+          className="text-[11px] font-bold underline">
+          Open customer in Business Suite
+        </a>
+      ) : null}
 
       {installed ? (
         <span className="text-[11px] leading-4 text-amber-800">

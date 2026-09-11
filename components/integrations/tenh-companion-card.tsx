@@ -152,6 +152,7 @@ export function TenhCompanionCard() {
         data.type === "TENH_EXTENSION_PONG" ||
         data.type === "TENH_EXTENSION_READY"
       ) {
+        if (data.error || data.requiresRefresh || typeof data.version !== "string") return;
         if (pending.current) window.clearTimeout(pending.current);
 
         setInstalled(true);
@@ -161,10 +162,13 @@ export function TenhCompanionCard() {
 
     window.addEventListener("message", onMessage);
 
-    window.postMessage(
+    const detect = () => window.postMessage(
       { source: "TENH_WEB", type: "TENH_EXTENSION_PING" },
       window.location.origin,
     );
+    detect();
+    window.addEventListener("focus", detect);
+    const detectionTimer = window.setInterval(detect, 15000);
 
     pending.current = window.setTimeout(
       () => setInstalled((current) => current ?? false),
@@ -173,6 +177,8 @@ export function TenhCompanionCard() {
 
     return () => {
       window.removeEventListener("message", onMessage);
+      window.removeEventListener("focus", detect);
+      window.clearInterval(detectionTimer);
       if (pending.current) window.clearTimeout(pending.current);
     };
   }, []);
@@ -202,11 +208,14 @@ export function TenhCompanionCard() {
   }, []);
 
   useEffect(() => {
-    void loadDevices();
+    const initial = window.setTimeout(() => void loadDevices(), 0);
 
     const timer = window.setInterval(() => void loadDevices(), 30_000);
 
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(timer);
+    };
   }, [loadDevices]);
 
   async function disconnect(deviceId: string) {

@@ -988,16 +988,15 @@ async function ensureManagedFacebookTab({ pageId, threadId, conversationId, acti
     url: ["https://www.facebook.com/*", "https://business.facebook.com/*"],
   });
   const exact = candidates.find((tab) => {
-    const url = tab.url ?? "";
-    const messengerSurface =
-      url.includes("business.facebook.com/latest/inbox") ||
-      url.includes("www.facebook.com/messages");
-
-    return (
-      messengerSurface &&
-      (!pageId || url.includes(encodeURIComponent(pageId)) || url.includes(pageId)) &&
-      (!facebookThreadId || url.includes(encodeURIComponent(facebookThreadId)) || url.includes(facebookThreadId))
-    );
+    try {
+      const url = new URL(tab.url ?? "");
+      return url.origin === "https://business.facebook.com" &&
+        url.pathname.startsWith("/latest/inbox/") &&
+        (!pageId || url.searchParams.get("asset_id") === String(pageId)) &&
+        (!facebookThreadId || url.searchParams.get("selected_item_id") === String(facebookThreadId));
+    } catch {
+      return false;
+    }
   });
 
   if (exact?.id) {
@@ -1199,7 +1198,7 @@ async function validateFacebookProfileCandidate({
   let candidateTab = null;
   try {
     candidateTab = await chrome.tabs.create({
-      url: profileUrl,
+      url: canonicalFacebookProfileUrl(profileUrl) ?? profileUrl,
       active: false,
     });
   } catch {
@@ -1238,6 +1237,10 @@ async function validateFacebookProfileCandidate({
         const verifiedUrl =
           typeof answer.url === "string" && answer.url ? answer.url : profileUrl;
         const canonicalUrl = canonicalFacebookProfileUrl(verifiedUrl) ?? verifiedUrl;
+        if (!isSafeFacebookProfileUrl(canonicalUrl, disallowedId)) {
+          lastReason = "unsafe_profile_redirect";
+          break;
+        }
 
         /* The visible destination should be the actual facebook.com profile,
            never Business Suite. Numeric /people/.../<id> routes are normalized
@@ -1386,7 +1389,7 @@ async function openFacebookCustomerProfile({
      "This content isn't available". Open each candidate in an inactive tab,
      let Facebook render it, and activate only a page that validates as a real
      profile for this customer. */
-  for (const profileUrl of profileUrls.slice(0, 8)) {
+  for (const profileUrl of profileUrls.slice(0, 2)) {
     const verified = await validateFacebookProfileCandidate({
       profileUrl,
       customerName,
@@ -1857,7 +1860,23 @@ function createAlarms() {
   chrome.alarms.create(SYNC_ALARM, { periodInMinutes: SYNC_MINUTES });
 }
 
+async function reconnectOpenTabs() {
+  const tabs = await chrome.tabs.query({ url: [
+    "https://app.tenhchat.com/*", "https://www.facebook.com/*", "https://business.facebook.com/*",
+  ] });
+  await Promise.allSettled(tabs.filter((tab) => tab.id).map((tab) =>
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: new URL(tab.url).hostname === "app.tenhchat.com"
+        ? ["src/tenh-bridge.js"]
+        : ["src/facebook-selectors.js", "src/facebook-bridge.js"],
+    }),
+  ));
+}
+
 chrome.runtime.onInstalled.addListener(() => {
+  void reconnectOpenTabs().catch(() => {});
+  void heartbeat("extension_updated");
   createAlarms();
   void chrome.action.setBadgeText({ text: "" }).catch(() => {});
   void chrome.storage.local.remove(["lastUnread", "notificationsEnabled"]);

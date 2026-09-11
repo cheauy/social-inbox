@@ -358,7 +358,7 @@ export async function processFacebookMessage(
       profileUpdate.full_name = customerName;
     }
 
-    if (customerProfilePictureUrl) {
+    if (customerProfilePictureUrl && !contact.profile_picture_url?.includes("/facebook-avatar")) {
       profileUpdate.profile_picture_url =
         customerProfilePictureUrl;
     }

@@ -1,5 +1,7 @@
 "use client";
 
+import { CustomerAvatar } from "@/components/customer-avatar";
+
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CustomerNotes } from "@/components/inbox/customer-notes";
@@ -7,7 +9,6 @@ import { CustomerFilesModal } from "@/components/inbox/customer-files-modal";
 import { ReminderModal } from "@/components/inbox/reminder-modal";
 import { ConversationReminderSummary } from "@/components/inbox/conversation-reminder-summary";
 import {
-  getInitial,
   getStatusClasses,
   getStatusLabel,
 } from "@/components/inbox/inbox-utils";
@@ -405,17 +406,8 @@ async function saveProfile() {
             title={isKhmer ? "មើលប្រវត្តិរូប Facebook" : "View Facebook profile"}
             aria-label={isKhmer ? "បើកប្រវត្តិរូប Facebook របស់អតិថិជន" : "Open customer Facebook profile"}
           >
-            {contact.profile_picture_url ? (
-              <img
-                src={contact.profile_picture_url}
-                alt={contact.full_name ?? (isKhmer ? "អតិថិជន Facebook" : "Facebook customer")}
-                className="h-full w-full object-cover transition duration-200 group-hover:scale-105"
-              />
-            ) : (
-              <span className="flex h-full w-full items-center justify-center bg-blue-100 text-2xl font-semibold text-blue-700">
-                {getInitial(contact.full_name)}
-              </span>
-            )}
+            <CustomerAvatar src={contact.profile_picture_url} name={contact.full_name}
+              contactId={contact.id} platform={activeConversation.social_account?.platform} eager className="h-full w-full text-2xl" />
 
             <span className="absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
               <span className="mb-1.5 rounded-full bg-black/55 px-2 py-0.5 text-[9px] font-semibold text-white">

@@ -1,5 +1,7 @@
 "use client";
 
+import { CustomerAvatar } from "@/components/customer-avatar";
+
 import Link from "next/link";
 import {
   useRouter,
@@ -1438,42 +1440,9 @@ const ConversationRow = memo(function ConversationRow({
                     }`}
                   >
                     <div className="relative mt-0.5 h-10 w-10 shrink-0">
-                      {customerAvatarUrl ? (
-                        /*
-                         * Lazy, because the list is every conversation in the
-                         * workspace and the busiest one here has 474 of them.
-                         * Without this the browser opened an avatar request
-                         * for every row on first paint -- hundreds of them,
-                         * nearly all for rows below the fold -- and each one
-                         * competed with the messages the agent was actually
-                         * waiting for.
-                         *
-                         * decoding="async" keeps the ones that do load off the
-                         * main thread, so an avatar arriving never blocks a
-                         * scroll or a keystroke.
-                         *
-                         * Sized by the class, and the container reserves the
-                         * same 40px, so nothing shifts when one lands.
-                         */
-                        <img
-                          src={
-                            customerAvatarUrl
-                          }
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                          width={40}
-                          height={40}
-                          referrerPolicy="no-referrer"
-                          className="h-10 w-10 rounded-full bg-slate-100 object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">
-                          {getInitial(
-                            customerName,
-                          )}
-                        </div>
-                      )}
+                      <CustomerAvatar src={customerAvatarUrl} name={customerName}
+                        contactId={conversation.contact?.id} platform={conversationPlatform}
+                        className="h-10 w-10 text-sm" />
 
                       {conversationPlatform ? (
                         <ChannelAvatarBadge
@@ -2024,51 +1993,29 @@ function ConversationListView({
     setLastServerStatus,
   ] = useState<StatusFilter>(activeStatus);
 
-  /*
-   * Every status change shows placeholder rows, in both directions.
-   *
-   * The rows themselves are ready in about 60ms now that the browser holds
-   * every status, so this is not covering a wait -- it is a deliberate beat
-   * so the list visibly changes rather than swapping under the reader, and so
-   * All to Closed and Closed to All behave the same way. Without a floor it
-   * would be a flicker, which is worse than no transition at all.
-   */
-  const STATUS_SKELETON_MS = 320;
-
-  const [
-    statusSwitching,
-    setStatusSwitching,
-  ] = useState(false);
-
-  const statusSkeletonTimerRef =
-    useRef<number | null>(null);
+  // Paint the loading feedback once, then show the already-filtered rows.
+  // A fixed timer adds latency even when all conversation data is in memory.
+  const [statusSwitching, setStatusSwitching] = useState(false);
+  const statusFrameRef = useRef<number | null>(null);
 
   const beginStatusSwitch = useCallback(() => {
-    if (statusSkeletonTimerRef.current !== null) {
-      window.clearTimeout(
-        statusSkeletonTimerRef.current,
-      );
+    if (statusFrameRef.current !== null) {
+      window.cancelAnimationFrame(statusFrameRef.current);
     }
-
     setStatusSwitching(true);
-
-    statusSkeletonTimerRef.current =
-      window.setTimeout(() => {
-        statusSkeletonTimerRef.current = null;
+    statusFrameRef.current = window.requestAnimationFrame(() => {
+      statusFrameRef.current = window.requestAnimationFrame(() => {
+        statusFrameRef.current = null;
         setStatusSwitching(false);
-      }, STATUS_SKELETON_MS);
+      });
+    });
   }, []);
 
-  useEffect(
-    () => () => {
-      if (statusSkeletonTimerRef.current !== null) {
-        window.clearTimeout(
-          statusSkeletonTimerRef.current,
-        );
-      }
-    },
-    [],
-  );
+  useEffect(() => () => {
+    if (statusFrameRef.current !== null) {
+      window.cancelAnimationFrame(statusFrameRef.current);
+    }
+  }, []);
 
   /*
    * Adjusted during render rather than in an effect.
@@ -4918,7 +4865,13 @@ function ConversationListView({
                           href={
                             href
                           }
-                          onClick={() => {
+                          onClick={(event) => {
+                            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                            if (filter.value === optimisticStatus) {
+                              event.preventDefault();
+                              setFilterOpen(false);
+                              return;
+                            }
                             setFilterOpen(
                               false,
                             );
@@ -5013,7 +4966,8 @@ function ConversationListView({
                         )}`
                       : "/dashboard/inbox"
                   }
-                  onClick={() => {
+                  onClick={(event) => {
+                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
                     /*
                      * This is the second way to change the status filter, and
                      * it has to behave like the first. Clearing from here was
@@ -5060,7 +5014,7 @@ function ConversationListView({
         ) : null}
 
 
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" aria-busy={statusSwitching}>
           {/*
             The skeleton wins over both the rows and the empty state, so a
             status with no conversations gets the same transition as one with

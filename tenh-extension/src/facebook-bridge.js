@@ -1,3 +1,7 @@
+(() => {
+const bridgeVersion = chrome.runtime.getManifest().version;
+if (globalThis.__tenh_facebook_bridge === bridgeVersion) return;
+globalThis.__tenh_facebook_bridge = bridgeVersion;
 /*
  * What the Facebook tab can see, reported when it changes.
  *
@@ -428,3 +432,5 @@ if (runtimeAvailable()) {
   report("facebook_detected");
   watch();
 }
+
+})();

@@ -1,3 +1,7 @@
+(() => {
+const bridgeVersion = chrome.runtime.getManifest().version;
+if (globalThis.__tenh_tenh_bridge === bridgeVersion) return;
+globalThis.__tenh_tenh_bridge = bridgeVersion;
 /*
  * TENH automatic session bridge.
  *
@@ -355,3 +359,5 @@ safePostMessage({
   type: "TENH_EXTENSION_READY",
   version: EXTENSION_VERSION,
 });
+
+})();

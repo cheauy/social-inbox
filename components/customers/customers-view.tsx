@@ -1,5 +1,7 @@
 "use client";
 
+import { CustomerAvatar } from "@/components/customer-avatar";
+
 import Link from "next/link";
 import {
   useEffect,
@@ -130,17 +132,6 @@ function formatDate(
       minute: "2-digit",
     },
   ).format(new Date(value));
-}
-
-function getInitial(
-  name: string,
-) {
-  return (
-    name
-      .trim()
-      .charAt(0)
-      .toUpperCase() || "C"
-  );
 }
 
 function getStatusClasses(
@@ -746,21 +737,8 @@ export function CustomersView() {
                           >
                             <td className="px-5 py-4">
                               <div className="flex items-center gap-3">
-                                {customer.profilePictureUrl ? (
-                                  <img
-                                    src={
-                                      customer.profilePictureUrl
-                                    }
-                                    alt=""
-                                    className="h-10 w-10 shrink-0 rounded-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
-                                    {getInitial(
-                                      customer.fullName,
-                                    )}
-                                  </div>
-                                )}
+                                <CustomerAvatar src={customer.profilePictureUrl} name={customer.fullName}
+ contactId={customer.id} platform="facebook" className="h-10 w-10 text-sm" />
 
                                 <div className="min-w-0">
                                   <p className="max-w-52 truncate font-semibold text-slate-900">
@@ -893,21 +871,8 @@ export function CustomersView() {
                         className="p-5"
                       >
                         <div className="flex items-start gap-3">
-                          {customer.profilePictureUrl ? (
-                            <img
-                              src={
-                                customer.profilePictureUrl
-                              }
-                              alt=""
-                              className="h-11 w-11 rounded-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-100 font-semibold text-blue-700">
-                              {getInitial(
-                                customer.fullName,
-                              )}
-                            </div>
-                          )}
+                          <CustomerAvatar src={customer.profilePictureUrl} name={customer.fullName}
+ contactId={customer.id} platform="facebook" className="h-10 w-10 text-sm" />
 
                           <div className="min-w-0 flex-1">
                             <p className="truncate font-semibold text-slate-900">

@@ -694,8 +694,10 @@ export async function POST(
     existingFullName ??
     null;
 
+  const savedPicture = contact.profile_picture_url?.includes("/facebook-avatar")
+    ? contact.profile_picture_url : null;
   const nextPicture =
-    discovered
+    savedPicture ?? discovered
       .profilePictureUrl ??
     contact
       .profile_picture_url ??
@@ -727,7 +729,7 @@ export async function POST(
   }
 
   if (
-    discovered
+    !savedPicture && discovered
       .profilePictureUrl &&
     discovered
       .profilePictureUrl !==
