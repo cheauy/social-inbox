@@ -11,9 +11,9 @@ Build the upload with:
 npm run extension:zip
 ```
 
-That writes `dist/tenh-v1-1.0.0.zip` from the `tenh-extension` folder. Upload
-that file; the store rejects a zip of the parent folder, so use this script
-rather than zipping by hand.
+That writes `dist/tenh-v1-<version>.zip` from the `tenh-extension` folder, named
+after the version in `manifest.json`. Upload that file; the store rejects a zip
+of the parent folder, so use this script rather than zipping by hand.
 
 ---
 
@@ -24,7 +24,7 @@ rather than zipping by hand.
    one: the owner cannot be changed later without transferring the whole
    developer account.
 2. Pay the one-time **$5** registration if this account has never published.
-3. **Add new item** → upload `dist/tenh-v1-1.0.0.zip`.
+3. **Add new item** → upload the newest `dist/tenh-v1-<version>.zip`.
 
 ---
 
