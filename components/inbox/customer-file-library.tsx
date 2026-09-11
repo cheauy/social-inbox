@@ -93,7 +93,7 @@ export function CustomerFileLibrary({ items, tab, onTab, loading, deletingId, on
             <div className={tab === "media" ? "grid grid-cols-2 gap-3 sm:grid-cols-3" : "divide-y divide-[#E3EAF2] overflow-hidden rounded-2xl border border-[#E3EAF2]"}>
               {entries.map((item) => tab === "media" ? <article key={item.id} className="overflow-hidden rounded-xl border border-[#E3EAF2] bg-white">
                 <button type="button" disabled={!item.url} onClick={() => setPreview(item)} aria-label={`View ${item.kind}: ${item.name}`} className="relative block aspect-square w-full overflow-hidden bg-[#F6F8FC] disabled:opacity-50">
-                  {item.kind === "image" && item.url ? <img src={item.url} alt={item.name} loading="lazy" className="h-full w-full object-cover" /> : item.url ? <video src={item.url} preload="metadata" muted playsInline className="h-full w-full object-cover" /> : <Images className="mx-auto text-[#6D7E91]" />}
+                  {item.kind === "image" && item.url ? <img src={item.url} alt={item.name} loading="lazy" className="h-full w-full object-cover" /> : item.url ? <video src={item.url} preload="none" muted playsInline className="h-full w-full object-cover" /> : <Images className="mx-auto text-[#6D7E91]" />}
                   {item.kind === "video" ? <span className="absolute inset-0 flex items-center justify-center"><span className="rounded-full bg-black/50 p-3 text-white"><Play size={20} fill="currentColor" /></span></span> : null}
                 </button>
                 <div className="px-1 py-1.5">{actions(item)}</div>
@@ -103,7 +103,7 @@ export function CustomerFileLibrary({ items, tab, onTab, loading, deletingId, on
                   {item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer" className="block break-words text-sm font-semibold text-[#102238] hover:text-[#0089CC]">{item.name}</a> : <p className="break-words text-sm font-semibold text-[#102238]">{item.name}</p>}
                   {item.kind === "link" && item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer" className="mt-1 block break-all text-xs text-[#0089CC]">{item.url}</a> : null}
                   <p className="mt-1 text-xs text-[#6D7E91]">{item.detail}</p>
-                  {item.kind === "audio" && item.url ? <audio src={item.url} controls preload="metadata" className="mt-2 w-full max-w-xs" /> : null}
+                  {item.kind === "audio" && item.url ? <audio src={item.url} controls preload="none" className="mt-2 w-full max-w-xs" /> : null}
                 </div>
                 {actions(item)}
               </article>)}

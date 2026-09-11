@@ -1959,7 +1959,9 @@ function applyRealtimeTagActivity(
   );
 }
 
+const realtimeHealthyRef = useRef(false);
 useInboxRealtime({
+  onConnectionState: (healthy) => { realtimeHealthyRef.current = healthy; },
   businessIds:
     realtimeBusinessIds,
 
@@ -3639,7 +3641,7 @@ useEffect(() => {
     timer = window.setTimeout(async () => {
       await syncCollaborativeState();
       scheduleNext();
-    }, 3000);
+    }, realtimeHealthyRef.current ? 30_000 : 5_000);
   }
 
   function handleVisibilityOrFocus() {
@@ -5157,7 +5159,7 @@ useEffect(() => {
     timer = window.setTimeout(async () => {
       await syncNewestMessages();
       scheduleNext();
-    }, 2000);
+    }, realtimeHealthyRef.current ? 30_000 : 3_000);
   }
 
   function syncWhenVisible() {

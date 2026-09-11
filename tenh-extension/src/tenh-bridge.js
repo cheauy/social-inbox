@@ -202,6 +202,7 @@ window.addEventListener("message", (event) => {
   const outgoing = {
     type: data.type,
     pageId: typeof data.pageId === "string" ? data.pageId : undefined,
+    businessId: typeof data.businessId === "string" ? data.businessId.slice(0, 100) : undefined,
     threadId: typeof data.threadId === "string" ? data.threadId : undefined,
     conversationId:
       typeof data.conversationId === "string" ? data.conversationId : undefined,

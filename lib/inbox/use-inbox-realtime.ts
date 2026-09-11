@@ -45,13 +45,18 @@ type UseInboxRealtimeInput = {
    * relations are not contained in the raw realtime row.
    */
   onFallbackRefresh?: () => void;
+  onConnectionState?: (healthy: boolean) => void;
 };
 
 export function useInboxRealtime({
   businessIds,
   onRealtimeEvent,
   onFallbackRefresh,
+  onConnectionState,
 }: UseInboxRealtimeInput) {
+  const connectionCallback = useRef(onConnectionState);
+  useEffect(() => { connectionCallback.current = onConnectionState; }, [onConnectionState]);
+
   const eventCallbackRef =
     useRef(onRealtimeEvent);
 
@@ -100,6 +105,8 @@ export function useInboxRealtime({
       return;
     }
 
+    const readyBusinesses = new Set<string>();
+    connectionCallback.current?.(false);
     const supabase =
       createClient();
 
@@ -412,12 +419,19 @@ export function useInboxRealtime({
                   status ===
                     "SUBSCRIBED"
                 ) {
+                  readyBusinesses.add(businessId);
+                  connectionCallback.current?.(readyBusinesses.size === scopedBusinessIds.length);
                   consecutiveTransientErrors = 0;
 
                   console.log(
                     "[Tenh Realtime V3.11.31.39] ✅ SUBSCRIPTION REALTIME READY",
                     businessId,
                   );
+                }
+
+                if (status !== "SUBSCRIBED") {
+                  readyBusinesses.delete(businessId);
+                  connectionCallback.current?.(false);
                 }
 
                 if (
@@ -471,6 +485,7 @@ export function useInboxRealtime({
         );
 
     return () => {
+      connectionCallback.current?.(false);
       cancelled =
         true;
 

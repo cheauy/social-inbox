@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
+import { observedSupabaseFetch } from "@/lib/server/usage-context";
 
 const supabaseUrl =
   process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -24,6 +25,7 @@ export const supabaseAdmin = createClient(
   supabaseUrl,
   secretKey,
   {
+    global: { fetch: observedSupabaseFetch },
     auth: {
       autoRefreshToken: false,
       persistSession: false,

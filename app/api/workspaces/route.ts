@@ -1,3 +1,4 @@
+import { withRequestScope } from "@/lib/server/request-scope";
 import { NextResponse } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
@@ -75,7 +76,7 @@ function isOperationalSubscription(subscription: SubscriptionRow | null) {
   return !isPeriodEnded(end);
 }
 
-export async function GET() {
+async function handleGET() {
   const authResult = await getCurrentMember();
 
   if (!authResult.success) {
@@ -344,3 +345,5 @@ export async function PATCH(request: Request) {
     businessName: data.name,
   });
 }
+
+export const GET = withRequestScope(handleGET);

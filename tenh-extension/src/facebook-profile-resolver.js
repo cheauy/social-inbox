@@ -1,159 +1,148 @@
-/* Resolve profile links from Meta's UI. Never derive a public ID from a PSID. */
+/* User-requested profile lookup. Uses only the loaded Page conversation UI.
+ * Never converts a Messenger PSID into a public-profile ID or picks a customer
+ * by name alone. Existing sync, sending, tags and quick replies are independent.
+ */
 globalThis.TenhFacebookProfileResolver = (() => {
-  const normalize = (value) => String(value ?? "").normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
-  const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden"; };
-  const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const version = "1.2.18";
+  const normalize = value => String(value ?? "").normalize("NFKC")
+    .replace(/[\u200b-\u200d\ufeff]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const visible = el => {
+    const r = el.getBoundingClientRect(), style = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+  };
+  let lookupRunning = false;
+
   function pageMatches(pageId) {
     const url = new URL(location.href);
-    const ids = ["asset_id", "page_id", "mailbox_id"].map((key) => url.searchParams.get(key)).filter(Boolean);
-    return url.origin === "https://business.facebook.com" && url.pathname.startsWith("/latest/inbox/") && ids.length > 0 && ids.every((id) => id === pageId);
+    const ids = ["asset_id", "page_id", "mailbox_id"].flatMap(key => url.searchParams.getAll(key));
+    return url.origin === "https://business.facebook.com" && url.pathname.startsWith("/latest/inbox/") &&
+      ids.length > 0 && ids.every(id => id === pageId);
+  }
+  function contextReason(options) {
+    const threadId = options.threadId || options.disallowedId;
+    if (!/^\d{5,32}$/.test(options.pageId || "") || !/^\d{5,32}$/.test(threadId || "") || !normalize(options.customerName)) {
+      return "profile_context_incomplete";
+    }
+    if (document.querySelector('input[type="password"]') || /\/(login|checkpoint)([/.]|$)/.test(location.pathname)) {
+      return "facebook_sign_in_required";
+    }
+    if (!pageMatches(options.pageId)) return "page_mismatch_or_sign_in";
+    const url = new URL(location.href);
+    const selected = url.searchParams.getAll("selected_item_id");
+    const type = url.searchParams.get("thread_type");
+    if (selected.length !== 1 || selected[0] !== threadId || (type && type !== "FB_MESSAGE")) {
+      return "conversation_mismatch";
+    }
+    return null;
   }
   function searchBox() {
-    return [...document.querySelectorAll('input')].find((el) => visible(el) &&
+    return [...document.querySelectorAll("input")].find(el => visible(el) &&
       /search|ស្វែងរក/i.test([el.getAttribute("aria-label"), el.placeholder, el.type].join(" ")) &&
       el.getBoundingClientRect().left < innerWidth * 0.5);
   }
   function exactNames(root, name) {
     return [...root.querySelectorAll('span, strong, [dir="auto"], [role="heading"], h1, h2, h3')]
-      .filter((el) => normalize(el.textContent) === name && ![...el.children].some((child) => normalize(child.textContent) === name));
+      .filter(el => visible(el) && normalize(el.textContent) === name &&
+        ![...el.children].some(child => normalize(child.textContent) === name));
   }
+  // Kept for diagnostics/compatibility. Lookup no longer clicks a same-name row.
   function matchingRows(input, name) {
-    const searchRect = input.getBoundingClientRect();
-    const rows = new Set();
-    for (const label of exactNames(document, name)) {
-      const rect = label.getBoundingClientRect();
-      if (!visible(label) || rect.left > searchRect.right || rect.top < searchRect.bottom) continue;
-      let row = label.closest('[role="row"], [role="option"], [role="button"], a[href], [tabindex="0"]');
-      if (!row) {
-        row = label;
-        for (let parent = label.parentElement; parent; parent = parent.parentElement) {
-          const box = parent.getBoundingClientRect();
-          if (box.height > 160 || box.right > innerWidth * 0.6) break;
-          if (box.width >= searchRect.width && box.height >= 35) { row = parent; break; }
-        }
-      }
-      const box = row.getBoundingClientRect();
-      if (box.height <= 160 && box.right <= innerWidth * 0.6) rows.add(row);
-    }
-    // Nested wrappers around the same result count once; separate rows remain ambiguous.
-    return [...rows].filter((row, _, all) => !all.some((other) => other !== row && other.contains(row)));
+    if (!input) return [];
+    const boundary = input.getBoundingClientRect();
+    return [...new Set(exactNames(document, normalize(name)).flatMap(label => {
+      const r = label.getBoundingClientRect();
+      const row = label.closest('[role="row"], [role="option"], [role="button"], a[href], [tabindex="0"]');
+      return row && r.left <= boundary.right && r.top >= boundary.bottom ? [row] : [];
+    }))];
+  }
+  function contentBoundary(input) {
+    return input ? input.getBoundingClientRect().right : Math.min(innerWidth * 0.28, 430);
   }
   function profileLinks(input, name, disallowedId) {
     const urls = new Set();
+    const wanted = normalize(name), leftBoundary = contentBoundary(input);
     for (const anchor of document.querySelectorAll('a[href]')) {
-      if (!visible(anchor) || anchor.getBoundingClientRect().left <= input.getBoundingClientRect().right) continue;
-      const label = normalize(anchor.textContent || anchor.getAttribute("aria-label"));
-      if (!/view profile|មើលប្រវត្តិរូប/.test(label)) continue;
+      if (!visible(anchor) || anchor.getBoundingClientRect().left <= leftBoundary ||
+          anchor.closest('nav, [role="navigation"], [role="row"], [role="option"]')) continue;
+      const labels = [anchor.textContent, anchor.getAttribute("aria-label"), anchor.getAttribute("title"),
+        anchor.querySelector("img")?.getAttribute("alt")].map(normalize);
+      if (!labels.some(label => label === wanted || /^(view (facebook )?profile|មើលប្រវត្តិរូប)$/i.test(label))) continue;
       const url = globalThis.TenhFacebookSelectors.profileCandidateUrl(anchor.getAttribute("href"));
       if (!url) continue;
       const parsed = new URL(url);
       const publicId = parsed.searchParams.get("id") || parsed.pathname.match(/\/(\d+)\/?$/)?.[1];
       if (publicId && publicId === disallowedId) continue;
       for (let node = anchor.parentElement, depth = 0; node && depth < 5; node = node.parentElement, depth++) {
-        // Only the compact identity card, never the entire inbox or sidebar.
-        if (normalize(node.textContent).length > 500 || node.getBoundingClientRect().height > 260) break;
-        if (exactNames(node, name).length) { urls.add(url); break; }
+        // Only the compact customer header/detail card, not a whole chat/history.
+        const box = node.getBoundingClientRect();
+        if (normalize(node.textContent).length > 700 || box.height > 400 ||
+            node.matches('body, main, [role="main"], [role="log"], [role="feed"]')) break;
+        if (exactNames(node, wanted).length) { urls.add(url); break; }
       }
     }
     return [...urls];
   }
-  async function readCurrent({ pageId, customerName, disallowedId }) {
-    if (lookupRunning) return { reason: "profile_lookup_busy" };
-    const name = normalize(customerName);
-    if (!/^\d+$/.test(pageId) || !name) return { reason: "profile_context_incomplete" };
-    if (!pageMatches(pageId)) return { reason: "page_mismatch_or_sign_in" };
-    const input = searchBox();
-    const before = location.href;
-    const url = new URL(before);
-    const selected = url.searchParams.get("selected_item_id");
-    if (!input || !selected || url.searchParams.get("thread_type") !== "FB_MESSAGE") return { reason: "profile_link_missing" };
-    const rows = matchingRows(input, name);
-    if (rows.length > 1) return { reason: "ambiguous_customer" };
-    if (!rows.length) return { reason: "profile_link_missing" };
-    const links = profileLinks(input, name, disallowedId);
+  function snapshot(options) {
+    const reason = contextReason(options);
+    if (reason) return { reason };
+    const threadId = options.threadId || options.disallowedId;
+    const links = profileLinks(searchBox(), options.customerName, threadId);
     if (links.length > 1) return { reason: "ambiguous_profile" };
     if (!links.length) return { reason: "profile_link_missing" };
-    // Read only: do not focus, search, click, navigate or open Business Suite.
-    await pause(350);
-    const settled = profileLinks(input, name, disallowedId);
-    if (location.href !== before || !pageMatches(pageId) || settled.length !== 1 || settled[0] !== links[0]) return { reason: "profile_link_missing" };
-    return { profileUrl: links[0], pageId, selectedItemId: selected };
+    return { profileUrl: links[0], pageId: options.pageId, selectedItemId: threadId,
+      matchedThreadId: threadId, matchedBy: "page_and_thread" };
   }
-  function fullSearchAction(input) {
-    const searchRect = input.getBoundingClientRect();
-    const labels = [...document.querySelectorAll('button, [role="button"], [role="option"], a, span, [dir="auto"]')]
-      .filter((el) => visible(el) && /^search in (messenger|facebook) conversations$/i.test(normalize(el.textContent)));
-    for (const label of labels) {
-      const action = label.closest('button, [role="button"], [role="option"], a, [tabindex="0"]') || label;
-      const box = action.getBoundingClientRect();
-      // Meta's deeper-search suggestion belongs below the left inbox search.
-      if (box.top >= searchRect.bottom && box.top < searchRect.bottom + 240 &&
-          box.left >= searchRect.left - 30 && box.right <= innerWidth * 0.6 && box.height <= 100) return action;
+  async function readCurrent(options) {
+    if (lookupRunning) return { reason: "profile_lookup_busy" };
+    const before = location.href, result = snapshot(options);
+    if (!result.profileUrl) return result;
+    await pause(400);
+    const settled = snapshot(options);
+    if (location.href !== before || settled.profileUrl !== result.profileUrl) {
+      return { reason: settled.reason || "profile_lookup_interrupted" };
     }
-    return null;
+    return settled;
   }
-  async function resolve({ pageId, customerName, disallowedId }) {
-    const name = normalize(customerName);
-    if (!/^\d+$/.test(pageId) || !name) return { reason: "profile_context_incomplete" };
-    const deadline = Date.now() + 30000;
-    const valid = () => document.visibilityState === "hidden" && pageMatches(pageId) && !document.querySelector('input[type="password"]');
-    let input;
-    while (Date.now() < deadline && valid() && !(input = searchBox())) await pause(250);
-    if (!valid()) return { reason: document.visibilityState !== "hidden" ? "facebook_tab_in_use" : "page_mismatch_or_sign_in" };
-    if (!input) return { reason: "search_unavailable" };
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, customerName);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-    await pause(1800);
-    let row = null, stableAt = 0, submitted = false;
-    while (Date.now() < deadline && valid()) {
-      input = searchBox() || input;
-      if (normalize(input.value) !== name) return { reason: "search_interrupted" };
-      const searchAction = !submitted && fullSearchAction(input);
-      if (searchAction) {
-        searchAction.click();
-        submitted = true;
-        row = null;
-        stableAt = 0;
-        await pause(1800);
-        continue;
-      }
-      const matches = matchingRows(input, name);
-      if (matches.length > 1) return { reason: "ambiguous_customer" };
-      const candidate = matches[0];
-      if (candidate && candidate === row && !document.querySelector('[aria-busy="true"], [role="progressbar"]')) {
-        if (Date.now() - stableAt >= 1200) break;
-      } else { row = candidate ?? null; stableAt = Date.now(); }
-      await pause(300);
-    }
-    if (!valid()) return { reason: document.visibilityState !== "hidden" ? "facebook_tab_in_use" : "page_mismatch_or_sign_in" };
-    if (!row || Date.now() >= deadline) return { reason: "customer_not_found" };
-    const before = new URL(location.href).searchParams.get("selected_item_id");
-    row.click();
-    // Wait for the identity card to settle after selecting the search result.
-    await pause(1200);
-    let lastUrl = null, urlSince = 0;
-    while (Date.now() < deadline && valid()) {
-      const url = new URL(location.href);
-      const selected = url.searchParams.get("selected_item_id");
-      if (!selected || (url.searchParams.get("thread_type") && url.searchParams.get("thread_type") !== "FB_MESSAGE")) { await pause(250); continue; }
-      const links = profileLinks(input, name, disallowedId);
-      if (links.length > 1) return { reason: "ambiguous_profile" };
-      if (links.length === 1) {
-        if (lastUrl === links[0] && Date.now() - urlSince >= 900) return { profileUrl: links[0], pageId, selectedItemId: selected, changedSelection: selected !== before };
-        if (lastUrl !== links[0]) { lastUrl = links[0]; urlSince = Date.now(); }
-      } else { lastUrl = null; }
-      await pause(300);
-    }
-    return { reason: "profile_link_unavailable" };
+  function revealIdentityDetails(options) {
+    if (contextReason(options) || document.visibilityState !== "hidden") return false;
+    const name = normalize(options.customerName), boundary = contentBoundary(searchBox());
+    const controls = [...document.querySelectorAll('button[aria-controls], [role="button"][aria-controls], button[aria-expanded="false"], [role="button"][aria-expanded="false"]')]
+      .filter(el => {
+        const r = el.getBoundingClientRect();
+        return visible(el) && !el.closest('a[href], [role="row"], [role="option"]') &&
+          r.left > boundary && r.top < Math.min(innerHeight * 0.5, 360) &&
+          [normalize(el.textContent), normalize(el.getAttribute("aria-label"))].includes(name);
+      });
+    // Reveal details only. Never click an unknown View profile/send/menu action.
+    if (controls.length !== 1) return false;
+    controls[0].click();
+    return true;
   }
-  let lookupRunning = false;
   async function resolveAutomatic(options) {
     if (lookupRunning) return { reason: "profile_lookup_busy" };
     if (document.visibilityState !== "hidden") return { reason: "facebook_tab_in_use" };
     lookupRunning = true;
-    try { return await resolve(options); }
-    finally { lookupRunning = false; }
+    try {
+      const deadline = Date.now() + 10500;
+      let previous = null, stableAt = 0, revealed = false;
+      while (Date.now() < deadline) {
+        if (document.visibilityState !== "hidden") return { reason: "facebook_tab_in_use" };
+        const reason = contextReason(options);
+        if (reason) return { reason };
+        const result = snapshot(options);
+        if (result.reason === "ambiguous_profile") return result;
+        if (result.profileUrl) {
+          if (result.profileUrl === previous && Date.now() - stableAt >= 800) return result;
+          if (result.profileUrl !== previous) { previous = result.profileUrl; stableAt = Date.now(); }
+        } else {
+          previous = null;
+          if (!revealed) revealed = revealIdentityDetails(options);
+        }
+        await pause(300);
+      }
+      return { reason: "profile_link_unavailable" };
+    } finally { lookupRunning = false; }
   }
-  return { readCurrent, resolveAutomatic, pageMatches, matchingRows, profileLinks };
+  return { version, readCurrent, resolveAutomatic, pageMatches, matchingRows, profileLinks };
 })();

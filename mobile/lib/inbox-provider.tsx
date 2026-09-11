@@ -1,3 +1,4 @@
+import { SerialTaskQueue } from "./serial-task-queue";
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { api, ApiError } from "./api/client";
@@ -9,7 +10,7 @@ import type { InboxConversation, Member, TeamRoom, Workspace } from "./types";
 
 type InboxState = {
   workspaces: Workspace[]; workspace: Workspace | null; member: Member | null;
-  conversations: InboxConversation[]; loading: boolean; error: string; live: boolean; revision: number; settingsRevision: number;
+  conversations: InboxConversation[]; loading: boolean; error: string; live: boolean; revision: number; roomRevision: number; settingsRevision: number;
 
   /*
    * What this member is allowed to do here, as the server resolved it.
@@ -80,6 +81,7 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
   const [error, setError] = useState("");
   const [live, setLive] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [roomRevision, setRoomRevision] = useState(0);
   const [settingsRevision, setSettingsRevision] = useState(0);
   const [rooms, setRooms] = useState<TeamRoom[]>([]);
   const [roomsLoading, setRoomsLoading] = useState(true);
@@ -108,6 +110,8 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     return () => { alive.current = false; generation.current++; };
   }, []);
   const clear = useCallback(() => { workspaceRef.current = null; setWorkspace(null); mergedRef.current = []; setMerged([]); setMember(null); setPermissions({}); setConversations([]); setRooms([]); setRoomsLoading(true); setRoomsBadge(0); setAlertsBadge(0); setRoster([]); setCanManageRooms(false); }, []);
+  const conversationSnapshot = useRef(conversations);
+  conversationSnapshot.current = conversations;
   const loadWorkspaces = useCallback(async (quiet = false) => {
     if (!session) {
       generation.current++;
@@ -191,21 +195,37 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
 
   const selectWorkspace = useCallback((next: Workspace) => openWorkspaces([next]), [openWorkspaces]);
 
-  const refresh = useCallback(async () => {
+  const executeRefresh = useCallback(async (conversationIds?: string[]) => {
     const selected = workspaceRef.current;
     if (!selected) return;
     const current = generation.current, sequence = ++request.current;
     try {
       const ids = mergedRef.current.length > 0 ? mergedRef.current : [selected.businessId];
-      const data = await api<{ conversations: InboxConversation[]; member: Member; permissions?: Record<string, string | boolean> }>(`/api/mobile/bootstrap?workspaceIds=${encodeURIComponent(ids.join(","))}`, selected.businessId);
+      const data = await api<{ conversations: InboxConversation[]; member: Member; permissions?: Record<string, string | boolean>; removedConversationIds?: string[] }>(`/api/mobile/bootstrap?workspaceIds=${encodeURIComponent(ids.join(","))}${conversationIds ? `&conversationIds=${encodeURIComponent(conversationIds.join(","))}` : ""}`, selected.businessId);
       if (!alive.current || current !== generation.current || sequence !== request.current) return;
-      setConversations(data.conversations); setMember(data.member); setPermissions(data.permissions ?? {}); setError("");
+      setConversations(previous => {
+        if (!conversationIds) return data.conversations;
+        const updates = new Map(data.conversations.map(row => [row.id, row]));
+        const removed = new Set(data.removedConversationIds ?? []);
+        return [...previous.filter(row => !removed.has(row.id) && !updates.has(row.id)), ...updates.values()]
+          .sort((a, b) => Number(Boolean(b.is_pinned)) - Number(Boolean(a.is_pinned)) || Date.parse(b.last_message_at ?? "1970-01-01") - Date.parse(a.last_message_at ?? "1970-01-01"));
+      }); setMember(data.member); setPermissions(data.permissions ?? {}); setError("");
     } catch (e) {
       if (!alive.current || current !== generation.current || sequence !== request.current) return;
       setError(e instanceof Error ? e.message : "Unable to load Inbox.");
       if (e instanceof ApiError && [401, 403].includes(e.status)) clear();
     } finally { if (alive.current && current === generation.current && sequence === request.current) setLoading(false); }
   }, [clear]);
+  // Serialize full and targeted refreshes: a fast single-row response must
+  // never cancel a slower initial full list and leave just one conversation.
+  const refreshQueue = useRef(new SerialTaskQueue());
+  const refresh = useCallback((ids?: string[]) => {
+    const expectedGeneration = generation.current;
+    const pending = refreshQueue.current.run(async () => {
+      if (alive.current && expectedGeneration === generation.current) await executeRefresh(ids);
+    });
+    return pending;
+  }, [executeRefresh]);
   const refreshAlerts = useCallback(async () => {
     const selected = workspaceRef.current;
     if (!selected) return;
@@ -247,10 +267,41 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     if (!workspace?.businessId) return;
     setLoading(true); setRoomsLoading(true); void refresh(); void refreshRooms(); void refreshAlerts();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const changed = () => { clearTimeout(timer); timer = setTimeout(() => { setRevision(v => v + 1); void refresh(); void refreshRooms(); void refreshAlerts(); }, 300); };
+    let fullInbox = false, roomsDirty = false, threadDirty = false, flushing = false, disposed = false, subscribedOnce = false;
+    const changedIds = new Set<string>();
+    const changed = (kind: "inbox" | "rooms" | "conversation", id?: string) => {
+      if (kind === "inbox") fullInbox = true;
+      if (kind === "rooms") roomsDirty = true;
+      if (kind === "conversation" && id && !fullInbox) changedIds.add(id);
+      if (changedIds.size > 500) { fullInbox = true; changedIds.clear(); }
+      // A continuous message stream must not postpone the refresh forever.
+      if (!timer) timer = setTimeout(flush, 300);
+    };
+    async function flush() {
+      timer = undefined;
+      if (disposed || flushing || AppState.currentState !== "active") return;
+      flushing = true;
+      const all = fullInbox, rooms = roomsDirty, ids = [...changedIds];
+      if (threadDirty) setRevision(v => v + 1);
+      if (rooms) setRoomRevision(v => v + 1);
+      threadDirty = false;
+      fullInbox = false; roomsDirty = false; changedIds.clear();
+      try {
+        if (all) await refresh();
+        else for (let i = 0; i < ids.length && !disposed; i += 50) await refresh(ids.slice(i, i + 50));
+        if (rooms && !disposed) await refreshRooms();
+      } finally {
+        flushing = false;
+        if (!disposed && (fullInbox || roomsDirty || changedIds.size)) timer = setTimeout(flush, 300);
+      }
+    }
+    const resumed = AppState.addEventListener("change", state => {
+      if (state === "active") { setRevision(v => v + 1); setRoomRevision(v => v + 1); changed("inbox"); changed("rooms"); }
+    });
     const settingsChanged = () => {
+      threadDirty = true;
       setSettingsRevision(value => value + 1);
-      changed();
+      changed("inbox");
     };
     /*
      * Every workspace in the merged list is listened to, not just the active
@@ -268,7 +319,26 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
        * happened to reopen the app. Removal is the same fact in reverse, and
        * matters more.
        */
-      for (const table of ["messages", "conversations", "contacts", "team_chat_messages", "team_chat_rooms", "team_chat_room_members"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${id}` }, changed);
+      for (const table of ["messages", "conversations", "contacts", "team_chat_messages", "team_chat_rooms", "team_chat_room_members"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${id}` }, payload => {
+        if (table === "messages") {
+          threadDirty = true;
+          const row = ((payload.new as { conversation_id?: string })?.conversation_id ? payload.new : payload.old) as { conversation_id?: string };
+          if (row.conversation_id) changed("conversation", row.conversation_id);
+          else changed("inbox");
+          return;
+        }
+        if (table.startsWith("team_chat_")) { changed("rooms"); return; }
+        if (table === "contacts") {
+          threadDirty = true;
+          const row = ((payload.new as { id?: string })?.id ? payload.new : payload.old) as { id?: string };
+          for (const conversation of conversationSnapshot.current) {
+            if (conversation.contact?.id === row.id) changed("conversation", conversation.id);
+          }
+          return;
+        }
+        const row = ((payload.new as { id?: string })?.id ? payload.new : payload.old) as { id?: string };
+        if (typeof row.id === "string") changed("conversation", row.id);
+      });
     /*
      * The alert tone, on the arrival itself rather than on the reload the
      * arrival triggers: `changed` is debounced and fires for edits, reads and
@@ -278,8 +348,8 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       channel = channel.on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `business_id=eq.${id}` }, payload => { if ((payload.new as { direction?: string } | null)?.direction === "incoming") alert.current(); });
     for (const id of listening)
       for (const table of ["social_accounts", "tags", "saved_replies", "saved_reply_categories"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${id}` }, settingsChanged);
-    channel.subscribe(status => { setLive(status === "SUBSCRIBED"); if (status === "SUBSCRIBED") changed(); });
-    return () => { clearTimeout(timer); void supabase.removeChannel(channel); setLive(false); };
+    channel.subscribe(status => { setLive(status === "SUBSCRIBED"); if (status === "SUBSCRIBED") { if (subscribedOnce) { threadDirty = true; changed("inbox"); changed("rooms"); } subscribedOnce = true; } });
+    return () => { disposed = true; clearTimeout(timer); resumed.remove(); void supabase.removeChannel(channel); setLive(false); };
   }, [workspace?.businessId, merged.join(","), refresh, refreshRooms, refreshAlerts]);
 
   /*
@@ -305,7 +375,7 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     for (const table of ["businesses", "business_subscriptions", "team_members"])
       channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, sync);
     channel.subscribe();
-    const poll = setInterval(() => void loadWorkspaces(true), 20_000);
+    const poll = setInterval(() => { if (AppState.currentState === "active") void loadWorkspaces(true); }, 60_000);
     const listener = AppState.addEventListener("change", state => {
       if (state === "active") sync();
     });
@@ -328,6 +398,7 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     if (!session || !workspace) return;
     const memberIds = notificationMembers ? notificationMembers.split("|") : [];
     const updated = () => {
+      if (AppState.currentState !== "active") return;
       setAlertsRevision(value => value + 1);
       void refreshAlerts();
     };
@@ -341,7 +412,7 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
         })
         .subscribe(),
     );
-    const poll = setInterval(updated, 30_000);
+    const poll = setInterval(updated, 60_000);
     const listener = AppState.addEventListener("change", state => {
       if (state === "active") updated();
     });
@@ -361,5 +432,5 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       ),
     );
   }, []);
-  return <Context.Provider value={{ workspaces, workspace, member, conversations, permissions, loading, error, live, revision, settingsRevision, refresh, loadWorkspaces, selectWorkspace, merged, openWorkspaces, updateConversation, updateContactTags, rooms, roomsLoading, roomsBadge, alertsBadge, alertsRevision, refreshAlerts, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ workspaces, workspace, member, conversations, permissions, loading, error, live, revision, roomRevision, settingsRevision, refresh, loadWorkspaces, selectWorkspace, merged, openWorkspaces, updateConversation, updateContactTags, rooms, roomsLoading, roomsBadge, alertsBadge, alertsRevision, refreshAlerts, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
 }

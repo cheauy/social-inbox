@@ -1,3 +1,4 @@
+import { loadStoredAvatar } from "@/lib/media/load-stored-avatar";
 import {
   NextRequest,
   NextResponse,
@@ -107,18 +108,12 @@ export async function GET(
     data,
     error,
   } =
-    await supabaseAdmin.storage
-      .from(
-        FACEBOOK_AVATAR_BUCKET,
-      )
-      .download(
-        storagePath,
-      );
+    await loadStoredAvatar(FACEBOOK_AVATAR_BUCKET, storagePath);
 
   if (error || !data) {
     const repaired = await repairFacebookAvatar(authResult.member.business_id, contact.id);
     if (repaired) {
-      ({ data, error } = await supabaseAdmin.storage.from(FACEBOOK_AVATAR_BUCKET).download(storagePath));
+      ({ data, error } = await loadStoredAvatar(FACEBOOK_AVATAR_BUCKET, storagePath));
     }
   }
 

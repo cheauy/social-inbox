@@ -1,4 +1,5 @@
 import "server-only";
+import { requestMemo } from "@/lib/server/request-scope";
 
 import {
   getCurrentMember,
@@ -60,7 +61,12 @@ function isOperationalSubscription(subscription: SubscriptionStateRow | null) {
   return !isPeriodEnded(end);
 }
 
-async function loadLatestSubscriptions(businessIds: string[]) {
+function loadLatestSubscriptions(businessIds: string[]) {
+  const ids = [...new Set(businessIds)].sort();
+  return requestMemo(`inbox-subscriptions:${ids.join(",")}`, () => readLatestSubscriptions(ids));
+}
+
+async function readLatestSubscriptions(businessIds: string[]) {
   if (businessIds.length === 0) {
     return new Map<string, SubscriptionStateRow>();
   }
@@ -228,6 +234,7 @@ export async function getInboxConversationScope(): Promise<
 type InboxConversationFilter = {
   channelId?: string | null;
   workspaceId?: string | null;
+  conversationIds?: string[];
 };
 
 export async function getConversations(
@@ -351,10 +358,7 @@ export async function getConversations(
     return [];
   }
 
-  const {
-    data,
-    error,
-  } = await supabaseAdmin
+  let query = supabaseAdmin
     .from(
       "conversations",
     )
@@ -431,6 +435,12 @@ export async function getConversations(
         nullsFirst: false,
       },
     );
+
+  if (filter?.conversationIds) {
+    if (filter.conversationIds.length === 0) return [];
+    query = query.in("id", filter.conversationIds);
+  }
+  const { data, error } = await query;
 
   if (error) {
     console.error(

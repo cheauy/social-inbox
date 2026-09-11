@@ -1,4 +1,5 @@
 "use client";
+import { UsageMonitor } from "@/components/admin/usage-monitor";
 
 import {
   useCallback,
@@ -17,6 +18,7 @@ import { SystemAnnouncementAdmin } from "@/components/admin/system-announcement-
 import { ManualPaymentAdmin } from "@/components/billing/manual-payment-admin";
 
 type AdminTab =
+  | "usage"
   | "overview"
   | "billing"
   | "manual-payments"
@@ -62,6 +64,7 @@ const tabs: Array<{
   label: string;
   description: string;
 }> = [
+  { id: "usage", label: "Usage", description: "Workspace traffic and safeguards" },
   {
     id: "overview",
     label: "Overview",
@@ -320,7 +323,7 @@ export function TenhAdminWorkspace({
               </div>
             </div>
 
-            {activeTab === "overview" ? (
+            {activeTab === "usage" ? <UsageMonitor /> : activeTab === "overview" ? (
               <div className="space-y-4">
                 {summaryError ? (
                   <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

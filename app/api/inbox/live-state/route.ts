@@ -1,3 +1,4 @@
+import { withTenantReadScope } from "@/lib/server/tenant-read-scope";
 import {
   NextRequest,
   NextResponse,
@@ -99,7 +100,7 @@ function normalizeIds(
   ).slice(0, 500);
 }
 
-export async function POST(
+async function handlePOST(
   request: NextRequest,
 ) {
   let body: LiveStateBody;
@@ -415,3 +416,5 @@ export async function POST(
     },
   );
 }
+
+export const POST = withTenantReadScope(handlePOST);

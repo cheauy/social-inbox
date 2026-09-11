@@ -1,3 +1,5 @@
+import { withRequestScope } from "@/lib/server/request-scope";
+import { recordUploadBytes } from "@/lib/server/usage-context";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
@@ -152,7 +154,7 @@ async function prepareDirectUpload(
  * The multipart branch remains for older clients and small files so a staged
  * rollout does not break an already-installed TENH build.
  */
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   const authResult = await getCurrentMember();
 
   if (!authResult.success) {
@@ -261,6 +263,7 @@ export async function POST(request: NextRequest) {
     .upload(storagePath, file, {
       contentType: mimeType,
       upsert: false,
+      cacheControl: "86400",
     });
 
   if (uploadError) {
@@ -273,6 +276,8 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+
+  recordUploadBytes(file.size);
 
   const { data: row, error: insertError } = await supabaseAdmin
     .from("team_chat_attachments")
@@ -416,3 +421,5 @@ export async function DELETE(request: NextRequest) {
 
   return NextResponse.json({ success: true });
 }
+
+export const POST = withRequestScope(handlePOST);

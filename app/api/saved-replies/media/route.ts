@@ -1,3 +1,5 @@
+import { recordUploadBytes } from "@/lib/server/usage-context";
+import { withRequestScope } from "@/lib/server/request-scope";
 import {
   NextRequest,
   NextResponse,
@@ -56,7 +58,7 @@ function extensionFor(mimeType: string) {
  * the reply itself is saved, so an abandoned form leaves an orphan file rather
  * than a broken reply.
  */
-export async function POST(
+async function handlePOST(
   request: NextRequest,
 ) {
   const authResult = await getCurrentMember();
@@ -139,6 +141,7 @@ export async function POST(
         {
           contentType: file.type,
           upsert: false,
+          cacheControl: "86400",
         },
       );
 
@@ -153,6 +156,7 @@ export async function POST(
     );
   }
 
+  recordUploadBytes(file.size);
   return NextResponse.json({
     success: true,
     attachment: {
@@ -289,3 +293,5 @@ export async function DELETE(
 
   return NextResponse.json({ success: true });
 }
+
+export const POST = withRequestScope(handlePOST);

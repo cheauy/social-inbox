@@ -1,3 +1,4 @@
+import { loadStoredAvatar } from "@/lib/media/load-stored-avatar";
 import {
   NextRequest,
   NextResponse,
@@ -106,13 +107,7 @@ export async function GET(
     data,
     error,
   } =
-    await supabaseAdmin.storage
-      .from(
-        TELEGRAM_AVATAR_BUCKET,
-      )
-      .download(
-        storagePath,
-      );
+    await loadStoredAvatar(TELEGRAM_AVATAR_BUCKET, storagePath);
 
   if (
     error ||

@@ -1,5 +1,5 @@
 const messages: Record<string, string> = {
-  facebook_session_needed: "Keep this Page's Facebook inbox signed in in another tab, then click the customer photo again.",
+  facebook_session_needed: "Sign in to Facebook in this Chrome profile, then retry. TENH prepares its lookup tab automatically.",
   facebook_tab_in_use: "Return to TENH with the Facebook Page inbox in a background tab, then retry.",
   profile_lookup_busy: "Another customer profile lookup is in progress. Please retry shortly.",
   profile_link_missing: "Facebook did not return a matching customer profile. The automatic lookup could not complete.",
@@ -15,9 +15,27 @@ const messages: Record<string, string> = {
   extension_timeout: "TENH did not receive an extension reply before the timeout. Check that TENH Companion is enabled and refresh TENH.",
   facebook_bridge_unavailable: "TENH Companion could not open its Facebook lookup tab.",
   profile_resolution_unavailable: "The extension's Facebook lookup was interrupted or failed to run. Copy the error details so this can be diagnosed.",
-  profile_context_incomplete: "This conversation is missing its Facebook Page or customer name.",
+  profile_context_incomplete: "This conversation is missing its workspace, Facebook Page, Messenger customer ID or customer name.",
   profile_page_mismatch: "The extension returned a profile for a different Page. TENH did not open it.",
   profile_url_unsupported: "The extension returned a link that TENH cannot verify as a Facebook profile. TENH did not open it.",
+  facebook_sign_in_required: "Sign in to Facebook in this Chrome profile, complete any security check, then retry.",
+  facebook_load_timeout: "Facebook took too long to load. Check your connection and retry.",
+  conversation_mismatch: "Facebook did not select this exact customer conversation. TENH will not open a profile based only on a name match.",
+  profile_context_unmatched: "TENH could not authorize this Page and Messenger conversation for your connected browser. Check the selected workspace and extension connection.",
+  profile_context_mismatch: "The workspace, Page or conversation changed or did not match. TENH did not open a different customer's profile.",
+  tenh_sign_in_required: "This browser's TENH connection needs to be restored. Sign in to TENH and retry.",
+  tenh_authorization_unavailable: "TENH could not check access to this conversation. Check your connection and retry.",
+  profile_lookup_timeout: "Facebook did not expose a profile link before the lookup timed out. Please retry.",
+  profile_lookup_interrupted: "The Facebook lookup tab changed during the request. Please retry.",
+  profile_identity_unverified: "Facebook did not show a loaded profile matching this customer. No guessed profile was opened.",
+  profile_validation_unavailable: "TENH could not confirm that the Facebook profile loaded. Please retry.",
+  facebook_content_unavailable: "Facebook says this profile is unavailable to your current Facebook account. TENH cannot override that restriction.",
+  profile_resolution_expired: "The profile-opening request expired or its customer context changed. Click the photo again.",
+  profile_tab_unavailable: "Chrome could not open the profile tab. Use View Facebook profile below to open the resolved link.",
+  profile_open_unconfirmed: "Chrome did not confirm the profile tab opened. Check your tabs before retrying.",
+  not_profile_route: "Facebook redirected away from a customer profile. TENH did not open that destination.",
+  not_facebook: "Facebook redirected to an unsupported destination. TENH did not open it.",
+
 };
 
 export function profileLookupError(reason: string): string {

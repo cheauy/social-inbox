@@ -1,0 +1,318 @@
+CONTROLLED TESTS — NOT A LIVE FACEBOOK TEST
+
+NODE TESTS
+TAP version 13
+# Subtest: stored photo returns immediately without Facebook repair
+ok 1 - stored photo returns immediately without Facebook repair
+  ---
+  duration_ms: 176.330156
+  type: 'test'
+  ...
+# Subtest: missing photo repairs then serves image in the same request
+ok 2 - missing photo repairs then serves image in the same request
+  ---
+  duration_ms: 31.270289
+  type: 'test'
+  ...
+# Subtest: Facebook refusal retains initials without repeated download
+ok 3 - Facebook refusal retains initials without repeated download
+  ---
+  duration_ms: 37.172059
+  type: 'test'
+  ...
+# Subtest: authorization failure never reads or repairs another workspace photo
+ok 4 - authorization failure never reads or repairs another workspace photo
+  ---
+  duration_ms: 17.91526
+  type: 'test'
+  ...
+# Subtest: concurrent repairs and repeated denied lookups are coalesced and cached
+ok 5 - concurrent repairs and repeated denied lookups are coalesced and cached
+  ---
+  duration_ms: 45.179959
+  type: 'test'
+  ...
+# Subtest: repair never uses a Page from a different workspace
+ok 6 - repair never uses a Page from a different workspace
+  ---
+  duration_ms: 24.684068
+  type: 'test'
+  ...
+# Subtest: Facebook uses stable stored photo before expiring remote URL and falls back on failure
+ok 7 - Facebook uses stable stored photo before expiring remote URL and falls back on failure
+  ---
+  duration_ms: 26.70842
+  type: 'test'
+  ...
+# Subtest: late photo sync retries a previously failed proxy even when its path is unchanged
+ok 8 - late photo sync retries a previously failed proxy even when its path is unchanged
+  ---
+  duration_ms: 21.417763
+  type: 'test'
+  ...
+# Subtest: unknown photo resolves -> confirms one profile tab and caches only after opening
+ok 9 - unknown photo resolves -> confirms one profile tab and caches only after opening
+  ---
+  duration_ms: 21.179032
+  type: 'test'
+  ...
+# Subtest: TENH request includes correct workspace/Page/thread/conversation
+ok 10 - TENH request includes correct workspace/Page/thread/conversation
+  ---
+  duration_ms: 2.023773
+  type: 'test'
+  ...
+# Subtest: double-click does not start two lookups
+ok 11 - double-click does not start two lookups
+  ---
+  duration_ms: 2.105648
+  type: 'test'
+  ...
+# Subtest: unmount cancels profile opening and cache updates
+ok 12 - unmount cancels profile opening and cache updates
+  ---
+  duration_ms: 3.181432
+  type: 'test'
+  ...
+# Subtest: changing conversation on the same mounted component rejects old completion
+ok 13 - changing conversation on the same mounted component rejects old completion
+  ---
+  duration_ms: 2.415719
+  type: 'test'
+  ...
+# Subtest: wrong Page/thread/workspace/conversation and unverified response cannot open or cache
+ok 14 - wrong Page/thread/workspace/conversation and unverified response cannot open or cache
+  ---
+  duration_ms: 10.599196
+  type: 'test'
+  ...
+# Subtest: known public ID still opens without extension in the original click
+ok 15 - known public ID still opens without extension in the original click
+  ---
+  duration_ms: 3.756082
+  type: 'test'
+  ...
+# Subtest: saved public ID equal to Messenger ID is rejected instead of opening broken page
+ok 16 - saved public ID equal to Messenger ID is rejected instead of opening broken page
+  ---
+  duration_ms: 2.222494
+  type: 'test'
+  ...
+# Subtest: old extension is reported instead of timing out silently
+ok 17 - old extension is reported instead of timing out silently
+  ---
+  duration_ms: 2.486426
+  type: 'test'
+  ...
+# Subtest: unverified or expired session-cache link is ignored
+ok 18 - unverified or expired session-cache link is ignored
+  ---
+  duration_ms: 3.684809
+  type: 'test'
+  ...
+# Subtest: confirmed, unexpired session cache opens direct on repeat click
+ok 19 - confirmed, unexpired session cache opens direct on repeat click
+  ---
+  duration_ms: 1.870968
+  type: 'test'
+  ...
+# Subtest: failed second phase does not poison cache or silently open Business Suite
+ok 20 - failed second phase does not poison cache or silently open Business Suite
+  ---
+  duration_ms: 3.907116
+  type: 'test'
+  ...
+# Subtest: photo UI has no manual URL form
+ok 21 - photo UI has no manual URL form
+  ---
+  duration_ms: 2.050564
+  type: 'test'
+  ...
+# Subtest: one click resolves + confirms: only final profile activates; existing Facebook tab untouched
+ok 22 - one click resolves + confirms: only final profile activates; existing Facebook tab untouched
+  ---
+  duration_ms: 522.273478
+  type: 'test'
+  ...
+# Subtest: no Facebook tabs: automatically prepares an inactive exact Page/thread lookup, then closes owned tabs
+ok 23 - no Facebook tabs: automatically prepares an inactive exact Page/thread lookup, then closes owned tabs
+  ---
+  duration_ms: 504.658559
+  type: 'test'
+  ...
+# Subtest: another Page or same-name different thread is not read/navigated as the requested customer
+ok 24 - another Page or same-name different thread is not read/navigated as the requested customer
+  ---
+  duration_ms: 504.810033
+  type: 'test'
+  ...
+# Subtest: blocked/unavailable Facebook profile is never opened in the foreground
+ok 25 - blocked/unavailable Facebook profile is never opened in the foreground
+  ---
+  duration_ms: 2.726424
+  type: 'test'
+  ...
+# Subtest: missing link gives a reason, never a Business Suite foreground fallback
+ok 26 - missing link gives a reason, never a Business Suite foreground fallback
+  ---
+  duration_ms: 2.179426
+  type: 'test'
+  ...
+# Subtest: authorization and current TENH workspace/conversation are checked before any browser lookup
+ok 27 - authorization and current TENH workspace/conversation are checked before any browser lookup
+  ---
+  duration_ms: 13.767732
+  type: 'test'
+  ...
+# Subtest: unsafe, malformed, scoped Messenger links never receive an opening ticket
+ok 28 - unsafe, malformed, scoped Messenger links never receive an opening ticket
+  ---
+  duration_ms: 23.503285
+  type: 'test'
+  ...
+# Subtest: different tab, document, frame or origin cannot consume profile ticket
+ok 29 - different tab, document, frame or origin cannot consume profile ticket
+  ---
+  duration_ms: 507.504541
+  type: 'test'
+  ...
+# Subtest: ticket survives service-worker restart; not stored in persistent local/sync storage
+ok 30 - ticket survives service-worker restart; not stored in persistent local/sync storage
+  ---
+  duration_ms: 508.151034
+  type: 'test'
+  ...
+# Subtest: concurrent confirmation consumes ticket once
+ok 31 - concurrent confirmation consumes ticket once
+  ---
+  duration_ms: 505.389782
+  type: 'test'
+  ...
+# Subtest: expired ticket does not open a tab
+ok 32 - expired ticket does not open a tab
+  ---
+  duration_ms: 503.661901
+  type: 'test'
+  ...
+# Subtest: username remains username when Facebook does not expose a numeric public ID
+ok 33 - username remains username when Facebook does not expose a numeric public ID
+  ---
+  duration_ms: 502.915629
+  type: 'test'
+  ...
+# Subtest: signed-out Facebook reports sign-in required and cleans its inactive login lookup tab
+ok 34 - signed-out Facebook reports sign-in required and cleans its inactive login lookup tab
+  ---
+  duration_ms: 2.180416
+  type: 'test'
+  ...
+# Subtest: actual hook -> actual content bridge sends both profile commands and all context fields
+ok 35 - actual hook -> actual content bridge sends both profile commands and all context fields
+  ---
+  duration_ms: 183.607075
+  type: 'test'
+  ...
+1..35
+# tests 35
+# suites 0
+# pass 35
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4403.206823
+
+HELPER TESTS
+TAP version 13
+# (node:1473) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:1473) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_profile_work/lib/extension/companion-response.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_profile_work/package.json.
+# Subtest: extension errors settle immediately instead of waiting for a timeout
+ok 1 - extension errors settle immediately instead of waiting for a timeout
+  ---
+  duration_ms: 2.297437
+  type: 'test'
+  ...
+# Subtest: an invalidated extension returns the refresh diagnosis
+ok 2 - an invalidated extension returns the refresh diagnosis
+  ---
+  duration_ms: 0.418224
+  type: 'test'
+  ...
+# Subtest: ignores wrong origins, windows, request IDs and message types
+ok 3 - ignores wrong origins, windows, request IDs and message types
+  ---
+  duration_ms: 0.734729
+  type: 'test'
+  ...
+# Subtest: a missing response times out and cleans up
+ok 4 - a missing response times out and cleans up
+  ---
+  duration_ms: 13.879684
+  type: 'test'
+  ...
+# (node:1474) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:1474) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_profile_work/lib/facebook/customer-profile-url.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_profile_work/package.json.
+# Subtest: opens the supplied public ID while preserving the different messaging ID
+ok 5 - opens the supplied public ID while preserving the different messaging ID
+  ---
+  duration_ms: 1.491791
+  type: 'test'
+  ...
+# Subtest: accepts actual Facebook profile links and usernames, never Suite or redirect links
+ok 6 - accepts actual Facebook profile links and usernames, never Suite or redirect links
+  ---
+  duration_ms: 1.264512
+  type: 'test'
+  ...
+# Subtest: never guesses a public profile from a Messenger ID
+ok 7 - never guesses a public profile from a Messenger ID
+  ---
+  duration_ms: 0.297586
+  type: 'test'
+  ...
+# Subtest: rejects malformed public IDs and accepts only the Facebook profile route
+ok 8 - rejects malformed public IDs and accepts only the Facebook profile route
+  ---
+  duration_ms: 0.297143
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 532.875886
+
+LOCAL CHROMIUM DOM FIXTURES
+PASS exact Page/thread -> visible profile link, without mutating the active inbox
+PASS name/profile header link works without the inbox search box
+PASS same-name different selected conversation rejected
+PASS other Facebook Page rejected
+PASS conflicting conversation URL parameters rejected
+PASS previous customer details are not accepted while the new thread loads
+PASS ambiguous profile links rejected
+PASS scoped IDs, lookalike domains and invalid profile URLs rejected
+PASS Khmer customer heading supported
+PASS visible Facebook tab is never automatically searched/clicked
+PASS inactive lookup settles exact context; concurrent lookup blocked
+PASS visible real profile heading accepted
+PASS wrong profile rejected even if navigation contains the expected name
+PASS unavailable Facebook profile page rejected
+PASS a Messenger ID is never returned as a public profile ID
+PASS numeric ID is read from rendered public-profile metadata, not derived from PSID
+PASS username is retained when no numeric public ID is exposed
+
+STATIC CHECKS
+75 non-profile named functions preserved exactly.
+467 TS/TSX files parsed; syntax errors: 0.
+
+Full Next.js build NOT completed: dependency installation failed (EAI_AGAIN).

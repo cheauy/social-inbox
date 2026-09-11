@@ -14,6 +14,7 @@ type AdminPageProps = {
 };
 
 export type AdminTab =
+  | "usage"
   | "overview"
   | "billing"
   | "manual-payments"
@@ -30,6 +31,7 @@ function resolveTab(
   const tab = Array.isArray(value) ? value[0] : value;
 
   if (
+    tab === "usage" ||
     tab === "billing" ||
     tab === "manual-payments" ||
     tab === "customer-reports" ||

@@ -20,6 +20,11 @@ export type FacebookProfileOpenResult = {
   opened: boolean;
   resolved?: boolean;
   pageId?: string;
+  threadId?: string;
+  conversationId?: string;
+  businessId?: string;
+  verified?: boolean;
+  profileId?: string | null;
   profileUrl?: string | null;
   openToken?: string;
   conversationOpened?: boolean;
@@ -113,26 +118,31 @@ export function useCompanion() {
       threadId?: string | null;
       conversationId?: string | null;
       customerName?: string | null;
+      businessId?: string | null;
     }): Promise<FacebookProfileOpenResult | null> => {
       const requestId = post("OPEN_FACEBOOK_PROFILE", {
         pageId: options.pageId ?? undefined,
         threadId: options.threadId ?? undefined,
         conversationId: options.conversationId ?? undefined,
         customerName: options.customerName ?? undefined,
+        businessId: options.businessId ?? undefined,
       });
 
       return awaitCompanionAnswer<FacebookProfileOpenResult>(
         "OPEN_FACEBOOK_PROFILE_RESULT",
         requestId,
-        60000,
+        90000,
       );
     },
     [],
   );
 
-  const openResolvedFacebookProfile = useCallback(async (openToken: string) => {
-    const requestId = post("OPEN_RESOLVED_FACEBOOK_PROFILE", { openToken });
-    return awaitCompanionAnswer<FacebookProfileOpenResult>("OPEN_RESOLVED_FACEBOOK_PROFILE_RESULT", requestId, 10000);
+  const openResolvedFacebookProfile = useCallback(async (
+    openToken: string,
+    context?: { pageId: string; threadId: string; conversationId: string; businessId: string },
+  ) => {
+    const requestId = post("OPEN_RESOLVED_FACEBOOK_PROFILE", { openToken, ...context });
+    return awaitCompanionAnswer<FacebookProfileOpenResult>("OPEN_RESOLVED_FACEBOOK_PROFILE_RESULT", requestId, 15000);
   }, []);
 
   /**

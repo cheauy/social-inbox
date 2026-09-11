@@ -1,3 +1,4 @@
+import { withTenantReadScope } from "@/lib/server/tenant-read-scope";
 import {
   NextRequest,
   NextResponse,
@@ -47,7 +48,7 @@ function readAuthProfilePicture(
   };
 }
 
-export async function GET() {
+async function handleGET() {
   const authResult = await getCurrentMember();
 
   if (!authResult.success) {
@@ -456,3 +457,5 @@ export async function POST(request: NextRequest) {
     },
   });
 }
+
+export const GET = withTenantReadScope(handleGET);

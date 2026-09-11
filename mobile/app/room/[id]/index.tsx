@@ -559,7 +559,7 @@ export default function RoomScreen() {
 
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { workspace, member, revision, rooms, roster, canManageRooms, refreshRooms } =
+  const { workspace, member, roomRevision: revision, rooms, roster, canManageRooms, refreshRooms } =
     useInbox();
 
   const current = rooms.find((item) => item.id === id) ?? null;

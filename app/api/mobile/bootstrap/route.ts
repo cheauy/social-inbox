@@ -1,3 +1,4 @@
+import { withTenantReadScope } from "@/lib/server/tenant-read-scope";
 import { NextRequest, NextResponse } from "next/server";
 import { loadPermissionContext } from "@/lib/auth/require-permission";
 import { getConversations, getInboxConversationScope } from "@/lib/inbox/get-conversations";
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 // A read-only adapter for the same loader used by the web Inbox. Authentication,
 // membership, enabled channels and subscription eligibility remain server-owned.
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
   const guard = await loadPermissionContext();
   if (!guard.success) return guard.response;
   try {
@@ -49,9 +50,15 @@ export async function GET(request: NextRequest) {
      * The single-id filter collapses the scope back down to one workspace, so
      * it is only passed when one was asked for.
      */
+    const idsParam = request.nextUrl.searchParams.get("conversationIds");
+    const conversationIds = idsParam === null ? undefined : [...new Set(idsParam.split(",").filter(Boolean))];
+    if (conversationIds && (conversationIds.length > 50 || conversationIds.some(id => !/^[0-9a-f-]{36}$/i.test(id)))) {
+      return NextResponse.json({ success: false, error: "Request up to 50 valid conversation IDs." }, { status: 400 });
+    }
+
     const rows = await getConversations(
       workspaceIds,
-      workspaceIds.length === 1 ? { workspaceId: workspaceIds[0] } : undefined,
+      { workspaceId: workspaceIds.length === 1 ? workspaceIds[0] : undefined, conversationIds },
     );
 
     /*
@@ -107,8 +114,11 @@ export async function GET(request: NextRequest) {
       member: { id: member.id, full_name: member.full_name, email: member.email, role: member.role, profile_picture_url: member.profile_picture_url },
       permissions,
       conversations,
+      removedConversationIds: conversationIds?.filter(id => !rows.some(row => row.id === id)) ?? [],
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch {
     return NextResponse.json({ success: false, error: "Unable to load Inbox. Please try again." }, { status: 500 });
   }
 }
+
+export const GET = withTenantReadScope(handleGET);

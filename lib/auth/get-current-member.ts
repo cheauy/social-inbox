@@ -1,4 +1,7 @@
 import "server-only";
+import { cache } from "react";
+import { attributeUsage } from "@/lib/server/usage-context";
+import { requestMemo } from "@/lib/server/request-scope";
 
 import { cookies } from "next/headers";
 import type { User } from "@supabase/supabase-js";
@@ -364,7 +367,7 @@ async function provisionMetaReviewer(user: User): Promise<AuthenticatedMember | 
   return createdMember as AuthenticatedMember;
 }
 
-export async function getCurrentMember(): Promise<GetCurrentMemberResult> {
+async function readCurrentMember(): Promise<GetCurrentMemberResult> {
   const supabase = await createClient();
   const { data: { user }, error: userError } = await supabase.auth.getUser();
 
@@ -478,3 +481,10 @@ export async function getCurrentMember(): Promise<GetCurrentMemberResult> {
       "TENH could not find an active workspace for this account yet. If this is a new account, setup will be completed safely before Inbox opens.",
   };
 }
+
+// React deduplicates server renders; requestMemo also covers wrapped API handlers.
+export const getCurrentMember = cache(() => requestMemo("current-member", async () => {
+  const result = await readCurrentMember();
+  if (result.success) attributeUsage(result.member.business_id);
+  return result;
+}));

@@ -8,6 +8,7 @@ function routeHarness({authorized=true,photo=true,repaired=true}={}){
  if(name.includes('get-inbox-resource-access'))return {getInboxContactAccess:async()=>authorized?{success:true,member:{business_id:'business'}}:{success:false,status:403,error:'Denied'}};
  if(name.includes('repair-facebook-avatar'))return {repairFacebookAvatar:async(b,c)=>{assert.equal(b,'business');assert.equal(c,'contact');repairs++;return repaired}};
  if(name.includes('facebook-profile-photo'))return {FACEBOOK_AVATAR_BUCKET:'avatars',facebookAvatarStoragePath:({businessId,contactId})=>businessId+'/'+contactId};
+ if(name.includes('load-stored-avatar'))return {loadStoredAvatar:async()=>{downloads++;return photo||downloads>1?{data:image,error:false}:{data:null,error:true}}};
  if(name.includes('supabase/admin'))return {supabaseAdmin:{from:()=>chain,storage:{from:()=>({download:async()=>{downloads++;return photo||downloads>1?{data:image,error:null}:{data:null,error:{message:'missing'}}}})}}};
  throw Error(name);
  }});

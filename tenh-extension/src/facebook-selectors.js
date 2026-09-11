@@ -241,6 +241,7 @@ var TenhFacebookSelectors = (() => {
       "/", "/messages", "/business", "/latest", "/settings", "/help",
       "/marketplace", "/groups", "/watch", "/reels", "/pages", "/notifications",
       "/friends", "/bookmarks", "/gaming", "/search", "/ads", "/privacy",
+      "/login", "/logout", "/checkpoint", "/me", "/home", "/share", "/story",
     ];
 
     if (blocked.some((prefix) => lowerPath === prefix || lowerPath.startsWith(`${prefix}/`))) {
@@ -249,9 +250,11 @@ var TenhFacebookSelectors = (() => {
 
     if (lowerPath === "/profile.php") {
       const id = url.searchParams.get("id");
-      if (!id || !/^\d{5,32}$/.test(id)) return null;
+      if (!id || !/^\d{5,32}$/.test(id) || url.searchParams.getAll("id").length !== 1) return null;
       return `https://www.facebook.com/profile.php?id=${encodeURIComponent(id)}`;
     }
+
+    if (/\.php$/i.test(path)) return null;
 
     if (/^\/people\/[^/]+\/\d{5,32}$/i.test(path)) {
       return `https://www.facebook.com${path}`;
@@ -432,52 +435,41 @@ var TenhFacebookSelectors = (() => {
     ].some((phrase) => bodyText.includes(phrase));
   }
 
-  function validateCurrentProfilePage(expectedName = "") {
-    const url = new URL(window.location.href);
-    const path = url.pathname.replace(/\/+$/, "") || "/";
-    const lowerPath = path.toLowerCase();
-
-    if (
-      url.protocol !== "https:" ||
-      !["facebook.com", "www.facebook.com", "m.facebook.com"].includes(url.hostname)
-    ) {
-      return { valid: false, reason: "not_facebook" };
+  function validateCurrentProfilePage(expectedName = "", disallowedId = null) {
+    const current = profileCandidateUrl(window.location.href);
+    if (!current) return { valid: false, reason: "not_profile_route" };
+    if (document.querySelector('input[type="password"]')) return { valid: false, reason: "facebook_sign_in_required" };
+    if (isUnavailableProfilePage()) return { valid: false, reason: "facebook_content_unavailable" };
+    const normalize = value => String(value ?? "").normalize("NFKC")
+      .replace(/[\u200b-\u200d\ufeff]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+    const wanted = normalize(expectedName);
+    // Facebook's global navigation/profile menu or a name in a post is not
+    // evidence that this is the customer's profile. Require the visible title.
+    const headings = [...document.querySelectorAll('h1, [role="heading"][aria-level="1"], main h2, [role="main"] h2')]
+      .filter(el => {
+        const box = el.getBoundingClientRect(), style = getComputedStyle(el);
+        return box.width > 0 && box.height > 0 && style.visibility !== "hidden" && style.display !== "none" &&
+          !el.closest('nav, [role="navigation"], [role="dialog"]');
+      });
+    const nameMatches = Boolean(wanted && headings.some(el => normalize(el.textContent) === wanted));
+    if (!nameMatches) return { valid: false, nameMatches: false, reason: "profile_identity_unverified" };
+    const target = new URL(current);
+    const currentId = target.searchParams.get("id") || target.pathname.match(/\/(\d+)\/?$/)?.[1];
+    if (currentId && currentId === String(disallowedId ?? "")) return { valid: false, reason: "profile_scoped_id" };
+    // A numeric public ID is reported only if it already occurs in the actual
+    // profile URL/canonical metadata. Never read cookies or private JS state.
+    let finalUrl = current;
+    if (!currentId) {
+      const metadata = [...document.querySelectorAll('link[rel="canonical"], meta[property="og:url"]')]
+        .map(el => profileCandidateUrl(el.getAttribute("href") || el.getAttribute("content"))).filter(Boolean);
+      const unique = [...new Set(metadata)];
+      if (unique.length === 1) {
+        const candidate = new URL(unique[0]);
+        const id = candidate.searchParams.get("id") || candidate.pathname.match(/\/(\d+)\/?$/)?.[1];
+        if (id && id !== String(disallowedId ?? "")) finalUrl = unique[0];
+      }
     }
-
-    if (isUnavailableProfilePage()) {
-      return { valid: false, reason: "facebook_content_unavailable" };
-    }
-
-    const profileLike =
-      lowerPath === "/profile.php" ||
-      /^\/people\/[^/]+\/\d{5,32}$/i.test(path) ||
-      /^\/[A-Za-z0-9._-]{2,100}$/.test(path);
-
-    if (!profileLike) {
-      return { valid: false, reason: "not_profile_route" };
-    }
-
-    const wanted = normalizeProfileText(expectedName);
-    const bodyText = normalizeProfileText(document.body?.innerText);
-    const title = normalizeProfileText(document.title);
-    const nameMatches = !wanted || bodyText.includes(wanted) || title.includes(wanted);
-
-    const profileUiVisible = Boolean(
-      document.querySelector(
-        '[aria-label*="profile" i], [aria-label*="story" i], a[href*="/friends"], a[href*="/photos"]',
-      ),
-    );
-
-    if (!nameMatches && !profileUiVisible) {
-      return { valid: false, reason: "profile_identity_unverified" };
-    }
-
-    return {
-      valid: true,
-      reason: null,
-      url: window.location.href,
-      nameMatches,
-    };
+    return { valid: true, nameMatches: true, reason: null, url: finalUrl };
   }
 
   function isMessengerSurface() {

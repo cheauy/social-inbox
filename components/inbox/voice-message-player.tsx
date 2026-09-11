@@ -225,7 +225,7 @@ export function VoiceMessagePlayer({
         key={src}
         ref={audioRef}
         src={src}
-        preload="metadata"
+        preload="none"
       />
 
       <div className="flex items-center gap-3">
