@@ -244,6 +244,38 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "FB_FIND_CUSTOMER_PROFILE") {
+    const state = inspect();
+    const expectedPageId =
+      typeof message.pageId === "string" ? message.pageId : null;
+    const expectedConversationId =
+      typeof message.conversationId === "string" ? message.conversationId : null;
+
+    if (expectedPageId && state.pageId !== expectedPageId) {
+      sendResponse({ found: false, reason: "page_mismatch" });
+      return true;
+    }
+
+    if (
+      expectedConversationId &&
+      state.conversationId !== expectedConversationId
+    ) {
+      sendResponse({ found: false, reason: "conversation_mismatch" });
+      return true;
+    }
+
+    const profileUrl = selectors.findCustomerProfileUrl(
+      String(message.customerName ?? ""),
+    );
+
+    sendResponse({
+      found: Boolean(profileUrl),
+      profileUrl: profileUrl ?? null,
+      reason: profileUrl ? null : "profile_link_unavailable",
+    });
+    return true;
+  }
+
   if (message?.type === "FB_INSERT_TEXT") {
     const state = inspect();
 

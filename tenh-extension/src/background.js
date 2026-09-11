@@ -1111,6 +1111,103 @@ async function openFacebook({ pageId, threadId, conversationId } = {}) {
   };
 }
 
+function isSafeFacebookProfileUrl(value) {
+  if (typeof value !== "string" || !value) return false;
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      ["facebook.com", "www.facebook.com", "m.facebook.com"].includes(url.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function openFacebookCustomerProfile({
+  pageId,
+  threadId,
+  conversationId,
+  customerName,
+} = {}) {
+  const facebookThreadId = threadId ?? conversationId ?? null;
+  if (!pageId || !facebookThreadId || !customerName) {
+    return {
+      opened: false,
+      conversationOpened: false,
+      reason: "profile_context_incomplete",
+    };
+  }
+
+  const tab = await ensureManagedFacebookTab({
+    pageId,
+    threadId: facebookThreadId,
+    active: false,
+  });
+
+  if (!tab?.id) {
+    return { opened: false, conversationOpened: false, reason: "facebook_bridge_unavailable" };
+  }
+
+  const inspected = await waitForFacebookBridge(tab.id, 15000, {
+    pageId,
+    conversationId: facebookThreadId,
+  });
+
+  if (!inspected) {
+    await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
+    if (tab.windowId) await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
+    return { opened: false, conversationOpened: true, reason: "conversation_not_ready" };
+  }
+
+  let answer = null;
+  const profileRequest = {
+    type: "FB_FIND_CUSTOMER_PROFILE",
+    pageId,
+    conversationId: facebookThreadId,
+    customerName: String(customerName).slice(0, 200),
+  };
+
+  /* Business Suite often paints the conversation shell before the customer
+     detail/header links. Give the real profile link a short chance to appear
+     instead of treating the first DOM frame as final. */
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      answer = await chrome.tabs.sendMessage(tab.id, profileRequest);
+    } catch {
+      answer = null;
+    }
+    if (answer?.found && isSafeFacebookProfileUrl(answer.profileUrl)) break;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  if (answer?.found && isSafeFacebookProfileUrl(answer.profileUrl)) {
+    const profileTab = await chrome.tabs.create({ url: answer.profileUrl, active: true });
+    if (profileTab?.windowId) {
+      await chrome.windows.update(profileTab.windowId, { focused: true }).catch(() => {});
+    }
+    return {
+      opened: true,
+      profileUrl: answer.profileUrl,
+      conversationOpened: false,
+      reason: null,
+    };
+  }
+
+  /* Never guess a public profile id from the PSID. If Facebook does not expose
+     a real profile link, focus the exact conversation so the agent can use
+     Facebook's own profile controls if available. */
+  await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
+  if (tab.windowId) await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
+
+  return {
+    opened: false,
+    profileUrl: null,
+    conversationOpened: true,
+    reason: answer?.reason ?? "profile_link_unavailable",
+  };
+}
+
 async function warmFacebookCompanion() {
   const state = await readState();
   if (!state.token || state.keepFacebookActive !== true) return;
@@ -1197,6 +1294,14 @@ async function handle(message, sender) {
         pageId: message.pageId,
         threadId: message.threadId,
         conversationId: message.conversationId,
+      });
+
+    case "OPEN_FACEBOOK_PROFILE":
+      return openFacebookCustomerProfile({
+        pageId: message.pageId,
+        threadId: message.threadId,
+        conversationId: message.conversationId,
+        customerName: message.customerName,
       });
 
     case "CHECK_FACEBOOK_REPLY_AVAILABILITY": {

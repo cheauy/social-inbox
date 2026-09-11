@@ -212,6 +212,115 @@ var TenhFacebookSelectors = (() => {
     return true;
   }
 
+  function normalizeProfileText(value) {
+    return String(value ?? "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  }
+
+  function profileCandidateUrl(rawHref) {
+    if (!rawHref) return null;
+
+    let url;
+    try {
+      url = new URL(rawHref, window.location.href);
+    } catch {
+      return null;
+    }
+
+    if (url.protocol !== "https:") return null;
+    if (!["facebook.com", "www.facebook.com", "m.facebook.com"].includes(url.hostname)) {
+      return null;
+    }
+
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    const lowerPath = path.toLowerCase();
+    const blocked = [
+      "/", "/messages", "/business", "/latest", "/settings", "/help",
+      "/marketplace", "/groups", "/watch", "/reels", "/pages", "/notifications",
+      "/friends", "/bookmarks", "/gaming", "/search", "/ads", "/privacy",
+    ];
+
+    if (blocked.some((prefix) => lowerPath === prefix || lowerPath.startsWith(`${prefix}/`))) {
+      return null;
+    }
+
+    if (lowerPath === "/profile.php") {
+      const id = url.searchParams.get("id");
+      if (!id || !/^\d{5,32}$/.test(id)) return null;
+      return `https://www.facebook.com/profile.php?id=${encodeURIComponent(id)}`;
+    }
+
+    if (/^\/people\/[^/]+\/\d{5,32}$/i.test(path)) {
+      return `https://www.facebook.com${path}`;
+    }
+
+    /* Username-style profile URLs contain a single path component. This is
+       deliberately strict: if Facebook does not expose a clear profile link,
+       TENH returns "unavailable" instead of guessing and opening the wrong
+       account. */
+    if (/^\/[A-Za-z0-9._-]{2,100}$/.test(path)) {
+      return `https://www.facebook.com${path}`;
+    }
+
+    return null;
+  }
+
+  function nearbyProfileText(anchor) {
+    let node = anchor;
+    for (let depth = 0; node && depth < 5; depth += 1, node = node.parentElement) {
+      const text = normalizeProfileText(node.textContent);
+      if (text && text.length <= 700) return text;
+    }
+    return "";
+  }
+
+  /**
+   * The customer's real profile URL, but only when Facebook itself renders a
+   * link for that customer in the currently open conversation.
+   *
+   * The Messenger PSID is never turned into a /profile.php URL here. A link is
+   * returned only when it is present in Facebook's own DOM and is tied closely
+   * enough to the customer's visible name to avoid confusing one person with
+   * another Page/admin profile.
+   */
+  function findCustomerProfileUrl(customerName) {
+    const wanted = normalizeProfileText(customerName);
+    if (!wanted) return null;
+
+    let best = null;
+
+    for (const anchor of document.querySelectorAll('a[href]')) {
+      const profileUrl = profileCandidateUrl(anchor.getAttribute("href"));
+      if (!profileUrl) continue;
+
+      const label = normalizeProfileText([
+        anchor.textContent,
+        anchor.getAttribute("aria-label"),
+        anchor.getAttribute("title"),
+      ].filter(Boolean).join(" "));
+      const nearby = nearbyProfileText(anchor);
+
+      let score = 0;
+      if (label === wanted) score += 30;
+      else if (label.includes(wanted)) score += 18;
+      if (nearby === wanted) score += 14;
+      else if (nearby.includes(wanted)) score += 8;
+      if (/profile\.php|\/people\//i.test(profileUrl)) score += 3;
+      if (/profile|view profile/i.test(label)) score += 2;
+
+      const rect = anchor.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) score += 1;
+
+      if (score >= 12 && (!best || score > best.score)) {
+        best = { score, url: profileUrl };
+      }
+    }
+
+    return best?.url ?? null;
+  }
+
   function isMessengerSurface() {
     const { host, pathname } = window.location;
 
@@ -231,6 +340,7 @@ var TenhFacebookSelectors = (() => {
     readComposerText,
     isSendControl,
     insertIntoComposer,
+    findCustomerProfileUrl,
     isMessengerSurface,
   };
 })();
