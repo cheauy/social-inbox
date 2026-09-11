@@ -40,5 +40,31 @@ function fixture(name='Uy Chea',href='https://www.facebook.com/thy.thy.886036#',
   html=fixture().replaceAll('Uy Chea','សុខ សាន្ត');await load();
   assert.equal((await page.evaluate(options=>TenhFacebookProfileResolver.readCurrent({...options,customerName:'សុខ សាន្ត'}),options)).profileUrl,'https://www.facebook.com/thy.thy.886036');
   console.log('PASS: Khmer name identity supported');
+  html=fixture('Previous Customer');await load();
+  assert.equal((await page.evaluate(options=>TenhFacebookProfileResolver.resolveAutomatic(options),options)).reason,'facebook_tab_in_use');
+  assert.equal(await page.locator('input').inputValue(),'unchanged');
+  console.log('PASS: automatic lookup does not change a visible Facebook tab');
+  await page.evaluate(()=>{
+    Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});
+    const row=document.querySelector('.row');
+    row.hidden=true;
+    row.onclick=()=>{document.querySelector('h3').textContent='Uy Chea';};
+    const button=document.createElement('button');
+    button.textContent='Search in Messenger conversations';
+    button.style='position:absolute;left:100px;top:255px;width:450px;height:45px';
+    button.onclick=()=>{window.submitted=(window.submitted||0)+1;row.hidden=false;button.hidden=true;};
+    document.body.append(button);
+  });
+  const [automatic,busy,reading]=await page.evaluate(options=>Promise.all([
+    TenhFacebookProfileResolver.resolveAutomatic(options),
+    TenhFacebookProfileResolver.resolveAutomatic(options),
+    TenhFacebookProfileResolver.readCurrent(options)
+  ]),options);
+  assert.equal(automatic.profileUrl,'https://www.facebook.com/thy.thy.886036');
+  assert.equal(busy.reason,'profile_lookup_busy');
+  assert.equal(reading.reason,'profile_lookup_busy');
+  assert.equal(await page.evaluate(()=>window.submitted),1);
+  assert.equal(page.context().pages().length,1);
+  console.log('PASS: automatic full search selects matching customer without another Suite tab or manual URL; concurrent lookup rejected');
  } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1});

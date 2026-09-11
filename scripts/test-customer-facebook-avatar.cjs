@@ -21,7 +21,7 @@ function harness(savedId){
       if(name==='@/components/customer-avatar')return {CustomerAvatar:()=>null};
       if(name==='@/lib/facebook/customer-profile-url')return urlExports;
       if(name==='@/lib/facebook/profile-lookup-error')return {profileLookupError:reason=>reason};
-      if(name==='@/lib/extension/use-companion')return {useCompanion:()=>({installed:true,version:'1.2.16',openFacebookProfile:()=>pending,openResolvedFacebookProfile:async token=>{confirmed.push(token);return {opened:true}}})};
+      if(name==='@/lib/extension/use-companion')return {useCompanion:()=>({installed:true,version:'1.2.17',openFacebookProfile:()=>pending,openResolvedFacebookProfile:async token=>{confirmed.push(token);return {opened:true}}})};
       throw Error(name);
     }};
   vm.runInNewContext(component,context);
@@ -51,41 +51,11 @@ test('known public ID opens real URL immediately without extension lookup or bla
   assert.equal(h.confirmed.length,0);
 });
 
-test('save a customer username link and open it directly on future photo clicks',()=>{
+test('photo UI has no manual profile URL entry',async()=>{
   const h=harness();
-  h.tree().props.children.find(child=>child?.type==='button' && child.props.children==='Set Facebook profile link').props.onClick();
-  let form=h.rerender().props.children.find(child=>child?.type==='form');
-  form.props.children[0].props.children.find(child=>child?.type==='input').props.onChange({target:{value:'https://www.facebook.com/thy.thy.886036#'}});
-  form=h.rerender().props.children.find(child=>child?.type==='form');
-  form.props.onSubmit({preventDefault(){}});
-  assert.equal(h.cache.size,1);
-  assert.equal(h.windows[0][0],'https://www.facebook.com/thy.thy.886036');
-  h.rerender();h.click();
-  assert.equal(h.windows[1][0],'https://www.facebook.com/thy.thy.886036');
-  assert.equal(h.confirmed.length,0);
-});
-test('manual profile link rejects Business Suite and the scoped Messenger ID',()=>{
-  for(const value of ['https://business.facebook.com/latest/inbox/all/','https://www.facebook.com/profile.php?id=987654']){
-    const h=harness();
-    h.tree().props.children.find(child=>child?.type==='button' && child.props.children==='Set Facebook profile link').props.onClick();
-    let form=h.rerender().props.children.find(child=>child?.type==='form');
-    form.props.children[0].props.children.find(child=>child?.type==='input').props.onChange({target:{value}});
-    form=h.rerender().props.children.find(child=>child?.type==='form');
-    form.props.onSubmit({preventDefault(){}});
-    assert.equal(h.cache.size,0);assert.equal(h.windows.length,0);
-  }
-});
-
-test('saving a link cancels a pending automatic result',async()=>{
-  const h=harness();
-  h.tree().props.children.find(child=>child?.type==='button' && child.props.children==='Set Facebook profile link').props.onClick();
-  let form=h.rerender().props.children.find(child=>child?.type==='form');
-  form.props.children[0].props.children.find(child=>child?.type==='input').props.onChange({target:{value:'https://www.facebook.com/customer.chosen'}});
-  form=h.rerender().props.children.find(child=>child?.type==='form');
-  h.click();
-  form.props.onSubmit({preventDefault(){}});
-  h.answer(result);await tick();
-  assert.equal(h.confirmed.length,0);
-  assert.equal(h.windows.length,1);
-  assert.equal([...h.cache.values()][0],'https://www.facebook.com/customer.chosen');
+  h.click();h.answer({reason:'facebook_session_needed'});await tick();
+  const tree=h.rerender();
+  assert.equal(tree.props.children.some(child=>child?.type==='form'),false);
+  assert.equal(JSON.stringify(tree).includes('Set Facebook profile link'),false);
+  assert.equal(h.windows.length,0);
 });

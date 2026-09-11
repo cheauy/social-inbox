@@ -1217,8 +1217,8 @@ async function openResolvedFacebookProfile(token, sender) {
   } catch { return { opened: false, reason: "profile_tab_unavailable" }; }
 }
 
-// Photo clicks inspect only already-open matching tabs. They never create,
-// navigate, focus, search in, or close a Business Suite tab.
+// Use the existing signed-in Page tab for automatic lookup. Never create or
+// focus Business Suite; the only new tab is the verified customer profile.
 async function openFacebookCustomerProfile({ pageId, threadId, customerName } = {}, sender) {
   if (!trustedProfileSender(sender)) return { opened: false, reason: "profile_context_incomplete" };
   if (!/^\d+$/.test(String(pageId ?? "")) || !String(customerName ?? "").trim()) {
@@ -1227,11 +1227,13 @@ async function openFacebookCustomerProfile({ pageId, threadId, customerName } = 
   try {
     const tabs = await chrome.tabs.query({ url: ["https://business.facebook.com/latest/inbox/*"] });
     const matches = new Map();
+    const pageTabs = [];
     for (const tab of tabs.slice(0, 20)) {
       if (!tab.id) continue;
       const tabUrl = new URL(tab.url);
       const ids = ["asset_id", "page_id", "mailbox_id"].map(key => tabUrl.searchParams.get(key)).filter(Boolean);
       if (!ids.length || ids.some(id => id !== String(pageId))) continue;
+      pageTabs.push(tab);
       let result;
       try {
         const results = await chrome.scripting.executeScript({
@@ -1248,7 +1250,27 @@ async function openFacebookCustomerProfile({ pageId, threadId, customerName } = 
       if (result?.pageId === String(pageId) && profileUrl && isSafeFacebookProfileUrl(profileUrl, threadId)) matches.set(profileUrl, result);
     }
     if (matches.size > 1) return { opened: false, reason: "ambiguous_profile" };
-    if (!matches.size) return { opened: false, reason: "profile_link_missing" };
+    if (!matches.size) {
+      if (!pageTabs.length) return { opened: false, reason: "facebook_session_needed" };
+      const backgroundTab = pageTabs.find(tab => tab.active === false && !tab.discarded);
+      if (!backgroundTab) return { opened: false, reason: "facebook_tab_in_use" };
+      // Recheck because the user might switch tabs while the read completes.
+      const currentTab = await chrome.tabs.get(backgroundTab.id);
+      if (currentTab.active !== false) return { opened: false, reason: "facebook_tab_in_use" };
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: backgroundTab.id },
+        func: async options => globalThis.TenhFacebookProfileResolver?.resolveAutomatic
+          ? globalThis.TenhFacebookProfileResolver.resolveAutomatic(options)
+          : { reason: "extension_refresh_required" },
+        args: [{ pageId: String(pageId), customerName: String(customerName).slice(0, 200), disallowedId: String(threadId ?? "") }],
+      });
+      const result = results?.[0]?.result;
+      const profileUrl = canonicalFacebookProfileUrl(result?.profileUrl);
+      if (result?.pageId !== String(pageId) || !profileUrl || !isSafeFacebookProfileUrl(profileUrl, threadId)) {
+        return { opened: false, reason: result?.reason || "profile_link_missing" };
+      }
+      matches.set(profileUrl, result);
+    }
     const [profileUrl, result] = matches.entries().next().value;
     return { opened: false, resolved: true, profileUrl, pageId, selectedItemId: result.selectedItemId,
       openToken: profileOpenTicket(profileUrl, sender) };

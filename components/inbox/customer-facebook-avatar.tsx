@@ -9,7 +9,7 @@ import type { InboxConversation } from "@/types/inbox";
 
 function supportedVersion(version: string | null) {
   const parts = (version ?? "").split(".").map(Number);
-  return parts[0] > 1 || (parts[0] === 1 && (parts[1] > 2 || (parts[1] === 2 && parts[2] >= 16)));
+  return parts[0] > 1 || (parts[0] === 1 && (parts[1] > 2 || (parts[1] === 2 && parts[2] >= 17)));
 }
 
 export function CustomerFacebookAvatar({ conversation }: { conversation: InboxConversation }) {
@@ -19,8 +19,6 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
   const [diagnostic, setDiagnostic] = useState("");
   const [copied, setCopied] = useState(false);
   const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
-  const [editingLink, setEditingLink] = useState(false);
-  const [draftUrl, setDraftUrl] = useState("");
   const attempt = useRef(0);
   const locked = useRef(false);
   const contact = conversation.contact;
@@ -49,8 +47,7 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
       return;
     }
     if (!installed || !supportedVersion(version)) {
-      setEditingLink(true);
-      setError(installed ? "Update TENH Companion to 1.2.16, or save this customer's Facebook profile link below." : "Save this customer's Facebook profile link below to open it directly.");
+      setError(installed ? "Update TENH Companion to 1.2.17 and refresh TENH to enable automatic profile lookup." : "Enable TENH Companion and refresh TENH to open customer profiles automatically.");
       return;
     }
     const currentAttempt = ++attempt.current;
@@ -77,8 +74,7 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
       if (currentAttempt === attempt.current && !opened?.opened) setError("Your profile link is ready. Use View Facebook profile below to open it.");
     } catch (reason) {
       if (currentAttempt === attempt.current) {
-        setEditingLink(true);
-        setError(reason instanceof Error ? reason.message : "Unable to open this profile.");
+          setError(reason instanceof Error ? reason.message : "Unable to open this profile.");
       }
     } finally {
       if (currentAttempt === attempt.current) { locked.current = false; setBusy(false); }
@@ -103,27 +99,5 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
       <details className="mt-1 text-[10px] text-slate-500"><summary>Technical details</summary><p className="break-all select-text">{diagnostic}</p></details>
     </div> : null}
     {fallbackUrl ? <a href={fallbackUrl} target="_blank" rel="noopener noreferrer" className="max-w-40 text-xs text-blue-600 underline">View Facebook profile</a> : null}
-    {isFacebook ? <button type="button" disabled={busy} className="text-xs text-blue-600 underline" onClick={() => {
-      setDraftUrl(fallbackUrl ?? savedUrl ?? "");
-      setEditingLink(!editingLink);
-    }}>Set Facebook profile link</button> : null}
-    {editingLink ? <form className="flex w-48 max-w-full flex-col gap-2" onSubmit={(event) => {
-      event.preventDefault();
-      const url = normalizeCustomerProfileLink(draftUrl.trim(), contact.platform_user_id);
-      if (!url) { setError("Enter the customer's Facebook profile URL, not a Messenger ID or Business Suite link."); return; }
-      try { localStorage.setItem(cacheKey, url); }
-      catch { setError("The link could not be saved in this browser. Please allow site storage and try again."); return; }
-      attempt.current += 1;
-      locked.current = false;
-      setBusy(false);
-      setError(""); setDiagnostic(""); setFallbackUrl(url); setEditingLink(false);
-      window.open(url, "_blank", "noopener,noreferrer");
-    }}>
-      <label className="text-xs text-slate-600">Facebook profile URL
-        <input type="url" required value={draftUrl} onChange={event => setDraftUrl(event.target.value)} placeholder="https://www.facebook.com/username" className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs" />
-      </label>
-      <p className="text-[10px] text-slate-500">Saved for {contact.full_name} in this browser.</p>
-      <button type="submit" className="rounded-md bg-blue-600 px-2 py-1.5 text-xs font-semibold text-white">Save and open profile</button>
-    </form> : null}
   </div>;
 }
