@@ -29,3 +29,9 @@ export function getFacebookCustomerProfileUrl(contact: FacebookProfileIdentity |
     ? `https://www.facebook.com/profile.php?id=${publicId}`
     : null;
 }
+
+export function normalizeCustomerProfileLink(value: unknown, messengerId?: string | null): string | null {
+  const url = normalizeFacebookProfileUrl(value);
+  if (!url || (messengerId && new URL(url).searchParams.get("id") === messengerId.trim())) return null;
+  return url;
+}

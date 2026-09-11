@@ -1217,39 +1217,43 @@ async function openResolvedFacebookProfile(token, sender) {
   } catch { return { opened: false, reason: "profile_tab_unavailable" }; }
 }
 
-// The resolver owns this inactive tab; it never navigates a user's existing tab.
+// Photo clicks inspect only already-open matching tabs. They never create,
+// navigate, focus, search in, or close a Business Suite tab.
 async function openFacebookCustomerProfile({ pageId, threadId, customerName } = {}, sender) {
   if (!trustedProfileSender(sender)) return { opened: false, reason: "profile_context_incomplete" };
   if (!/^\d+$/.test(String(pageId ?? "")) || !String(customerName ?? "").trim()) {
     return { opened: false, reason: "profile_context_incomplete" };
   }
-  let tab;
   try {
-    const url = new URL("https://business.facebook.com/latest/inbox/messenger/");
-    url.search = new URLSearchParams({ asset_id: pageId, mailbox_id: pageId }).toString();
-    tab = await chrome.tabs.create({ url: url.href, active: false });
-    if (!tab?.id) return { opened: false, reason: "facebook_bridge_unavailable" };
-    const ready = await waitForFacebookBridge(tab.id, 12000, { pageId });
-    if (!ready) return { opened: false, reason: "page_mismatch_or_sign_in" };
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: async (options) => globalThis.TenhFacebookProfileResolver
-        ? globalThis.TenhFacebookProfileResolver.resolve(options)
-        : { reason: "extension_refresh_required" },
-      args: [{ pageId: String(pageId), customerName: String(customerName).slice(0, 200), disallowedId: String(threadId ?? "") }],
-    });
-    const result = results?.[0]?.result;
-    const profileUrl = canonicalFacebookProfileUrl(result?.profileUrl);
-    if (!profileUrl || !isSafeFacebookProfileUrl(profileUrl, threadId)) {
-      return { opened: false, reason: result?.reason || "profile_link_unavailable" };
+    const tabs = await chrome.tabs.query({ url: ["https://business.facebook.com/latest/inbox/*"] });
+    const matches = new Map();
+    for (const tab of tabs.slice(0, 20)) {
+      if (!tab.id) continue;
+      const tabUrl = new URL(tab.url);
+      const ids = ["asset_id", "page_id", "mailbox_id"].map(key => tabUrl.searchParams.get(key)).filter(Boolean);
+      if (!ids.length || ids.some(id => id !== String(pageId))) continue;
+      let result;
+      try {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: async options => globalThis.TenhFacebookProfileResolver?.readCurrent
+            ? globalThis.TenhFacebookProfileResolver.readCurrent(options)
+            : { reason: "extension_refresh_required" },
+          args: [{ pageId: String(pageId), customerName: String(customerName).slice(0, 200), disallowedId: String(threadId ?? "") }],
+        });
+        result = results?.[0]?.result;
+      } catch { continue; /* An existing tab may close or reload during the read. */ }
+      if (["ambiguous_customer", "ambiguous_profile"].includes(result?.reason)) return { opened: false, reason: result.reason };
+      const profileUrl = canonicalFacebookProfileUrl(result?.profileUrl);
+      if (result?.pageId === String(pageId) && profileUrl && isSafeFacebookProfileUrl(profileUrl, threadId)) matches.set(profileUrl, result);
     }
-    // TENH opens the returned URL only if the same customer is still selected.
+    if (matches.size > 1) return { opened: false, reason: "ambiguous_profile" };
+    if (!matches.size) return { opened: false, reason: "profile_link_missing" };
+    const [profileUrl, result] = matches.entries().next().value;
     return { opened: false, resolved: true, profileUrl, pageId, selectedItemId: result.selectedItemId,
       openToken: profileOpenTicket(profileUrl, sender) };
   } catch {
     return { opened: false, reason: "profile_resolution_unavailable" };
-  } finally {
-    if (tab?.id) await chrome.tabs.remove(tab.id).catch(() => {});
   }
 }
 

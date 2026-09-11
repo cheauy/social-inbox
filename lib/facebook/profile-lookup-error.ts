@@ -1,4 +1,5 @@
 const messages: Record<string, string> = {
+  profile_link_missing: "This customer's Facebook profile link is not saved yet. Add their profile URL below to open it directly.",
   ambiguous_customer: "More than one matching customer was found. TENH did not choose a profile.",
   ambiguous_profile: "Facebook showed more than one matching profile link. TENH did not choose one.",
   page_mismatch_or_sign_in: "The lookup could not load this conversation's Facebook Page. Check that your Facebook account can access that Page.",
