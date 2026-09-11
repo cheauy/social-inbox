@@ -122,7 +122,7 @@ export function CompanionFacebookAction({
             strokeLinecap="round"
           />
         </svg>
-        {opening ? "Opening Facebook…" : "Open in Facebook"}
+        {opening ? "Opening Facebookâ€¦" : "Open in Facebook"}
       </button>
 
       {openFailed ? (
