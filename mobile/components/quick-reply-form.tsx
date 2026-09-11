@@ -1,9 +1,9 @@
+import { AuthImage } from "./auth-image";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   Text,
@@ -269,8 +269,9 @@ export function QuickReplyForm({
             {draft.attachments.map((attachment) => (
               <View key={attachment.path}>
                 {attachment.kind === "image" ? (
-                  <Image
-                    source={{ uri: attachment.url ?? undefined }}
+                  <AuthImage
+                    uri={`/api/saved-replies/media?thumbnail=1&path=${encodeURIComponent(attachment.path)}`}
+                    cacheKey={`thumbnail:${attachment.path}`}
                     style={{
                       width: 74,
                       height: 74,

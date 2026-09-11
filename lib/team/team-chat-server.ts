@@ -1,3 +1,4 @@
+import { cachedSignedUrls } from "@/lib/media/signed-urls";
 import "server-only";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -392,12 +393,7 @@ export async function withSignedUrls(
     return [];
   }
 
-  const { data, error } = await supabaseAdmin.storage
-    .from(TEAM_CHAT_BUCKET)
-    .createSignedUrls(
-      rows.map((row) => row.storage_path),
-      expiresInSeconds,
-    );
+  const { data, error } = await cachedSignedUrls(TEAM_CHAT_BUCKET, rows.map(row => row.storage_path), expiresInSeconds).then(data => ({ data, error: null }), (error: Error) => ({ data: null, error }));
 
   if (error) {
     // A missing URL degrades to "no preview", never to a broken page.

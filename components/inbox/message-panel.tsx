@@ -3971,7 +3971,7 @@ export function MessagePanel({
                                 className="h-[112px] w-[112px] shrink-0 overflow-hidden rounded-[15px] bg-white text-left sm:h-[132px] sm:w-[132px]"
                                 aria-label="Open Facebook post image"
                               >
-                                <img
+                                <img decoding="async"
                                   src={
                                     postPreview.full_picture
                                   }
@@ -4489,7 +4489,7 @@ export function MessagePanel({
                                     }}
                                   >
                                     {replyActorPhoto ? (
-                                      <img
+                                      <img decoding="async"
                                         src={replyActorPhoto}
                                         alt={replyActorName}
                                         className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-slate-200"
@@ -4960,7 +4960,7 @@ export function MessagePanel({
                                     rel="noreferrer"
                                     className="block"
                                   >
-                                    <img
+                                    <img decoding="async"
                                       src={
                                         postPreview.full_picture
                                       }
@@ -5077,7 +5077,7 @@ export function MessagePanel({
                           <div className="w-fit">
                             {isFacebookSticker &&
                             facebookStickerUrl ? (
-                              <img
+                              <img decoding="async"
                                 src={facebookStickerUrl}
                                 alt="Facebook sticker"
                                 className="max-h-40 max-w-[160px] object-contain"
@@ -5099,7 +5099,7 @@ export function MessagePanel({
                               stickerMeta
                                 ?.preview_kind ===
                                 "image" ? (
-                              <img
+                              <img decoding="async"
                                 src={attachmentUrl}
                                 alt={
                                   stickerMeta?.emoji
@@ -5291,7 +5291,7 @@ export function MessagePanel({
                             {attachmentUrl ? (
                               animationMeta?.format ===
                               "gif" ? (
-                                <img
+                                <img decoding="async"
                                   src={attachmentUrl}
                                   alt={attachmentName}
                                   className="max-h-80 max-w-full rounded-xl object-contain"
@@ -6164,7 +6164,7 @@ export function MessagePanel({
             className="relative flex max-h-[92vh] max-w-[94vw] items-center justify-center"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <img
+            <img decoding="async"
               src={imagePreview.src}
               alt={imagePreview.alt}
               className="max-h-[92vh] max-w-[94vw] rounded-2xl object-contain shadow-2xl"

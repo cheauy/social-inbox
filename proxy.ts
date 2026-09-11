@@ -1,6 +1,7 @@
 import {
   createServerClient,
 } from "@supabase/ssr";
+import { MARKETING_HOSTS, normalizeHost } from "@/lib/display/marketing-hosts";
 
 import {
   NextResponse,
@@ -10,6 +11,17 @@ import {
 export async function proxy(
   request: NextRequest,
 ) {
+  const host = normalizeHost(request.headers.get("x-forwarded-host")) ||
+    normalizeHost(request.headers.get("host")) || request.nextUrl.hostname;
+  const path = request.nextUrl.pathname;
+  if (MARKETING_HOSTS.has(host) &&
+    (path === "/login" || path === "/register" || path === "/dashboard" || path.startsWith("/dashboard/"))) {
+    const appUrl = new URL("https://app.tenhchat.com");
+    appUrl.pathname = path;
+    appUrl.search = request.nextUrl.search;
+    return NextResponse.redirect(appUrl, 307);
+  }
+
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
 

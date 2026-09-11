@@ -1,3 +1,4 @@
+import { AuthImage } from "./auth-image";
 import React from "react";
 import { ActivityIndicator, Image, Keyboard, KeyboardAvoidingView, Modal, Platform as RNPlatform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -142,7 +143,7 @@ export function Button({ title, onPress, busy = false, secondary = false, disabl
 export function Avatar({ name, uri, size = 48 }: { name?: string | null; uri?: string | null; size?: number }) {
   const [failed, setFailed] = React.useState(false);
   React.useEffect(() => setFailed(false), [uri]);
-  return uri && !failed ? <Image source={{ uri }} onError={() => setFailed(true)} style={{ width: size, height: size, borderRadius: size / 2 }} /> : <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.pale, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.blue, fontWeight: "700", fontSize: size * 0.36 }}>{Array.from(name?.trim() || "?")[0]}</Text></View>;
+  return uri && !failed ? <AuthImage uri={uri} onError={() => setFailed(true)} style={{ width: size, height: size, borderRadius: size / 2 }} /> : <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.pale, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.blue, fontWeight: "700", fontSize: size * 0.36 }}>{Array.from(name?.trim() || "?")[0]}</Text></View>;
 }
 export const channel = (c: InboxConversation) => c.social_account?.platform === "telegram" ? "Telegram" : c.source_type === "comment" ? "Facebook Comments" : "Messenger";
 

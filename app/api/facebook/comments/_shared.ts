@@ -1,5 +1,5 @@
 import {
-  getFacebookPageAccessToken,
+  resolveStoredFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
 import { authorizeInboxBusinessAccess, type InboxAuthorizedMember } from "@/lib/inbox/get-inbox-resource-access";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -37,6 +37,8 @@ type FacebookSocialAccountRow = {
   platform: string;
   platform_account_id: string | null;
   is_active: boolean | null;
+  facebook_token_status: string | null;
+  facebook_page_access_token_encrypted: string | null;
 };
 
 export type LocalFacebookCommentContext = {
@@ -211,7 +213,9 @@ async function loadCommentPageContext(
       business_id,
       platform,
       platform_account_id,
-      is_active
+      is_active,
+      facebook_token_status,
+      facebook_page_access_token_encrypted
     `)
     .eq(
       "id",
@@ -263,9 +267,7 @@ async function loadCommentPageContext(
 
   try {
     pageAccessToken =
-      await getFacebookPageAccessToken(
-        pageId,
-      );
+      resolveStoredFacebookPageAccessToken(socialAccount);
   } catch (error) {
     throw new FacebookCommentContextError(
       error instanceof Error
@@ -324,7 +326,15 @@ export async function loadAuthorizedFacebookCommentActionContext({
     );
   }
 
-  const access = await authorizeInboxBusinessAccess(message.business_id);
+  // Both are read-only and scoped to the resolved message. Do not resolve a
+  // Page token or perform a mutation until access has been approved.
+  const [access, localResult] = await Promise.all([
+    authorizeInboxBusinessAccess(message.business_id),
+    loadCommentConversation(message, message.business_id).then(
+      context => ({ context, error: null }),
+      (error: unknown) => ({ context: null, error }),
+    ),
+  ]);
 
   if (!access.success) {
     throw new FacebookCommentContextError(access.error, access.status);
@@ -332,8 +342,8 @@ export async function loadAuthorizedFacebookCommentActionContext({
 
   // Reuse the exact message already resolved and authorized in this request.
   // Do not repeat the same messages lookup before resolving its Page.
-  const localContext = await loadCommentConversation(message, message.business_id);
-  const context = await loadCommentPageContext(localContext, message.business_id);
+  if (!localResult.context) throw localResult.error;
+  const context = await loadCommentPageContext(localResult.context, message.business_id);
 
   return {
     ...context,

@@ -2695,7 +2695,7 @@ export function GroupChatView() {
                                             src={attachment.url}
                                             muted
                                             playsInline
-                                            preload="metadata"
+                                            preload="none"
                                             className="aspect-video w-full bg-slate-950 object-contain"
                                           />
                                           <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/15 transition group-hover/video:bg-slate-950/25">
@@ -3482,7 +3482,7 @@ export function GroupChatView() {
 
             <div className="flex min-h-0 w-full flex-1 items-center justify-center p-3 sm:p-5">
               {mediaPreview.kind === "image" ? (
-                <img
+                <img decoding="async"
                   src={mediaPreview.url}
                   alt={mediaPreview.label}
                   className="max-h-[78vh] max-w-full object-contain"
@@ -3632,7 +3632,7 @@ export function GroupChatView() {
                           src={item.url}
                           muted
                           playsInline
-                          preload="metadata"
+                          preload="none"
                           className="aspect-video w-full bg-slate-950 object-contain"
                         />
                         <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/20">

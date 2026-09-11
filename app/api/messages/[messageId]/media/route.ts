@@ -1,3 +1,4 @@
+import { cachedSignedUrls } from "@/lib/media/signed-urls";
 import {
   NextRequest,
   NextResponse,
@@ -154,14 +155,7 @@ export async function GET(
     data: signed,
     error: signedError,
   } =
-    await supabaseAdmin.storage
-      .from(
-        TELEGRAM_MESSAGE_MEDIA_BUCKET,
-      )
-      .createSignedUrl(
-        storagePath,
-        300,
-      );
+    await cachedSignedUrls(TELEGRAM_MESSAGE_MEDIA_BUCKET, [storagePath], 300).then(data => ({ data: data[0], error: null }), (error: Error) => ({ data: null, error }));
 
   if (
     signedError ||

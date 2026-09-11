@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { SavedReplyAttachment } from "@/types/inbox";
 
@@ -65,63 +65,8 @@ function Thumbnail({
 }: {
   attachment: SavedReplyAttachment;
 }) {
-  /*
-   * The list API signs these in one batch, so most of the time the link is
-   * already here and no request is made at all. The fetch below stays for the
-   * places that read attachments straight from a row -- the edit form -- where
-   * there is nothing to have batched.
-   */
-  const [url, setUrl] = useState<
-    string | null
-  >(attachment.url ?? null);
-  const [failed, setFailed] =
-    useState(false);
-
-  useEffect(() => {
-    if (
-      attachment.kind !== "image" ||
-      attachment.url
-    ) {
-      return;
-    }
-
-    let cancelled = false;
-
-    void fetch(
-      `/api/saved-replies/media?path=${encodeURIComponent(
-        attachment.path,
-      )}`,
-      { cache: "no-store" },
-    )
-      .then((response) => response.json())
-      .then((result) => {
-        if (cancelled) {
-          return;
-        }
-
-        if (
-          result?.success &&
-          typeof result.url === "string"
-        ) {
-          setUrl(result.url);
-        } else {
-          setFailed(true);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setFailed(true);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    attachment.kind,
-    attachment.path,
-    attachment.url,
-  ]);
+  const [failed, setFailed] = useState(false);
+  const url = `/api/saved-replies/media?thumbnail=1&path=${encodeURIComponent(attachment.path)}`;
 
   return (
     <span
@@ -134,6 +79,9 @@ function Thumbnail({
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={url}
+          onError={() => setFailed(true)}
+          loading="lazy"
+          decoding="async"
           alt={attachment.name}
           className="h-full w-full object-cover"
         />

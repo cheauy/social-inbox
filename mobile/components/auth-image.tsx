@@ -5,34 +5,31 @@ import { Image, ImageStyle, StyleProp, View, ViewStyle } from "react-native";
 import { cacheMedia } from "../lib/media-cache";
 import { useMediaSource } from "../lib/media";
 
-/*
- * A picture that needs a session to fetch.
- *
- * Facebook writes absolute CDN links and React Native draws them directly.
- * Telegram cannot: its file URLs carry the bot token and expire, so TENH
- * proxies the bytes behind /api/messages/<id>/media, which answers 401 to
- * anyone without a session.
- *
- * Passing a Cookie header to <Image source={{uri, headers}}/> does not work
- * on Android -- the same request through fetch() returns 200 and the image
- * loader still gets nothing, because RN's loader goes through OkHttp's own
- * cookie jar and drops the header. That failure is silent: <Image/> has no
- * way to say "401", so every Telegram photo, sticker and video thumbnail
- * rendered as the tile's near-black placeholder and looked like a design
- * choice rather than a broken request.
- *
- * So the bytes are fetched the way everything else in this app fetches --
- * with the cookie -- written to the cache, and handed to <Image/> as a local
- * file. It downloads once per image per install; the second look is a disk
- * read.
- */
+function stableImageKey(uri: string) {
+  try {
+    const url = new URL(uri);
+    const storage = process.env.EXPO_PUBLIC_SUPABASE_URL;
+    if (storage && url.origin === new URL(storage).origin && url.pathname.startsWith("/storage/v1/object/sign/")) {
+      url.searchParams.delete("token");
+      return url.href;
+    }
+  } catch { /* Local asset. */ }
+  return uri;
+}
 
-export function AuthImage({
+// Images use one scoped disk download rather than a simultaneous native fetch.
+export function AuthImage(props: Parameters<typeof CachedImage>[0]) {
+  const resolve = useMediaSource();
+  return <CachedImage key={JSON.stringify([resolve(props.uri)?.cacheScope, props.uri])} {...props} />;
+}
+
+function CachedImage({
   uri,
   style,
   resizeMode = "cover",
   cacheKey,
   onLoad,
+  onError,
 }: {
   uri: string;
   style?: StyleProp<ImageStyle>;
@@ -46,9 +43,11 @@ export function AuthImage({
    * underlying file -- a storage path, an attachment id -- pass it here.
    */
   cacheKey?: string;
+  onError?: () => void;
   onLoad?: (size: { width: number; height: number }) => void;
 }) {
   const resolve = useMediaSource();
+  const targetScope = resolve(uri)?.cacheScope;
   const [source, setSource] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -62,38 +61,11 @@ export function AuthImage({
       return;
     }
 
-    /*
-     * Nothing to authenticate and nothing to file it under: hand it straight
-     * to <Image/>, as before.
-     *
-     * A cacheKey changes that. It means the caller knows what this picture is
-     * -- a storage path, an attachment id -- and that its address will be
-     * different tomorrow. A quick reply's photo is the case: every open mints
-     * a fresh signed link, so RN's own cache never recognised it and every
-     * open of the picker downloaded the same size chart again, with the tiles
-     * grey until it landed. Filed on disk under something stable, the second
-     * open is a disk read and there is nothing to watch.
-     */
-    if (!target.headers && !cacheKey) {
-      setSource(target.uri);
-      return;
-    }
-
-    /*
-     * While the disk copy is being fetched, draw the link itself.
-     *
-     * Only for a picture that needs no session -- a signed storage link is
-     * readable as-is, so there is no reason to make somebody watch a grey
-     * square during the very first download. A proxied one has no such
-     * option: <Image/> drops the cookie, which is the whole reason this
-     * component exists.
-     */
-    if (!target.headers) {
-      setSource(target.uri);
-    }
+    setSource(null);
+    if (!/^https?:\/\//.test(target.uri)) { setSource(target.uri); return; }
 
     void (async () => {
-      const local = await cacheMedia(target.uri, cacheKey ?? target.uri, target.headers);
+      const local = await cacheMedia(target.uri, cacheKey ?? stableImageKey(target.uri), target.headers, target.cacheScope);
 
       if (!alive) return;
 
@@ -106,16 +78,17 @@ export function AuthImage({
        * No disk copy. A picture that needs no session can still be drawn from
        * its link; one that does has nothing left to try.
        */
-      if (!target.headers) return;
+      if (!target.headers) { setSource(target.uri); return; }
 
       setSource(null);
       setFailed(true);
+      onError?.();
     })();
 
     return () => {
       alive = false;
     };
-  }, [uri, cacheKey]);
+  }, [uri, cacheKey, targetScope]);
 
   /*
    * A broken picture says it is broken.
@@ -141,7 +114,7 @@ export function AuthImage({
     <Image
       source={source ? { uri: source } : undefined}
       resizeMode={resizeMode}
-      onError={() => setFailed(true)}
+      onError={() => { setFailed(true); onError?.(); }}
       onLoad={(event) => {
         const { width, height } = event.nativeEvent.source;
 

@@ -1,3 +1,4 @@
+import { AuthImage } from "../../../components/auth-image";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
@@ -9,7 +10,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -171,11 +171,7 @@ function VideoPreview({ url }: { url: string }) {
 }
 
 function InlineVideo({ url }: { url: string }) {
-  const player = useVideoPlayer(url, (instance) => {
-    instance.muted = true;
-  });
-
-  return <VideoView player={player} nativeControls={false} contentFit="cover" style={{ width: "100%", height: "100%" }} />;
+  return <View accessibilityLabel="Video — tap to play" style={{ width: "100%", height: "100%", alignItems: "center", justifyContent: "center", backgroundColor: "#e8f1f6" }}><Ionicons name="videocam-outline" size={32} color="#6D7E91" /></View>;
 }
 
 function MediaPreviewModal({
@@ -221,8 +217,8 @@ function MediaPreviewModal({
         </Pressable>
 
         {preview?.kind === "image" ? (
-          <Image
-            source={{ uri: preview.url }}
+          <AuthImage
+            uri={preview.url}
             style={{ width: "100%", height: "82%" }}
             resizeMode="contain"
           />
@@ -275,7 +271,7 @@ function AttachmentView({
               }}
               style={{ width: tile, height: images.length === 1 ? 210 : tile, borderRadius: 14, overflow: "hidden", backgroundColor: colors.border }}
             >
-              <Image source={{ uri: attachment.url ?? undefined }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+              <AuthImage uri={attachment.url ?? ""} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
               {index === 8 && images.length > 9 ? <View style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(16,34,56,.58)" }}><Text style={{ color: "white", fontSize: 22, fontWeight: "800" }}>+{images.length - 9}</Text></View> : null}
             </Pressable>
           ))}

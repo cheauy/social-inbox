@@ -65,7 +65,7 @@ import { CHAT_BASE_COLOR, useDisplay } from "../../lib/display-provider";
 import { useInbox } from "../../lib/inbox-provider";
 import { useMediaSource } from "../../lib/media";
 import { shrinkImage } from "../../lib/shrink";
-import { warmMedia } from "../../lib/media-cache";
+
 import { usePresence, useViewers } from "../../lib/presence";
 import { AuthImage } from "../../components/auth-image";
 import type {
@@ -676,18 +676,7 @@ function messageMedia(message: InboxMessage): MediaPreview[] {
 }
 
 function InlineVideo({ uri }: { uri: string }) {
-  const player = useVideoPlayer(uri, (instance) => {
-    instance.muted = true;
-  });
-
-  return (
-    <VideoView
-      player={player}
-      nativeControls={false}
-      contentFit="cover"
-      style={{ width: "100%", height: "100%" }}
-    />
-  );
+  return <View accessibilityLabel="Video — tap to play" style={{ width: "100%", height: "100%", alignItems: "center", justifyContent: "center", backgroundColor: "#e8f1f6" }}><Ionicons name="videocam-outline" size={32} color="#6D7E91" /></View>;
 }
 
 function VideoPreview({ uri }: { uri: string }) {
@@ -1774,7 +1763,7 @@ function ReplyThumbs({ attachments }: { attachments: SavedReplyAttachment[] }) {
         ) : (
         <AuthImage
           key={picture.path}
-          uri={picture.url as string}
+          uri={`/api/saved-replies/media?thumbnail=1&path=${encodeURIComponent(picture.path)}`}
           /*
             Cached against the file, not against its link. A saved reply's
             picture arrives behind a signed URL that is different on every
@@ -1782,7 +1771,7 @@ function ReplyThumbs({ attachments }: { attachments: SavedReplyAttachment[] }) {
             again every time the sheet was opened. The storage path is the
             thing that does not change.
           */
-          cacheKey={picture.path}
+          cacheKey={`thumbnail:${picture.path}`}
           style={{
             width: 52,
             height: 52,
@@ -2259,31 +2248,7 @@ export default function Conversation() {
       const list = data.savedReplies ?? [];
       setReplies(list);
 
-      /*
-       * Start pulling the pictures down now, while somebody is still reading
-       * the titles.
-       *
-       * A saved reply's photo in this workspace is a 2.6 MB PNG drawn into a
-       * 52-point square, and the server signs it afresh on every request, so
-       * nothing was ever reused: each open of the picker fetched the same
-       * megabytes again and the tiles sat grey until they landed. Cached on
-       * disk under the storage path, the first open has a head start and
-       * every open after it is instant.
-       */
-      void warmMedia(
-        list
-          .flatMap((reply) => reply.attachments ?? [])
-          .filter((file) => file.kind === "image" && file.url)
-          .map((file) => {
-            const target = resolveMedia(file.url as string);
-
-            return {
-              uri: target?.uri ?? (file.url as string),
-              key: file.path,
-              headers: target?.headers,
-            };
-          }),
-      );
+      // Visible thumbnails download on demand through AuthImage.
     } catch (replyError) {
       setError(
         replyError instanceof Error

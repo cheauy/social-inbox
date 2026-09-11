@@ -1,5 +1,8 @@
 "use client";
 
+import { createPortal } from "react-dom";
+import { quickReplyPosition } from "@/lib/inbox/quick-reply-position";
+
 import { AttachmentThumbnails } from "@/components/settings/saved-reply-attachment-thumbnails";
 import type {
   SavedReplyAttachment,
@@ -8,6 +11,8 @@ import type {
 
 import {
   useEffect,
+  useLayoutEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -97,7 +102,7 @@ export function SavedReplySelector({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("all");
+  const [category, setCategory] = useState<string | null>(null);
 
   const [
     managedCategories,
@@ -116,12 +121,51 @@ export function SavedReplySelector({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const popupRootRef = useRef<HTMLDivElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const dialogId = useId();
+  const [position, setPosition] = useState<ReturnType<typeof quickReplyPosition> | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    let frame = 0;
+    const update = () => {
+      const anchor = triggerRef.current?.getBoundingClientRect();
+      if (!anchor) return;
+      const viewport = window.visualViewport;
+      setPosition(quickReplyPosition(anchor, {
+        left: viewport?.offsetLeft ?? 0, top: viewport?.offsetTop ?? 0,
+        width: viewport?.width ?? window.innerWidth, height: viewport?.height ?? window.innerHeight,
+      }));
+    };
+    const schedule = (event?: Event) => {
+      if (event?.target instanceof Node && popupRef.current?.contains(event.target)) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("resize", schedule);
+    window.addEventListener("scroll", schedule, true);
+    window.visualViewport?.addEventListener("resize", schedule);
+    window.visualViewport?.addEventListener("scroll", schedule);
+    const observer = new ResizeObserver(() => schedule());
+    if (popupRootRef.current) observer.observe(popupRootRef.current);
+    return () => {
+      cancelAnimationFrame(frame); observer.disconnect();
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("scroll", schedule, true);
+      window.visualViewport?.removeEventListener("resize", schedule);
+      window.visualViewport?.removeEventListener("scroll", schedule);
+    };
+  }, [open]);
 
   function closePopup() {
     setOpen(false);
     setSearch("");
-    setCategory("all");
+    setCategory(null);
     setVisibleCount(20);
+    setPosition(null);
   }
 
   useEffect(() => {
@@ -135,18 +179,27 @@ export function SavedReplySelector({
       if (
         target &&
         popupRootRef.current &&
-        !popupRootRef.current.contains(target)
+        !popupRootRef.current.contains(target) &&
+        !popupRef.current?.contains(target)
       ) {
         closePopup();
       }
     }
 
+    function onEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault(); event.stopPropagation();
+        closePopup(); triggerRef.current?.focus();
+      }
+    }
+    document.addEventListener("keydown", onEscape, true);
     document.addEventListener(
       "pointerdown",
       handleOutsidePointerDown,
     );
 
     return () => {
+      document.removeEventListener("keydown", onEscape, true);
       document.removeEventListener(
         "pointerdown",
         handleOutsidePointerDown,
@@ -328,7 +381,7 @@ export function SavedReplySelector({
     return replies.filter((reply) => {
       const replyCategory = (reply.category ?? "").trim();
 
-      if (category !== "all" && replyCategory !== category) {
+      if (category !== null && replyCategory.toLowerCase() !== category.trim().toLowerCase()) {
         return false;
       }
 
@@ -353,9 +406,10 @@ export function SavedReplySelector({
     [filteredReplies, visibleCount],
   );
 
-  useEffect(() => {
-    setVisibleCount(20);
-  }, [search, category, open]);
+  function chooseCategory(value: string | null) {
+    setCategory(value); setVisibleCount(20);
+    listRef.current?.scrollTo({ top: 0 });
+  }
 
   function selectReply(reply: SavedReply) {
     onSelect(
@@ -368,9 +422,10 @@ export function SavedReplySelector({
   return (
     <div ref={popupRootRef} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() =>
-          setOpen((current) => !current)
+          open ? closePopup() : setOpen(true)
         }
         className={`flex h-9 w-9 items-center justify-center rounded-lg border transition ${
           open
@@ -380,6 +435,8 @@ export function SavedReplySelector({
         title="Quick replies"
         aria-label="Quick replies"
         aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-controls={open ? dialogId : undefined}
       >
         <svg
           viewBox="0 0 24 24"
@@ -397,54 +454,41 @@ export function SavedReplySelector({
         </svg>
       </button>
 
-      {open ? (
-        <div className="absolute bottom-12 left-0 z-50 w-[540px] max-w-[calc(100vw-28px)] overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.20)]">
-          <div className="border-b border-slate-200 px-5 pb-4 pt-5">
-            <p className="text-xl font-bold tracking-tight text-slate-950">
-              Quick replies
-            </p>
-            <p className="mt-1 text-sm text-slate-500">
-              Insert a prepared response
-            </p>
+      {open && position ? createPortal(
+        <div ref={popupRef} id={dialogId} role="dialog" aria-labelledby={`${dialogId}-title`}
+          style={position}
+          className="fixed z-[160] flex flex-col overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.20)]">
+          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
+            <div className="min-w-0">
+              <h2 id={`${dialogId}-title`} className="text-lg font-bold tracking-tight text-slate-950">Quick replies</h2>
+              {position.maxHeight >= 350 ? <p className="mt-0.5 text-sm text-slate-500">Insert a prepared response</p> : null}
+            </div>
+            <button type="button" aria-label="Close quick replies" onClick={() => { closePopup(); triggerRef.current?.focus(); }}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-500">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+            </button>
           </div>
 
-          <div className="border-b border-slate-200 p-4">
-            <div className="grid grid-cols-[minmax(0,1fr)_180px] gap-3 max-[520px]:grid-cols-1">
-              <div className="relative">
-                <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                  <SearchIcon />
-                </span>
-                <input
-                  autoFocus
-                  type="search"
-                  value={search}
-                  onChange={(event) =>
-                    setSearch(event.target.value)
-                  }
-                  placeholder="Search replies..."
-                  className="h-12 w-full rounded-2xl border border-slate-300 pl-12 pr-4 text-[15px] outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-
-              <select
-                value={category}
-                onChange={(event) =>
-                  setCategory(event.target.value)
-                }
-                className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-[15px] font-medium text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                aria-label="Quick reply category"
-              >
-                <option value="all">All categories</option>
-                {categories.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
+          <div className="shrink-0 border-b border-slate-200 p-3">
+            <div className="relative">
+              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"><SearchIcon /></span>
+              <input autoFocus type="search" value={search} aria-label="Search quick replies"
+                onChange={(event) => { setSearch(event.target.value); setVisibleCount(20); listRef.current?.scrollTo({ top: 0 }); }}
+                placeholder="Search replies..."
+                className="h-11 w-full rounded-xl border border-slate-300 pl-12 pr-4 text-[15px] outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
+            </div>
+            <div role="group" aria-label="Quick reply categories" className="mt-3 flex gap-2 overflow-x-auto overscroll-x-contain pb-1">
+              {[{ value: null, label: "All categories" }, ...categories.map(item => ({ value: item, label: item }))].map(item => (
+                <button key={item.value === null ? "all" : `category:${item.value}`} type="button" aria-pressed={category === item.value} title={item.label}
+                  onClick={() => chooseCategory(item.value)}
+                  className={`max-w-48 shrink-0 truncate rounded-full border px-3 py-1.5 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ${category === item.value ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
+                  {item.label}
+                </button>
+              ))}
             </div>
           </div>
 
-          <div className="max-h-[410px] overflow-y-auto overscroll-contain p-3">
+          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
             {loading ? (
               <p className="p-8 text-center text-sm text-slate-500">
                 Loading...
@@ -460,9 +504,9 @@ export function SavedReplySelector({
                     key={reply.id}
                     type="button"
                     onClick={() => selectReply(reply)}
-                    className="group grid w-full grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 border-b border-slate-100 px-4 py-3.5 text-left transition last:border-b-0 hover:bg-blue-50/70 focus:bg-blue-50 focus:outline-none"
+                    className="group grid w-full grid-cols-[36px_minmax(0,1fr)_auto] sm:grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 border-b border-slate-100 px-4 py-3.5 text-left transition last:border-b-0 hover:bg-blue-50/70 focus:bg-blue-50 focus:outline-none"
                   >
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold tabular-nums text-slate-500 group-hover:border-blue-200 group-hover:bg-blue-50 group-hover:text-blue-700">
+                    <span className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold tabular-nums text-slate-500 group-hover:border-blue-200 group-hover:bg-blue-50 group-hover:text-blue-700">
                       {index + 1}
                     </span>
 
@@ -478,7 +522,7 @@ export function SavedReplySelector({
                         {reply.title?.trim() ||
                           "Untitled reply"}
                       </span>
-                      <span className="mt-0.5 line-clamp-2 break-words text-sm leading-5 text-slate-500">
+                      <span className="mt-0.5 line-clamp-2 [overflow-wrap:anywhere] text-sm leading-5 text-slate-500">
                         {reply.message_text}
                       </span>
                     </span>
@@ -522,13 +566,13 @@ export function SavedReplySelector({
             ) : null}
           </div>
 
-          <div className="flex items-center gap-2 border-t border-slate-200 bg-slate-50/80 px-5 py-4 text-xs text-slate-500">
+          {position.maxHeight >= 350 ? <div className="flex shrink-0 items-center gap-2 border-t border-slate-200 bg-slate-50/80 px-5 py-4 text-xs text-slate-500">
             <GearIcon />
             <span>
               Manage quick replies in Settings → Quick replies.
             </span>
-          </div>
-        </div>
+          </div> : null}
+        </div>, document.body
       ) : null}
     </div>
   );

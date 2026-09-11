@@ -367,7 +367,7 @@ export function FileLibrary({ files }: { files: CustomerFile[] }) {
                         backgroundColor: colors.background,
                       }}
                     >
-                      {item.url ? (
+                      {item.url && item.kind === "image" ? (
                         <AuthImage
                           uri={item.url}
                           cacheKey={item.cacheKey}

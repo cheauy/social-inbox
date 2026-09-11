@@ -25,7 +25,7 @@ import { useInbox } from "./inbox-provider";
 
 const BASE = process.env.EXPO_PUBLIC_TENH_API_URL || "https://app.tenhchat.com";
 
-export type MediaSource = { uri: string; headers?: Record<string, string> };
+export type MediaSource = { uri: string; headers?: Record<string, string>; cacheScope?: string };
 
 const STORAGE = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
 
@@ -38,7 +38,10 @@ const STORAGE = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
  * sat on its placeholder for ever, with our session cookie attached to a
  * request that was never going to work.
  */
-const isOurs = (uri: string) => uri.startsWith("/api/") || uri.startsWith(BASE);
+const isOurs = (uri: string) => {
+  if (uri.startsWith("/") && !uri.startsWith("/api/")) return false;
+  try { return new URL(uri, BASE).origin === new URL(BASE).origin; } catch { return false; }
+};
 
 /*
  * The session, kept as a plain string beside the provider.
@@ -56,10 +59,12 @@ export function useMediaSource() {
 
   return (uri: string | null | undefined): MediaSource | null => {
     if (!uri) return null;
+    const cacheScope = session?.user.id && workspace?.businessId ? `${session.user.id}:${workspace.businessId}` : undefined;
 
     if (!isOurs(uri)) {
       /* A relative link from Supabase storage belongs to the storage host. */
       return {
+        cacheScope,
         uri:
           uri.startsWith("/") && STORAGE
             ? new URL(uri, STORAGE).toString()
@@ -70,8 +75,8 @@ export function useMediaSource() {
     const absolute = uri.startsWith("/") ? new URL(uri, BASE).toString() : uri;
 
     return cookie
-      ? { uri: absolute, headers: { Cookie: cookie } }
-      : { uri: absolute };
+      ? { uri: absolute, headers: { Cookie: cookie }, cacheScope }
+      : { uri: absolute, cacheScope };
   };
 }
 

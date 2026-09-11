@@ -702,6 +702,16 @@ export async function getFacebookPageAccessToken(
       pageId,
     );
 
+  return resolveStoredFacebookPageAccessToken(socialAccount);
+}
+
+// Reuse a Page row already loaded and scoped by the caller. No second lookup
+// and no cross-request token cache: revoked connections are checked each time.
+export function resolveStoredFacebookPageAccessToken(
+  socialAccount: Pick<FacebookTokenRow,
+    "is_active" | "facebook_token_status" | "facebook_page_access_token_encrypted"
+  > | null,
+): string {
   if (
     socialAccount &&
     ["expired", "invalid", "revoked"].some((status) =>

@@ -1,3 +1,4 @@
+import { cachedSignedUrls } from "@/lib/media/signed-urls";
 import {
   NextRequest,
   NextResponse,
@@ -76,9 +77,7 @@ async function withSignedAttachmentUrls(
   }
 
   const { data, error } =
-    await supabaseAdmin.storage
-      .from(SAVED_REPLY_MEDIA_BUCKET)
-      .createSignedUrls(paths, 60 * 10);
+    await cachedSignedUrls(SAVED_REPLY_MEDIA_BUCKET, paths, 60 * 10).then(data => ({ data, error: null }), (error: Error) => ({ data: null, error }));
 
   if (error) {
     /*

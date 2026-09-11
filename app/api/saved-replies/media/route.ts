@@ -1,3 +1,5 @@
+import { loadStoredAvatar } from "@/lib/media/load-stored-avatar";
+import { cachedSignedUrls } from "@/lib/media/signed-urls";
 import { recordUploadBytes } from "@/lib/server/usage-context";
 import { withRequestScope } from "@/lib/server/request-scope";
 import {
@@ -216,10 +218,23 @@ export async function GET(
     );
   }
 
+  if (request.nextUrl.searchParams.get("thumbnail") === "1") {
+    const thumbnail = await loadStoredAvatar(SAVED_REPLY_MEDIA_BUCKET, path);
+    if (thumbnail.data) {
+      return new NextResponse(thumbnail.data, { headers: {
+        "Content-Type": "image/webp",
+        "Cache-Control": "private, max-age=3600",
+        "X-Content-Type-Options": "nosniff",
+      } });
+    }
+    // Unsupported/large images retain the original preview instead of breaking.
+    const originals = await cachedSignedUrls(SAVED_REPLY_MEDIA_BUCKET, [path], 600);
+    if (originals[0]) return NextResponse.redirect(originals[0].signedUrl, 307);
+    return jsonError("That image was not found.", 404);
+  }
+
   const { data, error } =
-    await supabaseAdmin.storage
-      .from(SAVED_REPLY_MEDIA_BUCKET)
-      .createSignedUrl(path, 60 * 10);
+    await cachedSignedUrls(SAVED_REPLY_MEDIA_BUCKET, [path], 60 * 10).then(data => ({ data: data[0], error: null }), (error: Error) => ({ data: null, error }));
 
   if (error || !data?.signedUrl) {
     return jsonError(
