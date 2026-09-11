@@ -1122,22 +1122,179 @@ function isSafeFacebookProfileUrl(value, disallowedId = null) {
       return false;
     }
 
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    const lowerPath = path.toLowerCase();
+    const profileLike =
+      lowerPath === "/profile.php" ||
+      /^\/people\/[^/]+\/\d{5,32}$/i.test(path) ||
+      /^\/[A-Za-z0-9._-]{2,100}$/.test(path);
+
+    if (!profileLike) return false;
+
     const blockedId = String(disallowedId ?? "").trim();
     if (blockedId) {
       if (
-        url.pathname.toLowerCase() === "/profile.php" &&
+        lowerPath === "/profile.php" &&
         url.searchParams.get("id") === blockedId
       ) {
         return false;
       }
 
-      const peopleMatch = url.pathname.match(/\/people\/[^/]+\/(\d{5,32})\/?$/i);
+      const peopleMatch = path.match(/\/people\/[^/]+\/(\d{5,32})\/?$/i);
       if (peopleMatch?.[1] === blockedId) return false;
     }
 
     return true;
   } catch {
     return false;
+  }
+}
+
+
+function canonicalFacebookProfileUrl(value) {
+  if (typeof value !== "string" || !value) return null;
+
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== "https:" ||
+      !["facebook.com", "www.facebook.com", "m.facebook.com"].includes(url.hostname)
+    ) {
+      return null;
+    }
+
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    const lowerPath = path.toLowerCase();
+
+    if (lowerPath === "/profile.php") {
+      const id = url.searchParams.get("id");
+      if (!id || !/^\d{5,32}$/.test(id)) return null;
+      return `https://www.facebook.com/profile.php?id=${encodeURIComponent(id)}`;
+    }
+
+    const peopleMatch = path.match(/^\/people\/[^/]+\/(\d{5,32})$/i);
+    if (peopleMatch?.[1]) {
+      return `https://www.facebook.com/profile.php?id=${encodeURIComponent(peopleMatch[1])}`;
+    }
+
+    if (/^\/[A-Za-z0-9._-]{2,100}$/.test(path)) {
+      return `https://www.facebook.com${path}`;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function validateFacebookProfileCandidate({
+  profileUrl,
+  customerName,
+  disallowedId,
+}) {
+  if (!isSafeFacebookProfileUrl(profileUrl, disallowedId)) {
+    return { valid: false, reason: "unsafe_profile_candidate" };
+  }
+
+  let candidateTab = null;
+  try {
+    candidateTab = await chrome.tabs.create({
+      url: profileUrl,
+      active: false,
+    });
+  } catch {
+    return { valid: false, reason: "profile_tab_open_failed" };
+  }
+
+  if (!candidateTab?.id) {
+    return { valid: false, reason: "profile_tab_open_failed" };
+  }
+
+  const closeCandidate = async () => {
+    try {
+      await chrome.tabs.remove(candidateTab.id);
+    } catch {
+      /* It may already have been closed by the user/browser. */
+    }
+  };
+
+  const started = Date.now();
+  let lastReason = "profile_validation_timeout";
+
+  while (Date.now() - started < 12000) {
+    try {
+      const current = await chrome.tabs.get(candidateTab.id);
+      if (current?.status !== "complete") {
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        continue;
+      }
+
+      const answer = await chrome.tabs.sendMessage(candidateTab.id, {
+        type: "FB_VALIDATE_PROFILE_PAGE",
+        customerName: String(customerName ?? "").slice(0, 200),
+      });
+
+      if (answer?.valid === true) {
+        const verifiedUrl =
+          typeof answer.url === "string" && answer.url ? answer.url : profileUrl;
+        const canonicalUrl = canonicalFacebookProfileUrl(verifiedUrl) ?? verifiedUrl;
+
+        /* The visible destination should be the actual facebook.com profile,
+           never Business Suite. Numeric /people/.../<id> routes are normalized
+           to facebook.com/profile.php?id=<verified real profile id>. */
+        if (canonicalUrl !== verifiedUrl) {
+          await chrome.tabs.update(candidateTab.id, { url: canonicalUrl }).catch(() => {});
+        }
+
+        await chrome.tabs.update(candidateTab.id, { active: true }).catch(() => {});
+        if (candidateTab.windowId) {
+          await chrome.windows
+            .update(candidateTab.windowId, { focused: true })
+            .catch(() => {});
+        }
+
+        return {
+          valid: true,
+          profileUrl: canonicalUrl,
+          tabId: candidateTab.id,
+          reason: null,
+        };
+      }
+
+      if (answer?.reason) lastReason = answer.reason;
+
+      /* Error/blocked Facebook pages are final. Identity verification may need
+         a moment longer while the real profile UI finishes painting. */
+      if (
+        answer?.reason === "facebook_content_unavailable" ||
+        answer?.reason === "not_profile_route" ||
+        answer?.reason === "not_facebook"
+      ) {
+        break;
+      }
+    } catch {
+      /* Content script/page may still be loading. */
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 450));
+  }
+
+  await closeCandidate();
+  return { valid: false, reason: lastReason };
+}
+
+async function collectFacebookProfileCandidates(tabId, request) {
+  try {
+    const answer = await chrome.tabs.sendMessage(tabId, request);
+    const urls = Array.isArray(answer?.profileUrls)
+      ? answer.profileUrls
+      : answer?.profileUrl
+        ? [answer.profileUrl]
+        : [];
+
+    return [...new Set(urls.filter((value) => typeof value === "string" && value))];
+  } catch {
+    return [];
   }
 }
 
@@ -1163,7 +1320,11 @@ async function openFacebookCustomerProfile({
   });
 
   if (!tab?.id) {
-    return { opened: false, conversationOpened: false, reason: "facebook_bridge_unavailable" };
+    return {
+      opened: false,
+      conversationOpened: false,
+      reason: "facebook_bridge_unavailable",
+    };
   }
 
   const inspected = await waitForFacebookBridge(tab.id, 15000, {
@@ -1172,12 +1333,15 @@ async function openFacebookCustomerProfile({
   });
 
   if (!inspected) {
-    await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
-    if (tab.windowId) await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
-    return { opened: false, conversationOpened: true, reason: "conversation_not_ready" };
+    /* Profile-click flow must never visibly dump the agent into Business Suite.
+       Keep any resolver tab inactive and report a clean failure to TENH. */
+    return {
+      opened: false,
+      conversationOpened: false,
+      reason: "profile_resolution_unavailable",
+    };
   }
 
-  let answer = null;
   const profileRequest = {
     type: "FB_FIND_CUSTOMER_PROFILE",
     pageId,
@@ -1186,61 +1350,67 @@ async function openFacebookCustomerProfile({
     disallowedProfileId: String(facebookThreadId),
   };
 
-  /* Business Suite often paints the conversation shell before the customer
-     detail/header links. Give the real profile link a short chance to appear
-     instead of treating the first DOM frame as final. */
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  let profileUrls = [];
+
+  /* First read links that are already rendered in the exact conversation. */
+  for (let attempt = 0; attempt < 5 && profileUrls.length === 0; attempt += 1) {
+    profileUrls = await collectFacebookProfileCandidates(tab.id, profileRequest);
+    if (profileUrls.length === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    }
+  }
+
+  /* If the direct header did not expose a real profile link, ask Facebook to
+     reveal its customer/details area, then inspect the links Facebook renders
+     there. This does not manufacture a profile id from TENH's PSID. */
+  if (profileUrls.length === 0) {
     try {
-      answer = await chrome.tabs.sendMessage(tab.id, profileRequest);
+      await chrome.tabs.sendMessage(tab.id, {
+        type: "FB_REVEAL_CUSTOMER_PROFILE",
+        pageId,
+        conversationId: facebookThreadId,
+        customerName: String(customerName).slice(0, 200),
+      });
     } catch {
-      answer = null;
+      /* Optional helper only. */
     }
-    if (answer?.found && isSafeFacebookProfileUrl(answer.profileUrl, facebookThreadId)) break;
-    if (answer?.actionTriggered) break;
-    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    for (let attempt = 0; attempt < 8 && profileUrls.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      profileUrls = await collectFacebookProfileCandidates(tab.id, profileRequest);
+    }
   }
 
-  if (answer?.found && isSafeFacebookProfileUrl(answer.profileUrl, facebookThreadId)) {
-    const profileTab = await chrome.tabs.create({ url: answer.profileUrl, active: true });
-    if (profileTab?.windowId) {
-      await chrome.windows.update(profileTab.windowId, { focused: true }).catch(() => {});
+  /* Never trust a candidate merely because its URL looks like a Facebook
+     profile. Business Suite can expose scoped numeric links that lead to
+     "This content isn't available". Open each candidate in an inactive tab,
+     let Facebook render it, and activate only a page that validates as a real
+     profile for this customer. */
+  for (const profileUrl of profileUrls.slice(0, 8)) {
+    const verified = await validateFacebookProfileCandidate({
+      profileUrl,
+      customerName,
+      disallowedId: facebookThreadId,
+    });
+
+    if (verified.valid) {
+      return {
+        opened: true,
+        profileUrl: verified.profileUrl,
+        conversationOpened: false,
+        reason: null,
+      };
     }
-    return {
-      opened: true,
-      profileUrl: answer.profileUrl,
-      conversationOpened: false,
-      reason: null,
-    };
   }
 
-  if (answer?.actionTriggered) {
-    /* Facebook handled the agent's explicit View Profile request through its
-       own UI. Focus that tab; this avoids ever navigating to profile.php with
-       a Page-scoped Messenger id. */
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
-    if (tab.windowId) {
-      await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
-    }
-    return {
-      opened: true,
-      profileUrl: null,
-      conversationOpened: false,
-      reason: "facebook_profile_control_clicked",
-    };
-  }
-
-  /* Never guess a public profile id from the PSID. If Facebook does not expose
-     a real profile link, focus the exact conversation so the agent can use
-     Facebook's own profile controls if available. */
-  await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
-  if (tab.windowId) await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
-
+  /* Facebook did not expose a verifiable public profile. Do not visibly open
+     Business Suite as a fallback for a profile click. Stay in TENH and let the
+     UI report that the Facebook profile is unavailable. */
   return {
     opened: false,
     profileUrl: null,
-    conversationOpened: true,
-    reason: answer?.reason ?? "profile_link_unavailable",
+    conversationOpened: false,
+    reason: "verified_profile_unavailable",
   };
 }
 

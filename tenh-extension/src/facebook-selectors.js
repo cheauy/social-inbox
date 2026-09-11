@@ -302,11 +302,11 @@ var TenhFacebookSelectors = (() => {
     }
   }
 
-  function findCustomerProfileUrl(customerName, disallowedId = null) {
+  function findCustomerProfileUrls(customerName, disallowedId = null) {
     const wanted = normalizeProfileText(customerName);
-    if (!wanted) return null;
+    if (!wanted) return [];
 
-    let best = null;
+    const candidates = [];
 
     for (const anchor of document.querySelectorAll('a[href]')) {
       const profileUrl = profileCandidateUrl(anchor.getAttribute("href"));
@@ -316,61 +316,167 @@ var TenhFacebookSelectors = (() => {
         anchor.textContent,
         anchor.getAttribute("aria-label"),
         anchor.getAttribute("title"),
+        anchor.querySelector("img")?.getAttribute("alt"),
       ].filter(Boolean).join(" "));
       const nearby = nearbyProfileText(anchor);
 
       let score = 0;
-      if (label === wanted) score += 30;
-      else if (label.includes(wanted)) score += 18;
-      if (nearby === wanted) score += 14;
-      else if (nearby.includes(wanted)) score += 8;
-      if (/profile\.php|\/people\//i.test(profileUrl)) score += 3;
-      if (/profile|view profile/i.test(label)) score += 2;
+      if (label === wanted) score += 36;
+      else if (label.includes(wanted)) score += 22;
+      if (nearby === wanted) score += 16;
+      else if (nearby.includes(wanted)) score += 10;
+      if (/profile\.php|\/people\//i.test(profileUrl)) score += 4;
+      if (/profile|view profile/i.test(label)) score += 3;
 
       const rect = anchor.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) score += 1;
+      if (rect.width > 0 && rect.height > 0) score += 2;
 
-      if (score >= 12 && (!best || score > best.score)) {
-        best = { score, url: profileUrl };
+      if (score >= 14) {
+        candidates.push({ score, url: profileUrl });
       }
     }
 
-    return best?.url ?? null;
+    const seen = new Set();
+    return candidates
+      .sort((a, b) => b.score - a.score)
+      .filter((candidate) => {
+        if (seen.has(candidate.url)) return false;
+        seen.add(candidate.url);
+        return true;
+      })
+      .slice(0, 12)
+      .map((candidate) => candidate.url);
   }
 
-  function clickCustomerProfileControl(customerName) {
+  function findCustomerProfileUrl(customerName, disallowedId = null) {
+    return findCustomerProfileUrls(customerName, disallowedId)[0] ?? null;
+  }
+
+  /*
+   * Reveal the customer detail/profile area inside Business Suite. This does
+   * not navigate to a guessed Facebook id. It only clicks the visible
+   * identity control for the exact customer whose name is already shown in the
+   * selected conversation, giving Facebook a chance to render its own real
+   * profile link.
+   */
+  function clickCustomerIdentityControl(customerName) {
     const wanted = normalizeProfileText(customerName);
     if (!wanted) return false;
 
     let best = null;
-    const controls = document.querySelectorAll('button, [role="button"], a[href]');
+    const controls = document.querySelectorAll(
+      'a[href], button, [role="button"], [tabindex="0"]',
+    );
 
     for (const control of controls) {
+      if (selectorsSafeContainsComposer(control)) continue;
+
       const label = normalizeProfileText([
         control.textContent,
         control.getAttribute("aria-label"),
         control.getAttribute("title"),
+        control.querySelector("img")?.getAttribute("alt"),
       ].filter(Boolean).join(" "));
 
-      if (!label || !/(view|see|open).{0,24}profile|profile.{0,24}(view|see|open)/i.test(label)) {
-        continue;
-      }
-
-      const nearby = nearbyProfileText(control);
-      let score = 20;
-      if (nearby === wanted) score += 20;
-      else if (nearby.includes(wanted)) score += 12;
-      if (label.includes(wanted)) score += 8;
+      if (!label || (!label.includes(wanted) && label !== wanted)) continue;
 
       const rect = control.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) continue;
 
+      let score = 0;
+      if (label === wanted) score += 35;
+      else if (label.includes(wanted)) score += 20;
+
+      const aria = normalizeProfileText(control.getAttribute("aria-label"));
+      if (/profile|customer|contact|details/.test(aria)) score += 8;
+
+      const href = control.getAttribute("href");
+      if (href && profileCandidateUrl(href)) score += 8;
+
+      if (rect.top >= 0 && rect.top < Math.max(650, window.innerHeight * 0.65)) {
+        score += 5;
+      }
+
       if (!best || score > best.score) best = { score, control };
     }
 
-    if (!best || best.score < 28) return false;
-    best.control.click();
-    return true;
+    if (!best || best.score < 25) return false;
+
+    try {
+      best.control.click();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function selectorsSafeContainsComposer(control) {
+    const composer = findMessengerComposer();
+    return Boolean(composer && (control === composer || control.contains(composer)));
+  }
+
+  function isUnavailableProfilePage() {
+    const bodyText = normalizeProfileText(document.body?.innerText);
+    if (!bodyText) return false;
+
+    return [
+      "this content isn't available right now",
+      "this content isn’t available right now",
+      "this content isn't available",
+      "this content isn’t available",
+      "page isn't available",
+      "page isn’t available",
+      "content unavailable",
+      "the link you followed may be broken",
+    ].some((phrase) => bodyText.includes(phrase));
+  }
+
+  function validateCurrentProfilePage(expectedName = "") {
+    const url = new URL(window.location.href);
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    const lowerPath = path.toLowerCase();
+
+    if (
+      url.protocol !== "https:" ||
+      !["facebook.com", "www.facebook.com", "m.facebook.com"].includes(url.hostname)
+    ) {
+      return { valid: false, reason: "not_facebook" };
+    }
+
+    if (isUnavailableProfilePage()) {
+      return { valid: false, reason: "facebook_content_unavailable" };
+    }
+
+    const profileLike =
+      lowerPath === "/profile.php" ||
+      /^\/people\/[^/]+\/\d{5,32}$/i.test(path) ||
+      /^\/[A-Za-z0-9._-]{2,100}$/.test(path);
+
+    if (!profileLike) {
+      return { valid: false, reason: "not_profile_route" };
+    }
+
+    const wanted = normalizeProfileText(expectedName);
+    const bodyText = normalizeProfileText(document.body?.innerText);
+    const title = normalizeProfileText(document.title);
+    const nameMatches = !wanted || bodyText.includes(wanted) || title.includes(wanted);
+
+    const profileUiVisible = Boolean(
+      document.querySelector(
+        '[aria-label*="profile" i], [aria-label*="story" i], a[href*="/friends"], a[href*="/photos"]',
+      ),
+    );
+
+    if (!nameMatches && !profileUiVisible) {
+      return { valid: false, reason: "profile_identity_unverified" };
+    }
+
+    return {
+      valid: true,
+      reason: null,
+      url: window.location.href,
+      nameMatches,
+    };
   }
 
   function isMessengerSurface() {
@@ -393,7 +499,9 @@ var TenhFacebookSelectors = (() => {
     isSendControl,
     insertIntoComposer,
     findCustomerProfileUrl,
-    clickCustomerProfileControl,
+    findCustomerProfileUrls,
+    clickCustomerIdentityControl,
+    validateCurrentProfilePage,
     isMessengerSurface,
   };
 })();

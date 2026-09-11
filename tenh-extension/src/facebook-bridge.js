@@ -326,7 +326,7 @@ try {
       typeof message.conversationId === "string" ? message.conversationId : null;
 
     if (expectedPageId && state.pageId !== expectedPageId) {
-      sendResponse({ found: false, reason: "page_mismatch" });
+      sendResponse({ found: false, profileUrls: [], reason: "page_mismatch" });
       return true;
     }
 
@@ -334,7 +334,7 @@ try {
       expectedConversationId &&
       state.conversationId !== expectedConversationId
     ) {
-      sendResponse({ found: false, reason: "conversation_mismatch" });
+      sendResponse({ found: false, profileUrls: [], reason: "conversation_mismatch" });
       return true;
     }
 
@@ -344,35 +344,57 @@ try {
         ? message.disallowedProfileId
         : expectedConversationId;
 
-    const profileUrl = selectors.findCustomerProfileUrl(
+    const profileUrls = selectors.findCustomerProfileUrls(
       customerName,
       disallowedProfileId,
     );
 
-    if (profileUrl) {
-      sendResponse({
-        found: true,
-        profileUrl,
-        actionTriggered: false,
-        reason: null,
-      });
+    sendResponse({
+      found: profileUrls.length > 0,
+      profileUrl: profileUrls[0] ?? null,
+      profileUrls,
+      actionTriggered: false,
+      reason: profileUrls.length > 0 ? null : "profile_link_unavailable",
+    });
+    return true;
+  }
+
+  if (message?.type === "FB_REVEAL_CUSTOMER_PROFILE") {
+    const state = inspect();
+    const expectedPageId =
+      typeof message.pageId === "string" ? message.pageId : null;
+    const expectedConversationId =
+      typeof message.conversationId === "string" ? message.conversationId : null;
+
+    if (expectedPageId && state.pageId !== expectedPageId) {
+      sendResponse({ revealed: false, reason: "page_mismatch" });
       return true;
     }
 
-    /* Business Suite sometimes exposes a real "View profile" control without
-       a usable public href. Because this request came from the agent clicking
-       View Profile in TENH, use Facebook's own visible control rather than
-       manufacturing a profile.php URL from the Page-scoped Messenger id. */
-    const actionTriggered = selectors.clickCustomerProfileControl(customerName);
+    if (
+      expectedConversationId &&
+      state.conversationId !== expectedConversationId
+    ) {
+      sendResponse({ revealed: false, reason: "conversation_mismatch" });
+      return true;
+    }
+
+    const customerName = String(message.customerName ?? "");
+    const revealed = selectors.clickCustomerIdentityControl(customerName);
 
     sendResponse({
-      found: false,
-      profileUrl: null,
-      actionTriggered,
-      reason: actionTriggered
-        ? "facebook_profile_control_clicked"
-        : "profile_link_unavailable",
+      revealed,
+      reason: revealed ? null : "customer_identity_control_unavailable",
     });
+    return true;
+  }
+
+  if (message?.type === "FB_VALIDATE_PROFILE_PAGE") {
+    sendResponse(
+      selectors.validateCurrentProfilePage(
+        typeof message.customerName === "string" ? message.customerName : "",
+      ),
+    );
     return true;
   }
 

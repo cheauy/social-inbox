@@ -103,7 +103,7 @@ export function CustomerProfile({
 }: CustomerProfileProps) {
   const router = useRouter();
   const isKhmer = useWorkspaceLanguageId() === "km";
-  const { installed: companionInstalled, openFacebookProfile, openInFacebook } = useCompanion();
+  const { installed: companionInstalled, openFacebookProfile } = useCompanion();
 
 
   const [editing, setEditing] =
@@ -168,55 +168,30 @@ async function openFacebookCustomerProfile() {
   setFacebookProfileStatus(null);
 
   try {
-    if (companionInstalled) {
-      const result = await openFacebookProfile({
-        pageId,
-        threadId,
-        conversationId: activeConversation.id,
-        customerName: contact?.full_name ?? null,
-      });
-
-      if (result?.opened) {
-        return;
-      }
-
-      if (result?.conversationOpened) {
-        setFacebookProfileStatus(
-          isKhmer
-            ? "Facebook មិនបានបង្ហាញតំណប្រវត្តិរូបផ្ទាល់សម្រាប់អតិថិជននេះទេ។ បានបើកការសន្ទនាត្រឹមត្រូវជំនួស។"
-            : "Facebook did not expose a direct profile link for this customer. The exact conversation was opened instead.",
-        );
-        return;
-      }
+    if (!companionInstalled) {
+      setFacebookProfileStatus(
+        isKhmer
+          ? "ត្រូវការ TENH Companion ដើម្បីបើកប្រវត្តិរូប Facebook ដែលបានផ្ទៀងផ្ទាត់។"
+          : "TENH Companion is required to resolve a verified Facebook profile.",
+      );
+      return;
     }
 
-    /* Safe fallback when Companion is unavailable: open the exact Page inbox
-       conversation. Never turn the Page-scoped Messenger customer id into a
-       facebook.com/profile.php URL -- it is not a public profile id. */
-    if (companionInstalled) {
-      const opened = await openInFacebook({
-        pageId,
-        threadId,
-        conversationId: activeConversation.id,
-      });
-      if (opened) {
-        setFacebookProfileStatus(
-          isKhmer
-            ? "បានបើកការសន្ទនា Facebook។ ប្រវត្តិរូបផ្ទាល់មិនអាចកំណត់បានដោយសុវត្ថិភាពទេ។"
-            : "Opened the Facebook conversation. A direct profile link could not be verified safely.",
-        );
-        return;
-      }
+    const result = await openFacebookProfile({
+      pageId,
+      threadId,
+      conversationId: activeConversation.id,
+      customerName: contact?.full_name ?? null,
+    });
+
+    if (result?.opened) {
+      return;
     }
 
-    const url = new URL("https://business.facebook.com/latest/inbox/all");
-    url.searchParams.set("asset_id", pageId);
-    url.searchParams.set("selected_item_id", threadId);
-    window.open(url.toString(), "_blank", "noopener,noreferrer");
     setFacebookProfileStatus(
       isKhmer
-        ? "បានបើកការសន្ទនា Facebook។ ដំឡើង TENH Companion ដើម្បីស្វែងរកតំណប្រវត្តិរូបដែល Facebook បង្ហាញ។"
-        : "Opened the Facebook conversation. TENH Companion can resolve a real profile link when Facebook exposes one.",
+        ? "Facebook មិនបានបង្ហាញប្រវត្តិរូបសាធារណៈដែលអាចផ្ទៀងផ្ទាត់បានសម្រាប់អតិថិជននេះទេ។"
+        : "Facebook profile unavailable for this customer.",
     );
   } finally {
     setOpeningFacebookProfile(false);
