@@ -13,6 +13,7 @@ import {
 } from "@/components/inbox/inbox-utils";
 import type { InboxConversation } from "@/types/inbox";
 import { getReadableTagTextColor } from "@/lib/display/tag-contrast";
+import { useCompanion } from "@/lib/extension/use-companion";
 import {
   useWorkspaceLanguageId,
 } from "@/components/display/workspace-language-text";
@@ -102,7 +103,7 @@ export function CustomerProfile({
 }: CustomerProfileProps) {
   const router = useRouter();
   const isKhmer = useWorkspaceLanguageId() === "km";
-
+  const { installed: companionInstalled, openFacebookProfile, openInFacebook } = useCompanion();
 
 
   const [editing, setEditing] =
@@ -124,6 +125,10 @@ export function CustomerProfile({
     useState(false);
   const [filesOpen, setFilesOpen] =
     useState(false);
+  const [openingFacebookProfile, setOpeningFacebookProfile] =
+    useState(false);
+  const [facebookProfileStatus, setFacebookProfileStatus] =
+    useState<string | null>(null);
 
   const contact = activeConversation?.contact ?? null;
   const customerTags =
@@ -146,56 +151,75 @@ export function CustomerProfile({
     setForm(emptyForm);
     setReminderOpen(false);
     setFilesOpen(false);
+    setOpeningFacebookProfile(false);
+    setFacebookProfileStatus(null);
   }, [activeConversation?.id]);
 
-/*
- * "View Facebook profile" -- which TENH cannot build a link for.
- *
- * platform_user_id is the customer's page-scoped id. It is not a Facebook
- * account id, and profile.php?id=<psid> shows "This content isn't available"
- * for every customer: Meta gives one person a different id on every Page so
- * that a business cannot look up who they are, and no API converts one into
- * the other. So this never builds that URL.
- *
- * With the extension, Business Suite is asked for its own profile link, and
- * where it offers none the extension focuses the conversation instead -- any
- * answer means it handled the click. Without the extension, this opens the
- * one place a page-scoped id is valid: the conversation in Business Suite,
- * where Facebook shows its own "View profile" beside the thread.
- */
 async function openFacebookCustomerProfile() {
   const threadId = contact?.platform_user_id?.trim();
-  const pageId =
-    activeConversation?.social_account?.platform_account_id?.trim() || null;
+  const pageId = activeConversation?.social_account?.platform_account_id?.trim();
   const isFacebook = activeConversation?.social_account?.platform === "facebook";
 
-  if (!threadId || !isFacebook) {
+  if (!threadId || !pageId || !isFacebook || !activeConversation) {
     return;
   }
 
-  const inBusinessSuite = new URL(
-    "https://business.facebook.com/latest/inbox/all",
-  );
+  setOpeningFacebookProfile(true);
+  setFacebookProfileStatus(null);
 
-  if (pageId) inBusinessSuite.searchParams.set("asset_id", pageId);
-  inBusinessSuite.searchParams.set("selected_item_id", threadId);
+  try {
+    if (companionInstalled) {
+      const result = await openFacebookProfile({
+        pageId,
+        threadId,
+        conversationId: activeConversation.id,
+        customerName: contact?.full_name ?? null,
+      });
 
-  /* Opened within the click itself, while the browser still counts it as
-     something the person did -- after an await, a popup blocker would not. */
-  if (!companion.installed) {
-    window.open(inBusinessSuite.toString(), "_blank", "noopener,noreferrer");
-    return;
-  }
+      if (result?.opened) {
+        return;
+      }
 
-  const answer = await companion.openFacebookProfile({
-    pageId,
-    threadId,
-    conversationId: activeConversation?.id ?? null,
-    customerName: contact?.full_name ?? null,
-  });
+      if (result?.conversationOpened) {
+        setFacebookProfileStatus(
+          isKhmer
+            ? "Facebook មិនបានបង្ហាញតំណប្រវត្តិរូបផ្ទាល់សម្រាប់អតិថិជននេះទេ។ បានបើកការសន្ទនាត្រឹមត្រូវជំនួស។"
+            : "Facebook did not expose a direct profile link for this customer. The exact conversation was opened instead.",
+        );
+        return;
+      }
+    }
 
-  if (!answer) {
-    window.open(inBusinessSuite.toString(), "_blank", "noopener,noreferrer");
+    /* Safe fallback when Companion is unavailable: open the exact Page inbox
+       conversation. Never turn the Page-scoped Messenger customer id into a
+       facebook.com/profile.php URL -- it is not a public profile id. */
+    if (companionInstalled) {
+      const opened = await openInFacebook({
+        pageId,
+        threadId,
+        conversationId: activeConversation.id,
+      });
+      if (opened) {
+        setFacebookProfileStatus(
+          isKhmer
+            ? "បានបើកការសន្ទនា Facebook។ ប្រវត្តិរូបផ្ទាល់មិនអាចកំណត់បានដោយសុវត្ថិភាពទេ។"
+            : "Opened the Facebook conversation. A direct profile link could not be verified safely.",
+        );
+        return;
+      }
+    }
+
+    const url = new URL("https://business.facebook.com/latest/inbox/all");
+    url.searchParams.set("asset_id", pageId);
+    url.searchParams.set("selected_item_id", threadId);
+    window.open(url.toString(), "_blank", "noopener,noreferrer");
+    setFacebookProfileStatus(
+      isKhmer
+        ? "បានបើកការសន្ទនា Facebook។ ដំឡើង TENH Companion ដើម្បីស្វែងរកតំណប្រវត្តិរូបដែល Facebook បង្ហាញ។"
+        : "Opened the Facebook conversation. TENH Companion can resolve a real profile link when Facebook exposes one.",
+    );
+  } finally {
+    setOpeningFacebookProfile(false);
   }
 }
 
@@ -400,8 +424,9 @@ async function saveProfile() {
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
-            onClick={openFacebookCustomerProfile}
-            className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-full outline-none ring-offset-2 transition hover:ring-2 hover:ring-blue-400 focus-visible:ring-2 focus-visible:ring-blue-500"
+            onClick={() => void openFacebookCustomerProfile()}
+            disabled={openingFacebookProfile}
+            className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-full outline-none ring-offset-2 transition hover:ring-2 hover:ring-blue-400 focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-wait disabled:opacity-70"
             title={isKhmer ? "មើលប្រវត្តិរូប Facebook" : "View Facebook profile"}
             aria-label={isKhmer ? "បើកប្រវត្តិរូប Facebook របស់អតិថិជន" : "Open customer Facebook profile"}
           >
@@ -433,6 +458,11 @@ async function saveProfile() {
             <p className="mt-1 break-all text-sm text-slate-500">
               ID: {contact.platform_user_id}
             </p>
+            {facebookProfileStatus ? (
+              <p className="mt-1 max-w-[260px] text-xs leading-4 text-amber-700">
+                {facebookProfileStatus}
+              </p>
+            ) : null}
           </div>
         </div>
 
