@@ -19,6 +19,8 @@ const ANSWER_TIMEOUT_MS = 1500;
 
 export type FacebookProfileOpenResult = {
   opened: boolean;
+  resolved?: boolean;
+  pageId?: string;
   profileUrl?: string | null;
   conversationOpened?: boolean;
   reason?: string;

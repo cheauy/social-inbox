@@ -1,6 +1,6 @@
 "use client";
 
-import { CustomerAvatar } from "@/components/customer-avatar";
+import { CustomerFacebookAvatar } from "@/components/inbox/customer-facebook-avatar";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -14,7 +14,6 @@ import {
 } from "@/components/inbox/inbox-utils";
 import type { InboxConversation } from "@/types/inbox";
 import { ConversationTag } from "./conversation-visuals";
-import { getFacebookCustomerProfileUrl } from "@/lib/facebook/customer-profile-url";
 import {
   useWorkspaceLanguageId,
 } from "@/components/display/workspace-language-text";
@@ -127,10 +126,6 @@ export function CustomerProfile({
     useState(false);
 
   const contact = activeConversation?.contact ?? null;
-  const facebookProfileUrl =
-    activeConversation?.social_account?.platform === "facebook"
-      ? getFacebookCustomerProfileUrl(contact)
-      : null;
   const customerTags =
     contact && Array.isArray(contact.tags)
       ? contact.tags
@@ -352,23 +347,7 @@ async function saveProfile() {
     <div className="shrink-0 border-b border-slate-200 p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <a
-            href={facebookProfileUrl ?? undefined}
-            target={facebookProfileUrl ? "_blank" : undefined}
-            rel={facebookProfileUrl ? "noopener noreferrer" : undefined}
-            className={`group relative h-16 w-16 shrink-0 overflow-hidden rounded-full outline-none ring-offset-2 transition ${facebookProfileUrl ? "hover:ring-2 hover:ring-blue-400 focus-visible:ring-2 focus-visible:ring-blue-500" : ""}`}
-            title={facebookProfileUrl ? (isKhmer ? "មើលប្រវត្តិរូប Facebook" : "View Facebook profile") : undefined}
-            aria-label={facebookProfileUrl ? (isKhmer ? "បើកប្រវត្តិរូប Facebook របស់អតិថិជន" : "Open customer Facebook profile") : undefined}
-          >
-            <CustomerAvatar src={contact.profile_picture_url} name={contact.full_name}
-              contactId={contact.id} platform={activeConversation.social_account?.platform} eager className="h-full w-full text-2xl" />
-
-            {facebookProfileUrl ? <span className="absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
-              <span className="mb-1.5 rounded-full bg-black/55 px-2 py-0.5 text-[9px] font-semibold text-white">
-                {isKhmer ? "Facebook" : "Facebook"}
-              </span>
-            </span> : null}
-          </a>
+          <CustomerFacebookAvatar key={JSON.stringify([contact.id, contact.platform_user_id, contact.full_name, activeConversation.social_account?.platform_account_id])} conversation={activeConversation} />
 
           <div className="min-w-0">
             <h2 className="truncate text-lg font-semibold text-slate-900">
@@ -379,9 +358,6 @@ async function saveProfile() {
             <p className="mt-1 break-all text-sm text-slate-500">
               {activeConversation.social_account?.platform === "facebook" ? "Messenger ID" : "ID"}: {contact.platform_user_id}
             </p>
-            {activeConversation.social_account?.platform === "facebook" && !facebookProfileUrl ? (
-              <p className="mt-1 text-xs text-slate-500">Public Facebook profile ID not available.</p>
-            ) : null}
           </div>
         </div>
 
@@ -576,7 +552,7 @@ async function saveProfile() {
 
 
           <ProfileSection title={isKhmer ? "ព័ត៌មាន Facebook" : "Facebook information"}>
-            {activeConversation.social_account?.platform === "facebook" ? (
+            {activeConversation.social_account?.platform === "facebook" && contact.facebook_profile_id ? (
               <ProfileValue label="Facebook profile ID" icon="id" value={contact.facebook_profile_id || "Not available"} breakAll />
             ) : null}
             <ProfileValue

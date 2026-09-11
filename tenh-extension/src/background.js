@@ -1186,235 +1186,38 @@ function canonicalFacebookProfileUrl(value) {
   }
 }
 
-async function validateFacebookProfileCandidate({
-  profileUrl,
-  customerName,
-  disallowedId,
-}) {
-  if (!isSafeFacebookProfileUrl(profileUrl, disallowedId)) {
-    return { valid: false, reason: "unsafe_profile_candidate" };
+// The resolver owns this inactive tab; it never navigates a user's existing tab.
+async function openFacebookCustomerProfile({ pageId, threadId, customerName } = {}) {
+  if (!/^\d+$/.test(String(pageId ?? "")) || !String(customerName ?? "").trim()) {
+    return { opened: false, reason: "profile_context_incomplete" };
   }
-
-  let candidateTab = null;
+  let tab;
   try {
-    candidateTab = await chrome.tabs.create({
-      url: canonicalFacebookProfileUrl(profileUrl) ?? profileUrl,
-      active: false,
+    const url = new URL("https://business.facebook.com/latest/inbox/messenger/");
+    url.search = new URLSearchParams({ asset_id: pageId, mailbox_id: pageId }).toString();
+    tab = await chrome.tabs.create({ url: url.href, active: false });
+    if (!tab?.id) return { opened: false, reason: "facebook_bridge_unavailable" };
+    const ready = await waitForFacebookBridge(tab.id, 12000, { pageId });
+    if (!ready) return { opened: false, reason: "page_mismatch_or_sign_in" };
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: async (options) => globalThis.TenhFacebookProfileResolver
+        ? globalThis.TenhFacebookProfileResolver.resolve(options)
+        : { reason: "extension_refresh_required" },
+      args: [{ pageId: String(pageId), customerName: String(customerName).slice(0, 200), disallowedId: String(threadId ?? "") }],
     });
+    const result = results?.[0]?.result;
+    const profileUrl = canonicalFacebookProfileUrl(result?.profileUrl);
+    if (!profileUrl || !isSafeFacebookProfileUrl(profileUrl, threadId)) {
+      return { opened: false, reason: result?.reason || "profile_link_unavailable" };
+    }
+    // TENH opens the returned URL only if the same customer is still selected.
+    return { opened: false, resolved: true, profileUrl, pageId, selectedItemId: result.selectedItemId };
   } catch {
-    return { valid: false, reason: "profile_tab_open_failed" };
+    return { opened: false, reason: "profile_resolution_unavailable" };
+  } finally {
+    if (tab?.id) await chrome.tabs.remove(tab.id).catch(() => {});
   }
-
-  if (!candidateTab?.id) {
-    return { valid: false, reason: "profile_tab_open_failed" };
-  }
-
-  const closeCandidate = async () => {
-    try {
-      await chrome.tabs.remove(candidateTab.id);
-    } catch {
-      /* It may already have been closed by the user/browser. */
-    }
-  };
-
-  const started = Date.now();
-  let lastReason = "profile_validation_timeout";
-
-  while (Date.now() - started < 12000) {
-    try {
-      const current = await chrome.tabs.get(candidateTab.id);
-      if (current?.status !== "complete") {
-        await new Promise((resolve) => setTimeout(resolve, 350));
-        continue;
-      }
-
-      const answer = await chrome.tabs.sendMessage(candidateTab.id, {
-        type: "FB_VALIDATE_PROFILE_PAGE",
-        customerName: String(customerName ?? "").slice(0, 200),
-      });
-
-      if (answer?.valid === true) {
-        const verifiedUrl =
-          typeof answer.url === "string" && answer.url ? answer.url : profileUrl;
-        const canonicalUrl = canonicalFacebookProfileUrl(verifiedUrl) ?? verifiedUrl;
-        if (!isSafeFacebookProfileUrl(canonicalUrl, disallowedId)) {
-          lastReason = "unsafe_profile_redirect";
-          break;
-        }
-
-        /* The visible destination should be the actual facebook.com profile,
-           never Business Suite. Numeric /people/.../<id> routes are normalized
-           to facebook.com/profile.php?id=<verified real profile id>. */
-        if (canonicalUrl !== verifiedUrl) {
-          await chrome.tabs.update(candidateTab.id, { url: canonicalUrl }).catch(() => {});
-        }
-
-        await chrome.tabs.update(candidateTab.id, { active: true }).catch(() => {});
-        if (candidateTab.windowId) {
-          await chrome.windows
-            .update(candidateTab.windowId, { focused: true })
-            .catch(() => {});
-        }
-
-        return {
-          valid: true,
-          profileUrl: canonicalUrl,
-          tabId: candidateTab.id,
-          reason: null,
-        };
-      }
-
-      if (answer?.reason) lastReason = answer.reason;
-
-      /* Error/blocked Facebook pages are final. Identity verification may need
-         a moment longer while the real profile UI finishes painting. */
-      if (
-        answer?.reason === "facebook_content_unavailable" ||
-        answer?.reason === "not_profile_route" ||
-        answer?.reason === "not_facebook"
-      ) {
-        break;
-      }
-    } catch {
-      /* Content script/page may still be loading. */
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 450));
-  }
-
-  await closeCandidate();
-  return { valid: false, reason: lastReason };
-}
-
-async function collectFacebookProfileCandidates(tabId, request) {
-  try {
-    const answer = await chrome.tabs.sendMessage(tabId, request);
-    const urls = Array.isArray(answer?.profileUrls)
-      ? answer.profileUrls
-      : answer?.profileUrl
-        ? [answer.profileUrl]
-        : [];
-
-    return [...new Set(urls.filter((value) => typeof value === "string" && value))];
-  } catch {
-    return [];
-  }
-}
-
-async function openFacebookCustomerProfile({
-  pageId,
-  threadId,
-  conversationId,
-  customerName,
-} = {}) {
-  const facebookThreadId = threadId ?? conversationId ?? null;
-  if (!pageId || !facebookThreadId || !customerName) {
-    return {
-      opened: false,
-      conversationOpened: false,
-      reason: "profile_context_incomplete",
-    };
-  }
-
-  const tab = await ensureManagedFacebookTab({
-    pageId,
-    threadId: facebookThreadId,
-    active: false,
-  });
-
-  if (!tab?.id) {
-    return {
-      opened: false,
-      conversationOpened: false,
-      reason: "facebook_bridge_unavailable",
-    };
-  }
-
-  const inspected = await waitForFacebookBridge(tab.id, 15000, {
-    pageId,
-    conversationId: facebookThreadId,
-  });
-
-  if (!inspected) {
-    /* Profile-click flow must never visibly dump the agent into Business Suite.
-       Keep any resolver tab inactive and report a clean failure to TENH. */
-    return {
-      opened: false,
-      conversationOpened: false,
-      reason: "profile_resolution_unavailable",
-    };
-  }
-
-  const profileRequest = {
-    type: "FB_FIND_CUSTOMER_PROFILE",
-    pageId,
-    conversationId: facebookThreadId,
-    customerName: String(customerName).slice(0, 200),
-    disallowedProfileId: String(facebookThreadId),
-  };
-
-  let profileUrls = [];
-
-  /* First read links that are already rendered in the exact conversation. */
-  for (let attempt = 0; attempt < 5 && profileUrls.length === 0; attempt += 1) {
-    profileUrls = await collectFacebookProfileCandidates(tab.id, profileRequest);
-    if (profileUrls.length === 0) {
-      await new Promise((resolve) => setTimeout(resolve, 450));
-    }
-  }
-
-  /* If the direct header did not expose a real profile link, ask Facebook to
-     reveal its customer/details area, then inspect the links Facebook renders
-     there. This does not manufacture a profile id from TENH's PSID. */
-  if (profileUrls.length === 0) {
-    try {
-      await chrome.tabs.sendMessage(tab.id, {
-        type: "FB_REVEAL_CUSTOMER_PROFILE",
-        pageId,
-        conversationId: facebookThreadId,
-        customerName: String(customerName).slice(0, 200),
-      });
-    } catch {
-      /* Optional helper only. */
-    }
-
-    for (let attempt = 0; attempt < 8 && profileUrls.length === 0; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      profileUrls = await collectFacebookProfileCandidates(tab.id, profileRequest);
-    }
-  }
-
-  /* Never trust a candidate merely because its URL looks like a Facebook
-     profile. Business Suite can expose scoped numeric links that lead to
-     "This content isn't available". Open each candidate in an inactive tab,
-     let Facebook render it, and activate only a page that validates as a real
-     profile for this customer. */
-  for (const profileUrl of profileUrls.slice(0, 2)) {
-    const verified = await validateFacebookProfileCandidate({
-      profileUrl,
-      customerName,
-      disallowedId: facebookThreadId,
-    });
-
-    if (verified.valid) {
-      return {
-        opened: true,
-        profileUrl: verified.profileUrl,
-        conversationOpened: false,
-        reason: null,
-      };
-    }
-  }
-
-  /* Facebook did not expose a verifiable public profile. Do not visibly open
-     Business Suite as a fallback for a profile click. Stay in TENH and let the
-     UI report that the Facebook profile is unavailable. */
-  return {
-    opened: false,
-    profileUrl: null,
-    conversationOpened: false,
-    reason: "verified_profile_unavailable",
-  };
 }
 
 async function warmFacebookCompanion() {
@@ -1482,7 +1285,7 @@ async function handle(message, sender) {
         connected: Boolean(state.token),
         paired: Boolean(state.token),
         device: state.device ?? null,
-        facebook: state.facebook ?? null,
+        facebook: await currentFacebookContext() ?? state.facebook ?? null,
         facebookPages,
         facebookPageCount: facebookPages.length,
         sync: {
@@ -1705,7 +1508,7 @@ async function handle(message, sender) {
     }
 
     case "TENH_REDETECT": {
-      await ensureManagedFacebookTab({ active: false }).catch(() => null);
+      await reconnectOpenTabs();
       const tabs = await chrome.tabs.query({
         url: ["https://www.facebook.com/*", "https://business.facebook.com/*"],
       });
@@ -1715,7 +1518,7 @@ async function handle(message, sender) {
         if (value) detected.push(value);
       }
       const pages = summarizeFacebookPages(await facebookTabStates());
-      const facebook = detected.sort((a, b) => b.seenAt - a.seenAt)[0] ?? null;
+      const facebook = await currentFacebookContext() ?? detected.find((value) => value.pageId) ?? detected[0] ?? null;
       if (facebook) await writeState({ facebook });
       await heartbeat("facebook_detected");
       return {
@@ -1869,7 +1672,7 @@ async function reconnectOpenTabs() {
       target: { tabId: tab.id },
       files: new URL(tab.url).hostname === "app.tenhchat.com"
         ? ["src/tenh-bridge.js"]
-        : ["src/facebook-selectors.js", "src/facebook-bridge.js"],
+        : ["src/facebook-selectors.js", "src/facebook-profile-resolver.js", "src/facebook-bridge.js"],
     }),
   ));
 }

@@ -99,6 +99,7 @@ var TenhFacebookSelectors = (() => {
     const id =
       url.searchParams.get("asset_id") ??
       url.searchParams.get("page_id") ??
+      url.searchParams.get("mailbox_id") ??
       null;
 
     const heading = document.querySelector('[role="banner"] [role="heading"]');
@@ -229,7 +230,7 @@ var TenhFacebookSelectors = (() => {
       return null;
     }
 
-    if (url.protocol !== "https:") return null;
+    if (url.protocol !== "https:" || url.username || url.password || url.port) return null;
     if (!["facebook.com", "www.facebook.com", "m.facebook.com"].includes(url.hostname)) {
       return null;
     }
@@ -489,6 +490,7 @@ var TenhFacebookSelectors = (() => {
   }
 
   return {
+    profileCandidateUrl,
     detectFacebookLogin,
     findMessengerComposer,
     isComposerEnabled,
