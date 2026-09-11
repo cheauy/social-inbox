@@ -22,6 +22,7 @@ const ALLOWED = new Set([
   "TENH_UNPAIR",
   "OPEN_IN_FACEBOOK",
   "OPEN_FACEBOOK_PROFILE",
+  "OPEN_RESOLVED_FACEBOOK_PROFILE",
   "CHECK_FACEBOOK_REPLY_AVAILABILITY",
   "TENH_SYNC_NOW",
   "TENH_WEB_SYNC_EVENT",
@@ -206,6 +207,7 @@ window.addEventListener("message", (event) => {
       typeof data.conversationId === "string" ? data.conversationId : undefined,
     customerName:
       typeof data.customerName === "string" ? data.customerName.slice(0, 200) : undefined,
+    openToken: typeof data.openToken === "string" ? data.openToken.slice(0, 100) : undefined,
   };
 
   if (data.type === "TENH_WEB_SYNC_EVENT") {

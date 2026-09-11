@@ -17,6 +17,19 @@ globalThis.TenhFacebookProfileResolver = (() => {
     return [...root.querySelectorAll('span, strong, [dir="auto"], [role="heading"], h1, h2, h3')]
       .filter((el) => normalize(el.textContent) === name && ![...el.children].some((child) => normalize(child.textContent) === name));
   }
+  function fullSearchAction(input) {
+    const searchRect = input.getBoundingClientRect();
+    const labels = [...document.querySelectorAll('button, [role="button"], [role="option"], a, span, [dir="auto"]')]
+      .filter((el) => visible(el) && /^search in (messenger|facebook) conversations$/i.test(normalize(el.textContent)));
+    for (const label of labels) {
+      const action = label.closest('button, [role="button"], [role="option"], a, [tabindex="0"]') || label;
+      const box = action.getBoundingClientRect();
+      // Meta's deeper-search suggestion belongs below the left inbox search.
+      if (box.top >= searchRect.bottom && box.top < searchRect.bottom + 240 &&
+          box.left >= searchRect.left - 30 && box.right <= innerWidth * 0.6 && box.height <= 100) return action;
+    }
+    return null;
+  }
   function matchingRows(input, name) {
     const searchRect = input.getBoundingClientRect();
     const rows = new Set();
@@ -60,7 +73,7 @@ globalThis.TenhFacebookProfileResolver = (() => {
   async function resolve({ pageId, customerName, disallowedId }) {
     const name = normalize(customerName);
     if (!/^\d+$/.test(pageId) || !name) return { reason: "profile_context_incomplete" };
-    const deadline = Date.now() + 22000;
+    const deadline = Date.now() + 30000;
     const valid = () => pageMatches(pageId) && !document.querySelector('input[type="password"]');
     let input;
     while (Date.now() < deadline && valid() && !(input = searchBox())) await pause(250);
@@ -71,9 +84,19 @@ globalThis.TenhFacebookProfileResolver = (() => {
     input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("change", { bubbles: true }));
     await pause(1800);
-    let row = null, stableAt = 0;
+    let row = null, stableAt = 0, submitted = false;
     while (Date.now() < deadline && valid()) {
+      input = searchBox() || input;
       if (normalize(input.value) !== name) return { reason: "search_interrupted" };
+      const searchAction = !submitted && fullSearchAction(input);
+      if (searchAction) {
+        searchAction.click();
+        submitted = true;
+        row = null;
+        stableAt = 0;
+        await pause(1800);
+        continue;
+      }
       const matches = matchingRows(input, name);
       if (matches.length > 1) return { reason: "ambiguous_customer" };
       const candidate = matches[0];
@@ -103,5 +126,5 @@ globalThis.TenhFacebookProfileResolver = (() => {
     }
     return { reason: "profile_link_unavailable" };
   }
-  return { resolve, pageMatches, matchingRows, profileLinks };
+  return { resolve, pageMatches, matchingRows, profileLinks, fullSearchAction };
 })();

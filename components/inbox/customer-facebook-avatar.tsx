@@ -4,20 +4,22 @@ import { useEffect, useRef, useState } from "react";
 import { CustomerAvatar } from "@/components/customer-avatar";
 import { useCompanion } from "@/lib/extension/use-companion";
 import { getFacebookCustomerProfileUrl, normalizeFacebookProfileUrl } from "@/lib/facebook/customer-profile-url";
+import { profileLookupError } from "@/lib/facebook/profile-lookup-error";
 import type { InboxConversation } from "@/types/inbox";
 
 function supportedVersion(version: string | null) {
   const parts = (version ?? "").split(".").map(Number);
-  return parts[0] > 1 || (parts[0] === 1 && (parts[1] > 2 || (parts[1] === 2 && parts[2] >= 14)));
+  return parts[0] > 1 || (parts[0] === 1 && (parts[1] > 2 || (parts[1] === 2 && parts[2] >= 15)));
 }
 
 export function CustomerFacebookAvatar({ conversation }: { conversation: InboxConversation }) {
-  const { installed, version, openFacebookProfile } = useCompanion();
+  const { installed, version, openFacebookProfile, openResolvedFacebookProfile } = useCompanion();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [diagnostic, setDiagnostic] = useState("");
+  const [copied, setCopied] = useState(false);
   const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
   const attempt = useRef(0);
-  const pendingTab = useRef<Window | null>(null);
   const locked = useRef(false);
   const contact = conversation.contact;
   const pageId = conversation.social_account?.platform_account_id;
@@ -27,8 +29,6 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
 
   useEffect(() => () => {
     attempt.current += 1;
-    pendingTab.current?.close();
-    pendingTab.current = null;
   }, []);
 
   async function openProfile() {
@@ -37,45 +37,45 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
     try { cachedUrl = normalizeFacebookProfileUrl(localStorage.getItem(cacheKey)); } catch { /* Storage is optional. */ }
     const knownUrl = savedUrl ?? cachedUrl;
     setError("");
+    setDiagnostic("");
+    setCopied(false);
     setFallbackUrl(null);
-    if (!knownUrl && (!installed || !supportedVersion(version))) {
-      setError(installed ? "Update TENH Companion to 1.2.14 or later, then refresh TENH and Facebook." : "Enable TENH Companion in this browser and refresh TENH to find this customer's profile.");
+    if (knownUrl) {
+      // Open the actual profile in the original click gesture.
+      setFallbackUrl(knownUrl);
+      window.open(knownUrl, "_blank", "noopener,noreferrer");
       return;
     }
-    const tab = window.open("about:blank", "_blank");
-    if (tab) tab.opener = null;
-    pendingTab.current = tab;
+    if (!installed || !supportedVersion(version)) {
+      setError(installed ? "Update TENH Companion to 1.2.15 or later, then refresh TENH and Facebook." : "Enable TENH Companion in this browser and refresh TENH to find this customer's profile.");
+      return;
+    }
     const currentAttempt = ++attempt.current;
     locked.current = true;
     setBusy(true);
     try {
-      let url = knownUrl;
+      const started = Date.now();
+      const result = await openFacebookProfile({ pageId, threadId: contact.platform_user_id, conversationId: conversation.id, customerName: contact.full_name });
+      if (currentAttempt !== attempt.current) return;
+      const url = result?.resolved && result.pageId === pageId ? normalizeFacebookProfileUrl(result.profileUrl) : null;
       if (!url) {
-        const result = await openFacebookProfile({ pageId, threadId: contact.platform_user_id, conversationId: conversation.id, customerName: contact.full_name });
-        if (currentAttempt !== attempt.current) return;
-        if (result?.resolved && result.pageId === pageId) url = normalizeFacebookProfileUrl(result.profileUrl);
-        if (!url) {
-          const reason = result?.reason;
-          throw new Error(reason === "ambiguous_customer" || reason === "ambiguous_profile"
-            ? "More than one matching customer was found. TENH did not choose a profile."
-            : reason === "page_mismatch_or_sign_in"
-              ? "Sign into Facebook with access to this conversation's Page, then try again."
-              : reason === "customer_not_found"
-                ? "No unique customer with this name was found in this Page's Messenger search."
-                : "Facebook did not expose a matching profile link. Check Page access and refresh Facebook, then retry.");
-        }
-        try { localStorage.setItem(cacheKey, url); } catch { /* Still open the resolved link. */ }
+        const reason = !result ? "extension_timeout"
+          : result.resolved ? (result.pageId !== pageId ? "profile_page_mismatch" : "profile_url_unsupported")
+          : result.reason || "profile_link_unavailable";
+        // No messages, cookies, tokens, or profile links in diagnostic output.
+        setDiagnostic(`TENH profile lookup | extension=${version ?? "unknown"} | reason=${/^[a-z_]{1,80}$/.test(reason) ? reason : "unknown"} | page=${pageId} | durationMs=${Date.now() - started}`);
+        throw new Error(profileLookupError(reason));
       }
+      try { localStorage.setItem(cacheKey, url); } catch { /* Still open the resolved link. */ }
       if (currentAttempt !== attempt.current) return;
       setFallbackUrl(url);
-      if (tab && !tab.closed) { tab.location.replace(url); pendingTab.current = null; }
-      else setError("The new tab was blocked. Use View Facebook profile below.");
+      // Confirm the same customer is selected before asking Chrome to open the resolved URL.
+      const opened = result?.openToken ? await openResolvedFacebookProfile(result.openToken) : null;
+      if (currentAttempt === attempt.current && !opened?.opened) setError("Your profile link is ready. Use View Facebook profile below to open it.");
     } catch (reason) {
-      tab?.close();
       if (currentAttempt === attempt.current) setError(reason instanceof Error ? reason.message : "Unable to open this profile.");
     } finally {
-      if (currentAttempt !== attempt.current) tab?.close();
-      else { pendingTab.current = null; locked.current = false; setBusy(false); }
+      if (currentAttempt === attempt.current) { locked.current = false; setBusy(false); }
     }
   }
 
@@ -89,6 +89,13 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
       {isFacebook ? <span className={`absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/50 to-transparent transition ${busy ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"}`}><span className="mb-1 text-[9px] font-semibold text-white">{busy ? "Finding..." : "View profile"}</span></span> : null}
     </button>
     {error ? <p role="alert" className="max-w-40 text-xs leading-4 text-amber-800">{error}</p> : null}
-    {error && fallbackUrl ? <a href={fallbackUrl} target="_blank" rel="noopener noreferrer" className="max-w-40 text-xs text-blue-600 underline">View Facebook profile</a> : null}
+    {error && diagnostic ? <div className="max-w-40">
+      <button type="button" className="text-xs font-semibold text-blue-600 underline" onClick={async () => {
+        try { await navigator.clipboard.writeText(diagnostic); setCopied(true); }
+        catch { setCopied(false); }
+      }}>{copied ? "Copied" : "Copy error details"}</button>
+      <details className="mt-1 text-[10px] text-slate-500"><summary>Technical details</summary><p className="break-all select-text">{diagnostic}</p></details>
+    </div> : null}
+    {fallbackUrl ? <a href={fallbackUrl} target="_blank" rel="noopener noreferrer" className="max-w-40 text-xs text-blue-600 underline">View Facebook profile</a> : null}
   </div>;
 }

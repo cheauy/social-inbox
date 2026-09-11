@@ -20,6 +20,20 @@ ${duplicate ? '<div class="row second" role="button"><span>Uy Chea</span></div>'
   const found=await page.evaluate(options=>TenhFacebookProfileResolver.resolve(options),options);
   assert.equal(found.profileUrl,'https://www.facebook.com/profile.php?id=61555135812581');
   assert.equal(found.pageId,options.pageId); console.log('PASS: search and actual profile link resolve without using Messenger ID');
+  // Reproduce Meta's "No results found / Search in Messenger conversations" state.
+  // Its previously selected customer's profile remains visible while searching.
+  html=fixture(false,'Uy Chea','https://www.facebook.com/thy.thy.886036#')
+    .replace('<div class="row"', '<div hidden class="row"')
+    .replace("document.querySelector('aside').hidden=false", "document.querySelector('#stale').remove();document.querySelector('aside').hidden=false")
+    + `<aside id="stale"><h3>Rotanak Lyna</h3><a href="https://www.facebook.com/another.person">View profile</a></aside>
+      <button id="searchAll" style="position:absolute;left:100px;top:255px;width:450px;height:45px"
+        onclick="window.searchSubmitted=(window.searchSubmitted||0)+1;setTimeout(()=>{document.querySelector('.row').hidden=false;this.hidden=true},400)">
+        <span>Search in Messenger conversations</span></button>`;
+  await load();
+  const submitted=await page.evaluate(options=>TenhFacebookProfileResolver.resolve(options),options);
+  assert.equal(submitted.profileUrl,'https://www.facebook.com/thy.thy.886036');
+  assert.equal(await page.evaluate(()=>window.searchSubmitted),1);
+  console.log('PASS: full search submitted once; real username profile replaces stale customer');
   html=fixture().replaceAll('Uy Chea','សុខ សាន្ត').replaceAll('164836150054638','393342417206745').replaceAll('61555135812581','100026425303922');
   await load();
   await page.evaluate(()=>history.replaceState({},'', '?asset_id=393342417206745&mailbox_id=393342417206745'));

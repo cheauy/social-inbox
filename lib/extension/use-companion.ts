@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { awaitCompanionAnswer } from "./companion-response";
 
 /*
  * Asking the browser whether TENH Companion is there, and asking it for things.
@@ -15,13 +16,12 @@ import { useCallback, useEffect, useState } from "react";
  * all when it is not.
  */
 
-const ANSWER_TIMEOUT_MS = 1500;
-
 export type FacebookProfileOpenResult = {
   opened: boolean;
   resolved?: boolean;
   pageId?: string;
   profileUrl?: string | null;
+  openToken?: string;
   conversationOpened?: boolean;
   reason?: string;
 };
@@ -43,39 +43,6 @@ function post(type: string, payload: Record<string, unknown> = {}) {
   );
 
   return requestId;
-}
-
-function awaitAnswer<T>(
-  type: string,
-  requestId: string,
-  timeout = ANSWER_TIMEOUT_MS,
-): Promise<T | null> {
-  return new Promise((resolve) => {
-    const done = (value: T | null) => {
-      window.removeEventListener("message", listener);
-      window.clearTimeout(timer);
-      resolve(value);
-    };
-
-    const listener = (event: MessageEvent) => {
-      if (event.source !== window || event.origin !== window.location.origin) {
-        return;
-      }
-
-      const data = event.data;
-
-      if (!data || typeof data !== "object") return;
-      if (data.source !== "TENH_EXTENSION") return;
-      if (data.type !== type) return;
-      if (data.requestId !== requestId || data.error || data.requiresRefresh) return;
-
-      done(data as T);
-    };
-
-    window.addEventListener("message", listener);
-
-    const timer = window.setTimeout(() => done(null), timeout);
-  });
 }
 
 export function useCompanion() {
@@ -123,7 +90,7 @@ export function useCompanion() {
         conversationId: options.conversationId ?? undefined,
       });
 
-      const answer = await awaitAnswer<{ opened?: boolean }>(
+      const answer = await awaitCompanionAnswer<{ opened?: boolean }>(
         "OPEN_IN_FACEBOOK_RESULT",
         requestId,
         10000,
@@ -154,7 +121,7 @@ export function useCompanion() {
         customerName: options.customerName ?? undefined,
       });
 
-      return awaitAnswer<FacebookProfileOpenResult>(
+      return awaitCompanionAnswer<FacebookProfileOpenResult>(
         "OPEN_FACEBOOK_PROFILE_RESULT",
         requestId,
         60000,
@@ -162,6 +129,11 @@ export function useCompanion() {
     },
     [],
   );
+
+  const openResolvedFacebookProfile = useCallback(async (openToken: string) => {
+    const requestId = post("OPEN_RESOLVED_FACEBOOK_PROFILE", { openToken });
+    return awaitCompanionAnswer<FacebookProfileOpenResult>("OPEN_RESOLVED_FACEBOOK_PROFILE_RESULT", requestId, 10000);
+  }, []);
 
   /**
    * What Facebook's own interface is showing for this conversation.
@@ -183,7 +155,7 @@ export function useCompanion() {
         threadId: options.threadId ?? undefined,
       });
 
-      return awaitAnswer<ReplyAvailability>(
+      return awaitCompanionAnswer<ReplyAvailability>(
         "CHECK_FACEBOOK_REPLY_AVAILABILITY_RESULT",
         requestId,
         18000,
@@ -192,5 +164,5 @@ export function useCompanion() {
     [],
   );
 
-  return { installed, version, openInFacebook, openFacebookProfile, checkReplyAvailability };
+  return { installed, version, openInFacebook, openFacebookProfile, openResolvedFacebookProfile, checkReplyAvailability };
 }

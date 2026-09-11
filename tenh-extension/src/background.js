@@ -1156,7 +1156,7 @@ function canonicalFacebookProfileUrl(value) {
   try {
     const url = new URL(value);
     if (
-      url.protocol !== "https:" ||
+      url.protocol !== "https:" || url.username || url.password || url.port ||
       !["facebook.com", "www.facebook.com", "m.facebook.com"].includes(url.hostname)
     ) {
       return null;
@@ -1167,7 +1167,7 @@ function canonicalFacebookProfileUrl(value) {
 
     if (lowerPath === "/profile.php") {
       const id = url.searchParams.get("id");
-      if (!id || !/^\d{5,32}$/.test(id)) return null;
+      if (!id || !/^\d{5,32}$/.test(id) || url.searchParams.getAll("id").length !== 1) return null;
       return `https://www.facebook.com/profile.php?id=${encodeURIComponent(id)}`;
     }
 
@@ -1176,7 +1176,9 @@ function canonicalFacebookProfileUrl(value) {
       return `https://www.facebook.com/profile.php?id=${encodeURIComponent(peopleMatch[1])}`;
     }
 
-    if (/^\/[A-Za-z0-9._-]{2,100}$/.test(path)) {
+    if (/^\/[A-Za-z0-9._-]{2,100}$/.test(path) && !/\.php$/i.test(path) &&
+        !/^\/(business|latest|messages|login|logout|checkpoint|settings|help|groups|pages|watch|reels|marketplace|search|friends|bookmarks|gaming|ads|privacy|notifications|home|photo|photos|posts|videos|share|story)$/i.test(path)) {
+      if (/^\/\d+$/.test(path)) return `https://www.facebook.com/profile.php?id=${path.slice(1)}`;
       return `https://www.facebook.com${path}`;
     }
 
@@ -1186,8 +1188,38 @@ function canonicalFacebookProfileUrl(value) {
   }
 }
 
+// A short-lived, single-use ticket lets TENH confirm the customer is still selected
+// before opening a tab. The page cannot substitute an arbitrary destination.
+const resolvedProfileTickets = new Map();
+function trustedProfileSender(sender) {
+  try { return Number.isInteger(sender?.tab?.id) && new URL(sender.tab.url).origin === TENH_ORIGIN; }
+  catch { return false; }
+}
+function profileOpenTicket(profileUrl, sender) {
+  for (const [key, entry] of resolvedProfileTickets) {
+    if (entry.expiresAt <= Date.now()) resolvedProfileTickets.delete(key);
+  }
+  if (resolvedProfileTickets.size >= 100) resolvedProfileTickets.delete(resolvedProfileTickets.keys().next().value);
+  const token = crypto.randomUUID();
+  resolvedProfileTickets.set(token, { profileUrl, tabId: sender.tab.id, expiresAt: Date.now() + 60000 });
+  return token;
+}
+async function openResolvedFacebookProfile(token, sender) {
+  if (!trustedProfileSender(sender)) return { opened: false, reason: "profile_context_incomplete" };
+  const entry = resolvedProfileTickets.get(token);
+  if (!entry || entry.tabId !== sender.tab.id || entry.expiresAt <= Date.now()) {
+    return { opened: false, reason: "profile_resolution_expired" };
+  }
+  resolvedProfileTickets.delete(token);
+  try {
+    const tab = await chrome.tabs.create({ url: entry.profileUrl, active: true });
+    return { opened: Boolean(tab?.id) };
+  } catch { return { opened: false, reason: "profile_tab_unavailable" }; }
+}
+
 // The resolver owns this inactive tab; it never navigates a user's existing tab.
-async function openFacebookCustomerProfile({ pageId, threadId, customerName } = {}) {
+async function openFacebookCustomerProfile({ pageId, threadId, customerName } = {}, sender) {
+  if (!trustedProfileSender(sender)) return { opened: false, reason: "profile_context_incomplete" };
   if (!/^\d+$/.test(String(pageId ?? "")) || !String(customerName ?? "").trim()) {
     return { opened: false, reason: "profile_context_incomplete" };
   }
@@ -1212,7 +1244,8 @@ async function openFacebookCustomerProfile({ pageId, threadId, customerName } = 
       return { opened: false, reason: result?.reason || "profile_link_unavailable" };
     }
     // TENH opens the returned URL only if the same customer is still selected.
-    return { opened: false, resolved: true, profileUrl, pageId, selectedItemId: result.selectedItemId };
+    return { opened: false, resolved: true, profileUrl, pageId, selectedItemId: result.selectedItemId,
+      openToken: profileOpenTicket(profileUrl, sender) };
   } catch {
     return { opened: false, reason: "profile_resolution_unavailable" };
   } finally {
@@ -1314,7 +1347,10 @@ async function handle(message, sender) {
         threadId: message.threadId,
         conversationId: message.conversationId,
         customerName: message.customerName,
-      });
+      }, sender);
+
+    case "OPEN_RESOLVED_FACEBOOK_PROFILE":
+      return openResolvedFacebookProfile(message.openToken, sender);
 
     case "CHECK_FACEBOOK_REPLY_AVAILABILITY": {
       const answer = await askFacebook(
