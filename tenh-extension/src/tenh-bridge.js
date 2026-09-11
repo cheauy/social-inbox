@@ -15,6 +15,92 @@ const ALLOWED = new Set([
   "TENH_SYNC_NOW",
   "TENH_WEB_SYNC_EVENT",
 ]);
+const EXTENSION_VERSION = (() => {
+  try {
+    return chrome.runtime.getManifest().version;
+  } catch {
+    return "unknown";
+  }
+})();
+
+let extensionContextInvalidated = false;
+let retryIntervalId = null;
+
+function runtimeAvailable() {
+  if (extensionContextInvalidated) return false;
+  try {
+    return Boolean(chrome?.runtime?.id);
+  } catch {
+    return false;
+  }
+}
+
+function markContextInvalidated() {
+  if (extensionContextInvalidated) return;
+  extensionContextInvalidated = true;
+
+  if (realtimePortReconnectTimer) {
+    clearTimeout(realtimePortReconnectTimer);
+    realtimePortReconnectTimer = null;
+  }
+  if (retryIntervalId) {
+    clearInterval(retryIntervalId);
+    retryIntervalId = null;
+  }
+
+  try {
+    realtimePort?.disconnect();
+  } catch {
+    // The old extension context is already gone.
+  }
+  realtimePort = null;
+
+  try {
+    window.postMessage(
+      {
+        source: "TENH_EXTENSION",
+        type: "TENH_EXTENSION_CONTEXT_INVALIDATED",
+        requiresRefresh: true,
+      },
+      window.location.origin,
+    );
+  } catch {
+    // Never let an optional companion error reach TENH.
+  }
+}
+
+function isContextInvalidatedError(error) {
+  return /extension context invalidated/i.test(String(error?.message ?? error ?? ""));
+}
+
+function sendRuntimeMessage(message, callback) {
+  if (!runtimeAvailable()) {
+    markContextInvalidated();
+    callback?.(null, new Error("extension_unavailable"));
+    return false;
+  }
+
+  try {
+    chrome.runtime.sendMessage(message, (response) => {
+      let error = null;
+      try {
+        error = chrome.runtime.lastError ?? null;
+      } catch (caught) {
+        error = caught;
+      }
+
+      if (error && isContextInvalidatedError(error)) markContextInvalidated();
+      callback?.(response, error);
+    });
+    return true;
+  } catch (error) {
+    if (isContextInvalidatedError(error) || !runtimeAvailable()) {
+      markContextInvalidated();
+    }
+    callback?.(null, error);
+    return false;
+  }
+}
 
 function safeEvent(value) {
   if (!value || typeof value !== "object") return null;
@@ -45,6 +131,10 @@ let realtimePortReconnectTimer = null;
 
 function connectRealtimePort() {
   if (realtimePort) return realtimePort;
+  if (!runtimeAvailable()) {
+    markContextInvalidated();
+    return null;
+  }
   try {
     const port = chrome.runtime.connect({ name: "TENH_REALTIME_BRIDGE" });
     realtimePort = port;
@@ -75,14 +165,18 @@ function connectRealtimePort() {
     port.onDisconnect.addListener(() => {
       realtimePort = null;
       if (realtimePortReconnectTimer) clearTimeout(realtimePortReconnectTimer);
+      if (extensionContextInvalidated) return;
       realtimePortReconnectTimer = setTimeout(() => {
         realtimePortReconnectTimer = null;
-        connectRealtimePort();
+        if (!extensionContextInvalidated) connectRealtimePort();
       }, 1000);
     });
 
     return port;
-  } catch {
+  } catch (error) {
+    if (isContextInvalidatedError(error) || !runtimeAvailable()) {
+      markContextInvalidated();
+    }
     return null;
   }
 }
@@ -132,10 +226,8 @@ window.addEventListener("message", (event) => {
     }
   }
 
-  chrome.runtime.sendMessage(outgoing, (response) => {
-    const payload = chrome.runtime.lastError
-      ? { error: "extension_unavailable" }
-      : (response ?? {});
+  sendRuntimeMessage(outgoing, (response, error) => {
+    const payload = error ? { error: "extension_unavailable" } : (response ?? {});
 
     window.postMessage(
       {
@@ -155,20 +247,26 @@ window.addEventListener("message", (event) => {
 /* Receive safe high-level sync notifications from the service worker. The
  * website can choose to refresh its normal source-of-truth data; the extension
  * does not inject message/customer payloads into page state. */
-chrome.runtime.onMessage.addListener((message) => {
-  if (message?.type !== "TENH_SYNC_PUSH") return false;
+try {
+  if (runtimeAvailable()) {
+    chrome.runtime.onMessage.addListener((message) => {
+      if (message?.type !== "TENH_SYNC_PUSH") return false;
 
-  window.postMessage(
-    {
-      source: "TENH_EXTENSION",
-      type: "TENH_SYNC_PUSH",
-      event: safeEvent(message.event),
-    },
-    window.location.origin,
-  );
+      window.postMessage(
+        {
+          source: "TENH_EXTENSION",
+          type: "TENH_SYNC_PUSH",
+          event: safeEvent(message.event),
+        },
+        window.location.origin,
+      );
 
-  return false;
-});
+      return false;
+    });
+  }
+} catch (error) {
+  if (isContextInvalidatedError(error)) markContextInvalidated();
+}
 
 /* ------------------------------------------------ automatic connection */
 
@@ -178,14 +276,18 @@ const RETRY_MS = 30_000;
 
 function worker(message) {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage(message, (response) => {
-      void chrome.runtime.lastError;
-      resolve(response ?? {});
+    sendRuntimeMessage(message, (response, error) => {
+      resolve(error ? { error: "extension_unavailable" } : (response ?? {}));
     });
   });
 }
 
 async function connectIfSignedIn({ force = false } = {}) {
+  if (extensionContextInvalidated) return;
+  if (!runtimeAvailable()) {
+    markContextInvalidated();
+    return;
+  }
   if (connecting) return;
 
   const now = Date.now();
@@ -207,7 +309,7 @@ async function connectIfSignedIn({ force = false } = {}) {
       body: JSON.stringify({
         browserInstallationId: state.installationId,
         deviceName: state.deviceName,
-        extensionVersion: chrome.runtime.getManifest().version,
+        extensionVersion: EXTENSION_VERSION,
       }),
     });
 
@@ -250,15 +352,15 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-setInterval(() => {
-  void connectIfSignedIn();
+retryIntervalId = setInterval(() => {
+  if (!extensionContextInvalidated) void connectIfSignedIn();
 }, RETRY_MS);
 
 window.postMessage(
   {
     source: "TENH_EXTENSION",
     type: "TENH_EXTENSION_READY",
-    version: chrome.runtime.getManifest().version,
+    version: EXTENSION_VERSION,
   },
   window.location.origin,
 );

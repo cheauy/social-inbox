@@ -150,5 +150,49 @@ export function useCompanion() {
     [],
   );
 
-  return { installed, version, openInFacebook, checkReplyAvailability };
+  /**
+   * Open this customer's Facebook profile, through Facebook itself.
+   *
+   * A Messenger customer is known to TENH only by their page-scoped id, and
+   * that id is not a Facebook account: profile.php?id=<psid> lands on "This
+   * content isn't available" for every customer, because Meta issues a
+   * different id per Page precisely so a business cannot look a person up.
+   * The extension asks Business Suite for its own "View profile" link instead,
+   * and focuses the conversation when Facebook offers none.
+   *
+   * The wait is long on purpose: preparing a Facebook tab can take seconds,
+   * and giving up early would open a second tab beside the one the extension
+   * is still preparing. Null means no answer at all, not "no profile".
+   */
+  const openFacebookProfile = useCallback(
+    async (options: {
+      pageId?: string | null;
+      threadId?: string | null;
+      conversationId?: string | null;
+      customerName?: string | null;
+    }) => {
+      const requestId = post("OPEN_FACEBOOK_PROFILE", {
+        pageId: options.pageId ?? undefined,
+        threadId: options.threadId ?? undefined,
+        conversationId: options.conversationId ?? undefined,
+        customerName: options.customerName ?? undefined,
+      });
+
+      return awaitAnswer<{
+        opened?: boolean;
+        profileUrl?: string | null;
+        conversationOpened?: boolean;
+        reason?: string | null;
+      }>("OPEN_FACEBOOK_PROFILE_RESULT", requestId, 25000);
+    },
+    [],
+  );
+
+  return {
+    installed,
+    version,
+    openInFacebook,
+    openFacebookProfile,
+    checkReplyAvailability,
+  };
 }

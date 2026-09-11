@@ -1111,14 +1111,33 @@ async function openFacebook({ pageId, threadId, conversationId } = {}) {
   };
 }
 
-function isSafeFacebookProfileUrl(value) {
+function isSafeFacebookProfileUrl(value, disallowedId = null) {
   if (typeof value !== "string" || !value) return false;
   try {
     const url = new URL(value);
-    return (
-      url.protocol === "https:" &&
-      ["facebook.com", "www.facebook.com", "m.facebook.com"].includes(url.hostname)
-    );
+    if (
+      url.protocol !== "https:" ||
+      !["facebook.com", "www.facebook.com", "m.facebook.com"].includes(url.hostname)
+    ) {
+      return false;
+    }
+
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    const lowerPath = path.toLowerCase();
+
+    /* Never open numeric profile.php links discovered inside Business Suite.
+       Facebook commonly backs them with scoped ids that are not browsable
+       public profiles, even when the id differs from the Messenger thread id. */
+    if (lowerPath === "/profile.php") return false;
+    if (/^\/\d{5,32}$/.test(path)) return false;
+
+    const blockedId = String(disallowedId ?? "").trim();
+    if (blockedId) {
+      const peopleMatch = path.match(/\/people\/[^/]+\/(\d{5,32})\/?$/i);
+      if (peopleMatch?.[1] === blockedId) return false;
+    }
+
+    return true;
   } catch {
     return false;
   }
@@ -1166,6 +1185,7 @@ async function openFacebookCustomerProfile({
     pageId,
     conversationId: facebookThreadId,
     customerName: String(customerName).slice(0, 200),
+    disallowedProfileId: String(facebookThreadId),
   };
 
   /* Business Suite often paints the conversation shell before the customer
@@ -1177,11 +1197,12 @@ async function openFacebookCustomerProfile({
     } catch {
       answer = null;
     }
-    if (answer?.found && isSafeFacebookProfileUrl(answer.profileUrl)) break;
+    if (answer?.found && isSafeFacebookProfileUrl(answer.profileUrl, facebookThreadId)) break;
+    if (answer?.actionTriggered) break;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
-  if (answer?.found && isSafeFacebookProfileUrl(answer.profileUrl)) {
+  if (answer?.found && isSafeFacebookProfileUrl(answer.profileUrl, facebookThreadId)) {
     const profileTab = await chrome.tabs.create({ url: answer.profileUrl, active: true });
     if (profileTab?.windowId) {
       await chrome.windows.update(profileTab.windowId, { focused: true }).catch(() => {});
@@ -1191,6 +1212,22 @@ async function openFacebookCustomerProfile({
       profileUrl: answer.profileUrl,
       conversationOpened: false,
       reason: null,
+    };
+  }
+
+  if (answer?.actionTriggered) {
+    /* Compatibility path: the bridge only triggers controls that already have
+       a verified, non-numeric Facebook profile destination. */
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
+    if (tab.windowId) {
+      await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
+    }
+    return {
+      opened: true,
+      profileUrl: null,
+      conversationOpened: false,
+      reason: "facebook_profile_control_clicked",
     };
   }
 

@@ -148,22 +148,55 @@ export function CustomerProfile({
     setFilesOpen(false);
   }, [activeConversation?.id]);
 
-function openFacebookCustomerProfile() {
-  const customerId = contact?.platform_user_id?.trim();
+/*
+ * "View Facebook profile" -- which TENH cannot build a link for.
+ *
+ * platform_user_id is the customer's page-scoped id. It is not a Facebook
+ * account id, and profile.php?id=<psid> shows "This content isn't available"
+ * for every customer: Meta gives one person a different id on every Page so
+ * that a business cannot look up who they are, and no API converts one into
+ * the other. So this never builds that URL.
+ *
+ * With the extension, Business Suite is asked for its own profile link, and
+ * where it offers none the extension focuses the conversation instead -- any
+ * answer means it handled the click. Without the extension, this opens the
+ * one place a page-scoped id is valid: the conversation in Business Suite,
+ * where Facebook shows its own "View profile" beside the thread.
+ */
+async function openFacebookCustomerProfile() {
+  const threadId = contact?.platform_user_id?.trim();
+  const pageId =
+    activeConversation?.social_account?.platform_account_id?.trim() || null;
   const isFacebook = activeConversation?.social_account?.platform === "facebook";
 
-  if (!customerId || !isFacebook) {
+  if (!threadId || !isFacebook) {
     return;
   }
 
-  const profileUrl = new URL("https://www.facebook.com/profile.php");
-  profileUrl.searchParams.set("id", customerId);
-
-  window.open(
-    profileUrl.toString(),
-    "_blank",
-    "noopener,noreferrer",
+  const inBusinessSuite = new URL(
+    "https://business.facebook.com/latest/inbox/all",
   );
+
+  if (pageId) inBusinessSuite.searchParams.set("asset_id", pageId);
+  inBusinessSuite.searchParams.set("selected_item_id", threadId);
+
+  /* Opened within the click itself, while the browser still counts it as
+     something the person did -- after an await, a popup blocker would not. */
+  if (!companion.installed) {
+    window.open(inBusinessSuite.toString(), "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  const answer = await companion.openFacebookProfile({
+    pageId,
+    threadId,
+    conversationId: activeConversation?.id ?? null,
+    customerName: contact?.full_name ?? null,
+  });
+
+  if (!answer) {
+    window.open(inBusinessSuite.toString(), "_blank", "noopener,noreferrer");
+  }
 }
 
 function startEditing() {

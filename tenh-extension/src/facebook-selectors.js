@@ -246,11 +246,15 @@ var TenhFacebookSelectors = (() => {
       return null;
     }
 
-    if (lowerPath === "/profile.php") {
-      const id = url.searchParams.get("id");
-      if (!id || !/^\d{5,32}$/.test(id)) return null;
-      return `https://www.facebook.com/profile.php?id=${encodeURIComponent(id)}`;
-    }
+    /* Business Suite frequently exposes numeric profile.php links backed by
+       Page/business-scoped ids. Those URLs can look legitimate but open
+       Facebook's "content isn't available" page. Never treat them as a
+       verified customer profile. */
+    if (lowerPath === "/profile.php") return null;
+
+    /* A bare numeric path is ambiguous for the same reason. Only accept a
+       clearly named /people/... profile or a username-style profile URL. */
+    if (/^\/\d{5,32}$/.test(path)) return null;
 
     if (/^\/people\/[^/]+\/\d{5,32}$/i.test(path)) {
       return `https://www.facebook.com${path}`;
@@ -285,7 +289,24 @@ var TenhFacebookSelectors = (() => {
    * enough to the customer's visible name to avoid confusing one person with
    * another Page/admin profile.
    */
-  function findCustomerProfileUrl(customerName) {
+  function profileUrlUsesDisallowedId(profileUrl, disallowedId) {
+    const blockedId = String(disallowedId ?? "").trim();
+    if (!profileUrl || !blockedId) return false;
+
+    try {
+      const url = new URL(profileUrl);
+      if (url.pathname.toLowerCase() === "/profile.php") {
+        return url.searchParams.get("id") === blockedId;
+      }
+
+      const peopleMatch = url.pathname.match(/\/people\/[^/]+\/(\d{5,32})\/?$/i);
+      return peopleMatch?.[1] === blockedId;
+    } catch {
+      return false;
+    }
+  }
+
+  function findCustomerProfileUrl(customerName, disallowedId = null) {
     const wanted = normalizeProfileText(customerName);
     if (!wanted) return null;
 
@@ -293,7 +314,7 @@ var TenhFacebookSelectors = (() => {
 
     for (const anchor of document.querySelectorAll('a[href]')) {
       const profileUrl = profileCandidateUrl(anchor.getAttribute("href"));
-      if (!profileUrl) continue;
+      if (!profileUrl || profileUrlUsesDisallowedId(profileUrl, disallowedId)) continue;
 
       const label = normalizeProfileText([
         anchor.textContent,
@@ -321,6 +342,45 @@ var TenhFacebookSelectors = (() => {
     return best?.url ?? null;
   }
 
+  function clickCustomerProfileControl(customerName) {
+    const wanted = normalizeProfileText(customerName);
+    if (!wanted) return false;
+
+    /* Keep this function for compatibility, but only click a control when its
+       destination is already a verified profile URL. Do not click button-only
+       "View profile" controls because Facebook may route those to a numeric
+       profile.php URL backed by a scoped Messenger/business id. */
+    let best = null;
+    for (const control of document.querySelectorAll('a[href]')) {
+      const safeUrl = profileCandidateUrl(control.getAttribute("href"));
+      if (!safeUrl) continue;
+
+      const label = normalizeProfileText([
+        control.textContent,
+        control.getAttribute("aria-label"),
+        control.getAttribute("title"),
+      ].filter(Boolean).join(" "));
+      const nearby = nearbyProfileText(control);
+
+      let score = 0;
+      if (label === wanted) score += 30;
+      else if (label.includes(wanted)) score += 18;
+      if (nearby === wanted) score += 14;
+      else if (nearby.includes(wanted)) score += 8;
+      if (/profile|view profile/i.test(label)) score += 2;
+
+      const rect = control.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      if (score >= 20 && (!best || score > best.score)) {
+        best = { score, control };
+      }
+    }
+
+    if (!best) return false;
+    best.control.click();
+    return true;
+  }
+
   function isMessengerSurface() {
     const { host, pathname } = window.location;
 
@@ -341,6 +401,7 @@ var TenhFacebookSelectors = (() => {
     isSendControl,
     insertIntoComposer,
     findCustomerProfileUrl,
+    clickCustomerProfileControl,
     isMessengerSurface,
   };
 })();

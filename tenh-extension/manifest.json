@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "TENH v1",
-  "version": "1.2.4",
-  "description": "TENH Companion for safe multi-Page Facebook browser integration, exact conversation/profile opening, realtime sync, and TENH tools.",
+  "version": "1.2.7",
+  "description": "TENH Companion for safe multi-Page Facebook browser integration, exact conversation/profile opening, realtime sync, and reload-safe TENH tools.",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",
