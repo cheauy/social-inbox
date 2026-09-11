@@ -17,7 +17,7 @@ function harness(config={}){
   const result={profileUrl:config.profile||profile,pageId:options.pageId,matchedThreadId:options.threadId,selectedItemId:options.threadId,...config.result};
   let n=100, validationCalls=0;
   const context=vm.createContext({URL,URLSearchParams,Map,Set,Promise,Date,crypto:{randomUUID},setTimeout,clearTimeout,
-    TENH_ORIGIN:'https://app.tenhchat.com',VERSION:'1.2.18',
+    TENH_ORIGIN:'https://app.tenhchat.com',VERSION:'1.2.19',
     readState:async()=>({token:config.unauthorized?null:'test-token'}),
     callTenh:async()=>({ok:true,status:200,result:{matched:!config.unmatched,workspace:{businessId:config.businessId||options.businessId},page:{id:options.pageId},conversation:{id:config.conversationId||options.conversationId},customer:{name:'Test Customer'}}}),
     facebookTarget:({pageId,threadId})=>`https://business.facebook.com/latest/inbox/all?asset_id=${pageId}&selected_item_id=${threadId}`,
@@ -27,7 +27,7 @@ function harness(config={}){
       tabs:{
         query:async()=>[...tabMap.values()].filter(t=>t.url.includes('business.facebook.com')),
         get:async id=>tabMap.get(id),
-        create:async value=>{const t={...value,id:++n,windowId:1,status:'complete'};if(config.loginRedirect&&value.url.includes('business.facebook.com'))t.url='https://www.facebook.com/login/';created.push(t);tabMap.set(t.id,t);return t},
+        create:async value=>{const t={...value,id:++n,windowId:1,status:'complete'};if(config.loginRedirect)t.url='https://www.facebook.com/login/';created.push(t);tabMap.set(t.id,t);return t},
         remove:async id=>{removed.push(id);tabMap.delete(id)},
         update:async(id,patch)=>{updates.push({id,patch});throw Error('Must not navigate existing tabs')},
       },
@@ -56,16 +56,16 @@ test('one click resolves + confirms: only final profile activates; existing Face
   assert.equal((await open(h,result)).opened,true);assert.equal(h.created.at(-1).url,profile);assert.equal(h.created.at(-1).active,true);
   assert.equal((await open(h,result)).opened,false);assert.equal(h.created.length,2);assert.ok(h.tabMap.has(77));
 });
-test('no Facebook tabs: automatically prepares an inactive exact Page/thread lookup, then closes owned tabs',async()=>{
-  const h=harness({tabs:[]});const result=await lookup(h);assert.equal(result.resolved,true);
-  assert.equal(h.created.length,2);assert.ok(h.created.every(t=>!t.active));
-  const target=new URL(h.created[0].url);assert.equal(target.searchParams.get('asset_id'),options.pageId);
-  assert.equal(target.searchParams.get('selected_item_id'),options.threadId);assert.equal(target.searchParams.get('thread_type'),'FB_MESSAGE');
-  assert.equal(h.removed.length,2);assert.equal((await open(h,result)).opened,true);assert.equal(h.created.at(-1).url,profile);
+test('no Facebook tabs: no Business Suite tab or guessed profile is opened',async()=>{
+  const h=harness({tabs:[]});const result=await lookup(h);
+  assert.equal(result.reason,'profile_link_not_available');
+  assert.equal(result.resolved,undefined);assert.equal(h.created.length,0);assert.equal(h.updates.length,0);
 });
+
 test('another Page or same-name different thread is not read/navigated as the requested customer',async()=>{
   const h=harness({tabs:[{id:88,active:true,status:'complete',url:exact.replace('123456','555555')},{id:89,active:true,status:'complete',url:exact.replace('987654','555555')}]});
-  assert.equal((await lookup(h)).resolved,true);
+  assert.equal((await lookup(h)).reason,'profile_link_not_available');
+  assert.equal(h.created.length,0);
   assert.ok(h.executed.every(r=>![88,89].includes(r.target.tabId)));assert.equal(h.updates.length,0);
   assert.ok(h.tabMap.has(88)&&h.tabMap.has(89));
 });
@@ -76,8 +76,8 @@ test('blocked/unavailable Facebook profile is never opened in the foreground',as
 });
 test('missing link gives a reason, never a Business Suite foreground fallback',async()=>{
   const h=harness({missingLink:true,tabs:[]});const r=await lookup(h);
-  assert.equal(r.reason,'profile_link_unavailable');assert.equal(r.openToken,undefined);
-  assert.equal(h.created.length,1);assert.equal(h.created[0].active,false);assert.equal(h.removed.length,1);
+  assert.equal(r.reason,'profile_link_not_available');assert.equal(r.openToken,undefined);
+  assert.equal(h.created.length,0);assert.equal(h.removed.length,0);
 });
 test('authorization and current TENH workspace/conversation are checked before any browser lookup',async()=>{
   for(const config of [{unauthorized:true},{unmatched:true},{businessId:'other-workspace'},{conversationId:'other-conversation'}]){
@@ -115,8 +115,8 @@ test('username remains username when Facebook does not expose a numeric public I
   const r=await lookup(h);assert.equal(r.profileUrl,url);assert.equal(r.profileId,null);
 });
 
-test('signed-out Facebook reports sign-in required and cleans its inactive login lookup tab',async()=>{
-  const h=harness({tabs:[],loginRedirect:true});const r=await lookup(h);
+test('signed-out profile validation reports sign-in required and cleans its inactive profile tab',async()=>{
+  const h=harness({loginRedirect:true});const r=await lookup(h);
   assert.equal(r.reason,'facebook_sign_in_required');assert.equal(h.created.length,1);
   assert.equal(h.created[0].active,false);assert.equal(h.removed.length,1);
 });

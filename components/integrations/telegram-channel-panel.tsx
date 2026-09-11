@@ -66,6 +66,7 @@ type WebhookResponse = {
 };
 
 type Props = {
+  canAddConnections: boolean;
   onConnectionChanged?: (summary: { active: number; total: number }) => void;
   openAddBotSignal?: number;
 };
@@ -91,6 +92,7 @@ function withConnection(path: string, id: string | null) {
 }
 
 export function TelegramChannelPanel({
+  canAddConnections,
   onConnectionChanged,
   openAddBotSignal = 0,
 }: Props) {
@@ -589,7 +591,7 @@ export function TelegramChannelPanel({
         </div>
       ) : null}
 
-      {showAddBot && canManage ? (
+      {showAddBot && canManage && canAddConnections ? (
         <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
           <p className="font-semibold text-slate-900">Connect another Telegram bot</p>
           <p className="mt-1 text-xs leading-5 text-slate-600">
@@ -633,7 +635,7 @@ export function TelegramChannelPanel({
               Only the workspace Owner can connect a Telegram bot.
             </p>
           ) : null}
-          {canManage && !showAddBot ? (
+          {canManage && canAddConnections && !showAddBot ? (
             <p className="mt-4 text-sm text-slate-500">
               Use <span className="font-semibold text-slate-700">+ Add Connection</span> above to connect a Telegram bot.
             </p>

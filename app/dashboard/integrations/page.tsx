@@ -7,6 +7,7 @@ import { FacebookPageAvatar } from "@/components/integrations/facebook-page-avat
 import { TenhCompanionCard } from "@/components/integrations/tenh-companion-card";
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { memberHasPermission } from "@/lib/auth/require-permission";
+import { businessSubscriptionIsOperational } from "@/lib/subscription/is-operational-subscription";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -113,6 +114,8 @@ export default async function IntegrationsPage({
     );
   }
   const params = searchParams ? await searchParams : {};
+  const canAddConnections = canManageChannels &&
+    await businessSubscriptionIsOperational(currentMember.business_id);
   const facebookResult = singleParam(params.facebook);
   const resultMessage = singleParam(params.message);
   const resultWarning = singleParam(params.warning);
@@ -146,7 +149,7 @@ export default async function IntegrationsPage({
 
   return (
     <main className="h-full min-h-0 overflow-y-auto bg-white p-6">
-      <IntegrationWorkspace canManageChannels={canManageChannels}>
+      <IntegrationWorkspace canManageChannels={canManageChannels} canAddConnections={canAddConnections}>
         {!canManageChannels ? (
           <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
             <WorkspaceLanguageText
@@ -219,17 +222,19 @@ export default async function IntegrationsPage({
                   km="ភ្ជាប់ Page ដើម្បីទទួលសារ Messenger និងមតិយោបល់ Facebook។"
                 />
               </p>
-              <form action="/api/facebook/oauth/pages" method="get" className="mt-4">
-                <button
-                  type="submit"
-                  className="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-600"
-                >
-                  <WorkspaceLanguageText
-                    en="+ Add Connection"
-                    km="+ បន្ថែមការតភ្ជាប់"
-                  />
-                </button>
-              </form>
+              {canAddConnections ? (
+                <form action="/api/facebook/oauth/pages" method="get" className="mt-4">
+                  <button
+                    type="submit"
+                    className="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-600"
+                  >
+                    <WorkspaceLanguageText
+                      en="+ Add Connection"
+                      km="+ បន្ថែមការតភ្ជាប់"
+                    />
+                  </button>
+                </form>
+              ) : null}
             </div>
           ) : (
             <>

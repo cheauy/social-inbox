@@ -66,8 +66,8 @@ async function readState() {
   }
 
   if (stored.keepFacebookActive === undefined) {
-    stored.keepFacebookActive = true;
-    await chrome.storage.local.set({ keepFacebookActive: true });
+    stored.keepFacebookActive = false;
+    await chrome.storage.local.set({ keepFacebookActive: false });
   }
 
   return stored;
@@ -1402,7 +1402,6 @@ async function openFacebookCustomerProfile(options = {}, sender) {
   if (profileLookupRunning) return { opened: false, reason: "profile_lookup_busy" };
   profileLookupRunning = true;
   const context = { pageId, threadId, conversationId, businessId };
-  let temporaryTab = null;
   try {
     const auth = await authorizeProfileContext(context);
     if (!auth.ok) return { opened: false, reason: auth.reason };
@@ -1415,17 +1414,9 @@ async function openFacebookCustomerProfile(options = {}, sender) {
       if (result.reason === "ambiguous_profile") return { opened: false, reason: result.reason };
       if (result.profileUrl && result.pageId === pageId && result.matchedThreadId === threadId) { resolved = result; break; }
     }
-    if (!resolved) {
-      // Do not navigate, search or steal focus from any existing agent tab.
-      // This short-lived lookup is separate from the regular managed sync tab.
-      const target = new URL(facebookTarget({ pageId, threadId }));
-      target.searchParams.set("thread_type", "FB_MESSAGE");
-      temporaryTab = await chrome.tabs.create({ url: target.toString(), active: false, windowId: sender.tab.windowId });
-      const ready = await waitForProfileDocument(temporaryTab.id);
-      if (!ready.tab) return { opened: false, reason: ready.reason };
-      if (ready.tab.active) return { opened: false, reason: "facebook_tab_in_use" };
-      resolved = await withProfileTimeout(runProfileRead(temporaryTab.id, context, true), 14000, { reason: "profile_lookup_timeout" });
-    }
+    // Photo clicks never create or navigate a Business Suite tab. Only read
+    // an already loaded exact conversation; a missing mapping is not an ID.
+    if (!resolved) return { opened: false, reason: "profile_link_not_available" };
     if (!resolved?.profileUrl || resolved.pageId !== pageId || resolved.matchedThreadId !== threadId) {
       return { opened: false, reason: resolved?.reason || "profile_context_mismatch" };
     }
@@ -1437,7 +1428,6 @@ async function openFacebookCustomerProfile(options = {}, sender) {
       selectedItemId: resolved.selectedItemId, openToken: await profileOpenTicket(verified, context, sender) };
   } catch { return { opened: false, reason: "profile_resolution_unavailable" }; }
   finally {
-    if (temporaryTab?.id) await closeOwnedProfileTab(temporaryTab.id, value => profileInboxMatches(value, context) || isProfileLoginUrl(value));
     profileLookupRunning = false;
   }
 }
@@ -1448,8 +1438,8 @@ async function warmFacebookCompanion() {
   if (!state.token || state.keepFacebookActive !== true) return;
 
   try {
-    const tab = await ensureManagedFacebookTab({ active: false });
-    if (tab?.id) await waitForFacebookBridge(tab.id, 8000);
+    // Startup/pairing may inspect existing tabs, but must never open one.
+    await askFacebook({ type: "FB_INSPECT" }, { ensure: false });
   } catch {
     /* Optional browser helper only. */
   }
@@ -1547,7 +1537,7 @@ async function handle(message, sender) {
       const answer = await askFacebook(
         { type: "FB_INSPECT" },
         {
-          ensure: true,
+          ensure: false,
           pageId: message.pageId ?? null,
           threadId: message.threadId ?? null,
         },
@@ -1615,7 +1605,7 @@ async function handle(message, sender) {
       const found = await askFacebook(
         { type: "FB_INSPECT" },
         {
-          ensure: true,
+          ensure: false,
           pageId: expected.pageId ?? null,
           conversationId: expected.conversationId ?? null,
         },
@@ -1953,10 +1943,6 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     if (state.managedFacebookTabId !== tabId) return;
     await chrome.storage.local.remove(["managedFacebookTabId", "managedFacebookWindowId"]);
 
-    /* Keep-fast mode: recreate quietly after a short delay. The tab is
-       inactive, and normal TENH never waits for it. */
-    if (state.keepFacebookActive === true && state.token) {
-      setTimeout(() => void warmFacebookCompanion(), 2500);
-    }
+    // Respect the user closing a Facebook tab; never recreate it.
   })();
 });

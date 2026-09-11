@@ -11,7 +11,7 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const expected={businessId:'workspace',pageId:'123456',threadId:'987654',conversationId:'conversation'};
 const profile='https://www.facebook.com/profile.php?id=61555135812581';
 const result={...expected,resolved:true,verified:true,profileUrl:profile,openToken:'ticket'};
-function harness({savedId,version='1.2.18',installed=true,confirm={opened:true,verified:true,profileUrl:profile},cacheEntry}={}){
+function harness({savedId,version='1.2.19',installed=true,confirm={opened:true,verified:true,profileUrl:profile},cacheEntry}={}){
   let answer,current={id:'conversation',business_id:'workspace',social_account:{platform:'facebook',platform_account_id:'123456'},contact:{id:'contact',platform_user_id:'987654',full_name:'Customer',facebook_profile_id:savedId}};
   const pending=new Promise(resolve=>{answer=resolve});
   const windows=[],confirmed=[],lookups=[],cache=new Map();
@@ -74,8 +74,8 @@ test('saved public ID equal to Messenger ID is rejected instead of opening broke
   const h=harness({savedId:'987654'});h.click();assert.equal(h.windows.length,0);assert.equal(h.lookups.length,1);
 });
 test('old extension is reported instead of timing out silently',()=>{
-  const h=harness({version:'1.2.17'});h.click();h.rerender();assert.equal(h.lookups.length,0);
-  assert.ok(JSON.stringify(h.tree()).includes('1.2.18'));
+  const h=harness({version:'1.2.18'});h.click();h.rerender();assert.equal(h.lookups.length,0);
+  assert.ok(JSON.stringify(h.tree()).includes('1.2.19'));
 });
 test('unverified or expired session-cache link is ignored',()=>{
   for(const entry of [{url:profile,verified:false,expiresAt:Date.now()+1000},{url:profile,verified:true,expiresAt:0}]){

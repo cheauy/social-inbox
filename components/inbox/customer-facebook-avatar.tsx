@@ -10,7 +10,7 @@ import type { InboxConversation } from "@/types/inbox";
 const CACHE_TTL_MS = 60 * 60 * 1000;
 function supportedVersion(version: string | null) {
   const parts = (version ?? "").split(".").map(Number);
-  return parts[0] > 1 || (parts[0] === 1 && (parts[1] > 2 || (parts[1] === 2 && parts[2] >= 18)));
+  return parts[0] > 1 || (parts[0] === 1 && (parts[1] > 2 || (parts[1] === 2 && parts[2] >= 19)));
 }
 
 export function CustomerFacebookAvatar({ conversation }: { conversation: InboxConversation }) {
@@ -69,7 +69,7 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
     }
     if (!installed || !supportedVersion(version)) {
       setError(installed
-        ? "Update TENH Companion to 1.2.18 or newer, then refresh TENH to use profile lookup."
+        ? "Update TENH Companion to 1.2.19 or newer, then refresh TENH to use profile lookup."
         : "Enable TENH Companion and refresh TENH to look up this customer's Facebook profile.");
       return;
     }

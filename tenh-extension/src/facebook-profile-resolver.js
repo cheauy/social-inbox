@@ -3,7 +3,7 @@
  * by name alone. Existing sync, sending, tags and quick replies are independent.
  */
 globalThis.TenhFacebookProfileResolver = (() => {
-  const version = "1.2.18";
+  const version = "1.2.19";
   const normalize = value => String(value ?? "").normalize("NFKC")
     .replace(/[\u200b-\u200d\ufeff]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));

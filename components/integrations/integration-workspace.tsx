@@ -18,6 +18,7 @@ import {
 type IntegrationWorkspaceProps = {
   children: ReactNode;
   canManageChannels?: boolean;
+  canAddConnections?: boolean;
 };
 
 function ChannelMark({
@@ -603,6 +604,7 @@ function AddConnectionModal({
 export function IntegrationWorkspace({
   children,
   canManageChannels = true,
+  canAddConnections = false,
 }: IntegrationWorkspaceProps) {
   const isKhmer = useWorkspaceLanguageId() === "km";
   const [activePlatform, setActivePlatform] =
@@ -682,28 +684,30 @@ export function IntegrationWorkspace({
             </p>
           </div>
 
-          <button
-            type="button"
-            disabled={!canManageChannels}
-            onClick={() => {
-              if (!canManageChannels) return;
-              setAddConnectionPlatform(
-                activePlatform === "telegram" ? "telegram" : "facebook",
-              );
-              setAddConnectionOpen(true);
-            }}
-            title={
-              canManageChannels
-                ? undefined
-                : isKhmer
-                  ? "អ្នកមានសិទ្ធិមើលតែប៉ុណ្ណោះ។ ត្រូវការសិទ្ធិ Manage ដើម្បីបន្ថែមការតភ្ជាប់។"
-                  : "View only. Manage permission is required to add a connection."
-            }
-            className="inline-flex shrink-0 items-center justify-center rounded-xl bg-blue-500 px-5 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:hover:bg-slate-300"
-          >
-            <span className="mr-1.5 text-lg leading-none">+</span>
-            {isKhmer ? "បន្ថែមការតភ្ជាប់" : "Add Connection"}
-          </button>
+          {canAddConnections ? (
+            <button
+              type="button"
+              disabled={!canManageChannels}
+              onClick={() => {
+                if (!canManageChannels) return;
+                setAddConnectionPlatform(
+                  activePlatform === "telegram" ? "telegram" : "facebook",
+                );
+                setAddConnectionOpen(true);
+              }}
+              title={
+                canManageChannels
+                  ? undefined
+                  : isKhmer
+                    ? "អ្នកមានសិទ្ធិមើលតែប៉ុណ្ណោះ។ ត្រូវការសិទ្ធិ Manage ដើម្បីបន្ថែមការតភ្ជាប់។"
+                    : "View only. Manage permission is required to add a connection."
+              }
+              className="inline-flex shrink-0 items-center justify-center rounded-xl bg-blue-500 px-5 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:hover:bg-slate-300"
+            >
+              <span className="mr-1.5 text-lg leading-none">+</span>
+              {isKhmer ? "បន្ថែមការតភ្ជាប់" : "Add Connection"}
+            </button>
+          ) : null}
         </div>
 
         <nav
@@ -776,6 +780,7 @@ export function IntegrationWorkspace({
           <div className="min-w-0">{children}</div>
         ) : activePlatform === "telegram" ? (
           <TelegramChannelPanel
+            canAddConnections={canAddConnections}
             onConnectionChanged={setTelegramSummary}
             openAddBotSignal={telegramAddRequest}
           />
@@ -785,13 +790,14 @@ export function IntegrationWorkspace({
       </div>
 
       <AddConnectionModal
-        open={addConnectionOpen}
+        open={canAddConnections && addConnectionOpen}
         selectedPlatform={addConnectionPlatform}
         facebookCount={facebookSummary.total}
         telegramCount={telegramSummary.total}
         onClose={() => setAddConnectionOpen(false)}
         onSelect={setAddConnectionPlatform}
         onContinue={() => {
+          if (!canAddConnections || !canManageChannels) return;
           if (addConnectionPlatform === "facebook") {
             window.location.assign("/api/facebook/oauth/pages");
             return;
