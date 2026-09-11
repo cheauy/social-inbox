@@ -246,15 +246,11 @@ var TenhFacebookSelectors = (() => {
       return null;
     }
 
-    /* Business Suite frequently exposes numeric profile.php links backed by
-       Page/business-scoped ids. Those URLs can look legitimate but open
-       Facebook's "content isn't available" page. Never treat them as a
-       verified customer profile. */
-    if (lowerPath === "/profile.php") return null;
-
-    /* A bare numeric path is ambiguous for the same reason. Only accept a
-       clearly named /people/... profile or a username-style profile URL. */
-    if (/^\/\d{5,32}$/.test(path)) return null;
+    if (lowerPath === "/profile.php") {
+      const id = url.searchParams.get("id");
+      if (!id || !/^\d{5,32}$/.test(id)) return null;
+      return `https://www.facebook.com/profile.php?id=${encodeURIComponent(id)}`;
+    }
 
     if (/^\/people\/[^/]+\/\d{5,32}$/i.test(path)) {
       return `https://www.facebook.com${path}`;
@@ -346,37 +342,33 @@ var TenhFacebookSelectors = (() => {
     const wanted = normalizeProfileText(customerName);
     if (!wanted) return false;
 
-    /* Keep this function for compatibility, but only click a control when its
-       destination is already a verified profile URL. Do not click button-only
-       "View profile" controls because Facebook may route those to a numeric
-       profile.php URL backed by a scoped Messenger/business id. */
     let best = null;
-    for (const control of document.querySelectorAll('a[href]')) {
-      const safeUrl = profileCandidateUrl(control.getAttribute("href"));
-      if (!safeUrl) continue;
+    const controls = document.querySelectorAll('button, [role="button"], a[href]');
 
+    for (const control of controls) {
       const label = normalizeProfileText([
         control.textContent,
         control.getAttribute("aria-label"),
         control.getAttribute("title"),
       ].filter(Boolean).join(" "));
-      const nearby = nearbyProfileText(control);
 
-      let score = 0;
-      if (label === wanted) score += 30;
-      else if (label.includes(wanted)) score += 18;
-      if (nearby === wanted) score += 14;
-      else if (nearby.includes(wanted)) score += 8;
-      if (/profile|view profile/i.test(label)) score += 2;
+      if (!label || !/(view|see|open).{0,24}profile|profile.{0,24}(view|see|open)/i.test(label)) {
+        continue;
+      }
+
+      const nearby = nearbyProfileText(control);
+      let score = 20;
+      if (nearby === wanted) score += 20;
+      else if (nearby.includes(wanted)) score += 12;
+      if (label.includes(wanted)) score += 8;
 
       const rect = control.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) continue;
-      if (score >= 20 && (!best || score > best.score)) {
-        best = { score, control };
-      }
+
+      if (!best || score > best.score) best = { score, control };
     }
 
-    if (!best) return false;
+    if (!best || best.score < 28) return false;
     best.control.click();
     return true;
   }

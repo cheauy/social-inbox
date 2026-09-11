@@ -30,6 +30,18 @@ const ACTIVITY_MIN_MS = 5000;
 
 let extensionContextInvalidated = false;
 
+function isContextInvalidatedError(error) {
+  return /extension context invalidated|context invalidated|receiving end does not exist/i.test(
+    String(error?.message ?? error ?? ""),
+  );
+}
+
+window.addEventListener("unhandledrejection", (event) => {
+  if (!isContextInvalidatedError(event.reason)) return;
+  event.preventDefault();
+  markContextInvalidated();
+});
+
 function runtimeAvailable() {
   if (extensionContextInvalidated) return false;
   try {
@@ -39,40 +51,57 @@ function runtimeAvailable() {
   }
 }
 
-function isContextInvalidatedError(error) {
-  return /extension context invalidated/i.test(String(error?.message ?? error ?? ""));
-}
-
 function markContextInvalidated() {
   if (extensionContextInvalidated) return;
   extensionContextInvalidated = true;
   stop();
 }
 
-function sendRuntimeMessage(message, callback) {
+function getRuntimeLastError() {
+  try {
+    return chrome?.runtime?.lastError ?? null;
+  } catch (error) {
+    return error;
+  }
+}
+
+function safeRuntimeSend(message, callback) {
   if (!runtimeAvailable()) {
     markContextInvalidated();
     callback?.(null, new Error("extension_unavailable"));
     return false;
   }
 
-  try {
-    chrome.runtime.sendMessage(message, (response) => {
-      let error = null;
-      try {
-        error = chrome.runtime.lastError ?? null;
-      } catch (caught) {
-        error = caught;
-      }
-      if (error && isContextInvalidatedError(error)) markContextInvalidated();
+  let finished = false;
+  const finish = (response, error) => {
+    if (finished) return;
+    finished = true;
+    if (error && isContextInvalidatedError(error)) markContextInvalidated();
+    try {
       callback?.(response, error);
+    } catch {
+      // Optional browser observation must never escape into Facebook.
+    }
+  };
+
+  try {
+    const pending = chrome.runtime.sendMessage(message, (response) => {
+      finish(response, getRuntimeLastError());
     });
+
+    if (pending && typeof pending.then === "function") {
+      Promise.resolve(pending).then(
+        (response) => finish(response, null),
+        (error) => finish(null, error),
+      );
+    }
+
     return true;
   } catch (error) {
     if (isContextInvalidatedError(error) || !runtimeAvailable()) {
       markContextInvalidated();
     }
-    callback?.(null, error);
+    finish(null, error);
     return false;
   }
 }
@@ -100,7 +129,10 @@ function inspect() {
  * would be a heartbeat every second for no information at all.
  */
 function report(event) {
-  if (extensionContextInvalidated) return;
+  if (extensionContextInvalidated || !runtimeAvailable()) {
+    markContextInvalidated();
+    return;
+  }
   const state = inspect();
   const signature = [
     state.facebookConnected,
@@ -114,10 +146,7 @@ function report(event) {
 
   lastSignature = signature;
 
-  sendRuntimeMessage({ type: "FB_STATE", ...state, event }, () => {
-    /* The worker may be asleep or the extension mid-reload. Nothing here
-       depends on the reply, and a failure must never reach Facebook's page. */
-  });
+  safeRuntimeSend({ type: "FB_STATE", ...state, event });
 }
 
 function mutationTouchesComposer(mutation, composer) {
@@ -157,16 +186,13 @@ function scheduleActivity(mutations) {
     if (!state.facebookConnected || !state.conversationId) return;
 
     lastActivityAt = now;
-    sendRuntimeMessage(
-      {
-        type: "FB_ACTIVITY",
-        pageId: state.pageId,
-        conversationId: state.conversationId,
-        observedAt: now,
-        reason: "conversation_dom_changed",
-      },
-      () => {},
-    );
+    safeRuntimeSend({
+      type: "FB_ACTIVITY",
+      pageId: state.pageId,
+      conversationId: state.conversationId,
+      observedAt: now,
+      reason: "conversation_dom_changed",
+    });
   }, SETTLE_MS);
 }
 
@@ -251,7 +277,7 @@ function confirmSend(snapshot) {
 
     if (!sent) return;
 
-    sendRuntimeMessage({ type: "FB_OUTGOING", ...sent }, () => {});
+    safeRuntimeSend({ type: "FB_OUTGOING", ...sent });
   }, SEND_CONFIRM_MS);
 }
 
@@ -282,100 +308,101 @@ document.addEventListener(
 /* ------------------------------------------------------------- requests */
 
 try {
-  if (runtimeAvailable()) {
-    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-      if (message?.type === "FB_INSPECT") {
-        /* Asked directly, so answer from the page as it is now rather than from
-           whatever was last reported -- a composer can close while somebody
-           reads. */
-        sendResponse(inspect());
+  if (runtimeAvailable()) chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "FB_INSPECT") {
+    /* Asked directly, so answer from the page as it is now rather than from
+       whatever was last reported -- a composer can close while somebody
+       reads. */
+    sendResponse(inspect());
 
-        return true;
-      }
-
-      if (message?.type === "FB_FIND_CUSTOMER_PROFILE") {
-        const state = inspect();
-        const expectedPageId =
-          typeof message.pageId === "string" ? message.pageId : null;
-        const expectedConversationId =
-          typeof message.conversationId === "string" ? message.conversationId : null;
-
-        if (expectedPageId && state.pageId !== expectedPageId) {
-          sendResponse({ found: false, reason: "page_mismatch" });
-          return true;
-        }
-
-        if (
-          expectedConversationId &&
-          state.conversationId !== expectedConversationId
-        ) {
-          sendResponse({ found: false, reason: "conversation_mismatch" });
-          return true;
-        }
-
-        const customerName = String(message.customerName ?? "");
-        const disallowedProfileId =
-          typeof message.disallowedProfileId === "string"
-            ? message.disallowedProfileId
-            : expectedConversationId;
-
-        const profileUrl = selectors.findCustomerProfileUrl(
-          customerName,
-          disallowedProfileId,
-        );
-
-        if (profileUrl) {
-          sendResponse({
-            found: true,
-            profileUrl,
-            actionTriggered: false,
-            reason: null,
-          });
-          return true;
-        }
-
-        /* Do not click an ambiguous button-only "View profile" control. Facebook
-           can route those controls to numeric profile.php URLs backed by scoped
-           ids, which produce "content isn't available". The selector helper
-           only triggers a control when it already has a verified safe href. */
-        const actionTriggered = selectors.clickCustomerProfileControl(customerName);
-
-        sendResponse({
-          found: false,
-          profileUrl: null,
-          actionTriggered,
-          reason: actionTriggered
-            ? "facebook_safe_profile_control_clicked"
-            : "profile_link_unavailable",
-        });
-        return true;
-      }
-
-      if (message?.type === "FB_INSERT_TEXT") {
-        const state = inspect();
-
-        /* A disabled box is a decision Facebook has made, and inserting into it
-           would be the first step of arguing with it. */
-        if (!state.composerEnabled) {
-          sendResponse({ inserted: false, reason: "composer_unavailable" });
-
-          return true;
-        }
-
-        sendResponse({
-          inserted: selectors.insertIntoComposer(String(message.text ?? "")),
-        });
-
-        return true;
-      }
-
-      return false;
-    });
+    return true;
   }
+
+  if (message?.type === "FB_FIND_CUSTOMER_PROFILE") {
+    const state = inspect();
+    const expectedPageId =
+      typeof message.pageId === "string" ? message.pageId : null;
+    const expectedConversationId =
+      typeof message.conversationId === "string" ? message.conversationId : null;
+
+    if (expectedPageId && state.pageId !== expectedPageId) {
+      sendResponse({ found: false, reason: "page_mismatch" });
+      return true;
+    }
+
+    if (
+      expectedConversationId &&
+      state.conversationId !== expectedConversationId
+    ) {
+      sendResponse({ found: false, reason: "conversation_mismatch" });
+      return true;
+    }
+
+    const customerName = String(message.customerName ?? "");
+    const disallowedProfileId =
+      typeof message.disallowedProfileId === "string"
+        ? message.disallowedProfileId
+        : expectedConversationId;
+
+    const profileUrl = selectors.findCustomerProfileUrl(
+      customerName,
+      disallowedProfileId,
+    );
+
+    if (profileUrl) {
+      sendResponse({
+        found: true,
+        profileUrl,
+        actionTriggered: false,
+        reason: null,
+      });
+      return true;
+    }
+
+    /* Business Suite sometimes exposes a real "View profile" control without
+       a usable public href. Because this request came from the agent clicking
+       View Profile in TENH, use Facebook's own visible control rather than
+       manufacturing a profile.php URL from the Page-scoped Messenger id. */
+    const actionTriggered = selectors.clickCustomerProfileControl(customerName);
+
+    sendResponse({
+      found: false,
+      profileUrl: null,
+      actionTriggered,
+      reason: actionTriggered
+        ? "facebook_profile_control_clicked"
+        : "profile_link_unavailable",
+    });
+    return true;
+  }
+
+  if (message?.type === "FB_INSERT_TEXT") {
+    const state = inspect();
+
+    /* A disabled box is a decision Facebook has made, and inserting into it
+       would be the first step of arguing with it. */
+    if (!state.composerEnabled) {
+      sendResponse({ inserted: false, reason: "composer_unavailable" });
+
+      return true;
+    }
+
+    sendResponse({
+      inserted: selectors.insertIntoComposer(String(message.text ?? "")),
+    });
+
+    return true;
+  }
+
+  return false;
+  });
 } catch (error) {
-  if (isContextInvalidatedError(error)) markContextInvalidated();
+  if (isContextInvalidatedError(error) || !runtimeAvailable()) {
+    markContextInvalidated();
+  }
 }
 
-
-report("facebook_detected");
-watch();
+if (runtimeAvailable()) {
+  report("facebook_detected");
+  watch();
+}

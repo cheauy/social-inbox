@@ -1122,18 +1122,16 @@ function isSafeFacebookProfileUrl(value, disallowedId = null) {
       return false;
     }
 
-    const path = url.pathname.replace(/\/+$/, "") || "/";
-    const lowerPath = path.toLowerCase();
-
-    /* Never open numeric profile.php links discovered inside Business Suite.
-       Facebook commonly backs them with scoped ids that are not browsable
-       public profiles, even when the id differs from the Messenger thread id. */
-    if (lowerPath === "/profile.php") return false;
-    if (/^\/\d{5,32}$/.test(path)) return false;
-
     const blockedId = String(disallowedId ?? "").trim();
     if (blockedId) {
-      const peopleMatch = path.match(/\/people\/[^/]+\/(\d{5,32})\/?$/i);
+      if (
+        url.pathname.toLowerCase() === "/profile.php" &&
+        url.searchParams.get("id") === blockedId
+      ) {
+        return false;
+      }
+
+      const peopleMatch = url.pathname.match(/\/people\/[^/]+\/(\d{5,32})\/?$/i);
       if (peopleMatch?.[1] === blockedId) return false;
     }
 
@@ -1216,8 +1214,9 @@ async function openFacebookCustomerProfile({
   }
 
   if (answer?.actionTriggered) {
-    /* Compatibility path: the bridge only triggers controls that already have
-       a verified, non-numeric Facebook profile destination. */
+    /* Facebook handled the agent's explicit View Profile request through its
+       own UI. Focus that tab; this avoids ever navigating to profile.php with
+       a Page-scoped Messenger id. */
     await new Promise((resolve) => setTimeout(resolve, 500));
     await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
     if (tab.windowId) {
