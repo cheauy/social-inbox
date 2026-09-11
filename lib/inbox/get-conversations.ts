@@ -393,6 +393,7 @@ export async function getConversations(
         full_name,
         profile_picture_url,
         platform_user_id,
+        facebook_profile_id,
         phone,
         email,
         address,

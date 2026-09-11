@@ -1,5 +1,7 @@
 "use client";
 
+import { ConversationBookmark } from "./conversation-visuals";
+
 import { useEffect, useState } from "react";
 import {
   useWorkspaceLanguageId,
@@ -54,32 +56,6 @@ function UsersIcon() {
   );
 }
 
-function PinIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.9"
-      className="h-[18px] w-[18px]"
-      aria-hidden="true"
-    >
-      <path
-        d="M9 4h6"
-        strokeLinecap="round"
-      />
-      <path
-        d="M10 4 9.25 9.7 7 12v1.5h10V12l-2.25-2.3L14 4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M12 13.5V21"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 
 function UnreadIcon() {
   return (
@@ -595,12 +571,12 @@ export function ConversationHeader({
           <button
             type="button"
             onClick={onTogglePin}
-            className={`${actionButtonBase} ${isPinned ? "border-red-200 bg-red-50 text-red-600" : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"}`}
+            className={`${actionButtonBase} ${isPinned ? "border-[#E8A317]/40 bg-[#FFF6E0] text-[#E8A317]" : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"}`}
             title={isKhmer ? (isPinned ? "ដោះខ្ទាស់ការសន្ទនា" : "ខ្ទាស់ការសន្ទនា") : (isPinned ? "Unpin conversation" : "Pin conversation")}
             aria-label={isKhmer ? (isPinned ? "ដោះខ្ទាស់ការសន្ទនា" : "ខ្ទាស់ការសន្ទនា") : (isPinned ? "Unpin conversation" : "Pin conversation")}
             aria-pressed={isPinned}
           >
-            <PinIcon />
+            <ConversationBookmark filled={isPinned} />
           </button>
 
           <button

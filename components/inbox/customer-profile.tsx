@@ -13,8 +13,8 @@ import {
   getStatusLabel,
 } from "@/components/inbox/inbox-utils";
 import type { InboxConversation } from "@/types/inbox";
-import { getReadableTagTextColor } from "@/lib/display/tag-contrast";
-import { useCompanion } from "@/lib/extension/use-companion";
+import { ConversationTag } from "./conversation-visuals";
+import { getFacebookCustomerProfileUrl } from "@/lib/facebook/customer-profile-url";
 import {
   useWorkspaceLanguageId,
 } from "@/components/display/workspace-language-text";
@@ -104,7 +104,6 @@ export function CustomerProfile({
 }: CustomerProfileProps) {
   const router = useRouter();
   const isKhmer = useWorkspaceLanguageId() === "km";
-  const { installed: companionInstalled, openFacebookProfile } = useCompanion();
 
 
   const [editing, setEditing] =
@@ -126,12 +125,12 @@ export function CustomerProfile({
     useState(false);
   const [filesOpen, setFilesOpen] =
     useState(false);
-  const [openingFacebookProfile, setOpeningFacebookProfile] =
-    useState(false);
-  const [facebookProfileStatus, setFacebookProfileStatus] =
-    useState<string | null>(null);
 
   const contact = activeConversation?.contact ?? null;
+  const facebookProfileUrl =
+    activeConversation?.social_account?.platform === "facebook"
+      ? getFacebookCustomerProfileUrl(contact)
+      : null;
   const customerTags =
     contact && Array.isArray(contact.tags)
       ? contact.tags
@@ -152,52 +151,7 @@ export function CustomerProfile({
     setForm(emptyForm);
     setReminderOpen(false);
     setFilesOpen(false);
-    setOpeningFacebookProfile(false);
-    setFacebookProfileStatus(null);
   }, [activeConversation?.id]);
-
-async function openFacebookCustomerProfile() {
-  const threadId = contact?.platform_user_id?.trim();
-  const pageId = activeConversation?.social_account?.platform_account_id?.trim();
-  const isFacebook = activeConversation?.social_account?.platform === "facebook";
-
-  if (!threadId || !pageId || !isFacebook || !activeConversation) {
-    return;
-  }
-
-  setOpeningFacebookProfile(true);
-  setFacebookProfileStatus(null);
-
-  try {
-    if (!companionInstalled) {
-      setFacebookProfileStatus(
-        isKhmer
-          ? "ត្រូវការ TENH Companion ដើម្បីបើកប្រវត្តិរូប Facebook ដែលបានផ្ទៀងផ្ទាត់។"
-          : "TENH Companion is required to resolve a verified Facebook profile.",
-      );
-      return;
-    }
-
-    const result = await openFacebookProfile({
-      pageId,
-      threadId,
-      conversationId: activeConversation.id,
-      customerName: contact?.full_name ?? null,
-    });
-
-    if (result?.opened) {
-      return;
-    }
-
-    setFacebookProfileStatus(
-      isKhmer
-        ? "Facebook មិនបានបង្ហាញប្រវត្តិរូបសាធារណៈដែលអាចផ្ទៀងផ្ទាត់បានសម្រាប់អតិថិជននេះទេ។"
-        : "Facebook profile unavailable for this customer.",
-    );
-  } finally {
-    setOpeningFacebookProfile(false);
-  }
-}
 
 function startEditing() {
   if (!contact) {
@@ -398,23 +352,23 @@ async function saveProfile() {
     <div className="shrink-0 border-b border-slate-200 p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <button
-            type="button"
-            onClick={() => void openFacebookCustomerProfile()}
-            disabled={openingFacebookProfile}
-            className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-full outline-none ring-offset-2 transition hover:ring-2 hover:ring-blue-400 focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-wait disabled:opacity-70"
-            title={isKhmer ? "មើលប្រវត្តិរូប Facebook" : "View Facebook profile"}
-            aria-label={isKhmer ? "បើកប្រវត្តិរូប Facebook របស់អតិថិជន" : "Open customer Facebook profile"}
+          <a
+            href={facebookProfileUrl ?? undefined}
+            target={facebookProfileUrl ? "_blank" : undefined}
+            rel={facebookProfileUrl ? "noopener noreferrer" : undefined}
+            className={`group relative h-16 w-16 shrink-0 overflow-hidden rounded-full outline-none ring-offset-2 transition ${facebookProfileUrl ? "hover:ring-2 hover:ring-blue-400 focus-visible:ring-2 focus-visible:ring-blue-500" : ""}`}
+            title={facebookProfileUrl ? (isKhmer ? "មើលប្រវត្តិរូប Facebook" : "View Facebook profile") : undefined}
+            aria-label={facebookProfileUrl ? (isKhmer ? "បើកប្រវត្តិរូប Facebook របស់អតិថិជន" : "Open customer Facebook profile") : undefined}
           >
             <CustomerAvatar src={contact.profile_picture_url} name={contact.full_name}
               contactId={contact.id} platform={activeConversation.social_account?.platform} eager className="h-full w-full text-2xl" />
 
-            <span className="absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+            {facebookProfileUrl ? <span className="absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
               <span className="mb-1.5 rounded-full bg-black/55 px-2 py-0.5 text-[9px] font-semibold text-white">
                 {isKhmer ? "Facebook" : "Facebook"}
               </span>
-            </span>
-          </button>
+            </span> : null}
+          </a>
 
           <div className="min-w-0">
             <h2 className="truncate text-lg font-semibold text-slate-900">
@@ -423,12 +377,10 @@ async function saveProfile() {
             </h2>
 
             <p className="mt-1 break-all text-sm text-slate-500">
-              ID: {contact.platform_user_id}
+              {activeConversation.social_account?.platform === "facebook" ? "Messenger ID" : "ID"}: {contact.platform_user_id}
             </p>
-            {facebookProfileStatus ? (
-              <p className="mt-1 max-w-[260px] text-xs leading-4 text-amber-700">
-                {facebookProfileStatus}
-              </p>
+            {activeConversation.social_account?.platform === "facebook" && !facebookProfileUrl ? (
+              <p className="mt-1 text-xs text-slate-500">Public Facebook profile ID not available.</p>
             ) : null}
           </div>
         </div>
@@ -624,8 +576,11 @@ async function saveProfile() {
 
 
           <ProfileSection title={isKhmer ? "ព័ត៌មាន Facebook" : "Facebook information"}>
+            {activeConversation.social_account?.platform === "facebook" ? (
+              <ProfileValue label="Facebook profile ID" icon="id" value={contact.facebook_profile_id || "Not available"} breakAll />
+            ) : null}
             <ProfileValue
-              label={isKhmer ? "លេខសម្គាល់អតិថិជន" : "Customer ID"}
+              label={activeConversation.social_account?.platform === "facebook" ? "Messenger ID" : (isKhmer ? "លេខសម្គាល់អតិថិជន" : "Customer ID")}
     icon="id"
               value={contact.platform_user_id}
               breakAll
@@ -724,19 +679,7 @@ async function saveProfile() {
             {customerTags.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
                 {customerTags.map((tag) => (
-                  <span
-                    key={tag.id}
-                    className="inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-semibold shadow-sm"
-                    style={{
-                      backgroundColor: tag.color,
-                      color: getReadableTagTextColor(tag.color),
-                    }}
-                    title={tag.name}
-                  >
-                    <span className="max-w-[150px] truncate">
-                      {tag.name}
-                    </span>
-                  </span>
+                  <ConversationTag key={tag.id} name={tag.name} color={tag.color} />
                 ))}
               </div>
             ) : (

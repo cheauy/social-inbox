@@ -2,6 +2,8 @@
 
 import { CustomerAvatar } from "@/components/customer-avatar";
 
+import { ConversationBookmark, ConversationTag, CONVERSATION_STATUS_TONE } from "./conversation-visuals";
+
 import Link from "next/link";
 import {
   useRouter,
@@ -515,32 +517,7 @@ function ReminderIcon() {
   );
 }
 
-function PinIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.9"
-      className="h-5 w-5"
-      aria-hidden="true"
-    >
-      <path
-        d="M9 4h6"
-        strokeLinecap="round"
-      />
-      <path
-        d="M10 4 9.25 9.7 7 12v1.5h10V12l-2.25-2.3L14 4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M12 13.5V21"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
+function PinIcon() { return <span className="text-[#E8A317]"><ConversationBookmark filled /></span>; }
 
 function ViewsIcon() {
   return (
@@ -1286,7 +1263,7 @@ function ConversationListSkeleton() {
       {[0, 1, 2, 3, 4, 5].map((row) => (
         <div
           key={row}
-          className="flex items-start gap-2.5 border-b border-slate-100 py-2.5 pl-3 pr-3"
+          className="flex items-start gap-2.5 border-b border-l-[3px] border-slate-100 py-2.5 pl-3 pr-3"
         >
           <div className="mt-0.5 h-10 w-10 shrink-0 rounded-full bg-slate-200/80" />
 
@@ -1403,7 +1380,7 @@ const ConversationRow = memo(function ConversationRow({
                     /*
                      * Selected, hovered and unread each get their own signal
                      * so two of them can never look like the same thing:
-                     * selected is a blue rail plus a blue wash, hover is a
+                     * selected is a blue outline plus a blue wash, hover is a
                      * plain grey wash, and unread is carried by weight and
                      * contrast in the text rather than another background.
                      */
@@ -1433,9 +1410,11 @@ const ConversationRow = memo(function ConversationRow({
                      * full array before any of this, and a row the browser has
                      * skipped is still in the DOM and still found by Ctrl+F.
                      */
-                    className={`relative flex w-full items-start gap-2.5 border-b border-slate-100 py-2.5 pl-3 pr-3 text-left transition [contain-intrinsic-size:auto_72px] [content-visibility:auto] ${
+                    aria-current={isActive ? "true" : undefined}
+                    style={{ borderLeftColor: CONVERSATION_STATUS_TONE[conversation.status] ?? "#E3EAF2" }}
+                    className={`relative flex w-full items-start gap-2.5 border-b border-l-[3px] border-b-slate-100 py-2.5 pl-3 pr-3 text-left transition [contain-intrinsic-size:auto_72px] [content-visibility:auto] ${
                       isActive
-                        ? "bg-blue-50 shadow-[inset_3px_0_0_0_var(--color-blue-600,#2563eb)]"
+                        ? "bg-blue-50"
                         : "hover:bg-slate-100/70"
                     }`}
                   >
@@ -1476,7 +1455,7 @@ const ConversationRow = memo(function ConversationRow({
                           conversation,
                         ) ? (
                           <span
-                            className="inline-flex shrink-0 scale-75 items-center justify-center text-red-600"
+                            className="inline-flex shrink-0 scale-75 items-center justify-center text-[#E8A317]"
                             title={isKhmer ? "បានខ្ទាស់" : "Pinned"}
                             aria-label={isKhmer ? "បានខ្ទាស់" : "Pinned"}
                           >
@@ -1538,20 +1517,7 @@ const ConversationRow = memo(function ConversationRow({
                             (
                               tag,
                             ) => (
-                              <span
-                                key={
-                                  tag.id
-                                }
-                                className="max-w-24 truncate rounded-full px-2 py-[1px] text-[10.5px] font-semibold text-white"
-                                style={{
-                                  backgroundColor:
-                                    tag.color,
-                                }}
-                              >
-                                {
-                                  tag.name
-                                }
-                              </span>
+                              <ConversationTag key={tag.id} name={tag.name} color={tag.color} />
                             ),
                           )}
 
@@ -1996,6 +1962,7 @@ function ConversationListView({
   // Paint the loading feedback once, then show the already-filtered rows.
   // A fixed timer adds latency even when all conversation data is in memory.
   const [statusSwitching, setStatusSwitching] = useState(false);
+  const [channelSwitching, setChannelSwitching] = useState(false);
   const statusFrameRef = useRef<number | null>(null);
 
   const beginStatusSwitch = useCallback(() => {
@@ -3619,7 +3586,7 @@ function ConversationListView({
       count:
         builtInCounts.pinned,
       icon:
-        <PinIcon />,
+        <ConversationBookmark />,
     },
   ];
 
@@ -3638,7 +3605,7 @@ function ConversationListView({
          * Views do; the filter panel opens beside the list.
          */}
         <div className="px-2 pb-1.5">
-          <InboxChannelSelector variant="rail" />
+          <InboxChannelSelector variant="rail" onSwitchingChange={setChannelSwitching} />
         </div>
 
         <div className="mx-3 mb-2 mt-0.5 border-t border-slate-200" />
@@ -3648,7 +3615,7 @@ function ConversationListView({
             const isActive =
               selectedViewKey ===
               view.value &&
-              activeStatus ===
+              optimisticStatus ===
                 "all";
 
             return (
@@ -3741,7 +3708,7 @@ function ConversationListView({
               setFilterOpen((current) => !current);
             }}
             className={`group relative mx-auto flex h-11 w-11 items-center justify-center rounded-xl border transition ${
-              filterOpen || activeStatus !== "all"
+              filterOpen || optimisticStatus !== "all"
                 ? "border-blue-600 bg-blue-50 text-blue-700"
                 : "border-transparent text-slate-500 hover:bg-white hover:text-slate-900"
             }`}
@@ -3750,7 +3717,7 @@ function ConversationListView({
           >
             <FilterIcon />
 
-            {activeStatus !== "all" ? (
+            {optimisticStatus !== "all" ? (
               <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-blue-600" />
             ) : null}
 
@@ -4825,7 +4792,7 @@ function ConversationListView({
                     ) => {
                       const isActive =
                         filter.value ===
-                        activeStatus;
+                        optimisticStatus;
 
                       const statusQuery =
                         new URLSearchParams();
@@ -4939,7 +4906,7 @@ function ConversationListView({
           ) : null}
         </div>
 
-        {activeStatus !==
+        {optimisticStatus !==
         "all" ? (
           <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-3 py-2">
             <div className="flex items-center justify-between gap-3">
@@ -4950,11 +4917,11 @@ function ConversationListView({
               <div className="flex items-center gap-2">
                 <span
                   className={`rounded-full px-2.5 py-1 text-xs font-medium ${getStatusClasses(
-                    activeStatus,
+                    optimisticStatus,
                   )}`}
                 >
                   {getStatusLabel(
-                    activeStatus,
+                    optimisticStatus,
                   )}
                 </span>
 
@@ -5014,13 +4981,13 @@ function ConversationListView({
         ) : null}
 
 
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" aria-busy={statusSwitching}>
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" aria-busy={statusSwitching || channelSwitching}>
           {/*
             The skeleton wins over both the rows and the empty state, so a
             status with no conversations gets the same transition as one with
             plenty rather than snapping straight to "none found".
           */}
-          {statusSwitching ? (
+          {statusSwitching || channelSwitching ? (
             <ConversationListSkeleton />
           ) : filteredConversations.length ===
             0 ? (

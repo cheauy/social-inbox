@@ -333,7 +333,6 @@ export function ReplyBox({
   conversationId,
   canOpenInFacebook = false,
   facebookPageId = null,
-  facebookThreadId = null,
   allowAttachments = true,
   onReplyChange,
   onSubmit,
@@ -2219,9 +2218,7 @@ export function ReplyBox({
 
                 {canOpenInFacebook ? (
                   <CompanionFacebookAction
-                    conversationId={conversationId}
                     pageId={facebookPageId}
-                    threadId={facebookThreadId}
                   />
                 ) : null}
               </div>

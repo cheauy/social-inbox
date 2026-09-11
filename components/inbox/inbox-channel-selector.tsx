@@ -169,8 +169,10 @@ function SwitchingSpinner({
 
 export function InboxChannelSelector({
   variant = "bar",
+  onSwitchingChange,
 }: {
   variant?: InboxChannelSelectorVariant;
+  onSwitchingChange?: (switching: boolean) => void;
 } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -202,6 +204,10 @@ export function InboxChannelSelector({
    */
   const [isSwitching, startSwitching] =
     useTransition();
+
+  useEffect(() => {
+    onSwitchingChange?.(isSwitching);
+  }, [isSwitching, onSwitchingChange]);
   const [switchingLabel, setSwitchingLabel] =
     useState<string | null>(null);
 

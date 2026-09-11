@@ -1,5 +1,7 @@
 "use client";
 
+import { CustomerFileLibrary, type LibraryItem, type LibraryTab } from "./customer-file-library";
+
 import {
   useCallback,
   useEffect,
@@ -225,83 +227,6 @@ function messageAttachmentLabel(
   return "Attachment";
 }
 
-function FileIcon({
-  kind,
-}: {
-  kind:
-    | "file"
-    | "link"
-    | "attachment";
-}) {
-  if (
-    kind === "link"
-  ) {
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        className="h-5 w-5"
-        aria-hidden="true"
-      >
-        <path
-          d="M10.5 13.5 13.5 10.5"
-          strokeLinecap="round"
-        />
-        <path
-          d="M8 17H7a5 5 0 0 1 0-10h3"
-          strokeLinecap="round"
-        />
-        <path
-          d="M16 7h1a5 5 0 1 1 0 10h-3"
-          strokeLinecap="round"
-        />
-      </svg>
-    );
-  }
-
-  if (
-    kind ===
-    "attachment"
-  ) {
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        className="h-5 w-5"
-        aria-hidden="true"
-      >
-        <path
-          d="M21 11.5 12.5 20a6 6 0 0 1-8.5-8.5l9-9a4 4 0 0 1 5.7 5.7l-9.1 9.1a2 2 0 1 1-2.8-2.8l8.4-8.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="h-5 w-5"
-      aria-hidden="true"
-    >
-      <path d="M6 2h8l4 4v16H6z" />
-      <path d="M14 2v5h5" />
-      <path
-        d="M9 13h6M9 17h5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 function CloseIcon() {
   return (
     <svg
@@ -337,10 +262,7 @@ export function CustomerFilesModal({
     activeTab,
     setActiveTab,
   ] =
-    useState<
-      "saved"
-      | "attachments"
-    >("saved");
+    useState<LibraryTab>("media");
 
   const [
     savedFiles,
@@ -709,9 +631,7 @@ export function CustomerFilesModal({
       await loadFiles(
         true,
       );
-      setActiveTab(
-        "saved",
-      );
+      setActiveTab(file.type.startsWith("image/") || file.type.startsWith("video/") ? "media" : "files");
     } catch (
       uploadError
     ) {
@@ -799,9 +719,7 @@ export function CustomerFilesModal({
       await loadFiles(
         true,
       );
-      setActiveTab(
-        "saved",
-      );
+      setActiveTab("links");
     } catch (
       linkError
     ) {
@@ -957,6 +875,32 @@ export function CustomerFilesModal({
     }
   }
 
+  const libraryItems = useMemo<LibraryItem[]>(() => {
+    const kind = (type: string): LibraryItem["kind"] => {
+      const value = type.toLowerCase();
+      if (value === "link") return "link";
+      if (value === "photo" || value === "image" || value.startsWith("image/")) return "image";
+      if (value === "video" || value.startsWith("video/")) return "video";
+      if (value === "audio" || value === "voice" || value.startsWith("audio/")) return "audio";
+      return "file";
+    };
+    return [
+      ...savedFiles.map((item): LibraryItem => ({
+        id: `saved:${item.id}`, savedId: item.id,
+        kind: item.itemType === "link" ? "link" : kind(item.mimeType ?? ""),
+        name: item.displayName, url: item.itemType === "link" ? item.externalUrl : item.previewUrl,
+        createdAt: item.createdAt,
+        detail: [fileKindLabel(item.mimeType), formatFileSize(item.sizeBytes), formatDate(item.createdAt)].filter(Boolean).join(" · "),
+      })),
+      ...attachments.map((item): LibraryItem => ({
+        id: `attachment:${item.id}`, conversationId: item.conversationId,
+        kind: kind(item.messageType), name: item.messageText || messageAttachmentLabel(item),
+        url: item.attachmentUrl, createdAt: item.createdAt,
+        detail: `${item.direction === "incoming" ? "Customer" : "Team"} · ${formatDate(item.createdAt)}`,
+      })),
+    ];
+  }, [savedFiles, attachments]);
+
   return (
     <div className="fixed inset-0 z-[140] flex items-center justify-center p-4">
       <button
@@ -966,7 +910,7 @@ export function CustomerFilesModal({
         aria-label="Close customer files"
       />
 
-      <section className="relative z-10 flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <section role="dialog" aria-modal="true" aria-label="Files, documents and links" className="relative z-10 flex h-[min(88dvh,850px)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
           <div>
             <h2 className="text-lg font-bold text-slate-950">
@@ -988,43 +932,7 @@ export function CustomerFilesModal({
           </button>
         </header>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3">
-          <div className="flex rounded-xl border border-slate-200 bg-white p-1">
-            <button
-              type="button"
-              onClick={() =>
-                setActiveTab(
-                  "saved",
-                )
-              }
-              className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                activeTab ===
-                "saved"
-                  ? "bg-blue-50 text-blue-700"
-                  : "text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              Saved ({savedFiles.length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                setActiveTab(
-                  "attachments",
-                )
-              }
-              className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                activeTab ===
-                "attachments"
-                  ? "bg-blue-50 text-blue-700"
-                  : "text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              Conversation attachments ({attachments.length})
-            </button>
-          </div>
-
+        <div className="flex flex-wrap items-center justify-end gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3">
           <div className="flex items-center gap-2">
             <input
               ref={inputRef}
@@ -1133,273 +1041,15 @@ export function CustomerFilesModal({
           </div>
         ) : null}
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="px-6 py-14 text-center text-sm text-slate-500">
-              Loading customer files...
-            </div>
-          ) : activeTab ===
-            "saved" ? (
-            savedFiles.length ===
-            0 ? (
-              <div className="px-6 py-14 text-center">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                  <FileIcon kind="file" />
-                </div>
-
-                <p className="mt-4 font-semibold text-slate-800">
-                  No saved files or links yet
-                </p>
-
-                <p className="mt-1 text-sm leading-6 text-slate-500">
-                  Upload a customer document, product image, payment proof, or save an important link.
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {savedFiles.map(
-                  (item) => (
-                    <article
-                      key={
-                        item.id
-                      }
-                      className="flex items-start gap-3 px-5 py-4"
-                    >
-                      <span
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                          item.itemType ===
-                          "link"
-                            ? "bg-violet-50 text-violet-600"
-                            : "bg-blue-50 text-blue-600"
-                        }`}
-                      >
-                        <FileIcon
-                          kind={
-                            item.itemType
-                          }
-                        />
-                      </span>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="max-w-full truncate text-sm font-semibold text-slate-950">
-                            {
-                              item.displayName
-                            }
-                          </p>
-
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
-                            {item.itemType ===
-                            "link"
-                              ? "Link"
-                              : fileKindLabel(
-                                  item.mimeType,
-                                )}
-                          </span>
-                        </div>
-
-                        {item.itemType ===
-                          "link" &&
-                        item.externalUrl ? (
-                          <p className="mt-1 truncate text-xs text-blue-600">
-                            {
-                              item.externalUrl
-                            }
-                          </p>
-                        ) : (
-                          <p className="mt-1 text-xs text-slate-500">
-                            {formatFileSize(
-                              item.sizeBytes,
-                            )}
-                            {item.uploader
-                              ?.full_name
-                              ? ` · Added by ${item.uploader.full_name}`
-                              : ""}
-                          </p>
-                        )}
-
-                        <p className="mt-1 text-[11px] text-slate-400">
-                          {formatDate(
-                            item.createdAt,
-                          )}
-                        </p>
-
-                        {item.description ? (
-                          <p className="mt-2 text-xs leading-5 text-slate-600">
-                            {
-                              item.description
-                            }
-                          </p>
-                        ) : null}
-                      </div>
-
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        {item.itemType ===
-                          "link" &&
-                        item.externalUrl ? (
-                          <a
-                            href={
-                              item.externalUrl
-                            }
-                            target="_blank"
-                            rel="noreferrer"
-                            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-                          >
-                            Open
-                          </a>
-                        ) : (
-                          <>
-                            {item.previewUrl ? (
-                              <a
-                                href={
-                                  item.previewUrl
-                                }
-                                target="_blank"
-                                rel="noreferrer"
-                                className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-                              >
-                                View
-                              </a>
-                            ) : null}
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void downloadFile(
-                                  item,
-                                )
-                              }
-                              className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-                            >
-                              Download
-                            </button>
-                          </>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void deleteItem(
-                              item,
-                            )
-                          }
-                          disabled={
-                            deletingId ===
-                            item.id
-                          }
-                          className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
-                        >
-                          {deletingId ===
-                          item.id
-                            ? "Deleting..."
-                            : "Delete"}
-                        </button>
-                      </div>
-                    </article>
-                  ),
-                )}
-              </div>
-            )
-          ) : attachments.length ===
-            0 ? (
-            <div className="px-6 py-14 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500">
-                <FileIcon kind="attachment" />
-              </div>
-
-              <p className="mt-4 font-semibold text-slate-800">
-                No conversation attachments found
-              </p>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Messenger photos, videos, audio, and files saved in message history will appear here.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {attachments.map(
-                (
-                  attachment,
-                ) => (
-                  <article
-                    key={
-                      attachment.id
-                    }
-                    className="flex items-start gap-3 px-5 py-4"
-                  >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
-                      <FileIcon kind="attachment" />
-                    </span>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-slate-950">
-                          {messageAttachmentLabel(
-                            attachment,
-                          )}
-                        </p>
-
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                            attachment.direction ===
-                            "incoming"
-                              ? "bg-blue-50 text-blue-700"
-                              : "bg-emerald-50 text-emerald-700"
-                          }`}
-                        >
-                          {attachment.direction ===
-                          "incoming"
-                            ? "Customer"
-                            : "Team"}
-                        </span>
-                      </div>
-
-                      {attachment.messageText ? (
-                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">
-                          {
-                            attachment.messageText
-                          }
-                        </p>
-                      ) : null}
-
-                      <p className="mt-1 text-[11px] text-slate-400">
-                        {formatDate(
-                          attachment.createdAt,
-                        )}
-                      </p>
-                    </div>
-
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <a
-                        href={
-                          attachment.attachmentUrl
-                        }
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-                      >
-                        Open
-                      </a>
-
-                      <a
-                        href={`/dashboard/inbox?conversation=${encodeURIComponent(
-                          attachment.conversationId,
-                        )}`}
-                        className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-50"
-                      >
-                        Conversation
-                      </a>
-                    </div>
-                  </article>
-                ),
-              )}
-            </div>
-          )}
-        </div>
-
-        <footer className="border-t border-slate-200 bg-slate-50 px-5 py-3 text-[11px] leading-5 text-slate-500">
-          Saved customer files use private TENH storage. “Conversation attachments” are existing message attachments and are not copied into customer storage.
-        </footer>
+        <CustomerFileLibrary
+          items={libraryItems}
+          tab={activeTab}
+          onTab={setActiveTab}
+          loading={loading}
+          deletingId={deletingId}
+          onDelete={(id) => { const item = savedFiles.find((file) => file.id === id); if (item) void deleteItem(item); }}
+          onDownload={(id) => { const item = savedFiles.find((file) => file.id === id); if (item) void downloadFile(item); }}
+        />
       </section>
     </div>
   );

@@ -117,6 +117,7 @@ export type InboxContact = {
   full_name: string | null;
   profile_picture_url: string | null;
   platform_user_id: string;
+  facebook_profile_id?: string | null;
   phone: string | null;
   email: string | null;
   company_name: string | null;
