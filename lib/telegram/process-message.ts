@@ -1,4 +1,5 @@
 import "server-only";
+import { saveDetectedCustomerPhone } from "@/lib/inbox/save-detected-customer-phone";
 
 import {
   randomUUID,
@@ -1099,6 +1100,11 @@ export async function processTelegramIncomingText({
       messageError.message,
     );
   }
+
+  await saveDetectedCustomerPhone({
+    businessId: socialAccount.business_id, contactId: contact.id, conversationId: conversation.id,
+    messageId: platformMessageId, text: message.text ?? message.caption, incoming: true,
+  });
 
   const currentUnread =
     Number(conversation.unread_count) || 0;

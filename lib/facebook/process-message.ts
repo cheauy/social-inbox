@@ -1,4 +1,5 @@
 import "server-only";
+import { saveDetectedCustomerPhone } from "@/lib/inbox/save-detected-customer-phone";
 
 import {
   getFacebookCustomerProfile,
@@ -311,6 +312,11 @@ export async function processFacebookMessage(
 
     throw new Error(messageError.message);
   }
+
+  await saveDetectedCustomerPhone({
+    businessId: socialAccount.business_id, contactId: contact.id, conversationId: conversation.id,
+    messageId, text: event.message?.text, incoming: !isEcho,
+  });
 
   const unreadCount = isEcho
     ? (conversation.unread_count ?? 0)

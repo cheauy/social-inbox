@@ -4,6 +4,7 @@ import {
 } from "next/server";
 
 import { getInboxContactAccess } from "@/lib/inbox/get-inbox-resource-access";
+import { repairFacebookAvatar } from "@/lib/facebook/repair-facebook-avatar";
 import {
   FACEBOOK_AVATAR_BUCKET,
   facebookAvatarStoragePath,
@@ -102,7 +103,7 @@ export async function GET(
         contact.id,
     });
 
-  const {
+  let {
     data,
     error,
   } =
@@ -113,6 +114,13 @@ export async function GET(
       .download(
         storagePath,
       );
+
+  if (error || !data) {
+    const repaired = await repairFacebookAvatar(authResult.member.business_id, contact.id);
+    if (repaired) {
+      ({ data, error } = await supabaseAdmin.storage.from(FACEBOOK_AVATAR_BUCKET).download(storagePath));
+    }
+  }
 
   if (
     error ||

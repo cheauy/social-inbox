@@ -11,12 +11,23 @@ export function CustomerAvatar({ src, name, contactId, platform, className = "h-
   className?: string;
   eager?: boolean;
 }) {
-  const [failed, setFailed] = useState<string[]>([]);
   const original = src?.trim() || null;
   const stored = contactId && (platform === "facebook" || platform === "messenger" || platform === "telegram")
     ? `/api/contacts/${encodeURIComponent(contactId)}/${platform === "telegram" ? "telegram" : "facebook"}-avatar`
     : null;
-  const url = [original, stored].find((value) => value && !failed.includes(value));
+  const candidates = (platform === "facebook" || platform === "messenger") ? [stored, original] : [original, stored];
+  return <CustomerAvatarImage key={JSON.stringify([original, stored])} candidates={candidates}
+    name={name} className={className} eager={eager} />;
+}
+
+function CustomerAvatarImage({ candidates, name, className, eager }: {
+  candidates: (string | null)[];
+  name?: string | null;
+  className: string;
+  eager: boolean;
+}) {
+  const [failed, setFailed] = useState<string[]>([]);
+  const url = candidates.find((value) => value && !failed.includes(value));
   return (
     <span className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-100 font-semibold text-blue-700 ${className}`}>
       <span aria-hidden="true">{Array.from(name?.trim() || "?")[0].toUpperCase()}</span>

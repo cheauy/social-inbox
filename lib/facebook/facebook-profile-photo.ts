@@ -104,6 +104,7 @@ export async function fetchFacebookCustomerProfile({
   try {
     response = await fetch(url, {
       cache: "no-store",
+      signal: AbortSignal.timeout(8000),
     });
   } catch (error) {
     return {
@@ -223,7 +224,7 @@ export async function syncFacebookContactProfilePhoto({
   try {
     imageResponse = await fetch(
       profile.profilePicUrl,
-      { cache: "no-store" },
+      { cache: "no-store", signal: AbortSignal.timeout(8000) },
     );
   } catch (error) {
     return {

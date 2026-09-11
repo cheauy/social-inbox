@@ -1,4 +1,5 @@
 import "server-only";
+import { saveDetectedCustomerPhone } from "@/lib/inbox/save-detected-customer-phone";
 
 import {
   getFacebookPageAccessToken,
@@ -1740,6 +1741,11 @@ export async function processFacebookComment({
       messageError.message,
     );
   }
+
+  await saveDetectedCustomerPhone({
+    businessId: socialAccount.business_id, contactId: contact.id, conversationId: conversation.id,
+    messageId: commentId, text: message, incoming: true,
+  });
 
   const unreadCount =
     (

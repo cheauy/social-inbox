@@ -2,7 +2,7 @@
 
 import { CustomerAvatar } from "@/components/customer-avatar";
 
-import { ConversationBookmark, ConversationTag, CONVERSATION_STATUS_TONE } from "./conversation-visuals";
+import { ConversationBookmark, ConversationTag } from "./conversation-visuals";
 
 import Link from "next/link";
 import {
@@ -1263,7 +1263,7 @@ function ConversationListSkeleton() {
       {[0, 1, 2, 3, 4, 5].map((row) => (
         <div
           key={row}
-          className="flex items-start gap-2.5 border-b border-l-[3px] border-slate-100 py-2.5 pl-3 pr-3"
+          className="flex items-start gap-2.5 border-b border-slate-100 py-2.5 pl-3 pr-3"
         >
           <div className="mt-0.5 h-10 w-10 shrink-0 rounded-full bg-slate-200/80" />
 
@@ -1411,8 +1411,7 @@ const ConversationRow = memo(function ConversationRow({
                      * skipped is still in the DOM and still found by Ctrl+F.
                      */
                     aria-current={isActive ? "true" : undefined}
-                    style={{ borderLeftColor: CONVERSATION_STATUS_TONE[conversation.status] ?? "#E3EAF2" }}
-                    className={`relative flex w-full items-start gap-2.5 border-b border-l-[3px] border-b-slate-100 py-2.5 pl-3 pr-3 text-left transition [contain-intrinsic-size:auto_72px] [content-visibility:auto] ${
+                    className={`relative flex w-full items-start gap-2.5 border-b border-b-slate-100 py-2.5 pl-3 pr-3 text-left transition [contain-intrinsic-size:auto_72px] [content-visibility:auto] ${
                       isActive
                         ? "bg-blue-50"
                         : "hover:bg-slate-100/70"
