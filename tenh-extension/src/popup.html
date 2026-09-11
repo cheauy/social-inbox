@@ -17,53 +17,33 @@
     <section class="card">
       <div class="row">
         <span class="label">TENH</span>
-        <span class="state" id="pairState">Checking…</span>
+        <span class="state" id="connectionState">Checking…</span>
       </div>
       <p class="detail" id="deviceName"></p>
+      <p class="detail" id="connectionHint"></p>
+      <button id="openTenh" class="primary">Open TENH Inbox</button>
     </section>
 
     <section class="card">
       <div class="row">
         <span class="label">Facebook</span>
-        <span class="state" id="facebookState">Checking…</span>
+        <span class="state" id="facebookState">Unknown</span>
       </div>
-      <p class="detail" id="pageName"></p>
+      <p class="detail" id="pageName">Facebook companion is idle</p>
       <p class="detail" id="composerState"></p>
-
-      <button id="signIn" class="primary" hidden>Sign in to Facebook</button>
-      <button id="retry" hidden>Retry</button>
+      <button id="facebookAction" hidden>Sign in to Facebook</button>
     </section>
 
-    <section class="card" id="pairCard">
-      <p class="detail">Sign in to TENH in this browser and it connects.</p>
-      <button id="connect" class="primary">Open TENH</button>
-      <p class="detail error" id="error"></p>
-    </section>
-
-    <section class="card" id="pairedCard" hidden>
-      <label class="toggle" for="keepActive">
-        <span>
-          Keep Facebook companion active
-          <span class="toggle-note" id="keepActiveNote"></span>
-        </span>
-        <input type="checkbox" id="keepActive" />
-      </label>
-
-      <button id="openTenh" class="primary">Open TENH Inbox</button>
-      <button id="openFacebook">Open Facebook</button>
-      <button id="unpair" class="danger">Disconnect this browser</button>
-    </section>
-
-    <section class="card">
-      <p class="label">If something looks wrong</p>
+    <details class="card advanced">
+      <summary>Advanced / Troubleshooting</summary>
       <button id="redetect">Re-detect Facebook</button>
       <button id="test">Test connection</button>
       <p class="detail" id="repairResult"></p>
-    </section>
+    </details>
 
     <p class="footnote">
-      Reads only what a Facebook tab already shows. Never touches Facebook
-      passwords or cookies, and TENH works without it.
+      TENH connects automatically when you are signed in at app.tenhchat.com.
+      Normal TENH continues to work without this extension.
     </p>
 
     <script src="popup.js"></script>

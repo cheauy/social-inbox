@@ -145,29 +145,13 @@ button.danger {
   line-height: 1.5;
 }
 
-/* The one setting worth a switch: whether a Facebook tab stays loaded. */
-.toggle {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  padding-bottom: 4px;
-  font-weight: 700;
+.advanced summary {
   cursor: pointer;
-}
-
-.toggle-note {
-  display: block;
-  margin-top: 2px;
   color: var(--muted);
-  font-size: 11.5px;
-  font-weight: 400;
+  font-size: 12px;
+  font-weight: 700;
 }
 
-.toggle input {
-  width: auto;
-  margin: 2px 0 0;
-  padding: 0;
-  flex-shrink: 0;
-  accent-color: var(--blue);
+.advanced[open] summary {
+  margin-bottom: 4px;
 }

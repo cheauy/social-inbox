@@ -58,7 +58,11 @@ export function CompanionFacebookAction({
 
     let alive = true;
 
-    void checkReplyAvailability(conversationId).then((result) => {
+    void checkReplyAvailability({
+      conversationId,
+      pageId,
+      threadId,
+    }).then((result) => {
       if (!alive) return;
 
       setAnswer(
@@ -73,7 +77,7 @@ export function CompanionFacebookAction({
     return () => {
       alive = false;
     };
-  }, [installed, conversationId, checkReplyAvailability]);
+  }, [installed, conversationId, pageId, threadId, checkReplyAvailability]);
 
   async function open() {
     /* The companion focuses a tab that is already open rather than stacking
@@ -125,7 +129,7 @@ export function CompanionFacebookAction({
               ? "TENH v1 sees an enabled reply box in Facebook. Whether a message sends is Facebook's decision."
               : answer === "unavailable"
                 ? "TENH v1 sees a reply box that Facebook has disabled."
-                : "TENH v1 has no Facebook tab open to look at."}
+                : "TENH v1 is preparing the Facebook conversation. Normal TENH messaging still works."}
         </span>
       ) : null}
     </div>

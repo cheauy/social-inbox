@@ -24,17 +24,18 @@ const SETTLE_MS = 1200;
 let lastSignature = "";
 let timer = null;
 let observer = null;
+let activityTimer = null;
+let lastActivityAt = 0;
+const ACTIVITY_MIN_MS = 5000;
 
 function inspect() {
-  const loginRequired = selectors.detectLoginRequired();
-  const loggedIn = !loginRequired && selectors.detectFacebookLogin();
+  const loggedIn = selectors.detectFacebookLogin();
   const { pageId, pageName } = selectors.detectCurrentPage();
   const conversationId = selectors.detectCurrentConversation();
   const composer = selectors.findMessengerComposer();
 
   return {
     facebookConnected: loggedIn,
-    loginRequired,
     pageId,
     pageName,
     conversationId,
@@ -53,7 +54,6 @@ function report(event) {
   const state = inspect();
   const signature = [
     state.facebookConnected,
-    state.loginRequired,
     state.pageId,
     state.conversationId,
     state.composerFound,
@@ -71,13 +71,66 @@ function report(event) {
   });
 }
 
-function schedule() {
+function mutationTouchesComposer(mutation, composer) {
+  if (!composer) return false;
+  if (mutation.target === composer || composer.contains(mutation.target)) return true;
+
+  for (const node of mutation.addedNodes ?? []) {
+    if (node === composer) return true;
+    if (node.nodeType === Node.ELEMENT_NODE && composer.contains(node)) return true;
+  }
+
+  return false;
+}
+
+function scheduleActivity(mutations) {
+  if (!selectors.isMessengerSurface()) return;
+
+  const conversationId = selectors.detectCurrentConversation();
+  if (!conversationId) return;
+
+  const composer = selectors.findMessengerComposer();
+  const relevant = mutations.some((mutation) => {
+    if (mutationTouchesComposer(mutation, composer)) return false;
+    return mutation.addedNodes?.length > 0 || mutation.removedNodes?.length > 0;
+  });
+
+  if (!relevant) return;
+  if (activityTimer) clearTimeout(activityTimer);
+
+  activityTimer = setTimeout(() => {
+    activityTimer = null;
+    const now = Date.now();
+    if (now - lastActivityAt < ACTIVITY_MIN_MS) return;
+
+    const state = inspect();
+    if (!state.facebookConnected || !state.conversationId) return;
+
+    lastActivityAt = now;
+    chrome.runtime.sendMessage(
+      {
+        type: "FB_ACTIVITY",
+        pageId: state.pageId,
+        conversationId: state.conversationId,
+        observedAt: now,
+        reason: "conversation_dom_changed",
+      },
+      () => {
+        void chrome.runtime.lastError;
+      },
+    );
+  }, SETTLE_MS);
+}
+
+function schedule(mutations = []) {
   if (timer) clearTimeout(timer);
 
   timer = setTimeout(() => {
     timer = null;
     report(null);
   }, SETTLE_MS);
+
+  scheduleActivity(mutations);
 }
 
 /*
@@ -101,9 +154,11 @@ function watch() {
 function stop() {
   if (observer) observer.disconnect();
   if (timer) clearTimeout(timer);
+  if (activityTimer) clearTimeout(activityTimer);
 
   observer = null;
   timer = null;
+  activityTimer = null;
 }
 
 /* ------------------------------------------------- what the agent sent */

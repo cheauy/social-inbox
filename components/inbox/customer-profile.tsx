@@ -148,6 +148,24 @@ export function CustomerProfile({
     setFilesOpen(false);
   }, [activeConversation?.id]);
 
+function openFacebookCustomerProfile() {
+  const customerId = contact?.platform_user_id?.trim();
+  const isFacebook = activeConversation?.social_account?.platform === "facebook";
+
+  if (!customerId || !isFacebook) {
+    return;
+  }
+
+  const profileUrl = new URL("https://www.facebook.com/profile.php");
+  profileUrl.searchParams.set("id", customerId);
+
+  window.open(
+    profileUrl.toString(),
+    "_blank",
+    "noopener,noreferrer",
+  );
+}
+
 function startEditing() {
   if (!contact) {
     return;
@@ -347,17 +365,31 @@ async function saveProfile() {
     <div className="shrink-0 border-b border-slate-200 p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          {contact.profile_picture_url ? (
-            <img
-              src={contact.profile_picture_url}
-              alt=""
-              className="h-16 w-16 rounded-full object-cover"
-            />
-          ) : (
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-blue-100 text-2xl font-semibold text-blue-700">
-              {getInitial(contact.full_name)}
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={openFacebookCustomerProfile}
+            className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-full outline-none ring-offset-2 transition hover:ring-2 hover:ring-blue-400 focus-visible:ring-2 focus-visible:ring-blue-500"
+            title={isKhmer ? "មើលប្រវត្តិរូប Facebook" : "View Facebook profile"}
+            aria-label={isKhmer ? "បើកប្រវត្តិរូប Facebook របស់អតិថិជន" : "Open customer Facebook profile"}
+          >
+            {contact.profile_picture_url ? (
+              <img
+                src={contact.profile_picture_url}
+                alt={contact.full_name ?? (isKhmer ? "អតិថិជន Facebook" : "Facebook customer")}
+                className="h-full w-full object-cover transition duration-200 group-hover:scale-105"
+              />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center bg-blue-100 text-2xl font-semibold text-blue-700">
+                {getInitial(contact.full_name)}
+              </span>
+            )}
+
+            <span className="absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+              <span className="mb-1.5 rounded-full bg-black/55 px-2 py-0.5 text-[9px] font-semibold text-white">
+                {isKhmer ? "Facebook" : "Facebook"}
+              </span>
+            </span>
+          </button>
 
           <div className="min-w-0">
             <h2 className="truncate text-lg font-semibold text-slate-900">

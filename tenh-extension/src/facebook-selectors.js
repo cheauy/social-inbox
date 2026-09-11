@@ -87,32 +87,10 @@ var TenhFacebookSelectors = (() => {
   }
 
   /**
-   * Is Facebook asking for a sign-in?
-   *
-   * Separate from detectFacebookLogin, and more certain than its inverse: a
-   * page can fail the "signed in" test for a dozen boring reasons -- still
-   * loading, a layout this build has not seen -- and reporting "sign in
-   * required" on a guess would put a sign-in prompt in front of somebody who
-   * is already signed in.
-   *
-   * So this looks for the login page itself: the URL Facebook redirects to, or
-   * a password field. Nothing here reads what is typed into it, and nothing
-   * ever will.
-   */
-  function detectLoginRequired() {
-    const { pathname, search } = window.location;
-
-    if (/^\/(login|checkpoint)/.test(pathname)) return true;
-    if (/next=/.test(search) && /login/.test(pathname)) return true;
-
-    return Boolean(document.querySelector('input[type="password"]'));
-  }
-
-  /**
    * Which Page this browser is acting as.
    *
-   * Business Suite carries the Page's own id in the URL -- asset_id or
-   * business_id -- which is the only identifier worth trusting. A display name
+   * Business Suite carries the Page's own id in the URL -- normally asset_id
+   * (or page_id on some surfaces) -- which is the identifier worth trusting. A display name
    * is not: two shops can share one, and TENH matches on ids.
    */
   function detectCurrentPage() {
@@ -121,7 +99,6 @@ var TenhFacebookSelectors = (() => {
     const id =
       url.searchParams.get("asset_id") ??
       url.searchParams.get("page_id") ??
-      url.searchParams.get("business_id") ??
       null;
 
     const heading = document.querySelector('[role="banner"] [role="heading"]');
@@ -246,7 +223,6 @@ var TenhFacebookSelectors = (() => {
 
   return {
     detectFacebookLogin,
-    detectLoginRequired,
     findMessengerComposer,
     isComposerEnabled,
     detectCurrentPage,

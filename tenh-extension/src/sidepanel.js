@@ -2,8 +2,8 @@
  * The side panel: TENH's own record of the customer, beside Facebook.
  *
  * Everything on it is read from TENH and written back to TENH. The tags are
- * the workspace's tags, the notes are the notes the Inbox shows, the quick
- * replies are the saved replies the phone uses. There is no companion copy of
+ * the workspace's tags and the quick replies are the saved replies TENH uses.
+ * There is no companion copy of
  * any of it, which is why a tag added here is on the website a second later
  * and why nothing here can drift out of date.
  *
@@ -13,9 +13,6 @@
 
 const TENH_ORIGIN = "https://app.tenhchat.com";
 
-/* Slow enough to be free, quick enough that a colleague's change shows up
-   while somebody is still looking at the panel. */
-const REFRESH_MS = 8000;
 
 function ask(message) {
   return new Promise((resolve) => {
@@ -36,14 +33,11 @@ const view = {
   unmatchedCard: document.getElementById("unmatchedCard"),
   conversationStatus: document.getElementById("conversationStatus"),
   customerName: document.getElementById("customerName"),
-  assignedTo: document.getElementById("assignedTo"),
   tagChips: document.getElementById("tagChips"),
   tagPicker: document.getElementById("tagPicker"),
-  notes: document.getElementById("notes"),
   quickReplies: document.getElementById("quickReplies"),
   quickReplyHint: document.getElementById("quickReplyHint"),
   openTenh: document.getElementById("openTenh"),
-  openFacebook: document.getElementById("openFacebook"),
   error: document.getElementById("error"),
 };
 
@@ -60,51 +54,43 @@ function element(tag, className, text) {
   return node;
 }
 
-/*
- * The same five states the popup uses, in the same words.
- *
- * Two surfaces describing one situation differently is how a customer ends up
- * unsure which to believe, so the wording lives in one vocabulary even though
- * it is rendered twice.
- */
 function renderFacebook(status) {
-  const companion = status.companion ?? { state: "sleeping" };
+  const facebook = status.facebook;
 
-  view.pairState.textContent = status.paired
+  const connected = status.connected === true || status.paired === true;
+
+  view.pairState.textContent = connected
     ? status.device?.name ?? "Connected"
-    : "Not connected — open TENH and sign in";
+    : "Sign in to TENH to connect automatically";
 
-  const labels = {
-    ready: ["Ready", "on"],
-    connecting: ["Connecting…", "warn"],
-    sign_in_required: ["Sign-in required", "warn"],
-    error: ["Connection issue", "warn"],
-    sleeping: ["Sleeping", "off"],
-  };
+  view.facebookState.textContent = facebook?.loggedIn
+    ? "Ready"
+    : facebook
+      ? "Sign-in required"
+      : "Sleeping";
+  view.facebookState.className = `state ${facebook?.loggedIn ? "on" : facebook ? "warn" : "off"}`;
 
-  const [label, tone] = labels[companion.state] ?? labels.sleeping;
+  const pageCount = Number(status.facebookPageCount ?? status.facebookPages?.length ?? 0);
+  const currentPage = facebook?.pageName
+    ? facebook.pageName
+    : facebook?.pageId
+      ? `Page ${facebook.pageId}`
+      : facebook
+        ? "Facebook sign-in is required for browser tools."
+        : "Facebook starts automatically when a companion feature needs it.";
 
-  view.facebookState.textContent = label;
-  view.facebookState.className = `state ${tone}`;
-
-  view.pageName.textContent =
-    companion.state === "ready"
-      ? companion.pageName ??
-        (companion.pageId ? `Page ${companion.pageId}` : "Companion active")
-      : companion.state === "connecting"
-        ? "Preparing Facebook companion."
-        : companion.state === "sign_in_required"
-          ? "Sign in to Facebook once on this browser."
-          : companion.state === "error"
-            ? "Companion unavailable. Normal TENH messaging is still working."
-            : "Facebook starts automatically when a companion feature is needed.";
+  view.pageName.textContent = pageCount > 1 && facebook?.pageId
+    ? `${currentPage} • ${pageCount} Pages available`
+    : currentPage;
 
   view.composerState.textContent =
-    companion.composerState === "available"
+    facebook?.composerState === "available"
       ? "Facebook is showing an enabled reply box."
-      : companion.composerState === "unavailable"
+      : facebook?.composerState === "unavailable"
         ? "Facebook is showing a reply box it has disabled."
-        : "";
+        : facebook
+          ? "Facebook browser tools are standing by."
+          : "";
 }
 
 function renderTags() {
@@ -136,23 +122,6 @@ function renderTags() {
 
     option.value = tag.id;
     view.tagPicker.append(option);
-  }
-}
-
-function renderNotes() {
-  view.notes.replaceChildren();
-
-  const customerNote = context?.customer?.customerNote;
-  const notes = context?.notes ?? [];
-
-  if (customerNote) view.notes.append(element("div", "note", customerNote));
-
-  for (const note of notes) {
-    view.notes.append(element("div", "note", note.text));
-  }
-
-  if (!customerNote && notes.length === 0) {
-    view.notes.append(element("p", "empty", "No notes yet."));
   }
 }
 
@@ -194,12 +163,7 @@ function renderCustomer() {
   view.conversationStatus.textContent = context.conversation?.status ?? "";
   view.conversationStatus.className = "state on";
 
-  view.assignedTo.textContent = context.conversation?.assignedTo
-    ? `Assigned to ${context.conversation.assignedTo.name ?? "a teammate"}`
-    : "Not assigned to anybody";
-
   renderTags();
-  renderNotes();
 }
 
 async function refresh() {
@@ -207,7 +171,7 @@ async function refresh() {
 
   renderFacebook(status);
 
-  if (!status.paired) {
+  if (!(status.connected === true || status.paired === true)) {
     view.liveState.textContent = "Not connected";
     view.liveState.className = "pill off";
     context = null;
@@ -288,10 +252,25 @@ view.openTenh.addEventListener("click", () => {
   void chrome.tabs.create({ url: `${TENH_ORIGIN}/dashboard/inbox` });
 });
 
-view.openFacebook.addEventListener("click", () => {
-  void ask({ type: "OPEN_IN_FACEBOOK" });
+
+/* Refresh on useful UI/browser events instead of polling TENH every 8 seconds. */
+void refresh();
+
+window.addEventListener("focus", () => {
+  void refresh();
 });
 
-/* The panel stays open while somebody works, so it refreshes on its own. */
-void refresh();
-setInterval(() => void refresh(), REFRESH_MS);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) void refresh();
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local") return;
+  if (changes.facebook || changes.token || changes.device) void refresh();
+});
+
+/* High-level TENH sync events refresh this lightweight view immediately. */
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type === "TENH_SYNC_PUSH") void refresh();
+  return false;
+});

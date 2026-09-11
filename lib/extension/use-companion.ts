@@ -130,15 +130,21 @@ export function useCompanion() {
    * itself.
    */
   const checkReplyAvailability = useCallback(
-    async (conversationId: string) => {
+    async (options: {
+      conversationId: string;
+      pageId?: string | null;
+      threadId?: string | null;
+    }) => {
       const requestId = post("CHECK_FACEBOOK_REPLY_AVAILABILITY", {
-        conversationId,
+        conversationId: options.conversationId,
+        pageId: options.pageId ?? undefined,
+        threadId: options.threadId ?? undefined,
       });
 
       return awaitAnswer<ReplyAvailability>(
         "CHECK_FACEBOOK_REPLY_AVAILABILITY_RESULT",
         requestId,
-        4000,
+        18000,
       );
     },
     [],

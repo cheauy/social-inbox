@@ -109,18 +109,6 @@ body.panel header div {
   white-space: nowrap;
 }
 
-.note {
-  padding: 8px 10px;
-  margin-top: 6px;
-  background: #f8fafc;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  font-size: 12px;
-}
-
-.note:first-child {
-  margin-top: 0;
-}
 
 .empty {
   margin: 0;
