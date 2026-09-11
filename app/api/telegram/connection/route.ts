@@ -1,3 +1,4 @@
+import { assertTrialChannelAccess, TrialChannelAccessError } from "@/lib/channels/trial-channel-access";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import {
@@ -474,6 +475,7 @@ export async function POST(request: NextRequest) {
     "Telegram Bot";
 
   try {
+    await assertTrialChannelAccess(currentMember.business_id, "telegram", botId);
     const verifiedClaim = await loadVerifiedBotClaim(botId);
 
     if (verifiedClaim.conflict) {
@@ -702,6 +704,9 @@ export async function POST(request: NextRequest) {
       ),
     });
   } catch (error) {
+    if (error instanceof TrialChannelAccessError) {
+      return jsonError(error.message, error.status, error.code);
+    }
     console.error(
       "[TENH Telegram] Connection failed:",
       error instanceof Error ? error.message : error,

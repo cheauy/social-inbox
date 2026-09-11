@@ -11,7 +11,9 @@ import {
 
 type PeriodKey =
   | "today"
-  | "yesterday";
+  | "yesterday"
+  | "7d"
+  | "30d";
 
 type CustomerSummary = {
   totalCustomers: number;
@@ -171,6 +173,8 @@ type WorkloadResponse = {
   currentMemberId?: string;
   currentMemberRole?: string;
   unassignedCount?: number;
+  live?: { unreadConversations: number; waitingOverSla: number; overdueReminders: number } | null;
+  liveError?: string | null;
   members?: WorkloadMember[];
 };
 
@@ -917,7 +921,7 @@ export function DashboardOverviewPanel({
   onOpenChannelPerformance?: () => void;
 }) {
   const [rangeView, setRangeView] = useState<DashboardRangeKey>("today");
-  const effectivePeriod: PeriodKey = rangeView === "yesterday" ? "yesterday" : "today";
+  const effectivePeriod: PeriodKey = rangeView;
 
   const [slaMinutes, setSlaMinutes] = useState(10);
   const [customers, setCustomers] = useState<CustomerSummary>(EMPTY_CUSTOMERS);
@@ -929,14 +933,17 @@ export function DashboardOverviewPanel({
   const [daily, setDaily] = useState<DailyRow[]>([]);
   const [busyHours, setBusyHours] = useState<BusyHourRow[]>([]);
   const [channels, setChannels] = useState<ChannelRow[]>([]);
+  const [liveWorkload, setLiveWorkload] = useState<WorkloadResponse["live"]>(null);
   const [unassignedCount, setUnassignedCount] = useState(0);
   const [currentMemberRole, setCurrentMemberRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [warnings, setWarnings] = useState<string[]>([]);
   const mountedRef = useRef(true);
+  const requestVersionRef = useRef(0);
 
   const loadOverview = useCallback(async (silent = false) => {
+    const requestVersion = ++requestVersionRef.current;
     if (silent) {
       setRefreshing(true);
     } else {
@@ -951,10 +958,10 @@ export function DashboardOverviewPanel({
       // Previously hardcoded to period=7d, so a "Today" dashboard showed
       // 7 days of agent data beside 1 day of conversation data.
       requestJson<AgentResponse>(`/api/analytics/agents?period=${effectivePeriod}&slaMinutes=${slaMinutes}&tzOffsetMinutes=${tzOffsetMinutes}`),
-      requestJson<WorkloadResponse>("/api/team/workload"),
+      requestJson<WorkloadResponse>(`/api/team/workload?includeLive=1&slaMinutes=${slaMinutes}`),
     ]);
 
-    if (!mountedRef.current) {
+    if (!mountedRef.current || requestVersion !== requestVersionRef.current) {
       return;
     }
 
@@ -963,6 +970,7 @@ export function DashboardOverviewPanel({
     if (customerResult.ok && customerResult.data?.success) {
       setCustomers({ ...EMPTY_CUSTOMERS, ...(customerResult.data.analytics?.summary ?? {}) });
     } else {
+      setCustomers(EMPTY_CUSTOMERS);
       nextWarnings.push(`Customers: ${customerResult.error ?? customerResult.data?.error ?? "Unavailable"}`);
     }
 
@@ -975,6 +983,8 @@ export function DashboardOverviewPanel({
       setChannels(conversationResult.data.analytics?.channels ?? []);
       setWaitingConversations(conversationResult.data.analytics?.waitingConversations ?? []);
     } else {
+      setConversations(EMPTY_CONVERSATIONS);
+      setDaily([]); setBusyHours([]); setChannels([]); setWaitingConversations([]);
       nextWarnings.push(`Conversations: ${conversationResult.error ?? conversationResult.data?.error ?? "Unavailable"}`);
     }
 
@@ -982,14 +992,19 @@ export function DashboardOverviewPanel({
       setAgentSummary({ ...EMPTY_AGENT_SUMMARY, ...(agentResult.data.analytics?.summary ?? {}) });
       setAgents(agentResult.data.analytics?.agents ?? []);
     } else {
+      setAgentSummary(EMPTY_AGENT_SUMMARY); setAgents([]);
       nextWarnings.push(`Team performance: ${agentResult.error ?? agentResult.data?.error ?? "Unavailable"}`);
     }
 
     if (workloadResult.ok && workloadResult.data?.success) {
+      setLiveWorkload(workloadResult.data.live ?? null);
+      if (!workloadResult.data.live) nextWarnings.push(workloadResult.data.liveError ?? "Live workload is unavailable.");
       setWorkloadMembers(workloadResult.data.members ?? []);
       setUnassignedCount(Math.max(0, workloadResult.data.unassignedCount ?? 0));
       setCurrentMemberRole(workloadResult.data.currentMemberRole ?? null);
     } else {
+      setLiveWorkload(null);
+      setUnassignedCount(0);
       nextWarnings.push(`Team workload: ${workloadResult.error ?? workloadResult.data?.error ?? "Unavailable"}`);
     }
 
@@ -1000,9 +1015,12 @@ export function DashboardOverviewPanel({
 
   useEffect(() => {
     mountedRef.current = true;
-    void loadOverview(false);
+    const version = requestVersionRef;
+    const timer = window.setTimeout(() => void loadOverview(false), 0);
     return () => {
+      window.clearTimeout(timer);
       mountedRef.current = false;
+      version.current++;
     };
   }, [loadOverview]);
 
@@ -1023,13 +1041,8 @@ export function DashboardOverviewPanel({
     };
   }, [loadOverview]);
 
-  const totalOverdueReminders = useMemo(
-    () => workloadMembers.reduce((total, member) => total + member.overdueReminders, 0),
-    [workloadMembers],
-  );
+  const periodLabel = { today: "Today", yesterday: "Yesterday", "7d": "Last 7 days", "30d": "Last 30 days" }[effectivePeriod];
 
-  const periodLabel = effectivePeriod === "today" ? "Today" : "Yesterday";
-  const topSummaryTotal = Math.max(1, unassignedCount + conversations.waitingOverSla + conversations.currentUnread + totalOverdueReminders);
 
   const topSummaryItems = [
     {
@@ -1042,7 +1055,7 @@ export function DashboardOverviewPanel({
     },
     {
       label: "Waiting > SLA",
-      value: conversations.waitingOverSla,
+      value: liveWorkload?.waitingOverSla ?? "—",
       helper: `Over ${slaMinutes} min`,
       icon: "clock" as DashboardIconName,
       tone: "rose" as IconTone,
@@ -1050,15 +1063,15 @@ export function DashboardOverviewPanel({
     },
     {
       label: "Unread",
-      value: conversations.currentUnread,
-      helper: "New messages",
+      value: liveWorkload?.unreadConversations ?? "—",
+      helper: "Unread conversations",
       icon: "mail" as DashboardIconName,
       tone: "violet" as IconTone,
       actionHref: "/dashboard/inbox?filter=unread",
     },
     {
       label: "Overdue",
-      value: totalOverdueReminders,
+      value: liveWorkload?.overdueReminders ?? "—",
       helper: "Past due follow-ups",
       icon: "reminder" as DashboardIconName,
       tone: "rose" as IconTone,
@@ -1279,14 +1292,14 @@ export function DashboardOverviewPanel({
               Assign {unassignedCount} →
             </Link>
             <p className="text-center text-xs text-slate-500">
-              {topSummaryTotal} urgent item{topSummaryTotal === 1 ? "" : "s"} across inbox right now.
+              Current workload. Categories can overlap.
             </p>
           </div>
         </div>
       </section>
 
       <section>
-        <h2 className="text-lg font-bold text-slate-950">Today at a glance</h2>
+        <h2 className="text-lg font-bold text-slate-950">{periodLabel} at a glance</h2>
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {atGlanceCards.map((card) => (
             <StatTrendCard
@@ -1308,9 +1321,9 @@ export function DashboardOverviewPanel({
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-slate-950">Conversation activity</h2>
-              <p className="mt-1 text-xs text-slate-500">Last 7 days</p>
+              <p className="mt-1 text-xs text-slate-500">{periodLabel}</p>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm">{rangeView === "30d" ? "30 days" : "7 days"}</div>
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm">{periodLabel}</div>
           </div>
 
           <div className="mt-4 flex flex-wrap gap-5 text-xs text-slate-500">
@@ -1346,7 +1359,7 @@ export function DashboardOverviewPanel({
           <div className="mt-4 space-y-4">
             {[
               { label: "Incoming", value: conversations.incomingMessages, helper: "All channels", icon: "mail" as DashboardIconName, tone: "blue" as IconTone },
-              { label: "Outgoing", value: conversations.outgoingMessages, helper: "By agents", icon: "reply" as DashboardIconName, tone: "emerald" as IconTone },
+              { label: "Outgoing", value: conversations.outgoingMessages, helper: "All outgoing messages", icon: "reply" as DashboardIconName, tone: "emerald" as IconTone },
               { label: "Total messages", value: conversations.totalMessages, helper: "Incoming + Outgoing", icon: "conversation" as DashboardIconName, tone: "violet" as IconTone },
             ].map((item) => (
               <div key={item.label} className="flex items-center gap-4 rounded-2xl border border-slate-100 px-4 py-4">

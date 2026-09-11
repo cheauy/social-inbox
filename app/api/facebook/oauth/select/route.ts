@@ -1,3 +1,4 @@
+import { assertTrialChannelAccess } from "@/lib/channels/trial-channel-access";
 import {
   NextRequest,
   NextResponse,
@@ -247,6 +248,10 @@ export async function POST(
 
       return page;
     });
+
+    for (const page of selectedPages) {
+      await assertTrialChannelAccess(currentMember.business_id, "facebook", page.id);
+    }
 
     const {
       data: existingRows,

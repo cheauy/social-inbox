@@ -272,6 +272,9 @@ export async function reserveFreeTrial(
       .single();
 
     if (insertError) {
+      if (insertError.details === "TENH_TRIAL_IP_LIMIT") {
+        return { eligible: false, reason: "network_trial_limit_reached" };
+      }
       if (isMissingTrialSecurityTable(insertError)) {
         throw new Error(
           "TENH trial security database is not installed. Run supabase/20260819_v3_11_31_40_trial_security.sql first.",

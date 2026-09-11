@@ -125,7 +125,18 @@ async function callWorkspaceRpc(user: User, email: string) {
 }
 
 async function applySevenDayTrial(businessId: string) {
-  const startedAt = new Date();
+  const { data: current, error: readError } = await supabaseAdmin
+    .from("business_subscriptions")
+    .select("trial_started_at,current_period_start")
+    .eq("business_id", businessId)
+    .eq("status", "trialing")
+    .maybeSingle();
+  if (readError) throw readError;
+  if (!current) throw new Error("The trial subscription is no longer available.");
+  // Preserve the original database start on retries; login must not buy time.
+  const timestamp = Date.parse(current.trial_started_at ?? current.current_period_start ?? "");
+  if (!Number.isFinite(timestamp)) throw new Error("The trial start date is missing.");
+  const startedAt = new Date(timestamp);
   const endsAt = new Date(
     startedAt.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000,
   );
@@ -226,7 +237,7 @@ export async function provisionUserWorkspace(
 ): Promise<ProvisionWorkspaceResult> {
   const email = user.email?.trim().toLowerCase();
 
-  if (!email) {
+  if (!email || !user.email_confirmed_at) {
     return {
       success: false,
       error: "A verified email address is required.",

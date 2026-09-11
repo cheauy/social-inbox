@@ -4606,7 +4606,7 @@ function ConversationListView({
                                 </span>
                               </span>
 
-                              <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                              <span className="flex min-w-5 shrink-0 items-center justify-center rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold text-white">
                                 {count}
                               </span>
                             </span>

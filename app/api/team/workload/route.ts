@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -28,7 +28,7 @@ type ReminderRow = {
   status: string;
 };
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const authResult = await getCurrentMember();
 
   if (!authResult.success) {
@@ -45,11 +45,15 @@ export async function GET() {
 
   const currentMember = authResult.member;
   const businessId = currentMember.business_id;
+  const includeLive = request.nextUrl.searchParams.get("includeLive") === "1";
+  const slaInput = Number(request.nextUrl.searchParams.get("slaMinutes") ?? 10);
+  const slaSeconds = (Number.isFinite(slaInput) ? Math.max(1, Math.min(1440, slaInput)) : 10) * 60;
 
   const [
     membersResult,
     conversationsResult,
     remindersResult,
+    liveResult,
   ] = await Promise.all([
     supabaseAdmin
       .from("team_members")
@@ -94,6 +98,7 @@ export async function GET() {
       `)
       .eq("business_id", businessId)
       .eq("status", "open"),
+    includeLive ? supabaseAdmin.rpc("get_tenh_live_workload", { p_business_id: businessId, p_sla_seconds: Math.round(slaSeconds) }) : Promise.resolve({ data: null, error: null }),
   ]);
 
   if (membersResult.error) {
@@ -229,6 +234,8 @@ export async function GET() {
     currentMemberId: currentMember.id,
     currentMemberRole: currentMember.role,
     unassignedCount,
+    live: liveResult.error ? null : liveResult.data,
+    liveError: liveResult.error ? "Live workload is unavailable. Apply the live dashboard workload migration." : null,
     members: workload,
   });
 }
