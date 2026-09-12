@@ -7,6 +7,7 @@ const resolver=fs.readFileSync('tenh-extension/src/facebook-profile-resolver.js'
 const base='https://business.facebook.com/latest/inbox/all?asset_id=123456&selected_item_id=112233445566&thread_type=FB_MESSAGE';
 const opts={pageId:'123456',threadId:'987654',customerName:'Test Customer',conversationLink:base,linkSource:'meta_conversations_api'};
 const profile='https://www.facebook.com/profile.php?id=61555135812581';
+const pageInboxFixture=require('./fixtures/facebook-conversation-page-inbox.json');
 function fixture({name=opts.customerName,href=profile,rowId='112233445566',selected=true,extra='',hidden=false,heading=true}={}) {
   return `<nav><a href="https://www.facebook.com/admin">Admin</a></nav>
     <a ${selected?'aria-selected="true"':''} href="?asset_id=123456&selected_item_id=${rowId}">Test Customer</a>
@@ -23,6 +24,25 @@ function load(html=fixture(),url=base) {
 test('exact selected thread and matching detail heading yields real link without interaction',()=>{
   const h=load();let clicks=0;h.w.document.addEventListener('click',()=>clicks++);const r=h.read();
   assert.equal(r.profileUrl,profile);assert.equal(r.matchedThreadId,opts.threadId);assert.equal(clicks,0);h.close();
+});
+test('Page inbox: DOM accepts provider path and keeps PSID separate',()=>{
+ const f=pageInboxFixture,url='https://www.facebook.com'+f.response.data[0].link;
+ const h=load('<aside><h2>Jame Jame</h2><a href="https://www.facebook.com/galaxystar.james">View profile</a></aside>',url);
+ const r=h.read({...opts,pageId:f.pageId,threadId:f.psid,customerName:'Jame Jame',conversationLink:url});
+ assert.equal(r.profileUrl,'https://www.facebook.com/galaxystar.james');assert.equal(r.matchedThreadId,f.psid);
+ assert.equal(r.selectedItemId,null);h.close();
+});
+test('Page inbox: moved customer, wrong Page and comments section cannot reuse identity markup',()=>{
+ const f=pageInboxFixture,url='https://www.facebook.com'+f.response.data[0].link;
+ for(const actual of [url.replace('1187032264483411','444444'),url.replace(f.pageId,'111111'),url.replace('section=messages','section=comments'),url+'&tid=123']){
+  const h=load('<aside><h2>Jame Jame</h2><a href="https://www.facebook.com/galaxystar.james">View profile</a></aside>',actual);
+  assert.equal(h.read({...opts,pageId:f.pageId,threadId:f.psid,customerName:'Jame Jame',conversationLink:url}).reason,'conversation_mismatch');h.close();
+ }
+});
+test('Page inbox: redirected Suite URL still requires matching rendered customer identity',()=>{
+ const f=pageInboxFixture,url='https://www.facebook.com'+f.response.data[0].link;
+ const h=load('<aside><h2>Previous Customer</h2><a href="https://www.facebook.com/previous.customer">View profile</a></aside>',f.suiteUrl);
+ assert.equal(h.read({...opts,pageId:f.pageId,threadId:f.psid,customerName:'Jame Jame',conversationLink:url,loadedConversationLink:f.suiteUrl}).profileUrl,undefined);h.close();
 });
 for(const config of [{rowId:'222222'},{name:'Previous Customer'},{hidden:true},{heading:false}])test('do not trust address bar/name alone '+JSON.stringify(config),()=>{
   const h=load(fixture(config));assert.equal(h.read().profileUrl,undefined);h.close();

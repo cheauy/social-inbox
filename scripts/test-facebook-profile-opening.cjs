@@ -9,6 +9,7 @@ const options = { businessId:'workspace', conversationId:'conversation', pageId:
 const sender = { id:'extension', frameId:0, documentId:'doc', url:'https://app.tenhchat.com/dashboard/inbox', tab:{ id:10 } };
 const profile = 'https://www.facebook.com/profile.php?id=61555135812581';
 const exact = 'https://business.facebook.com/latest/inbox/all?asset_id=123456&selected_item_id=112233445566&thread_type=FB_MESSAGE';
+const pageInboxFixture = require('./fixtures/facebook-conversation-page-inbox.json');
 function harness(config = {}) {
   const tabs = new Map((config.tabs || []).map(tab => [tab.id,{ status:'complete', active:false, ...tab }]));
   const created=[], removed=[], read=[], auth=[]; const session = config.session || {}; let id=100, now=1000; const loads=new Set();
@@ -40,6 +41,44 @@ function harness(config = {}) {
 }
 const lookup=(h,opts=options,from=sender)=>h.api.openFacebookCustomerProfile(opts,from);
 const open=(h,result,opts=options,from=sender)=>h.api.openResolvedFacebookProfile(result.openToken,from,opts);
+test('Page inbox: worker accepts actual provider path without converting its ID to a PSID',async()=>{
+ const f=pageInboxFixture,conversationLink='https://www.facebook.com'+f.response.data[0].link;
+ const ctx={...options,pageId:f.pageId,threadId:f.psid};
+ const h=harness({authorization:{...ctx,conversationLink}}),r=await lookup(h,ctx);
+ assert.equal(r.resolved,true);assert.equal(h.created[0].url,conversationLink);
+ assert.equal(r.threadId,f.psid);assert.equal((await open(h,r,ctx)).opened,true);
+});
+test('Page inbox: path thread ID may redirect to a different Suite selected ID',async()=>{
+ const f=pageInboxFixture,conversationLink='https://www.facebook.com'+f.response.data[0].link;
+ const ctx={...options,pageId:f.pageId,threadId:f.psid};
+ const h=harness({authorization:{...ctx,conversationLink},redirect:f.suiteUrl}),r=await lookup(h,ctx);
+ assert.equal(r.resolved,true);assert.equal(r.loadedConversationLink,f.suiteUrl);
+ assert.equal(h.removed.length,2);assert.equal((await open(h,r,ctx)).opened,true);
+});
+test('Page inbox: unrelated legacy inbox tab stays untouched',async()=>{
+ const conversationLink='https://www.facebook.com/123456/inbox/444444/?section=messages';
+ const h=harness({authorization:{conversationLink},tabs:[{id:22,url:conversationLink.replace('444444','555555'),active:true}]}),r=await lookup(h);
+ assert.equal(r.resolved,true);assert.equal(h.created[0].url,conversationLink);
+ assert.ok(h.tabs.has(22));assert.ok(h.read.every(x=>x.tabId!==22));
+});
+test('Page inbox: redirect to another Page cannot authorize a profile',async()=>{
+ const conversationLink='https://www.facebook.com/123456/inbox/444444/?section=messages';
+ const h=harness({authorization:{conversationLink},redirect:exact.replace('123456','222222')}),r=await lookup(h);
+ assert.equal(r.reason,'profile_lookup_interrupted');assert.equal(h.read.length,0);assert.equal(r.openToken,undefined);
+});
+test('Page inbox: wrong Page, section and contradictory selectors are rejected before navigation',async()=>{
+ for(const conversationLink of ['https://www.facebook.com/999999/inbox/444444/?section=messages',
+  'https://www.facebook.com/123456/inbox/444444/?section=comments',
+  'https://www.facebook.com/123456/inbox/444444/?section=messages&selected_item_id=555555']){
+  const h=harness({authorization:{conversationLink}});assert.equal((await lookup(h)).opened,false);assert.equal(h.created.length,0);
+ }
+});
+test('specific conversation failure reaches TENH without opening a tab',async()=>{
+ for(const reason of ['profile_conversation_not_found','profile_conversation_participants_unmatched','profile_conversation_link_unsupported',
+  'profile_conversation_link_missing','profile_conversation_name_unavailable','profile_conversation_request_failed']){
+  const h=harness({denied:true,authorization:{reason}});assert.equal((await lookup(h)).reason,reason);assert.equal(h.created.length,0);
+ }
+});
 test('one click resolves on demand, closes owned background tabs, opens only verified profile',async()=>{
   const h=harness(), r=await lookup(h); assert.equal(r.resolved,true); assert.equal(r.profileUrl,profile);
   assert.equal(h.created.length,2); assert.ok(h.created.every(t=>!t.active)); assert.equal(h.removed.length,2);

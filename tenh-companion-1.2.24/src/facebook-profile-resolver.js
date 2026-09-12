@@ -23,16 +23,21 @@ globalThis.TenhFacebookProfileResolver = (() => {
       const selected = ["selected_item_id", "thread_id"].flatMap(key => url.searchParams.getAll(key));
       if (selected.length && (new Set(selected).size !== 1 || !/^\d{1,32}$/.test(selected[0]))) return null;
       if (url.searchParams.getAll("thread_type").some(type => type !== "FB_MESSAGE")) return null;
+      const sections = url.searchParams.getAll("section");
+      if (sections.length > 1 || sections.some(section => section !== "messages")) return null;
       if (url.hostname === "business.facebook.com") {
         if (!/^\/latest\/inbox(?:\/[^/]+)?\/?$/.test(url.pathname) || !pages.length || !selected.length) return null;
         return { key: `suite:${pageId}:${selected[0]}`, selectedItemId: selected[0], url: url.href, suite: true };
       }
       const segments = url.pathname.split("/").filter(Boolean);
       const pageInbox = segments[0] === pageId && ["messages", "inbox"].includes(segments[1]) && segments.length === 2;
+      const pageInboxThread = segments[0] === pageId && segments[1] === "inbox" &&
+        segments.length === 3 && /^\d{1,32}$/.test(segments[2]);
       const messages = segments[0] === "messages" && (segments.length === 1 || (segments[1] === "t" && segments.length === 3));
       const legacyIds = ["threadid", "tid"].flatMap(key => url.searchParams.getAll(key));
       if (legacyIds.some(id => !/^[A-Za-z0-9_.:-]{1,200}$/.test(id))) return null;
-      if (!(pageInbox || messages) || (!selected.length && !legacyIds.length && segments.length !== 3)) return null;
+      if (pageInboxThread && (selected.length || legacyIds.length)) return null;
+      if (!(pageInboxThread || pageInbox || messages) || (!selected.length && !legacyIds.length && segments.length !== 3)) return null;
       const params = [...url.searchParams.entries()].filter(([key]) => ["selected_item_id", "thread_id", "threadid", "tid"].includes(key)).sort();
       return { key: `${segments.join("/")}:${JSON.stringify(params)}`, selectedItemId: selected[0] || null, url: url.href, suite: false };
     } catch { return null; }

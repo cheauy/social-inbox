@@ -1,0 +1,129 @@
+{
+  "based_on": "social-inbox(20260912-132506).zip",
+  "extension_version": "1.2.24",
+  "format": "cumulative changed and new files with original folders; complete extension ZIP under dist",
+  "tests": {
+    "reported_format_regressions_failed_before": 6,
+    "reported_format_regressions_passed_after": 6,
+    "focused_passed": 193,
+    "focused_failed": 0,
+    "live_browser_profile_opening_tested": false
+  },
+  "files": [
+    {
+      "path": "app/api/conversations/[conversationId]/facebook-profile/route.ts",
+      "sha256": "75e632657b620db89eee22445d9e76063ca8b305c961b7c6002f6d28c2b63677",
+      "original_sha256": "cd347fd8e508c502319f30e2523e9e32292476386c293aa03e8faa5cf241351e"
+    },
+    {
+      "path": "app/api/extension/conversations/open-context/route.ts",
+      "sha256": "42744eb7f0ef99aed42ffee923bddb5ee6c2044d2960bdf91e3e1c92749f899e",
+      "original_sha256": "94c49d254bb24a990df03f591bcb39681a7d95a7669ad42bcc1e0ea70e4af098"
+    },
+    {
+      "path": "components/inbox/customer-facebook-avatar.tsx",
+      "sha256": "cd15e22f4ff0d2102b1ab8a0ee646483e0da3fc8bde2aff353390fbe6249c3ab",
+      "original_sha256": "421b89fdfed10ed52ade4d8cd4094f9b3acf7cfbd65e3d10d4771cbaad8405b1"
+    },
+    {
+      "path": "db/migrations/20260912_automatic_facebook_profile_links.sql",
+      "sha256": "3c487d12fb6c655efba4c67eee604c571199763b716a4a1a72520ef3c7f19ca6",
+      "original_sha256": null
+    },
+    {
+      "path": "dist/tenh-companion-1.2.24.zip",
+      "sha256": "65cfe391f7e161c290f8e125ac51dca56d4dcb1a8d23270b3fc2d358daa4942d",
+      "original_sha256": null
+    },
+    {
+      "path": "docs/tenh-profile-fix-v1.2.24.md",
+      "sha256": "bbaeedcbddc80380f107224912cc156e0c94b4949a98f3397419b267884fcb22",
+      "original_sha256": null
+    },
+    {
+      "path": "docs/tenh-profile-test-results-v1.2.24.txt",
+      "sha256": "5f9577d492ca708d1845e3bc1b102ad3f5de656440a1103f965044307bb20206",
+      "original_sha256": null
+    },
+    {
+      "path": "lib/facebook/customer-conversation-link.ts",
+      "sha256": "3c90fb0e0d9c7b5908b2e9083e48c8e3bf5e47592df012f48d642d72fc87e650",
+      "original_sha256": null
+    },
+    {
+      "path": "lib/facebook/customer-profile-url.ts",
+      "sha256": "21ec478920694c47be2f7de5026cec3baad240a67ca808ad06fbf0fa080e3058",
+      "original_sha256": "7c2c2725a25166414f8710b27a6443a10c35023f0b7aaa6f120be1b61b86a02b"
+    },
+    {
+      "path": "lib/facebook/profile-lookup-error.ts",
+      "sha256": "24cace599c7811adb1e73275ffb45a1cdef531bac552b24726b5f9aee0dc4578",
+      "original_sha256": "ec3184c90b063183968cece0772bd82b40680247cf85c014d804ad673868f32d"
+    },
+    {
+      "path": "scripts/fixtures/facebook-conversation-page-inbox.json",
+      "sha256": "b81f5c9e8753c5bd8675603c93dda7e60845c2dc118f935faa604a065696adab",
+      "original_sha256": null
+    },
+    {
+      "path": "scripts/test-customer-facebook-avatar.cjs",
+      "sha256": "85d76e8d9ac7f709205ed0c2302af069e3e4804913499d76a42fb8ed6a03a702",
+      "original_sha256": "9a9b761a7f835ad72d70c6f9ae0a4e994dcab5f4a64d420ac097b5a237f49ec0"
+    },
+    {
+      "path": "scripts/test-facebook-conversation-link.cjs",
+      "sha256": "e365e91fcbe0ddee623b876c7267060c88c6cbab175d29ebc42d2f8b1658d6d8",
+      "original_sha256": null
+    },
+    {
+      "path": "scripts/test-facebook-profile-opening.cjs",
+      "sha256": "d49d8036e9939e51e8a641a44469b072a3eedcf22a75da1824e8fbafe96f7314",
+      "original_sha256": "bd808e48e1709a8821597bc2ad5f884700edb1c386174e1b6be9d1afb3310b1c"
+    },
+    {
+      "path": "scripts/test-facebook-profile-resolver.cjs",
+      "sha256": "33308d0b71a1adcc4c407840c0a1c07af039f4da721564fb4eccfda8e3744a34",
+      "original_sha256": "44c72eef9e753757f949ce2b30f8c9e180f866992db143963600a508492e3aab"
+    },
+    {
+      "path": "tenh-extension/manifest.json",
+      "sha256": "9561c7a1fe1dad6b70270bff2b82da920be39aa490b39950f07a511aabf52cbc",
+      "original_sha256": "5ae76b5683fe6e50cfe852395565ad09a3b5bea833ecf71ef56557100e4c1038"
+    },
+    {
+      "path": "tenh-extension/src/background.js",
+      "sha256": "e455795041c4866093feeddbc3833d07072a7eb9754cc22c95554e555c1dfbbc",
+      "original_sha256": "36ab1fcb4f0921caebcf166cf76856e70ce3279e8ca7669e9abee4146d5b496e"
+    },
+    {
+      "path": "tenh-extension/src/facebook-bridge.js",
+      "sha256": "bbbc88a43fdf57ffd27ca3fe490c9c6461d791a74dca9a9a818d43084b06dab8",
+      "original_sha256": "001a70cf33247bd1feb52e5b019c99f2f2f584131baf934da8d231454ced9822"
+    },
+    {
+      "path": "tenh-extension/src/facebook-profile-resolver.js",
+      "sha256": "5133eba4c25f746d0c38235e0fabb76400a2ccd5ba20637a3c9029becb099210",
+      "original_sha256": "055ac43f7e822f3db14390c599d03bab1631897ec84be5f440bc45200d426118"
+    },
+    {
+      "path": "tenh-extension/src/facebook-selectors.js",
+      "sha256": "a323b67c116ae3d74c5ad661e8ed5bcba75b6938e889cd1b7e6194cc4465d6d5",
+      "original_sha256": "1c920d2aae996bd7b3d52ba5208339496b50d422ca93f14daefc89812fe7ba42"
+    },
+    {
+      "path": "tests/tenh-seven/extension.test.cjs",
+      "sha256": "4f5a4a25644ad12b011f19146158d61c040e1abf97591c05fa8532664df6c11d",
+      "original_sha256": "9b595e982e5a180f68795e5793d8559c2c1e743683e2e4c673d338c085c84309"
+    },
+    {
+      "path": "tests/tenh-seven/message-safety.test.cjs",
+      "sha256": "91b4176aaeb083facf5b4412a2029c6c9c0c07e90ec0209cf5b28d5e833701c6",
+      "original_sha256": "dde76d5a77bfe3838e39e15f8187666288d3834e9df0f8561b18c60a98fdeef9"
+    },
+    {
+      "path": "tests/tenh-seven/server.test.cjs",
+      "sha256": "122ec901fefb748471d7443c19eba03435adb61c3410c99138bff0cff389a227",
+      "original_sha256": "0d7e228f47551dbea887dd8e231980e015e5435889d6e7669d93ec2e20eede01"
+    }
+  ]
+}
