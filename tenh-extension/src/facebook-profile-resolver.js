@@ -155,13 +155,36 @@ globalThis.TenhFacebookProfileResolver = (() => {
       linkActions: actions.filter(action => action.hasAttribute("href")).length };
   }
 
+  function exactConversationProfileLinks(options) {
+    const urls = new Set();
+    let labelledActions = 0, unsupported = 0;
+    // Business Suite frequently renders the right-hand contact card without a
+    // semantic heading. The conversation itself has already been bound to the
+    // exact Page + customer by TENH and context(), so one explicit visible
+    // View profile link is sufficient even when the customer's name is not
+    // exposed as a heading. Never accept message/feed links or an ambiguous set.
+    for (const anchor of document.querySelectorAll('a[href], [role="link"][href]')) {
+      if (!visible(anchor) || anchor.closest(cardExcluded)) continue;
+      if (!labelsFor(anchor).some(profileLabel)) continue;
+      labelledActions++;
+      const url = selectors.profileCandidateUrl(anchor.getAttribute("href"));
+      if (!url) { unsupported++; continue; }
+      const parsed = new URL(url), id = parsed.searchParams.get("id");
+      if (id === options.threadId || id === options.pageId) { unsupported++; continue; }
+      urls.add(url);
+    }
+    return { urls, labelledActions, unsupported };
+  }
+
   function readCurrent(options = {}) {
     const match = context(options);
     if (match.reason) return match;
     const headings = identityRegions(options.customerName), cards = profileCardRegions(options.customerName);
     const urls = new Set(), regions = [...new Set([...headings, ...cards.regions])];
+    const fallback = exactConversationProfileLinks(options);
     const diagnostics = { headingRegions: headings.length, cardRegions: cards.regions.length,
-      profileActions: cards.profileActions, linkActions: cards.linkActions };
+      profileActions: Math.max(cards.profileActions, fallback.labelledActions),
+      linkActions: Math.max(cards.linkActions, fallback.urls.size) };
     let unrecognizedLabel = false, unsupportedLink = false;
     for (const region of regions) {
       for (const anchor of region.querySelectorAll('a[href], [role="link"][href]')) {
@@ -177,10 +200,15 @@ globalThis.TenhFacebookProfileResolver = (() => {
         urls.add(url);
       }
     }
-    if (urls.size > 1) return { ...match, diagnostics, reason: "ambiguous_profile" };
-    if (!urls.size) return { ...match, diagnostics, canReveal: !unsupportedLink && !unrecognizedLabel && !cards.unlinkedCards && revealControls(options).length === 1,
-      reason: !regions.length ? "profile_customer_heading_missing" : unsupportedLink ? "profile_link_format_unsupported"
-        : unrecognizedLabel ? "profile_link_label_unrecognized" : cards.unlinkedCards ? "profile_action_without_link" : "profile_link_not_rendered" };
+    // Layout-safe fallback: when the exact authorized conversation exposes
+    // exactly one explicit View profile link, do not require a customer-name
+    // heading. This fixes layouts where headingRegions/cardRegions are zero.
+    if (!urls.size && fallback.urls.size === 1) urls.add([...fallback.urls][0]);
+    if (urls.size > 1 || fallback.urls.size > 1) return { ...match, diagnostics, reason: "ambiguous_profile" };
+    if (!urls.size) return { ...match, diagnostics, canReveal: !unsupportedLink && !unrecognizedLabel && !cards.unlinkedCards && !fallback.unsupported && revealControls(options).length === 1,
+      reason: fallback.unsupported || unsupportedLink ? "profile_link_format_unsupported"
+        : unrecognizedLabel ? "profile_link_label_unrecognized" : cards.unlinkedCards ? "profile_action_without_link"
+        : !regions.length ? "profile_link_not_rendered" : "profile_link_not_rendered" };
     return { ...match, found: true, profileUrl: [...urls][0] };
   }
 

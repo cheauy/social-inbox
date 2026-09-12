@@ -10,7 +10,7 @@ import type { InboxConversation } from "@/types/inbox";
 function supportsAutomaticLookup(version: string | null) {
   const parts = version?.split(".").map(Number);
   return Boolean(parts && parts.length >= 3 && parts.every(Number.isFinite) &&
-    (parts[0] > 1 || (parts[0] === 1 && (parts[1] > 2 || (parts[1] === 2 && parts[2] >= 27)))));
+    (parts[0] > 1 || (parts[0] === 1 && (parts[1] > 2 || (parts[1] === 2 && parts[2] >= 28)))));
 }
 
 /** Saved links open directly. Unknown Messenger profiles use a context-bound
@@ -26,8 +26,6 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
   const [stored, setStored] = useState<{ key: string; url: string | null } | null>(null);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [lookupDetails, setLookupDetails] = useState<string | null>(null);
-  const [detailsCopied, setDetailsCopied] = useState(false);
   const companion = useCompanion();
   const safeUrl = (value: unknown) => {
     const url = normalizeCustomerProfileLink(value, contact?.platform_user_id);
@@ -39,7 +37,7 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
   useEffect(() => {
     const controller = new AbortController();
     const attempt = ++generation.current;
-    inFlight.current = false; setBusy(false); setNotice(""); setLookupDetails(null); setDetailsCopied(false);
+    inFlight.current = false; setBusy(false); setNotice("");
     if (isFacebook) void fetch(endpoint, { cache: "no-store", signal: controller.signal })
       .then(response => response.json()).then(data => {
         if (!controller.signal.aborted && generation.current === attempt && data.success && currentKey.current === key) {
@@ -55,7 +53,7 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
       setNotice(profileLookupError("profile_messenger_required")); return;
     }
     if (!companion.installed || !supportsAutomaticLookup(companion.version)) {
-      setNotice("Use Chrome on your computer with TENH Companion 1.2.27 or later enabled, then refresh TENH."); return;
+      setNotice("Use Chrome on your computer with TENH Companion 1.2.28 or later enabled, then refresh TENH."); return;
     }
     if (!pageId || !contact.platform_user_id || !conversation.business_id) {
       setNotice(profileLookupError("profile_context_incomplete")); return;
@@ -63,7 +61,7 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
     const context = { pageId, threadId: contact.platform_user_id, conversationId: conversation.id, businessId: conversation.business_id };
     const attempt = ++generation.current;
     const current = () => currentKey.current === key && generation.current === attempt;
-    inFlight.current = true; setBusy(true); setNotice(""); setLookupDetails(null); setDetailsCopied(false);
+    inFlight.current = true; setBusy(true); setNotice("");
     try {
       // Capture the existing revision before lookup so another agent's newer
       // customer edit cannot be overwritten when Facebook takes time to load.
@@ -73,12 +71,6 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
       const result = await companion.openFacebookProfile({ ...context, customerName: contact.full_name });
       if (!current()) return;
       if (!result?.resolved || !result.verified || !result.openToken) {
-        const detail = result?.lookupDetails;
-        setLookupDetails(JSON.stringify({ extensionVersion: companion.version,
-          reason: /^[a-z_]{1,80}$/.test(result?.reason || "") ? result?.reason : "extension_timeout",
-          tenhCustomerName: contact.full_name?.slice(0, 200), expectedFacebookName: detail?.expectedName?.slice(0, 200) ?? null,
-          headingRegions: detail?.headingRegions ?? null, cardRegions: detail?.cardRegions ?? null,
-          profileActions: detail?.profileActions ?? null, linkActions: detail?.linkActions ?? null }, null, 2));
         setNotice(profileLookupError(result?.reason || "extension_timeout")); return;
       }
       if (result.pageId !== context.pageId || result.threadId !== context.threadId ||
@@ -114,14 +106,6 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
     }
   }
 
-  async function copyLookupDetails() {
-    if (!lookupDetails) return;
-    const attempt = generation.current;
-    try {
-      await navigator.clipboard.writeText(lookupDetails);
-      if (attempt === generation.current) setDetailsCopied(true);
-    } catch { /* The visible details can still be selected and copied. */ }
-  }
 
   if (!contact) return null;
   const image = <CustomerAvatar src={contact.profile_picture_url} name={contact.full_name} contactId={contact.id} platform={conversation.social_account?.platform} eager className="h-full w-full text-2xl" />;
@@ -130,9 +114,6 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
     {isFacebook && url ? <a href={url} target="_blank" rel="noopener noreferrer" title="View Facebook profile" aria-label="View customer Facebook profile" className={avatarClass}>{image}</a>
       : <button type="button" disabled={!isFacebook || busy} aria-busy={busy} title="View Facebook profile" aria-label={isFacebook ? "View customer Facebook profile" : "Customer avatar"} onClick={() => void openAutomaticProfile()} className={`${avatarClass} disabled:cursor-default ${busy ? "animate-pulse" : ""}`}>{image}</button>}
     {busy ? <span role="status" className="text-xs text-slate-500">Finding profile…</span> : null}
-    {notice ? <div role="status" className="absolute left-0 top-[72px] z-30 w-64 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-lg"><button type="button" aria-label="Dismiss profile notice" onClick={() => setNotice("")} className="float-right ml-2 px-1">×</button>{notice}
-      {lookupDetails ? <><button type="button" onClick={() => void copyLookupDetails()} className="mt-2 block font-medium text-blue-600">{detailsCopied ? "Copied" : "Copy lookup details"}</button>
-        <details className="mt-2"><summary className="cursor-pointer">Show lookup details</summary><pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words text-[10px]">{lookupDetails}</pre></details></> : null}
-    </div> : null}
+    {notice ? <div role="status" className="absolute left-0 top-[72px] z-30 w-64 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-lg"><button type="button" aria-label="Dismiss profile notice" onClick={() => setNotice("")} className="float-right ml-2 px-1">×</button>{notice}</div> : null}
   </div>;
 }

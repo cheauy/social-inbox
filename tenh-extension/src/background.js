@@ -29,6 +29,9 @@ const FACEBOOK_TAB_STATE_TTL_MS = 2 * 60 * 60 * 1000;
 const FACEBOOK_NAV_CACHE_KEY = "facebookNavigationCacheV1";
 const FACEBOOK_NAV_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_FACEBOOK_NAV_CACHE = 500;
+const FACEBOOK_SESSION_PROBE_TTL_MS = 60 * 1000;
+
+let facebookSessionProbeCache = { at: 0, loggedIn: null, url: null };
 
 let flushPromise = null;
 let deltaPromise = null;
@@ -224,6 +227,31 @@ async function currentFacebookContext() {
     (a, b) => Number(b.seenAt ?? 0) - Number(a.seenAt ?? 0),
   );
   return values.find((value) => value?.pageId) ?? null;
+}
+
+async function probeFacebookSession({ force = false } = {}) {
+  const now = Date.now();
+  if (!force && now - facebookSessionProbeCache.at < FACEBOOK_SESSION_PROBE_TTL_MS &&
+      typeof facebookSessionProbeCache.loggedIn === "boolean") return facebookSessionProbeCache;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  try {
+    // Lightweight browser-session check. It never opens a Facebook tab and
+    // never reads message/customer content. Host permission lets the service
+    // worker follow the logged-in browser session when cookies are available.
+    const response = await fetch("https://www.facebook.com/me", {
+      method: "GET", credentials: "include", redirect: "follow", cache: "no-store",
+      headers: { Accept: "text/html" }, signal: controller.signal,
+    });
+    const url = response.url || "";
+    const loggedIn = /^https:\/\/(?:www\.)?facebook\.com\//.test(url) &&
+      !/\/(?:login|checkpoint)(?:\/|\?|$)/.test(url) && response.status < 500;
+    facebookSessionProbeCache = { at: now, loggedIn, url };
+    return facebookSessionProbeCache;
+  } catch {
+    facebookSessionProbeCache = { at: now, loggedIn: null, url: null };
+    return facebookSessionProbeCache;
+  } finally { clearTimeout(timer); }
 }
 
 async function clearAuth() {
@@ -1657,12 +1685,18 @@ async function handle(message, sender) {
       const state = await readState();
       const tabStates = await facebookTabStates();
       const facebookPages = summarizeFacebookPages(tabStates);
+      let facebook = await currentFacebookContext() ?? state.facebook ?? null;
+      if (!facebook?.loggedIn) {
+        const session = await probeFacebookSession();
+        if (session.loggedIn === true) facebook = { ...(facebook || {}), loggedIn: true, sessionOnly: !facebook?.pageId, composerState: facebook?.composerState ?? "unknown" };
+        else if (!facebook && session.loggedIn === false) facebook = { loggedIn: false, sessionOnly: true, composerState: "unknown" };
+      }
       return {
         version: VERSION,
         connected: Boolean(state.token),
         paired: Boolean(state.token),
         device: state.device ?? null,
-        facebook: await currentFacebookContext() ?? state.facebook ?? null,
+        facebook,
         facebookPages,
         facebookPageCount: facebookPages.length,
         sync: {
@@ -1879,6 +1913,8 @@ async function handle(message, sender) {
     }
 
     case "TENH_REDETECT": {
+      // Session detection does not require opening Facebook/Business Suite.
+      const session = await probeFacebookSession({ force: true });
       await reconnectOpenTabs();
       const tabs = await chrome.tabs.query({
         url: ["https://www.facebook.com/*", "https://business.facebook.com/*"],
@@ -1889,7 +1925,9 @@ async function handle(message, sender) {
         if (value) detected.push(value);
       }
       const pages = summarizeFacebookPages(await facebookTabStates());
-      const facebook = await currentFacebookContext() ?? detected.find((value) => value.pageId) ?? detected[0] ?? null;
+      let facebook = await currentFacebookContext() ?? detected.find((value) => value.pageId) ?? detected[0] ?? null;
+      if (!facebook && typeof session.loggedIn === "boolean") facebook = { loggedIn: session.loggedIn, sessionOnly: true, composerState: "unknown" };
+      else if (facebook && session.loggedIn === true) facebook = { ...facebook, loggedIn: true };
       if (facebook) await writeState({ facebook });
       await heartbeat("facebook_detected");
       return {
@@ -1897,6 +1935,7 @@ async function handle(message, sender) {
         pages,
         pageCount: pages.length,
         foundTab: detected.length > 0,
+        sessionDetected: session.loggedIn,
       };
     }
 

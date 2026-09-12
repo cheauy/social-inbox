@@ -73,7 +73,9 @@ async function render() {
     ? facebook.pageName
     : facebook.pageId
       ? `Page ${facebook.pageId}`
-      : "No Page identified";
+      : facebook.sessionOnly && facebook.loggedIn
+        ? "Facebook session detected • No Facebook tab required"
+        : "No Page identified";
 
   view.pageName.textContent = pageCount > 1
     ? `${pageCount} Pages detected • Current: ${currentPage}`
@@ -84,7 +86,9 @@ async function render() {
       ? "Facebook reply box is available."
       : facebook.composerState === "unavailable"
         ? "Facebook reply box is unavailable for this conversation."
-        : "Facebook browser tools are standing by.";
+        : facebook.loggedIn
+          ? "TENH can check the Facebook browser session automatically when needed."
+          : "Facebook sign-in is required only for browser-only companion features.";
 
   view.facebookAction.hidden = facebook.loggedIn === true;
   view.facebookAction.textContent = "Sign in to Facebook";
@@ -105,11 +109,11 @@ view.redetect.addEventListener("click", async () => {
 
   const result = await ask({ type: "TENH_REDETECT" });
 
-  view.repairResult.textContent = !result.foundTab
-    ? "Facebook browser tools are idle. They will start when needed."
-    : result.facebook?.loggedIn
-      ? "Facebook detected."
-      : "Facebook needs sign-in. Normal TENH messaging is still active.";
+  view.repairResult.textContent = result.facebook?.loggedIn || result.sessionDetected === true
+    ? "Facebook session detected automatically. No Facebook tab is required."
+    : result.sessionDetected === false
+      ? "Facebook sign-in is required for browser-only companion features. Normal TENH messaging is still active."
+      : "TENH could not confirm the Facebook browser session yet. Normal TENH messaging is still active.";
 
   await render();
 });

@@ -24,7 +24,7 @@ function harness(config={}){
    if(name==='@/components/customer-avatar')return {CustomerAvatar:()=>null};
    if(name==='@/lib/facebook/customer-profile-url')return urls;
    if(name==='@/lib/facebook/profile-lookup-error')return {profileLookupError:r=>r};
-   if(name==='@/lib/extension/use-companion')return {useCompanion:()=>({installed:config.installed!==false,version:config.version||'1.2.27',
+   if(name==='@/lib/extension/use-companion')return {useCompanion:()=>({installed:config.installed!==false,version:config.version||'1.2.28',
      openFacebookProfile:options=>{lookups.push(options);return pending},
      openResolvedFacebookProfile:async(token,ctx)=>{opens.push({token,ctx});return config.openResult||{...context,opened:true,verified:true,profileUrl:profile};}})};
    throw Error(name);
@@ -38,19 +38,18 @@ function findElement(node,predicate){
  if(!node||typeof node!=='object')return null;
  return predicate(node)?node:findElement(node.props?.children,predicate);
 }
-test('failed lookup details can be copied without including arbitrary extension fields',async()=>{
+test('failed lookup shows a simple customer-facing notice without technical lookup details',async()=>{
  const h=harness();h.click();await tick();h.answer({reason:'profile_customer_heading_missing',token:'SECRET',
   lookupDetails:{expectedName:'Facebook Customer',headingRegions:0,cardRegions:0,profileActions:1,linkActions:1,html:'PRIVATE_CHAT'}});await tick();
- const button=findElement(h.render(),n=>n.type==='button'&&n.props.children==='Copy lookup details');assert.ok(button);
- button.props.onClick();await tick();const report=JSON.parse(h.clipboard[0]);
- assert.equal(report.tenhCustomerName,'Customer');assert.equal(report.expectedFacebookName,'Facebook Customer');assert.equal(report.profileActions,1);
- assert.ok(!h.clipboard[0].includes('SECRET'));assert.ok(!h.clipboard[0].includes('PRIVATE_CHAT'));
- assert.ok(findElement(h.render(),n=>n.type==='button'&&n.props.children==='Copied'));assert.equal(h.opens.length,0);
+ const rendered=JSON.stringify(h.render());
+ assert.ok(rendered.includes('profile_customer_heading_missing'));
+ assert.ok(!rendered.includes('Copy lookup details'));assert.ok(!rendered.includes('PRIVATE_CHAT'));assert.ok(!rendered.includes('SECRET'));
+ assert.equal(h.opens.length,0);
 });
-test('switching conversations clears the previous customer lookup details',async()=>{
- const h=harness();h.click();await tick();h.answer({reason:'profile_customer_heading_missing',lookupDetails:{expectedName:'Previous Person'}});await tick();
- assert.ok(findElement(h.render(),n=>n.type==='pre'));h.switchTo({id:'other'});
- assert.equal(findElement(h.render(),n=>n.type==='pre'),null);
+test('switching conversations clears the previous customer notice',async()=>{
+ const h=harness();h.click();await tick();h.answer({reason:'profile_customer_heading_missing'});await tick();
+ assert.ok(JSON.stringify(h.render()).includes('profile_customer_heading_missing'));h.switchTo({id:'other'});
+ assert.ok(!JSON.stringify(h.render()).includes('profile_customer_heading_missing'));
 });
 test('one click resolves, opens verified profile, saves for team with original revision',async()=>{
  const h=harness();h.click();await tick();assert.equal(h.lookups.length,1);h.answer(result);await tick();
@@ -73,7 +72,7 @@ test('saved link is direct anchor, with no extension required',async()=>{
  assert.equal(a.type,'a');assert.equal(a.props.href,'https://www.facebook.com/customer.test');assert.equal(a.props.target,'_blank');assert.equal(h.lookups.length,0);
 });
 test('old or absent extension produces update instruction immediately',async()=>{
- for(const config of [{installed:false},{version:'1.2.25'}]){const h=harness(config);h.click();await tick();assert.equal(h.lookups.length,0);assert.ok(JSON.stringify(h.render()).includes('1.2.27'));}
+ for(const config of [{installed:false},{version:'1.2.25'}]){const h=harness(config);h.click();await tick();assert.equal(h.lookups.length,0);assert.ok(JSON.stringify(h.render()).includes('1.2.28'));}
 });
 test('comment conversation cannot masquerade as Messenger lookup',async()=>{
  const h=harness();h.switchTo({source_type:'facebook_comment'});h.click();await tick();assert.equal(h.lookups.length,0);assert.ok(JSON.stringify(h.render()).includes('profile_messenger_required'));

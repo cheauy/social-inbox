@@ -1,0 +1,522 @@
+TAP version 13
+# Subtest: customer card: automatically reveals a collapsed card once in an owned inactive tab
+ok 1 - customer card: automatically reveals a collapsed card once in an owned inactive tab
+  ---
+  duration_ms: 10.003968
+  type: 'test'
+  ...
+# Subtest: customer card: existing tab stays passive while a disposable tab reveals the card
+ok 2 - customer card: existing tab stays passive while a disposable tab reveals the card
+  ---
+  duration_ms: 3.820086
+  type: 'test'
+  ...
+# Subtest: customer card: an unsuccessful reveal is not repeated and cannot open a guessed profile
+ok 3 - customer card: an unsuccessful reveal is not repeated and cannot open a guessed profile
+  ---
+  duration_ms: 5.53148
+  type: 'test'
+  ...
+# Subtest: customer card: user takeover prevents automatic reveal and preserves the tab
+ok 4 - customer card: user takeover prevents automatic reveal and preserves the tab
+  ---
+  duration_ms: 1.815869
+  type: 'test'
+  ...
+# Subtest: customer card: mismatch or unavailable contact stops before any reveal
+ok 5 - customer card: mismatch or unavailable contact stops before any reveal
+  ---
+  duration_ms: 3.180573
+  type: 'test'
+  ...
+# Subtest: lookup diagnostics keep the authorized name and bounded counts only
+ok 6 - lookup diagnostics keep the authorized name and bounded counts only
+  ---
+  duration_ms: 6.180959
+  type: 'test'
+  ...
+# Subtest: lookup diagnostics reset between customers and do not affect a successful next lookup
+ok 7 - lookup diagnostics reset between customers and do not affect a successful next lookup
+  ---
+  duration_ms: 6.590713
+  type: 'test'
+  ...
+# Subtest: Page inbox: worker accepts actual provider path without converting its ID to a PSID
+ok 8 - Page inbox: worker accepts actual provider path without converting its ID to a PSID
+  ---
+  duration_ms: 1.902307
+  type: 'test'
+  ...
+# Subtest: Page inbox: path thread ID may redirect to a different Suite selected ID
+ok 9 - Page inbox: path thread ID may redirect to a different Suite selected ID
+  ---
+  duration_ms: 2.295627
+  type: 'test'
+  ...
+# Subtest: Page inbox: unrelated legacy inbox tab stays untouched
+ok 10 - Page inbox: unrelated legacy inbox tab stays untouched
+  ---
+  duration_ms: 2.431227
+  type: 'test'
+  ...
+# Subtest: Page inbox: redirect to another Page cannot authorize a profile
+ok 11 - Page inbox: redirect to another Page cannot authorize a profile
+  ---
+  duration_ms: 0.86075
+  type: 'test'
+  ...
+# Subtest: Page inbox: wrong Page, section and contradictory selectors are rejected before navigation
+ok 12 - Page inbox: wrong Page, section and contradictory selectors are rejected before navigation
+  ---
+  duration_ms: 1.603766
+  type: 'test'
+  ...
+# Subtest: specific conversation failure reaches TENH without opening a tab
+ok 13 - specific conversation failure reaches TENH without opening a tab
+  ---
+  duration_ms: 2.784127
+  type: 'test'
+  ...
+# Subtest: conversation-bound global id can open profile directly without Business Suite profile DOM
+ok 14 - conversation-bound global id can open profile directly without Business Suite profile DOM
+  ---
+  duration_ms: 1.353026
+  type: 'test'
+  ...
+# Subtest: one click resolves on demand, closes owned background tabs, opens only verified profile
+ok 15 - one click resolves on demand, closes owned background tabs, opens only verified profile
+  ---
+  duration_ms: 1.386075
+  type: 'test'
+  ...
+# Subtest: existing exact inbox is read passively and never closed
+ok 16 - existing exact inbox is read passively and never closed
+  ---
+  duration_ms: 1.790431
+  type: 'test'
+  ...
+# Subtest: other Page and other customer tabs remain untouched
+ok 17 - other Page and other customer tabs remain untouched
+  ---
+  duration_ms: 1.413044
+  type: 'test'
+  ...
+# Subtest: authorization failure opens no tab {"noToken":true}
+ok 18 - authorization failure opens no tab {"noToken":true}
+  ---
+  duration_ms: 0.558003
+  type: 'test'
+  ...
+# Subtest: authorization failure opens no tab {"denied":true}
+ok 19 - authorization failure opens no tab {"denied":true}
+  ---
+  duration_ms: 0.483954
+  type: 'test'
+  ...
+# Subtest: authorization failure opens no tab {"authorization":{"pageId":"other"}}
+ok 20 - authorization failure opens no tab {"authorization":{"pageId":"other"}}
+  ---
+  duration_ms: 0.477965
+  type: 'test'
+  ...
+# Subtest: authorization failure opens no tab {"authorization":{"businessId":"other"}}
+ok 21 - authorization failure opens no tab {"authorization":{"businessId":"other"}}
+  ---
+  duration_ms: 0.469112
+  type: 'test'
+  ...
+# Subtest: authorization failure opens no tab {"authorization":{"conversationId":"other"}}
+ok 22 - authorization failure opens no tab {"authorization":{"conversationId":"other"}}
+  ---
+  duration_ms: 0.480438
+  type: 'test'
+  ...
+# Subtest: authorization failure opens no tab {"authorization":{"threadId":"other"}}
+ok 23 - authorization failure opens no tab {"authorization":{"threadId":"other"}}
+  ---
+  duration_ms: 0.462813
+  type: 'test'
+  ...
+# Subtest: authorization failure opens no tab {"authorization":{"sourceType":"facebook_comment"}}
+ok 24 - authorization failure opens no tab {"authorization":{"sourceType":"facebook_comment"}}
+  ---
+  duration_ms: 0.492687
+  type: 'test'
+  ...
+# Subtest: reject untrusted sender {"frameId":1}
+ok 25 - reject untrusted sender {"frameId":1}
+  ---
+  duration_ms: 0.493548
+  type: 'test'
+  ...
+# Subtest: reject untrusted sender {"id":"foreign"}
+ok 26 - reject untrusted sender {"id":"foreign"}
+  ---
+  duration_ms: 0.452257
+  type: 'test'
+  ...
+# Subtest: reject untrusted sender {"url":"https://evil.test/"}
+ok 27 - reject untrusted sender {"url":"https://evil.test/"}
+  ---
+  duration_ms: 0.441512
+  type: 'test'
+  ...
+# Subtest: reject untrusted sender {"url":"https://app.tenhchat.com.evil.test/"}
+ok 28 - reject untrusted sender {"url":"https://app.tenhchat.com.evil.test/"}
+  ---
+  duration_ms: 0.67118
+  type: 'test'
+  ...
+# Subtest: lookup uses server customer name, never the caller name
+ok 29 - lookup uses server customer name, never the caller name
+  ---
+  duration_ms: 3.455187
+  type: 'test'
+  ...
+# Subtest: reject unsafe/scoped destination https://www.facebook.com/profile.php?id=987654
+ok 30 - reject unsafe/scoped destination https://www.facebook.com/profile.php?id=987654
+  ---
+  duration_ms: 2.741064
+  type: 'test'
+  ...
+# Subtest: reject unsafe/scoped destination https://www.facebook.com/123456
+ok 31 - reject unsafe/scoped destination https://www.facebook.com/123456
+  ---
+  duration_ms: 6.407168
+  type: 'test'
+  ...
+# Subtest: reject unsafe/scoped destination https://www.facebook.com/me
+ok 32 - reject unsafe/scoped destination https://www.facebook.com/me
+  ---
+  duration_ms: 2.964524
+  type: 'test'
+  ...
+# Subtest: reject unsafe/scoped destination https://www.facebook.com/photos
+ok 33 - reject unsafe/scoped destination https://www.facebook.com/photos
+  ---
+  duration_ms: 2.572566
+  type: 'test'
+  ...
+# Subtest: reject unsafe/scoped destination https://www.facebook.com/profile.php?id=555555&id=666666
+ok 34 - reject unsafe/scoped destination https://www.facebook.com/profile.php?id=555555&id=666666
+  ---
+  duration_ms: 5.475398
+  type: 'test'
+  ...
+# Subtest: reject unsafe/scoped destination https://www.facebook.com.evil.test/name
+ok 35 - reject unsafe/scoped destination https://www.facebook.com.evil.test/name
+  ---
+  duration_ms: 2.493718
+  type: 'test'
+  ...
+# Subtest: reject unsafe/scoped destination javascript:alert(1)
+ok 36 - reject unsafe/scoped destination javascript:alert(1)
+  ---
+  duration_ms: 2.400552
+  type: 'test'
+  ...
+# Subtest: rendered identity failure never opens a guessed profile conversation_selection_unverified
+ok 37 - rendered identity failure never opens a guessed profile conversation_selection_unverified
+  ---
+  duration_ms: 2.530804
+  type: 'test'
+  ...
+# Subtest: rendered identity failure never opens a guessed profile ambiguous_profile
+ok 38 - rendered identity failure never opens a guessed profile ambiguous_profile
+  ---
+  duration_ms: 0.665652
+  type: 'test'
+  ...
+# Subtest: rendered identity failure never opens a guessed profile profile_link_missing
+ok 39 - rendered identity failure never opens a guessed profile profile_link_missing
+  ---
+  duration_ms: 3.486503
+  type: 'test'
+  ...
+# Subtest: unavailable Facebook profile is not opened or cached
+ok 40 - unavailable Facebook profile is not opened or cached
+  ---
+  duration_ms: 1.052423
+  type: 'test'
+  ...
+# Subtest: login redirect gives clear reason and cleans owned inactive lookup
+ok 41 - login redirect gives clear reason and cleans owned inactive lookup
+  ---
+  duration_ms: 0.722425
+  type: 'test'
+  ...
+# Subtest: active inbox tab remains readable and is preserved
+ok 42 - active inbox tab remains readable and is preserved
+  ---
+  duration_ms: 0.736686
+  type: 'test'
+  ...
+# Subtest: concurrent lookup is rejected without duplicate tabs
+ok 43 - concurrent lookup is rejected without duplicate tabs
+  ---
+  duration_ms: 1.716443
+  type: 'test'
+  ...
+# Subtest: opening ticket binds Page/customer/workspace/conversation/document and expires
+ok 44 - opening ticket binds Page/customer/workspace/conversation/document and expires
+  ---
+  duration_ms: 1.39602
+  type: 'test'
+  ...
+# Subtest: parallel consumption opens a ticket only once
+ok 45 - parallel consumption opens a ticket only once
+  ---
+  duration_ms: 2.597793
+  type: 'test'
+  ...
+# Subtest: cold Chrome tabs with pendingUrl wait for the loaded document
+ok 46 - cold Chrome tabs with pendingUrl wait for the loaded document
+  ---
+  duration_ms: 1.742421
+  type: 'test'
+  ...
+# Subtest: uses provider conversation URL with separate inbox ID; never a PSID-built URL
+ok 47 - uses provider conversation URL with separate inbox ID; never a PSID-built URL
+  ---
+  duration_ms: 2.075071
+  type: 'test'
+  ...
+# Subtest: missing provider link opens no guessed inbox tab
+ok 48 - missing provider link opens no guessed inbox tab
+  ---
+  duration_ms: 0.529211
+  type: 'test'
+  ...
+# Subtest: caller-supplied route does not override server conversation link
+ok 49 - caller-supplied route does not override server conversation link
+  ---
+  duration_ms: 1.631717
+  type: 'test'
+  ...
+# Subtest: legacy provider link can follow Facebook redirect in its own inactive tab
+ok 50 - legacy provider link can follow Facebook redirect in its own inactive tab
+  ---
+  duration_ms: 1.356872
+  type: 'test'
+  ...
+# Subtest: provider link to wrong Page is rejected before navigation
+ok 51 - provider link to wrong Page is rejected before navigation
+  ---
+  duration_ms: 0.58998
+  type: 'test'
+  ...
+1..51
+# tests 51
+# suites 0
+# pass 51
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 118.999274
+TAP version 13
+# Subtest: failed lookup shows a simple customer-facing notice without technical lookup details
+ok 1 - failed lookup shows a simple customer-facing notice without technical lookup details
+  ---
+  duration_ms: 6.655779
+  type: 'test'
+  ...
+# Subtest: switching conversations clears the previous customer notice
+ok 2 - switching conversations clears the previous customer notice
+  ---
+  duration_ms: 1.608853
+  type: 'test'
+  ...
+# Subtest: one click resolves, opens verified profile, saves for team with original revision
+ok 3 - one click resolves, opens verified profile, saves for team with original revision
+  ---
+  duration_ms: 2.299342
+  type: 'test'
+  ...
+# Subtest: double click starts only one lookup
+ok 4 - double click starts only one lookup
+  ---
+  duration_ms: 1.239108
+  type: 'test'
+  ...
+# Subtest: same-name different Page/customer/workspace/conversation never opens or saves
+ok 5 - same-name different Page/customer/workspace/conversation never opens or saves
+  ---
+  duration_ms: 4.686433
+  type: 'test'
+  ...
+# Subtest: unmount during lookup cancels opening and saving
+ok 6 - unmount during lookup cancels opening and saving
+  ---
+  duration_ms: 0.98928
+  type: 'test'
+  ...
+# Subtest: switch during lookup cancels opening and saving
+ok 7 - switch during lookup cancels opening and saving
+  ---
+  duration_ms: 1.060184
+  type: 'test'
+  ...
+# Subtest: saved link is direct anchor, with no extension required
+ok 8 - saved link is direct anchor, with no extension required
+  ---
+  duration_ms: 0.89435
+  type: 'test'
+  ...
+# Subtest: old or absent extension produces update instruction immediately
+ok 9 - old or absent extension produces update instruction immediately
+  ---
+  duration_ms: 2.050305
+  type: 'test'
+  ...
+# Subtest: comment conversation cannot masquerade as Messenger lookup
+ok 10 - comment conversation cannot masquerade as Messenger lookup
+  ---
+  duration_ms: 1.073725
+  type: 'test'
+  ...
+# Subtest: failed open does not persist link
+ok 11 - failed open does not persist link
+  ---
+  duration_ms: 0.939576
+  type: 'test'
+  ...
+# Subtest: save failure is reported but verified profile remains usable
+ok 12 - save failure is reported but verified profile remains usable
+  ---
+  duration_ms: 1.140132
+  type: 'test'
+  ...
+# Subtest: no manual URL form is added
+ok 13 - no manual URL form is added
+  ---
+  duration_ms: 0.897655
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 30.423544
+TAP version 13
+# Subtest: Open in Meta uses authorized global id and Pancake-style URL
+ok 1 - Open in Meta uses authorized global id and Pancake-style URL
+  ---
+  duration_ms: 22.785375
+  type: 'test'
+  ...
+# Subtest: without a verified provider/global id TENH opens only the Page inbox, never PSID as selected_item_id
+ok 2 - without a verified provider/global id TENH opens only the Page inbox, never PSID as selected_item_id
+  ---
+  duration_ms: 1.512081
+  type: 'test'
+  ...
+# Subtest: server provider link can be opened directly when no global id is available
+ok 3 - server provider link can be opened directly when no global id is available
+  ---
+  duration_ms: 8270.992481
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8305.320735
+TAP version 13
+# Subtest: Pancake-style empty mailbox Business Suite link is accepted
+ok 1 - Pancake-style empty mailbox Business Suite link is accepted
+  ---
+  duration_ms: 1.394407
+  type: 'test'
+  ...
+# Subtest: exact Page/customer mapping yields separate navigation id
+ok 2 - exact Page/customer mapping yields separate navigation id
+  ---
+  duration_ms: 0.758889
+  type: 'test'
+  ...
+# Subtest: PSID cannot be accepted as a global/navigation id
+ok 3 - PSID cannot be accepted as a global/navigation id
+  ---
+  duration_ms: 0.404467
+  type: 'test'
+  ...
+# Subtest: wrong participants cannot authorize a navigation id
+ok 4 - wrong participants cannot authorize a navigation id
+  ---
+  duration_ms: 0.12169
+  type: 'test'
+  ...
+# Subtest: legacy provider Page inbox path remains exact but does not invent a global id
+ok 5 - legacy provider Page inbox path remains exact but does not invent a global id
+  ---
+  duration_ms: 0.364207
+  type: 'test'
+  ...
+# Subtest: extension builds Meta/Pancake-style direct Business Suite URL
+ok 6 - extension builds Meta/Pancake-style direct Business Suite URL
+  ---
+  duration_ms: 0.287294
+  type: 'test'
+  ...
+# Subtest: extension extracts global id only from the exact Page route
+ok 7 - extension extracts global id only from the exact Page route
+  ---
+  duration_ms: 0.239173
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 14.149685
+TAP version 13
+# Subtest: detects logged-in Facebook session without opening any tab
+ok 1 - detects logged-in Facebook session without opening any tab
+  ---
+  duration_ms: 3.193582
+  type: 'test'
+  ...
+# Subtest: detects login redirect without opening any tab
+ok 2 - detects login redirect without opening any tab
+  ---
+  duration_ms: 1.248412
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 17.058066
+TAP version 13
+# Subtest: heading-less Suite layouts can use one exact explicit profile link
+ok 1 - heading-less Suite layouts can use one exact explicit profile link
+  ---
+  duration_ms: 0.930823
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8.059075

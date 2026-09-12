@@ -1,0 +1,16 @@
+{
+  "version": "1.2.28",
+  "files": {
+    "tenh-extension/manifest.json": "02eb1b1db88823905d5a4e83bcb9cce3297d47bef48e5cadce92bed399246c19",
+    "tenh-extension/src/background.js": "b2a8d8c5c9765a8d112dab858b252d1084a3d3b3afe4bcf7190f2817cf6c2857",
+    "tenh-extension/src/facebook-profile-resolver.js": "854c66996a466ee3a12cec823ba27ca68d3847a609ca966d2df852924e51322f",
+    "tenh-extension/src/popup.js": "b543fc6d6cbffe6f2f5d1de1c8419bee1314c656cfc70500808ab8fba078d060",
+    "components/inbox/customer-facebook-avatar.tsx": "071df5f7b816a40e1ac248c5ffafb620caed4b69f0c35f9bc45a442cc6e372ff",
+    "lib/facebook/profile-lookup-error.ts": "e85cf34d27515658260ee7b0ba8fa7443fdfb1ddb84b92f6dc13f49c15042636",
+    "scripts/test-customer-facebook-avatar.cjs": "ea5383b602eaaac75c7508974c337d2d7d23d4fb1ec775ec8fe451c1cf1216ca",
+    "scripts/test-facebook-session-probe.cjs": "3ff437463ec95097ca5cfcefaf2d039de84fca4df46bf3374b1a3b8cf0bc8893",
+    "scripts/test-profile-headingless-source.cjs": "6212ab1099e4ea9d0e1441b8dc4d3c7154feb7e30253ad3468ff8bcb8c961425",
+    "docs/tenh-profile-fix-v1.2.28.md": "99198620852a54c74839ce0c87a0d7910fcef390dec5c21fb9d222f411e6d031",
+    "docs/tenh-profile-test-results-v1.2.28.txt": "29163aaa7f7ab2f80ab7774192443b6e6b57d2fbc99595fc6c8ff709658213d3"
+  }
+}
