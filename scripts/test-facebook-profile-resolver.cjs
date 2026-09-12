@@ -4,10 +4,10 @@ const {test}=require('node:test'), assert=require('node:assert/strict'), fs=requ
 const {JSDOM}=require(process.env.TENH_JSDOM_PATH || 'jsdom');
 const selectors=fs.readFileSync('tenh-extension/src/facebook-selectors.js','utf8');
 const resolver=fs.readFileSync('tenh-extension/src/facebook-profile-resolver.js','utf8');
-const base='https://business.facebook.com/latest/inbox/all?asset_id=123456&selected_item_id=987654&thread_type=FB_MESSAGE';
-const opts={pageId:'123456',threadId:'987654',customerName:'Test Customer'};
+const base='https://business.facebook.com/latest/inbox/all?asset_id=123456&selected_item_id=112233445566&thread_type=FB_MESSAGE';
+const opts={pageId:'123456',threadId:'987654',customerName:'Test Customer',conversationLink:base,linkSource:'meta_conversations_api'};
 const profile='https://www.facebook.com/profile.php?id=61555135812581';
-function fixture({name=opts.customerName,href=profile,rowId=opts.threadId,selected=true,extra='',hidden=false,heading=true}={}) {
+function fixture({name=opts.customerName,href=profile,rowId='112233445566',selected=true,extra='',hidden=false,heading=true}={}) {
   return `<nav><a href="https://www.facebook.com/admin">Admin</a></nav>
     <a ${selected?'aria-selected="true"':''} href="?asset_id=123456&selected_item_id=${rowId}">Test Customer</a>
     <aside ${hidden?'hidden':''}>${heading?`<h2>${name}</h2>`:`<span>${name}</span>`}<a href="${href}">View profile</a>${extra}</aside>
@@ -24,7 +24,7 @@ test('exact selected thread and matching detail heading yields real link without
   const h=load();let clicks=0;h.w.document.addEventListener('click',()=>clicks++);const r=h.read();
   assert.equal(r.profileUrl,profile);assert.equal(r.matchedThreadId,opts.threadId);assert.equal(clicks,0);h.close();
 });
-for(const config of [{selected:false},{rowId:'222222'},{name:'Previous Customer'},{hidden:true},{heading:false}])test('do not trust address bar/name alone '+JSON.stringify(config),()=>{
+for(const config of [{rowId:'222222'},{name:'Previous Customer'},{hidden:true},{heading:false}])test('do not trust address bar/name alone '+JSON.stringify(config),()=>{
   const h=load(fixture(config));assert.equal(h.read().profileUrl,undefined);h.close();
 });
 for(const url of [base.replace('asset_id=123456','asset_id=333333'),base+'&selected_item_id=222222',base+'&mailbox_id=555555',base.replace('FB_MESSAGE','COMMENT')])test('reject conflicting Page/thread context '+url,()=>{
@@ -66,4 +66,14 @@ test('username stays username unless Facebook exposes one numeric canonical ID',
   assert.equal(h.w.TenhFacebookSelectors.validateCurrentProfilePage(opts.customerName,opts.threadId).url,'https://www.facebook.com/customer.test');
   h.w.document.head.innerHTML=`<link rel="canonical" href="${profile}">`;
   assert.equal(h.w.TenhFacebookSelectors.validateCurrentProfilePage(opts.customerName,opts.threadId).url,profile);h.close();
+});
+
+test('provider-bound identity works without Facebook aria-selected markup',()=>{const h=load(fixture({selected:false}));assert.equal(h.read().profileUrl,profile);h.close();});
+test('PSID cannot stand in for actual selected inbox ID',()=>{const h=load(fixture(),base.replace('112233445566',opts.threadId));assert.equal(h.read().reason,'conversation_mismatch');h.close();});
+test('unverified caller URL cannot authorize profile capture',()=>{const h=load();assert.equal(h.read({...opts,linkSource:undefined}).reason,'profile_conversation_link_unavailable');h.close();});
+test('reported no contact card fails with correct reason, even with a stale profile link',()=>{
+ const h=load(fixture()+'<aside><h2>No contact card</h2><p>Your Page can no longer see this person’s profile information.</p></aside>');assert.equal(h.read().reason,'facebook_no_contact_card');assert.equal(h.read().profileUrl,undefined);h.close();
+});
+test('reported Facebook load error fails with correct reason',()=>{
+ const h=load(fixture()+'<main><h2>Something went wrong.</h2><p>We’re having trouble loading your experience. Please try again later.</p></main>');assert.equal(h.read().reason,'facebook_inbox_load_failed');h.close();
 });

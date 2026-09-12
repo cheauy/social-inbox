@@ -8,16 +8,16 @@ const code = source.slice(source.indexOf('const PROFILE_TICKETS_KEY'), source.in
 const options = { businessId:'workspace', conversationId:'conversation', pageId:'123456', threadId:'987654', customerName:'Customer' };
 const sender = { id:'extension', frameId:0, documentId:'doc', url:'https://app.tenhchat.com/dashboard/inbox', tab:{ id:10 } };
 const profile = 'https://www.facebook.com/profile.php?id=61555135812581';
-const exact = 'https://business.facebook.com/latest/inbox/all?asset_id=123456&selected_item_id=987654&thread_type=FB_MESSAGE';
+const exact = 'https://business.facebook.com/latest/inbox/all?asset_id=123456&selected_item_id=112233445566&thread_type=FB_MESSAGE';
 function harness(config = {}) {
   const tabs = new Map((config.tabs || []).map(tab => [tab.id,{ status:'complete', active:false, ...tab }]));
   const created=[], removed=[], read=[], auth=[]; const session = config.session || {}; let id=100, now=1000; const loads=new Set();
   const chrome = { runtime:{ id:'extension' }, storage:{ session:{
     get:async key=>({ [key]:structuredClone(session[key]) }), set:async data=>Object.assign(session,structuredClone(data)),
   } }, tabs:{
-    query:async()=>[...tabs.values()].filter(tab=>tab.url.includes('business.facebook.com')),
+    query:async()=>[...tabs.values()].filter(tab=>tab.url.includes('facebook.com')),
     get:async id=>{ if(!tabs.has(id)) throw Error('closed'); if(config.coldLoad&&!loads.has(id)){loads.add(id);return {...tabs.get(id),status:'loading',url:'',pendingUrl:tabs.get(id).url};} return {...tabs.get(id)}; },
-    create:async props=>{ const tab={...props,id:++id,status:'complete'}; if(config.login && props.url.includes('business.facebook.com')) tab.url='https://www.facebook.com/login/'; created.push(tab); tabs.set(tab.id,tab); return tab; },
+    create:async props=>{ const tab={...props,id:++id,status:'complete'}; if(config.login && props.url.includes('business.facebook.com')) tab.url='https://www.facebook.com/login/'; if(config.redirect && props.url===config.authorization?.conversationLink)tab.url=config.redirect; created.push(tab); tabs.set(tab.id,tab); return tab; },
     remove:async id=>{ removed.push(id); tabs.delete(id); },
   }, scripting:{executeScript:async request=>{
     if(request.files) return [];
@@ -32,7 +32,7 @@ function harness(config = {}) {
     crypto:{randomUUID},chrome,TENH_ORIGIN:'https://app.tenhchat.com',
     setTimeout:(fn,ms)=>ms===500?setImmediate(()=>{now+=500;fn();}):setTimeout(fn,ms),clearTimeout,
     readState:async()=>({token:config.noToken?null:'fake-device-token'}),
-    callTenh:async(path,request)=>{auth.push({path,request});return {ok:!config.denied,result:{success:true,verified:true,...options,customerName:'Customer',sourceType:'messenger',...config.authorization}};},
+    callTenh:async(path,request)=>{auth.push({path,request});return {ok:!config.denied,result:{success:true,verified:true,...options,customerName:'Customer',sourceType:'messenger',linkSource:'meta_conversations_api',conversationLink:exact,...config.authorization}};},
     facebookTarget:ctx=>`https://business.facebook.com/latest/inbox/all?asset_id=${ctx.pageId}&selected_item_id=${ctx.threadId}&thread_type=FB_MESSAGE`,
   };
   vm.runInNewContext(code+'\nglobalThis.api={openFacebookCustomerProfile,openResolvedFacebookProfile};',sandbox);
@@ -52,7 +52,7 @@ test('existing exact inbox is read passively and never closed',async()=>{
   assert.ok(h.read.filter(x=>x.tabId===22).every(x=>x.action==='read'));
 });
 test('other Page and other customer tabs remain untouched',async()=>{
-  const h=harness({tabs:[{id:22,url:exact.replace('123456','222222')},{id:23,url:exact.replace('987654','333333')} ]});
+  const h=harness({tabs:[{id:22,url:exact.replace('123456','222222')},{id:23,url:exact.replace('112233445566','333333')} ]});
   assert.equal((await lookup(h)).resolved,true); assert.ok(h.read.every(x=>x.tabId!==22&&x.tabId!==23));
   assert.ok(h.tabs.has(22)&&h.tabs.has(23));
 });
@@ -77,8 +77,8 @@ test('unavailable Facebook profile is not opened or cached',async()=>{
 test('login redirect gives clear reason and cleans owned inactive lookup',async()=>{
   const h=harness({login:true});assert.equal((await lookup(h)).reason,'facebook_sign_in_required');assert.equal(h.removed.length,1);
 });
-test('user taking over lookup tab interrupts and preserves it',async()=>{
-  const h=harness({takeOver:true});assert.equal((await lookup(h)).reason,'facebook_tab_in_use');assert.equal(h.removed.length,0);
+test('active inbox tab remains readable and is preserved',async()=>{
+  const h=harness({takeOver:true,result:{reason:'facebook_no_contact_card'}});assert.equal((await lookup(h)).reason,'facebook_no_contact_card');assert.equal(h.removed.length,0);
 });
 test('concurrent lookup is rejected without duplicate tabs',async()=>{
   const h=harness(); const [a,b]=await Promise.all([lookup(h),lookup(h)]);assert.equal(a.resolved,true);assert.equal(b.reason,'profile_lookup_busy');assert.equal(h.created.length,2);
@@ -94,3 +94,22 @@ test('parallel consumption opens a ticket only once',async()=>{
 });
 
 test('cold Chrome tabs with pendingUrl wait for the loaded document',async()=>{const h=harness({coldLoad:true});const r=await lookup(h);assert.equal(r.resolved,true);assert.equal(h.removed.length,2);assert.equal((await open(h,r)).opened,true);});
+
+test('uses provider conversation URL with separate inbox ID; never a PSID-built URL',async()=>{
+ const h=harness();const r=await lookup(h);assert.equal(r.resolved,true);assert.equal(h.created[0].url,exact);
+ assert.equal(new URL(h.created[0].url).searchParams.get('selected_item_id'),'112233445566');
+ assert.equal(r.threadId,options.threadId);assert.ok(h.created.every(t=>!t.url.includes('selected_item_id='+options.threadId)));
+});
+test('missing provider link opens no guessed inbox tab',async()=>{
+ const h=harness({authorization:{conversationLink:undefined}});assert.equal((await lookup(h)).reason,'profile_conversation_link_unavailable');assert.equal(h.created.length,0);
+});
+test('caller-supplied route does not override server conversation link',async()=>{
+ const h=harness();await lookup(h,{...options,conversationLink:exact.replace('112233445566','999999')});assert.equal(h.created[0].url,exact);
+});
+test('legacy provider link can follow Facebook redirect in its own inactive tab',async()=>{
+ const legacy='https://www.facebook.com/123456/messages/?tid=cid.c.123456:112233445566';
+ const h=harness({authorization:{conversationLink:legacy},redirect:exact});assert.equal((await lookup(h)).resolved,true);assert.equal(h.created[0].url,exact);assert.equal(h.removed.length,2);
+});
+test('provider link to wrong Page is rejected before navigation',async()=>{
+ const h=harness({authorization:{conversationLink:exact.replace('123456','888888')}});assert.equal((await lookup(h)).reason,'profile_conversation_link_unavailable');assert.equal(h.created.length,0);
+});

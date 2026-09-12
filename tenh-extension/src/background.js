@@ -1165,16 +1165,35 @@ function safePublicProfile(value, context) {
     return `https://www.facebook.com${path}`;
   } catch { return null; }
 }
-function isExactProfileInbox(tab, context) {
+// Parse the actual inbox route separately from the Messenger PSID.
+function profileInboxRoute(value, pageId) {
   try {
-    const url = new URL(tab?.url);
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password || url.port ||
+        !["business.facebook.com", "www.facebook.com", "facebook.com"].includes(url.hostname)) return null;
     const pages = ["asset_id", "page_id", "mailbox_id"].flatMap(key => url.searchParams.getAll(key));
-    const threads = ["selected_item_id", "thread_id"].flatMap(key => url.searchParams.getAll(key));
-    return url.origin === "https://business.facebook.com" && url.pathname.startsWith("/latest/inbox") &&
-      pages.length > 0 && pages.every(id => id === context.pageId) &&
-      threads.length > 0 && threads.every(id => id === context.threadId) &&
-      url.searchParams.getAll("thread_type").every(type => type === "FB_MESSAGE");
-  } catch { return false; }
+    if (pages.some(id => id !== pageId)) return null;
+    const selected = ["selected_item_id", "thread_id"].flatMap(key => url.searchParams.getAll(key));
+    if (selected.length && (new Set(selected).size !== 1 || !/^\d{1,32}$/.test(selected[0]))) return null;
+    if (url.searchParams.getAll("thread_type").some(type => type !== "FB_MESSAGE")) return null;
+    if (url.hostname === "business.facebook.com") {
+      if (!/^\/latest\/inbox(?:\/[^/]+)?\/?$/.test(url.pathname) || !pages.length || !selected.length) return null;
+      return { key: `suite:${pageId}:${selected[0]}`, selectedItemId: selected[0], url: url.href, suite: true };
+    }
+    const segments = url.pathname.split("/").filter(Boolean);
+    const pageInbox = segments[0] === pageId && ["messages", "inbox"].includes(segments[1]) && segments.length === 2;
+    const messages = segments[0] === "messages" && (segments.length === 1 || (segments[1] === "t" && segments.length === 3));
+    const legacyIds = ["threadid", "tid"].flatMap(key => url.searchParams.getAll(key));
+    if (legacyIds.some(id => !/^[A-Za-z0-9_.:-]{1,200}$/.test(id))) return null;
+    if (!(pageInbox || messages) || (!selected.length && !legacyIds.length && segments.length !== 3)) return null;
+    const params = [...url.searchParams.entries()].filter(([key]) => ["selected_item_id", "thread_id", "threadid", "tid"].includes(key)).sort();
+    return { key: `${segments.join("/")}:${JSON.stringify(params)}`, selectedItemId: selected[0] || null, url: url.href, suite: false };
+  } catch { return null; }
+}
+function isExactProfileInbox(tab, context) {
+  const expected = profileInboxRoute(context.loadedConversationLink || context.conversationLink, context.pageId);
+  const actual = profileInboxRoute(tab?.url, context.pageId);
+  return Boolean(expected && actual && expected.key === actual.key);
 }
 async function authorizeProfile(context, sender) {
   if (!profileSenderAllowed(sender)) return { reason: "untrusted_sender" };
@@ -1189,11 +1208,17 @@ async function authorizeProfile(context, sender) {
         pageId: context.pageId, threadId: context.threadId, profileLookup: true,
       },
     }), 8000);
-    if (!response.ok || response.result?.verified !== true || !profileContextEqual(response.result, context)) return { reason: "profile_context_unmatched" };
+    if (!response.ok || response.result?.verified !== true || !profileContextEqual(response.result, context)) {
+      const reason = response.result?.reason;
+      return { reason: ["profile_conversation_link_unavailable", "profile_conversation_ambiguous", "profile_conversation_access_unavailable", "profile_conversation_lookup_failed"].includes(reason) ? reason : "profile_context_unmatched" };
+    }
     if (response.result.sourceType !== "messenger") return { reason: "profile_messenger_required" };
     if (!response.result.customerName?.trim()) return { reason: "profile_context_incomplete" };
+    if (response.result.linkSource !== "meta_conversations_api" ||
+        !profileInboxRoute(response.result.conversationLink, context.pageId)) return { reason: "profile_conversation_link_unavailable" };
     return { context: { businessId: context.businessId, conversationId: context.conversationId,
-      pageId: context.pageId, threadId: context.threadId, customerName: response.result.customerName } };
+      pageId: context.pageId, threadId: context.threadId, customerName: response.result.customerName,
+      conversationLink: response.result.conversationLink, linkSource: response.result.linkSource } };
   } catch { return { reason: "tenh_authorization_unavailable" }; }
 }
 async function profileScript(tabId, options, action) {
@@ -1211,15 +1236,22 @@ async function loadProfileScripts(tabId) {
 }
 async function readStableCustomerLink(tabId, context, owned) {
   const deadline = Date.now() + 22000;
-  let previous = null, injected = false, revealed = false, reason = "profile_link_missing";
+  let previous = null, injected = false, reason = "profile_link_missing";
   while (Date.now() < deadline) {
     const tab = await chrome.tabs.get(tabId);
-    if (owned && tab.active) return { reason: "facebook_tab_in_use" };
     // A new Chrome tab can report a blank url + pendingUrl while loading.
     // Wait for the loaded document before checking its actual destination.
     if (tab.status !== "complete") { await profilePause(); continue; }
     if (/\/login|\/checkpoint/.test(tab.url ?? "")) return { reason: "facebook_sign_in_required" };
-    if (!isExactProfileInbox(tab, context)) return { reason: "profile_lookup_interrupted" };
+    if (!isExactProfileInbox(tab, context)) {
+      // A Meta-returned legacy thread link can redirect into Business Suite.
+      // Only follow that transition in our own newly created inactive tab.
+      const expected = profileInboxRoute(context.conversationLink, context.pageId);
+      const actual = profileInboxRoute(tab.url, context.pageId);
+      if (!owned || tab.active || context.loadedConversationLink || !expected || expected.suite || !actual?.suite ||
+          (expected.selectedItemId && expected.selectedItemId !== actual.selectedItemId)) return { reason: "profile_lookup_interrupted" };
+      context.loadedConversationLink = tab.url;
+    }
     if (tab.status === "complete") {
       try {
         if (!injected) { await loadProfileScripts(tabId); injected = true; }
@@ -1230,10 +1262,7 @@ async function readStableCustomerLink(tabId, context, owned) {
           previous = url;
         } else {
           previous = null; reason = result.reason || "profile_link_missing";
-          if (["ambiguous_profile", "facebook_sign_in_required", "conversation_mismatch"].includes(reason)) return { reason };
-          if (owned && !revealed && reason === "profile_link_missing") {
-            revealed = true; await profileScript(tabId, context, "reveal");
-          }
+          if (["ambiguous_profile", "facebook_sign_in_required", "conversation_mismatch", "facebook_no_contact_card", "facebook_inbox_load_failed"].includes(reason)) return { reason };
         }
       } catch { injected = false; reason = "facebook_bridge_unavailable"; }
     }
@@ -1258,11 +1287,11 @@ async function openFacebookCustomerProfile(options, sender) {
     const authorization = await authorizeProfile(options, sender);
     if (!authorization.context) return { opened: false, reason: authorization.reason };
     context = authorization.context;
-    const tabs = await chrome.tabs.query({ url: ["https://business.facebook.com/*"] });
+    const tabs = await chrome.tabs.query({ url: ["https://business.facebook.com/*", "https://www.facebook.com/*"] });
     const existing = tabs.find(tab => isExactProfileInbox(tab, context));
     let tab = existing;
     if (!tab) {
-      tab = await chrome.tabs.create({ url: facebookTarget(context), active: false });
+      tab = await chrome.tabs.create({ url: context.conversationLink, active: false });
       lookupTabId = tab.id;
     }
     const found = await readStableCustomerLink(tab.id, context, !existing);

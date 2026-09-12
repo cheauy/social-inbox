@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateDevice } from "@/lib/extension/device-auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getCustomerConversationLink } from "@/lib/facebook/customer-conversation-link";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
@@ -26,6 +27,12 @@ export async function POST(request: NextRequest) {
   if (!page || !contact || !page.is_active || page.platform !== "facebook" || contact.platform !== "facebook" ||
       page.platform_account_id !== body.pageId || contact.platform_user_id !== body.threadId) return deny();
   if (body.profileLookup === true && conversation.source_type !== "messenger") return deny();
+  let profileContext = {};
+  if (body.profileLookup === true) {
+    const link = await getCustomerConversationLink(page.platform_account_id, contact.platform_user_id);
+    if ("reason" in link) return NextResponse.json({ success: false, reason: link.reason }, { status: 424 });
+    profileContext = { ...link, sourceType: conversation.source_type };
+  }
   return NextResponse.json({ success: true, verified: true, businessId: auth.device.business_id, conversationId: conversation.id, pageId: page.platform_account_id, threadId: contact.platform_user_id,
-    ...(body.profileLookup === true ? { customerName: contact.full_name, sourceType: conversation.source_type } : {}) });
+    ...profileContext });
 }
