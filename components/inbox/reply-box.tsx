@@ -590,8 +590,6 @@ export function ReplyBox({
   const [sendMode, setSendMode] =
     useState<SendMode>("now");
 
-  const [sendMenuOpen, setSendMenuOpen] =
-    useState(false);
 
   type ToolbarPanel =
     | "quick-tag"
@@ -669,6 +667,7 @@ export function ReplyBox({
 
   const discardRecordingRef =
     useRef(false);
+  const sendRecordingRef = useRef<((attachment: ReplyAttachment) => void) | null>(null);
 
   function closeExpandedChildSelector(
     ariaLabel: "Quick tags" | "Quick replies",
@@ -687,7 +686,7 @@ export function ReplyBox({
   function dismissToolbarPanels() {
     setEmojiOpen(false);
     setMoreOpen(false);
-    setSendMenuOpen(false);
+
     closeExpandedChildSelector("Quick tags");
     closeExpandedChildSelector("Quick replies");
 
@@ -862,7 +861,7 @@ export function ReplyBox({
 
     setEmojiOpen(false);
     setMoreOpen(false);
-    setSendMenuOpen(false);
+
     clearToolbarPanel();
     setRecordingError(null);
     setVoiceReviewPlaying(false);
@@ -917,6 +916,8 @@ export function ReplyBox({
       };
 
       recorder.onstop = () => {
+        const sendRecording = sendRecordingRef.current;
+        sendRecordingRef.current = null;
         clearRecordingTimer();
         stopRecordingTracks();
         setRecordingVoice(false);
@@ -988,6 +989,11 @@ export function ReplyBox({
             URL.createObjectURL(blob),
           kind: "audio",
         };
+
+        if (sendRecording) {
+          sendRecording(attachment);
+          return;
+        }
 
         setAttachments(
           (current) => [
@@ -1090,6 +1096,7 @@ export function ReplyBox({
   }
 
   function finishVoiceRecording() {
+    if (isComposerDisabled || !onSendAttachments) return;
     const recorder =
       mediaRecorderRef.current;
 
@@ -1103,6 +1110,7 @@ export function ReplyBox({
 
     discardRecordingRef.current =
       false;
+    sendRecordingRef.current = (attachment) => { void sendVoiceReview(attachment); };
     recorder.stop();
   }
 
@@ -1198,8 +1206,8 @@ export function ReplyBox({
     }
   }
 
-  async function sendVoiceReview() {
-    const attachment = getVoiceReviewAttachment();
+  async function sendVoiceReview(recordedAttachment?: ReplyAttachment) {
+    const attachment = recordedAttachment ?? getVoiceReviewAttachment();
 
     if (!attachment || !onSendAttachments || isComposerDisabled) {
       return;
@@ -1209,7 +1217,9 @@ export function ReplyBox({
       voicePreviewAudioRef.current.pause();
     }
 
-    const sentReview = voiceReview;
+    const sentReview = recordedAttachment
+      ? { attachmentId: recordedAttachment.id, durationSeconds: Math.max(1, recordingSecondsRef.current) }
+      : voiceReview;
     setVoiceReview(null);
     setAttachments((current) => current.filter((item) => item.id !== attachment.id));
     const restoreVoice = () => {
@@ -1323,8 +1333,13 @@ export function ReplyBox({
       return;
     }
 
+    if (kind === "video" && attachments.some((attachment) => attachment.kind === "video")) {
+      window.alert("Only one video can be added. Remove the current video before choosing another.");
+      return;
+    }
+
     const selectedFiles =
-      Array.from(files);
+      kind === "video" ? Array.from(files).slice(0, 1) : Array.from(files);
 
     const maximumSize =
       TENH_ATTACHMENT_LIMITS[kind];
@@ -1353,9 +1368,7 @@ export function ReplyBox({
                   !file.type.startsWith(
                     "video/",
                   ) &&
-                  !file.type.startsWith(
-                    "audio/",
-                  );
+                  (!file.type.startsWith("audio/") || /\.(mp3|wav)$/i.test(file.name));
 
         return (
           validType &&
@@ -1385,7 +1398,7 @@ export function ReplyBox({
         file,
         previewUrl:
           URL.createObjectURL(file),
-        kind,
+        kind: kind === "file" && /\.(mp3|wav)$/i.test(file.name) ? "audio" as const : kind,
       }));
 
     setAttachments((current) => [
@@ -1507,7 +1520,7 @@ export function ReplyBox({
     const latitude = Number(location.latitude.toFixed(6));
     const longitude = Number(location.longitude.toFixed(6));
     const locationMessage =
-      `📍 Location: https://www.google.com/maps?q=${latitude},${longitude}`;
+      `https://www.google.com/maps?q=${latitude},${longitude}`;
 
     setLastPickedLocation({ latitude, longitude });
     onReplyChange(
@@ -1558,7 +1571,6 @@ export function ReplyBox({
     pendingPostSendStatusRef.current =
       postSendStatus;
 
-    setSendMenuOpen(false);
 
     if (attachments.length > 0) {
       event.preventDefault();
@@ -2005,8 +2017,9 @@ export function ReplyBox({
             <button
               type="button"
               onClick={finishVoiceRecording}
+              disabled={isComposerDisabled || !onSendAttachments}
               className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-[0_5px_12px_rgba(37,99,235,0.22)] transition hover:bg-blue-700"
-              title="Finish recording"
+              title="Send voice message"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -2018,7 +2031,7 @@ export function ReplyBox({
               >
                 <path d="m5 12 4 4L19 6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <span>{isKhmer ? "រួចរាល់" : "Done"}</span>
+              <span>{isKhmer ? "ផ្ញើ" : "Send"}</span>
             </button>
           </div>
         </div>
@@ -2237,7 +2250,7 @@ export function ReplyBox({
               if (!isComposerBlocked) {
                 setEmojiOpen(false);
                 setMoreOpen(false);
-                setSendMenuOpen(false);
+
                 setActiveToolbarPanel("quick-tag");
 
                 window.setTimeout(() => {
@@ -2286,7 +2299,7 @@ export function ReplyBox({
               if (!isComposerBlocked) {
                 setEmojiOpen(false);
                 setMoreOpen(false);
-                setSendMenuOpen(false);
+
                 setActiveToolbarPanel("quick-reply");
 
                 window.setTimeout(() => {
@@ -2347,7 +2360,7 @@ export function ReplyBox({
               setActiveToolbarPanel(nextOpen ? "emoji" : null);
               setEmojiOpen(nextOpen);
               setMoreOpen(false);
-              setSendMenuOpen(false);
+
             }}
             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${
               emojiOpen
@@ -2372,13 +2385,13 @@ export function ReplyBox({
             ref={videoInputRef}
             type="file"
             accept="video/*"
-            multiple
             onChange={handleVideoChange}
             className="hidden"
           />
           <input
             ref={fileInputRef}
             type="file"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.rtf,.odt,.ods,.odp,.zip,.rar,.7z,.json,.xml,.mp3,.wav"
             multiple
             onChange={handleFileChange}
             className="hidden"
@@ -2397,7 +2410,7 @@ export function ReplyBox({
                   setActiveToolbarPanel(nextOpen ? "attach" : null);
                   setMoreOpen(nextOpen);
                   setEmojiOpen(false);
-                  setSendMenuOpen(false);
+
                 }}
                 className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${
                   moreOpen
@@ -2492,170 +2505,14 @@ export function ReplyBox({
             </div>
           </div>
 
-          {/* Safe split Send button */}
-          <div className="relative shrink-0">
-            <div className="flex overflow-hidden rounded-xl bg-blue-600 text-white shadow-[0_6px_16px_rgba(37,99,235,0.22)]">
-              <button
-                type="submit"
-                disabled={
-                  isSendDisabled ||
-                  (!reply.trim() &&
-                    attachments.length === 0)
-                }
-                className="inline-flex h-12 min-w-[96px] items-center justify-center gap-2 px-4 text-sm font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                title={
-                  loadingQuickReplyMedia
-                    ? isKhmer
-                      ? "កំពុងភ្ជាប់ឯកសាររបស់ការឆ្លើយតបរហ័ស..."
-                      : "Attaching the quick reply's media..."
-                    : blockedReason
-                    ? blockedReason
-                    : sendMode === "close"
-                    ? isKhmer ? "ផ្ញើ និងបិទការសន្ទនា" : "Send & close conversation"
-                    : sendMode === "pending"
-                      ? isKhmer ? "ផ្ញើ និងសម្គាល់ថាកំពុងរង់ចាំ" : "Send & mark pending"
-                      : isKhmer ? "ផ្ញើឥឡូវ" : "Send now"
-                }
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  className="h-4 w-4"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M21 3 10 14"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="m21 3-7 18-4-7-7-4 18-7Z"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                {/*
-                  Always "Send", never "Sending...".
-                  The button stays usable while a message is in flight, so a
-                  label saying otherwise would contradict it. Progress is shown
-                  where it belongs -- on the bubble in the thread, which carries
-                  its own sent tick.
-                */}
-                <span>
-                  {isKhmer ? "ផ្ញើ" : "Send"}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                disabled={isComposerDisabled}
-                onClick={() => {
-                  const nextOpen = !sendMenuOpen;
-
-                  if (nextOpen) {
-                    closeExpandedChildSelector("Quick tags");
-                    closeExpandedChildSelector("Quick replies");
-                    setEmojiOpen(false);
-                    setMoreOpen(false);
-                    clearToolbarPanel();
-                  }
-
-                  setSendMenuOpen(nextOpen);
-                  setEmojiOpen(false);
-                  setMoreOpen(false);
-                }}
-                className="flex h-12 w-10 items-center justify-center border-l border-white/20 transition hover:bg-blue-700 disabled:opacity-50"
-                aria-label={isKhmer ? "ជម្រើសផ្ញើ" : "Send options"}
-                aria-expanded={sendMenuOpen}
-                title={isKhmer ? "ជម្រើសផ្ញើ" : "Send options"}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="h-4 w-4"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="m6 9 6 6 6-6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            {sendMenuOpen ? (
-              <>
-                <button
-                  type="button"
-                  className="fixed inset-0 z-40 cursor-default bg-transparent"
-                  onClick={() => {
-                    setSendMenuOpen(false);
-                    clearToolbarPanel();
-                  }}
-                  aria-label="Close send options"
-                />
-                <div className="absolute bottom-[calc(100%+10px)] right-0 z-50 w-64 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.18)]">
-                  {(
-                    [
-                      [
-                        "now",
-                        isKhmer ? "ផ្ញើឥឡូវ" : "Send now",
-                        isKhmer ? "ផ្ញើដោយមិនប្តូរស្ថានភាព" : "Send without changing status",
-                      ],
-                      [
-                        "close",
-                        isKhmer ? "ផ្ញើ និងបិទការសន្ទនា" : "Send & close conversation",
-                        isKhmer ? "បិទតែបន្ទាប់ពីផ្ញើបានជោគជ័យ" : "Closes only after a successful send",
-                      ],
-                      [
-                        "pending",
-                        isKhmer ? "ផ្ញើ និងសម្គាល់ថាកំពុងរង់ចាំ" : "Send & mark pending",
-                        isKhmer ? "សម្គាល់ថាកំពុងរង់ចាំតែបន្ទាប់ពីផ្ញើបានជោគជ័យ" : "Marks pending only after a successful send",
-                      ],
-                    ] as const
-                  ).map(
-                    ([mode, label, help]) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        disabled={
-                          mode !== "now" &&
-                          !onStatusChange
-                        }
-                        onClick={() => {
-                          setSendMode(mode);
-                          setSendMenuOpen(false);
-                        }}
-                        className={`flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-                          sendMode === mode
-                            ? "bg-violet-50 text-violet-700"
-                            : "text-slate-700 hover:bg-slate-50"
-                        } disabled:cursor-not-allowed disabled:opacity-40`}
-                      >
-                        <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-xs">
-                          {sendMode === mode
-                            ? "✓"
-                            : ""}
-                        </span>
-                        <span>
-                          <span className="block text-sm font-semibold">
-                            {label}
-                          </span>
-                          <span className="mt-0.5 block text-[11px] font-normal text-slate-400">
-                            {help}
-                          </span>
-                        </span>
-                      </button>
-                    ),
-                  )}
-                </div>
-              </>
-            ) : null}
-          </div>
+          <button
+            type="submit"
+            disabled={isSendDisabled || (!reply.trim() && attachments.length === 0)}
+            className="inline-flex h-12 min-w-[96px] shrink-0 items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            title={blockedReason || (isKhmer ? "ផ្ញើ" : "Send")}
+          >
+            {isKhmer ? "ផ្ញើ" : "Send"}
+          </button>
         </div>
 
         {error ? (
@@ -2740,7 +2597,10 @@ export function ReplyBox({
               className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
             >
               <VideoIcon />
-              <span>{isKhmer ? "បន្ថែមវីដេអូ" : "Add videos"}</span>
+              <span>{isKhmer ? "បន្ថែមវីដេអូ" : "Add video"}</span>
+              <span className="ml-auto text-xs text-slate-400">
+                {isKhmer ? "តែមួយ" : "Single"}
+              </span>
             </button>
             <button
               type="button"
@@ -2752,6 +2612,9 @@ export function ReplyBox({
             >
               <FileIcon />
               <span>{isKhmer ? "បន្ថែមឯកសារ" : "Add files"}</span>
+              <span className="ml-auto text-xs text-slate-400">
+                {isKhmer ? "ច្រើន" : "Multiple"}
+              </span>
             </button>
             <button
               type="button"

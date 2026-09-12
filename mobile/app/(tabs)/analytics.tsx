@@ -33,6 +33,7 @@ type ConversationSummary = {
   currentUnread: number;
   currentUnassigned: number;
   waitingOverSla: number;
+  overdueReminders?: number | null;
   incomingMessages: number;
   outgoingMessages: number;
   totalMessages: number;
@@ -51,7 +52,6 @@ type CustomerSummary = {
   returningCustomers: number;
 };
 
-type WorkloadMember = { overdueReminders: number };
 
 type BusyHourRow = {
   hour: number;
@@ -88,7 +88,7 @@ type Overview = {
   agents: AgentSummary;
   customers: CustomerSummary;
   unassigned: number;
-  overdueReminders: number;
+  overdueReminders: number | null;
   busyHours: BusyHourRow[];
   channels: ChannelRow[];
   channelSummary: ChannelSummary;
@@ -155,7 +155,7 @@ function Attention({
   icon: IconName;
   tone: string;
   label: string;
-  value: number;
+  value: number | string;
   helper: string;
 }) {
   return (
@@ -992,9 +992,10 @@ export default function Analytics() {
        * performance has its own endpoint because it includes response and SLA
        * figures for every connected account, not only a channel total.
        */
-      const [conversations, agents, customers, workload, channelReport] =
+      const [conversations, agents, customers, channelReport] =
         await Promise.all([
           api<{
+            warnings?: string[];
             analytics?: {
               summary?: Partial<ConversationSummary>;
               busyHours?: BusyHourRow[];
@@ -1009,10 +1010,6 @@ export default function Analytics() {
           ),
           api<{ analytics?: { summary?: Partial<CustomerSummary> } }>(
             `/api/analytics/customers?${query}`,
-            workspace.businessId,
-          ),
-          api<{ members?: WorkloadMember[] }>(
-            "/api/team/workload",
             workspace.businessId,
           ),
           api<{
@@ -1036,20 +1033,8 @@ export default function Analytics() {
           ...EMPTY.customers,
           ...(customers.analytics?.summary ?? {}),
         },
-        /*
-         * Each channel row contains only conversations created in the chosen
-         * period. Summing those rows makes this card obey the date filter;
-         * team/workload is an all-time current queue and caused the old count
-         * to stay unchanged when Today switched to 7 or 30 days.
-         */
-        unassigned: channelRows.reduce(
-          (total, channel) => total + Math.max(0, channel.unassigned || 0),
-          0,
-        ),
-        overdueReminders: (workload.members ?? []).reduce(
-          (total, member) => total + (member.overdueReminders ?? 0),
-          0,
-        ),
+        unassigned: conversations.analytics?.summary?.currentUnassigned ?? 0,
+        overdueReminders: conversations.analytics?.summary?.overdueReminders ?? null,
         busyHours: conversations.analytics?.busyHours ?? [],
         channels: channelRows,
         channelSummary: {
@@ -1058,7 +1043,7 @@ export default function Analytics() {
         },
       });
 
-      setError("");
+      setError((conversations.warnings ?? []).join(" "));
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -1078,12 +1063,7 @@ export default function Analytics() {
   const { conversations, agents, customers } = data;
   const periodLabel =
     PERIODS.find((option) => option.key === period)?.label ?? "Today";
-  const unassignedHelper =
-    period === "today"
-      ? "Created today"
-      : period === "yesterday"
-        ? "Created yesterday"
-        : `Created in ${periodLabel.toLowerCase()}`;
+  const unassignedHelper = `Incoming in ${periodLabel.toLowerCase()}`;
 
   return (
     <TabScreen
@@ -1171,15 +1151,15 @@ export default function Analytics() {
           tone="#6D4AFF"
           label="Unread"
           value={conversations.currentUnread}
-          helper="New messages"
+          helper="Unread conversations"
         />
 
         <Attention
           icon="alarm-outline"
           tone={colors.red}
           label="Overdue"
-          value={data.overdueReminders}
-          helper="Past due follow-ups"
+          value={data.overdueReminders ?? "—"}
+          helper="Unfinished, due in period"
         />
       </View>
 
@@ -1260,10 +1240,10 @@ export default function Analytics() {
       <Text
         style={[styles.muted, { fontSize: 12, paddingHorizontal: 2, lineHeight: 18 }]}
       >
-        Channel and busiest-hour figures follow the selected date range. The
-        hourly chart uses the local hour when each conversation first received
-        a customer message. Unassigned also follows the selected range; unread,
-        SLA and overdue counters describe the Inbox right now.
+        All cards follow the selected period. Assignment and unread counts use
+        current status for conversations with incoming messages in that period.
+        SLA is measured at the period’s end; overdue means unfinished follow-ups
+        due during the period.
       </Text>
     </TabScreen>
   );

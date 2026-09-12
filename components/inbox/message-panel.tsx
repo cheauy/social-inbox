@@ -4115,7 +4115,7 @@ export function MessagePanel({
 
                             {isOutgoing &&
                             !commentState.deleted ? (
-                              <span className="text-[11px] font-medium text-slate-400">
+                              <span className="text-[11px] font-normal text-slate-400">
                                 {optimisticStatus ===
                                 "sending"
                                   ? "Sending..."
@@ -4523,7 +4523,7 @@ export function MessagePanel({
                                           />
                                         </span>
                                         {replyIsOutgoing ? (
-                                          <span className="text-[10px] font-medium text-slate-400">
+                                          <span className="text-[10px] font-normal text-slate-400">
                                             {replyStatus.__optimistic_status ===
                                             "sending"
                                               ? "Sending..."
@@ -4765,7 +4765,7 @@ export function MessagePanel({
                       : "justify-start"
                   }`}
                 >
-                  <div className="group max-w-[84%] sm:max-w-[74%] xl:max-w-[62%]">
+                  <div className={`group max-w-[84%] sm:max-w-[74%] xl:max-w-[62%] ${isVideoMessage ? "w-[512px]" : ""}`}>
                     <div
                       className={`text-sm transition ${
                         isBareSticker
@@ -5235,6 +5235,7 @@ export function MessagePanel({
 
                               if (
                                 !albumCaption ||
+                                /^\[(image|photo|video)\]$/i.test(albumCaption) ||
                                 albumCaption ===
                                   "Sent a photo" ||
                                 albumCaption ===
@@ -5338,12 +5339,12 @@ export function MessagePanel({
                               <video
                                 src={attachmentUrl}
                                 controls
-                                preload="none"
+                                preload="metadata"
                                 playsInline
-                                className="max-h-[380px] w-full bg-black object-contain"
+                                className="aspect-video w-full bg-black object-contain"
                               />
                             ) : (
-                              <div className="flex h-44 w-full items-center justify-center bg-slate-900 text-sm font-medium text-slate-300">
+                              <div className="flex aspect-video w-full items-center justify-center bg-slate-900 text-sm font-medium text-slate-300">
                                 Video unavailable
                               </div>
                             )}
@@ -5354,7 +5355,7 @@ export function MessagePanel({
                             <CompactAudioPlayer
                               src={attachmentUrl}
                               label={attachmentName}
-                              isVoice={isVoiceMessage}
+                              isVoice={isVoiceMessage || (isAudioMessage && isOutgoing)}
                               isOutgoing={isOutgoing}
                             />
                           ) : (
@@ -5570,7 +5571,7 @@ export function MessagePanel({
                             ) : persistedDeliveryStatus ===
                               "seen" ? (
                               <span
-                                className={`font-semibold ${
+                                className={`font-normal ${
                                   onColoredBubble
                                     ? "text-white"
                                     : "text-slate-600"

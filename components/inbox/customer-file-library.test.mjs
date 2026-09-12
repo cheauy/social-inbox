@@ -33,7 +33,7 @@ test("media combines saved photos and conversation clips, newest month first", (
   assert.ok(html.indexOf('View video: product-clip') < html.indexOf('View image: receipt-photo'));
   assert.ok(!html.includes('invoice.pdf'));
   assert.match(html, /Download/);
-  assert.match(html, /conversation=c1/);
+  assert.doesNotMatch(html, /conversation=c1/);
 });
 test("Files keeps documents and playable voice messages together", () => {
   const html = render("files");

@@ -523,7 +523,7 @@ export async function POST(
    * text. This prevents photo/file/voice messages from bypassing either the
    * one-private-reply lock or Meta's 7-day Human Agent ceiling.
    */
-  let messengerPolicy;
+  let messengerPolicy: Awaited<ReturnType<typeof getFacebookMessengerReplyPolicy>>;
 
   try {
     messengerPolicy =
@@ -619,6 +619,12 @@ export async function POST(
         status: 500,
       },
     );
+  }
+
+  const isPrivateReply = messengerPolicy.windowState === "private_reply_available";
+  if (isPrivateReply && !messengerPolicy.latestIncomingCommentId) {
+    return NextResponse.json({ success: false, code: "PRIVATE_REPLY_COMMENT_MISSING",
+      error: "The original customer comment could not be identified. Refresh the conversation before sending a private reply." }, { status: 409 });
   }
 
   const graphVersion =
@@ -804,10 +810,10 @@ export async function POST(
               "application/json",
           },
           body: JSON.stringify({
-            recipient: {
-              id: recipientId,
-            },
-            ...(shouldUseHumanAgent
+            recipient: isPrivateReply
+              ? { comment_id: messengerPolicy.latestIncomingCommentId }
+              : { id: recipientId },
+            ...(isPrivateReply ? {} : shouldUseHumanAgent
               ? {
                   messaging_type:
                     "MESSAGE_TAG",

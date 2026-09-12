@@ -41,6 +41,7 @@ type ConversationSummary = {
   currentUnread: number;
   currentUnassigned: number;
   waitingOverSla: number;
+  overdueReminders?: number | null;
   incomingMessages: number;
   outgoingMessages: number;
   totalMessages: number;
@@ -98,21 +99,6 @@ type AgentRow = {
   resolvedActions: number;
 };
 
-type WorkloadMember = {
-  memberId: string;
-  fullName: string;
-  email: string;
-  role: string;
-  profilePictureUrl:
-    | string
-    | null;
-  openCount: number;
-  pendingCount: number;
-  activeCount: number;
-  unreadCount: number;
-  overdueReminders: number;
-};
-
 type CustomerResponse = {
   success?: boolean;
   error?: string;
@@ -141,6 +127,8 @@ type ChannelRow = {
 };
 
 type ConversationResponse = {
+  warnings?: string[];
+  currentMemberRole?: string;
   success?: boolean;
   error?: string;
   businessId?: string;
@@ -166,17 +154,7 @@ type AgentResponse = {
   };
 };
 
-type WorkloadResponse = {
-  success?: boolean;
-  error?: string;
-  businessId?: string;
-  currentMemberId?: string;
-  currentMemberRole?: string;
-  unassignedCount?: number;
-  live?: { unreadConversations: number; waitingOverSla: number; overdueReminders: number } | null;
-  liveError?: string | null;
-  members?: WorkloadMember[];
-};
+
 
 const EMPTY_CUSTOMERS:
   CustomerSummary = {
@@ -929,12 +907,11 @@ export function DashboardOverviewPanel({
   const [waitingConversations, setWaitingConversations] = useState<WaitingConversation[]>([]);
   const [agentSummary, setAgentSummary] = useState<AgentSummary>(EMPTY_AGENT_SUMMARY);
   const [agents, setAgents] = useState<AgentRow[]>([]);
-  const [workloadMembers, setWorkloadMembers] = useState<WorkloadMember[]>([]);
+  const [reportAvailable, setReportAvailable] = useState(false);
   const [daily, setDaily] = useState<DailyRow[]>([]);
   const [busyHours, setBusyHours] = useState<BusyHourRow[]>([]);
   const [channels, setChannels] = useState<ChannelRow[]>([]);
-  const [liveWorkload, setLiveWorkload] = useState<WorkloadResponse["live"]>(null);
-  const [unassignedCount, setUnassignedCount] = useState(0);
+
   const [currentMemberRole, setCurrentMemberRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -952,13 +929,12 @@ export function DashboardOverviewPanel({
 
     const tzOffsetMinutes = new Date().getTimezoneOffset();
 
-    const [customerResult, conversationResult, agentResult, workloadResult] = await Promise.all([
+    const [customerResult, conversationResult, agentResult] = await Promise.all([
       requestJson<CustomerResponse>(`/api/analytics/customers?period=${effectivePeriod}&tzOffsetMinutes=${tzOffsetMinutes}`),
       requestJson<ConversationResponse>(`/api/analytics/conversations?period=${effectivePeriod}&slaMinutes=${slaMinutes}&tzOffsetMinutes=${tzOffsetMinutes}`),
       // Previously hardcoded to period=7d, so a "Today" dashboard showed
       // 7 days of agent data beside 1 day of conversation data.
       requestJson<AgentResponse>(`/api/analytics/agents?period=${effectivePeriod}&slaMinutes=${slaMinutes}&tzOffsetMinutes=${tzOffsetMinutes}`),
-      requestJson<WorkloadResponse>(`/api/team/workload?includeLive=1&slaMinutes=${slaMinutes}`),
     ]);
 
     if (!mountedRef.current || requestVersion !== requestVersionRef.current) {
@@ -975,6 +951,9 @@ export function DashboardOverviewPanel({
     }
 
     if (conversationResult.ok && conversationResult.data?.success) {
+      setReportAvailable(true);
+      setCurrentMemberRole(conversationResult.data.currentMemberRole ?? null);
+      nextWarnings.push(...(conversationResult.data.warnings ?? []));
       setConversations({ ...EMPTY_CONVERSATIONS, ...(conversationResult.data.analytics?.summary ?? {}) });
       // These were fetched and thrown away; the charts invented their
       // own shapes instead of using them.
@@ -983,6 +962,7 @@ export function DashboardOverviewPanel({
       setChannels(conversationResult.data.analytics?.channels ?? []);
       setWaitingConversations(conversationResult.data.analytics?.waitingConversations ?? []);
     } else {
+      setReportAvailable(false);
       setConversations(EMPTY_CONVERSATIONS);
       setDaily([]); setBusyHours([]); setChannels([]); setWaitingConversations([]);
       nextWarnings.push(`Conversations: ${conversationResult.error ?? conversationResult.data?.error ?? "Unavailable"}`);
@@ -994,18 +974,6 @@ export function DashboardOverviewPanel({
     } else {
       setAgentSummary(EMPTY_AGENT_SUMMARY); setAgents([]);
       nextWarnings.push(`Team performance: ${agentResult.error ?? agentResult.data?.error ?? "Unavailable"}`);
-    }
-
-    if (workloadResult.ok && workloadResult.data?.success) {
-      setLiveWorkload(workloadResult.data.live ?? null);
-      if (!workloadResult.data.live) nextWarnings.push(workloadResult.data.liveError ?? "Live workload is unavailable.");
-      setWorkloadMembers(workloadResult.data.members ?? []);
-      setUnassignedCount(Math.max(0, workloadResult.data.unassignedCount ?? 0));
-      setCurrentMemberRole(workloadResult.data.currentMemberRole ?? null);
-    } else {
-      setLiveWorkload(null);
-      setUnassignedCount(0);
-      nextWarnings.push(`Team workload: ${workloadResult.error ?? workloadResult.data?.error ?? "Unavailable"}`);
     }
 
     setWarnings(nextWarnings);
@@ -1047,7 +1015,7 @@ export function DashboardOverviewPanel({
   const topSummaryItems = [
     {
       label: "Unassigned",
-      value: unassignedCount,
+      value: reportAvailable ? conversations.currentUnassigned : "—",
       helper: "Needs owner",
       icon: "customers" as DashboardIconName,
       tone: "amber" as IconTone,
@@ -1055,7 +1023,7 @@ export function DashboardOverviewPanel({
     },
     {
       label: "Waiting > SLA",
-      value: liveWorkload?.waitingOverSla ?? "—",
+      value: reportAvailable ? conversations.waitingOverSla : "—",
       helper: `Over ${slaMinutes} min`,
       icon: "clock" as DashboardIconName,
       tone: "rose" as IconTone,
@@ -1063,7 +1031,7 @@ export function DashboardOverviewPanel({
     },
     {
       label: "Unread",
-      value: liveWorkload?.unreadConversations ?? "—",
+      value: reportAvailable ? conversations.currentUnread : "—",
       helper: "Unread conversations",
       icon: "mail" as DashboardIconName,
       tone: "violet" as IconTone,
@@ -1071,8 +1039,8 @@ export function DashboardOverviewPanel({
     },
     {
       label: "Overdue",
-      value: liveWorkload?.overdueReminders ?? "—",
-      helper: "Past due follow-ups",
+      value: reportAvailable ? (conversations.overdueReminders ?? "—") : "—",
+      helper: "Unfinished, due in period",
       icon: "reminder" as DashboardIconName,
       tone: "rose" as IconTone,
       actionHref: "/dashboard/inbox?view=reminders",
@@ -1159,13 +1127,6 @@ export function DashboardOverviewPanel({
     className: CHANNEL_DOTS[index % CHANNEL_DOTS.length].replace("bg-", "bg-"),
     width: clampPercent((item.value / channelTotal) * 100),
   }));
-
-  const customerTotal = Math.max(1, customers.totalCustomers);
-  const customerSegments = [
-    { className: "bg-emerald-500", width: clampPercent((customers.activeCustomers / customerTotal) * 100) },
-    { className: "bg-teal-500", width: clampPercent((customers.returningCustomers / customerTotal) * 100) },
-    { className: "bg-slate-300", width: clampPercent((customers.inactive30Days / customerTotal) * 100) },
-  ];
 
   if (loading) {
     return (
@@ -1266,7 +1227,7 @@ export function DashboardOverviewPanel({
 
       <div className="flex items-center gap-2 text-sm text-slate-500">
         <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-        <span>Right now — not affected by the date filter</span>
+        <span>{periodLabel} — conversations with incoming messages in this period</span>
       </div>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -1289,10 +1250,10 @@ export function DashboardOverviewPanel({
               href="/dashboard/inbox?assigned=unassigned"
               className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
             >
-              Assign {unassignedCount} →
+              Open Inbox →
             </Link>
             <p className="text-center text-xs text-slate-500">
-              Current workload. Categories can overlap.
+              Assignment and unread counts use current status. SLA is measured at the period’s end; categories can overlap.
             </p>
           </div>
         </div>
@@ -1441,22 +1402,18 @@ export function DashboardOverviewPanel({
       <section className="rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold text-slate-400">Customers — all time</p>
-            <p className="mt-2 text-[34px] font-bold leading-none text-slate-950">{customers.totalCustomers}</p>
-            <p className="mt-2 text-xs text-slate-500">Total customers</p>
+            <p className="text-xs font-semibold text-slate-400">Customers — {periodLabel}</p>
+            <p className="mt-2 text-[34px] font-bold leading-none text-slate-950">{customers.activeCustomers}</p>
+            <p className="mt-2 text-xs text-slate-500">Customers with messages in this period</p>
           </div>
 
         </div>
 
-        <div className="mt-5">
-          <ProgressBar segments={customerSegments} />
-        </div>
-
         <div className="mt-4 flex flex-wrap gap-5 text-sm text-slate-500">
-          <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />Active 30d {customers.activeCustomers} ({Math.round((customers.activeCustomers / customerTotal) * 100)}%)</span>
-          <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-teal-500" />Returning {customers.returningCustomers} ({Math.round((customers.returningCustomers / customerTotal) * 100)}%)</span>
-          <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-slate-300" />Inactive 30d+ {customers.inactive30Days} ({Math.round((customers.inactive30Days / customerTotal) * 100)}%)</span>
+          <span>New contacts: {customers.newCustomers}</span>
+          <span>Returning active customers: {customers.returningCustomers}</span>
         </div>
+        <p className="mt-2 text-xs text-slate-500">Returning customers are included in the active count. New contacts were added during the selected period.</p>
       </section>
     </div>
   );

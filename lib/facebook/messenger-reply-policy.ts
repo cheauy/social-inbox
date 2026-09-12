@@ -6,6 +6,7 @@ import {
 } from "@/lib/supabase/admin";
 
 type MessengerPolicyMessageRow = {
+  platform_message_id?: string | null;
   direction?: string | null;
   platform_created_at?: string | null;
   created_at?: string | null;
@@ -158,6 +159,7 @@ export type FacebookMessengerReplyPolicy = {
   withinHumanAgentWindow: boolean;
   latestDirectIncomingAt: string | null;
   latestIncomingCommentAt: string | null;
+  latestIncomingCommentId: string | null;
   latestDirectOutgoingAt: string | null;
   waitingForCustomerReply: boolean;
   windowState: FacebookMessengerWindowState;
@@ -172,7 +174,7 @@ export async function getFacebookMessengerReplyPolicy(
   } = await supabaseAdmin
     .from("messages")
     .select(
-      "direction,platform_created_at,created_at,raw_payload",
+      "direction,platform_message_id,platform_created_at,created_at,raw_payload",
     )
     .eq(
       "conversation_id",
@@ -316,12 +318,20 @@ export async function getFacebookMessengerReplyPolicy(
     nowMs,
   );
   const waitingForCustomerReply = windowState === "waiting_for_customer_reply";
+  // Resolve the ID from the same incoming comment used for the reply window.
+  // A conversation's original comment ID may belong to an older thread.
+  const commentPayload = latestIncomingComment?.raw_payload;
+  const latestIncomingCommentId = latestIncomingComment
+    ? (isRecord(commentPayload) ? cleanString(commentPayload.comment_id) : null)
+      ?? cleanString(latestIncomingComment.platform_message_id)
+    : null;
 
   return {
     hasRecentDirectCustomerMessage,
     withinHumanAgentWindow,
     latestDirectIncomingAt,
     latestIncomingCommentAt,
+    latestIncomingCommentId,
     latestDirectOutgoingAt,
     waitingForCustomerReply,
     windowState,

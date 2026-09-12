@@ -14,13 +14,14 @@ for(const range of ['today','yesterday','7d','30d'])test(range+' reaches every d
  const urls=[];const h=dashboard(range,async url=>{urls.push(url);return {ok:false}});await h.exports.run();
  assert.equal(urls.filter(u=>u.includes('/analytics/')).length,3);
  for(const u of urls.filter(u=>u.includes('/analytics/')))assert.equal(new URL(u,'https://test').searchParams.get('period'),range);
- assert(urls.includes('/api/team/workload?includeLive=1&slaMinutes=10'));
+ assert.equal(urls.length,3);
+ assert(!urls.some(u=>u.includes('/team/workload')));
 });
 test('a late response cannot overwrite a newer dashboard refresh',async()=>{
  const waiting=[];const h=dashboard('today',()=>new Promise(r=>waiting.push(r)));
  const older=h.exports.run();const newer=h.exports.run();
- waiting.slice(4).forEach(r=>r({ok:false}));await newer;const count=h.updates.length;
- waiting.slice(0,4).forEach(r=>r({ok:false}));await older;assert.equal(h.updates.length,count);
+ waiting.slice(3).forEach(r=>r({ok:false}));await newer;const count=h.updates.length;
+ waiting.slice(0,3).forEach(r=>r({ok:false}));await older;assert.equal(h.updates.length,count);
 });
 for(const route of ['customers','conversations','agents']){
  const path=`app/api/analytics/${route}/route.ts`,text=fs.readFileSync(path,'utf8');

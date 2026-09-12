@@ -1,6 +1,7 @@
 "use client";
 
 import { ConversationBookmark } from "./conversation-visuals";
+import { ConversationStatusMenu } from "./conversation-status-menu";
 
 import { useEffect, useState } from "react";
 import {
@@ -10,7 +11,6 @@ import { createClient } from "@/lib/supabase/client";
 
 import {
   getInitial,
-  statusOptions,
 } from "@/components/inbox/inbox-utils";
 
 import type {
@@ -98,14 +98,6 @@ function StoreIcon() {
       <path d="M3 10l2-5h14l2 5" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M8 19v-5h8v5" strokeLinecap="round" />
       <path d="M3 10c0 1.2 1 2 2.2 2 1.1 0 1.8-.5 2.3-1.3.5.8 1.2 1.3 2.3 1.3s1.8-.5 2.3-1.3c.5.8 1.2 1.3 2.3 1.3s1.8-.5 2.3-1.3c.5.8 1.2 1.3 2.3 1.3 1.2 0 2.2-.8 2.2-2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5" aria-hidden="true">
-      <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -590,24 +582,14 @@ export function ConversationHeader({
             <UnreadIcon />
           </button>
 
-          <div className="relative">
-            <select
-              value={conversation.status}
-              onChange={(event) => onStatusChange(event.target.value as ConversationStatus)}
-              disabled={updatingStatus}
-              className="h-10 min-w-[128px] appearance-none rounded-xl border border-slate-200 bg-white pl-4 pr-9 text-[14px] font-medium capitalize text-slate-800 shadow-[0_4px_12px_rgba(15,23,42,0.07)] outline-none transition hover:border-slate-300 hover:bg-slate-50 focus:border-blue-300 focus:ring-2 focus:ring-blue-100 disabled:cursor-wait disabled:opacity-50"
-              aria-label={isKhmer ? "ប្តូរស្ថានភាពការសន្ទនា" : "Change conversation status"}
-            >
-              {statusOptions.map((status) => (
-                <option key={status.value} value={status.value}>
-                  {statusLabel(status.value, status.label)}
-                </option>
-              ))}
-            </select>
-            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-500">
-              <ChevronDownIcon />
-            </span>
-          </div>
+          <ConversationStatusMenu
+            key={conversation.id}
+            value={conversation.status}
+            onChange={onStatusChange}
+            disabled={updatingStatus}
+            label={isKhmer ? "ប្តូរស្ថានភាពការសន្ទនា" : "Change conversation status"}
+            statusLabel={statusLabel}
+          />
 
           <div className="mx-0.5 h-7 w-px bg-slate-200" aria-hidden="true" />
 

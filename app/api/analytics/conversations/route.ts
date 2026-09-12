@@ -270,10 +270,7 @@ export async function GET(
   const currentMember =
     authResult.member;
 
-  const {
-    data,
-    error,
-  } = await supabaseAdmin.rpc(
+  const [{ data, error }, overdueResult] = await Promise.all([supabaseAdmin.rpc(
     "get_tenh_conversation_reports",
     {
       p_business_id:
@@ -287,7 +284,13 @@ export async function GET(
       p_tz_offset_minutes:
         tzOffsetMinutes,
     },
-  );
+  ), supabaseAdmin.from("conversation_reminders")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", currentMember.business_id)
+    .eq("status", "open")
+    .gte("remind_at", range.start.toISOString())
+    .lt("remind_at", range.end.toISOString()),
+  ]);
 
   if (error) {
     console.error(
@@ -330,8 +333,9 @@ export async function GET(
       range.start.toISOString(),
     end:
       range.end.toISOString(),
+    warnings: overdueResult.error ? ["Overdue follow-ups could not be loaded."] : [],
     analytics:
-      data ?? {
+      data ? { ...data, summary: { ...data.summary, overdueReminders: overdueResult.error ? null : (overdueResult.count ?? 0) } } : {
         summary: {
           receivedConversations: 0,
           resolvedConversations: 0,
@@ -344,6 +348,7 @@ export async function GET(
           currentUnread: 0,
           currentUnassigned: 0,
           waitingOverSla: 0,
+          overdueReminders: overdueResult.error ? null : (overdueResult.count ?? 0),
           incomingMessages: 0,
           outgoingMessages: 0,
           totalMessages: 0,

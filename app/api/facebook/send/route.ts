@@ -407,7 +407,7 @@ export async function POST(
    * - 24h–7d: HUMAN_AGENT for a real support agent only
    * - after 7d: block and wait for a new customer message
    */
-  let messengerPolicy;
+  let messengerPolicy: Awaited<ReturnType<typeof getFacebookMessengerReplyPolicy>>;
 
   try {
     messengerPolicy =
@@ -481,6 +481,11 @@ export async function POST(
 
   const hasRecentDirectCustomerMessage =
     messengerPolicy.hasRecentDirectCustomerMessage;
+  const isPrivateReply = messengerPolicy.windowState === "private_reply_available";
+  if (isPrivateReply && !messengerPolicy.latestIncomingCommentId) {
+    return NextResponse.json({ success: false, code: "PRIVATE_REPLY_COMMENT_MISSING",
+      error: "The original customer comment could not be identified. Refresh the conversation before sending a private reply." }, { status: 409 });
+  }
   const latestDirectIncomingAt =
     messengerPolicy.latestDirectIncomingAt;
   const shouldUseHumanAgent =
@@ -515,10 +520,10 @@ export async function POST(
             "application/json",
         },
         body: JSON.stringify({
-          recipient: {
-            id: recipientId,
-          },
-          ...(useHumanAgentTag
+          recipient: isPrivateReply
+            ? { comment_id: messengerPolicy.latestIncomingCommentId }
+            : { id: recipientId },
+          ...(isPrivateReply ? {} : useHumanAgentTag
             ? {
                 messaging_type:
                   "MESSAGE_TAG",

@@ -1,6 +1,7 @@
 "use client";
 
 import { CustomerFacebookAvatar } from "@/components/inbox/customer-facebook-avatar";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -22,6 +23,9 @@ type CustomerProfileProps = {
   activeConversation: InboxConversation | null;
   assigning?: boolean;
   onAssignToMe?: () => void;
+  onReportSpam: () => Promise<boolean>;
+  reportingSpam?: boolean;
+  reportSpamError?: string | null;
   onContactTagsChange?: (
     contactId: string,
     tags: NonNullable<InboxConversation["contact"]>["tags"],
@@ -100,6 +104,9 @@ export function CustomerProfile({
   assigning = false,
   onAssignToMe,
   onContactTagsChange,
+  onReportSpam,
+  reportingSpam = false,
+  reportSpamError,
 }: CustomerProfileProps) {
   const router = useRouter();
   const isKhmer = useWorkspaceLanguageId() === "km";
@@ -124,6 +131,7 @@ export function CustomerProfile({
     useState(false);
   const [filesOpen, setFilesOpen] =
     useState(false);
+  const [spamConversationId, setSpamConversationId] = useState<string | null>(null);
 
   const contact = activeConversation?.contact ?? null;
   const customerTags =
@@ -356,7 +364,7 @@ async function saveProfile() {
             </h2>
 
             <p className="mt-1 break-all text-sm text-slate-500">
-              {activeConversation.social_account?.platform === "facebook" ? "Messenger ID" : "ID"}: {contact.platform_user_id}
+              ID: {contact.platform_user_id}
             </p>
           </div>
         </div>
@@ -556,7 +564,7 @@ async function saveProfile() {
               <ProfileValue label="Facebook profile ID" icon="id" value={contact.facebook_profile_id || "Not available"} breakAll />
             ) : null}
             <ProfileValue
-              label={activeConversation.social_account?.platform === "facebook" ? "Messenger ID" : (isKhmer ? "លេខសម្គាល់អតិថិជន" : "Customer ID")}
+              label="ID"
     icon="id"
               value={contact.platform_user_id}
               breakAll
@@ -684,6 +692,8 @@ async function saveProfile() {
 
               <button
                 type="button"
+                onClick={() => setSpamConversationId(activeConversation.id)}
+                disabled={reportingSpam || activeConversation.status === "spam"}
                 className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
               >
                 <span className="text-red-400">
@@ -729,6 +739,19 @@ async function saveProfile() {
         </>
       )}
     </div>
+
+    <ConfirmActionDialog
+      open={spamConversationId === activeConversation.id}
+      title={isKhmer ? "សម្គាល់ថាជាសារឥតបានការ?" : "Mark conversation as spam?"}
+      description={isKhmer ? "ការសន្ទនានេះនឹងត្រូវបានសម្គាល់ថាជាសារឥតបានការនៅក្នុង TENH។ អ្នកអាចប្តូរស្ថានភាពវិញនៅពេលក្រោយ។" : "This conversation will be marked as spam in TENH. You can change its status again later."}
+      confirmLabel={isKhmer ? "សម្គាល់ថាជាសារឥតបានការ" : "Mark as spam"}
+      loading={reportingSpam}
+      error={reportSpamError}
+      onCancel={() => setSpamConversationId(null)}
+      onConfirm={async () => {
+        if (await onReportSpam()) setSpamConversationId((current) => current === activeConversation.id ? null : current);
+      }}
+    />
 
     {reminderOpen ? (
       <ReminderModal

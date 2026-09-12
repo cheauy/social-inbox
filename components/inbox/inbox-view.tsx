@@ -19,6 +19,8 @@ import {
 import type { FormEvent } from "react";
 
 import { ConversationList } from "@/components/inbox/conversation-list";
+import { confirmOutgoingMessage } from "@/lib/inbox/confirm-outgoing-message";
+import { normalizeMessages } from "@/lib/inbox/normalize-messages";
 import { CustomerProfile } from "@/components/inbox/customer-profile";
 import { CustomerTimelineModal } from "@/components/inbox/customer-timeline-modal";
 import type { InboxViewProps } from "@/components/inbox/inbox-view-types";
@@ -798,8 +800,14 @@ const previousActiveConversationIdRef =
 
   const [
     liveMessages,
-    setLiveMessages,
-  ] = useState(messages);
+    setRawLiveMessages,
+  ] = useState(() => normalizeMessages(messages));
+  const setLiveMessages = useCallback((update: InboxMessage[] | ((current: InboxMessage[]) => InboxMessage[])) => {
+    setRawLiveMessages((current) => normalizeMessages(
+      typeof update === "function" ? update(current) : update,
+      current,
+    ));
+  }, []);
 
   /*
    * Keep current live data available to long-running fallback timers without
@@ -7271,16 +7279,9 @@ async function performOptimisticSend(
      * that arrive without one, such as a reply sent from Meta's own inbox.
      */
     if (result.messageId) {
+      const platformId = result.messageId;
       setLiveMessages((current) =>
-        current.map((message) =>
-          message.id === pending.tempId
-            ? ({
-                ...message,
-                platform_message_id:
-                  result.messageId ?? null,
-              } as InboxMessage)
-            : message,
-        ),
+        confirmOutgoingMessage(current, pending.tempId, platformId),
       );
     }
   } catch (error) {
@@ -8423,7 +8424,7 @@ async function handleSendMessage(
       updatingStatus ||
       nextStatus === activeConversation.status
     ) {
-      return;
+      return false;
     }
 
     const conversationId = activeConversation.id;
@@ -8502,6 +8503,7 @@ async function handleSendMessage(
           ),
         ),
       );
+      return true;
     } catch (error) {
       const currentOverride =
         statusOverrideRef.current.get(conversationId);
@@ -8529,6 +8531,7 @@ async function handleSendMessage(
           ? error.message
           : "Unable to update status.",
       );
+      return false;
     } finally {
       setUpdatingStatus(false);
     }
@@ -8980,6 +8983,9 @@ return (
 />
       {customerPanelVisible ? (
         <CustomerProfile
+          onReportSpam={() => handleStatusChange("spam")}
+          reportingSpam={updatingStatus}
+          reportSpamError={statusError}
           activeConversation={
             customerProfileConversation
           }

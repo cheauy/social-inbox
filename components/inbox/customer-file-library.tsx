@@ -75,7 +75,7 @@ export function CustomerFileLibrary({ items, tab, onTab, loading, deletingId, on
       {item.savedId ? <>
         {item.kind !== "link" ? <button type="button" onClick={() => onDownload(item.savedId!)} className={actionClass}>Download</button> : null}
         <button type="button" disabled={deletingId === item.savedId} onClick={() => onDelete(item.savedId!)} className={`${actionClass} !text-red-600`}>{deletingId === item.savedId ? "Deleting…" : "Delete"}</button>
-      </> : item.conversationId ? <a href={`/dashboard/inbox?conversation=${encodeURIComponent(item.conversationId)}`} className={actionClass}>Conversation</a> : null}
+      </> : null}
     </div>;
   }
 
