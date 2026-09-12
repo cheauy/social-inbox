@@ -12,7 +12,7 @@ const exact = 'https://business.facebook.com/latest/inbox/all?asset_id=123456&se
 const pageInboxFixture = require('./fixtures/facebook-conversation-page-inbox.json');
 function harness(config = {}) {
   const tabs = new Map((config.tabs || []).map(tab => [tab.id,{ status:'complete', active:false, ...tab }]));
-  const created=[], removed=[], read=[], auth=[]; const session = config.session || {}; let id=100, now=1000; const loads=new Set();
+  const created=[], removed=[], read=[], auth=[]; const session = config.session || {}; let id=100, now=1000; const loads=new Set(),revealed=new Set();
   const chrome = { runtime:{ id:'extension' }, storage:{ session:{
     get:async key=>({ [key]:structuredClone(session[key]) }), set:async data=>Object.assign(session,structuredClone(data)),
   } }, tabs:{
@@ -24,8 +24,10 @@ function harness(config = {}) {
     if(request.files) return [];
     const [ctx,action]=request.args; read.push({tabId:request.target.tabId,action,ctx});
     if(config.takeOver) tabs.get(request.target.tabId).active=true;
+    if(action==='reveal'){revealed.add(request.target.tabId);return [{frameId:0,result:{revealed:true}}];}
     const result=action==='validate'
       ? config.validation || {valid:true,nameMatches:true,url:config.profile || profile}
+      : config.collapsed && (!revealed.has(request.target.tabId)||config.stillMissing) ? {reason:'profile_link_not_rendered',canReveal:true}
       : config.result || {found:true,pageId:ctx.pageId,matchedThreadId:ctx.threadId,profileUrl:config.profile || profile};
     return [{frameId:0,result}];
   }} };
@@ -41,6 +43,31 @@ function harness(config = {}) {
 }
 const lookup=(h,opts=options,from=sender)=>h.api.openFacebookCustomerProfile(opts,from);
 const open=(h,result,opts=options,from=sender)=>h.api.openResolvedFacebookProfile(result.openToken,from,opts);
+test('customer card: automatically reveals a collapsed card once in an owned inactive tab',async()=>{
+ const h=harness({collapsed:true}),r=await lookup(h);assert.equal(r.resolved,true);
+ assert.equal(h.read.filter(r=>r.action==='reveal').length,1);assert.equal(h.removed.length,2);
+ assert.equal((await open(h,r)).opened,true);
+});
+test('customer card: existing tab stays passive while a disposable tab reveals the card',async()=>{
+ const h=harness({collapsed:true,tabs:[{id:22,url:exact,active:true}]}),r=await lookup(h);
+ assert.equal(r.resolved,true);assert.ok(h.read.filter(x=>x.tabId===22).every(x=>x.action==='read'));
+ assert.equal(h.read.filter(x=>x.action==='reveal').length,1);assert.ok(h.tabs.has(22));
+});
+test('customer card: an unsuccessful reveal is not repeated and cannot open a guessed profile',async()=>{
+ const h=harness({collapsed:true,stillMissing:true}),r=await lookup(h);
+ assert.equal(r.reason,'profile_link_not_rendered');assert.equal(r.openToken,undefined);
+ assert.equal(h.read.filter(x=>x.action==='reveal').length,1);assert.equal(h.created.length,1);
+});
+test('customer card: user takeover prevents automatic reveal and preserves the tab',async()=>{
+ const h=harness({collapsed:true,takeOver:true}),r=await lookup(h);
+ assert.equal(r.resolved,undefined);assert.equal(h.read.filter(x=>x.action==='reveal').length,0);assert.equal(h.removed.length,0);
+});
+test('customer card: mismatch or unavailable contact stops before any reveal',async()=>{
+ for(const reason of ['conversation_mismatch','ambiguous_profile','facebook_no_contact_card','facebook_inbox_load_failed']){
+  const h=harness({result:{reason,canReveal:true}}),r=await lookup(h);
+  assert.equal(r.reason,reason);assert.ok(h.read.every(x=>x.action==='read'));assert.equal(r.openToken,undefined);
+ }
+});
 test('Page inbox: worker accepts actual provider path without converting its ID to a PSID',async()=>{
  const f=pageInboxFixture,conversationLink='https://www.facebook.com'+f.response.data[0].link;
  const ctx={...options,pageId:f.pageId,threadId:f.psid};

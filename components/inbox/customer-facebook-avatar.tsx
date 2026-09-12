@@ -10,7 +10,7 @@ import type { InboxConversation } from "@/types/inbox";
 function supportsAutomaticLookup(version: string | null) {
   const parts = version?.split(".").map(Number);
   return Boolean(parts && parts.length >= 3 && parts.every(Number.isFinite) &&
-    (parts[0] > 1 || (parts[0] === 1 && (parts[1] > 2 || (parts[1] === 2 && parts[2] >= 24)))));
+    (parts[0] > 1 || (parts[0] === 1 && (parts[1] > 2 || (parts[1] === 2 && parts[2] >= 25)))));
 }
 
 /** Saved links open directly. Unknown Messenger profiles use a context-bound
@@ -53,7 +53,7 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
       setNotice(profileLookupError("profile_messenger_required")); return;
     }
     if (!companion.installed || !supportsAutomaticLookup(companion.version)) {
-      setNotice("Use Chrome on your computer with TENH Companion 1.2.24 or later enabled, then refresh TENH."); return;
+      setNotice("Use Chrome on your computer with TENH Companion 1.2.25 or later enabled, then refresh TENH."); return;
     }
     if (!pageId || !contact.platform_user_id || !conversation.business_id) {
       setNotice(profileLookupError("profile_context_incomplete")); return;

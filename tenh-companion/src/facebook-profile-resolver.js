@@ -92,7 +92,7 @@ globalThis.TenhFacebookProfileResolver = (() => {
         if (node.matches('body, main, [role="main"]') || node.closest(excluded) ||
             node.querySelector('[contenteditable], [role="log"], [role="feed"], [aria-selected]') ||
             normalize(node.textContent).length > 1500) break;
-        if (node.querySelector('a[href]')) regions.add(node);
+        regions.add(node);
         if (node.matches('aside, [role="complementary"], [role="dialog"], header')) break;
       }
     }
@@ -102,35 +102,48 @@ globalThis.TenhFacebookProfileResolver = (() => {
   function readCurrent(options = {}) {
     const match = context(options);
     if (match.reason) return match;
-    const urls = new Set();
-    for (const region of identityRegions(options.customerName)) {
+    const urls = new Set(), regions = identityRegions(options.customerName);
+    let unrecognizedLabel = false, unsupportedLink = false;
+    for (const region of regions) {
       for (const anchor of region.querySelectorAll('a[href]')) {
         if (!visible(anchor) || anchor.closest(excluded)) continue;
-        const label = normalize(anchor.textContent || anchor.getAttribute("aria-label") || anchor.getAttribute("title") || anchor.querySelector('img')?.alt);
-        if (label !== normalize(options.customerName) && !/^(?:view (?:facebook )?profile|facebook profile|មើលប្រវត្តិរូប)$/.test(label)) continue;
+        // Check each label independently: whitespace or a different visible
+        // caption must not mask a matching accessible label on the same link.
+        const labels = [anchor.textContent, anchor.getAttribute("aria-label"), anchor.getAttribute("title"), anchor.querySelector('img')?.alt].map(normalize).filter(Boolean);
+        const labelled = labels.some(label => label === normalize(options.customerName) || /^(?:view (?:facebook )?profile|facebook profile|មើលប្រវត្តិរូប)$/.test(label));
         const url = selectors.profileCandidateUrl(anchor.getAttribute("href"));
-        if (!url) continue;
+        if (!url) { if (labelled) unsupportedLink = true; continue; }
+        if (!labelled) { unrecognizedLabel = true; continue; }
         const id = new URL(url).searchParams.get("id");
-        if (id === options.threadId || id === options.pageId) continue;
+        if (id === options.threadId || id === options.pageId) { unsupportedLink = true; continue; }
         urls.add(url);
       }
     }
     if (urls.size > 1) return { ...match, reason: "ambiguous_profile" };
-    if (!urls.size) return { ...match, reason: "profile_link_missing" };
+    if (!urls.size) return { ...match, canReveal: !unsupportedLink && !unrecognizedLabel && revealControls(options).length === 1,
+      reason: !regions.length ? "profile_customer_heading_missing" : unsupportedLink ? "profile_link_format_unsupported"
+        : unrecognizedLabel ? "profile_link_label_unrecognized" : "profile_link_not_rendered" };
     return { ...match, found: true, profileUrl: [...urls][0] };
   }
 
-  // Only the disposable background lookup tab may reveal the detail panel.
+  function revealControls(options) {
+    const wanted = normalize(options.customerName);
+    if (!wanted) return [];
+    return [...document.querySelectorAll('button, [role="button"]')].filter(control => {
+      if (!visible(control) || control.closest(`${excluded}, a[href], [role="row"], [role="listbox"], [aria-selected]`)) return false;
+      if (control.matches(':disabled, [aria-disabled="true"], [aria-expanded="true"]')) return false;
+      const labels = [control.getAttribute("aria-label"), control.textContent].map(normalize);
+      return labels.includes(wanted) && Boolean(control.querySelector('h1, h2, h3, [role="heading"]') || control.closest('header'));
+    });
+  }
+
+  // The worker calls this only in its disposable inactive lookup tab. Check
+  // current visibility and conversation again before interacting with the UI.
   function reveal(options = {}) {
     const match = context(options);
     if (match.reason) return match;
     if (document.visibilityState !== "hidden") return { reason: "facebook_tab_in_use" };
-    const wanted = normalize(options.customerName);
-    const controls = [...document.querySelectorAll('button, [role="button"]')].filter(control => {
-      if (!visible(control) || control.closest(`${excluded}, a[href], [role="row"], [role="listbox"], [aria-selected]`)) return false;
-      const label = normalize(control.getAttribute("aria-label") || control.textContent);
-      return label === wanted && Boolean(control.querySelector('h1, h2, h3, [role="heading"]') || control.closest('header'));
-    });
+    const controls = revealControls(options);
     if (controls.length !== 1) return { ...match, revealed: false };
     controls[0].click();
     return { ...match, revealed: true };

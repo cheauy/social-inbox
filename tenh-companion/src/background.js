@@ -1243,7 +1243,7 @@ async function loadProfileScripts(tabId) {
 }
 async function readStableCustomerLink(tabId, context, owned) {
   const deadline = Date.now() + 22000;
-  let previous = null, injected = false, reason = "profile_link_missing";
+  let previous = null, injected = false, reason = "profile_link_not_rendered", missingReads = 0, revealAttempted = false;
   while (Date.now() < deadline) {
     const tab = await chrome.tabs.get(tabId);
     // A new Chrome tab can report a blank url + pendingUrl while loading.
@@ -1266,10 +1266,19 @@ async function readStableCustomerLink(tabId, context, owned) {
         const url = safePublicProfile(result.profileUrl, context);
         if (result.found && result.pageId === context.pageId && result.matchedThreadId === context.threadId && url) {
           if (previous === url) return { profileUrl: url };
-          previous = url;
+          previous = url; missingReads = 0;
         } else {
-          previous = null; reason = result.reason || "profile_link_missing";
+          previous = null; reason = result.reason || "profile_link_not_rendered"; missingReads++;
           if (["ambiguous_profile", "facebook_sign_in_required", "conversation_mismatch", "facebook_no_contact_card", "facebook_inbox_load_failed"].includes(reason)) return { reason };
+          if (result.canReveal === true && missingReads >= 2 && !revealAttempted) {
+            // Existing tabs remain read-only. Reveal only one matching name
+            // control, once, inside a disposable tab created for this click.
+            if (!owned) return { reason, needsDetailTab: true };
+            const current = await chrome.tabs.get(tabId);
+            if (current.active || !isExactProfileInbox(current, context)) return { reason: "profile_lookup_interrupted" };
+            revealAttempted = true;
+            await profileScript(tabId, context, "reveal");
+          }
         }
       } catch { injected = false; reason = "facebook_bridge_unavailable"; }
     }
@@ -1301,7 +1310,12 @@ async function openFacebookCustomerProfile(options, sender) {
       tab = await chrome.tabs.create({ url: context.conversationLink, active: false });
       lookupTabId = tab.id;
     }
-    const found = await readStableCustomerLink(tab.id, context, !existing);
+    let found = await readStableCustomerLink(tab.id, context, !existing);
+    if (existing && found.needsDetailTab) {
+      tab = await chrome.tabs.create({ url: context.conversationLink, active: false });
+      lookupTabId = tab.id;
+      found = await readStableCustomerLink(tab.id, context, true);
+    }
     if (!found.profileUrl) return { opened: false, reason: found.reason };
     profileUrl = found.profileUrl;
     // Verify that Facebook loads the public profile, not an unavailable page.

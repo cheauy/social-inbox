@@ -25,6 +25,43 @@ test('exact selected thread and matching detail heading yields real link without
   const h=load();let clicks=0;h.w.document.addEventListener('click',()=>clicks++);const r=h.read();
   assert.equal(r.profileUrl,profile);assert.equal(r.matchedThreadId,opts.threadId);assert.equal(clicks,0);h.close();
 });
+test('customer card: whitespace text does not hide a matching accessible profile label',()=>{
+ const h=load(fixture().replace('>View profile</a>',' aria-label="View profile">   </a>'));
+ assert.equal(h.read().profileUrl,profile);h.close();
+});
+test('customer card: accessible label can identify the profile when visible text is different',()=>{
+ const h=load(fixture().replace('>View profile</a>',' aria-label="View profile">Open</a>'));
+ assert.equal(h.read().profileUrl,profile);h.close();
+});
+test('customer card: a collapsed matching header exposes a safe reveal opportunity',()=>{
+ const h=load('<header><button aria-expanded="false"><h2>Test Customer</h2></button></header>');
+ assert.equal(h.read().canReveal,true);assert.equal(h.read().reason,'profile_link_not_rendered');
+ let clicks=0;h.w.document.querySelector('button').onclick=()=>{clicks++;h.w.document.body.innerHTML=fixture();};
+ Object.defineProperty(h.w.document,'visibilityState',{value:'hidden',configurable:true});
+ assert.equal(h.w.TenhFacebookProfileResolver.reveal(opts).revealed,true);
+ assert.equal(clicks,1);assert.equal(h.read().profileUrl,profile);h.close();
+});
+test('customer card: already expanded, ambiguous or chat-message controls cannot be toggled',()=>{
+ for(const html of ['<header><button aria-expanded="true"><h2>Test Customer</h2></button></header>',
+  '<header><button><h2>Test Customer</h2></button><button><h2>Test Customer</h2></button></header>',
+  '<div role="log"><button><h2>Test Customer</h2></button></div>']){
+  const h=load(html);Object.defineProperty(h.w.document,'visibilityState',{value:'hidden',configurable:true});
+  let clicks=0;h.w.document.addEventListener('click',()=>clicks++);
+  assert.notEqual(h.w.TenhFacebookProfileResolver.reveal(opts).revealed,true);assert.equal(clicks,0);h.close();
+ }
+});
+test('customer card: missing name, missing link and unrecognized labels report different stages',()=>{
+ for(const [html,reason] of [
+  ['<aside><h2>Different Customer</h2></aside>','profile_customer_heading_missing'],
+  ['<aside><h2>Test Customer</h2></aside>','profile_link_not_rendered'],
+  ['<aside><h2>Test Customer</h2><a href="https://www.facebook.com/customer.test">Unknown action</a></aside>','profile_link_label_unrecognized'],
+  ['<aside><h2>Test Customer</h2><a href="https://example.test/">View profile</a></aside>','profile_link_format_unsupported'],
+ ]){const h=load(html);assert.equal(h.read().reason,reason);assert.equal(h.read().canReveal,false);h.close();}
+});
+test('customer card: a recognized customer in a chat message cannot supply the profile link',()=>{
+ const h=load('<header><h2>Test Customer</h2></header><div role="log"><h2>Test Customer</h2><a aria-label="View profile" href="https://www.facebook.com/wrong.customer"> </a></div>');
+ assert.equal(h.read().profileUrl,undefined);h.close();
+});
 test('Page inbox: DOM accepts provider path and keeps PSID separate',()=>{
  const f=pageInboxFixture,url='https://www.facebook.com'+f.response.data[0].link;
  const h=load('<aside><h2>Jame Jame</h2><a href="https://www.facebook.com/galaxystar.james">View profile</a></aside>',url);
