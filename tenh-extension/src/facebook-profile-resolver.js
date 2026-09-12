@@ -18,8 +18,11 @@ globalThis.TenhFacebookProfileResolver = (() => {
       const url = new URL(value);
       if (url.protocol !== "https:" || url.username || url.password || url.port ||
           !["business.facebook.com", "www.facebook.com", "facebook.com"].includes(url.hostname)) return null;
-      const pages = ["asset_id", "page_id", "mailbox_id"].flatMap(key => url.searchParams.getAll(key));
-      if (pages.some(id => id !== pageId)) return null;
+      const pageValues = ["asset_id", "page_id"].flatMap(key => url.searchParams.getAll(key));
+      if (pageValues.some(id => id !== pageId)) return null;
+      const mailboxValues = url.searchParams.getAll("mailbox_id");
+      if (mailboxValues.some(id => id !== "" && id !== pageId)) return null;
+      const pages = [...pageValues, ...mailboxValues.filter(Boolean)];
       const selected = ["selected_item_id", "thread_id"].flatMap(key => url.searchParams.getAll(key));
       if (selected.length && (new Set(selected).size !== 1 || !/^\d{1,32}$/.test(selected[0]))) return null;
       if (url.searchParams.getAll("thread_type").some(type => type !== "FB_MESSAGE")) return null;

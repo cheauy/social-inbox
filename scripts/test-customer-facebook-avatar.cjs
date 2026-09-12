@@ -24,7 +24,7 @@ function harness(config={}){
    if(name==='@/components/customer-avatar')return {CustomerAvatar:()=>null};
    if(name==='@/lib/facebook/customer-profile-url')return urls;
    if(name==='@/lib/facebook/profile-lookup-error')return {profileLookupError:r=>r};
-   if(name==='@/lib/extension/use-companion')return {useCompanion:()=>({installed:config.installed!==false,version:config.version||'1.2.26',
+   if(name==='@/lib/extension/use-companion')return {useCompanion:()=>({installed:config.installed!==false,version:config.version||'1.2.27',
      openFacebookProfile:options=>{lookups.push(options);return pending},
      openResolvedFacebookProfile:async(token,ctx)=>{opens.push({token,ctx});return config.openResult||{...context,opened:true,verified:true,profileUrl:profile};}})};
    throw Error(name);
@@ -73,7 +73,7 @@ test('saved link is direct anchor, with no extension required',async()=>{
  assert.equal(a.type,'a');assert.equal(a.props.href,'https://www.facebook.com/customer.test');assert.equal(a.props.target,'_blank');assert.equal(h.lookups.length,0);
 });
 test('old or absent extension produces update instruction immediately',async()=>{
- for(const config of [{installed:false},{version:'1.2.25'}]){const h=harness(config);h.click();await tick();assert.equal(h.lookups.length,0);assert.ok(JSON.stringify(h.render()).includes('1.2.26'));}
+ for(const config of [{installed:false},{version:'1.2.25'}]){const h=harness(config);h.click();await tick();assert.equal(h.lookups.length,0);assert.ok(JSON.stringify(h.render()).includes('1.2.27'));}
 });
 test('comment conversation cannot masquerade as Messenger lookup',async()=>{
  const h=harness();h.switchTo({source_type:'facebook_comment'});h.click();await tick();assert.equal(h.lookups.length,0);assert.ok(JSON.stringify(h.render()).includes('profile_messenger_required'));

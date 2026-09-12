@@ -1,0 +1,81 @@
+{
+  "version": "1.2.27",
+  "base": "TENH-profile-fix-1.2.26(1).zip",
+  "files": [
+    {
+      "path": "app/api/extension/conversations/open-context/route.ts",
+      "sha256": "5331a8578da397bdbb7b199f2ebe0748d0143f974318cb08b6bc023eacece7c2",
+      "bytes": 3693
+    },
+    {
+      "path": "components/inbox/customer-facebook-avatar.tsx",
+      "sha256": "0d8ad2ee362b9c94f79c87731ff45cce54e34b9e9612a473f712114e6112c038",
+      "bytes": 9425
+    },
+    {
+      "path": "dist/tenh-companion-1.2.27.zip",
+      "sha256": "e89d67186bcf4d9769f4465b496fcf12a7f5306569c4fb57cf2a36cae886c70c",
+      "bytes": 68194
+    },
+    {
+      "path": "docs/tenh-profile-fix-v1.2.27.md",
+      "sha256": "70f6a0eec7568551d93dde20f0606175e85321b3078731143d773bc72e158a72",
+      "bytes": 4593
+    },
+    {
+      "path": "docs/tenh-profile-test-results-v1.2.27.txt",
+      "sha256": "7c64ff3510c46a3b384e1ffaddae11274734a925d0fb7d2fc9adfc2f5a2f5afe",
+      "bytes": 15063
+    },
+    {
+      "path": "lib/extension/use-companion.ts",
+      "sha256": "0513b0917aa30c5ef9f584f2a631a47568f1a8d1ffa52537ef1e044fce29b3db",
+      "bytes": 6551
+    },
+    {
+      "path": "lib/facebook/customer-conversation-link.ts",
+      "sha256": "3d739fbbe3c2190b351f4f212535dcaed474ca8135b3dd01e2af59419f0e6bcc",
+      "bytes": 7921
+    },
+    {
+      "path": "lib/facebook/profile-lookup-error.ts",
+      "sha256": "ddee6676473cc894c39ebb99bf2bcd297f04c88c077ef2a3e343a3e23f73d082",
+      "bytes": 7453
+    },
+    {
+      "path": "scripts/test-customer-facebook-avatar.cjs",
+      "sha256": "afa63346daabee4a7196e9a5f7e6e998bd5565b5c4abf2c17cc99adb33d4e97c",
+      "bytes": 8215
+    },
+    {
+      "path": "scripts/test-facebook-global-navigation.cjs",
+      "sha256": "07c91d82e533ba7730f6d20a0462c13f88c4d692b12e41166c74efab46dd3fc3",
+      "bytes": 4305
+    },
+    {
+      "path": "scripts/test-facebook-profile-opening.cjs",
+      "sha256": "900cb3dae4ff909d707fafc66269ce0b0ce6bd9aeb4ee955aafbcccff6a59ab9",
+      "bytes": 17337
+    },
+    {
+      "path": "scripts/test-open-facebook-navigation.cjs",
+      "sha256": "2af37c37be97394ed1cf7d9301b03ebf151389e6cb75e4a78c7c2fbf3b052716",
+      "bytes": 4587
+    },
+    {
+      "path": "tenh-extension/manifest.json",
+      "sha256": "aeb6518667ed3ae3b2604b9ef377db6aa8a913e8e5ca66e34d811a2a5a0a5b0d",
+      "bytes": 1593
+    },
+    {
+      "path": "tenh-extension/src/background.js",
+      "sha256": "52cacbef10fdf97814e936e7b55f18813bc3b88514493f197268e5bca6e7d47f",
+      "bytes": 81286
+    },
+    {
+      "path": "tenh-extension/src/facebook-profile-resolver.js",
+      "sha256": "e87989dbf8fc394eb0e51f31e534d6b5fa162a4bebb46bdf7be439cc914a98cb",
+      "bytes": 13538
+    }
+  ]
+}

@@ -89,9 +89,10 @@ export function useCompanion() {
   /**
    * Bring the Facebook tab for this Page forward, or open one.
    *
-   * `threadId` is the customer's page-scoped id -- the one Business Suite puts
-   * in its own URL -- so this can land on the actual conversation rather than
-   * the top of the inbox. TENH's conversation id means nothing to Facebook.
+   * `threadId` is the customer's Page-scoped Messenger id (PSID). The
+   * Companion asks TENH for Meta's exact provider conversation link and, when
+   * available, resolves the separate Business Suite selected_item_id/global
+   * navigation id. TENH's local conversation UUID is never sent to Facebook.
    */
   const openInFacebook = useCallback(
     async (options: {

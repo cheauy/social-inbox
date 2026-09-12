@@ -36,6 +36,8 @@ function harness(config = {}) {
     setTimeout:(fn,ms)=>ms===500?setImmediate(()=>{now+=500;fn();}):setTimeout(fn,ms),clearTimeout,
     readState:async()=>({token:config.noToken?null:'fake-device-token'}),
     callTenh:async(path,request)=>{auth.push({path,request});return {ok:!config.denied,result:{success:true,verified:true,...options,customerName:'Customer',sourceType:'messenger',linkSource:'meta_conversations_api',conversationLink:exact,...config.authorization}};},
+    resolveFacebookNavigationId:async()=>config.navigationId||null,
+    rememberFacebookNavigationId:async()=>true,
     facebookTarget:ctx=>`https://business.facebook.com/latest/inbox/all?asset_id=${ctx.pageId}&selected_item_id=${ctx.threadId}&thread_type=FB_MESSAGE`,
   };
   vm.runInNewContext(code+'\nglobalThis.api={openFacebookCustomerProfile,openResolvedFacebookProfile};',sandbox);
@@ -117,6 +119,14 @@ test('specific conversation failure reaches TENH without opening a tab',async()=
   'profile_conversation_link_missing','profile_conversation_name_unavailable','profile_conversation_request_failed']){
   const h=harness({denied:true,authorization:{reason}});assert.equal((await lookup(h)).reason,reason);assert.equal(h.created.length,0);
  }
+});
+
+test('conversation-bound global id can open profile directly without Business Suite profile DOM',async()=>{
+  const globalId='61555135812581';
+  const h=harness({navigationId:globalId,authorization:{navigationId:globalId}}),r=await lookup(h);
+  assert.equal(r.resolved,true);assert.equal(r.resolution,'conversation_global_id');assert.equal(r.profileUrl,profile);
+  assert.equal(h.created.length,1);assert.equal(h.created[0].url,profile);assert.equal(h.read.filter(x=>x.action==='read').length,0);
+  assert.equal((await open(h,r)).opened,true);
 });
 test('one click resolves on demand, closes owned background tabs, opens only verified profile',async()=>{
   const h=harness(), r=await lookup(h); assert.equal(r.resolved,true); assert.equal(r.profileUrl,profile);

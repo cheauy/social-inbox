@@ -27,12 +27,21 @@ export async function POST(request: NextRequest) {
   if (!page || !contact || !page.is_active || page.platform !== "facebook" || contact.platform !== "facebook" ||
       page.platform_account_id !== body.pageId || contact.platform_user_id !== body.threadId) return deny();
   if (body.profileLookup === true && conversation.source_type !== "messenger") return deny();
-  let profileContext = {};
-  if (body.profileLookup === true) {
-    const link = await getCustomerConversationLink(page.platform_account_id, contact.platform_user_id);
-    if ("reason" in link) return NextResponse.json({ success: false, reason: link.reason }, { status: 424 });
-    profileContext = { ...link, sourceType: conversation.source_type };
+
+  // Resolve the exact provider conversation for both profile opening and the
+  // explicit "Open in Meta Business Suite" action. This prevents TENH from
+  // putting the Messenger PSID into selected_item_id when Meta uses a separate
+  // inbox/global id for navigation. A normal navigation may still fall back to
+  // the Page inbox if Meta temporarily withholds the conversation link.
+  const link = await getCustomerConversationLink(page.platform_account_id, contact.platform_user_id);
+  let facebookContext: Record<string, unknown> = { sourceType: conversation.source_type };
+  if ("reason" in link) {
+    if (body.profileLookup === true) return NextResponse.json({ success: false, reason: link.reason }, { status: 424 });
+    facebookContext = { ...facebookContext, navigationReason: link.reason };
+  } else {
+    facebookContext = { ...facebookContext, ...link };
   }
+
   return NextResponse.json({ success: true, verified: true, businessId: auth.device.business_id, conversationId: conversation.id, pageId: page.platform_account_id, threadId: contact.platform_user_id,
-    ...profileContext });
+    ...facebookContext });
 }

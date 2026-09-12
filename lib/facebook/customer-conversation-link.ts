@@ -5,6 +5,21 @@ import { getFacebookPageAccessToken } from "@/lib/facebook/get-facebook-page-acc
 type Party = { id?: unknown; name?: unknown };
 type Thread = { id?: unknown; link?: unknown; participants?: { data?: Party[]; paging?: { next?: unknown } } };
 
+/** Business Suite uses a conversation/profile navigation id that is often
+ * different from the Messenger PSID. Accept it only from a provider-returned
+ * conversation link that has already been matched to the exact Page/customer. */
+export function getFacebookConversationNavigationId(value: unknown, pageId: string, psid: string): string | null {
+  const link = normalizeFacebookConversationLink(value, pageId);
+  if (!link) return null;
+  try {
+    const url = new URL(link);
+    const ids = url.searchParams.getAll("selected_item_id");
+    if (ids.length !== 1) return null;
+    const id = ids[0]?.trim();
+    return id && /^\d{1,32}$/.test(id) && id !== pageId && id !== psid ? id : null;
+  } catch { return null; }
+}
+
 /** Accept a conversation URL returned by Meta; never manufacture one from a PSID.
  * `selected_item_id` is an inbox identifier, not a public-profile guarantee. */
 export function normalizeFacebookConversationLink(value: unknown, pageId: string): string | null {
@@ -14,10 +29,12 @@ export function normalizeFacebookConversationLink(value: unknown, pageId: string
     if (url.protocol !== "https:" || url.username || url.password || url.port ||
         !["www.facebook.com", "facebook.com", "business.facebook.com"].includes(url.hostname)) return null;
     const pageKeys = ["asset_id", "page_id", "mailbox_id"];
-    for (const key of pageKeys) {
+    for (const key of ["asset_id", "page_id"]) {
       const values = url.searchParams.getAll(key);
       if (values.length > 1 || values.some(id => id !== pageId)) return null;
     }
+    const mailboxValues = url.searchParams.getAll("mailbox_id");
+    if (mailboxValues.length > 1 || mailboxValues.some(id => id !== "" && id !== pageId)) return null;
     const threadKeys = ["selected_item_id", "thread_id", "threadid", "tid"];
     for (const key of threadKeys) {
       const values = url.searchParams.getAll(key);
@@ -31,7 +48,7 @@ export function normalizeFacebookConversationLink(value: unknown, pageId: string
     const hasThread = threadKeys.some(key => /^[A-Za-z0-9_.:-]{1,200}$/.test(url.searchParams.get(key) || ""));
     if (url.hostname === "business.facebook.com") {
       if (!/^\/latest\/inbox(?:\/[^/]+)?\/?$/.test(url.pathname) ||
-          !pageKeys.some(key => url.searchParams.get(key) === pageId) || !hasThread) return null;
+          !["asset_id", "page_id", "mailbox_id"].some(key => url.searchParams.get(key) === pageId) || !hasThread) return null;
     } else {
       const segments = url.pathname.split("/").filter(Boolean);
       const pageInbox = segments[0] === pageId && ["inbox", "messages"].includes(segments[1]) && segments.length === 2;
@@ -58,7 +75,7 @@ export function selectCustomerConversationLink(payload: unknown, pageId: string,
   if (!Array.isArray(data)) return { reason: "profile_conversation_link_unavailable" } as const;
   if ((payload as { paging?: { next?: unknown } }).paging?.next) return { reason: "profile_conversation_ambiguous" } as const;
   if (!data.length) return { reason: "profile_conversation_not_found" } as const;
-  const matching: Array<{ conversationLink: string; graphConversationId: string; customerName: string }> = [];
+  const matching: Array<{ conversationLink: string; graphConversationId: string; customerName: string; navigationId: string | null }> = [];
   let participantsMatched = false, unsupportedLink = false, missingLink = false;
   for (const thread of data as Thread[]) {
     if (!thread || typeof thread.id !== "string" || !thread.id || thread.id.length > 200) continue;
@@ -73,7 +90,8 @@ export function selectCustomerConversationLink(payload: unknown, pageId: string,
     const link = normalizeFacebookConversationLink(thread.link, pageId);
     if (typeof thread.link !== "string" || !thread.link.trim()) missingLink = true;
     else if (!link) unsupportedLink = true;
-    if (link && name) matching.push({ conversationLink: link, graphConversationId: thread.id, customerName: name });
+    if (link && name) matching.push({ conversationLink: link, graphConversationId: thread.id, customerName: name,
+      navigationId: getFacebookConversationNavigationId(link, pageId, psid) });
   }
   if (matching.length > 1) return { reason: "profile_conversation_ambiguous" } as const;
   if (!matching.length) {

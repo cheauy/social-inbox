@@ -26,6 +26,9 @@ const RECENT_FINGERPRINT_TTL_MS = 15 * 60 * 1000;
 const MAX_RECENT_FINGERPRINTS = 120;
 const MAX_FACEBOOK_TAB_STATES = 50;
 const FACEBOOK_TAB_STATE_TTL_MS = 2 * 60 * 60 * 1000;
+const FACEBOOK_NAV_CACHE_KEY = "facebookNavigationCacheV1";
+const FACEBOOK_NAV_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_FACEBOOK_NAV_CACHE = 500;
 
 let flushPromise = null;
 let deltaPromise = null;
@@ -46,6 +49,7 @@ async function readState() {
       "installationId",
       "facebook",
       "facebookTabs",
+      FACEBOOK_NAV_CACHE_KEY,
       "managedFacebookTabId",
       "managedFacebookWindowId",
       "keepFacebookActive",
@@ -88,6 +92,53 @@ async function facebookTabStates() {
     .sort((a, b) => Number(b[1].seenAt ?? 0) - Number(a[1].seenAt ?? 0))
     .slice(0, MAX_FACEBOOK_TAB_STATES);
   return Object.fromEntries(entries);
+}
+
+function facebookNavigationKey(pageId, psid) {
+  return `${pageId}:${psid}`;
+}
+
+async function cachedFacebookNavigationId(pageId, psid) {
+  if (![pageId, psid].every(value => typeof value === "string" && /^\d{1,32}$/.test(value))) return null;
+  const state = await readState();
+  const cache = state[FACEBOOK_NAV_CACHE_KEY] && typeof state[FACEBOOK_NAV_CACHE_KEY] === "object"
+    ? state[FACEBOOK_NAV_CACHE_KEY] : {};
+  const item = cache[facebookNavigationKey(pageId, psid)];
+  if (!item || Date.now() - Number(item.savedAt || 0) > FACEBOOK_NAV_CACHE_TTL_MS ||
+      typeof item.navigationId !== "string" || !/^\d{1,32}$/.test(item.navigationId) ||
+      item.navigationId === pageId || item.navigationId === psid) return null;
+  return item.navigationId;
+}
+
+async function rememberFacebookNavigationId(pageId, psid, navigationId) {
+  if (![pageId, psid, navigationId].every(value => typeof value === "string" && /^\d{1,32}$/.test(value)) ||
+      navigationId === pageId || navigationId === psid) return false;
+  const state = await readState();
+  const raw = state[FACEBOOK_NAV_CACHE_KEY] && typeof state[FACEBOOK_NAV_CACHE_KEY] === "object"
+    ? state[FACEBOOK_NAV_CACHE_KEY] : {};
+  const now = Date.now();
+  const entries = Object.entries(raw)
+    .filter(([, item]) => item && now - Number(item.savedAt || 0) <= FACEBOOK_NAV_CACHE_TTL_MS)
+    .sort((a, b) => Number(b[1].savedAt || 0) - Number(a[1].savedAt || 0))
+    .slice(0, MAX_FACEBOOK_NAV_CACHE - 1);
+  const cache = Object.fromEntries(entries);
+  cache[facebookNavigationKey(pageId, psid)] = { navigationId, savedAt: now };
+  await writeState({ [FACEBOOK_NAV_CACHE_KEY]: cache });
+  return true;
+}
+
+function navigationIdFromFacebookUrl(value, pageId, psid) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.hostname !== "business.facebook.com" ||
+        !/^\/latest\/inbox(?:\/[^/]+)?\/?$/.test(url.pathname)) return null;
+    if (url.searchParams.get("asset_id") !== pageId && url.searchParams.get("page_id") !== pageId &&
+        url.searchParams.get("mailbox_id") !== pageId) return null;
+    const ids = url.searchParams.getAll("selected_item_id");
+    if (ids.length !== 1) return null;
+    const id = ids[0];
+    return /^\d{1,32}$/.test(id) && id !== pageId && id !== psid ? id : null;
+  } catch { return null; }
 }
 
 function summarizeFacebookPages(tabStates) {
@@ -922,9 +973,12 @@ async function deltaSync() {
 /* -------------------------------------------------------------- Facebook */
 
 function facebookTarget({ pageId, threadId } = {}) {
-  const url = new URL("https://business.facebook.com/latest/inbox/all/");
+  const url = new URL("https://business.facebook.com/latest/inbox/all");
   if (typeof pageId === "string" && /^\d+$/.test(pageId)) {
-    url.searchParams.set("asset_id", pageId); url.searchParams.set("mailbox_id", pageId);
+    url.searchParams.set("asset_id", pageId);
+    url.searchParams.set("nav_ref", "diode_page_inbox");
+    // Meta/Pancake-style routing intentionally leaves mailbox_id empty.
+    url.searchParams.set("mailbox_id", "");
   }
   if (typeof threadId === "string" && /^\d+$/.test(threadId)) {
     url.searchParams.set("selected_item_id", threadId); url.searchParams.set("thread_type", "FB_MESSAGE");
@@ -939,6 +993,59 @@ async function tabById(tabId) {
   } catch {
     return null;
   }
+}
+
+async function resolveFacebookNavigationId(conversationLink, pageId, psid) {
+  const cached = await cachedFacebookNavigationId(pageId, psid);
+  if (cached) return cached;
+  const direct = navigationIdFromFacebookUrl(conversationLink, pageId, psid);
+  if (direct) { await rememberFacebookNavigationId(pageId, psid, direct); return direct; }
+  if (typeof conversationLink !== "string" || !conversationLink) return null;
+
+  let ownedTabId = null;
+  try {
+    // Resolve Meta's provider-returned legacy/page-inbox link in a disposable
+    // inactive tab. Facebook may redirect it to Business Suite and reveal the
+    // real selected_item_id; TENH never derives that value from the PSID.
+    const created = await chrome.tabs.create({ url: conversationLink, active: false });
+    ownedTabId = created.id ?? null;
+    if (!ownedTabId) return null;
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      const tab = await chrome.tabs.get(ownedTabId);
+      if (tab.active) { ownedTabId = null; return null; }
+      if (/https:\/\/(?:www\.)?facebook\.com\/(?:login|checkpoint)/.test(tab.url ?? "")) return null;
+      const id = navigationIdFromFacebookUrl(tab.url || tab.pendingUrl, pageId, psid);
+      if (id) { await rememberFacebookNavigationId(pageId, psid, id); return id; }
+      await new Promise(resolve => setTimeout(resolve, 350));
+    }
+    return null;
+  } catch { return null; }
+  finally {
+    if (ownedTabId) {
+      try {
+        const tab = await chrome.tabs.get(ownedTabId);
+        if (!tab.active && /^https:\/\/(?:www\.|business\.)facebook\.com\//.test(tab.url || tab.pendingUrl || "")) {
+          await chrome.tabs.remove(ownedTabId);
+        }
+      } catch { /* Already closed. */ }
+    }
+  }
+}
+
+async function openManagedProviderConversation(conversationLink, pageId, active = true) {
+  if (!profileInboxRoute(conversationLink, pageId)) return null;
+  const state = await readState();
+  const managed = await tabById(state.managedFacebookTabId);
+  if (managed?.id && /^https:\/\/(?:www\.|business\.)facebook\.com\//.test(managed.url ?? "")) {
+    const updated = await chrome.tabs.update(managed.id, { url: conversationLink, active });
+    if (active && updated.windowId) await chrome.windows.update(updated.windowId, { focused: true });
+    return updated;
+  }
+  const created = await chrome.tabs.create({ url: conversationLink, active });
+  await writeState({ managedFacebookTabId: created.id ?? null, managedFacebookWindowId: created.windowId ?? null });
+  if (active && created.windowId) await chrome.windows.update(created.windowId, { focused: true });
+  return created;
 }
 
 async function waitForFacebookBridge(
@@ -1117,8 +1224,36 @@ async function openFacebook(options = {}, sender) {
     const result = response.result;
     if (!response.ok || result?.verified !== true || result.pageId !== pageId || result.threadId !== threadId || result.conversationId !== conversationId ||
         (businessId && result.businessId !== businessId)) return { opened: false, reason: response.status === 404 ? "website_update_required" : "conversation_context_mismatch" };
-    const tab = await ensureManagedFacebookTab({ pageId, threadId, active: true });
-    return { opened: Boolean(tab?.id), tabId: tab?.id, pageId, threadId, conversationId, businessId: result.businessId, exactRequested: true };
+
+    // Meta often uses a separate selected_item_id/global id for Business Suite.
+    // Prefer the exact Page/customer-bound provider link, resolve its redirect
+    // when needed, and cache that id. Never manufacture selected_item_id from
+    // the Messenger PSID supplied by TENH.
+    const providerLink = typeof result.conversationLink === "string" && profileInboxRoute(result.conversationLink, pageId)
+      ? result.conversationLink : null;
+    const navigationId = typeof result.navigationId === "string" && /^\d{1,32}$/.test(result.navigationId) &&
+      result.navigationId !== pageId && result.navigationId !== threadId
+      ? result.navigationId
+      : await resolveFacebookNavigationId(providerLink, pageId, threadId);
+
+    if (navigationId) {
+      await rememberFacebookNavigationId(pageId, threadId, navigationId);
+      const tab = await ensureManagedFacebookTab({ pageId, threadId: navigationId, active: true });
+      return { opened: Boolean(tab?.id), tabId: tab?.id, pageId, threadId, navigationId, conversationId,
+        businessId: result.businessId, exactRequested: true };
+    }
+    if (providerLink) {
+      const tab = await openManagedProviderConversation(providerLink, pageId, true);
+      return { opened: Boolean(tab?.id), tabId: tab?.id, pageId, threadId, conversationId,
+        businessId: result.businessId, exactRequested: Boolean(tab?.id), providerLink: true,
+        reason: tab?.id ? undefined : "facebook_navigation_failed" };
+    }
+
+    // Safe fallback: open only the correct Page inbox. Do not pretend that the
+    // PSID is an exact Business Suite selected_item_id.
+    const tab = await ensureManagedFacebookTab({ pageId, active: true });
+    return { opened: Boolean(tab?.id), tabId: tab?.id, pageId, threadId, conversationId,
+      businessId: result.businessId, exactRequested: false, reason: result.navigationReason || "facebook_navigation_id_unavailable" };
   };
   const operation = navigationQueue.then(task, task).catch(() => ({ opened: false, reason: "facebook_navigation_failed" }));
   navigationQueue = operation.then(() => undefined, () => undefined);
@@ -1171,8 +1306,11 @@ function profileInboxRoute(value, pageId) {
     const url = new URL(value);
     if (url.protocol !== "https:" || url.username || url.password || url.port ||
         !["business.facebook.com", "www.facebook.com", "facebook.com"].includes(url.hostname)) return null;
-    const pages = ["asset_id", "page_id", "mailbox_id"].flatMap(key => url.searchParams.getAll(key));
-    if (pages.some(id => id !== pageId)) return null;
+    const pageValues = ["asset_id", "page_id"].flatMap(key => url.searchParams.getAll(key));
+    if (pageValues.some(id => id !== pageId)) return null;
+    const mailboxValues = url.searchParams.getAll("mailbox_id");
+    if (mailboxValues.some(id => id !== "" && id !== pageId)) return null;
+    const pages = [...pageValues, ...mailboxValues.filter(Boolean)];
     const selected = ["selected_item_id", "thread_id"].flatMap(key => url.searchParams.getAll(key));
     if (selected.length && (new Set(selected).size !== 1 || !/^\d{1,32}$/.test(selected[0]))) return null;
     if (url.searchParams.getAll("thread_type").some(type => type !== "FB_MESSAGE")) return null;
@@ -1223,9 +1361,13 @@ async function authorizeProfile(context, sender) {
     if (!response.result.customerName?.trim()) return { reason: "profile_context_incomplete" };
     if (response.result.linkSource !== "meta_conversations_api" ||
         !profileInboxRoute(response.result.conversationLink, context.pageId)) return { reason: "profile_conversation_link_unavailable" };
+    const navigationId = typeof response.result.navigationId === "string" && /^\d{1,32}$/.test(response.result.navigationId) &&
+      response.result.navigationId !== context.pageId && response.result.navigationId !== context.threadId
+      ? response.result.navigationId : null;
+    if (navigationId) await rememberFacebookNavigationId(context.pageId, context.threadId, navigationId);
     return { context: { businessId: context.businessId, conversationId: context.conversationId,
       pageId: context.pageId, threadId: context.threadId, customerName: response.result.customerName,
-      conversationLink: response.result.conversationLink, linkSource: response.result.linkSource } };
+      conversationLink: response.result.conversationLink, linkSource: response.result.linkSource, navigationId } };
   } catch { return { reason: "tenh_authorization_unavailable" }; }
 }
 async function profileScript(tabId, options, action) {
@@ -1252,20 +1394,27 @@ function profileLookupDetails(result, context) {
 async function readStableCustomerLink(tabId, context, owned) {
   const deadline = Date.now() + 22000;
   let previous = null, injected = false, reason = "profile_link_not_rendered", missingReads = 0, revealAttempted = false;
-  let lookupDetails = profileLookupDetails(null, context);
+  let lookupDetails = profileLookupDetails(null, context), navigationId = context.navigationId || null;
   while (Date.now() < deadline) {
     const tab = await chrome.tabs.get(tabId);
     // A new Chrome tab can report a blank url + pendingUrl while loading.
     // Wait for the loaded document before checking its actual destination.
     if (tab.status !== "complete") { await profilePause(); continue; }
-    if (/\/login|\/checkpoint/.test(tab.url ?? "")) return { reason: "facebook_sign_in_required" };
+    if (/\/login|\/checkpoint/.test(tab.url ?? "")) return { reason: "facebook_sign_in_required", navigationId };
+    const routeNow = profileInboxRoute(tab.url || tab.pendingUrl, context.pageId);
+    const routeNavigationId = routeNow?.selectedItemId;
+    if (routeNavigationId && routeNavigationId !== context.threadId && routeNavigationId !== context.pageId) {
+      navigationId = routeNavigationId;
+      context.navigationId = routeNavigationId;
+      await rememberFacebookNavigationId(context.pageId, context.threadId, routeNavigationId);
+    }
     if (!isExactProfileInbox(tab, context)) {
       // A Meta-returned legacy thread link can redirect into Business Suite.
       // Only follow that transition in our own newly created inactive tab.
       const expected = profileInboxRoute(context.conversationLink, context.pageId);
       const actual = profileInboxRoute(tab.url, context.pageId);
       if (!owned || tab.active || context.loadedConversationLink || !expected || expected.suite || !actual?.suite ||
-          (expected.selectedItemId && expected.selectedItemId !== actual.selectedItemId)) return { reason: "profile_lookup_interrupted" };
+          (expected.selectedItemId && expected.selectedItemId !== actual.selectedItemId)) return { reason: "profile_lookup_interrupted", navigationId };
       context.loadedConversationLink = tab.url;
     }
     if (tab.status === "complete") {
@@ -1275,17 +1424,17 @@ async function readStableCustomerLink(tabId, context, owned) {
         lookupDetails = profileLookupDetails(result, context);
         const url = safePublicProfile(result.profileUrl, context);
         if (result.found && result.pageId === context.pageId && result.matchedThreadId === context.threadId && url) {
-          if (previous === url) return { profileUrl: url };
+          if (previous === url) return { profileUrl: url, navigationId };
           previous = url; missingReads = 0;
         } else {
           previous = null; reason = result.reason || "profile_link_not_rendered"; missingReads++;
-          if (["ambiguous_profile", "facebook_sign_in_required", "conversation_mismatch", "facebook_no_contact_card", "facebook_inbox_load_failed"].includes(reason)) return { reason, lookupDetails };
+          if (["ambiguous_profile", "facebook_sign_in_required", "conversation_mismatch", "facebook_no_contact_card", "facebook_inbox_load_failed"].includes(reason)) return { reason, lookupDetails, navigationId };
           if (result.canReveal === true && missingReads >= 2 && !revealAttempted) {
             // Existing tabs remain read-only. Reveal only one matching name
             // control, once, inside a disposable tab created for this click.
-            if (!owned) return { reason, needsDetailTab: true };
+            if (!owned) return { reason, needsDetailTab: true, navigationId };
             const current = await chrome.tabs.get(tabId);
-            if (current.active || !isExactProfileInbox(current, context)) return { reason: "profile_lookup_interrupted" };
+            if (current.active || !isExactProfileInbox(current, context)) return { reason: "profile_lookup_interrupted", navigationId };
             revealAttempted = true;
             await profileScript(tabId, context, "reveal");
           }
@@ -1294,7 +1443,7 @@ async function readStableCustomerLink(tabId, context, owned) {
     }
     await profilePause();
   }
-  return { reason, lookupDetails };
+  return { reason, lookupDetails, navigationId };
 }
 async function closeOwnedProfileTab(tabId, matches) {
   if (!tabId) return;
@@ -1304,15 +1453,93 @@ async function closeOwnedProfileTab(tabId, matches) {
     if (!tab.active && matches(tab)) await chrome.tabs.remove(tabId);
   } catch { /* Already closed. */ }
 }
+async function verifyPublicProfileCandidate(profileUrl, context) {
+  const safe = safePublicProfile(profileUrl, context);
+  if (!safe) return { verifiedUrl: null, reason: "profile_url_unsupported" };
+  let previewTabId = null, previewLastUrl = safe;
+  try {
+    const preview = await chrome.tabs.create({ url: safe, active: false });
+    previewTabId = preview.id;
+    if (!previewTabId) return { verifiedUrl: null, reason: "profile_tab_unavailable" };
+    const deadline = Date.now() + 16000;
+    let previous = null, reason = "profile_identity_unverified";
+    while (Date.now() < deadline) {
+      const current = await chrome.tabs.get(previewTabId);
+      if (current.active) { previewTabId = null; return { verifiedUrl: null, reason: "profile_lookup_interrupted" }; }
+      if (current.status !== "complete") { await profilePause(); continue; }
+      if (/\/login|\/checkpoint/.test(current.url ?? "")) return { verifiedUrl: null, reason: "facebook_sign_in_required" };
+      if (!safePublicProfile(current.url, context)) return { verifiedUrl: null, reason: "not_profile_route" };
+      previewLastUrl = current.url;
+      await loadProfileScripts(previewTabId);
+      const result = await profileScript(previewTabId, context, "validate");
+      const url = safePublicProfile(result.url, context);
+      if (result.valid && result.nameMatches && url) {
+        if (previous === url) return { verifiedUrl: url, reason: null };
+        previous = url;
+      } else {
+        previous = null; reason = result.reason || reason;
+        if (["facebook_content_unavailable", "facebook_sign_in_required"].includes(reason)) return { verifiedUrl: null, reason };
+      }
+      await profilePause();
+    }
+    return { verifiedUrl: null, reason };
+  } catch { return { verifiedUrl: null, reason: "profile_identity_unverified" }; }
+  finally {
+    await closeOwnedProfileTab(previewTabId, tab => (tab.pendingUrl || tab.url) === previewLastUrl ||
+      /https:\/\/www\.facebook\.com\/(login|checkpoint)/.test(tab.url ?? ""));
+  }
+}
+
+async function createProfileOpenTicket(context, verifiedUrl, sender) {
+  const openToken = crypto.randomUUID();
+  const storeTicket = async () => {
+    const data = await chrome.storage.session.get(PROFILE_TICKETS_KEY);
+    const tickets = Object.fromEntries(Object.entries(data[PROFILE_TICKETS_KEY] || {})
+      .filter(([, ticket]) => ticket.expiresAt > Date.now()));
+    tickets[openToken] = { context, url: verifiedUrl, expiresAt: Date.now() + 60000,
+      tabId: sender.tab.id, documentId: sender.documentId ?? null };
+    await chrome.storage.session.set({ [PROFILE_TICKETS_KEY]: tickets });
+  };
+  const stored = profileOpenQueue.then(storeTicket, storeTicket);
+  profileOpenQueue = stored.then(() => undefined, () => undefined);
+  await stored;
+  return openToken;
+}
+
 async function openFacebookCustomerProfile(options, sender) {
   if (!profileSenderAllowed(sender)) return { opened: false, reason: "untrusted_sender" };
   if (profileLookupBusy) return { opened: false, reason: "profile_lookup_busy" };
   profileLookupBusy = true;
-  let lookupTabId = null, previewTabId = null, context, profileUrl, previewLastUrl;
+  let lookupTabId = null, context;
   try {
     const authorization = await authorizeProfile(options, sender);
     if (!authorization.context) return { opened: false, reason: authorization.reason };
     context = authorization.context;
+
+    // First try the exact Business Suite/global id resolved from Meta's own
+    // provider conversation link (or its redirect). Pancake-style navigation
+    // works because this id can differ from the Messenger PSID. We still open
+    // the candidate in an inactive tab and verify the customer's visible name
+    // before TENH treats it as a public profile.
+    const navigationId = context.navigationId ||
+      await resolveFacebookNavigationId(context.conversationLink, context.pageId, context.threadId);
+    if (navigationId) {
+      context.navigationId = navigationId;
+      await rememberFacebookNavigationId(context.pageId, context.threadId, navigationId);
+      const direct = await verifyPublicProfileCandidate(`https://www.facebook.com/profile.php?id=${navigationId}`, context);
+      if (direct.verifiedUrl) {
+        const openToken = await createProfileOpenTicket(context, direct.verifiedUrl, sender);
+        return { ...context, opened: false, resolved: true, verified: true, profileUrl: direct.verifiedUrl,
+          profileId: new URL(direct.verifiedUrl).searchParams.get("id"), openToken, resolution: "conversation_global_id" };
+      }
+      if (["facebook_sign_in_required", "profile_lookup_interrupted"].includes(direct.reason)) {
+        return { opened: false, reason: direct.reason };
+      }
+    }
+
+    // Fallback for layouts where the conversation navigation id is not itself
+    // a public profile id: read the explicit View profile destination rendered
+    // by Facebook in the exact authorized conversation.
     const tabs = await chrome.tabs.query({ url: ["https://business.facebook.com/*", "https://www.facebook.com/*"] });
     const existing = tabs.find(tab => isExactProfileInbox(tab, context));
     let tab = existing;
@@ -1321,59 +1548,29 @@ async function openFacebookCustomerProfile(options, sender) {
       lookupTabId = tab.id;
     }
     let found = await readStableCustomerLink(tab.id, context, !existing);
+    if (found.navigationId && !context.navigationId) {
+      context.navigationId = found.navigationId;
+      await rememberFacebookNavigationId(context.pageId, context.threadId, found.navigationId);
+    }
     if (existing && found.needsDetailTab) {
       tab = await chrome.tabs.create({ url: context.conversationLink, active: false });
       lookupTabId = tab.id;
       found = await readStableCustomerLink(tab.id, context, true);
+      if (found.navigationId && !context.navigationId) {
+        context.navigationId = found.navigationId;
+        await rememberFacebookNavigationId(context.pageId, context.threadId, found.navigationId);
+      }
     }
     if (!found.profileUrl) return { opened: false, reason: found.reason, lookupDetails: found.lookupDetails };
-    profileUrl = found.profileUrl;
-    // Verify that Facebook loads the public profile, not an unavailable page.
-    const preview = await chrome.tabs.create({ url: profileUrl, active: false });
-    previewTabId = preview.id; previewLastUrl = profileUrl;
-    const deadline = Date.now() + 18000;
-    let previous = null, verifiedUrl = null, reason = "profile_identity_unverified";
-    while (Date.now() < deadline) {
-      const current = await chrome.tabs.get(previewTabId);
-      if (current.active) return { opened: false, reason: "profile_lookup_interrupted" };
-      if (current.status !== "complete") { await profilePause(); continue; }
-      if (/\/login|\/checkpoint/.test(current.url ?? "")) return { opened: false, reason: "facebook_sign_in_required" };
-      if (!safePublicProfile(current.url, context)) return { opened: false, reason: "not_profile_route" };
-      previewLastUrl = current.url;
-      if (current.status === "complete") {
-        await loadProfileScripts(previewTabId);
-        const result = await profileScript(previewTabId, context, "validate");
-        const url = safePublicProfile(result.url, context);
-        if (result.valid && result.nameMatches && url) {
-          if (previous === url) { verifiedUrl = url; break; }
-          previous = url;
-        } else {
-          previous = null; reason = result.reason || reason;
-          if (["facebook_content_unavailable", "facebook_sign_in_required"].includes(reason)) return { opened: false, reason };
-        }
-      }
-      await profilePause();
-    }
-    if (!verifiedUrl) return { opened: false, reason };
-    const openToken = crypto.randomUUID();
-    // Serialize ticket creation with consumption so overlapping requests cannot
-    // restore a consumed ticket from an older storage snapshot.
-    const storeTicket = async () => {
-      const data = await chrome.storage.session.get(PROFILE_TICKETS_KEY);
-      const tickets = Object.fromEntries(Object.entries(data[PROFILE_TICKETS_KEY] || {}).filter(([, ticket]) => ticket.expiresAt > Date.now()));
-      tickets[openToken] = { context, url: verifiedUrl, expiresAt: Date.now() + 60000,
-        tabId: sender.tab.id, documentId: sender.documentId ?? null };
-      await chrome.storage.session.set({ [PROFILE_TICKETS_KEY]: tickets });
-    };
-    const stored = profileOpenQueue.then(storeTicket, storeTicket);
-    profileOpenQueue = stored.then(() => undefined, () => undefined);
-    await stored;
-    return { ...context, opened: false, resolved: true, verified: true,
-      profileUrl: verifiedUrl, profileId: new URL(verifiedUrl).searchParams.get("id"), openToken };
+    const verified = await verifyPublicProfileCandidate(found.profileUrl, context);
+    if (!verified.verifiedUrl) return { opened: false, reason: verified.reason || "profile_identity_unverified" };
+    const openToken = await createProfileOpenTicket(context, verified.verifiedUrl, sender);
+    return { ...context, opened: false, resolved: true, verified: true, profileUrl: verified.verifiedUrl,
+      profileId: new URL(verified.verifiedUrl).searchParams.get("id"), openToken, resolution: "rendered_profile_link" };
   } catch { return { opened: false, reason: "profile_resolution_unavailable" }; }
   finally {
-    await closeOwnedProfileTab(lookupTabId, tab => isExactProfileInbox({ url: tab.pendingUrl || tab.url }, context) || /https:\/\/www\.facebook\.com\/(login|checkpoint)/.test(tab.url ?? ""));
-    await closeOwnedProfileTab(previewTabId, tab => (tab.pendingUrl || tab.url) === previewLastUrl || /https:\/\/www\.facebook\.com\/(login|checkpoint)/.test(tab.url ?? ""));
+    await closeOwnedProfileTab(lookupTabId, tab => isExactProfileInbox({ url: tab.pendingUrl || tab.url }, context) ||
+      /https:\/\/www\.facebook\.com\/(login|checkpoint)/.test(tab.url ?? ""));
     profileLookupBusy = false;
   }
 }
