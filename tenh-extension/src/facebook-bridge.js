@@ -322,11 +322,18 @@ try {
     return true;
   }
 
-  if (message?.type === "FB_FIND_CUSTOMER_PROFILE") { sendResponse({ found: false, revealed: false, reason: "profile_navigation_moved_to_website" }); return false; }
+  if (message?.type === "FB_FIND_CUSTOMER_PROFILE") {
+    sendResponse(globalThis.TenhFacebookProfileResolver?.readCurrent(message) ?? { found: false, reason: "extension_refresh_required" }); return false;
+  }
 
-  if (message?.type === "FB_REVEAL_CUSTOMER_PROFILE") { sendResponse({ found: false, revealed: false, reason: "profile_navigation_moved_to_website" }); return false; }
+  if (message?.type === "FB_REVEAL_CUSTOMER_PROFILE") {
+    // Revealing is restricted to the background worker's owned lookup tab.
+    sendResponse({ revealed: false, reason: "facebook_tab_in_use" }); return false;
+  }
 
-  if (message?.type === "FB_VALIDATE_PROFILE_PAGE") { sendResponse({ found: false, reason: "profile_navigation_moved_to_website" }); return false; }
+  if (message?.type === "FB_VALIDATE_PROFILE_PAGE") {
+    sendResponse(selectors.validateCurrentProfilePage(message.customerName, message.threadId)); return false;
+  }
 
   if (message?.type === "FB_INSERT_TEXT") {
     const state = inspect();

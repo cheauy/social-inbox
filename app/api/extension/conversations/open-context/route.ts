@@ -15,15 +15,17 @@ export async function POST(request: NextRequest) {
       typeof body.threadId !== "string" || !/^\d+$/.test(body.threadId) ||
       (body.businessId !== undefined && body.businessId !== auth.device.business_id)) return deny();
   const { data: conversation, error } = await supabaseAdmin.from("conversations")
-    .select("id,business_id,social_account_id,contact_id").eq("id", body.conversationId).eq("business_id", auth.device.business_id).maybeSingle();
+    .select("id,business_id,social_account_id,contact_id,source_type").eq("id", body.conversationId).eq("business_id", auth.device.business_id).maybeSingle();
   if (error) return NextResponse.json({ success: false, error: "Unable to verify conversation." }, { status: 503 });
   if (!conversation) return deny();
   const [{ data: page, error: pageError }, { data: contact, error: contactError }] = await Promise.all([
     supabaseAdmin.from("social_accounts").select("id,platform,platform_account_id,is_active").eq("id", conversation.social_account_id).eq("business_id", auth.device.business_id).maybeSingle(),
-    supabaseAdmin.from("contacts").select("id,platform,platform_user_id").eq("id", conversation.contact_id).eq("business_id", auth.device.business_id).maybeSingle(),
+    supabaseAdmin.from("contacts").select("id,platform,platform_user_id,full_name").eq("id", conversation.contact_id).eq("business_id", auth.device.business_id).maybeSingle(),
   ]);
   if (pageError || contactError) return NextResponse.json({ success: false, error: "Unable to verify Page/customer." }, { status: 503 });
   if (!page || !contact || !page.is_active || page.platform !== "facebook" || contact.platform !== "facebook" ||
       page.platform_account_id !== body.pageId || contact.platform_user_id !== body.threadId) return deny();
-  return NextResponse.json({ success: true, verified: true, businessId: auth.device.business_id, conversationId: conversation.id, pageId: page.platform_account_id, threadId: contact.platform_user_id });
+  if (body.profileLookup === true && conversation.source_type !== "messenger") return deny();
+  return NextResponse.json({ success: true, verified: true, businessId: auth.device.business_id, conversationId: conversation.id, pageId: page.platform_account_id, threadId: contact.platform_user_id,
+    ...(body.profileLookup === true ? { customerName: contact.full_name, sourceType: conversation.source_type } : {}) });
 }

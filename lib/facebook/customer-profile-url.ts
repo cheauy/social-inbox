@@ -17,7 +17,7 @@ export function normalizeFacebookProfileUrl(value: unknown): string | null {
     if (numeric) return getFacebookCustomerProfileUrl({ facebook_profile_id: numeric });
     const username = path.slice(1);
     if (!/^[a-zA-Z0-9._-]{2,100}$/.test(username) || /\.php$/i.test(username)) return null;
-    if (["me", "events", "stories", "reel", "business", "latest", "messages", "login", "logout", "checkpoint", "settings", "help", "groups", "pages", "watch", "reels", "marketplace", "search", "friends", "bookmarks", "gaming", "ads", "privacy", "notifications", "home", "photo", "photos", "posts", "videos", "share", "story"].includes(username.toLowerCase())) return null;
+    if (["me", "business", "latest", "messages", "login", "logout", "checkpoint", "settings", "help", "groups", "pages", "watch", "reels", "marketplace", "search", "friends", "bookmarks", "gaming", "ads", "privacy", "notifications", "home", "photo", "photos", "posts", "videos", "share", "story"].includes(username.toLowerCase())) return null;
     return `https://www.facebook.com/${username}`;
   } catch { return null; }
 }

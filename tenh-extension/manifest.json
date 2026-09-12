@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "TENH v1",
   "version": "1.2.22",
-  "description": "Optional TENH companion: visible customer profile sync, Facebook shortcuts, Quick Replies, Tags and live sync.",
+  "description": "Optional TENH companion: Facebook conversation shortcuts, multi-Page tools, Quick Replies, Tags and live sync.",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",
@@ -37,9 +37,8 @@
       ],
       "js": [
         "src/facebook-selectors.js",
-        "src/facebook-bridge.js",
-        "src/profile-sync-helpers.js",
-        "src/profile-sync.js"
+        "src/facebook-profile-resolver.js",
+        "src/facebook-bridge.js"
       ],
       "run_at": "document_idle"
     }

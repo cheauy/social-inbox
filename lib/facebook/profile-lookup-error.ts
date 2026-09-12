@@ -1,4 +1,7 @@
 const messages: Record<string, string> = {
+  conversation_selection_unverified: "Facebook did not expose the selected customer clearly enough to verify this profile. TENH did not guess a match.",
+  profile_messenger_required: "Automatic profile lookup is available from the customer's Messenger conversation. Open that conversation and retry.",
+  profile_navigation_moved_to_website: "Update TENH Companion to version 1.2.22 or later, then refresh TENH and Facebook.",
   facebook_session_needed: "Sign in to Facebook in this Chrome profile, then retry.",
   profile_link_not_available: "A verified Facebook profile link is not available for this customer yet. No tab was opened.",
   facebook_tab_in_use: "Return to TENH with the Facebook Page inbox in a background tab, then retry.",

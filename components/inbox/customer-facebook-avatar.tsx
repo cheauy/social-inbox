@@ -1,62 +1,118 @@
 "use client";
+
 import { useEffect, useRef, useState } from "react";
 import { CustomerAvatar } from "@/components/customer-avatar";
 import { getFacebookCustomerProfileUrl, normalizeCustomerProfileLink } from "@/lib/facebook/customer-profile-url";
-import { facebookCustomerLinks } from "@/lib/facebook/customer-navigation";
+import { profileLookupError } from "@/lib/facebook/profile-lookup-error";
+import { useCompanion } from "@/lib/extension/use-companion";
 import type { InboxConversation } from "@/types/inbox";
 
-/** A saved link opens directly, without an extension request or profile probe.
- * Extension events only trigger an authenticated re-read; their payload is not
- * trusted as customer data. Missing links are never labelled public profiles. */
+function supportsAutomaticLookup(version: string | null) {
+  const parts = version?.split(".").map(Number);
+  return Boolean(parts && parts.length >= 3 && parts.every(Number.isFinite) &&
+    (parts[0] > 1 || (parts[0] === 1 && (parts[1] > 2 || (parts[1] === 2 && parts[2] >= 22)))));
+}
+
+/** Saved links open directly. Unknown Messenger profiles use a context-bound
+ * extension lookup, with automatic persistence and no manual entry form. */
 export function CustomerFacebookAvatar({ conversation }: { conversation: InboxConversation }) {
   const contact = conversation.contact;
   const isFacebook = conversation.social_account?.platform === "facebook";
   const pageId = conversation.social_account?.platform_account_id;
-  const key = `${conversation.business_id}:${conversation.id}:${contact?.id}`;
+  const key = JSON.stringify([conversation.business_id, conversation.id, contact?.id, contact?.platform_user_id, pageId]);
   const currentKey = useRef(key); currentKey.current = key;
+  const generation = useRef(0);
+  const inFlight = useRef(false);
   const [stored, setStored] = useState<{ key: string; url: string | null } | null>(null);
   const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const companion = useCompanion();
   const safeUrl = (value: unknown) => {
     const url = normalizeCustomerProfileLink(value, contact?.platform_user_id);
     return url && new URL(url).searchParams.get("id") !== pageId ? url : null;
   };
   const url = safeUrl(stored?.key === key ? stored.url : getFacebookCustomerProfileUrl(contact));
-  const links = facebookCustomerLinks(pageId, contact?.platform_user_id);
+  const endpoint = `/api/conversations/${encodeURIComponent(conversation.id)}/facebook-profile`;
+
   useEffect(() => {
-    setNotice("");
-    if (!isFacebook) return;
-    let disposed = false, sequence = 0, timer: ReturnType<typeof setTimeout> | null = null;
-    let controller: AbortController | null = null;
-    const read = async () => {
-      const seq = ++sequence;
-      controller?.abort(); controller = new AbortController();
-      try {
-        const response = await fetch(`/api/conversations/${encodeURIComponent(conversation.id)}/facebook-profile`, { cache: "no-store", signal: controller.signal });
-        const data = await response.json();
-        if (!disposed && seq === sequence && currentKey.current === key && response.ok && data.success) {
+    const controller = new AbortController();
+    const attempt = ++generation.current;
+    inFlight.current = false; setBusy(false); setNotice("");
+    if (isFacebook) void fetch(endpoint, { cache: "no-store", signal: controller.signal })
+      .then(response => response.json()).then(data => {
+        if (!controller.signal.aborted && generation.current === attempt && data.success && currentKey.current === key) {
           setStored({ key, url: data.profileUrl ?? null });
         }
-      } catch { /* Profile sync is optional. Never block the normal Inbox. */ }
-    };
-    const refresh = () => { if (timer) clearTimeout(timer); timer = setTimeout(() => { timer = null; void read(); }, 250); };
-    const event = (e: MessageEvent) => {
-      if (e.source !== window || e.origin !== window.location.origin || e.data?.source !== "TENH_EXTENSION" || e.data?.type !== "TENH_SYNC_PUSH") return;
-      const update = e.data.event;
-      if (update?.type === "customer.profile.updated" && update.conversationId === conversation.id) refresh();
-    };
-    void read();
-    window.addEventListener("message", event); window.addEventListener("focus", refresh);
-    // Profile lookup only, while this customer's details are displayed. No message polling.
-    const interval = window.setInterval(() => { if (!document.hidden) refresh(); }, 60000);
-    return () => { disposed = true; sequence++; controller?.abort(); if (timer) clearTimeout(timer); clearInterval(interval); window.removeEventListener("message", event); window.removeEventListener("focus", refresh); };
-  }, [key, conversation.id, isFacebook]);
+      }).catch(() => { /* Profile lookup remains available if storage is offline. */ });
+    return () => { controller.abort(); generation.current++; inFlight.current = false; };
+  }, [key, endpoint, isFacebook]);
+
+  async function openAutomaticProfile() {
+    if (inFlight.current || !isFacebook || !contact) return;
+    if (conversation.source_type !== "messenger") {
+      setNotice(profileLookupError("profile_messenger_required")); return;
+    }
+    if (!companion.installed || !supportsAutomaticLookup(companion.version)) {
+      setNotice("Use Chrome on your computer with TENH Companion 1.2.22 or later enabled, then refresh TENH."); return;
+    }
+    if (!pageId || !contact.platform_user_id || !conversation.business_id) {
+      setNotice(profileLookupError("profile_context_incomplete")); return;
+    }
+    const context = { pageId, threadId: contact.platform_user_id, conversationId: conversation.id, businessId: conversation.business_id };
+    const attempt = ++generation.current;
+    const current = () => currentKey.current === key && generation.current === attempt;
+    inFlight.current = true; setBusy(true); setNotice("");
+    try {
+      // Capture the existing revision before lookup so another agent's newer
+      // customer edit cannot be overwritten when Facebook takes time to load.
+      const snapshot = await fetch(endpoint, { cache: "no-store", signal: AbortSignal.timeout(8000) })
+        .then(response => response.json()).catch(() => null);
+      if (!current()) return;
+      const result = await companion.openFacebookProfile({ ...context, customerName: contact.full_name });
+      if (!current()) return;
+      if (!result?.resolved || !result.verified || !result.openToken) {
+        setNotice(profileLookupError(result?.reason || "extension_timeout")); return;
+      }
+      if (result.pageId !== context.pageId || result.threadId !== context.threadId ||
+          result.conversationId !== context.conversationId || result.businessId !== context.businessId) {
+        setNotice(profileLookupError("profile_context_mismatch")); return;
+      }
+      const resolvedUrl = safeUrl(result.profileUrl);
+      if (!resolvedUrl) { setNotice(profileLookupError("profile_url_unsupported")); return; }
+      // This second phase is invoked automatically by the same click, only if
+      // the agent is still viewing the same customer after the lookup finishes.
+      const opened = await companion.openResolvedFacebookProfile(result.openToken, context);
+      if (!current()) return;
+      if (!opened?.opened || !opened.verified || safeUrl(opened.profileUrl) !== resolvedUrl ||
+          opened.pageId !== context.pageId || opened.threadId !== context.threadId ||
+          opened.conversationId !== context.conversationId || opened.businessId !== context.businessId) {
+        setNotice(profileLookupError(opened?.reason || "profile_open_unconfirmed")); return;
+      }
+      setStored({ key, url: resolvedUrl });
+      let saved = false;
+      if (snapshot?.success && Object.prototype.hasOwnProperty.call(snapshot, "updatedAt")) {
+        saved = await fetch(endpoint, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          // The extension verified the rendered link for this exact context.
+          body: JSON.stringify({ profileUrl: resolvedUrl, confirmed: true, expectedUpdatedAt: snapshot.updatedAt }),
+          signal: AbortSignal.timeout(8000),
+        }).then(async response => response.ok && (await response.json()).success === true).catch(() => false);
+      }
+      if (current() && !saved) setNotice("Profile opened, but TENH could not save its link for the team. Your customer edit permissions or a newer customer update may prevent saving.");
+    } catch {
+      if (current()) setNotice(profileLookupError("extension_request_failed"));
+    } finally {
+      if (current()) { inFlight.current = false; setBusy(false); }
+    }
+  }
+
   if (!contact) return null;
   const image = <CustomerAvatar src={contact.profile_picture_url} name={contact.full_name} contactId={contact.id} platform={conversation.social_account?.platform} eager className="h-full w-full text-2xl" />;
+  const avatarClass = "block h-16 w-16 overflow-hidden rounded-full outline-none ring-offset-2 hover:ring-2 hover:ring-blue-400 focus-visible:ring-2";
   return <div className="relative flex shrink-0 flex-col items-start gap-1">
-    {isFacebook && url ? <a href={url} target="_blank" rel="noopener noreferrer" title="View public Facebook profile" aria-label="View customer Facebook profile" className="block h-16 w-16 overflow-hidden rounded-full outline-none ring-offset-2 hover:ring-2 hover:ring-blue-400 focus-visible:ring-2">{image}</a>
-      : <button type="button" disabled={!isFacebook} aria-label={isFacebook ? "Facebook profile availability" : "Customer avatar"} onClick={() => setNotice("No public profile link has been synchronized yet. Open this customer in Business Suite and expose their View profile link. The companion can save that visible link; it cannot convert a Messenger ID into a public profile ID.")} className="h-16 w-16 overflow-hidden rounded-full">{image}</button>}
-    {isFacebook && url ? <a href={url} target="_blank" rel="noopener noreferrer" className="text-[10px] font-medium text-blue-600 hover:underline">View public profile</a>
-      : isFacebook && links ? <a href={links.pageMessengerUrl} target="_blank" rel="noopener noreferrer" title="Opens this Page in Messenger, not this customer's public profile" className="text-[10px] font-medium text-slate-500 hover:underline">Open Page Messenger</a> : null}
-    {notice ? <div role="status" className="absolute left-0 top-[90px] z-30 w-64 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-lg"><button type="button" aria-label="Dismiss profile notice" onClick={() => setNotice("")} className="float-right ml-2 px-1">×</button>{notice}</div> : null}
+    {isFacebook && url ? <a href={url} target="_blank" rel="noopener noreferrer" title="View Facebook profile" aria-label="View customer Facebook profile" className={avatarClass}>{image}</a>
+      : <button type="button" disabled={!isFacebook || busy} aria-busy={busy} title="View Facebook profile" aria-label={isFacebook ? "View customer Facebook profile" : "Customer avatar"} onClick={() => void openAutomaticProfile()} className={`${avatarClass} disabled:cursor-default ${busy ? "animate-pulse" : ""}`}>{image}</button>}
+    {busy ? <span role="status" className="text-xs text-slate-500">Finding profile…</span> : null}
+    {notice ? <div role="status" className="absolute left-0 top-[72px] z-30 w-64 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-lg"><button type="button" aria-label="Dismiss profile notice" onClick={() => setNotice("")} className="float-right ml-2 px-1">×</button>{notice}</div> : null}
   </div>;
 }

@@ -18,7 +18,7 @@ async function load(conversationId: string) {
     supabaseAdmin.from("social_accounts").select("id,platform,platform_account_id")
       .eq("business_id", businessId).eq("id", conversation.social_account_id).maybeSingle(),
   ]);
-  if (contactError || pageError) return { response: fail("Profile storage is unavailable. Apply the seven-updates database migration first.", 503) };
+  if (contactError || pageError) return { response: fail("Profile storage is unavailable. Check database access and apply 20260912_automatic_facebook_profile_links.sql if the profile columns are missing.", 503) };
   if (!contact || !page || page.platform !== "facebook" || contact.platform !== "facebook") return { response: fail("A Facebook customer is required.", 400) };
   return { access, contact, page, member };
 }

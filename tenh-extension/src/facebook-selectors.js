@@ -247,7 +247,7 @@ var TenhFacebookSelectors = (() => {
       "/", "/messages", "/business", "/latest", "/settings", "/help",
       "/marketplace", "/groups", "/watch", "/reels", "/pages", "/notifications",
       "/friends", "/bookmarks", "/gaming", "/search", "/ads", "/privacy",
-      "/login", "/logout", "/checkpoint", "/me", "/home", "/share", "/story",
+      "/login", "/logout", "/checkpoint", "/me", "/home", "/share", "/story", "/photo", "/photos", "/posts", "/videos",
     ];
 
     if (blocked.some((prefix) => lowerPath === prefix || lowerPath.startsWith(`${prefix}/`))) {

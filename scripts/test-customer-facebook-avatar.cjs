@@ -1,96 +1,70 @@
-/* Component-level behavior tests using small hook mocks, no live Facebook. */
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const vm = require('node:vm');
-const ts = require('typescript');
-const compile=path=>ts.transpileModule(fs.readFileSync(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
-const urlExports={};vm.runInNewContext(compile('lib/facebook/customer-profile-url.ts'),{exports:urlExports,URL});
-const component=compile('components/inbox/customer-facebook-avatar.tsx');
+/* Component state/lifecycle mocks: automatic opening, saving and cancellation. */
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
+const compile=p=>ts.transpileModule(fs.readFileSync(p,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+const urls={};vm.runInNewContext(compile('lib/facebook/customer-profile-url.ts'),{exports:urls,URL});
+const code=compile('components/inbox/customer-facebook-avatar.tsx');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-const expected={businessId:'workspace',pageId:'123456',threadId:'987654',conversationId:'conversation'};
+const context={businessId:'workspace',pageId:'123456',threadId:'987654',conversationId:'conversation'};
 const profile='https://www.facebook.com/profile.php?id=61555135812581';
-const result={...expected,resolved:true,verified:true,profileUrl:profile,openToken:'ticket'};
-function harness({savedId,version='1.2.19',installed=true,confirm={opened:true,verified:true,profileUrl:profile},cacheEntry}={}){
-  let answer,current={id:'conversation',business_id:'workspace',social_account:{platform:'facebook',platform_account_id:'123456'},contact:{id:'contact',platform_user_id:'987654',full_name:'Customer',facebook_profile_id:savedId}};
-  const pending=new Promise(resolve=>{answer=resolve});
-  const windows=[],confirmed=[],lookups=[],cache=new Map();
-  const exports={},states=[],refs=[],effects=[];let stateIndex=0,refIndex=0,effectIndex=0;
-  const context={exports,URL,Date,window:{open:(...args)=>windows.push(args)},
-    sessionStorage:{getItem:key=>cacheEntry?JSON.stringify(cacheEntry):cache.get(key),setItem:(key,value)=>cache.set(key,value)},
-    localStorage:{getItem:()=>{throw Error('Old localStorage profile cache must not be read')}},
-    require:name=>{
-      if(name==='react')return {
-        useState:initial=>{const i=stateIndex++;if(!(i in states))states[i]=initial;return [states[i],value=>states[i]=value]},
-        useRef:initial=>{const i=refIndex++;return refs[i]??(refs[i]={current:initial})},
-        useEffect:(fn,deps)=>{const i=effectIndex++;const prev=effects[i];if(!prev||deps.some((d,n)=>prev.deps[n]!==d)){prev?.cleanup?.();effects[i]={deps,cleanup:fn()}}},
-      };
-      if(name==='react/jsx-runtime')return {jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})};
-      if(name==='@/components/customer-avatar')return {CustomerAvatar:()=>null};
-      if(name==='@/lib/facebook/customer-profile-url')return urlExports;
-      if(name==='@/lib/facebook/profile-lookup-error')return {profileLookupError:reason=>reason};
-      if(name==='@/lib/extension/use-companion')return {useCompanion:()=>({installed,version,
-        openFacebookProfile:options=>{lookups.push(options);return pending},
-        openResolvedFacebookProfile:async(token,context)=>{confirmed.push({token,context});return confirm},
-      })};
-      throw Error(name);
-    }};
-  vm.runInNewContext(component,context);
-  const render=()=>{stateIndex=0;refIndex=0;effectIndex=0;return exports.CustomerFacebookAvatar({conversation:current})};
-  let tree=render();
-  return {windows,confirmed,lookups,cache,answer,rerender:()=>tree=render(),tree:()=>tree,
-    click:()=>tree.props.children[0].props.onClick(),unmount:()=>effects.forEach(e=>e.cleanup?.()),
-    switchTo:patch=>{current={...current,...patch};tree=render();return tree},
-  };
+const result={...context,resolved:true,verified:true,profileUrl:profile,openToken:'ticket'};
+function harness(config={}){
+ let answer,current={id:'conversation',business_id:'workspace',source_type:'messenger',social_account:{platform:'facebook',platform_account_id:'123456'},contact:{id:'contact',platform_user_id:'987654',full_name:'Customer',facebook_profile_id:config.savedId}};
+ const pending=new Promise(resolve=>answer=resolve),lookups=[],opens=[],patches=[],states=[],refs=[],effects=[];
+ let si=0,ri=0,ei=0;const exports={};
+ vm.runInNewContext(code,{exports,URL,AbortController,AbortSignal,
+ fetch:async(url,init={})=>{
+   if(init.method==='PATCH'){patches.push({url,body:JSON.parse(init.body)});return {ok:!config.saveFailure,json:async()=>({success:!config.saveFailure})};}
+   return {ok:true,json:async()=>({success:true,profileUrl:config.savedUrl??null,updatedAt:'original-revision'})};
+ },require:name=>{
+   if(name==='react')return {useState:value=>{const i=si++;if(!(i in states))states[i]=value;return [states[i],value=>states[i]=value]},
+     useRef:value=>{const i=ri++;return refs[i]??(refs[i]={current:value})},
+     useEffect:(fn,deps)=>{const i=ei++,old=effects[i];if(!old||deps.some((d,n)=>old.deps[n]!==d)){old?.cleanup?.();effects[i]={deps,cleanup:fn()};}}};
+   if(name==='react/jsx-runtime')return {jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})};
+   if(name==='@/components/customer-avatar')return {CustomerAvatar:()=>null};
+   if(name==='@/lib/facebook/customer-profile-url')return urls;
+   if(name==='@/lib/facebook/profile-lookup-error')return {profileLookupError:r=>r};
+   if(name==='@/lib/extension/use-companion')return {useCompanion:()=>({installed:config.installed!==false,version:config.version||'1.2.22',
+     openFacebookProfile:options=>{lookups.push(options);return pending},
+     openResolvedFacebookProfile:async(token,ctx)=>{opens.push({token,ctx});return config.openResult||{...context,opened:true,verified:true,profileUrl:profile};}})};
+   throw Error(name);
+ }});
+ let tree;const render=()=>{si=ri=ei=0;return tree=exports.CustomerFacebookAvatar({conversation:current})};render();
+ return {answer,lookups,opens,patches,render,tree:()=>tree,click:()=>tree.props.children[0].props.onClick(),
+   unmount:()=>effects.forEach(e=>e.cleanup?.()),switchTo:patch=>{current={...current,...patch};render();}};
 }
-test('unknown photo resolves -> confirms one profile tab and caches only after opening',async()=>{
-  const h=harness();h.click();assert.equal(h.windows.length,0);assert.equal(h.cache.size,0);
-  h.answer(result);await tick();assert.equal(h.confirmed.length,1);assert.equal(h.confirmed[0].token,'ticket');
-  assert.equal(JSON.stringify(h.confirmed[0].context),JSON.stringify(expected));assert.equal(h.cache.size,1);assert.equal(h.windows.length,0);
+test('one click resolves, opens verified profile, saves for team with original revision',async()=>{
+ const h=harness();h.click();await tick();assert.equal(h.lookups.length,1);h.answer(result);await tick();
+ assert.equal(h.opens.length,1);assert.deepEqual(JSON.parse(JSON.stringify(h.opens[0].ctx)),context);
+ assert.equal(h.patches.length,1);assert.equal(h.patches[0].body.profileUrl,profile);assert.equal(h.patches[0].body.expectedUpdatedAt,'original-revision');
+ const link=h.render().props.children[0];assert.equal(link.type,'a');assert.equal(link.props.href,profile);
 });
-test('TENH request includes correct workspace/Page/thread/conversation',()=>{
-  const h=harness();h.click();for(const [key,value] of Object.entries(expected))assert.equal(h.lookups[0][key],value);
+test('double click starts only one lookup',async()=>{const h=harness();h.click();h.click();await tick();assert.equal(h.lookups.length,1);h.answer({reason:'profile_link_missing'});await tick();});
+test('same-name different Page/customer/workspace/conversation never opens or saves',async()=>{
+ for(const patch of [{pageId:'other'},{threadId:'other'},{businessId:'other'},{conversationId:'other'},{verified:false},{profileUrl:'https://www.facebook.com/987654'},{profileUrl:'https://www.facebook.com/123456'}]){
+  const h=harness();h.click();await tick();h.answer({...result,...patch});await tick();assert.equal(h.opens.length,0);assert.equal(h.patches.length,0);
+ }
 });
-test('double-click does not start two lookups',()=>{
-  const h=harness();h.click();h.click();assert.equal(h.lookups.length,1);
+for(const action of ['unmount','switch'])test(action+' during lookup cancels opening and saving',async()=>{
+ const h=harness();h.click();await tick();if(action==='unmount')h.unmount();else h.switchTo({id:'new-conversation'});
+ h.answer(result);await tick();assert.equal(h.opens.length,0);assert.equal(h.patches.length,0);
 });
-test('unmount cancels profile opening and cache updates',async()=>{
-  const h=harness();h.click();h.unmount();h.answer(result);await tick();assert.equal(h.confirmed.length,0);assert.equal(h.cache.size,0);
+test('saved link is direct anchor, with no extension required',async()=>{
+ const h=harness({installed:false,savedUrl:'https://www.facebook.com/customer.test'});await tick();const a=h.render().props.children[0];
+ assert.equal(a.type,'a');assert.equal(a.props.href,'https://www.facebook.com/customer.test');assert.equal(a.props.target,'_blank');assert.equal(h.lookups.length,0);
 });
-test('changing conversation on the same mounted component rejects old completion',async()=>{
-  const h=harness();h.click();h.switchTo({id:'different-conversation'});h.answer(result);await tick();
-  assert.equal(h.confirmed.length,0);assert.equal(h.cache.size,0);assert.equal(h.windows.length,0);
+test('old or absent extension produces update instruction immediately',async()=>{
+ for(const config of [{installed:false},{version:'1.2.21'}]){const h=harness(config);h.click();await tick();assert.equal(h.lookups.length,0);assert.ok(JSON.stringify(h.render()).includes('1.2.22'));}
 });
-test('wrong Page/thread/workspace/conversation and unverified response cannot open or cache',async()=>{
-  for(const patch of [{pageId:'555555'},{threadId:'555555'},{businessId:'other'},{conversationId:'other'},{verified:false},{resolved:false,reason:'profile_link_missing'}]){
-    const h=harness();h.click();h.answer({...result,...patch});await tick();assert.equal(h.confirmed.length,0);assert.equal(h.cache.size,0);
-  }
+test('comment conversation cannot masquerade as Messenger lookup',async()=>{
+ const h=harness();h.switchTo({source_type:'facebook_comment'});h.click();await tick();assert.equal(h.lookups.length,0);assert.ok(JSON.stringify(h.render()).includes('profile_messenger_required'));
 });
-test('known public ID still opens without extension in the original click',()=>{
-  const h=harness({savedId:'61555135812581',installed:false});h.click();
-  assert.deepEqual(h.windows,[[profile,'_blank','noopener,noreferrer']]);assert.equal(h.lookups.length,0);
+test('failed open does not persist link',async()=>{
+ const h=harness({openResult:{opened:false,reason:'profile_resolution_expired'}});h.click();await tick();h.answer(result);await tick();assert.equal(h.patches.length,0);assert.equal(h.render().props.children[0].type,'button');
 });
-test('saved public ID equal to Messenger ID is rejected instead of opening broken page',()=>{
-  const h=harness({savedId:'987654'});h.click();assert.equal(h.windows.length,0);assert.equal(h.lookups.length,1);
+test('save failure is reported but verified profile remains usable',async()=>{
+ const h=harness({saveFailure:true});h.click();await tick();h.answer(result);await tick();assert.equal(h.opens.length,1);assert.equal(h.patches.length,1);
+ assert.equal(h.render().props.children[0].type,'a');assert.ok(JSON.stringify(h.tree()).includes('could not save'));
 });
-test('old extension is reported instead of timing out silently',()=>{
-  const h=harness({version:'1.2.18'});h.click();h.rerender();assert.equal(h.lookups.length,0);
-  assert.ok(JSON.stringify(h.tree()).includes('1.2.19'));
-});
-test('unverified or expired session-cache link is ignored',()=>{
-  for(const entry of [{url:profile,verified:false,expiresAt:Date.now()+1000},{url:profile,verified:true,expiresAt:0}]){
-    const h=harness({cacheEntry:entry});h.click();assert.equal(h.windows.length,0);assert.equal(h.lookups.length,1);
-  }
-});
-test('confirmed, unexpired session cache opens direct on repeat click',()=>{
-  const h=harness({cacheEntry:{url:profile,verified:true,expiresAt:Date.now()+30000}});h.click();
-  assert.deepEqual(h.windows,[[profile,'_blank','noopener,noreferrer']]);assert.equal(h.lookups.length,0);
-});
-test('failed second phase does not poison cache or silently open Business Suite',async()=>{
-  const h=harness({confirm:{opened:false,reason:'profile_context_mismatch'}});h.click();h.answer(result);await tick();h.rerender();
-  assert.equal(h.cache.size,0);assert.equal(h.windows.length,0);assert.ok(JSON.stringify(h.tree()).includes('profile_context_mismatch'));
-});
-test('photo UI has no manual URL form',async()=>{
-  const h=harness();h.click();h.answer({reason:'profile_link_missing'});await tick();
-  assert.equal(h.rerender().props.children.some(child=>child?.type==='form'),false);
+test('no manual URL form is added',async()=>{
+ const h=harness();h.click();await tick();h.answer({reason:'profile_link_missing'});await tick();assert.ok(!JSON.stringify(h.render()).includes('"type":"form"'));
 });

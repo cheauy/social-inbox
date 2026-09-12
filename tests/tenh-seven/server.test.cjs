@@ -31,3 +31,7 @@ test('Agent cannot edit group as admin',async()=>{const h=groupSetup(false,'agen
 for(const body of [null,[],{name:''},{name:'x'.repeat(81)},{description:42}])test(`Invalid group edit ${JSON.stringify(body)}`,async()=>{const h=groupSetup();assert.equal((await h.load(GROUP).PATCH(h.request(body,'PATCH'),h.context)).status,400)});
 
 test('Profile edit honors customer manage permission',async()=>{const h=setup({permissionDenied:true});assert.equal((await h.load(PROFILE).PATCH(h.request({profileUrl:'61555135812581',confirmed:true},'PATCH'),h.context)).status,403);assert.equal(h.db.tables.contacts[0].facebook_profile_id,null)});
+
+// Automatic lookup uses the server-held customer name and Messenger type.
+test('Profile lookup authorizes Messenger context and returns server name',async()=>{const seed=baseSeed();seed.conversations[0].source_type='messenger';const h=setup({seed});const r=await json(await h.load(OPEN).POST(h.request({...openBody,profileLookup:true,customerName:'Wrong caller name'})));assert.equal(r.status,200);assert.equal(r.data.customerName,'Customer');assert.equal(r.data.sourceType,'messenger')});
+test('Profile lookup refuses a comment conversation',async()=>{const seed=baseSeed();seed.conversations[0].source_type='facebook_comment';const h=setup({seed});assert.equal((await h.load(OPEN).POST(h.request({...openBody,profileLookup:true}))).status,403)});
