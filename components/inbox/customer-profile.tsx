@@ -1,5 +1,6 @@
 "use client";
 
+import { CustomerMessageBlock } from "./customer-message-block";
 import { CustomerFacebookAvatar } from "@/components/inbox/customer-facebook-avatar";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 
@@ -383,6 +384,7 @@ async function saveProfile() {
       </div>
     </div>
 
+
     {/* Scrollable profile content */}
     <div className="min-h-0 flex-1 overflow-y-auto">
       {editing ? (
@@ -679,6 +681,7 @@ async function saveProfile() {
             </p>
 
             <div className="mt-3 space-y-2">
+              <CustomerMessageBlock key={activeConversation.id} conversation={activeConversation} />
               <button
                 type="button"
                 onClick={() => setFilesOpen(true)}

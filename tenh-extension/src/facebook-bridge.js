@@ -322,85 +322,11 @@ try {
     return true;
   }
 
-  if (message?.type === "FB_FIND_CUSTOMER_PROFILE") {
-    const state = inspect();
-    const expectedPageId =
-      typeof message.pageId === "string" ? message.pageId : null;
-    const expectedConversationId =
-      typeof message.conversationId === "string" ? message.conversationId : null;
+  if (message?.type === "FB_FIND_CUSTOMER_PROFILE") { sendResponse({ found: false, revealed: false, reason: "profile_navigation_moved_to_website" }); return false; }
 
-    if (expectedPageId && state.pageId !== expectedPageId) {
-      sendResponse({ found: false, profileUrls: [], reason: "page_mismatch" });
-      return true;
-    }
+  if (message?.type === "FB_REVEAL_CUSTOMER_PROFILE") { sendResponse({ found: false, revealed: false, reason: "profile_navigation_moved_to_website" }); return false; }
 
-    if (
-      expectedConversationId &&
-      state.conversationId !== expectedConversationId
-    ) {
-      sendResponse({ found: false, profileUrls: [], reason: "conversation_mismatch" });
-      return true;
-    }
-
-    const customerName = String(message.customerName ?? "");
-    const disallowedProfileId =
-      typeof message.disallowedProfileId === "string"
-        ? message.disallowedProfileId
-        : expectedConversationId;
-
-    const profileUrls = selectors.findCustomerProfileUrls(
-      customerName,
-      disallowedProfileId,
-    );
-
-    sendResponse({
-      found: profileUrls.length > 0,
-      profileUrl: profileUrls[0] ?? null,
-      profileUrls,
-      actionTriggered: false,
-      reason: profileUrls.length > 0 ? null : "profile_link_unavailable",
-    });
-    return true;
-  }
-
-  if (message?.type === "FB_REVEAL_CUSTOMER_PROFILE") {
-    const state = inspect();
-    const expectedPageId =
-      typeof message.pageId === "string" ? message.pageId : null;
-    const expectedConversationId =
-      typeof message.conversationId === "string" ? message.conversationId : null;
-
-    if (expectedPageId && state.pageId !== expectedPageId) {
-      sendResponse({ revealed: false, reason: "page_mismatch" });
-      return true;
-    }
-
-    if (
-      expectedConversationId &&
-      state.conversationId !== expectedConversationId
-    ) {
-      sendResponse({ revealed: false, reason: "conversation_mismatch" });
-      return true;
-    }
-
-    const customerName = String(message.customerName ?? "");
-    const revealed = selectors.clickCustomerIdentityControl(customerName);
-
-    sendResponse({
-      revealed,
-      reason: revealed ? null : "customer_identity_control_unavailable",
-    });
-    return true;
-  }
-
-  if (message?.type === "FB_VALIDATE_PROFILE_PAGE") {
-    sendResponse(
-      selectors.validateCurrentProfilePage(
-        typeof message.customerName === "string" ? message.customerName : "",
-      ),
-    );
-    return true;
-  }
+  if (message?.type === "FB_VALIDATE_PROFILE_PAGE") { sendResponse({ found: false, reason: "profile_navigation_moved_to_website" }); return false; }
 
   if (message?.type === "FB_INSERT_TEXT") {
     const state = inspect();

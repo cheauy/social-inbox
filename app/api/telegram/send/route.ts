@@ -24,6 +24,9 @@ import {
   TelegramApiError,
 } from "@/lib/telegram/telegram-api";
 
+import { sendWithTelegramReplySafety } from "@/lib/telegram/reply-safety";
+import { createReplyContext, isMessageDeleted, type ActionMessage } from "@/lib/inbox/message-actions";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -60,13 +63,7 @@ type TelegramAccountRow = {
     | null;
 };
 
-type ReplyTargetRow = {
-  id: string;
-  conversation_id: string;
-  platform_message_id: string;
-  message_text: string | null;
-  message_type: string | null;
-};
+type ReplyTargetRow = ActionMessage;
 
 function parseTelegramMessageNumber({
   platformMessageId,
@@ -132,6 +129,12 @@ export async function POST(
     );
   }
 
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+    (body.conversationId !== undefined && typeof body.conversationId !== "string") ||
+    (body.message !== undefined && typeof body.message !== "string") ||
+    (body.replyToMessageId !== undefined && typeof body.replyToMessageId !== "string")) {
+    return NextResponse.json({ success: false, error: "Invalid message request." }, { status: 400 });
+  }
   const conversationId =
     body.conversationId?.trim();
   const message =
@@ -399,6 +402,7 @@ export async function POST(
     | ReplyTargetRow
     | null = null;
 
+  let replyTargetUnavailable = false;
   let replyToTelegramMessageId:
     | number
     | null = null;
@@ -411,7 +415,7 @@ export async function POST(
       await supabaseAdmin
         .from("messages")
         .select(
-          "id,conversation_id,platform_message_id,message_text,message_type",
+          "id,conversation_id,platform_message_id,message_text,message_type,raw_payload,attachment_url,direction,comment_is_deleted",
         )
         .eq("id", replyToMessageId)
         .eq(
@@ -452,6 +456,10 @@ export async function POST(
       );
     }
 
+    if (isMessageDeleted(replyTarget)) {
+      replyTargetUnavailable = true;
+    }
+
     replyToTelegramMessageId =
       parseTelegramMessageNumber({
         platformMessageId:
@@ -490,16 +498,21 @@ export async function POST(
   }
 
   let telegramMessage;
+  let replyApplied = false;
+  let replyFallback = false;
+  let replyNotice: string | null = null;
 
   try {
-    telegramMessage =
-      await sendTelegramMessage({
-        token: botToken,
-        chatId,
-        text: message,
-        replyToMessageId:
-          replyToTelegramMessageId,
-      });
+    const outcome = await sendWithTelegramReplySafety({
+      replyToMessageId: replyToTelegramMessageId,
+      knownUnavailable: replyTargetUnavailable,
+      send: (replyId) => sendTelegramMessage({ token: botToken, chatId,
+        text: message, replyToMessageId: replyId, allowSendingWithoutReply: true }),
+    });
+    telegramMessage = outcome.message;
+    replyApplied = outcome.replyApplied;
+    replyFallback = outcome.replyFallback;
+    replyNotice = outcome.notice;
   } catch (error) {
     console.error(
       "[Tenh Telegram] Outgoing text send failed:",
@@ -523,9 +536,9 @@ export async function POST(
       {
         success: false,
         error:
-          error instanceof Error
+          error instanceof TelegramApiError
             ? error.message
-            : "Telegram rejected the message.",
+            : "Telegram did not confirm delivery. Check the conversation in Telegram before retrying to avoid a duplicate message.",
         telegramError,
       },
       { status: 502 },
@@ -569,6 +582,7 @@ export async function POST(
     | string
     | null = null;
 
+  try {
   const {
     error: insertError,
   } =
@@ -597,20 +611,12 @@ export async function POST(
         is_echo: false,
         raw_payload: {
           ...telegramMessage,
-          ...(replyTarget
+          ...(replyTarget && replyApplied
             ? {
-                tenh_reply: {
-                  reply_to_local_message_id:
-                    replyTarget.id,
-                  reply_to_platform_message_id:
-                    replyTarget.platform_message_id,
-                  preview_text:
-                    replyTarget.message_text,
-                  preview_type:
-                    replyTarget.message_type,
-                },
+                tenh_reply: createReplyContext(replyTarget, "telegram"),
               }
             : {}),
+          ...(replyFallback ? { tenh_reply_fallback: { reason: "original_unavailable", requested_local_id: replyToMessageId, notice: replyNotice } } : {}),
           tenh_delivery: {
             status:
               "accepted_by_telegram",
@@ -675,6 +681,10 @@ export async function POST(
       "Telegram sent the message, but TENH could not update the conversation preview.";
   }
 
+  } catch {
+    saveWarning = "Telegram sent the message, but local synchronization failed. Do not resend it.";
+  }
+
   console.info(
     "[Tenh Telegram] Outgoing text sent.",
     {
@@ -692,7 +702,9 @@ export async function POST(
     platform: "telegram",
     messageId:
       platformMessageId,
-    warning:
-      saveWarning,
+    warning: saveWarning,
+    notice: replyNotice,
+    replyApplied,
+    replyFallback,
   });
 }

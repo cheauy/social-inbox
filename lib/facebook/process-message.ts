@@ -1,3 +1,5 @@
+import { captureFacebookNativeReply } from "@/lib/facebook/capture-native-reply";
+import { readFacebookBlock } from "@/lib/facebook/customer-block";
 import "server-only";
 import { saveDetectedCustomerPhone } from "@/lib/inbox/save-detected-customer-phone";
 
@@ -238,6 +240,11 @@ export async function processFacebookMessage(
 
 
 
+  if (!isEcho) {
+    const block = await readFacebookBlock({ businessId: socialAccount.business_id, socialAccountId: socialAccount.id, contactId: contact.id });
+    if (block.state?.is_blocked) return; // Keep history; do not add new incoming messages after a confirmed Page block.
+  }
+
   const { data: conversation, error: conversationError } =
     await supabaseAdmin
       .from("conversations")
@@ -280,6 +287,8 @@ export async function processFacebookMessage(
   const content =
     getFacebookMessageContent(event);
 
+  const nativeReply = await captureFacebookNativeReply(event, { businessId: socialAccount.business_id, conversationId: conversation.id, messageId });
+
   const { error: messageError } =
     await supabaseAdmin.from("messages").insert({
       business_id: socialAccount.business_id,
@@ -292,7 +301,7 @@ export async function processFacebookMessage(
       message_text: content.messageText,
       attachment_url: content.attachmentUrl,
       is_echo: isEcho,
-      raw_payload: event,
+      raw_payload: nativeReply ? { ...event, tenh_facebook_reply: nativeReply } : event,
       platform_created_at: messageTime,
     });
 

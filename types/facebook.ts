@@ -21,6 +21,7 @@ export type FacebookMessagingEvent = {
     mid?: string;
     text?: string;
     is_echo?: boolean;
+    reply_to?: { mid?: string; is_self_reply?: boolean };
     attachments?: FacebookAttachment[];
   };
 

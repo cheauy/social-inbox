@@ -7,6 +7,7 @@ import type {
   TelegramUserProfilePhotos,
   TelegramUser,
   TelegramWebhookInfo,
+  TelegramStickerSet,
 } from "@/lib/telegram/types";
 
 const TELEGRAM_API_BASE =
@@ -14,6 +15,7 @@ const TELEGRAM_API_BASE =
 
 type TelegramRequestOptions = {
   body?: Record<string, unknown>;
+  timeoutMs?: number;
 };
 
 export class TelegramApiError extends Error {
@@ -71,6 +73,7 @@ async function telegramRequest<T>(
         options.body ?? {},
       ),
       cache: "no-store",
+      ...(options.timeoutMs ? { signal: AbortSignal.timeout(options.timeoutMs) } : {}),
     },
   );
 
@@ -207,6 +210,7 @@ export async function getTelegramFile({
       body: {
         file_id: fileId,
       },
+      timeoutMs: 12000,
     },
   );
 }
@@ -214,15 +218,18 @@ export async function getTelegramFile({
 export async function downloadTelegramFile({
   token,
   filePath,
+  timeoutMs,
 }: {
   token: string;
   filePath: string;
+  timeoutMs?: number;
 }) {
   const response = await fetch(
     `${TELEGRAM_API_BASE}/file/bot${token}/${filePath}`,
     {
       method: "GET",
       cache: "no-store",
+      ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
     },
   );
 
@@ -241,11 +248,13 @@ export async function sendTelegramMessage({
   chatId,
   text,
   replyToMessageId,
+  allowSendingWithoutReply = false,
 }: {
   token: string;
   chatId: string | number;
   text: string;
   replyToMessageId?: number | null;
+  allowSendingWithoutReply?: boolean;
 }) {
   return telegramRequest<TelegramMessage>(
     token,
@@ -260,8 +269,7 @@ export async function sendTelegramMessage({
           ? {
               reply_parameters: {
                 message_id: replyToMessageId,
-                allow_sending_without_reply:
-                  false,
+                allow_sending_without_reply: allowSendingWithoutReply,
               },
             }
           : {}),
@@ -732,3 +740,15 @@ export async function sendTelegramLocation({
   );
 }
 
+
+export async function getTelegramStickerSet(token: string, name: string) {
+  return telegramRequest<TelegramStickerSet>(token, "getStickerSet", { body: { name }, timeoutMs: 12000 });
+}
+export async function sendTelegramSticker({ token, chatId, fileId, replyToMessageId }: {
+  token: string; chatId: string; fileId: string; replyToMessageId?: number | null;
+}) {
+  return telegramRequest<TelegramMessage>(token, "sendSticker", { body: {
+    chat_id: chatId, sticker: fileId,
+    ...(replyToMessageId ? { reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true } } : {}),
+  } });
+}

@@ -1,0 +1,7 @@
+{
+  "kind": "syntax and manifest reference validation, NOT full TypeScript or Next production build",
+  "changedTypeScriptFiles": 13,
+  "extensionJavaScriptFiles": 11,
+  "version": "1.2.22",
+  "errors": []
+}

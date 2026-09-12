@@ -1,0 +1,6 @@
+{
+  "test": "Chrome unpacked-extension smoke",
+  "liveProviders": false,
+  "status": "not_verified",
+  "reason": "Timeout 7000ms exceeded while waiting for event \"serviceworker\""
+}

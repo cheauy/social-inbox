@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 
 import EmojiPicker from "emoji-picker-react";
+import { EditTeamGroupDialog } from "./edit-team-group-dialog";
 
 import { createClient } from "@/lib/supabase/client";
 import { MentionComposer } from "@/components/team/mention-composer";
@@ -374,6 +375,7 @@ export function GroupChatView() {
 
   // --- feature state -------------------------------------------------
   const [showDetails, setShowDetails] = useState(true);
+  const [editingGroup, setEditingGroup] = useState<TeamRoom | null>(null);
   const [muteBusy, setMuteBusy] = useState(false);
 
   const [searchOpen, setSearchOpen] = useState(false);
@@ -2252,6 +2254,7 @@ export function GroupChatView() {
                     {roomDisplayName(selectedRoom)}
                   </h2>
 
+                  {canManage && !selectedRoom.is_general ? <button type="button" onClick={() => setEditingGroup(selectedRoom)} className="shrink-0 rounded-lg border px-2 py-1 text-xs text-blue-600 xl:hidden" aria-label="Edit group details">{t("Edit", "កែប្រែ")}</button> : null}
                   {selectedRoom.is_general ? (
                     <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
                       {t("Everyone", "គ្រប់គ្នា")}
@@ -3205,7 +3208,10 @@ export function GroupChatView() {
             <h3 className="text-lg font-extrabold text-slate-950">
               {t("Details", "ព័ត៌មានលម្អិត")}
             </h3>
-            <X className="h-4 w-4 text-slate-400" />
+            <div className="flex items-center gap-2">
+              {canManage && !selectedRoom.is_general ? <button type="button" onClick={() => setEditingGroup(selectedRoom)} className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-600">{t("Edit", "កែប្រែ")}</button> : null}
+              <button type="button" aria-label="Close group details" onClick={() => setShowDetails(false)}><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
@@ -3744,6 +3750,10 @@ export function GroupChatView() {
         />
       ) : null}
 
+      {editingGroup && canManage && !editingGroup.is_general ? <EditTeamGroupDialog
+        key={editingGroup.id} room={editingGroup} onClose={() => setEditingGroup(null)}
+        onSaved={updated => setRooms(current => current.map(room => room.id === updated.id ? { ...room, name: updated.name, description: updated.description } : room))}
+      /> : null}
       {createOpen ? (
         <RoomMembersModal
           title={t("Create team group", "បង្កើតក្រុមការងារ")}

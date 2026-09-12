@@ -1,0 +1,884 @@
+/* ---------------------------------------------------------------- storage */
+
+async function readState() {
+  const [stored, session] = await Promise.all([
+    chrome.storage.local.get([
+      "token",
+      "device",
+      "installationId",
+      "facebook",
+      "facebookTabs",
+      "managedFacebookTabId",
+      "managedFacebookWindowId",
+      "keepFacebookActive",
+      "syncCursor",
+      "syncStatus",
+      "realtimeStatus",
+      "realtimeUnsupportedUntil",
+      "recentFingerprints",
+    ]),
+    chrome.storage.session.get([QUEUE_KEY]),
+  ]);
+
+  stored[QUEUE_KEY] = Array.isArray(session[QUEUE_KEY]) ? session[QUEUE_KEY] : [];
+
+  if (!stored.installationId) {
+    stored.installationId = crypto.randomUUID();
+    await chrome.storage.local.set({ installationId: stored.installationId });
+  }
+
+  if (stored.keepFacebookActive === undefined) {
+    stored.keepFacebookActive = false;
+    await chrome.storage.local.set({ keepFacebookActive: false });
+  }
+
+  return stored;
+}
+
+async function writeState(patch) {
+  await chrome.storage.local.set(patch);
+}
+
+async function facebookTabStates() {
+  const state = await readState();
+  const now = Date.now();
+  const raw = state.facebookTabs && typeof state.facebookTabs === "object"
+    ? state.facebookTabs
+    : {};
+  const entries = Object.entries(raw)
+    .filter(([, value]) => value && now - Number(value.seenAt ?? 0) < FACEBOOK_TAB_STATE_TTL_MS)
+    .sort((a, b) => Number(b[1].seenAt ?? 0) - Number(a[1].seenAt ?? 0))
+    .slice(0, MAX_FACEBOOK_TAB_STATES);
+  return Object.fromEntries(entries);
+}
+
+function summarizeFacebookPages(tabStates) {
+  const byPage = new Map();
+  for (const value of Object.values(tabStates ?? {})) {
+    if (!value?.pageId) continue;
+    const existing = byPage.get(value.pageId);
+    if (!existing || Number(value.seenAt ?? 0) > Number(existing.seenAt ?? 0)) {
+      byPage.set(value.pageId, {
+        pageId: value.pageId,
+        pageName: value.pageName ?? null,
+        loggedIn: value.loggedIn === true,
+        composerState: value.composerState ?? "unknown",
+        conversationId: value.conversationId ?? null,
+        seenAt: Number(value.seenAt ?? 0),
+      });
+    }
+  }
+  return [...byPage.values()].sort((a, b) => b.seenAt - a.seenAt);
+}
+
+async function updateFacebookTabState(tabId, patch) {
+  if (!Number.isInteger(tabId)) return;
+  const current = await facebookTabStates();
+  current[String(tabId)] = {
+    ...(current[String(tabId)] ?? {}),
+    ...patch,
+    tabId,
+    seenAt: Date.now(),
+  };
+  const entries = Object.entries(current)
+    .sort((a, b) => Number(b[1].seenAt ?? 0) - Number(a[1].seenAt ?? 0))
+    .slice(0, MAX_FACEBOOK_TAB_STATES);
+  await writeState({ facebookTabs: Object.fromEntries(entries) });
+}
+
+async function removeFacebookTabState(tabId) {
+  if (!Number.isInteger(tabId)) return;
+  const current = await facebookTabStates();
+  if (!current[String(tabId)]) return;
+  delete current[String(tabId)];
+  await writeState({ facebookTabs: current });
+}
+
+async function inspectFacebookTab(tab) {
+  if (!tab?.id || !/^https:\/\/(www\.|business\.)facebook\.com\//.test(tab.url ?? "")) {
+    return null;
+  }
+  try {
+    const answer = await chrome.tabs.sendMessage(tab.id, { type: "FB_INSPECT" });
+    if (!answer) return null;
+    const normalized = {
+      loggedIn: answer.facebookConnected === true,
+      pageId: answer.pageId ?? null,
+      pageName: answer.pageName ?? null,
+      conversationId: answer.conversationId ?? null,
+      url: tab.url ?? null,
+      composerState: answer.composerEnabled
+        ? "available"
+        : answer.composerFound
+          ? "unavailable"
+          : "unknown",
+      seenAt: Date.now(),
+      tabId: tab.id,
+    };
+    await updateFacebookTabState(tab.id, normalized);
+    return normalized;
+  } catch {
+    return null;
+  }
+}
+
+async function currentFacebookContext() {
+  const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const active = activeTabs.find((tab) =>
+    /^https:\/\/(www\.|business\.)facebook\.com\//.test(tab.url ?? ""),
+  );
+  const inspected = await inspectFacebookTab(active);
+  if (active) return inspected?.pageId ? inspected : null;
+
+  const states = await facebookTabStates();
+  const values = Object.values(states).sort(
+    (a, b) => Number(b.seenAt ?? 0) - Number(a.seenAt ?? 0),
+  );
+  return values.find((value) => value?.pageId) ?? null;
+}
+
+async function clearAuth() {
+  stopRealtime({ reason: "auth_cleared", reconnect: false });
+  await Promise.all([
+    chrome.storage.local.remove(["token", "device", "syncCursor"]),
+    chrome.storage.session.remove([QUEUE_KEY]),
+  ]);
+}
+
+/* ------------------------------------------------------------------ TENH */
+
+async function callTenh(path, { method = "GET", body, token } = {}) {
+  const response = await fetch(`${TENH_ORIGIN}${path}`, {
+    method,
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      ...(body ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+
+  let result = {};
+
+  try {
+    result = await response.json();
+  } catch {
+    result = {};
+  }
+
+  return {
+    ok: response.ok && result.success !== false,
+    status: response.status,
+    result,
+  };
+}
+
+async function disconnect() {
+  const { token } = await readState();
+
+  if (token) {
+    await callTenh("/api/extension/disconnect", { method: "POST", token }).catch(
+      () => {},
+    );
+  }
+
+  await clearAuth();
+  return { connected: false, paired: false };
+}
+
+async function heartbeat(event) {
+  const state = await readState();
+  if (!state.token) return { connected: false, paired: false };
+
+  const facebook = state.facebook ?? {};
+  const tabStates = await facebookTabStates();
+  const facebookPages = summarizeFacebookPages(tabStates);
+
+  try {
+    const { ok, status, result } = await callTenh("/api/extension/heartbeat", {
+      method: "POST",
+      token: state.token,
+      body: {
+        facebookConnected: facebook.loggedIn === true,
+        pageId: facebook.pageId ?? null,
+        pageName: facebook.pageName ?? null,
+        threadId: facebook.conversationId ?? null,
+        pages: facebookPages.slice(0, 50),
+        pageCount: facebookPages.length,
+        url: facebook.url ?? null,
+        composerState: facebook.composerState ?? "unknown",
+        extensionVersion: VERSION,
+        pendingSyncEvents: Array.isArray(state[QUEUE_KEY]) ? state[QUEUE_KEY].length : 0,
+        syncCursor: state.syncCursor ?? null,
+        event: event ?? null,
+      },
+    });
+
+    if (!ok && (status === 401 || status === 403)) {
+      await clearAuth();
+      return {
+        connected: false,
+        paired: false,
+        error: result.error ?? "This browser was disconnected.",
+      };
+    }
+
+    const pushedEvents = Array.isArray(result.events) ? result.events : [];
+    for (const pushedEvent of pushedEvents) await processServerEvent(pushedEvent);
+
+    const nextCursor = result.cursor ?? result.nextCursor ?? state.syncCursor ?? null;
+    await writeState({
+      ...(nextCursor !== state.syncCursor ? { syncCursor: nextCursor } : {}),
+      syncStatus: {
+        reachable: true,
+        lastHeartbeatAt: Date.now(),
+        pending: Array.isArray(state[QUEUE_KEY]) ? state[QUEUE_KEY].length : 0,
+      },
+    });
+
+    return { connected: true, paired: true, result };
+  } catch {
+    await writeState({
+      syncStatus: {
+        reachable: false,
+        lastHeartbeatAt: Date.now(),
+        pending: Array.isArray(state[QUEUE_KEY]) ? state[QUEUE_KEY].length : 0,
+      },
+    });
+    return { connected: true, paired: true, offline: true };
+  }
+}
+
+function deviceName() {
+  const platform = navigator.userAgentData?.platform ?? "";
+  return platform ? `Chrome on ${platform}` : "Chrome browser";
+}
+
+/* ----------------------------------------------------------- sync engine */
+
+async function rememberFingerprint(fingerprint, metadata = {}) {
+  if (!fingerprint) return;
+  const state = await readState();
+  const now = Date.now();
+  const recent = (Array.isArray(state.recentFingerprints) ? state.recentFingerprints : [])
+    .filter((item) => now - Number(item.at ?? 0) < RECENT_FINGERPRINT_TTL_MS)
+    .filter((item) => item.fingerprint !== fingerprint);
+
+  recent.push({
+    fingerprint,
+    at: now,
+    status: metadata.status ?? "observed",
+    providerMessageId: metadata.providerMessageId ?? null,
+  });
+
+  if (recent.length > MAX_RECENT_FINGERPRINTS) {
+    recent.splice(0, recent.length - MAX_RECENT_FINGERPRINTS);
+  }
+  await writeState({ recentFingerprints: recent });
+}
+
+async function hasRecentFingerprint(fingerprint) {
+  if (!fingerprint) return false;
+  const state = await readState();
+  const now = Date.now();
+  return (Array.isArray(state.recentFingerprints) ? state.recentFingerprints : []).some(
+    (item) => item.fingerprint === fingerprint && now - Number(item.at ?? 0) < RECENT_FINGERPRINT_TTL_MS,
+  );
+}
+
+async function removeQueuedFingerprint(fingerprint) {
+  if (!fingerprint) return false;
+  const state = await readState();
+  const queue = Array.isArray(state[QUEUE_KEY]) ? state[QUEUE_KEY] : [];
+  const next = queue.filter((item) => item.dedupeKey !== fingerprint && item.payload?.fingerprint !== fingerprint);
+  if (next.length === queue.length) return false;
+  await chrome.storage.session.set({ [QUEUE_KEY]: next });
+  return true;
+}
+
+function normalizeText(value) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+async function sha256(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function outgoingFingerprint(payload) {
+  const bucket = Math.floor(Number(payload.observedAt ?? Date.now()) / 5000);
+  return sha256(
+    [
+      payload.pageId ?? "",
+      payload.threadId ?? payload.conversationId ?? "",
+      normalizeText(payload.text),
+      bucket,
+    ].join("|"),
+  );
+}
+
+async function enqueueSyncEvent(type, payload, { dedupeKey } = {}) {
+  if (dedupeKey && (await hasRecentFingerprint(dedupeKey))) {
+    return { id: null, type, payload, dedupeKey, duplicate: true, createdAt: Date.now() };
+  }
+
+  const state = await readState();
+  const now = Date.now();
+  const queue = (Array.isArray(state[QUEUE_KEY]) ? state[QUEUE_KEY] : []).filter(
+    (item) => now - Number(item.createdAt ?? 0) < MAX_EVENT_AGE_MS,
+  );
+
+  if (dedupeKey) {
+    const existing = queue.find(
+      (item) => item.type === type && item.dedupeKey === dedupeKey,
+    );
+    if (existing) return existing;
+  }
+
+  const item = {
+    id: crypto.randomUUID(),
+    type,
+    payload,
+    dedupeKey: dedupeKey ?? null,
+    createdAt: now,
+    attempts: 0,
+    nextAttemptAt: now,
+  };
+
+  queue.push(item);
+  if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE);
+  await chrome.storage.session.set({ [QUEUE_KEY]: queue });
+  void flushSyncQueue();
+  return item;
+}
+
+function retryDelay(attempts) {
+  return Math.min(MAX_RETRY_MS, 1000 * 2 ** Math.min(attempts, 8));
+}
+
+async function deliverSyncEvent(item, token) {
+  if (item.type === "facebook.outgoing") {
+    const { status, ok, result } = await callTenh("/api/extension/observed-message", {
+      method: "POST",
+      token,
+      body: {
+        eventId: item.id,
+        fingerprint: item.payload.fingerprint ?? null,
+        pageId: item.payload.pageId ?? null,
+        threadId: item.payload.threadId ?? null,
+        text: item.payload.text ?? "",
+        observedAt: item.payload.observedAt ?? item.createdAt,
+        source: "facebook_browser",
+      },
+    });
+
+    if (ok && item.payload.fingerprint) {
+      await rememberFingerprint(item.payload.fingerprint, {
+        status: result.confirmed === true ? "confirmed" : "delivered",
+        providerMessageId: result.providerMessageId ?? result.messageId ?? null,
+      });
+    }
+
+    return {
+      delivered: ok,
+      authRejected: status === 401 || status === 403,
+      permanent: status >= 400 && status < 500 && status !== 408 && status !== 429,
+      result,
+    };
+  }
+
+  if (item.type === "facebook.activity") {
+    const { status, ok, result } = await callTenh("/api/extension/reconcile", {
+      method: "POST",
+      token,
+      body: {
+        eventId: item.id,
+        pageId: item.payload.pageId ?? null,
+        threadId: item.payload.threadId ?? null,
+        observedAt: item.payload.observedAt ?? item.createdAt,
+        reason: item.payload.reason ?? "browser_activity",
+        source: "facebook_browser",
+      },
+    });
+
+    /* Older TENH backends do not have /reconcile yet. Do not retry a missing
+       optional endpoint forever; the normal Meta webhook remains primary. */
+    if (status === 404 || status === 405) {
+      await heartbeat("browser_activity");
+      return { delivered: true, unsupported: true, result };
+    }
+
+    return {
+      delivered: ok,
+      authRejected: status === 401 || status === 403,
+      permanent: status >= 400 && status < 500 && status !== 408 && status !== 429,
+      result,
+    };
+  }
+
+  return { delivered: true, ignored: true };
+}
+
+async function flushSyncQueue() {
+  if (flushPromise) return flushPromise;
+
+  flushPromise = (async () => {
+    const state = await readState();
+    if (!state.token) return { flushed: 0, pending: 0 };
+
+    let queue = Array.isArray(state[QUEUE_KEY]) ? [...state[QUEUE_KEY]] : [];
+    const now = Date.now();
+    let flushed = 0;
+
+    for (const item of [...queue]) {
+      if (Number(item.nextAttemptAt ?? 0) > now) continue;
+
+      let result;
+      try {
+        result = await deliverSyncEvent(item, state.token);
+      } catch {
+        result = { delivered: false, permanent: false };
+      }
+
+      if (result.authRejected) {
+        await clearAuth();
+        break;
+      }
+
+      if (result.delivered || result.permanent) {
+        queue = queue.filter((queued) => queued.id !== item.id);
+        flushed += 1;
+        continue;
+      }
+
+      queue = queue.map((queued) => {
+        if (queued.id !== item.id) return queued;
+        const attempts = Number(queued.attempts ?? 0) + 1;
+        return {
+          ...queued,
+          attempts,
+          nextAttemptAt: Date.now() + retryDelay(attempts),
+        };
+      });
+    }
+
+    await chrome.storage.session.set({ [QUEUE_KEY]: queue });
+    await writeState({
+      syncStatus: {
+        reachable: true,
+        lastFlushAt: Date.now(),
+        pending: queue.length,
+      },
+    });
+
+    return { flushed, pending: queue.length };
+  })().finally(() => {
+    flushPromise = null;
+  });
+
+  return flushPromise;
+}
+
+async function acknowledgeServerEvent(event) {
+  const eventId = event?.eventId ?? event?.id ?? null;
+  if (!eventId) return;
+
+  if (realtimeSocket?.readyState === WebSocket.OPEN) {
+    try {
+      realtimeSocket.send(JSON.stringify({
+        type: "ack",
+        eventId,
+        cursor: event.cursor ?? null,
+        at: Date.now(),
+      }));
+      return;
+    } catch {
+      /* Fall back to optional HTTP ACK below. */
+    }
+  }
+
+  const state = await readState();
+  if (!state.token) return;
+  try {
+    const response = await callTenh(REALTIME_ACK_PATH, {
+      method: "POST",
+      token: state.token,
+      body: { eventId, cursor: event.cursor ?? null, at: Date.now() },
+    });
+    if (response.status === 404 || response.status === 405) return;
+  } catch {
+    /* ACK is an optimization; delta sync remains the recovery path. */
+  }
+}
+
+async function reconcileServerEvent(event) {
+  if (!event || typeof event !== "object") return;
+
+  const fingerprint =
+    typeof event.fingerprint === "string"
+      ? event.fingerprint
+      : typeof event.data?.fingerprint === "string"
+        ? event.data.fingerprint
+        : null;
+
+  const confirmed =
+    event.type === "message.confirmed" ||
+    event.type === "message.sent" ||
+    event.confirmed === true ||
+    event.data?.confirmed === true;
+
+  if (fingerprint && confirmed) {
+    await removeQueuedFingerprint(fingerprint);
+    await rememberFingerprint(fingerprint, {
+      status: "confirmed",
+      providerMessageId:
+        event.providerMessageId ?? event.messageId ?? event.data?.providerMessageId ?? null,
+    });
+  }
+
+  const cursor = event.cursor ?? event.nextCursor ?? null;
+  if (cursor !== null && cursor !== undefined) {
+    await writeState({ syncCursor: cursor });
+  }
+}
+
+async function broadcastSyncEvent(event, { toTenhTabs = true } = {}) {
+  await reconcileServerEvent(event);
+
+  /* Long-lived TENH content-script ports get the event first. */
+  for (const port of [...tenhRealtimePorts]) {
+    try {
+      port.postMessage({ type: "TENH_SYNC_PUSH", event });
+    } catch {
+      tenhRealtimePorts.delete(port);
+    }
+  }
+
+  /* Extension views (side panel/popup). */
+  chrome.runtime.sendMessage({ type: "TENH_SYNC_PUSH", event }, () => {
+    void chrome.runtime.lastError;
+  });
+
+  if (!toTenhTabs) return;
+
+  /* Fallback for TENH tabs that do not have a live Port yet. */
+  const tabs = await chrome.tabs.query({ url: [`${TENH_ORIGIN}/*`] });
+  for (const tab of tabs) {
+    if (!tab.id) continue;
+    chrome.tabs.sendMessage(tab.id, { type: "TENH_SYNC_PUSH", event }, () => {
+      void chrome.runtime.lastError;
+    });
+  }
+}
+
+async function processServerEvent(event) {
+  if (!event || typeof event !== "object") return;
+  await broadcastSyncEvent(event);
+  await acknowledgeServerEvent(event);
+}
+
+/* ----------------------------------------------------------- realtime */
+
+function realtimeBackoff(attempts) {
+  return Math.min(60_000, 1000 * 2 ** Math.min(attempts, 6));
+}
+
+function clearRealtimeTimers() {
+  if (realtimePingTimer) clearInterval(realtimePingTimer);
+  if (realtimeReconnectTimer) clearTimeout(realtimeReconnectTimer);
+  realtimePingTimer = null;
+  realtimeReconnectTimer = null;
+}
+
+async function setRealtimeStatus(patch) {
+  const state = await readState();
+  await writeState({
+    realtimeStatus: {
+      ...(state.realtimeStatus ?? {}),
+      ...patch,
+      updatedAt: Date.now(),
+    },
+  });
+}
+
+function isAllowedRealtimeUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "wss:" && url.hostname === "app.tenhchat.com";
+  } catch {
+    return false;
+  }
+}
+
+function scheduleRealtimeReconnect() {
+  if (realtimeReconnectTimer) return;
+  const delay = realtimeBackoff(realtimeAttempts);
+  realtimeReconnectTimer = setTimeout(() => {
+    realtimeReconnectTimer = null;
+    void ensureRealtimeConnection({ force: true });
+  }, delay);
+}
+
+function stopRealtime({ reason = "stopped", reconnect = false } = {}) {
+  clearRealtimeTimers();
+  const socket = realtimeSocket;
+  realtimeSocket = null;
+
+  if (socket && socket.readyState < WebSocket.CLOSING) {
+    try {
+      socket.close(1000, reason.slice(0, 120));
+    } catch {
+      /* noop */
+    }
+  }
+
+  void setRealtimeStatus({ connected: false, connecting: false, reason });
+  if (reconnect) scheduleRealtimeReconnect();
+}
+
+async function requestRealtimeSession(state) {
+  const response = await callTenh(REALTIME_SESSION_PATH, {
+    method: "POST",
+    token: state.token,
+    body: {
+      extensionVersion: VERSION,
+      installationId: state.installationId,
+      deviceId: state.device?.id ?? null,
+      cursor: state.syncCursor ?? null,
+    },
+  });
+
+  if (response.status === 404 || response.status === 405) {
+    await writeState({ realtimeUnsupportedUntil: Date.now() + REALTIME_UNSUPPORTED_MS });
+    await setRealtimeStatus({
+      connected: false,
+      connecting: false,
+      supported: false,
+      mode: tenhRealtimePorts.size ? "tenh_tab_bridge" : "delta",
+    });
+    return { supported: false };
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    await clearAuth();
+    return { supported: true, authRejected: true };
+  }
+
+  const url = response.result.websocketUrl ?? response.result.url ?? null;
+  if (!response.ok || !isAllowedRealtimeUrl(url)) {
+    return { supported: true, ok: false };
+  }
+
+  return { supported: true, ok: true, url };
+}
+
+async function ensureRealtimeConnection({ force = false } = {}) {
+  if (realtimeSocket?.readyState === WebSocket.OPEN) return { connected: true, mode: "websocket" };
+  if (realtimeConnectPromise) return realtimeConnectPromise;
+
+  realtimeConnectPromise = (async () => {
+    const state = await readState();
+    if (!state.token) return { connected: false };
+
+    if (!force && Number(state.realtimeUnsupportedUntil ?? 0) > Date.now()) {
+      await setRealtimeStatus({
+        connected: tenhRealtimePorts.size > 0,
+        connecting: false,
+        supported: false,
+        mode: tenhRealtimePorts.size ? "tenh_tab_bridge" : "delta",
+      });
+      return { connected: tenhRealtimePorts.size > 0, mode: tenhRealtimePorts.size ? "tenh_tab_bridge" : "delta" };
+    }
+
+    await setRealtimeStatus({ connecting: true, supported: true });
+
+    let session;
+    try {
+      session = await requestRealtimeSession(state);
+    } catch {
+      realtimeAttempts += 1;
+      await setRealtimeStatus({
+        connected: tenhRealtimePorts.size > 0,
+        connecting: false,
+        mode: tenhRealtimePorts.size ? "tenh_tab_bridge" : "delta",
+        error: "session_unreachable",
+      });
+      scheduleRealtimeReconnect();
+      return { connected: false };
+    }
+
+    if (!session.supported || session.authRejected || !session.ok) {
+      if (session.supported && !session.authRejected) scheduleRealtimeReconnect();
+      return { connected: tenhRealtimePorts.size > 0, mode: tenhRealtimePorts.size ? "tenh_tab_bridge" : "delta" };
+    }
+
+    return await new Promise((resolve) => {
+      let settled = false;
+      const socket = new WebSocket(session.url);
+      realtimeSocket = socket;
+
+      const settle = (value) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+
+      socket.addEventListener("open", async () => {
+        realtimeAttempts = 0;
+        await writeState({ realtimeUnsupportedUntil: 0 });
+        await setRealtimeStatus({
+          connected: true,
+          connecting: false,
+          supported: true,
+          mode: "websocket",
+          connectedAt: Date.now(),
+          error: null,
+        });
+
+        try {
+          socket.send(JSON.stringify({
+            type: "hello",
+            extensionVersion: VERSION,
+            installationId: state.installationId,
+            deviceId: state.device?.id ?? null,
+            cursor: state.syncCursor ?? null,
+          }));
+        } catch {
+          /* noop */
+        }
+
+        clearRealtimeTimers();
+        realtimePingTimer = setInterval(() => {
+          if (socket.readyState !== WebSocket.OPEN) return;
+          try {
+            socket.send(JSON.stringify({ type: "ping", at: Date.now() }));
+          } catch {
+            /* close handler will recover */
+          }
+        }, REALTIME_PING_MS);
+
+        void deltaSync();
+        settle({ connected: true, mode: "websocket" });
+      });
+
+      socket.addEventListener("message", (message) => {
+        void (async () => {
+          let payload;
+          try {
+            payload = JSON.parse(String(message.data ?? "{}"));
+          } catch {
+            return;
+          }
+
+          if (payload.type === "ping") {
+            try {
+              socket.send(JSON.stringify({ type: "pong", at: Date.now() }));
+            } catch {
+              /* noop */
+            }
+            return;
+          }
+
+          if (payload.type === "event" && payload.event) {
+            await processServerEvent(payload.event);
+          } else if (payload.event && typeof payload.event === "object") {
+            await processServerEvent(payload.event);
+          }
+        })();
+      });
+
+      socket.addEventListener("close", () => {
+        if (realtimeSocket === socket) realtimeSocket = null;
+        clearRealtimeTimers();
+        realtimeAttempts += 1;
+        void setRealtimeStatus({
+          connected: tenhRealtimePorts.size > 0,
+          connecting: false,
+          mode: tenhRealtimePorts.size ? "tenh_tab_bridge" : "delta",
+          disconnectedAt: Date.now(),
+        });
+        void deltaSync();
+        scheduleRealtimeReconnect();
+        settle({ connected: false });
+      });
+
+      socket.addEventListener("error", () => {
+        try {
+          socket.close();
+        } catch {
+          /* noop */
+        }
+      });
+
+      setTimeout(() => {
+        if (socket.readyState === WebSocket.CONNECTING) {
+          try {
+            socket.close();
+          } catch {
+            /* noop */
+          }
+          settle({ connected: false, timeout: true });
+        }
+      }, 10_000);
+    });
+  })().finally(() => {
+    realtimeConnectPromise = null;
+  });
+
+  return realtimeConnectPromise;
+}
+
+
+async function deltaSync() {
+  if (deltaPromise) return deltaPromise;
+
+  deltaPromise = (async () => {
+    const state = await readState();
+    if (!state.token) return { supported: false };
+
+    const params = new URLSearchParams();
+    if (state.syncCursor) params.set("cursor", String(state.syncCursor));
+    params.set("limit", "100");
+
+    let response;
+    try {
+      response = await callTenh(`/api/extension/sync/delta?${params.toString()}`, {
+        token: state.token,
+      });
+    } catch {
+      return { supported: true, offline: true };
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      await clearAuth();
+      return { supported: true, connected: false };
+    }
+
+    if (response.status === 404 || response.status === 405) {
+      return { supported: false };
+    }
+
+    if (!response.ok) return { supported: true, ok: false };
+
+    const events = Array.isArray(response.result.events) ? response.result.events : [];
+    for (const event of events) await processServerEvent(event);
+
+    const cursor = response.result.cursor ?? response.result.nextCursor ?? state.syncCursor ?? null;
+    if (cursor !== state.syncCursor) await writeState({ syncCursor: cursor });
+
+    return { supported: true, ok: true, count: events.length, cursor };
+  })().finally(() => {
+    deltaPromise = null;
+  });
+
+  return deltaPromise;
+}
+
+/* -------------------------------------------------------------- Facebook */

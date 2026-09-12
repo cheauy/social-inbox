@@ -1,137 +1,62 @@
 "use client";
-
 import { useEffect, useRef, useState } from "react";
 import { CustomerAvatar } from "@/components/customer-avatar";
-import { useCompanion } from "@/lib/extension/use-companion";
 import { getFacebookCustomerProfileUrl, normalizeCustomerProfileLink } from "@/lib/facebook/customer-profile-url";
-import { profileLookupError } from "@/lib/facebook/profile-lookup-error";
+import { facebookCustomerLinks } from "@/lib/facebook/customer-navigation";
 import type { InboxConversation } from "@/types/inbox";
 
-const CACHE_TTL_MS = 60 * 60 * 1000;
-function supportedVersion(version: string | null) {
-  const parts = (version ?? "").split(".").map(Number);
-  return parts[0] > 1 || (parts[0] === 1 && (parts[1] > 2 || (parts[1] === 2 && parts[2] >= 19)));
-}
-
+/** A saved link opens directly, without an extension request or profile probe.
+ * Extension events only trigger an authenticated re-read; their payload is not
+ * trusted as customer data. Missing links are never labelled public profiles. */
 export function CustomerFacebookAvatar({ conversation }: { conversation: InboxConversation }) {
-  const { installed, version, openFacebookProfile, openResolvedFacebookProfile } = useCompanion();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [diagnostic, setDiagnostic] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
-  const [resolvedId, setResolvedId] = useState<string | null>(null);
-  const attempt = useRef(0);
-  const locked = useRef(false);
   const contact = conversation.contact;
-  const pageId = conversation.social_account?.platform_account_id;
   const isFacebook = conversation.social_account?.platform === "facebook";
-  const identityKey = JSON.stringify([conversation.business_id, pageId, conversation.id, contact?.id, contact?.platform_user_id, contact?.full_name]);
-  const liveIdentity = useRef(identityKey);
-  liveIdentity.current = identityKey;
-  // Ignore the old unverified localStorage cache. New entries are short-lived,
-  // browser-session only, and written only after profile validation + opening.
-  const cacheKey = `tenh:facebook-profile:v2:${identityKey}`;
-
+  const pageId = conversation.social_account?.platform_account_id;
+  const key = `${conversation.business_id}:${conversation.id}:${contact?.id}`;
+  const currentKey = useRef(key); currentKey.current = key;
+  const [stored, setStored] = useState<{ key: string; url: string | null } | null>(null);
+  const [notice, setNotice] = useState("");
+  const safeUrl = (value: unknown) => {
+    const url = normalizeCustomerProfileLink(value, contact?.platform_user_id);
+    return url && new URL(url).searchParams.get("id") !== pageId ? url : null;
+  };
+  const url = safeUrl(stored?.key === key ? stored.url : getFacebookCustomerProfileUrl(contact));
+  const links = facebookCustomerLinks(pageId, contact?.platform_user_id);
   useEffect(() => {
-    attempt.current += 1;
-    locked.current = false;
-    setBusy(false);
-    setError("");
-    setDiagnostic("");
-    setCopied(false);
-    setFallbackUrl(null);
-    setResolvedId(null);
-    return () => { attempt.current += 1; locked.current = false; };
-  }, [identityKey]);
-
-  async function openProfile() {
-    if (locked.current || !isFacebook || !contact || !pageId) return;
-    const context = { businessId: conversation.business_id, pageId, threadId: contact.platform_user_id, conversationId: conversation.id };
-    const safeUrl = (value: unknown) => {
-      const url = normalizeCustomerProfileLink(value, context.threadId);
-      return url && new URL(url).searchParams.get("id") !== pageId ? url : null;
-    };
-    let cachedUrl: string | null = null;
-    try {
-      const entry = JSON.parse(sessionStorage.getItem(cacheKey) ?? "null");
-      if (entry?.verified === true && Number(entry.expiresAt) > Date.now() && Number(entry.expiresAt) <= Date.now() + CACHE_TTL_MS) {
-        cachedUrl = safeUrl(entry.url);
-      }
-    } catch { /* Cache is optional. */ }
-    const knownUrl = safeUrl(getFacebookCustomerProfileUrl(contact)) ?? cachedUrl;
-    setError(""); setDiagnostic(""); setCopied(false); setFallbackUrl(null); setResolvedId(null);
-    if (knownUrl) {
-      setResolvedId(new URL(knownUrl).searchParams.get("id"));
-      setFallbackUrl(knownUrl);
-      window.open(knownUrl, "_blank", "noopener,noreferrer");
-      return;
-    }
-    if (!installed || !supportedVersion(version)) {
-      setError(installed
-        ? "Update TENH Companion to 1.2.19 or newer, then refresh TENH to use profile lookup."
-        : "Enable TENH Companion and refresh TENH to look up this customer's Facebook profile.");
-      return;
-    }
-    const currentAttempt = ++attempt.current;
-    const stillSelected = () => currentAttempt === attempt.current && liveIdentity.current === identityKey;
-    locked.current = true;
-    setBusy(true);
-    const started = Date.now();
-    const fail = (reason: string) => {
-      setDiagnostic(`TENH profile lookup | extension=${version ?? "unknown"} | reason=${/^[a-z_]{1,80}$/.test(reason) ? reason : "unknown"} | durationMs=${Date.now() - started}`);
-      throw new Error(profileLookupError(reason));
-    };
-    try {
-      const result = await openFacebookProfile({ ...context, customerName: contact.full_name });
-      if (!stillSelected()) return;
-      if (!result) return fail("extension_timeout");
-      if (!result.resolved) return fail(result.reason || "profile_link_unavailable");
-      if (!result.verified) return fail("profile_identity_unverified");
-      if (result.pageId !== pageId || result.threadId !== context.threadId ||
-          result.conversationId !== context.conversationId || result.businessId !== context.businessId) {
-        return fail("profile_context_mismatch");
-      }
-      const url = safeUrl(result.profileUrl);
-      if (!url || !result.openToken) return fail("profile_url_unsupported");
-      // Only Chrome opens the tab after this confirmation. No guessed profile
-      // URL and no Business Suite window is used as the visible fallback.
-      const opened = await openResolvedFacebookProfile(result.openToken, context);
-      if (!stillSelected()) return;
-      if (!opened?.opened) {
-        if (opened?.reason === "profile_tab_unavailable") setFallbackUrl(url);
-        return fail(opened?.reason || "profile_open_unconfirmed");
-      }
-      const actualUrl = safeUrl(opened.profileUrl) ?? url;
-      setResolvedId(new URL(actualUrl).searchParams.get("id"));
+    setNotice("");
+    if (!isFacebook) return;
+    let disposed = false, sequence = 0, timer: ReturnType<typeof setTimeout> | null = null;
+    let controller: AbortController | null = null;
+    const read = async () => {
+      const seq = ++sequence;
+      controller?.abort(); controller = new AbortController();
       try {
-        sessionStorage.setItem(cacheKey, JSON.stringify({ url: actualUrl, verified: true, expiresAt: Date.now() + CACHE_TTL_MS }));
-      } catch { /* A storage failure must not affect the opened profile. */ }
-    } catch (reason) {
-      if (stillSelected()) setError(reason instanceof Error ? reason.message : "Unable to open this profile.");
-    } finally {
-      if (stillSelected()) { locked.current = false; setBusy(false); }
-    }
-  }
-
+        const response = await fetch(`/api/conversations/${encodeURIComponent(conversation.id)}/facebook-profile`, { cache: "no-store", signal: controller.signal });
+        const data = await response.json();
+        if (!disposed && seq === sequence && currentKey.current === key && response.ok && data.success) {
+          setStored({ key, url: data.profileUrl ?? null });
+        }
+      } catch { /* Profile sync is optional. Never block the normal Inbox. */ }
+    };
+    const refresh = () => { if (timer) clearTimeout(timer); timer = setTimeout(() => { timer = null; void read(); }, 250); };
+    const event = (e: MessageEvent) => {
+      if (e.source !== window || e.origin !== window.location.origin || e.data?.source !== "TENH_EXTENSION" || e.data?.type !== "TENH_SYNC_PUSH") return;
+      const update = e.data.event;
+      if (update?.type === "customer.profile.updated" && update.conversationId === conversation.id) refresh();
+    };
+    void read();
+    window.addEventListener("message", event); window.addEventListener("focus", refresh);
+    // Profile lookup only, while this customer's details are displayed. No message polling.
+    const interval = window.setInterval(() => { if (!document.hidden) refresh(); }, 60000);
+    return () => { disposed = true; sequence++; controller?.abort(); if (timer) clearTimeout(timer); clearInterval(interval); window.removeEventListener("message", event); window.removeEventListener("focus", refresh); };
+  }, [key, conversation.id, isFacebook]);
   if (!contact) return null;
-  return <div className="flex shrink-0 flex-col items-start gap-1">
-    <button type="button" onClick={() => void openProfile()} disabled={!isFacebook || busy}
-      aria-busy={busy} aria-label={isFacebook ? "View customer Facebook profile" : "Customer avatar"}
-      title={isFacebook ? "View customer Facebook profile" : undefined}
-      className={`group relative h-16 w-16 overflow-hidden rounded-full outline-none ring-offset-2 transition ${isFacebook ? "hover:ring-2 hover:ring-blue-400 focus-visible:ring-2 focus-visible:ring-blue-500" : ""} disabled:opacity-80`}>
-      <CustomerAvatar src={contact.profile_picture_url} name={contact.full_name} contactId={contact.id} platform={conversation.social_account?.platform} eager className="h-full w-full text-2xl" />
-      {isFacebook ? <span className={`absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/50 to-transparent transition ${busy ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"}`}><span className="mb-1 text-[9px] font-semibold text-white">{busy ? "Finding..." : "View profile"}</span></span> : null}
-    </button>
-    {busy ? <p role="status" className="max-w-40 text-xs leading-4 text-slate-500">Checking this customer's Facebook profile…</p> : null}
-    {resolvedId && !contact.facebook_profile_id ? <p className="max-w-40 break-all text-[10px] text-slate-500" title="Public ID from the resolved Facebook profile">Facebook profile ID: {resolvedId}</p> : null}
-    {error ? <p role="alert" className="max-w-40 text-xs leading-4 text-amber-800">{error}</p> : null}
-    {error && diagnostic ? <div className="max-w-40">
-      <button type="button" className="text-xs font-semibold text-blue-600 underline" onClick={async () => {
-        try { await navigator.clipboard.writeText(diagnostic); setCopied(true); } catch { setCopied(false); }
-      }}>{copied ? "Copied" : "Copy error details"}</button>
-      <details className="mt-1 text-[10px] text-slate-500"><summary>Technical details</summary><p className="break-all select-text">{diagnostic}</p></details>
-    </div> : null}
-    {fallbackUrl ? <a href={fallbackUrl} target="_blank" rel="noopener noreferrer" className="max-w-40 text-xs text-blue-600 underline">View Facebook profile</a> : null}
+  const image = <CustomerAvatar src={contact.profile_picture_url} name={contact.full_name} contactId={contact.id} platform={conversation.social_account?.platform} eager className="h-full w-full text-2xl" />;
+  return <div className="relative flex shrink-0 flex-col items-start gap-1">
+    {isFacebook && url ? <a href={url} target="_blank" rel="noopener noreferrer" title="View public Facebook profile" aria-label="View customer Facebook profile" className="block h-16 w-16 overflow-hidden rounded-full outline-none ring-offset-2 hover:ring-2 hover:ring-blue-400 focus-visible:ring-2">{image}</a>
+      : <button type="button" disabled={!isFacebook} aria-label={isFacebook ? "Facebook profile availability" : "Customer avatar"} onClick={() => setNotice("No public profile link has been synchronized yet. Open this customer in Business Suite and expose their View profile link. The companion can save that visible link; it cannot convert a Messenger ID into a public profile ID.")} className="h-16 w-16 overflow-hidden rounded-full">{image}</button>}
+    {isFacebook && url ? <a href={url} target="_blank" rel="noopener noreferrer" className="text-[10px] font-medium text-blue-600 hover:underline">View public profile</a>
+      : isFacebook && links ? <a href={links.pageMessengerUrl} target="_blank" rel="noopener noreferrer" title="Opens this Page in Messenger, not this customer's public profile" className="text-[10px] font-medium text-slate-500 hover:underline">Open Page Messenger</a> : null}
+    {notice ? <div role="status" className="absolute left-0 top-[90px] z-30 w-64 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-lg"><button type="button" aria-label="Dismiss profile notice" onClick={() => setNotice("")} className="float-right ml-2 px-1">×</button>{notice}</div> : null}
   </div>;
 }

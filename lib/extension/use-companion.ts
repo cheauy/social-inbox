@@ -59,6 +59,9 @@ export function useCompanion() {
       if (event.source !== window || event.origin !== window.location.origin) return;
       const data = event.data;
       if (!data || data.source !== "TENH_EXTENSION") return;
+      if (data.type === "TENH_EXTENSION_CONTEXT_INVALIDATED" || data.requiresRefresh || data.error === "extension_unavailable") {
+        setInstalled(false); setVersion(null); return;
+      }
       if (!["TENH_EXTENSION_PONG", "TENH_EXTENSION_READY"].includes(data.type)) return;
       // Invalidated scripts can still answer after a reload. Only live replies count.
       if (data.error || data.requiresRefresh || typeof data.version !== "string") return;
@@ -88,8 +91,10 @@ export function useCompanion() {
       pageId?: string | null;
       threadId?: string | null;
       conversationId?: string | null;
+      businessId?: string | null;
     }) => {
       const requestId = post("OPEN_IN_FACEBOOK", {
+        businessId: options.businessId ?? undefined,
         pageId: options.pageId ?? undefined,
         threadId: options.threadId ?? undefined,
         conversationId: options.conversationId ?? undefined,
@@ -98,7 +103,7 @@ export function useCompanion() {
       const answer = await awaitCompanionAnswer<{ opened?: boolean }>(
         "OPEN_IN_FACEBOOK_RESULT",
         requestId,
-        10000,
+        20000,
       );
 
       return answer?.opened === true;

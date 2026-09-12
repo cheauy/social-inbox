@@ -1,0 +1,6 @@
+{
+  "test": "Local installed unpacked-extension smoke test. No Facebook/TENH authenticated operations.",
+  "checks": [],
+  "passed": false,
+  "limitation": "Timeout 12000ms exceeded while waiting for event \"serviceworker\""
+}

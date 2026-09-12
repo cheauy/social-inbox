@@ -1,0 +1,17 @@
+{
+  "base_patch": "TENH-sticker-store-reply-safety-changed-files.zip",
+  "production_files": [
+    "components/inbox/tenh-sticker-picker.tsx",
+    "lib/inbox/sticker-picker-ui.ts"
+  ],
+  "deleted_files": [],
+  "extension_changed": false,
+  "files": {
+    "components/inbox/tenh-sticker-picker.tsx": {
+      "sha256": "f4d7fc0eef3f8c90a0bdddd1176d56837ed024a376fc9c955b2cd72fd1187396"
+    },
+    "lib/inbox/sticker-picker-ui.ts": {
+      "sha256": "cca61a44bda2cf390e416f3babdc21044d6cf4c3965c54919238d1d54788463b"
+    }
+  }
+}

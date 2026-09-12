@@ -1,0 +1,276 @@
+/*
+ * The side panel: TENH's own record of the customer, beside Facebook.
+ *
+ * Everything on it is read from TENH and written back to TENH. The tags are
+ * the workspace's tags and the quick replies are the saved replies TENH uses.
+ * There is no companion copy of
+ * any of it, which is why a tag added here is on the website a second later
+ * and why nothing here can drift out of date.
+ *
+ * It is deliberately not a second Inbox. No conversation list, no message
+ * history, no search: those exist, they work, and they are one click away.
+ */
+
+const TENH_ORIGIN = "https://app.tenhchat.com";
+
+
+function ask(message) {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage(message, (response) => {
+      void chrome.runtime.lastError;
+      resolve(response ?? {});
+    });
+  });
+}
+
+const view = {
+  pairState: document.getElementById("pairState"),
+  liveState: document.getElementById("liveState"),
+  facebookState: document.getElementById("facebookState"),
+  pageName: document.getElementById("pageName"),
+  composerState: document.getElementById("composerState"),
+  customerCard: document.getElementById("customerCard"),
+  unmatchedCard: document.getElementById("unmatchedCard"),
+  conversationStatus: document.getElementById("conversationStatus"),
+  customerName: document.getElementById("customerName"),
+  tagChips: document.getElementById("tagChips"),
+  tagPicker: document.getElementById("tagPicker"),
+  quickReplies: document.getElementById("quickReplies"),
+  quickReplyHint: document.getElementById("quickReplyHint"),
+  openTenh: document.getElementById("openTenh"),
+  error: document.getElementById("error"),
+};
+
+let context = null;
+
+/* Text only, set through textContent everywhere below: a customer's name and a
+   colleague's note are somebody else's words, and they are never HTML here. */
+function element(tag, className, text) {
+  const node = document.createElement(tag);
+
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+
+  return node;
+}
+
+function renderFacebook(status) {
+  const facebook = status.facebook;
+
+  const connected = status.connected === true || status.paired === true;
+
+  view.pairState.textContent = connected
+    ? status.device?.name ?? "Connected"
+    : "Sign in to TENH to connect automatically";
+
+  view.facebookState.textContent = facebook?.loggedIn
+    ? "Ready"
+    : facebook
+      ? "Sign-in required"
+      : "Sleeping";
+  view.facebookState.className = `state ${facebook?.loggedIn ? "on" : facebook ? "warn" : "off"}`;
+
+  const pageCount = Number(status.facebookPageCount ?? status.facebookPages?.length ?? 0);
+  const currentPage = facebook?.pageName
+    ? facebook.pageName
+    : facebook?.pageId
+      ? `Page ${facebook.pageId}`
+      : facebook
+        ? "Facebook sign-in is required for browser tools."
+        : "Facebook starts automatically when a companion feature needs it.";
+
+  view.pageName.textContent = pageCount > 1 && facebook?.pageId
+    ? `${currentPage} • ${pageCount} Pages available`
+    : currentPage;
+
+  view.composerState.textContent =
+    facebook?.composerState === "available"
+      ? "Facebook is showing an enabled reply box."
+      : facebook?.composerState === "unavailable"
+        ? "Facebook is showing a reply box it has disabled."
+        : facebook
+          ? "Facebook browser tools are standing by."
+          : "";
+}
+
+function renderTags() {
+  view.tagChips.replaceChildren();
+
+  const applied = context?.customer?.tags ?? [];
+
+  for (const tag of applied) {
+    const chip = element("button", "chip");
+
+    chip.style.background = tag.color || "#0089cc";
+    chip.title = "Remove this tag";
+    chip.append(element("span", "dot"), element("span", null, tag.name));
+    chip.addEventListener("click", () => changeTag(tag.id, "remove"));
+
+    view.tagChips.append(chip);
+  }
+
+  const appliedIds = new Set(applied.map((tag) => tag.id));
+  const placeholder = element("option", null, "Add a tag…");
+
+  placeholder.value = "";
+  view.tagPicker.replaceChildren(placeholder);
+
+  for (const tag of context?.tags ?? []) {
+    if (appliedIds.has(tag.id)) continue;
+
+    const option = element("option", null, tag.name);
+
+    option.value = tag.id;
+    view.tagPicker.append(option);
+  }
+}
+
+function renderQuickReplies() {
+  view.quickReplies.replaceChildren();
+
+  const replies = context?.quickReplies ?? [];
+
+  if (replies.length === 0) {
+    view.quickReplies.append(
+      element("p", "empty", "This workspace has no quick replies yet."),
+    );
+
+    return;
+  }
+
+  for (const reply of replies) {
+    const button = element("button", "reply");
+
+    button.append(
+      element("span", "reply-title", reply.title ?? reply.shortcut ?? "Reply"),
+      element("span", "reply-text", reply.text ?? ""),
+    );
+
+    button.addEventListener("click", () => insert(reply.text ?? ""));
+    view.quickReplies.append(button);
+  }
+}
+
+function renderCustomer() {
+  const matched = context?.matched === true;
+
+  view.customerCard.hidden = !matched;
+  view.unmatchedCard.hidden = matched || !context;
+
+  if (!matched) return;
+
+  view.customerName.textContent = context.customer?.name ?? "Customer";
+  view.conversationStatus.textContent = context.conversation?.status ?? "";
+  view.conversationStatus.className = "state on";
+
+  renderTags();
+}
+
+async function refresh() {
+  const status = await ask({ type: "TENH_STATUS" });
+
+  renderFacebook(status);
+
+  if (!(status.connected === true || status.paired === true)) {
+    view.liveState.textContent = "Not connected";
+    view.liveState.className = "pill off";
+    context = null;
+
+    renderCustomer();
+    renderQuickReplies();
+
+    return;
+  }
+
+  const answer = await ask({ type: "TENH_CONTEXT" });
+
+  if (answer.error || answer.paired === false) {
+    view.liveState.textContent = "Offline";
+    view.liveState.className = "pill off";
+    view.error.textContent = answer.error ?? "";
+
+    return;
+  }
+
+  view.error.textContent = "";
+  view.liveState.textContent = "Live";
+  view.liveState.className = "pill";
+
+  context = answer;
+
+  renderCustomer();
+  renderQuickReplies();
+}
+
+async function changeTag(tagId, action) {
+  if (!tagId) return;
+
+  view.error.textContent = "";
+
+  const result = await ask({ type: "TENH_TAG", tagId, action });
+
+  if (!result.ok) {
+    view.error.textContent = result.error ?? "Unable to change that tag.";
+
+    return;
+  }
+
+  await refresh();
+}
+
+async function insert(text) {
+  view.error.textContent = "";
+
+  const result = await ask({ type: "TENH_INSERT_QUICK_REPLY", text });
+
+  if (result.inserted) {
+    view.quickReplyHint.textContent = "Inserted. Read it, then press Send.";
+
+    return;
+  }
+
+  view.quickReplyHint.textContent =
+    "Inserted into Facebook's box. You press Send.";
+
+  /* Facebook decides whether a reply box exists and whether it works. When it
+     has closed one, the panel says so rather than finding another way in. */
+  view.error.textContent =
+    result.reason === "composer_unavailable"
+      ? "Facebook is not offering an enabled reply box for this conversation."
+      : "No Facebook conversation is open in this browser.";
+}
+
+view.tagPicker.addEventListener("change", (event) => {
+  const tagId = event.target.value;
+
+  event.target.value = "";
+
+  void changeTag(tagId, "add");
+});
+
+view.openTenh.addEventListener("click", () => {
+  void chrome.tabs.create({ url: `${TENH_ORIGIN}/dashboard/inbox` });
+});
+
+
+/* Refresh on useful UI/browser events instead of polling TENH every 8 seconds. */
+void refresh();
+
+window.addEventListener("focus", () => {
+  void refresh();
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) void refresh();
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local") return;
+  if (changes.facebook || changes.token || changes.device) void refresh();
+});
+
+/* High-level TENH sync events refresh this lightweight view immediately. */
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type === "TENH_SYNC_PUSH") void refresh();
+  return false;
+});

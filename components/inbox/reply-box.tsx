@@ -9,6 +9,10 @@ import {
 } from "react";
 
 import EmojiPicker from "emoji-picker-react";
+import { Send } from "lucide-react";
+import { TenhStickerPicker } from "./tenh-sticker-picker";
+import type { TelegramStickerChoice } from "@/lib/telegram/sticker-catalog";
+import type { InboxStickerChoice } from "@/lib/stickers/catalog";
 
 import { CompanionFacebookAction } from "@/components/inbox/companion-facebook-action";
 import { CustomerTagSelector } from "@/components/inbox/customer-tag-selector";
@@ -46,6 +50,8 @@ export type ReplyAttachment = {
 };
 
 type ReplyBoxProps = {
+  platform?: string;
+  onSendSticker?: (sticker: InboxStickerChoice) => Promise<boolean>;
   reply: string;
   conversationId: string;
   sending: boolean;
@@ -318,6 +324,7 @@ function formatVoiceDuration(seconds: number) {
 }
 
 export function ReplyBox({
+  platform, onSendSticker,
   reply,
   sending,
   error,
@@ -333,6 +340,7 @@ export function ReplyBox({
   conversationId,
   canOpenInFacebook = false,
   facebookPageId = null,
+  facebookThreadId = null,
   allowAttachments = true,
   onReplyChange,
   onSubmit,
@@ -343,6 +351,15 @@ export function ReplyBox({
   onStatusChange,
 }: ReplyBoxProps) {
   const isKhmer = useWorkspaceLanguageId() === "km";
+  const [nativeSticker, setNativeSticker] = useState<TelegramStickerChoice | null>(null);
+  const [stickerSending, setStickerSending] = useState(false);
+  const [stickerNotice, setStickerNotice] = useState<string | null>(null);
+  const stickerFlight = useRef(false);
+  const stickerScope = useRef(0);
+  useEffect(() => {
+    stickerScope.current++; setNativeSticker(null); setStickerSending(false); setStickerNotice(null); stickerFlight.current = false;
+    return () => { stickerScope.current++; };
+  }, [conversationId, platform]);
 
   const [sendingContent, setSendingContent] =
     useState(false);
@@ -390,6 +407,7 @@ export function ReplyBox({
   const isSendDisabled =
     isComposerDisabled ||
     loadingQuickReplyMedia ||
+    stickerSending ||
     !online;
 
   /*
@@ -1534,8 +1552,28 @@ export function ReplyBox({
   function handleSubmit(
     event: FormEvent<HTMLFormElement>,
   ) {
-    if (isComposerDisabled) {
+    if (isComposerDisabled || stickerFlight.current) {
       event.preventDefault();
+      return;
+    }
+    if (nativeSticker) {
+      event.preventDefault();
+      if (!online || loadingQuickReplyMedia || !onSendSticker) return;
+      if (attachments.length) { setStickerNotice("Send or remove the attached files before sending this sticker."); return; }
+      const choice = nativeSticker; const generation = stickerScope.current;
+      stickerFlight.current = true; setStickerSending(true); setStickerNotice(null);
+      void onSendSticker(choice).then(success => {
+        if (stickerScope.current !== generation) return;
+        // A failed outgoing bubble owns its Retry action. Do not leave another
+        // copy in the composer and accidentally send the same sticker twice.
+        setNativeSticker(null);
+        if (!success) setStickerNotice("Sticker was not confirmed. Check the outgoing message before using Retry.");
+        else if (reply.trim()) setStickerNotice("Sticker sent. Your text is still in the draft; press Send separately.");
+      }).catch(() => {
+        if (stickerScope.current === generation) setStickerNotice("Sticker could not be sent. Your draft is kept.");
+      }).finally(() => {
+        if (stickerScope.current === generation) { stickerFlight.current = false; setStickerSending(false); }
+      });
       return;
     }
 
@@ -2231,7 +2269,7 @@ export function ReplyBox({
 
                 {canOpenInFacebook ? (
                   <CompanionFacebookAction
-                    pageId={facebookPageId}
+                    pageId={facebookPageId} threadId={facebookThreadId} conversationId={conversationId} businessId={businessId}
                   />
                 ) : null}
               </div>
@@ -2239,7 +2277,13 @@ export function ReplyBox({
           </div>
         ) : null}
 
-        <form
+        {nativeSticker ? <div className="mx-3 mb-2 flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 p-2" role="status">
+        {nativeSticker.previewUrl ? <img src={nativeSticker.previewUrl} alt={nativeSticker.label} className="h-12 w-12 object-contain" /> : <span className="text-2xl">{nativeSticker.emoji || "🙂"}</span>}
+        <div className="min-w-0 flex-1 text-xs text-slate-700"><strong>Telegram sticker</strong><p>{nativeSticker.setName} · {nativeSticker.format}</p><p>Press Send. Any typed text stays in the draft.</p></div>
+        <button type="button" aria-label="Remove selected sticker" disabled={stickerSending} onClick={() => { setNativeSticker(null); setStickerNotice(null); }} className="px-2 text-lg">×</button>
+      </div> : null}
+      {stickerNotice ? <p role="status" className="mx-3 mb-2 text-xs text-slate-600">{stickerNotice}</p> : null}
+      <form
         onSubmit={handleSubmit}
         className="relative w-full min-w-0 bg-white px-3 py-2"
       >
@@ -2348,30 +2392,18 @@ export function ReplyBox({
             />
           </div>
 
-          {/* Real emoji picker */}
-          <button
-            type="button"
-            disabled={isSending}
-            onClick={() => {
-              const nextOpen = !emojiOpen;
-
-              closeExpandedChildSelector("Quick tags");
-              closeExpandedChildSelector("Quick replies");
-              setActiveToolbarPanel(nextOpen ? "emoji" : null);
-              setEmojiOpen(nextOpen);
-              setMoreOpen(false);
-
-            }}
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${
-              emojiOpen
-                ? "bg-blue-50 text-blue-600"
-                : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
-            } disabled:opacity-40`}
-            aria-label={isKhmer ? "ជ្រើសរើស Emoji" : "Choose emoji"}
-            aria-expanded={emojiOpen}
-          >
-            <EmojiIcon />
-          </button>
+          <TenhStickerPicker conversationId={conversationId} platform={platform} disabled={isComposerDisabled || stickerSending || !allowAttachments}
+            onSendFacebook={platform === "facebook" && onSendSticker ? async sticker => {
+              if (isComposerDisabled || !allowAttachments || stickerFlight.current) return false;
+              if (attachments.length) throw new Error("Send or remove the attached files before sending an online sticker.");
+              const seq = stickerScope.current; stickerFlight.current = true;
+              try { return await onSendSticker(sticker); }
+              finally { if (stickerScope.current === seq) stickerFlight.current = false; }
+            } : undefined}
+            onSelectTelegram={onSendSticker ? sticker => { if (isComposerDisabled || !allowAttachments || stickerFlight.current) return; setNativeSticker(sticker); setStickerNotice(null); } : undefined}
+            onOpen={() => { setEmojiOpen(false); setMoreOpen(false); closeExpandedChildSelector("Quick tags"); closeExpandedChildSelector("Quick replies"); clearToolbarPanel(); }}
+            onSelect={file => { if (isComposerDisabled || !allowAttachments) return; setAttachments(current => [...current, { id: createId(), file, previewUrl: URL.createObjectURL(file), kind: "image" }]); }}
+          />
 
           <input
             ref={imageInputRef}
@@ -2457,6 +2489,31 @@ export function ReplyBox({
 
               <span className="mx-1 h-6 w-px shrink-0 bg-slate-200" aria-hidden="true" />
 
+          {/* Real emoji picker */}
+          <button
+            type="button"
+            disabled={isComposerDisabled}
+            onClick={() => {
+              const nextOpen = !emojiOpen;
+
+              closeExpandedChildSelector("Quick tags");
+              closeExpandedChildSelector("Quick replies");
+              setActiveToolbarPanel(nextOpen ? "emoji" : null);
+              setEmojiOpen(nextOpen);
+              setMoreOpen(false);
+
+            }}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${
+              emojiOpen
+                ? "bg-blue-50 text-blue-600"
+                : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+            } disabled:opacity-40`}
+            aria-label={isKhmer ? "ជ្រើសរើស Emoji" : "Choose emoji"}
+            aria-expanded={emojiOpen}
+          >
+            <EmojiIcon />
+          </button>
+
               <textarea
                 ref={replyInputRef}
                 name="message"
@@ -2475,7 +2532,7 @@ export function ReplyBox({
 
                   if (
                     isComposerDisabled ||
-                    (!reply.trim() && attachments.length === 0)
+                    (!reply.trim() && attachments.length === 0 && !nativeSticker)
                   ) {
                     return;
                   }
@@ -2507,10 +2564,11 @@ export function ReplyBox({
 
           <button
             type="submit"
-            disabled={isSendDisabled || (!reply.trim() && attachments.length === 0)}
+            disabled={isSendDisabled || (!reply.trim() && attachments.length === 0 && !nativeSticker)}
             className="inline-flex h-12 min-w-[96px] shrink-0 items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             title={blockedReason || (isKhmer ? "ផ្ញើ" : "Send")}
           >
+            <Send className="mr-2 h-4 w-4" aria-hidden="true" />
             {isKhmer ? "ផ្ញើ" : "Send"}
           </button>
         </div>

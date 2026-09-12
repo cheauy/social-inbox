@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>TENH</title>
+    <link rel="stylesheet" href="popup.css" />
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body class="panel">
+    <header>
+      <img class="mark" src="../icons/icon-128.png" alt="" />
+      <div>
+        <h1>TENH v1</h1>
+        <p class="version" id="pairState">Checking…</p>
+      </div>
+      <span class="pill" id="liveState">…</span>
+    </header>
+
+    <section class="card">
+      <div class="row">
+        <span class="label">Facebook</span>
+        <span class="state" id="facebookState">Unknown</span>
+      </div>
+      <p class="detail" id="pageName"></p>
+      <p class="detail" id="composerState"></p>
+    </section>
+
+    <section class="card" id="customerCard" hidden>
+      <div class="row">
+        <span class="label">Customer</span>
+        <span class="state" id="conversationStatus"></span>
+      </div>
+      <p class="name" id="customerName"></p>
+      <p class="section-label">Tags</p>
+      <div class="chips" id="tagChips"></div>
+      <select id="tagPicker" class="picker">
+        <option value="">Add a tag…</option>
+      </select>
+    </section>
+
+    <section class="card" id="unmatchedCard" hidden>
+      <p class="detail" id="unmatchedReason">
+        TENH does not have this Facebook conversation, so there is nothing to
+        show about the customer. Quick replies below still work.
+      </p>
+    </section>
+
+    <section class="card">
+      <p class="section-label">Quick replies</p>
+      <p class="detail" id="quickReplyHint">
+        Inserted into Facebook's box. You press Send.
+      </p>
+      <div id="quickReplies"></div>
+    </section>
+
+    <section class="card">
+      <button id="openTenh" class="primary">Open TENH Inbox</button>
+      <p class="detail error" id="error"></p>
+    </section>
+
+    <p class="footnote">
+      Tags and quick replies are TENH's own records — changed here, they
+      change everywhere. TENH v1 never presses Send, and never touches a reply
+      box Facebook has disabled.
+    </p>
+
+    <script src="sidepanel.js"></script>
+  </body>
+</html>

@@ -1,0 +1,56 @@
+{
+  "kind": "Static JSX snapshots with no-op hooks and mocked icons/data, not live React or API tests.",
+  "results": [
+    {
+      "fixture": "desktop",
+      "width": 480,
+      "panel": {
+        "x": 12,
+        "y": 16,
+        "width": 420,
+        "height": 450
+      },
+      "bottom_tabs": {
+        "x": 21,
+        "y": 413,
+        "width": 366,
+        "height": 44
+      },
+      "checks": "bounds, footer below grid, seven-or-more tabs passed"
+    },
+    {
+      "fixture": "mobile",
+      "width": 360,
+      "panel": {
+        "x": 12,
+        "y": 16,
+        "width": 336,
+        "height": 450
+      },
+      "bottom_tabs": {
+        "x": 21,
+        "y": 413,
+        "width": 282,
+        "height": 44
+      },
+      "checks": "bounds, footer below grid, seven-or-more tabs passed"
+    },
+    {
+      "fixture": "telegram",
+      "width": 480,
+      "panel": {
+        "x": 12,
+        "y": 16,
+        "width": 420,
+        "height": 450
+      },
+      "bottom_tabs": {
+        "x": 21,
+        "y": 413,
+        "width": 326,
+        "height": 44
+      },
+      "checks": "bounds, footer below grid, seven-or-more tabs passed"
+    }
+  ]
+}

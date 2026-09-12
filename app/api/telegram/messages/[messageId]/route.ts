@@ -22,6 +22,10 @@ import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 
+import { getInboxConversationAccess } from "@/lib/inbox/get-inbox-resource-access";
+import { getDeletedMessageText, getMessageActions, getMessagePin, isMessageDeleted, record } from "@/lib/inbox/message-actions";
+import { mutateMessageMetadata, MessageMutationError } from "@/lib/inbox/mutate-message-metadata";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -36,9 +40,10 @@ type MessageRow = {
   business_id: string;
   conversation_id: string;
   platform_message_id: string;
-  direction: string;
+  direction: "incoming" | "outgoing";
   message_type: string;
   message_text: string | null;
+  attachment_url: string | null;
   raw_payload:
     | Record<string, unknown>
     | null;
@@ -129,7 +134,7 @@ async function loadContext({
     await supabaseAdmin
       .from("messages")
       .select(
-        "id,business_id,conversation_id,platform_message_id,direction,message_type,message_text,raw_payload,platform_created_at",
+        "id,business_id,conversation_id,platform_message_id,direction,message_type,message_text,attachment_url,raw_payload,platform_created_at",
       )
       .eq(
         "id",
@@ -305,8 +310,7 @@ export async function PATCH(
     );
   }
 
-  const text =
-    body.text?.trim() ?? "";
+  const text = typeof body?.text === "string" ? body.text.trim() : "";
 
   if (!text) {
     return jsonError(
@@ -348,12 +352,11 @@ export async function PATCH(
     );
   }
 
-  if (
-    loaded.message.direction !==
-      "outgoing" ||
-    loaded.message.message_type !==
-      "text"
-  ) {
+  const resourceAccess = await getInboxConversationAccess(loaded.message.conversation_id);
+  if (!resourceAccess.success) return jsonError(resourceAccess.error, resourceAccess.status);
+  if (resourceAccess.businessId !== authResult.member.business_id) return jsonError("Workspace mismatch.", 403);
+
+  if (!getMessageActions(loaded.message, "telegram").edit) {
     return jsonError(
       "Only outgoing Telegram text messages can be edited.",
       400,
@@ -424,44 +427,20 @@ export async function PATCH(
   const editedAt =
     new Date().toISOString();
 
-  const rawPayload = {
-    ...(loaded.message
-      .raw_payload ?? {}),
-    ...editedMessage,
-    tenh_edit: {
-      source: "tenh",
-      edited_at:
-        editedAt,
-      edited_by_member_id:
-        authResult.member.id,
-    },
-  };
-
-  const {
-    error: updateError,
-  } =
-    await supabaseAdmin
-      .from("messages")
-      .update({
-        message_text: text,
-        raw_payload:
-          rawPayload,
-      })
-      .eq(
-        "id",
-        loaded.message.id,
-      )
-      .eq(
-        "business_id",
-        authResult.member
-          .business_id,
-      );
-
-  if (updateError) {
-    return jsonError(
-      "Telegram edited the message, but TENH could not update the local copy.",
-      500,
-    );
+  try {
+    await mutateMessageMetadata(supabaseAdmin, {
+      businessId: authResult.member.business_id,
+      conversationId: loaded.message.conversation_id,
+      messageId: loaded.message.id,
+    }, (current) => {
+      if (isMessageDeleted(current)) throw new MessageMutationError("The message was deleted while editing.", 409);
+      return { message_text: text, raw_payload: {
+        ...(current.raw_payload ?? {}), ...editedMessage,
+        tenh_edit: { source: "tenh", edited_at: editedAt, edited_by_member_id: resourceAccess.member.id },
+      } };
+    });
+  } catch {
+    return jsonError("Telegram edited the message, but TENH could not update the local copy. Refresh before retrying.", 500);
   }
 
   if (
@@ -559,6 +538,10 @@ export async function DELETE(
     );
   }
 
+  const resourceAccess = await getInboxConversationAccess(loaded.message.conversation_id);
+  if (!resourceAccess.success) return jsonError(resourceAccess.error, resourceAccess.status);
+  if (resourceAccess.businessId !== authResult.member.business_id) return jsonError("Workspace mismatch.", 403);
+
   /*
    * Every message type can be deleted. Telegram's deleteMessage does not
    * care what the message contains, and the row is marked deleted the same
@@ -592,6 +575,8 @@ export async function DELETE(
         )?.deleted_at ??
         new Date().toISOString(),
       alreadyDeleted: true,
+      deleted: loaded.message.raw_payload?.tenh_deleted,
+      messageText: getDeletedMessageText(loaded.message),
     });
   }
 
@@ -610,6 +595,7 @@ export async function DELETE(
     );
   }
 
+  let providerAlreadyGone = false;
   try {
     await deleteTelegramMessage({
       token,
@@ -636,6 +622,7 @@ export async function DELETE(
         error.message,
       );
 
+    providerAlreadyGone = alreadyGone;
     if (!alreadyGone) {
       const telegramError =
         error instanceof TelegramApiError
@@ -662,51 +649,29 @@ export async function DELETE(
   const deletedAt =
     new Date().toISOString();
 
-  const rawPayload = {
-    ...(loaded.message
-      .raw_payload ?? {}),
-    tenh_deleted: {
-      source: "tenh",
-      deleted_at:
-        deletedAt,
-      deleted_by_member_id:
-        authResult.member.id,
-    },
-  };
-
-  const {
-    error: updateError,
-  } =
-    await supabaseAdmin
-      .from("messages")
-      .update({
-        message_text:
-          "Message deleted",
-        /*
-         * Drop the media with the message. A deleted photo, video, voice note
-         * or file is gone from the chat, so the row must stop pointing at the
-         * stored copy -- otherwise anything reading the row straight from the
-         * database, now or later, can still hand the file back.
-         */
-        attachment_url: null,
-        raw_payload:
-          rawPayload,
-      })
-      .eq(
-        "id",
-        loaded.message.id,
-      )
-      .eq(
-        "business_id",
-        authResult.member
-          .business_id,
-      );
-
-  if (updateError) {
-    return jsonError(
-      "Telegram deleted the message, but TENH could not mark the local copy deleted.",
-      500,
-    );
+  let deleted: Record<string, unknown> = providerAlreadyGone
+    ? { source: "unknown", deleted_at: deletedAt, observed_by_member_id: resourceAccess.member.id }
+    : { source: "tenh", deleted_at: deletedAt, deleted_by_member_id: resourceAccess.member.id,
+        deleted_by_name: resourceAccess.member.full_name?.trim() || "TENH team member" };
+  let messageText = getDeletedMessageText({ raw_payload: { tenh_deleted: deleted }, message_text: null });
+  try {
+    const updated = await mutateMessageMetadata(supabaseAdmin, {
+      businessId: resourceAccess.businessId, conversationId: loaded.message.conversation_id,
+      messageId: loaded.message.id,
+    }, (current) => {
+      // Another agent may have completed the same delete while Telegram replied.
+      // Preserve that actor instead of attributing this retry to the wrong person.
+      const existingDeletion = record(current.raw_payload?.tenh_deleted);
+      const actor = Object.keys(existingDeletion).length ? existingDeletion : deleted;
+      return { message_text: getDeletedMessageText({ raw_payload: { tenh_deleted: actor }, message_text: current.message_text }),
+        attachment_url: null, raw_payload: { ...(current.raw_payload ?? {}), tenh_deleted: actor,
+          tenh_message_pin: { ...getMessagePin(current), pinned: false, updated_at: deletedAt },
+        } };
+    });
+    deleted = record(updated.raw_payload?.tenh_deleted);
+    messageText = getDeletedMessageText(updated);
+  } catch {
+    return jsonError("Telegram deleted the message, but TENH could not mark the local copy deleted. Refresh before retrying.", 500);
   }
 
   if (
@@ -717,7 +682,7 @@ export async function DELETE(
       .from("conversations")
       .update({
         last_message_text:
-          "Message deleted",
+          `🗑 ${messageText}`,
         updated_at:
           deletedAt,
       })
@@ -743,5 +708,8 @@ export async function DELETE(
     messageId:
       loaded.message.id,
     deletedAt,
+    deleted,
+    messageText,
+    alreadyDeleted: providerAlreadyGone,
   });
 }

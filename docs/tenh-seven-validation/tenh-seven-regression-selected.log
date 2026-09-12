@@ -1,0 +1,904 @@
+TAP version 13
+# (node:2397) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:2397) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_seven_work/components/inbox/comment-action-state.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_seven_work/package.json.
+# Subtest: liked: stale refreshes cannot undo an in-flight action
+ok 1 - liked: stale refreshes cannot undo an in-flight action
+  ---
+  duration_ms: 3.536052
+  type: 'test'
+  ...
+# Subtest: hidden: stale refreshes cannot undo an in-flight action
+ok 2 - hidden: stale refreshes cannot undo an in-flight action
+  ---
+  duration_ms: 0.468713
+  type: 'test'
+  ...
+# Subtest: deleted: stale refreshes cannot undo an in-flight action
+ok 3 - deleted: stale refreshes cannot undo an in-flight action
+  ---
+  duration_ms: 0.683486
+  type: 'test'
+  ...
+# Subtest: unlike and unhide stay optimistic during refresh
+ok 4 - unlike and unhide stay optimistic during refresh
+  ---
+  duration_ms: 0.411466
+  type: 'test'
+  ...
+# Subtest: failed action can roll back and resume server updates
+ok 5 - failed action can roll back and resume server updates
+  ---
+  duration_ms: 1.310724
+  type: 'test'
+  ...
+# Subtest: other comments keep receiving live updates
+ok 6 - other comments keep receiving live updates
+  ---
+  duration_ms: 0.447596
+  type: 'test'
+  ...
+# Subtest: pagination does not drop a pending deleted comment
+ok 7 - pagination does not drop a pending deleted comment
+  ---
+  duration_ms: 0.438622
+  type: 'test'
+  ...
+# (node:2398) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:2398) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_seven_work/components/inbox/comment-reply-access.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_seven_work/package.json.
+# Subtest: visible comments allow replies
+ok 8 - visible comments allow replies
+  ---
+  duration_ms: 2.49992
+  type: 'test'
+  ...
+# Subtest: hidden parent blocks replies to its child
+ok 9 - hidden parent blocks replies to its child
+  ---
+  duration_ms: 0.42651
+  type: 'test'
+  ...
+# Subtest: optimistic hide blocks immediately before the server responds
+ok 10 - optimistic hide blocks immediately before the server responds
+  ---
+  duration_ms: 0.410039
+  type: 'test'
+  ...
+# Subtest: unhidden parent restores reply access
+ok 11 - unhidden parent restores reply access
+  ---
+  duration_ms: 0.651867
+  type: 'test'
+  ...
+# Subtest: deleted comments cannot receive replies
+ok 12 - deleted comments cannot receive replies
+  ---
+  duration_ms: 0.423394
+  type: 'test'
+  ...
+# Subtest: parent cycles cannot hang the composer
+ok 13 - parent cycles cannot hang the composer
+  ---
+  duration_ms: 0.437222
+  type: 'test'
+  ...
+# (node:2399) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:2399) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_seven_work/lib/display/announcement-link.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_seven_work/package.json.
+# Subtest: an ordinary path stays relative
+ok 14 - an ordinary path stays relative
+  ---
+  duration_ms: 2.757437
+  type: 'test'
+  ...
+# Subtest: a protocol-relative link is neither internal nor allowed
+ok 15 - a protocol-relative link is neither internal nor allowed
+  ---
+  duration_ms: 0.448874
+  type: 'test'
+  ...
+# Subtest: http and https links are kept and marked external
+ok 16 - http and https links are kept and marked external
+  ---
+  duration_ms: 0.471324
+  type: 'test'
+  ...
+# Subtest: any other scheme is refused
+ok 17 - any other scheme is refused
+  ---
+  duration_ms: 1.083697
+  type: 'test'
+  ...
+# Subtest: empty and unparseable values are refused
+ok 18 - empty and unparseable values are refused
+  ---
+  duration_ms: 0.906427
+  type: 'test'
+  ...
+# Subtest: surrounding whitespace is trimmed before the decision
+ok 19 - surrounding whitespace is trimmed before the decision
+  ---
+  duration_ms: 0.396072
+  type: 'test'
+  ...
+# Subtest: a very long link is capped rather than refused
+ok 20 - a very long link is capped rather than refused
+  ---
+  duration_ms: 0.593821
+  type: 'test'
+  ...
+# (node:2430) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:2430) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_seven_work/lib/extension/companion-response.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_seven_work/package.json.
+# Subtest: extension errors settle immediately instead of waiting for a timeout
+ok 21 - extension errors settle immediately instead of waiting for a timeout
+  ---
+  duration_ms: 3.288884
+  type: 'test'
+  ...
+# Subtest: an invalidated extension returns the refresh diagnosis
+ok 22 - an invalidated extension returns the refresh diagnosis
+  ---
+  duration_ms: 0.660082
+  type: 'test'
+  ...
+# Subtest: ignores wrong origins, windows, request IDs and message types
+ok 23 - ignores wrong origins, windows, request IDs and message types
+  ---
+  duration_ms: 1.114215
+  type: 'test'
+  ...
+# Subtest: a missing response times out and cleans up
+ok 24 - a missing response times out and cleans up
+  ---
+  duration_ms: 16.802303
+  type: 'test'
+  ...
+# (node:2431) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:2431) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_seven_work/lib/facebook/attachment-echo.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_seven_work/package.json.
+# Subtest: Meta echo replaces only its matching pending album
+ok 25 - Meta echo replaces only its matching pending album
+  ---
+  duration_ms: 2.746126
+  type: 'test'
+  ...
+# Subtest: same send id in another chat cannot remove this draft
+ok 26 - same send id in another chat cannot remove this draft
+  ---
+  duration_ms: 0.314047
+  type: 'test'
+  ...
+# Subtest: similar photos without exact metadata stay separate
+ok 27 - similar photos without exact metadata stay separate
+  ---
+  duration_ms: 0.248803
+  type: 'test'
+  ...
+# Subtest: incoming customer metadata cannot remove an outgoing draft
+ok 28 - incoming customer metadata cannot remove an outgoing draft
+  ---
+  duration_ms: 0.419604
+  type: 'test'
+  ...
+# Subtest: authorized action reads the comment once and retains workspace filters
+ok 29 - authorized action reads the comment once and retains workspace filters
+  ---
+  duration_ms: 4.826589
+  type: 'test'
+  ...
+# Subtest: denied access stops before Page/token access; parallel routing read is read-only
+ok 30 - denied access stops before Page/token access; parallel routing read is read-only
+  ---
+  duration_ms: 1.445577
+  type: 'test'
+  ...
+# Subtest: inactive Page still blocks the action
+ok 31 - inactive Page still blocks the action
+  ---
+  duration_ms: 0.887369
+  type: 'test'
+  ...
+# Subtest: missing comment still returns not found
+ok 32 - missing comment still returns not found
+  ---
+  duration_ms: 0.44637
+  type: 'test'
+  ...
+# (node:2463) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:2463) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_seven_work/lib/facebook/customer-profile-url.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_seven_work/package.json.
+# Subtest: opens the supplied public ID while preserving the different messaging ID
+ok 33 - opens the supplied public ID while preserving the different messaging ID
+  ---
+  duration_ms: 1.741344
+  type: 'test'
+  ...
+# Subtest: accepts actual Facebook profile links and usernames, never Suite or redirect links
+ok 34 - accepts actual Facebook profile links and usernames, never Suite or redirect links
+  ---
+  duration_ms: 1.283712
+  type: 'test'
+  ...
+# Subtest: never guesses a public profile from a Messenger ID
+ok 35 - never guesses a public profile from a Messenger ID
+  ---
+  duration_ms: 0.30882
+  type: 'test'
+  ...
+# Subtest: rejects malformed public IDs and accepts only the Facebook profile route
+ok 36 - rejects malformed public IDs and accepts only the Facebook profile route
+  ---
+  duration_ms: 0.325978
+  type: 'test'
+  ...
+# (node:2469) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:2469) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_seven_work/lib/facebook/prepare-voice.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_seven_work/package.json.
+# Subtest: multiple photos form one ordered Messenger message
+ok 37 - multiple photos form one ordered Messenger message
+  ---
+  duration_ms: 4.309238
+  type: 'test'
+  ...
+# Subtest: single image keeps the existing request format
+ok 38 - single image keeps the existing request format
+  ---
+  duration_ms: 0.852596
+  type: 'test'
+  ...
+# Subtest: single audio keeps the existing request format
+ok 39 - single audio keeps the existing request format
+  ---
+  duration_ms: 0.356134
+  type: 'test'
+  ...
+# Subtest: single video keeps the existing request format
+ok 40 - single video keeps the existing request format
+  ---
+  duration_ms: 0.386899
+  type: 'test'
+  ...
+# Subtest: single file keeps the existing request format
+ok 41 - single file keeps the existing request format
+  ---
+  duration_ms: 0.338049
+  type: 'test'
+  ...
+# Subtest: album limits reject empty, oversized and non-photo batches
+ok 42 - album limits reject empty, oversized and non-photo batches
+  ---
+  duration_ms: 3.635784
+  type: 'test'
+  ...
+# Subtest: supported audio files are preserved without decoding
+ok 43 - supported audio files are preserved without decoding
+  ---
+  duration_ms: 1.91269
+  type: 'test'
+  ...
+# Subtest: Opus recording becomes real mono PCM WAV with a closed context
+ok 44 - Opus recording becomes real mono PCM WAV with a closed context
+  ---
+  duration_ms: 2.266491
+  type: 'test'
+  ...
+# Subtest: decode failure closes context and rejects instead of sending corrupt audio
+ok 45 - decode failure closes context and rejects instead of sending corrupt audio
+  ---
+  duration_ms: 1.888283
+  type: 'test'
+  ...
+# (node:2485) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:2485) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_seven_work/lib/facebook/messenger-window.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_seven_work/package.json.
+# Subtest: today's DM stays open after a new comment
+ok 46 - today's DM stays open after a new comment
+  ---
+  duration_ms: 2.309653
+  type: 'test'
+  ...
+# Subtest: sending after the new comment does not lock an open chat
+ok 47 - sending after the new comment does not lock an open chat
+  ---
+  duration_ms: 0.260824
+  type: 'test'
+  ...
+# Subtest: just before 24 hours uses standard messaging
+ok 48 - just before 24 hours uses standard messaging
+  ---
+  duration_ms: 0.172497
+  type: 'test'
+  ...
+# Subtest: at 24 hours uses the human agent path
+ok 49 - at 24 hours uses the human agent path
+  ---
+  duration_ms: 0.185425
+  type: 'test'
+  ...
+# Subtest: six-day DM stays on human agent path after a comment
+ok 50 - six-day DM stays on human agent path after a comment
+  ---
+  duration_ms: 0.368354
+  type: 'test'
+  ...
+# Subtest: just before seven days uses human agent path
+ok 51 - just before seven days uses human agent path
+  ---
+  duration_ms: 0.188785
+  type: 'test'
+  ...
+# Subtest: at seven days the DM window expires
+ok 52 - at seven days the DM window expires
+  ---
+  duration_ms: 0.180412
+  type: 'test'
+  ...
+# Subtest: outgoing messages do not extend expired DM window
+ok 53 - outgoing messages do not extend expired DM window
+  ---
+  duration_ms: 0.198184
+  type: 'test'
+  ...
+# Subtest: comment-only permits an initial private reply
+ok 54 - comment-only permits an initial private reply
+  ---
+  duration_ms: 0.609707
+  type: 'test'
+  ...
+# Subtest: comment-only waits after a private reply
+ok 55 - comment-only waits after a private reply
+  ---
+  duration_ms: 0.641955
+  type: 'test'
+  ...
+# Subtest: customer DM after private reply opens normal chat
+ok 56 - customer DM after private reply opens normal chat
+  ---
+  duration_ms: 0.29353
+  type: 'test'
+  ...
+# Subtest: expired DM with a fresh comment permits a private reply
+ok 57 - expired DM with a fresh comment permits a private reply
+  ---
+  duration_ms: 0.162026
+  type: 'test'
+  ...
+# Subtest: expired DM waits after fresh comment private reply
+ok 58 - expired DM waits after fresh comment private reply
+  ---
+  duration_ms: 0.15794
+  type: 'test'
+  ...
+# Subtest: seven-day-old comment cannot start a private reply
+ok 59 - seven-day-old comment cannot start a private reply
+  ---
+  duration_ms: 0.076144
+  type: 'test'
+  ...
+# Subtest: comment just inside seven days permits private reply
+ok 60 - comment just inside seven days permits private reply
+  ---
+  duration_ms: 0.069847
+  type: 'test'
+  ...
+# Subtest: old comments do not override a new customer DM
+ok 61 - old comments do not override a new customer DM
+  ---
+  duration_ms: 0.062455
+  type: 'test'
+  ...
+# Subtest: missing history remains unknown
+ok 62 - missing history remains unknown
+  ---
+  duration_ms: 0.061065
+  type: 'test'
+  ...
+# Subtest: future DM cannot open the window
+ok 63 - future DM cannot open the window
+  ---
+  duration_ms: 0.061861
+  type: 'test'
+  ...
+# Subtest: future comment cannot open the window
+ok 64 - future comment cannot open the window
+  ---
+  duration_ms: 0.060243
+  type: 'test'
+  ...
+# (node:2491) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:2491) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_seven_work/lib/facebook/messenger-window.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_seven_work/package.json.
+# Facebook message send failed: {
+#   error: { code: 551, message: "This person isn't available right now." }
+# }
+# Subtest: policy selects newest incoming comment even after a Page public reply
+ok 65 - policy selects newest incoming comment even after a Page public reply
+  ---
+  duration_ms: 197.929926
+  type: 'test'
+  ...
+# Subtest: imported comment uses its platform message ID
+ok 66 - imported comment uses its platform message ID
+  ---
+  duration_ms: 40.349373
+  type: 'test'
+  ...
+# Subtest: successful private reply locks further sends until customer responds
+ok 67 - successful private reply locks further sends until customer responds
+  ---
+  duration_ms: 56.708735
+  type: 'test'
+  ...
+# Subtest: private_reply_available uses the correct Meta recipient and messaging type
+ok 68 - private_reply_available uses the correct Meta recipient and messaging type
+  ---
+  duration_ms: 207.731423
+  type: 'test'
+  ...
+# Subtest: standard uses the correct Meta recipient and messaging type
+ok 69 - standard uses the correct Meta recipient and messaging type
+  ---
+  duration_ms: 108.893971
+  type: 'test'
+  ...
+# Subtest: human_agent uses the correct Meta recipient and messaging type
+ok 70 - human_agent uses the correct Meta recipient and messaging type
+  ---
+  duration_ms: 122.472831
+  type: 'test'
+  ...
+# Subtest: expired never calls Meta
+ok 71 - expired never calls Meta
+  ---
+  duration_ms: 113.405989
+  type: 'test'
+  ...
+# Subtest: waiting_for_customer_reply never calls Meta
+ok 72 - waiting_for_customer_reply never calls Meta
+  ---
+  duration_ms: 94.806863
+  type: 'test'
+  ...
+# Subtest: unknown never calls Meta
+ok 73 - unknown never calls Meta
+  ---
+  duration_ms: 52.333619
+  type: 'test'
+  ...
+# Subtest: private reply with missing comment ID fails closed
+ok 74 - private reply with missing comment ID fails closed
+  ---
+  duration_ms: 43.195969
+  type: 'test'
+  ...
+# Subtest: caller cannot redirect private reply to another customer
+ok 75 - caller cannot redirect private reply to another customer
+  ---
+  duration_ms: 63.18916
+  type: 'test'
+  ...
+# Subtest: Meta 551 remains an error without a second send or tag fallback
+ok 76 - Meta 551 remains an error without a second send or tag fallback
+  ---
+  duration_ms: 52.84522
+  type: 'test'
+  ...
+# Subtest: confirmed Facebook customer block prevents normal text send
+ok 77 - confirmed Facebook customer block prevents normal text send
+  ---
+  duration_ms: 82.99234
+  type: 'test'
+  ...
+# (node:2507) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:2507) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_seven_work/lib/facebook/profile-lookup-error.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_seven_work/package.json.
+# Subtest: distinct failures no longer collapse into the same profile-link error
+ok 78 - distinct failures no longer collapse into the same profile-link error
+  ---
+  duration_ms: 1.640959
+  type: 'test'
+  ...
+# Subtest: unrecognized error text is not echoed into the customer UI
+ok 79 - unrecognized error text is not echoed into the customer UI
+  ---
+  duration_ms: 0.278379
+  type: 'test'
+  ...
+# (node:2518) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:2518) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_seven_work/lib/facebook/media-message.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_seven_work/package.json.
+# Facebook attachment upload failed: { error: { message: 'Upload rejected' } }
+# Subtest: route uploads photos and makes exactly one album send
+ok 80 - route uploads photos and makes exactly one album send
+  ---
+  duration_ms: 95.908811
+  type: 'test'
+  ...
+# Subtest: route keeps single audio sends compatible
+ok 81 - route keeps single audio sends compatible
+  ---
+  duration_ms: 6.206781
+  type: 'test'
+  ...
+# Subtest: route keeps single video sends compatible
+ok 82 - route keeps single video sends compatible
+  ---
+  duration_ms: 3.059103
+  type: 'test'
+  ...
+# Subtest: route keeps single file sends compatible
+ok 83 - route keeps single file sends compatible
+  ---
+  duration_ms: 5.249352
+  type: 'test'
+  ...
+# Subtest: route keeps single image sends compatible
+ok 84 - route keeps single image sends compatible
+  ---
+  duration_ms: 2.668774
+  type: 'test'
+  ...
+# Subtest: failed second upload never sends a partial album
+ok 85 - failed second upload never sends a partial album
+  ---
+  duration_ms: 5.720095
+  type: 'test'
+  ...
+# Subtest: policy expired blocks before media upload
+ok 86 - policy expired blocks before media upload
+  ---
+  duration_ms: 0.904575
+  type: 'test'
+  ...
+# Subtest: policy waiting_for_customer_reply blocks before media upload
+ok 87 - policy waiting_for_customer_reply blocks before media upload
+  ---
+  duration_ms: 0.879994
+  type: 'test'
+  ...
+# Subtest: policy unknown blocks before media upload
+ok 88 - policy unknown blocks before media upload
+  ---
+  duration_ms: 1.579771
+  type: 'test'
+  ...
+# Subtest: human agent album preserves messaging tag
+ok 89 - human agent album preserves messaging tag
+  ---
+  duration_ms: 3.584265
+  type: 'test'
+  ...
+# Subtest: initial private media reply targets the comment, not the comment author's ID
+ok 90 - initial private media reply targets the comment, not the comment author's ID
+  ---
+  duration_ms: 4.74182
+  type: 'test'
+  ...
+# Subtest: missing private reply comment blocks before uploading or sending
+ok 91 - missing private reply comment blocks before uploading or sending
+  ---
+  duration_ms: 1.168057
+  type: 'test'
+  ...
+# Subtest: confirmed customer block prevents media upload and send
+ok 92 - confirmed customer block prevents media upload and send
+  ---
+  duration_ms: 1.27339
+  type: 'test'
+  ...
+# (node:2529) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:2529) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_seven_work/lib/inbox/confirm-outgoing-message.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_seven_work/package.json.
+# Subtest: webhook before response removes temporary location and preserves seen receipt
+ok 93 - webhook before response removes temporary location and preserves seen receipt
+  ---
+  duration_ms: 3.959308
+  type: 'test'
+  ...
+# Subtest: response before webhook gives temporary message its platform ID
+ok 94 - response before webhook gives temporary message its platform ID
+  ---
+  duration_ms: 0.44572
+  type: 'test'
+  ...
+# Subtest: intentional repeated location with a different ID is kept
+ok 95 - intentional repeated location with a different ID is kept
+  ---
+  duration_ms: 0.449737
+  type: 'test'
+  ...
+# Subtest: another conversation cannot remove the temporary message
+ok 96 - another conversation cannot remove the temporary message
+  ---
+  duration_ms: 0.37345
+  type: 'test'
+  ...
+# Subtest: already reconciled message is unchanged
+ok 97 - already reconciled message is unchanged
+  ---
+  duration_ms: 0.410056
+  type: 'test'
+  ...
+# (node:2540) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:2540) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_seven_work/lib/inbox/normalize-messages.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_seven_work/package.json.
+# Subtest: text: read update stays one bubble
+ok 98 - text: read update stays one bubble
+  ---
+  duration_ms: 4.23997
+  type: 'test'
+  ...
+# Subtest: text: late temporary response stays one bubble
+ok 99 - text: late temporary response stays one bubble
+  ---
+  duration_ms: 0.423663
+  type: 'test'
+  ...
+# Subtest: audio: read update stays one bubble
+ok 100 - audio: read update stays one bubble
+  ---
+  duration_ms: 0.843822
+  type: 'test'
+  ...
+# Subtest: audio: late temporary response stays one bubble
+ok 101 - audio: late temporary response stays one bubble
+  ---
+  duration_ms: 0.814103
+  type: 'test'
+  ...
+# Subtest: voice: read update stays one bubble
+ok 102 - voice: read update stays one bubble
+  ---
+  duration_ms: 0.861504
+  type: 'test'
+  ...
+# Subtest: voice: late temporary response stays one bubble
+ok 103 - voice: late temporary response stays one bubble
+  ---
+  duration_ms: 0.953434
+  type: 'test'
+  ...
+# Subtest: video: read update stays one bubble
+ok 104 - video: read update stays one bubble
+  ---
+  duration_ms: 0.616244
+  type: 'test'
+  ...
+# Subtest: video: late temporary response stays one bubble
+ok 105 - video: late temporary response stays one bubble
+  ---
+  duration_ms: 0.380125
+  type: 'test'
+  ...
+# Subtest: image: read update stays one bubble
+ok 106 - image: read update stays one bubble
+  ---
+  duration_ms: 1.095915
+  type: 'test'
+  ...
+# Subtest: image: late temporary response stays one bubble
+ok 107 - image: late temporary response stays one bubble
+  ---
+  duration_ms: 5.117379
+  type: 'test'
+  ...
+# Subtest: file: read update stays one bubble
+ok 108 - file: read update stays one bubble
+  ---
+  duration_ms: 0.34351
+  type: 'test'
+  ...
+# Subtest: file: late temporary response stays one bubble
+ok 109 - file: late temporary response stays one bubble
+  ---
+  duration_ms: 0.096821
+  type: 'test'
+  ...
+# Subtest: location: read update stays one bubble
+ok 110 - location: read update stays one bubble
+  ---
+  duration_ms: 0.075452
+  type: 'test'
+  ...
+# Subtest: location: late temporary response stays one bubble
+ok 111 - location: late temporary response stays one bubble
+  ---
+  duration_ms: 0.064199
+  type: 'test'
+  ...
+# Subtest: stale poll cannot downgrade seen receipt to sent
+ok 112 - stale poll cannot downgrade seen receipt to sent
+  ---
+  duration_ms: 0.301528
+  type: 'test'
+  ...
+# Subtest: intentional identical texts with distinct platform IDs remain separate
+ok 113 - intentional identical texts with distinct platform IDs remain separate
+  ---
+  duration_ms: 0.114378
+  type: 'test'
+  ...
+# Subtest: platform IDs are scoped to conversation
+ok 114 - platform IDs are scoped to conversation
+  ---
+  duration_ms: 0.193666
+  type: 'test'
+  ...
+# Subtest: unsent messages without platform IDs stay separate
+ok 115 - unsent messages without platform IDs stay separate
+  ---
+  duration_ms: 0.111913
+  type: 'test'
+  ...
+# Subtest: removed messages are not restored from prior state
+ok 116 - removed messages are not restored from prior state
+  ---
+  duration_ms: 1.283941
+  type: 'test'
+  ...
+# (node:2551) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:2551) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_seven_work/lib/inbox/notification-sounds.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_seven_work/package.json.
+# Subtest: every sound in the list is a file that exists
+ok 117 - every sound in the list is a file that exists
+  ---
+  duration_ms: 3.221404
+  type: 'test'
+  ...
+# Subtest: every sound file in the folder is offered
+ok 118 - every sound file in the folder is offered
+  ---
+  duration_ms: 2.453948
+  type: 'test'
+  ...
+# Subtest: exactly one silent option, and it is last
+ok 119 - exactly one silent option, and it is last
+  ---
+  duration_ms: 0.751905
+  type: 'test'
+  ...
+# Subtest: keys are unique
+ok 120 - keys are unique
+  ---
+  duration_ms: 0.473307
+  type: 'test'
+  ...
+# Subtest: the default is real and is the first entry
+ok 121 - the default is real and is the first entry
+  ---
+  duration_ms: 0.614121
+  type: 'test'
+  ...
+# Subtest: a key from the old list falls back to the default, not to silence
+ok 122 - a key from the old list falls back to the default, not to silence
+  ---
+  duration_ms: 0.470865
+  type: 'test'
+  ...
+# (node:2562) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:2562) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_seven_work/lib/inbox/realtime-error.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_seven_work/package.json.
+# Subtest: the 1006 close the dev overlay was shouting about is transient
+ok 123 - the 1006 close the dev overlay was shouting about is transient
+  ---
+  duration_ms: 1.905168
+  type: 'test'
+  ...
+# Subtest: the other codes a socket closes itself with are transient
+ok 124 - the other codes a socket closes itself with are transient
+  ---
+  duration_ms: 0.461915
+  type: 'test'
+  ...
+# Subtest: a close carrying no code is still a close
+ok 125 - a close carrying no code is still a close
+  ---
+  duration_ms: 0.378109
+  type: 'test'
+  ...
+# Subtest: a protocol or policy close is not transient
+ok 126 - a protocol or policy close is not transient
+  ---
+  duration_ms: 0.489252
+  type: 'test'
+  ...
+# Subtest: a real channel failure keeps its console.error
+ok 127 - a real channel failure keeps its console.error
+  ---
+  duration_ms: 0.527485
+  type: 'test'
+  ...
+# Subtest: supabase hands the callback a string sometimes, and nothing others
+ok 128 - supabase hands the callback a string sometimes, and nothing others
+  ---
+  duration_ms: 0.369697
+  type: 'test'
+  ...
+# (node:2573) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:2573) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/tenh_seven_work/lib/settings/saved-reply-media-path.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/tenh_seven_work/package.json.
+# Subtest: a file under this workspace's own prefix is accepted
+ok 129 - a file under this workspace's own prefix is accepted
+  ---
+  duration_ms: 1.932554
+  type: 'test'
+  ...
+# Subtest: another workspace's prefix is refused
+ok 130 - another workspace's prefix is refused
+  ---
+  duration_ms: 0.277081
+  type: 'test'
+  ...
+# Subtest: traversal out of the prefix is refused
+ok 131 - traversal out of the prefix is refused
+  ---
+  duration_ms: 0.318062
+  type: 'test'
+  ...
+# Subtest: empty segments and backslash separators are refused
+ok 132 - empty segments and backslash separators are refused
+  ---
+  duration_ms: 0.339008
+  type: 'test'
+  ...
+# Subtest: dots inside a file name are ordinary and stay allowed
+ok 133 - dots inside a file name are ordinary and stay allowed
+  ---
+  duration_ms: 0.417059
+  type: 'test'
+  ...
+# Subtest: a prefix that only looks like ours is refused
+ok 134 - a prefix that only looks like ours is refused
+  ---
+  duration_ms: 0.233649
+  type: 'test'
+  ...
+# Subtest: missing path or business id is refused
+ok 135 - missing path or business id is refused
+  ---
+  duration_ms: 0.479522
+  type: 'test'
+  ...
+1..135
+# tests 135
+# suites 0
+# pass 135
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6092.799073

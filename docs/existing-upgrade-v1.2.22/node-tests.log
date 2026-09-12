@@ -1,0 +1,1456 @@
+TAP version 13
+# Subtest: Passive sync uses existing device credential and receiver
+ok 1 - Passive sync uses existing device credential and receiver
+  ---
+  duration_ms: 6.140753
+  type: 'test'
+  ...
+# Subtest: Concurrent identical observations make one write
+ok 2 - Concurrent identical observations make one write
+  ---
+  duration_ms: 1.719485
+  type: 'test'
+  ...
+# Subtest: Reject forged sender {"id":"evil","frameId":0,"tab":{"id":1,"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"},"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"}
+ok 3 - Reject forged sender {"id":"evil","frameId":0,"tab":{"id":1,"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"},"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"}
+  ---
+  duration_ms: 0.553072
+  type: 'test'
+  ...
+# Subtest: Reject forged sender {"id":"ext","frameId":1,"tab":{"id":1,"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"},"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"}
+ok 4 - Reject forged sender {"id":"ext","frameId":1,"tab":{"id":1,"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"},"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"}
+  ---
+  duration_ms: 0.866112
+  type: 'test'
+  ...
+# Subtest: Reject forged sender {"id":"ext","frameId":0,"tab":{"id":1,"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"},"url":"https://evil.test"}
+ok 5 - Reject forged sender {"id":"ext","frameId":0,"tab":{"id":1,"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"},"url":"https://evil.test"}
+  ---
+  duration_ms: 0.556627
+  type: 'test'
+  ...
+# Subtest: Reject forged sender {"id":"ext","frameId":0,"tab":{"id":1,"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"},"url":"https://business.facebook.com/latest/inbox/all/?asset_id=122&selected_item_id=456&thread_type=FB_MESSAGE"}
+ok 6 - Reject forged sender {"id":"ext","frameId":0,"tab":{"id":1,"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"},"url":"https://business.facebook.com/latest/inbox/all/?asset_id=122&selected_item_id=456&thread_type=FB_MESSAGE"}
+  ---
+  duration_ms: 0.547393
+  type: 'test'
+  ...
+# Subtest: Reject forged sender {"id":"ext","frameId":0,"tab":{"id":1,"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"},"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=457&thread_type=FB_MESSAGE"}
+ok 7 - Reject forged sender {"id":"ext","frameId":0,"tab":{"id":1,"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"},"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=457&thread_type=FB_MESSAGE"}
+  ---
+  duration_ms: 0.569637
+  type: 'test'
+  ...
+# Subtest: Reject forged sender {"id":"ext","frameId":0,"tab":{"id":null,"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"},"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"}
+ok 8 - Reject forged sender {"id":"ext","frameId":0,"tab":{"id":null,"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"},"url":"https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE"}
+  ---
+  duration_ms: 0.467753
+  type: 'test'
+  ...
+# Subtest: sign-in stops before saving
+ok 9 - sign-in stops before saving
+  ---
+  duration_ms: 0.805932
+  type: 'test'
+  ...
+# Subtest: optout stops before saving
+ok 10 - optout stops before saving
+  ---
+  duration_ms: 0.722366
+  type: 'test'
+  ...
+# Subtest: stale Page stops before saving
+ok 11 - stale Page stops before saving
+  ---
+  duration_ms: 0.593883
+  type: 'test'
+  ...
+# Subtest: stale conversation stops before saving
+ok 12 - stale conversation stops before saving
+  ---
+  duration_ms: 0.539901
+  type: 'test'
+  ...
+# Subtest: Receiver error is not turned into profile available
+ok 13 - Receiver error is not turned into profile available
+  ---
+  duration_ms: 4.41567
+  type: 'test'
+  ...
+# Subtest: Response Page mismatch is not accepted
+ok 14 - Response Page mismatch is not accepted
+  ---
+  duration_ms: 1.980998
+  type: 'test'
+  ...
+# Subtest: Network exception is contained
+ok 15 - Network exception is contained
+  ---
+  duration_ms: 0.693452
+  type: 'test'
+  ...
+# Subtest: Profile validator refuses javascript:alert(1)
+ok 16 - Profile validator refuses javascript:alert(1)
+  ---
+  duration_ms: 0.639001
+  type: 'test'
+  ...
+# Subtest: Profile validator refuses https://www.facebook.com/me
+ok 17 - Profile validator refuses https://www.facebook.com/me
+  ---
+  duration_ms: 0.563588
+  type: 'test'
+  ...
+# Subtest: Profile validator refuses https://www.facebook.com/profile.php?id=456
+ok 18 - Profile validator refuses https://www.facebook.com/profile.php?id=456
+  ---
+  duration_ms: 0.432681
+  type: 'test'
+  ...
+# Subtest: Profile validator refuses https://www.facebook.com/profile.php?id=123
+ok 19 - Profile validator refuses https://www.facebook.com/profile.php?id=123
+  ---
+  duration_ms: 0.426231
+  type: 'test'
+  ...
+# Subtest: Profile validator refuses https://www.facebook.com/profile.php?id=1&id=2
+ok 20 - Profile validator refuses https://www.facebook.com/profile.php?id=1&id=2
+  ---
+  duration_ms: 0.450317
+  type: 'test'
+  ...
+# Subtest: Profile validator refuses https://www.facebook.com.evil.test/user
+ok 21 - Profile validator refuses https://www.facebook.com.evil.test/user
+  ---
+  duration_ms: 0.412971
+  type: 'test'
+  ...
+# Subtest: Profile validator refuses https://business.facebook.com/latest/inbox/all
+ok 22 - Profile validator refuses https://business.facebook.com/latest/inbox/all
+  ---
+  duration_ms: 0.406922
+  type: 'test'
+  ...
+# Subtest: Profile validator refuses https://www.facebook.com/settings
+ok 23 - Profile validator refuses https://www.facebook.com/settings
+  ---
+  duration_ms: 0.554474
+  type: 'test'
+  ...
+# Subtest: Wrapped public URL normalizes without visiting it
+ok 24 - Wrapped public URL normalizes without visiting it
+  ---
+  duration_ms: 0.509987
+  type: 'test'
+  ...
+# Subtest: Invalid thread context https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=IG_MESSAGE
+ok 25 - Invalid thread context https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=IG_MESSAGE
+  ---
+  duration_ms: 0.504158
+  type: 'test'
+  ...
+# Subtest: Invalid thread context https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE&asset_id=999
+ok 26 - Invalid thread context https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=456&thread_type=FB_MESSAGE&asset_id=999
+  ---
+  duration_ms: 0.442435
+  type: 'test'
+  ...
+# Subtest: Invalid thread context https://www.facebook.com/profile.php?id=123
+ok 27 - Invalid thread context https://www.facebook.com/profile.php?id=123
+  ---
+  duration_ms: 0.44558
+  type: 'test'
+  ...
+# Subtest: Invalid thread context https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=uuid-local&thread_type=FB_MESSAGE
+ok 28 - Invalid thread context https://business.facebook.com/latest/inbox/all/?asset_id=123&selected_item_id=uuid-local&thread_type=FB_MESSAGE
+  ---
+  duration_ms: 0.397979
+  type: 'test'
+  ...
+# Subtest: Visible DOM observer has no click, cookies or direct fetch logic
+ok 29 - Visible DOM observer has no click, cookies or direct fetch logic
+  ---
+  duration_ms: 0.329125
+  type: 'test'
+  ...
+# Subtest: Authorized extension saves public URL to existing contact, not a new database
+ok 30 - Authorized extension saves public URL to existing contact, not a new database
+  ---
+  duration_ms: 94.252706
+  type: 'test'
+  ...
+# Subtest: Same observation is idempotent and produces no extra audit write
+ok 31 - Same observation is idempotent and produces no extra audit write
+  ---
+  duration_ms: 46.850594
+  type: 'test'
+  ...
+# Subtest: Different existing public link cannot be silently replaced by observation
+ok 32 - Different existing public link cannot be silently replaced by observation
+  ---
+  duration_ms: 40.820927
+  type: 'test'
+  ...
+# Subtest: Same-origin signed-in web request is compatible
+ok 33 - Same-origin signed-in web request is compatible
+  ---
+  duration_ms: 47.217506
+  type: 'test'
+  ...
+# Subtest: revoked cannot save public profile
+ok 34 - revoked cannot save public profile
+  ---
+  duration_ms: 48.407845
+  type: 'test'
+  ...
+# Subtest: permission cannot save public profile
+ok 35 - permission cannot save public profile
+  ---
+  duration_ms: 24.075489
+  type: 'test'
+  ...
+# Subtest: expired cookie subscription cannot save public profile
+ok 36 - expired cookie subscription cannot save public profile
+  ---
+  duration_ms: 17.622116
+  type: 'test'
+  ...
+# Subtest: Cookie profile sync refuses origin null
+ok 37 - Cookie profile sync refuses origin null
+  ---
+  duration_ms: 26.765213
+  type: 'test'
+  ...
+# Subtest: Cookie profile sync refuses origin https://evil.test
+ok 38 - Cookie profile sync refuses origin https://evil.test
+  ---
+  duration_ms: 31.446753
+  type: 'test'
+  ...
+# Subtest: Cookie profile sync refuses origin https://app.tenhchat.com.evil.test
+ok 39 - Cookie profile sync refuses origin https://app.tenhchat.com.evil.test
+  ---
+  duration_ms: 19.016362
+  type: 'test'
+  ...
+# Subtest: Reject invalid or scoped profile javascript:alert(1)
+ok 40 - Reject invalid or scoped profile javascript:alert(1)
+  ---
+  duration_ms: 29.004821
+  type: 'test'
+  ...
+# Subtest: Reject invalid or scoped profile https://facebook.com.evil.test/person
+ok 41 - Reject invalid or scoped profile https://facebook.com.evil.test/person
+  ---
+  duration_ms: 24.739036
+  type: 'test'
+  ...
+# Subtest: Reject invalid or scoped profile https://www.facebook.com/me
+ok 42 - Reject invalid or scoped profile https://www.facebook.com/me
+  ---
+  duration_ms: 30.244746
+  type: 'test'
+  ...
+# Subtest: Reject invalid or scoped profile https://www.facebook.com/profile.php?id=100076611888104
+ok 43 - Reject invalid or scoped profile https://www.facebook.com/profile.php?id=100076611888104
+  ---
+  duration_ms: 25.136214
+  type: 'test'
+  ...
+# Subtest: Reject invalid or scoped profile https://www.facebook.com/profile.php?id=393342417206745
+ok 44 - Reject invalid or scoped profile https://www.facebook.com/profile.php?id=393342417206745
+  ---
+  duration_ms: 20.196557
+  type: 'test'
+  ...
+# Subtest: Reject invalid or scoped profile https://user:secret@www.facebook.com/customer
+ok 45 - Reject invalid or scoped profile https://user:secret@www.facebook.com/customer
+  ---
+  duration_ms: 60.834229
+  type: 'test'
+  ...
+# Subtest: Reject invalid or scoped profile https://www.facebook.com/profile.php?id=12&id=34
+ok 46 - Reject invalid or scoped profile https://www.facebook.com/profile.php?id=12&id=34
+  ---
+  duration_ms: 17.733853
+  type: 'test'
+  ...
+# Subtest: Reject invalid or scoped profile https://business.facebook.com/latest/inbox/all
+ok 47 - Reject invalid or scoped profile https://business.facebook.com/latest/inbox/all
+  ---
+  duration_ms: 12.227435
+  type: 'test'
+  ...
+# Subtest: Malformed or stale input denied null
+ok 48 - Malformed or stale input denied null
+  ---
+  duration_ms: 17.94363
+  type: 'test'
+  ...
+# Subtest: Malformed or stale input denied []
+ok 49 - Malformed or stale input denied []
+  ---
+  duration_ms: 36.937418
+  type: 'test'
+  ...
+# Subtest: Malformed or stale input denied {}
+ok 50 - Malformed or stale input denied {}
+  ---
+  duration_ms: 18.382049
+  type: 'test'
+  ...
+# Subtest: Malformed or stale input denied {"psid":100076611888104,"pageId":"393342417206745","publicProfileUrl":"https://www.facebook.com/profile.php?id=61500000000001"}
+ok 51 - Malformed or stale input denied {"psid":100076611888104,"pageId":"393342417206745","publicProfileUrl":"https://www.facebook.com/profile.php?id=61500000000001"}
+  ---
+  duration_ms: 14.825071
+  type: 'test'
+  ...
+# Subtest: Malformed or stale input denied {"psid":"100076611888104","pageId":123,"publicProfileUrl":"https://www.facebook.com/profile.php?id=61500000000001"}
+ok 52 - Malformed or stale input denied {"psid":"100076611888104","pageId":123,"publicProfileUrl":"https://www.facebook.com/profile.php?id=61500000000001"}
+  ---
+  duration_ms: 11.324007
+  type: 'test'
+  ...
+# Subtest: Malformed or stale input denied {"psid":"100076611888104","pageId":"393342417206745","publicProfileUrl":"https://www.facebook.com/profile.php?id=61500000000001","conversationId":"NOT_UUID"}
+ok 53 - Malformed or stale input denied {"psid":"100076611888104","pageId":"393342417206745","publicProfileUrl":"https://www.facebook.com/profile.php?id=61500000000001","conversationId":"NOT_UUID"}
+  ---
+  duration_ms: 24.41519
+  type: 'test'
+  ...
+# Subtest: Malformed or stale input denied {"psid":"100076611888104","pageId":"393342417206745","publicProfileUrl":"https://www.facebook.com/profile.php?id=61500000000001","businessId":"other"}
+ok 54 - Malformed or stale input denied {"psid":"100076611888104","pageId":"393342417206745","publicProfileUrl":"https://www.facebook.com/profile.php?id=61500000000001","businessId":"other"}
+  ---
+  duration_ms: 28.171704
+  type: 'test'
+  ...
+# Subtest: Malformed or stale input denied {"psid":"100076611888104","pageId":"393342417206745","publicProfileUrl":"https://www.facebook.com/profile.php?id=61500000000001","expectedUpdatedAt":"stale"}
+ok 55 - Malformed or stale input denied {"psid":"100076611888104","pageId":"393342417206745","publicProfileUrl":"https://www.facebook.com/profile.php?id=61500000000001","expectedUpdatedAt":"stale"}
+  ---
+  duration_ms: 15.227265
+  type: 'test'
+  ...
+# Subtest: Two Pages with same PSID require Page context
+ok 56 - Two Pages with same PSID require Page context
+  ---
+  duration_ms: 14.430827
+  type: 'test'
+  ...
+# Subtest: Inactive/wrong Page never associates profile
+ok 57 - Inactive/wrong Page never associates profile
+  ---
+  duration_ms: 15.880017
+  type: 'test'
+  ...
+# Subtest: Another workspace cannot be written using supplied businessId
+ok 58 - Another workspace cannot be written using supplied businessId
+  ---
+  duration_ms: 10.226617
+  type: 'test'
+  ...
+# Subtest: Storage failure not reported as success
+ok 59 - Storage failure not reported as success
+  ---
+  duration_ms: 9.544391
+  type: 'test'
+  ...
+# Subtest: No unseen customer created from extension-supplied ID
+ok 60 - No unseen customer created from extension-supplied ID
+  ---
+  duration_ms: 10.427118
+  type: 'test'
+  ...
+# Subtest: Page Messenger fallback explicitly separate from public profile
+ok 61 - Page Messenger fallback explicitly separate from public profile
+  ---
+  duration_ms: 10.50849
+  type: 'test'
+  ...
+# Subtest: Stipop catalog searches vendor with per-agent identity and no exposed API key
+ok 62 - Stipop catalog searches vendor with per-agent identity and no exposed API key
+  ---
+  duration_ms: 101.397354
+  type: 'test'
+  ...
+# Subtest: Different agents get distinct vendor userIds
+ok 63 - Different agents get distinct vendor userIds
+  ---
+  duration_ms: 54.930692
+  type: 'test'
+  ...
+# Subtest: Short cache avoids repeated vendor search and keeps scope-bound selection
+ok 64 - Short cache avoids repeated vendor search and keeps scope-bound selection
+  ---
+  duration_ms: 34.034954
+  type: 'test'
+  ...
+# Subtest: Missing API key fails clearly without replacing local stickers
+ok 65 - Missing API key fails clearly without replacing local stickers
+  ---
+  duration_ms: 25.527933
+  type: 'test'
+  ...
+# Subtest: Reject unapproved media http://img.stipop.io/test.png
+ok 66 - Reject unapproved media http://img.stipop.io/test.png
+  ---
+  duration_ms: 41.642423
+  type: 'test'
+  ...
+# Subtest: Reject unapproved media https://evil.test/file
+ok 67 - Reject unapproved media https://evil.test/file
+  ---
+  duration_ms: 14.980995
+  type: 'test'
+  ...
+# Subtest: Reject unapproved media https://stipop.io.evil.test/file
+ok 68 - Reject unapproved media https://stipop.io.evil.test/file
+  ---
+  duration_ms: 23.725223
+  type: 'test'
+  ...
+# Subtest: Reject unapproved media https://127.0.0.1/file
+ok 69 - Reject unapproved media https://127.0.0.1/file
+  ---
+  duration_ms: 12.093723
+  type: 'test'
+  ...
+# Subtest: Reject unapproved media https://localhost/file
+ok 70 - Reject unapproved media https://localhost/file
+  ---
+  duration_ms: 37.607807
+  type: 'test'
+  ...
+# Subtest: Reject unapproved media https://img.stipop.io:8443/file
+ok 71 - Reject unapproved media https://img.stipop.io:8443/file
+  ---
+  duration_ms: 15.933286
+  type: 'test'
+  ...
+# Subtest: Reject unapproved media https://x:y@img.stipop.io/file
+ok 72 - Reject unapproved media https://x:y@img.stipop.io/file
+  ---
+  duration_ms: 12.338361
+  type: 'test'
+  ...
+# Subtest: Reject unapproved media data:image/png;base64,a
+ok 73 - Reject unapproved media data:image/png;base64,a
+  ---
+  duration_ms: 13.242471
+  type: 'test'
+  ...
+# Subtest: Optional exact CDN allowlist does not allow suffix lookalikes
+ok 74 - Optional exact CDN allowlist does not allow suffix lookalikes
+  ---
+  duration_ms: 25.543196
+  type: 'test'
+  ...
+# Subtest: Signed selection is bound to conversationId
+ok 75 - Signed selection is bound to conversationId
+  ---
+  duration_ms: 15.952896
+  type: 'test'
+  ...
+# Subtest: Signed selection is bound to businessId
+ok 76 - Signed selection is bound to businessId
+  ---
+  duration_ms: 32.573967
+  type: 'test'
+  ...
+# Subtest: Signed selection is bound to memberId
+ok 77 - Signed selection is bound to memberId
+  ---
+  duration_ms: 10.484975
+  type: 'test'
+  ...
+# Subtest: Signed selection is bound to pageId
+ok 78 - Signed selection is bound to pageId
+  ---
+  duration_ms: 18.612485
+  type: 'test'
+  ...
+# Subtest: Signed selection is bound to psid
+ok 79 - Signed selection is bound to psid
+  ---
+  duration_ms: 10.87377
+  type: 'test'
+  ...
+# Subtest: Modified HMAC and expired selections refused
+ok 80 - Modified HMAC and expired selections refused
+  ---
+  duration_ms: 11.867233
+  type: 'test'
+  ...
+# Subtest: Malformed vendor response refuses catalog
+ok 81 - Malformed vendor response refuses catalog
+  ---
+  duration_ms: 51.036958
+  type: 'test'
+  ...
+# Subtest: Vendor only malicious result URL refuses catalog
+ok 82 - Vendor only malicious result URL refuses catalog
+  ---
+  duration_ms: 15.287626
+  type: 'test'
+  ...
+# Subtest: Vendor status 401 is not success
+ok 83 - Vendor status 401 is not success
+  ---
+  duration_ms: 16.415282
+  type: 'test'
+  ...
+# Subtest: Vendor status 429 is not success
+ok 84 - Vendor status 429 is not success
+  ---
+  duration_ms: 11.935336
+  type: 'test'
+  ...
+# Subtest: Vendor status 500 is not success
+ok 85 - Vendor status 500 is not success
+  ---
+  duration_ms: 52.870975
+  type: 'test'
+  ...
+# Subtest: Vendor transport fails safely
+ok 86 - Vendor transport fails safely
+  ---
+  duration_ms: 17.354263
+  type: 'test'
+  ...
+# Subtest: Authenticated GET searches selected conversation only
+ok 87 - Authenticated GET searches selected conversation only
+  ---
+  duration_ms: 15.676661
+  type: 'test'
+  ...
+# Subtest: GET cannot access another conversation
+ok 88 - GET cannot access another conversation
+  ---
+  duration_ms: 15.349239
+  type: 'test'
+  ...
+# Subtest: Content is validated before passing file into existing attachment endpoint
+ok 89 - Content is validated before passing file into existing attachment endpoint
+  ---
+  duration_ms: 25.40577
+  type: 'test'
+  ...
+# Subtest: Download rejects HTML MIME
+ok 90 - Download rejects HTML MIME
+  ---
+  duration_ms: 10.471005
+  type: 'test'
+  ...
+# Subtest: Download rejects HTML spoofing PNG
+ok 91 - Download rejects HTML spoofing PNG
+  ---
+  duration_ms: 11.984891
+  type: 'test'
+  ...
+# Subtest: Download rejects oversize
+ok 92 - Download rejects oversize
+  ---
+  duration_ms: 10.136861
+  type: 'test'
+  ...
+# Subtest: Download rejects empty
+ok 93 - Download rejects empty
+  ---
+  duration_ms: 25.925521
+  type: 'test'
+  ...
+# Subtest: Send adapter calls existing attachment path once and persists completed receipt
+ok 94 - Send adapter calls existing attachment path once and persists completed receipt
+  ---
+  duration_ms: 28.928436
+  type: 'test'
+  ...
+# Subtest: Retry same request returns previous result and never dispatches twice
+ok 95 - Retry same request returns previous result and never dispatches twice
+  ---
+  duration_ms: 50.419811
+  type: 'test'
+  ...
+# Subtest: Same UUID with different sticker rejects rather than confusing receipts
+ok 96 - Same UUID with different sticker rejects rather than confusing receipts
+  ---
+  duration_ms: 20.788667
+  type: 'test'
+  ...
+# Subtest: Concurrent duplicate requests have one durable insert winner
+ok 97 - Concurrent duplicate requests have one durable insert winner
+  ---
+  duration_ms: 17.838292
+  type: 'test'
+  ...
+# Subtest: expired window never dispatches sticker
+ok 98 - expired window never dispatches sticker
+  ---
+  duration_ms: 21.578495
+  type: 'test'
+  ...
+# Subtest: blocked never dispatches sticker
+ok 99 - blocked never dispatches sticker
+  ---
+  duration_ms: 19.765179
+  type: 'test'
+  ...
+# Subtest: no send permission never dispatches sticker
+ok 100 - no send permission never dispatches sticker
+  ---
+  duration_ms: 35.407207
+  type: 'test'
+  ...
+# Subtest: workspace denied never dispatches sticker
+ok 101 - workspace denied never dispatches sticker
+  ---
+  duration_ms: 14.881145
+  type: 'test'
+  ...
+# Subtest: Missing receipt migration never dispatches
+ok 102 - Missing receipt migration never dispatches
+  ---
+  duration_ms: 17.53196
+  type: 'test'
+  ...
+# Subtest: CSRF rejected {"origin":"https://evil.test"}
+ok 103 - CSRF rejected {"origin":"https://evil.test"}
+  ---
+  duration_ms: 24.756784
+  type: 'test'
+  ...
+# Subtest: CSRF rejected {"origin":null}
+ok 104 - CSRF rejected {"origin":null}
+  ---
+  duration_ms: 15.116129
+  type: 'test'
+  ...
+# Subtest: Uncertain delegate outcome disables automatic resend {"delegateThrow":true}
+ok 105 - Uncertain delegate outcome disables automatic resend {"delegateThrow":true}
+  ---
+  duration_ms: 20.135485
+  type: 'test'
+  ...
+# Subtest: Uncertain delegate outcome disables automatic resend {"delegateResult":{"success":false,"error":"Provider ambiguous"},"delegateStatus":502}
+ok 106 - Uncertain delegate outcome disables automatic resend {"delegateResult":{"success":false,"error":"Provider ambiguous"},"delegateStatus":502}
+  ---
+  duration_ms: 18.829672
+  type: 'test'
+  ...
+# Subtest: Successful provider send plus receipt write failure still never silently retries
+ok 107 - Successful provider send plus receipt write failure still never silently retries
+  ---
+  duration_ms: 33.179833
+  type: 'test'
+  ...
+# Subtest: Failed noncritical vendor analytics do not change send into failure
+ok 108 - Failed noncritical vendor analytics do not change send into failure
+  ---
+  duration_ms: 29.460271
+  type: 'test'
+  ...
+# Subtest: retains real Telegram set fields
+ok 109 - retains real Telegram set fields
+  ---
+  duration_ms: 1.146214
+  type: 'test'
+  ...
+# Subtest: builds preview for selected conversation
+ok 110 - builds preview for selected conversation
+  ---
+  duration_ms: 0.874175
+  type: 'test'
+  ...
+# Subtest: remote preview cannot expose bot token
+ok 111 - remote preview cannot expose bot token
+  ---
+  duration_ms: 0.193271
+  type: 'test'
+  ...
+# Subtest: missing preview retains fallback
+ok 112 - missing preview retains fallback
+  ---
+  duration_ms: 0.123866
+  type: 'test'
+  ...
+# Subtest: failed provider response rejected
+ok 113 - failed provider response rejected
+  ---
+  duration_ms: 0.145159
+  type: 'test'
+  ...
+# Subtest: wrong set in response rejected
+ok 114 - wrong set in response rejected
+  ---
+  duration_ms: 0.116976
+  type: 'test'
+  ...
+# Subtest: wrong set on sticker ignored
+ok 115 - wrong set on sticker ignored
+  ---
+  duration_ms: 0.152369
+  type: 'test'
+  ...
+# Subtest: case-insensitive set canonicalization
+ok 116 - case-insensitive set canonicalization
+  ---
+  duration_ms: 0.165369
+  type: 'test'
+  ...
+# Subtest: malformed response rejected
+ok 117 - malformed response rejected
+  ---
+  duration_ms: 0.394924
+  type: 'test'
+  ...
+# Subtest: invalid IDs ignored
+ok 118 - invalid IDs ignored
+  ---
+  duration_ms: 0.374803
+  type: 'test'
+  ...
+# Subtest: unknown formats ignored
+ok 119 - unknown formats ignored
+  ---
+  duration_ms: 0.148503
+  type: 'test'
+  ...
+# Subtest: static animated video formats retained
+ok 120 - static animated video formats retained
+  ---
+  duration_ms: 0.20585
+  type: 'test'
+  ...
+# Subtest: duplicate stickers deduplicated
+ok 121 - duplicate stickers deduplicated
+  ---
+  duration_ms: 0.140572
+  type: 'test'
+  ...
+# Subtest: caps large packs at 120 items
+ok 122 - caps large packs at 120 items
+  ---
+  duration_ms: 0.597288
+  type: 'test'
+  ...
+# Subtest: limits returned text lengths
+ok 123 - limits returned text lengths
+  ---
+  duration_ms: 0.116034
+  type: 'test'
+  ...
+# Subtest: recent choices deduplicate newest first
+ok 124 - recent choices deduplicate newest first
+  ---
+  duration_ms: 8.676636
+  type: 'test'
+  ...
+# Subtest: recent choices bounded at 24
+ok 125 - recent choices bounded at 24
+  ---
+  duration_ms: 0.136986
+  type: 'test'
+  ...
+# Subtest: recents distinguish sets and identifiers
+ok 126 - recents distinguish sets and identifiers
+  ---
+  duration_ms: 0.205269
+  type: 'test'
+  ...
+# Subtest: search trims whitespace and folds case
+ok 127 - search trims whitespace and folds case
+  ---
+  duration_ms: 0.111638
+  type: 'test'
+  ...
+# Subtest: emoji search and empty query
+ok 128 - emoji search and empty query
+  ---
+  duration_ms: 0.303987
+  type: 'test'
+  ...
+# Subtest: nonmatching search rejected
+ok 129 - nonmatching search rejected
+  ---
+  duration_ms: 0.06006
+  type: 'test'
+  ...
+# Subtest: desktop picker fits above composer
+ok 130 - desktop picker fits above composer
+  ---
+  duration_ms: 0.153671
+  type: 'test'
+  ...
+# Subtest: phone picker stays inside viewport
+ok 131 - phone picker stays inside viewport
+  ---
+  duration_ms: 0.080802
+  type: 'test'
+  ...
+# Subtest: right edge clamps panel
+ok 132 - right edge clamps panel
+  ---
+  duration_ms: 0.989978
+  type: 'test'
+  ...
+# Subtest: near top opens below trigger
+ok 133 - near top opens below trigger
+  ---
+  duration_ms: 0.084787
+  type: 'test'
+  ...
+# Subtest: short keyboard viewport is bounded
+ok 134 - short keyboard viewport is bounded
+  ---
+  duration_ms: 0.144598
+  type: 'test'
+  ...
+# Subtest: panned visual viewport horizontal bounds
+ok 135 - panned visual viewport horizontal bounds
+  ---
+  duration_ms: 0.087201
+  type: 'test'
+  ...
+# Subtest: offscreen trigger still yields bounded panel
+ok 136 - offscreen trigger still yields bounded panel
+  ---
+  duration_ms: 0.103666
+  type: 'test'
+  ...
+# Subtest: existing catalog keeps six Telegram packs
+ok 137 - existing catalog keeps six Telegram packs
+  ---
+  duration_ms: 0.055213
+  type: 'test'
+  ...
+# Subtest: component parses and preserves the existing public API
+ok 138 - component parses and preserves the existing public API
+  ---
+  duration_ms: 139.93986
+  type: 'test'
+  ...
+# Subtest: UI is presentational, not a new sending channel
+ok 139 - UI is presentational, not a new sending channel
+  ---
+  duration_ms: 0.194944
+  type: 'test'
+  ...
+# Subtest: explicitly distinguishes native Telegram from image library
+ok 140 - explicitly distinguishes native Telegram from image library
+  ---
+  duration_ms: 0.097016
+  type: 'test'
+  ...
+# Subtest: fixed bottom tabs and independent grid scrolling are present
+ok 141 - fixed bottom tabs and independent grid scrolling are present
+  ---
+  duration_ms: 0.1259
+  type: 'test'
+  ...
+# Subtest: context switch and disable cancel requests and clear scoped caches
+ok 142 - context switch and disable cancel requests and clear scoped caches
+  ---
+  duration_ms: 0.073661
+  type: 'test'
+  ...
+# Subtest: Exact authorized Page/customer opens requested URL format
+ok 143 - Exact authorized Page/customer opens requested URL format
+  ---
+  duration_ms: 18.46286
+  type: 'test'
+  ...
+# Subtest: No authorization result means no navigation
+ok 144 - No authorization result means no navigation
+  ---
+  duration_ms: 1.266955
+  type: 'test'
+  ...
+# Subtest: Network failure causes no new Facebook tab
+ok 145 - Network failure causes no new Facebook tab
+  ---
+  duration_ms: 0.928656
+  type: 'test'
+  ...
+# Subtest: Exact Page/customer response mismatch opens no tab
+ok 146 - Exact Page/customer response mismatch opens no tab
+  ---
+  duration_ms: 1.106074
+  type: 'test'
+  ...
+# Subtest: No paired extension credential causes no navigation
+ok 147 - No paired extension credential causes no navigation
+  ---
+  duration_ms: 0.922767
+  type: 'test'
+  ...
+# Subtest: Foreign origin cannot invoke customer navigation https://evil.test
+ok 148 - Foreign origin cannot invoke customer navigation https://evil.test
+  ---
+  duration_ms: 0.785721
+  type: 'test'
+  ...
+# Subtest: Foreign origin cannot invoke customer navigation https://app.tenhchat.com.evil.test/inbox
+ok 149 - Foreign origin cannot invoke customer navigation https://app.tenhchat.com.evil.test/inbox
+  ---
+  duration_ms: 0.754354
+  type: 'test'
+  ...
+# Subtest: Foreign origin cannot invoke customer navigation https://business.facebook.com/
+ok 150 - Foreign origin cannot invoke customer navigation https://business.facebook.com/
+  ---
+  duration_ms: 0.9246
+  type: 'test'
+  ...
+# Subtest: Iframe cannot drive a Facebook conversation
+ok 151 - Iframe cannot drive a Facebook conversation
+  ---
+  duration_ms: 1.00428
+  type: 'test'
+  ...
+# Subtest: TENH UUID rejected as Facebook thread
+ok 152 - TENH UUID rejected as Facebook thread
+  ---
+  duration_ms: 2.223633
+  type: 'test'
+  ...
+# Subtest: Parallel duplicate clicks reuse one tab
+ok 153 - Parallel duplicate clicks reuse one tab
+  ---
+  duration_ms: 1.326264
+  type: 'test'
+  ...
+# Subtest: Different Pages can use one managed tab on demand
+ok 154 - Different Pages can use one managed tab on demand
+  ---
+  duration_ms: 1.619785
+  type: 'test'
+  ...
+# Subtest: User-created unrelated Page tab is not navigated away
+ok 155 - User-created unrelated Page tab is not navigated away
+  ---
+  duration_ms: 1.303229
+  type: 'test'
+  ...
+# Subtest: Managed tab navigated by user to feed is left intact
+ok 156 - Managed tab navigated by user to feed is left intact
+  ---
+  duration_ms: 1.357732
+  type: 'test'
+  ...
+# Subtest: Legacy profile action is inactive: OPEN_FACEBOOK_PROFILE
+ok 157 - Legacy profile action is inactive: OPEN_FACEBOOK_PROFILE
+  ---
+  duration_ms: 1.220926
+  type: 'test'
+  ...
+# Subtest: Legacy profile action is inactive: OPEN_RESOLVED_FACEBOOK_PROFILE
+ok 158 - Legacy profile action is inactive: OPEN_RESOLVED_FACEBOOK_PROFILE
+  ---
+  duration_ms: 0.681825
+  type: 'test'
+  ...
+# Subtest: Real-time/retry/ACK/delta code retained from supplied 1.2.20
+ok 159 - Real-time/retry/ACK/delta code retained from supplied 1.2.20
+  ---
+  duration_ms: 0.181884
+  type: 'test'
+  ...
+# Subtest: Quick Replies/Tags/side panel scripts unchanged
+ok 160 - Quick Replies/Tags/side panel scripts unchanged
+  ---
+  duration_ms: 0.399911
+  type: 'test'
+  ...
+# Subtest: Manifest increments version without widening permissions
+ok 161 - Manifest increments version without widening permissions
+  ---
+  duration_ms: 0.667084
+  type: 'test'
+  ...
+# Subtest: Incoming Facebook native reply maps parent in this conversation
+ok 162 - Incoming Facebook native reply maps parent in this conversation
+  ---
+  duration_ms: 3.155905
+  type: 'test'
+  ...
+# Subtest: Reply matching cannot cross customer conversation
+ok 163 - Reply matching cannot cross customer conversation
+  ---
+  duration_ms: 0.410267
+  type: 'test'
+  ...
+# Subtest: Plain Facebook message is not labelled a native reply
+ok 164 - Plain Facebook message is not labelled a native reply
+  ---
+  duration_ms: 0.16613
+  type: 'test'
+  ...
+# Subtest: TENH-only outgoing reference is not reported as native
+ok 165 - TENH-only outgoing reference is not reported as native
+  ---
+  duration_ms: 0.228904
+  type: 'test'
+  ...
+# Subtest: Facebook self-reference is ignored
+ok 166 - Facebook self-reference is ignored
+  ---
+  duration_ms: 0.169074
+  type: 'test'
+  ...
+# Subtest: Telegram native reply is not reinterpreted as Facebook reply
+ok 167 - Telegram native reply is not reinterpreted as Facebook reply
+  ---
+  duration_ms: 0.175534
+  type: 'test'
+  ...
+# Subtest: Malformed native ID ignored
+ok 168 - Malformed native ID ignored
+  ---
+  duration_ms: 0.264067
+  type: 'test'
+  ...
+# Subtest: Native quote follows edited parent text
+ok 169 - Native quote follows edited parent text
+  ---
+  duration_ms: 0.326031
+  type: 'test'
+  ...
+# Subtest: Deleted parent does not leak original quote text
+ok 170 - Deleted parent does not leak original quote text
+  ---
+  duration_ms: 0.71783
+  type: 'test'
+  ...
+# Subtest: Validated saved reply allowed only for same conversation and mid
+ok 171 - Validated saved reply allowed only for same conversation and mid
+  ---
+  duration_ms: 0.916628
+  type: 'test'
+  ...
+# Subtest: Reply enrichment database error never blocks incoming delivery
+ok 172 - Reply enrichment database error never blocks incoming delivery
+  ---
+  duration_ms: 66.163622
+  type: 'test'
+  ...
+# Subtest: Telegram edit preserves existing pin metadata
+ok 173 - Telegram edit preserves existing pin metadata
+  ---
+  duration_ms: 42.349556
+  type: 'test'
+  ...
+# Subtest: Late Telegram edit cannot resurrect TENH deletion
+ok 174 - Late Telegram edit cannot resurrect TENH deletion
+  ---
+  duration_ms: 23.229757
+  type: 'test'
+  ...
+# Subtest: Telegram edits are scoped to this exact bot connection
+ok 175 - Telegram edits are scoped to this exact bot connection
+  ---
+  duration_ms: 24.903594
+  type: 'test'
+  ...
+# Subtest: Older Telegram edit does not overwrite newer edit
+ok 176 - Older Telegram edit does not overwrite newer edit
+  ---
+  duration_ms: 31.405571
+  type: 'test'
+  ...
+# Subtest: facebook outgoing text: actions preserved
+ok 177 - facebook outgoing text: actions preserved
+  ---
+  duration_ms: 0.882476
+  type: 'test'
+  ...
+# Subtest: facebook outgoing image: actions preserved
+ok 178 - facebook outgoing image: actions preserved
+  ---
+  duration_ms: 0.080421
+  type: 'test'
+  ...
+# Subtest: facebook outgoing video: actions preserved
+ok 179 - facebook outgoing video: actions preserved
+  ---
+  duration_ms: 0.072059
+  type: 'test'
+  ...
+# Subtest: facebook outgoing file: actions preserved
+ok 180 - facebook outgoing file: actions preserved
+  ---
+  duration_ms: 0.059008
+  type: 'test'
+  ...
+# Subtest: facebook incoming text: actions preserved
+ok 181 - facebook incoming text: actions preserved
+  ---
+  duration_ms: 0.05328
+  type: 'test'
+  ...
+# Subtest: facebook incoming image: actions preserved
+ok 182 - facebook incoming image: actions preserved
+  ---
+  duration_ms: 0.104307
+  type: 'test'
+  ...
+# Subtest: facebook incoming video: actions preserved
+ok 183 - facebook incoming video: actions preserved
+  ---
+  duration_ms: 0.060811
+  type: 'test'
+  ...
+# Subtest: facebook incoming file: actions preserved
+ok 184 - facebook incoming file: actions preserved
+  ---
+  duration_ms: 0.045759
+  type: 'test'
+  ...
+# Subtest: telegram outgoing text: actions preserved
+ok 185 - telegram outgoing text: actions preserved
+  ---
+  duration_ms: 0.13975
+  type: 'test'
+  ...
+# Subtest: telegram outgoing image: actions preserved
+ok 186 - telegram outgoing image: actions preserved
+  ---
+  duration_ms: 0.070586
+  type: 'test'
+  ...
+# Subtest: telegram outgoing video: actions preserved
+ok 187 - telegram outgoing video: actions preserved
+  ---
+  duration_ms: 0.049504
+  type: 'test'
+  ...
+# Subtest: telegram outgoing file: actions preserved
+ok 188 - telegram outgoing file: actions preserved
+  ---
+  duration_ms: 0.041713
+  type: 'test'
+  ...
+# Subtest: telegram incoming text: actions preserved
+ok 189 - telegram incoming text: actions preserved
+  ---
+  duration_ms: 0.063796
+  type: 'test'
+  ...
+# Subtest: telegram incoming image: actions preserved
+ok 190 - telegram incoming image: actions preserved
+  ---
+  duration_ms: 0.043716
+  type: 'test'
+  ...
+# Subtest: telegram incoming video: actions preserved
+ok 191 - telegram incoming video: actions preserved
+  ---
+  duration_ms: 0.084938
+  type: 'test'
+  ...
+# Subtest: telegram incoming file: actions preserved
+ok 192 - telegram incoming file: actions preserved
+  ---
+  duration_ms: 0.054011
+  type: 'test'
+  ...
+# Subtest: Deleted messages have no new action controls
+ok 193 - Deleted messages have no new action controls
+  ---
+  duration_ms: 0.07286
+  type: 'test'
+  ...
+# Subtest: All six stickers are valid shipped PNGs
+ok 194 - All six stickers are valid shipped PNGs
+  ---
+  duration_ms: 0.563307
+  type: 'test'
+  ...
+# Subtest: Web avatar no longer imports or invokes extension
+ok 195 - Web avatar no longer imports or invokes extension
+  ---
+  duration_ms: 0.249135
+  type: 'test'
+  ...
+# Subtest: Absent-extension Business Suite button uses explanatory notice, not window.open
+ok 196 - Absent-extension Business Suite button uses explanatory notice, not window.open
+  ---
+  duration_ms: 0.143786
+  type: 'test'
+  ...
+# Subtest: Block storage is RLS-protected and server-write only
+ok 197 - Block storage is RLS-protected and server-write only
+  ---
+  duration_ms: 0.163636
+  type: 'test'
+  ...
+# Subtest: Block requires and records positive Meta confirmation
+ok 198 - Block requires and records positive Meta confirmation
+  ---
+  duration_ms: 129.296076
+  type: 'test'
+  ...
+# Subtest: Unblock uses upstream unblock_user
+ok 199 - Unblock uses upstream unblock_user
+  ---
+  duration_ms: 38.819277
+  type: 'test'
+  ...
+# Subtest: Provider permission refusal does not mark blocked
+ok 200 - Provider permission refusal does not mark blocked
+  ---
+  duration_ms: 38.701891
+  type: 'test'
+  ...
+# Subtest: Network failure releases lock without claiming success
+ok 201 - Network failure releases lock without claiming success
+  ---
+  duration_ms: 26.013414
+  type: 'test'
+  ...
+# Subtest: Block denied avoids all provider calls
+ok 202 - Block denied avoids all provider calls
+  ---
+  duration_ms: 24.688792
+  type: 'test'
+  ...
+# Subtest: Block permissionDenied avoids all provider calls
+ok 203 - Block permissionDenied avoids all provider calls
+  ---
+  duration_ms: 22.758911
+  type: 'test'
+  ...
+# Subtest: Block malformed null
+ok 204 - Block malformed null
+  ---
+  duration_ms: 17.001202
+  type: 'test'
+  ...
+# Subtest: Block malformed {}
+ok 205 - Block malformed {}
+  ---
+  duration_ms: 21.833538
+  type: 'test'
+  ...
+# Subtest: Block malformed {"blocked":"true"}
+ok 206 - Block malformed {"blocked":"true"}
+  ---
+  duration_ms: 20.398351
+  type: 'test'
+  ...
+# Subtest: Block malformed {"blocked":1}
+ok 207 - Block malformed {"blocked":1}
+  ---
+  duration_ms: 12.70979
+  type: 'test'
+  ...
+# Subtest: CSRF origin rejection
+ok 208 - CSRF origin rejection
+  ---
+  duration_ms: 13.631687
+  type: 'test'
+  ...
+# Subtest: Missing migration prevents upstream block
+ok 209 - Missing migration prevents upstream block
+  ---
+  duration_ms: 14.223576
+  type: 'test'
+  ...
+# Subtest: Fresh two-agent lease prevents conflicting operation
+ok 210 - Fresh two-agent lease prevents conflicting operation
+  ---
+  duration_ms: 18.561378
+  type: 'test'
+  ...
+# Subtest: Expired lease can be claimed safely
+ok 211 - Expired lease can be claimed safely
+  ---
+  duration_ms: 12.62364
+  type: 'test'
+  ...
+# Subtest: Expired Meta token retries once via existing token refresh
+ok 212 - Expired Meta token retries once via existing token refresh
+  ---
+  duration_ms: 18.127035
+  type: 'test'
+  ...
+# Subtest: Confirmed provider / failed persistence is explicit partial failure
+ok 213 - Confirmed provider / failed persistence is explicit partial failure
+  ---
+  duration_ms: 13.708682
+  type: 'test'
+  ...
+# Subtest: Other Page block remains untouched
+ok 214 - Other Page block remains untouched
+  ---
+  duration_ms: 12.348447
+  type: 'test'
+  ...
+# Subtest: Profile saves confirmed public ID without altering Messenger ID
+ok 215 - Profile saves confirmed public ID without altering Messenger ID
+  ---
+  duration_ms: 9.083908
+  type: 'test'
+  ...
+# Subtest: Profile rejects 100076611888104
+ok 216 - Profile rejects 100076611888104
+  ---
+  duration_ms: 12.892565
+  type: 'test'
+  ...
+# Subtest: Profile rejects 393342417206745
+ok 217 - Profile rejects 393342417206745
+  ---
+  duration_ms: 12.737502
+  type: 'test'
+  ...
+# Subtest: Profile rejects javascript:alert(1)
+ok 218 - Profile rejects javascript:alert(1)
+  ---
+  duration_ms: 10.578776
+  type: 'test'
+  ...
+# Subtest: Profile rejects https://facebook.com.evil.test/name
+ok 219 - Profile rejects https://facebook.com.evil.test/name
+  ---
+  duration_ms: 8.835946
+  type: 'test'
+  ...
+# Subtest: Profile rejects https://business.facebook.com/latest/inbox/
+ok 220 - Profile rejects https://business.facebook.com/latest/inbox/
+  ---
+  duration_ms: 10.883995
+  type: 'test'
+  ...
+# Subtest: Profile rejects https://www.facebook.com/profile.php?id=123&id=456
+ok 221 - Profile rejects https://www.facebook.com/profile.php?id=123&id=456
+  ---
+  duration_ms: 9.767196
+  type: 'test'
+  ...
+# Subtest: Public username remains username, no invented ID
+ok 222 - Public username remains username, no invented ID
+  ---
+  duration_ms: 9.9092
+  type: 'test'
+  ...
+# Subtest: Profile requires confirmation
+ok 223 - Profile requires confirmation
+  ---
+  duration_ms: 10.428519
+  type: 'test'
+  ...
+# Subtest: Profile prevents stale user edit
+ok 224 - Profile prevents stale user edit
+  ---
+  duration_ms: 9.161135
+  type: 'test'
+  ...
+# Subtest: Profile removal preserves customer name
+ok 225 - Profile removal preserves customer name
+  ---
+  duration_ms: 12.783771
+  type: 'test'
+  ...
+# Subtest: Conversation open authorizes exact tenant/Page/customer
+ok 226 - Conversation open authorizes exact tenant/Page/customer
+  ---
+  duration_ms: 4.24986
+  type: 'test'
+  ...
+# Subtest: Conversation open rejects mismatch {"pageId":"111"}
+ok 227 - Conversation open rejects mismatch {"pageId":"111"}
+  ---
+  duration_ms: 3.746533
+  type: 'test'
+  ...
+# Subtest: Conversation open rejects mismatch {"threadId":"222"}
+ok 228 - Conversation open rejects mismatch {"threadId":"222"}
+  ---
+  duration_ms: 4.005352
+  type: 'test'
+  ...
+# Subtest: Conversation open rejects mismatch {"businessId":"b2"}
+ok 229 - Conversation open rejects mismatch {"businessId":"b2"}
+  ---
+  duration_ms: 4.782311
+  type: 'test'
+  ...
+# Subtest: Conversation open rejects mismatch {"conversationId":"other"}
+ok 230 - Conversation open rejects mismatch {"conversationId":"other"}
+  ---
+  duration_ms: 3.677339
+  type: 'test'
+  ...
+# Subtest: Conversation open rejects mismatch {"threadId":"uuid-conversation"}
+ok 231 - Conversation open rejects mismatch {"threadId":"uuid-conversation"}
+  ---
+  duration_ms: 3.828657
+  type: 'test'
+  ...
+# Subtest: Revoked device cannot navigate
+ok 232 - Revoked device cannot navigate
+  ---
+  duration_ms: 3.32506
+  type: 'test'
+  ...
+# Subtest: Edit group name and description leaves icon intact
+ok 233 - Edit group name and description leaves icon intact
+  ---
+  duration_ms: 10.730624
+  type: 'test'
+  ...
+# Subtest: General name and description are protected server-side
+ok 234 - General name and description are protected server-side
+  ---
+  duration_ms: 9.235425
+  type: 'test'
+  ...
+# Subtest: Agent cannot edit group as admin
+ok 235 - Agent cannot edit group as admin
+  ---
+  duration_ms: 8.690077
+  type: 'test'
+  ...
+# Subtest: Invalid group edit null
+ok 236 - Invalid group edit null
+  ---
+  duration_ms: 5.526349
+  type: 'test'
+  ...
+# Subtest: Invalid group edit []
+ok 237 - Invalid group edit []
+  ---
+  duration_ms: 5.133628
+  type: 'test'
+  ...
+# Subtest: Invalid group edit {"name":""}
+ok 238 - Invalid group edit {"name":""}
+  ---
+  duration_ms: 5.923036
+  type: 'test'
+  ...
+# Subtest: Invalid group edit {"name":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+ok 239 - Invalid group edit {"name":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+  ---
+  duration_ms: 9.633975
+  type: 'test'
+  ...
+# Subtest: Invalid group edit {"description":42}
+ok 240 - Invalid group edit {"description":42}
+  ---
+  duration_ms: 7.844375
+  type: 'test'
+  ...
+# Subtest: Profile edit honors customer manage permission
+ok 241 - Profile edit honors customer manage permission
+  ---
+  duration_ms: 9.889189
+  type: 'test'
+  ...
+1..241
+# tests 241
+# suites 0
+# pass 241
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2129.602743

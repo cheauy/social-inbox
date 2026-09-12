@@ -4,6 +4,7 @@ const TENH_ORIGIN = "https://app.tenhchat.com";
 
 const view = {
   version: document.getElementById("version"),
+  profileSyncEnabled: document.getElementById("profileSyncEnabled"),
   connectionState: document.getElementById("connectionState"),
   deviceName: document.getElementById("deviceName"),
   connectionHint: document.getElementById("connectionHint"),
@@ -35,13 +36,11 @@ function setState(element, text, tone) {
 async function render() {
   const status = await ask({ type: "TENH_STATUS" });
   const connected = status.connected === true || status.paired === true;
-  const lookup = status.lastProfileLookup;
-  if (view.profileLookupResult) {
-    view.profileLookupResult.hidden = !lookup;
-    view.profileLookupResult.textContent = lookup
-      ? `Last profile lookup: ${lookup.reason} • stage=${lookup.stage} • version=${lookup.version} • ${lookup.durationMs} ms • matching tabs=${lookup.existingExactTabs} • prepared tab=${lookup.lookupTabCreated ? "yes" : "no"} • candidates=${lookup.candidateCount}`
-      : "";
-  }
+  view.profileSyncEnabled.checked = status.profileSyncEnabled !== false;
+  if (view.profileLookupResult) view.profileLookupResult.textContent = status.lastProfileSync
+    ? `Last profile sync: ${status.lastProfileSync.reason} · ${new Date(status.lastProfileSync.at).toLocaleTimeString()}`
+    : "No customer profile link has been observed yet.";
+
 
   view.version.textContent = status.version ? `Version ${status.version}` : "";
 
@@ -133,4 +132,7 @@ view.test.addEventListener("click", async () => {
   await render();
 });
 
+view.profileSyncEnabled.addEventListener("change", () => {
+  void chrome.storage.local.set({ profileSyncEnabled: view.profileSyncEnabled.checked }).catch(() => {});
+});
 void render();

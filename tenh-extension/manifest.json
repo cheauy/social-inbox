@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "TENH v1",
-  "version": "1.2.20",
-  "description": "TENH Companion with direct verified Facebook profile opening, reload-safe sync, multi-Page integration, exact conversation handling, realtime service-worker sync, TENH tools, and automatic connection.",
+  "version": "1.2.22",
+  "description": "Optional TENH companion: visible customer profile sync, Facebook shortcuts, Quick Replies, Tags and live sync.",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",
@@ -37,8 +37,9 @@
       ],
       "js": [
         "src/facebook-selectors.js",
-        "src/facebook-profile-resolver.js",
-        "src/facebook-bridge.js"
+        "src/facebook-bridge.js",
+        "src/profile-sync-helpers.js",
+        "src/profile-sync.js"
       ],
       "run_at": "document_idle"
     }

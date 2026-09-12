@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: no confirmation refuses to remove generated output
+ok 1 - no confirmation refuses to remove generated output
+  ---
+  duration_ms: 41.032385
+  type: 'test'
+  ...
+# Subtest: dry run keeps all generated output
+ok 2 - dry run keeps all generated output
+  ---
+  duration_ms: 36.176883
+  type: 'test'
+  ...
+# Subtest: confirmed reset removes malformed dev types, production output and incremental caches
+ok 3 - confirmed reset removes malformed dev types, production output and incremental caches
+  ---
+  duration_ms: 36.691348
+  type: 'test'
+  ...
+# Subtest: keeps TENH source, extension version, secrets, lockfiles and configuration byte-identical
+ok 4 - keeps TENH source, extension version, secrets, lockfiles and configuration byte-identical
+  ---
+  duration_ms: 44.899225
+  type: 'test'
+  ...
+# Subtest: repeat reset safely reports nothing to clear
+ok 5 - repeat reset safely reports nothing to clear
+  ---
+  duration_ms: 64.813826
+  type: 'test'
+  ...
+# Subtest: non Next project refused
+ok 6 - non Next project refused
+  ---
+  duration_ms: 31.422794
+  type: 'test'
+  ...
+# Subtest: invalid package.json refused
+ok 7 - invalid package.json refused
+  ---
+  duration_ms: 35.576087
+  type: 'test'
+  ...
+# Subtest: wrong working directory refused
+ok 8 - wrong working directory refused
+  ---
+  duration_ms: 33.362489
+  type: 'test'
+  ...
+# Subtest: unknown arguments cannot change cleanup target
+ok 9 - unknown arguments cannot change cleanup target
+  ---
+  duration_ms: 32.54067
+  type: 'test'
+  ...
+# Subtest: refuses linked .next directory
+ok 10 - refuses linked .next directory
+  ---
+  duration_ms: 36.097443
+  type: 'test'
+  ...
+# Subtest: preflight refuses unexpected cache directory before deleting .next
+ok 11 - preflight refuses unexpected cache directory before deleting .next
+  ---
+  duration_ms: 33.042456
+  type: 'test'
+  ...
+# Subtest: help succeeds without touching files
+ok 12 - help succeeds without touching files
+  ---
+  duration_ms: 31.622334
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 511.133279

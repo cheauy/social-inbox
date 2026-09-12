@@ -82,6 +82,12 @@ export async function PATCH(
     );
   }
 
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+      (body.name !== undefined && typeof body.name !== "string") ||
+      (body.description !== undefined && typeof body.description !== "string")) {
+    return NextResponse.json({ success: false, error: "Invalid group details." }, { status: 400 });
+  }
+
   const { data: room, error: roomError } = await supabaseAdmin
     .from("team_chat_rooms")
     .select("id,business_id,name,description,slug,is_general")
@@ -115,7 +121,7 @@ export async function PATCH(
       {
         success: false,
         error:
-          "The General group cannot be renamed. It is the room every workspace has.",
+          "The General group name and description cannot be edited.",
       },
       { status: 400 },
     );

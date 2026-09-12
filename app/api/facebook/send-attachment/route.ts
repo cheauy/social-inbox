@@ -1,3 +1,4 @@
+import { facebookSendBlockReason } from "@/lib/facebook/customer-block";
 import { facebookMediaMessage } from "@/lib/facebook/media-message";
 import {
   NextRequest,
@@ -598,6 +599,11 @@ export async function POST(
   const shouldUseHumanAgent =
     messengerPolicy.windowState ===
     "human_agent";
+
+  try {
+    const reason = await facebookSendBlockReason({ businessId: currentMember.business_id, socialAccountId: socialAccount.id, contactId: contact.id });
+    if (reason) return NextResponse.json({ success: false, error: reason }, { status: 403 });
+  } catch { return NextResponse.json({ success: false, error: "Unable to verify this customer's messaging block. Please retry." }, { status: 503 }); }
 
   let pageAccessToken: string;
 

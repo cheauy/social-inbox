@@ -1,4 +1,12 @@
 "use client";
+import type { InboxStickerChoice } from "@/lib/stickers/catalog";
+import { facebookNativeReply } from "@/lib/facebook/native-reply";
+import { useFacebookBlock } from "@/lib/inbox/use-facebook-block";
+
+import { MessageActionToolbar } from "@/components/inbox/message-action-toolbar";
+import { PinnedMessageHeader } from "@/components/inbox/pinned-message-header";
+import { usePinnedMessages } from "@/lib/inbox/use-pinned-messages";
+import { getMessageActions, getMessageSummary, getDeletedMessageText, isMessagePinned, isMessageDeleted } from "@/lib/inbox/message-actions";
 
 import { isCommentReplyBlocked } from "@/components/inbox/comment-reply-access";
 
@@ -255,6 +263,7 @@ function readStoredChatBackgroundSrc() {
 }
 
 type MessagePanelProps = {
+  onSendSticker?: (sticker: InboxStickerChoice) => Promise<boolean>;
   activeConversation:
     | InboxConversation
     | null;
@@ -379,6 +388,11 @@ type MessagePanelProps = {
     | string
     | null;
 
+  replyingToFacebookMessageId: string | null;
+  onReplyToFacebookMessage: (messageId: string) => void;
+  onCancelFacebookReply: () => void;
+  onMessagePatched: (message: InboxMessage) => void;
+
   replyingToTelegramMessageId:
     | string
     | null;
@@ -402,7 +416,7 @@ type MessagePanelProps = {
 
   onDeleteTelegramMessage: (
     messageId: string,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
 
   onCancelTelegramEdit:
     () => void;
@@ -1311,6 +1325,7 @@ export function MessagePanel({
   onReplyChange,
   onContactTagsChange,
   onSendMessage,
+  onSendSticker,
   onSendAttachments,
   onStatusChange,
   onAssignmentChange,
@@ -1320,6 +1335,10 @@ export function MessagePanel({
   onReplyToComment,
   replyingToCommentId,
   replyingToTelegramMessageId,
+  replyingToFacebookMessageId,
+  onReplyToFacebookMessage,
+  onCancelFacebookReply,
+  onMessagePatched,
   editingTelegramMessageId,
   telegramActionNotice,
   onReplyToTelegramMessage,
@@ -1331,6 +1350,7 @@ export function MessagePanel({
   onDeleteComment,
   onRetryMessage,
 }: MessagePanelProps) {
+  const facebookCustomerBlock = useFacebookBlock(activeConversation);
   /*
    * A message id must appear once. Send reconciliation and Realtime can race
    * and briefly hand this panel the same row twice, which React reports as a
@@ -1356,6 +1376,16 @@ export function MessagePanel({
       ? incomingMessages
       : Array.from(byId.values());
   }, [incomingMessages]);
+
+  const pinnedMessages = usePinnedMessages(activeConversation?.id ?? null, messages);
+  const toggleMessagePin = async (message: InboxMessage, pinned: boolean) => {
+    const updated = await pinnedMessages.toggle(message, pinned);
+    if (updated) onMessagePatched(updated);
+  };
+  const quotedReplyTarget = messages.find((message) =>
+    message.id === (replyingToFacebookMessageId ?? replyingToTelegramMessageId));
+  const jumpConversationRef = useRef(activeConversation?.id ?? null);
+  jumpConversationRef.current = activeConversation?.id ?? null;
 
   const isKhmer = useWorkspaceLanguageId() === "km";
 
@@ -2215,7 +2245,9 @@ export function MessagePanel({
           | string
           | null;
       }) => {
+        const scopedConversationId = jumpConversationRef.current;
         const findTarget = () => {
+          if (jumpConversationRef.current !== scopedConversationId) return null;
           const currentMessages =
             latestMessagesRef.current;
 
@@ -2257,7 +2289,8 @@ export function MessagePanel({
         while (
           !targetMessage &&
           hasMoreOlderMessagesRef.current &&
-          attempts < 12
+          attempts < 12 &&
+          jumpConversationRef.current === scopedConversationId
         ) {
           attempts += 1;
 
@@ -2285,7 +2318,8 @@ export function MessagePanel({
             findTarget();
         }
 
-        if (!targetMessage) {
+        if (!targetMessage || jumpConversationRef.current !== scopedConversationId) {
+          if (jumpConversationRef.current === scopedConversationId) showActionNotice("Original message is older than the loaded history. Scroll up and try again.");
           return;
         }
 
@@ -2298,6 +2332,8 @@ export function MessagePanel({
           return;
         }
 
+        userNearBottomRef.current = false;
+        setShowScrollToLatest(true);
         targetElement.scrollIntoView({
           behavior: "smooth",
           block: "center",
@@ -2762,15 +2798,14 @@ export function MessagePanel({
           setDeletingTelegramMessage(true);
 
           /*
-           * One request per photo, in order. Telegram has no bulk delete, and
-           * firing them together would make a partial failure impossible to
-           * report coherently -- the caller already surfaces the first error.
+           * Keep the existing per-photo route and stop on the first failure.
+           * Successfully deleted photos remain tombstoned when an album retry
+           * is needed; a rejected delete must not be shown as a success.
            */
           try {
             for (const messageId of telegramDeleteTarget) {
-              await onDeleteTelegramMessage(
-                messageId,
-              );
+              const deleted = await onDeleteTelegramMessage(messageId);
+              if (!deleted) return;
             }
 
             setTelegramDeleteTarget(null);
@@ -2837,6 +2872,20 @@ export function MessagePanel({
         }
       />
 
+
+      <PinnedMessageHeader
+        messages={pinnedMessages.pins}
+        pendingIds={pinnedMessages.pendingIds}
+        onUnpin={(message) => void toggleMessagePin(message, false)}
+        onJump={(message) => void jumpToTelegramReplyTarget({ localMessageId: message.id, platformMessageId: message.platform_message_id })}
+      />
+      {pinnedMessages.error ? (
+        <div role="status" className="flex items-center gap-2 border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+          <span className="flex-1">{pinnedMessages.error}</span>
+          <button type="button" className="font-semibold underline" onClick={() => void pinnedMessages.refresh()}>Retry</button>
+          <button type="button" aria-label="Dismiss pin notice" onClick={pinnedMessages.dismissError}>×</button>
+        </div>
+      ) : null}
 
       {statusError ? (
         <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">
@@ -3112,7 +3161,10 @@ export function MessagePanel({
                     | Record<string, unknown>
                     | null;
 
+                  tenh_reply_fallback?: { reason?: string; notice?: string | null } | null;
+
                   tenh_reply?: {
+                    scope?: "tenh" | "telegram";
                     reply_to_local_message_id?:
                       | string
                       | null;
@@ -3240,7 +3292,9 @@ export function MessagePanel({
                 rawPayload?.reply_to_message ??
                 null;
 
+              const nativeFacebookQuote = facebookNativeReply(message, messages);
               const telegramReplyPreview =
+                (nativeFacebookQuote ? { text: nativeFacebookQuote.text, kind: nativeFacebookQuote.kind } : null) ??
                 telegramReplyPreviewFromMessage(
                   telegramNativeReply,
                 ) ??
@@ -3260,14 +3314,14 @@ export function MessagePanel({
                 );
 
 
-              const telegramReplyLocalMessageId =
+              const telegramReplyLocalMessageId = nativeFacebookQuote?.localMessageId ?? (
                 typeof rawPayload
                   ?.tenh_reply
                   ?.reply_to_local_message_id ===
                   "string"
                   ? rawPayload.tenh_reply
                       .reply_to_local_message_id
-                  : null;
+                  : null);
 
               const savedReplyPlatformMessageId =
                 typeof rawPayload
@@ -3302,7 +3356,7 @@ export function MessagePanel({
                   : null;
 
               const telegramReplyTargetPlatformMessageId =
-                savedReplyPlatformMessageId ??
+                nativeFacebookQuote?.platformMessageId ?? savedReplyPlatformMessageId ??
                 nativeReplyPlatformMessageId;
 
               const canJumpToTelegramReply =
@@ -3338,19 +3392,10 @@ export function MessagePanel({
                * in the same blue as a real reply and read like something the
                * Page had just said.
                */
-              const isDeletedMessage =
-                telegramDeleted ||
-                message.comment_is_deleted ===
-                  true ||
-                /^message deleted( by .+)?$/i.test(
-                  (
-                    message.message_text ??
-                    ""
-                  ).trim(),
-                );
+              const isDeletedMessage = isMessageDeleted(message);
 
               const attachmentUrl =
-                message.attachment_url;
+                isDeletedMessage ? null : message.attachment_url;
 
               const isImageMessage =
                 message.message_type ===
@@ -3399,7 +3444,7 @@ export function MessagePanel({
                */
               const isBareSticker =
                 isStickerMessage &&
-                !telegramDeleted &&
+                !isDeletedMessage &&
                 !telegramReplyPreview;
 
               /*
@@ -3408,7 +3453,7 @@ export function MessagePanel({
                * switch back to slate or it disappears.
                */
               const onColoredBubble =
-                isOutgoing && !isBareSticker;
+                isOutgoing && !isBareSticker && !isDeletedMessage;
 
               const locationLatitude =
                 typeof locationMeta
@@ -3425,6 +3470,7 @@ export function MessagePanel({
                   : null;
 
               const isLocationMessage =
+                !isDeletedMessage &&
                 locationLatitude !==
                   null &&
                 locationLongitude !==
@@ -3491,30 +3537,13 @@ export function MessagePanel({
                     "telegram:",
                   ) === true;
 
-              const canReplyToTelegram =
-                isTelegramMessage &&
-                !message.id.startsWith(
-                  "optimistic:",
-                ) &&
-                !isDeletedMessage;
-
-              const canEditTelegram =
-                canReplyToTelegram &&
-                isOutgoing &&
-                message.message_type ===
-                  "text" &&
-                Boolean(
-                  message.message_text
-                    ?.trim(),
-                );
-
-              /* Photos, video and files are deletable too, not just text. */
-              const canDeleteTelegram =
-                canReplyToTelegram;
+              const messageActions = getMessageActions(message,
+                activeConversation.social_account?.platform ??
+                (isTelegramMessage ? "telegram" : "facebook"));
 
               const isTelegramReplyTarget =
-                replyingToTelegramMessageId ===
-                message.id;
+                replyingToTelegramMessageId === message.id ||
+                replyingToFacebookMessageId === message.id;
 
               /*
                * V3.11.30.1 — comment actions belong to the individual
@@ -4133,7 +4162,11 @@ export function MessagePanel({
                             ) : null}
                           </div>
 
-                          {facebookReplyParentId &&
+                          {isOutgoing && rawPayload?.tenh_reply_fallback?.reason === "original_unavailable" ? (
+                          <div className="mb-2 text-[11px] text-white/80" title="The original Telegram message was unavailable; this message was sent normally.">Sent without quote · original unavailable</div>
+                        ) : null}
+
+                        {facebookReplyParentId &&
                           !isNestedFacebookCommentReply &&
                           !commentState.deleted ? (
                             <div className="mt-3 max-w-[560px] rounded-xl border-l-[3px] border-blue-400 bg-slate-50 px-3 py-2 text-xs text-slate-500">
@@ -4815,7 +4848,7 @@ export function MessagePanel({
                             : "px-4 pb-2 pt-3"
                         }
                       >
-                        {telegramReplyPreview ? (
+                        {telegramReplyPreview && !isDeletedMessage ? (
                           <button
                             type="button"
                             disabled={
@@ -4868,7 +4901,7 @@ export function MessagePanel({
                             >
                               <ReplyIcon />
                               <span>
-                                Reply to {telegramReplyPreview.kind}
+                                {rawPayload?.tenh_reply?.scope === "tenh" && !nativeFacebookQuote ? "Reply reference · TENH" : `Reply to ${telegramReplyPreview.kind}`}
                               </span>
                             </span>
                             <span
@@ -5054,14 +5087,10 @@ export function MessagePanel({
                         ) : isDeletedMessage ? (
                           <p className="flex items-center gap-1.5 whitespace-pre-wrap italic text-slate-500">
                             <span aria-hidden>🗑</span>
-                            {(
-                              message.message_text ?? ""
-                            )
-                              .trim()
-                              .toLowerCase()
-                              .startsWith("message deleted")
-                              ? message.message_text?.trim()
-                              : "Message deleted"}
+                            {getDeletedMessageText(message, {
+                              customerName: activeConversation.contact?.full_name,
+                              teamMembers,
+                            })}
                           </p>
                         ) : isStickerMessage ? (
                           /*
@@ -5610,93 +5639,28 @@ export function MessagePanel({
                       {/* Facebook Comment Actions */}
                     </div>
 
-                    {/*
-                      Reply, Edit and Delete ride just under the bubble and fade
-                      in on hover. Right-click is gone, so this is the only route
-                      to them -- it has to read as a real toolbar, not stray text.
-                      Telegram only; the flags are already gated to it.
-                    */}
-                    {canReplyToTelegram ||
-                    canEditTelegram ||
-                    canDeleteTelegram ? (
-                      <div
-                        className={`mt-1 flex items-center px-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100 ${
-                          isOutgoing
-                            ? "justify-end"
-                            : "justify-start"
-                        }`}
-                      >
-                        <div className="inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white p-0.5 text-[11px] shadow-[0_1px_4px_rgba(15,23,42,0.10)]">
-                        {canReplyToTelegram ? (
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-
-                              if (
-                                replyingToTelegramMessageId ===
-                                message.id
-                              ) {
-                                onCancelTelegramReply();
-                                return;
-                              }
-
-                              onReplyToTelegramMessage(
-                                message.id,
-                              );
-                            }}
-                            className="rounded-full px-2 py-0.5 font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-blue-600"
-                          >
-                            {replyingToTelegramMessageId ===
-                            message.id
-                              ? "Cancel reply"
-                              : "Reply"}
-                          </button>
-                        ) : null}
-
-                        {canEditTelegram ? (
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void onEditTelegramMessage(
-                                message.id,
-                                message.message_text ?? "",
-                              );
-                            }}
-                            className="rounded-full px-2 py-0.5 font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-blue-600"
-                          >
-                            Edit
-                          </button>
-                        ) : null}
-
-                        {canDeleteTelegram ? (
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              const album =
-                                photoGroups.get(
-                                  message.id,
-                                );
-
-                              setTelegramDeleteTarget(
-                                album
-                                  ? album.members.map(
-                                      (photo) =>
-                                        photo.id,
-                                    )
-                                  : [message.id],
-                              );
-                            }}
-                            className="rounded-full px-2 py-0.5 font-semibold text-slate-600 transition hover:bg-red-50 hover:text-red-600"
-                          >
-                            Delete
-                          </button>
-                        ) : null}
-                        </div>
-                      </div>
-                    ) : null}
+                    <MessageActionToolbar
+                      outgoing={isOutgoing}
+                      actions={messageActions}
+                      replying={isTelegramReplyTarget}
+                      pinned={pinnedMessages.pins.some((item) => item.id === message.id) || isMessagePinned(message)}
+                      pinPending={pinnedMessages.pendingIds.has(message.id)}
+                      onReply={() => {
+                        if (isTelegramMessage) {
+                          if (replyingToTelegramMessageId === message.id) onCancelTelegramReply();
+                          else onReplyToTelegramMessage(message.id);
+                        } else {
+                          if (replyingToFacebookMessageId === message.id) onCancelFacebookReply();
+                          else onReplyToFacebookMessage(message.id);
+                        }
+                      }}
+                      onPin={() => void toggleMessagePin(message, !(pinnedMessages.pins.some((item) => item.id === message.id) || isMessagePinned(message)))}
+                      onEdit={() => void onEditTelegramMessage(message.id, message.message_text ?? "")}
+                      onDelete={() => {
+                        const album = photoGroups.get(message.id);
+                        setTelegramDeleteTarget(album ? album.members.map((photo) => photo.id) : [message.id]);
+                      }}
+                    />
 
                     <div>
 
@@ -5975,6 +5939,17 @@ export function MessagePanel({
         ) : null}
       </div>
 
+      {quotedReplyTarget && !editingTelegramMessageId ? (
+        <div className="flex shrink-0 items-center gap-3 border-t border-sky-100 bg-white px-4 py-2">
+          <div className="min-w-0 flex-1 border-l-2 border-sky-400 pl-3">
+            <p className="text-xs font-semibold text-sky-700">Replying to {quotedReplyTarget.direction === "outgoing" ? "your message" : activeConversation.contact?.full_name || "customer"}</p>
+            <p className="truncate text-sm text-slate-600">{getMessageSummary(quotedReplyTarget)}</p>
+            {replyingToFacebookMessageId && <p className="mt-0.5 text-[11px] text-slate-500">Reference saved in TENH. Facebook receives a normal text message.</p>}
+          </div>
+          <button type="button" aria-label="Cancel message reply" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" onClick={replyingToFacebookMessageId ? onCancelFacebookReply : onCancelTelegramReply}>×</button>
+        </div>
+      ) : null}
+
       {editingTelegramMessageId ? (
         <div className="shrink-0 border-t border-sky-100 bg-sky-50/60 px-4 py-2">
           <div className="flex items-center gap-3 rounded-xl border border-sky-200/80 bg-white px-3 py-2 shadow-sm">
@@ -6064,6 +6039,8 @@ export function MessagePanel({
         </div>
       ) : null}
 
+      {replyingToFacebookMessageId ? <p role="note" className="border-t border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800">This reply reference is visible to your TENH team only. TENH sends this message as normal text, not a native Messenger quoted reply.</p> : null}
+
       {/* Reply composer */}
       {activeConversation.contact ? (
         /*
@@ -6100,13 +6077,13 @@ export function MessagePanel({
           reply={reply}
           sending={sending}
           error={sendError}
-          blockedReason={replyingToCommentId && isCommentReplyBlocked(replyingToCommentId, messages, optimisticCommentState)
+          blockedReason={facebookCustomerBlock.blocked && !replyingToCommentId ? "This customer is blocked on this Facebook Page. Unblock the user in Customer Details before messaging." : replyingToCommentId && isCommentReplyBlocked(replyingToCommentId, messages, optimisticCommentState)
             ? "Unhide this comment and its parent before replying."
             : facebookMessengerBlockedReason}
-          blockedTitle={facebookMessengerBlockedTitle}
+          blockedTitle={facebookCustomerBlock.blocked && !replyingToCommentId ? "Customer blocked" : facebookMessengerBlockedTitle}
           canOpenInFacebook={Boolean(
             facebookMessengerBlockedReason &&
-              !replyingToCommentId &&
+              !facebookCustomerBlock.blocked && !replyingToCommentId &&
               activeConversation?.social_account
                 ?.platform === "facebook",
           )}
@@ -6132,14 +6109,16 @@ export function MessagePanel({
               ?.social_account
               ?.platform === "telegram"
           }
+          platform={activeConversation?.social_account?.platform}
+          onSendSticker={onSendSticker}
           onSendAttachments={
             onSendAttachments
           }
           /* Only a targeted public comment reply is text-only. */
-          allowAttachments={!replyingToCommentId}
+          allowAttachments={!replyingToCommentId && !replyingToFacebookMessageId}
           showAttachmentsBlockedNotice={false}
           attachmentsBlockedReason={
-            replyingToCommentId
+            replyingToFacebookMessageId ? "Cancel the Facebook reply reference before attaching media." : replyingToCommentId
               ? isKhmer
                 ? "ការឆ្លើយតបលើមតិយោបល់ Facebook អាចផ្ញើបានតែអក្សរប៉ុណ្ណោះ។"
                 : "Facebook comment replies can only contain text."

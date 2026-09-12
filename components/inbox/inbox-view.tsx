@@ -1,4 +1,7 @@
 "use client";
+import { isStipopSticker, type InboxStickerChoice } from "@/lib/stickers/catalog";
+
+import { createReplyContext, getDeletedMessageText, getMessageActions, MESSAGE_ROW_CHANGED_EVENT } from "@/lib/inbox/message-actions";
 
 import { isCommentReplyBlocked } from "@/components/inbox/comment-reply-access";
 
@@ -483,7 +486,7 @@ function getRealtimeMessagePreview(
    * the newest fact about the row, so it wins over every branch below.
    */
   if (rawPayload?.tenh_deleted) {
-    return "Message deleted";
+    return `🗑 ${getDeletedMessageText({ raw_payload: rawPayload, message_text: typeof row.message_text === "string" ? row.message_text : null })}`;
   }
 
   const rawMessageType =
@@ -606,6 +609,7 @@ const requestedConversationId =
   ] = useState<string | null>(null);
 
   const [reply, setReply] = useState("");
+  const [replyingToFacebookMessageId, setReplyingToFacebookMessageId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] =
     useState<string | null>(null);
@@ -1304,6 +1308,9 @@ const activeConversation =
     ],
   );
 
+const activeConversationRef = useRef(activeConversation);
+activeConversationRef.current = activeConversation;
+
 useEffect(() => {
   const previousId =
     previousActiveConversationIdRef.current;
@@ -1397,6 +1404,7 @@ useEffect(() => {
   setReplyingToTelegramMessageId(
     null,
   );
+  setReplyingToFacebookMessageId(null);
   setReply("");
   setSendError(null);
   setReplyingToCommentId(null);
@@ -2084,6 +2092,9 @@ useInboxRealtime({
       ) {
         return;
       }
+
+      // Fan out the existing stream to the pin header, including older rows.
+      window.dispatchEvent(new CustomEvent(MESSAGE_ROW_CHANGED_EVENT, { detail: { row, eventType: event.eventType } }));
 
       const messageDirection =
         typeof row.direction ===
@@ -5869,6 +5880,21 @@ function handleCancelTelegramEdit() {
   setSendError(null);
 }
 
+function handleReplyToFacebookMessage(messageId: string) {
+  const target = liveMessagesRef.current.find((item) => item.id === messageId && item.conversation_id === resolvedActiveConversationId);
+  if (!target || !getMessageActions(target, "facebook").reply) return;
+  setEditingTelegramMessageId(null);
+  setReplyingToTelegramMessageId(null);
+  setReplyingToCommentId(null);
+  setReplyingToFacebookMessageId(messageId);
+  setSendError(null);
+  window.requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Write a reply..."]')?.focus());
+}
+
+function handleMessagePatched(message: InboxMessage) {
+  setLiveMessages((current) => current.map((item) => item.id === message.id && item.conversation_id === message.conversation_id ? message : item));
+}
+
 async function handleEditTelegramMessage(
   messageId: string,
   currentText: string,
@@ -5883,6 +5909,7 @@ async function handleEditTelegramMessage(
     return;
   }
 
+  setReplyingToFacebookMessageId(null);
   setEditingTelegramMessageId(
     messageId,
   );
@@ -5904,177 +5931,51 @@ async function handleEditTelegramMessage(
   );
 }
 
-async function handleDeleteTelegramMessage(
-  messageId: string,
-) {
-  /*
-   * No confirm() here. MessagePanel asks first with the in-app dialog, and
-   * a second browser prompt on top of it meant confirming the same delete
-   * twice — the native one also said "text message", which is no longer
-   * true now that media can be deleted.
-   */
+async function handleDeleteTelegramMessage(messageId: string): Promise<boolean> {
+  const target = liveMessagesRef.current.find((item) => item.id === messageId);
+  if (!target) return false;
+  const conversationId = target.conversation_id;
   setSendError(null);
-
   try {
-    const response =
-      await fetch(
-        `/api/telegram/messages/${encodeURIComponent(
-          messageId,
-        )}`,
-        {
-          method: "DELETE",
-        },
-      );
-
-    const responseText =
-      await response.text();
-
-    const result =
-      responseText.trim()
-        ? (
-            JSON.parse(
-              responseText,
-            ) as {
-              success?: boolean;
-              error?: string;
-              deletedAt?: string;
-            }
-          )
-        : {};
-
-    if (
-      !response.ok ||
-      !result.success
-    ) {
-      throw new Error(
-        result.error ??
-          "Unable to delete Telegram message.",
-      );
+    const response = await fetch(`/api/telegram/messages/${encodeURIComponent(messageId)}`, { method: "DELETE" });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.error || "Unable to delete Telegram message.");
+    const deleted = result.deleted ?? { source: "tenh", deleted_at: result.deletedAt, deleted_by_name: "TENH team member" };
+    const messageText = result.messageText || getDeletedMessageText({ raw_payload: { tenh_deleted: deleted }, message_text: null });
+    setLiveMessages((current) => current.map((item) => item.id === messageId && item.conversation_id === conversationId ? {
+      ...item, message_text: messageText, attachment_url: null,
+      raw_payload: { ...(item.raw_payload ?? {}), tenh_deleted: deleted,
+        tenh_message_pin: { ...(item.raw_payload?.tenh_message_pin as object ?? {}), pinned: false, updated_at: result.deletedAt } },
+    } : item));
+    const updated = { ...target, message_text: messageText, attachment_url: null,
+      raw_payload: { ...(target.raw_payload ?? {}), tenh_deleted: deleted } };
+    window.dispatchEvent(new CustomEvent(MESSAGE_ROW_CHANGED_EVENT, { detail: { row: updated, eventType: "UPDATE" } }));
+    setLiveConversations((current) => current.map((conversation) => {
+      if (conversation.id !== conversationId) return conversation;
+      const latest = new Date(conversation.last_message_at ?? "").getTime();
+      const sent = new Date(target.platform_created_at ?? target.created_at).getTime();
+      if (!Number.isFinite(latest) || !Number.isFinite(sent) || Math.abs(latest - sent) > 1000) return conversation;
+      return { ...conversation, last_message_text: `🗑 ${messageText}` };
+    }));
+    if (desiredConversationIdRef.current === conversationId) {
+      if (editingTelegramMessageId === messageId) {
+        setEditingTelegramMessageId((current) => current === messageId ? null : current);
+        setReply((current) => current === target.message_text ? "" : current);
+      }
+      setReplyingToTelegramMessageId((current) => current === messageId ? null : current);
+      showTelegramActionNotice(result.alreadyDeleted ? "Message was already deleted" : "Telegram message deleted successfully");
     }
-
-    const deletedMessage =
-      liveMessagesRef.current.find(
-        (message) =>
-          message.id === messageId,
-      ) ?? null;
-
-    setLiveMessages(
-      (current) =>
-        current.map(
-          (message) =>
-            message.id ===
-            messageId
-              ? {
-                  ...message,
-                  message_text:
-                    "Message deleted",
-                  /*
-                   * Match the server: the stored photo, video, voice note or
-                   * file goes with the message. Leaving the URL here would let
-                   * any render path that does not check the deleted flag keep
-                   * showing media the chat no longer has.
-                   */
-                  attachment_url: null,
-                  raw_payload: {
-                    ...(
-                      message.raw_payload ??
-                      {}
-                    ),
-                    tenh_deleted: {
-                      source:
-                        "tenh",
-                      deleted_at:
-                        result.deletedAt ??
-                        new Date().toISOString(),
-                    },
-                  },
-                }
-              : message,
-        ),
-    );
-
-    /*
-     * Correct the left list here rather than waiting for the Realtime UPDATE
-     * to come back and recompute it. Waiting meant the row sat on its old
-     * preview -- "You sent an image" for a photo that no longer exists -- and
-     * then changed under the agent a moment later. Only the row whose newest
-     * message is the one just deleted is touched; a conversation that has
-     * moved on since keeps its real preview.
-     */
-    setLiveConversations((current) =>
-      current.map((conversation) => {
-        if (
-          conversation.id !==
-          deletedMessage?.conversation_id
-        ) {
-          return conversation;
-        }
-
-        const conversationLatest =
-          conversation.last_message_at
-            ? new Date(
-                conversation.last_message_at,
-              ).getTime()
-            : null;
-        const deletedAt =
-          deletedMessage.platform_created_at ??
-          deletedMessage.created_at;
-        const deletedTime = deletedAt
-          ? new Date(deletedAt).getTime()
-          : null;
-
-        if (
-          conversationLatest === null ||
-          deletedTime === null ||
-          Math.abs(
-            conversationLatest - deletedTime,
-          ) > 1000
-        ) {
-          return conversation;
-        }
-
-        return {
-          ...conversation,
-          last_message_text:
-            "Message deleted",
-        };
-      }),
-    );
-
-    if (
-      editingTelegramMessageId ===
-      messageId
-    ) {
-      setEditingTelegramMessageId(
-        null,
-      );
-      setReply("");
-    }
-
-    if (
-      replyingToTelegramMessageId ===
-      messageId
-    ) {
-      setReplyingToTelegramMessageId(
-        null,
-      );
-    }
-
-    showTelegramActionNotice(
-      "Telegram message deleted successfully",
-    );
-  } catch (error) {
-    setSendError(
-      error instanceof Error
-        ? error.message
-        : "Unable to delete Telegram message.",
-    );
+    return true;
+  } catch (cause) {
+    if (desiredConversationIdRef.current === conversationId) setSendError(cause instanceof Error ? cause.message : "Unable to delete Telegram message.");
+    return false;
   }
 }
 
 function handleReplyToTelegramMessage(
   messageId: string,
 ) {
+  setReplyingToFacebookMessageId(null);
   setEditingTelegramMessageId(
     null,
   );
@@ -6105,6 +6006,9 @@ function handleCancelTelegramReply() {
 function handleReplyToComment(
   commentId: string,
 ) {
+  setReplyingToFacebookMessageId(null);
+  setReplyingToTelegramMessageId(null);
+  setEditingTelegramMessageId(null);
   setReplyingToCommentId(
     commentId,
   );
@@ -7154,7 +7058,7 @@ async function resolveConversationPlatform(
 async function performOptimisticSend(
   pending:
     PendingOptimisticSend,
-) {
+): Promise<boolean> {
   setOptimisticSendStatus(
     pending.tempId,
     "sending",
@@ -7187,6 +7091,9 @@ async function performOptimisticSend(
       error?: string;
       code?: string;
       messageId?: string;
+      replyApplied?: boolean;
+      replyFallback?: boolean;
+      notice?: string | null;
     };
 
     if (
@@ -7251,13 +7158,27 @@ async function performOptimisticSend(
             "Facebook messaging policy does not allow this reply right now.",
         );
 
-        return;
+        return false;
       }
 
       throw new Error(
         result.error ??
           "Unable to send the message.",
       );
+    }
+
+    if (["/api/telegram/send", "/api/telegram/send-sticker"].includes(pending.endpoint) && result.replyFallback) {
+      // Remove the provisional quote: Telegram delivered an ordinary message.
+      setLiveMessages(current => current.map(item => {
+        if (item.id !== pending.tempId && (!result.messageId || item.platform_message_id !== result.messageId)) return item;
+        const raw = { ...(item.raw_payload || {}) };
+        delete raw.tenh_reply;
+        raw.tenh_reply_fallback = { reason: "original_unavailable", notice: result.notice };
+        return { ...item, raw_payload: raw };
+      }));
+      if (activeConversationRef.current?.id === pending.conversationId) {
+        showTelegramActionNotice(result.notice || "Original message unavailable. Sent normally without a quote.");
+      }
     }
 
     setOptimisticSendStatus(
@@ -7284,6 +7205,7 @@ async function performOptimisticSend(
         confirmOutgoingMessage(current, pending.tempId, platformId),
       );
     }
+    return true;
   } catch (error) {
     const errorMessage =
       error instanceof Error
@@ -7311,12 +7233,13 @@ async function performOptimisticSend(
         "Comment is deleted by commenter.",
       );
 
-      return;
+      return false;
     }
 
     setSendError(
       errorMessage,
     );
+    return false;
   } finally {
     setSending(false);
   }
@@ -7715,6 +7638,11 @@ async function handleSendAttachments(
   attachments: ReplyAttachment[],
   caption?: string,
 ): Promise<boolean> {
+  if (replyingToFacebookMessageId) {
+    setSendError("Cancel the Facebook reply reference before attaching media.");
+    return false;
+  }
+
   if (editingTelegramMessageId) {
     setSendError(
       "Finish or cancel Telegram editing before sending an attachment.",
@@ -8136,6 +8064,16 @@ async function handleSendMessage(
     }
   }
 
+  if (desiredConversationIdRef.current !== activeConversation.id) return;
+  const selectedReplyId = conversationPlatform === "telegram" ? replyingToTelegramMessageId : replyingToFacebookMessageId;
+  if (selectedReplyId && !isCommentReply) {
+    const selectedReply = liveMessagesRef.current.find((item) => item.id === selectedReplyId && item.conversation_id === activeConversation.id);
+    if (!selectedReply || !getMessageActions(selectedReply, conversationPlatform).reply) {
+      setSendError("The selected message is no longer available. Cancel Reply and try again.");
+      return;
+    }
+  }
+
   if (
     conversationPlatform ===
       "telegram" &&
@@ -8247,15 +8185,13 @@ async function handleSendMessage(
           ),
       );
 
-      setReply("");
-      setEditingTelegramMessageId(
-        null,
-      );
-      showTelegramActionNotice(
-        "Telegram message edited successfully",
-      );
+      if (desiredConversationIdRef.current === activeConversation.id) {
+        setReply((current) => current === message ? "" : current);
+        setEditingTelegramMessageId((current) => current === editedMessageId ? null : current);
+        showTelegramActionNotice("Telegram message edited successfully");
+      }
     } catch (error) {
-      setSendError(
+      if (desiredConversationIdRef.current === activeConversation.id) setSendError(
         error instanceof Error
           ? error.message
           : "Unable to edit Telegram message.",
@@ -8348,6 +8284,7 @@ async function handleSendMessage(
                 .contact
                 .platform_user_id,
             message,
+            ...(replyingToFacebookMessageId ? { replyToMessageId: replyingToFacebookMessageId } : {}),
           };
 
   const pending:
@@ -8383,6 +8320,14 @@ async function handleSendMessage(
           : null,
     });
 
+  const replyTarget = liveMessagesRef.current.find((item) =>
+    item.conversation_id === activeConversation.id && item.id ===
+      (conversationPlatform === "telegram" ? replyingToTelegramMessageId : replyingToFacebookMessageId));
+  if (replyTarget && !isCommentReply) {
+    optimisticMessage.raw_payload = { ...(optimisticMessage.raw_payload ?? {}),
+      tenh_reply: createReplyContext(replyTarget, conversationPlatform === "telegram" ? "telegram" : "tenh") };
+  }
+
   setLiveMessages(
     (current) => [
       ...current,
@@ -8400,6 +8345,7 @@ async function handleSendMessage(
   });
 
   if (capturedMessage === undefined) setReply("");
+  setReplyingToFacebookMessageId(null);
   setReplyingToCommentId(
     null,
   );
@@ -8415,6 +8361,51 @@ async function handleSendMessage(
     pending,
   );
 }
+
+  async function handleSendSticker(sticker: InboxStickerChoice): Promise<boolean> {
+    const conversation = activeConversationRef.current;
+    if (isStipopSticker(sticker)) {
+      if (!conversation?.contact || conversation.social_account?.platform !== "facebook") throw new Error("Open a Facebook conversation before sending this sticker.");
+      const requestId = crypto.randomUUID(), tempId = `optimistic:attachment:${requestId}`;
+      const pending: PendingOptimisticSend = { tempId, conversationId: conversation.id, message: "Sent a photo",
+        endpoint: "/api/stickers/send", requestBody: { conversationId: conversation.id, requestId, selectionToken: sticker.selectionToken },
+        isCommentConversation: false, commentId: null };
+      const optimistic = createOptimisticMessage({ tempId, conversationId: conversation.id, message: "Sent a photo",
+        recipientPlatformId: conversation.contact.platform_user_id, commentReplyParentId: null });
+      optimistic.message_type = "image"; optimistic.attachment_url = sticker.imageUrl;
+      optimistic.raw_payload = { ...(optimistic.raw_payload || {}), tenh_client_request_id: tempId,
+        tenh_stipop: { sticker_id: sticker.stickerId, delivery: "image_attachment" } };
+      pendingSendsRef.current[tempId] = pending;
+      setLiveMessages(current => [...current, optimistic]);
+      updateConversationPreviewOptimistically({ conversationId: conversation.id, message: "You sent a photo", createdAt: optimistic.created_at });
+      setSendError(null);
+      return performOptimisticSend(pending);
+    }
+    if (!conversation?.contact || conversation.social_account?.platform !== "telegram" || editingTelegramMessageId) {
+      setSendError("Open a Telegram conversation and finish editing before sending a sticker."); throw new Error("Sticker sending unavailable.");
+    }
+    const tempId = `optimistic:${crypto.randomUUID()}`;
+    const message = `Sticker ${sticker.emoji || ""}`.trim();
+    const pending: PendingOptimisticSend = {
+      tempId, conversationId: conversation.id, message, endpoint: "/api/telegram/send-sticker",
+      requestBody: { conversationId: conversation.id, setName: sticker.setName, stickerId: sticker.stickerId,
+        ...(replyingToTelegramMessageId ? { replyToMessageId: replyingToTelegramMessageId } : {}) },
+      isCommentConversation: false, commentId: null,
+    };
+    const optimistic = createOptimisticMessage({ tempId, conversationId: conversation.id, message,
+      recipientPlatformId: conversation.contact.platform_user_id, commentReplyParentId: null });
+    optimistic.message_type = "sticker"; optimistic.attachment_url = sticker.previewUrl;
+    optimistic.raw_payload = { ...(optimistic.raw_payload || {}), tenh_sticker: {
+      format: sticker.format, preview_kind: sticker.previewUrl ? "image" : "file", emoji: sticker.emoji, set_name: sticker.setName,
+    }};
+    const target = liveMessagesRef.current.find(item => item.conversation_id === conversation.id && item.id === replyingToTelegramMessageId);
+    if (target) optimistic.raw_payload.tenh_reply = createReplyContext(target, "telegram");
+    pendingSendsRef.current[tempId] = pending;
+    setLiveMessages(current => [...current, optimistic]);
+    updateConversationPreviewOptimistically({ conversationId: conversation.id, message: "You sent a sticker", createdAt: optimistic.created_at });
+    setReplyingToTelegramMessageId(null); setSendError(null);
+    return performOptimisticSend(pending);
+  }
 
   async function handleStatusChange(
     nextStatus: ConversationStatus,
@@ -8839,6 +8830,10 @@ return (
     activeConversation
   }
   messages={liveMessages}
+  replyingToFacebookMessageId={replyingToFacebookMessageId}
+  onReplyToFacebookMessage={handleReplyToFacebookMessage}
+  onCancelFacebookReply={() => setReplyingToFacebookMessageId(null)}
+  onMessagePatched={handleMessagePatched}
   loadingConversationMessages={
     loadingConversationMessages
   }
@@ -8885,6 +8880,7 @@ return (
     handleSendMessage
   }
 
+  onSendSticker={handleSendSticker}
   onSendAttachments={
     handleSendAttachments
   }

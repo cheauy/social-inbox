@@ -1,0 +1,29 @@
+{
+  "kind": "synthetic Chromium DOM fixtures (not installed extension or live Facebook)",
+  "passed": 23,
+  "checks": [
+    "Explicit visible selected customer link",
+    "Wrong customer pane rejected",
+    "PSID public URL rejected",
+    "Page URL rejected",
+    "Own account link rejected",
+    "Hidden pane rejected",
+    "Hidden link rejected",
+    "Global profile menu rejected",
+    "Message authored link not profile identity",
+    "Arbitrary sender-id div not contact-details",
+    "Ambiguous links rejected",
+    "Chat ordinary link label ignored",
+    "Username URL preserved",
+    "Wrapped Facebook URL accepted",
+    "Same-name heading requires selected exact thread",
+    "Wrong selected thread cannot use name match",
+    "Mismatch heading does not guess customer",
+    "Khmer profile label",
+    "IG thread not treated as Facebook",
+    "Page without selected customer does not sync",
+    "Stable selection emits one observation after settle delay",
+    "Repeated DOM changes do not spam identical accepted observations",
+    "Observer stops on cleanup"
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "manifest": {
+    "manifest_version": 3,
+    "name": "TENH v1",
+    "version": "1.2.20",
+    "description": "TENH Companion with direct verified Facebook profile opening, reload-safe sync, multi-Page integration, exact conversation handling, realtime service-worker sync, TENH tools, and automatic connection.",
+    "minimum_chrome_version": "116",
+    "permissions": [
+      "storage",
+      "sidePanel",
+      "tabs",
+      "alarms",
+      "scripting"
+    ],
+    "host_permissions": [
+      "https://app.tenhchat.com/*",
+      "https://www.facebook.com/*",
+      "https://business.facebook.com/*"
+    ],
+    "background": {
+      "service_worker": "src/background.js",
+      "type": "module"
+    },
+    "content_scripts": [
+      {
+        "matches": [
+          "https://app.tenhchat.com/*"
+        ],
+        "js": [
+          "src/tenh-bridge.js"
+        ],
+        "run_at": "document_idle"
+      },
+      {
+        "matches": [
+          "https://www.facebook.com/*",
+          "https://business.facebook.com/*"
+        ],
+        "js": [
+          "src/facebook-selectors.js",
+          "src/facebook-profile-resolver.js",
+          "src/facebook-bridge.js"
+        ],
+        "run_at": "document_idle"
+      }
+    ],
+    "icons": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    },
+    "action": {
+      "default_title": "TENH v1",
+      "default_popup": "src/popup.html",
+      "default_icon": {
+        "16": "icons/icon-16.png",
+        "32": "icons/icon-32.png",
+        "48": "icons/icon-48.png",
+        "128": "icons/icon-128.png"
+      }
+    },
+    "side_panel": {
+      "default_path": "src/sidepanel.html"
+    },
+    "content_security_policy": {
+      "extension_pages": "script-src 'self'; object-src 'self'"
+    }
+  }
+}

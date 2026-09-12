@@ -1,0 +1,604 @@
+TAP version 13
+# Subtest: Exact authorized Page/customer opens requested URL format
+ok 1 - Exact authorized Page/customer opens requested URL format
+  ---
+  duration_ms: 64.347486
+  type: 'test'
+  ...
+# Subtest: No authorization result means no navigation
+ok 2 - No authorization result means no navigation
+  ---
+  duration_ms: 3.747884
+  type: 'test'
+  ...
+# Subtest: Network failure causes no new Facebook tab
+ok 3 - Network failure causes no new Facebook tab
+  ---
+  duration_ms: 3.392144
+  type: 'test'
+  ...
+# Subtest: Exact Page/customer response mismatch opens no tab
+ok 4 - Exact Page/customer response mismatch opens no tab
+  ---
+  duration_ms: 3.707848
+  type: 'test'
+  ...
+# Subtest: No paired extension credential causes no navigation
+ok 5 - No paired extension credential causes no navigation
+  ---
+  duration_ms: 2.750617
+  type: 'test'
+  ...
+# Subtest: Foreign origin cannot invoke customer navigation https://evil.test
+ok 6 - Foreign origin cannot invoke customer navigation https://evil.test
+  ---
+  duration_ms: 2.134079
+  type: 'test'
+  ...
+# Subtest: Foreign origin cannot invoke customer navigation https://app.tenhchat.com.evil.test/inbox
+ok 7 - Foreign origin cannot invoke customer navigation https://app.tenhchat.com.evil.test/inbox
+  ---
+  duration_ms: 2.39057
+  type: 'test'
+  ...
+# Subtest: Foreign origin cannot invoke customer navigation https://business.facebook.com/
+ok 8 - Foreign origin cannot invoke customer navigation https://business.facebook.com/
+  ---
+  duration_ms: 2.021966
+  type: 'test'
+  ...
+# Subtest: Iframe cannot drive a Facebook conversation
+ok 9 - Iframe cannot drive a Facebook conversation
+  ---
+  duration_ms: 2.930765
+  type: 'test'
+  ...
+# Subtest: TENH UUID rejected as Facebook thread
+ok 10 - TENH UUID rejected as Facebook thread
+  ---
+  duration_ms: 3.087728
+  type: 'test'
+  ...
+# Subtest: Parallel duplicate clicks reuse one tab
+ok 11 - Parallel duplicate clicks reuse one tab
+  ---
+  duration_ms: 7.933863
+  type: 'test'
+  ...
+# Subtest: Different Pages can use one managed tab on demand
+ok 12 - Different Pages can use one managed tab on demand
+  ---
+  duration_ms: 15.301784
+  type: 'test'
+  ...
+# Subtest: User-created unrelated Page tab is not navigated away
+ok 13 - User-created unrelated Page tab is not navigated away
+  ---
+  duration_ms: 4.67848
+  type: 'test'
+  ...
+# Subtest: Managed tab navigated by user to feed is left intact
+ok 14 - Managed tab navigated by user to feed is left intact
+  ---
+  duration_ms: 5.562616
+  type: 'test'
+  ...
+# Subtest: Legacy profile action is inactive: OPEN_FACEBOOK_PROFILE
+ok 15 - Legacy profile action is inactive: OPEN_FACEBOOK_PROFILE
+  ---
+  duration_ms: 4.309744
+  type: 'test'
+  ...
+# Subtest: Legacy profile action is inactive: OPEN_RESOLVED_FACEBOOK_PROFILE
+ok 16 - Legacy profile action is inactive: OPEN_RESOLVED_FACEBOOK_PROFILE
+  ---
+  duration_ms: 3.295686
+  type: 'test'
+  ...
+# Subtest: Real-time/retry/ACK/delta code retained from supplied 1.2.20
+ok 17 - Real-time/retry/ACK/delta code retained from supplied 1.2.20
+  ---
+  duration_ms: 3.395335
+  type: 'test'
+  ...
+# Subtest: Quick Replies/Tags/side panel scripts unchanged
+ok 18 - Quick Replies/Tags/side panel scripts unchanged
+  ---
+  duration_ms: 1.909633
+  type: 'test'
+  ...
+# Subtest: Manifest increments version without widening permissions
+ok 19 - Manifest increments version without widening permissions
+  ---
+  duration_ms: 2.464693
+  type: 'test'
+  ...
+# Subtest: Incoming Facebook native reply maps parent in this conversation
+ok 20 - Incoming Facebook native reply maps parent in this conversation
+  ---
+  duration_ms: 3.146949
+  type: 'test'
+  ...
+# Subtest: Reply matching cannot cross customer conversation
+ok 21 - Reply matching cannot cross customer conversation
+  ---
+  duration_ms: 0.64668
+  type: 'test'
+  ...
+# Subtest: Plain Facebook message is not labelled a native reply
+ok 22 - Plain Facebook message is not labelled a native reply
+  ---
+  duration_ms: 0.263342
+  type: 'test'
+  ...
+# Subtest: TENH-only outgoing reference is not reported as native
+ok 23 - TENH-only outgoing reference is not reported as native
+  ---
+  duration_ms: 0.512327
+  type: 'test'
+  ...
+# Subtest: Facebook self-reference is ignored
+ok 24 - Facebook self-reference is ignored
+  ---
+  duration_ms: 0.267957
+  type: 'test'
+  ...
+# Subtest: Telegram native reply is not reinterpreted as Facebook reply
+ok 25 - Telegram native reply is not reinterpreted as Facebook reply
+  ---
+  duration_ms: 0.247548
+  type: 'test'
+  ...
+# Subtest: Malformed native ID ignored
+ok 26 - Malformed native ID ignored
+  ---
+  duration_ms: 0.434135
+  type: 'test'
+  ...
+# Subtest: Native quote follows edited parent text
+ok 27 - Native quote follows edited parent text
+  ---
+  duration_ms: 0.300826
+  type: 'test'
+  ...
+# Subtest: Deleted parent does not leak original quote text
+ok 28 - Deleted parent does not leak original quote text
+  ---
+  duration_ms: 0.868311
+  type: 'test'
+  ...
+# Subtest: Validated saved reply allowed only for same conversation and mid
+ok 29 - Validated saved reply allowed only for same conversation and mid
+  ---
+  duration_ms: 0.904806
+  type: 'test'
+  ...
+# Subtest: Reply enrichment database error never blocks incoming delivery
+ok 30 - Reply enrichment database error never blocks incoming delivery
+  ---
+  duration_ms: 73.87397
+  type: 'test'
+  ...
+# Subtest: Telegram edit preserves existing pin metadata
+ok 31 - Telegram edit preserves existing pin metadata
+  ---
+  duration_ms: 137.999224
+  type: 'test'
+  ...
+# Subtest: Late Telegram edit cannot resurrect TENH deletion
+ok 32 - Late Telegram edit cannot resurrect TENH deletion
+  ---
+  duration_ms: 111.569835
+  type: 'test'
+  ...
+# Subtest: Telegram edits are scoped to this exact bot connection
+ok 33 - Telegram edits are scoped to this exact bot connection
+  ---
+  duration_ms: 78.320599
+  type: 'test'
+  ...
+# Subtest: Older Telegram edit does not overwrite newer edit
+ok 34 - Older Telegram edit does not overwrite newer edit
+  ---
+  duration_ms: 92.197678
+  type: 'test'
+  ...
+# Subtest: facebook outgoing text: actions preserved
+ok 35 - facebook outgoing text: actions preserved
+  ---
+  duration_ms: 2.567224
+  type: 'test'
+  ...
+# Subtest: facebook outgoing image: actions preserved
+ok 36 - facebook outgoing image: actions preserved
+  ---
+  duration_ms: 0.225918
+  type: 'test'
+  ...
+# Subtest: facebook outgoing video: actions preserved
+ok 37 - facebook outgoing video: actions preserved
+  ---
+  duration_ms: 0.195863
+  type: 'test'
+  ...
+# Subtest: facebook outgoing file: actions preserved
+ok 38 - facebook outgoing file: actions preserved
+  ---
+  duration_ms: 0.380011
+  type: 'test'
+  ...
+# Subtest: facebook incoming text: actions preserved
+ok 39 - facebook incoming text: actions preserved
+  ---
+  duration_ms: 0.191827
+  type: 'test'
+  ...
+# Subtest: facebook incoming image: actions preserved
+ok 40 - facebook incoming image: actions preserved
+  ---
+  duration_ms: 0.472949
+  type: 'test'
+  ...
+# Subtest: facebook incoming video: actions preserved
+ok 41 - facebook incoming video: actions preserved
+  ---
+  duration_ms: 0.199691
+  type: 'test'
+  ...
+# Subtest: facebook incoming file: actions preserved
+ok 42 - facebook incoming file: actions preserved
+  ---
+  duration_ms: 0.158652
+  type: 'test'
+  ...
+# Subtest: telegram outgoing text: actions preserved
+ok 43 - telegram outgoing text: actions preserved
+  ---
+  duration_ms: 0.440336
+  type: 'test'
+  ...
+# Subtest: telegram outgoing image: actions preserved
+ok 44 - telegram outgoing image: actions preserved
+  ---
+  duration_ms: 0.274067
+  type: 'test'
+  ...
+# Subtest: telegram outgoing video: actions preserved
+ok 45 - telegram outgoing video: actions preserved
+  ---
+  duration_ms: 0.173265
+  type: 'test'
+  ...
+# Subtest: telegram outgoing file: actions preserved
+ok 46 - telegram outgoing file: actions preserved
+  ---
+  duration_ms: 0.153758
+  type: 'test'
+  ...
+# Subtest: telegram incoming text: actions preserved
+ok 47 - telegram incoming text: actions preserved
+  ---
+  duration_ms: 0.179806
+  type: 'test'
+  ...
+# Subtest: telegram incoming image: actions preserved
+ok 48 - telegram incoming image: actions preserved
+  ---
+  duration_ms: 0.160364
+  type: 'test'
+  ...
+# Subtest: telegram incoming video: actions preserved
+ok 49 - telegram incoming video: actions preserved
+  ---
+  duration_ms: 0.288422
+  type: 'test'
+  ...
+# Subtest: telegram incoming file: actions preserved
+ok 50 - telegram incoming file: actions preserved
+  ---
+  duration_ms: 0.179268
+  type: 'test'
+  ...
+# Subtest: Deleted messages have no new action controls
+ok 51 - Deleted messages have no new action controls
+  ---
+  duration_ms: 0.316328
+  type: 'test'
+  ...
+# Subtest: All six stickers are valid shipped PNGs
+ok 52 - All six stickers are valid shipped PNGs
+  ---
+  duration_ms: 1.47527
+  type: 'test'
+  ...
+# Subtest: Web avatar no longer imports or invokes extension
+ok 53 - Web avatar no longer imports or invokes extension
+  ---
+  duration_ms: 0.551205
+  type: 'test'
+  ...
+# Subtest: Absent-extension Business Suite button uses explanatory notice, not window.open
+ok 54 - Absent-extension Business Suite button uses explanatory notice, not window.open
+  ---
+  duration_ms: 0.3802
+  type: 'test'
+  ...
+# Subtest: Block storage is RLS-protected and server-write only
+ok 55 - Block storage is RLS-protected and server-write only
+  ---
+  duration_ms: 0.474305
+  type: 'test'
+  ...
+# Subtest: Block requires and records positive Meta confirmation
+ok 56 - Block requires and records positive Meta confirmation
+  ---
+  duration_ms: 277.349972
+  type: 'test'
+  ...
+# Subtest: Unblock uses upstream unblock_user
+ok 57 - Unblock uses upstream unblock_user
+  ---
+  duration_ms: 119.521997
+  type: 'test'
+  ...
+# Subtest: Provider permission refusal does not mark blocked
+ok 58 - Provider permission refusal does not mark blocked
+  ---
+  duration_ms: 151.677711
+  type: 'test'
+  ...
+# Subtest: Network failure releases lock without claiming success
+ok 59 - Network failure releases lock without claiming success
+  ---
+  duration_ms: 117.023179
+  type: 'test'
+  ...
+# Subtest: Block denied avoids all provider calls
+ok 60 - Block denied avoids all provider calls
+  ---
+  duration_ms: 100.85485
+  type: 'test'
+  ...
+# Subtest: Block permissionDenied avoids all provider calls
+ok 61 - Block permissionDenied avoids all provider calls
+  ---
+  duration_ms: 60.800324
+  type: 'test'
+  ...
+# Subtest: Block malformed null
+ok 62 - Block malformed null
+  ---
+  duration_ms: 64.961844
+  type: 'test'
+  ...
+# Subtest: Block malformed {}
+ok 63 - Block malformed {}
+  ---
+  duration_ms: 47.958026
+  type: 'test'
+  ...
+# Subtest: Block malformed {"blocked":"true"}
+ok 64 - Block malformed {"blocked":"true"}
+  ---
+  duration_ms: 29.285525
+  type: 'test'
+  ...
+# Subtest: Block malformed {"blocked":1}
+ok 65 - Block malformed {"blocked":1}
+  ---
+  duration_ms: 46.127411
+  type: 'test'
+  ...
+# Subtest: CSRF origin rejection
+ok 66 - CSRF origin rejection
+  ---
+  duration_ms: 28.59841
+  type: 'test'
+  ...
+# Subtest: Missing migration prevents upstream block
+ok 67 - Missing migration prevents upstream block
+  ---
+  duration_ms: 19.703542
+  type: 'test'
+  ...
+# Subtest: Fresh two-agent lease prevents conflicting operation
+ok 68 - Fresh two-agent lease prevents conflicting operation
+  ---
+  duration_ms: 25.936242
+  type: 'test'
+  ...
+# Subtest: Expired lease can be claimed safely
+ok 69 - Expired lease can be claimed safely
+  ---
+  duration_ms: 38.591571
+  type: 'test'
+  ...
+# Subtest: Expired Meta token retries once via existing token refresh
+ok 70 - Expired Meta token retries once via existing token refresh
+  ---
+  duration_ms: 37.369033
+  type: 'test'
+  ...
+# Subtest: Confirmed provider / failed persistence is explicit partial failure
+ok 71 - Confirmed provider / failed persistence is explicit partial failure
+  ---
+  duration_ms: 25.71782
+  type: 'test'
+  ...
+# Subtest: Other Page block remains untouched
+ok 72 - Other Page block remains untouched
+  ---
+  duration_ms: 25.302075
+  type: 'test'
+  ...
+# Subtest: Profile saves confirmed public ID without altering Messenger ID
+ok 73 - Profile saves confirmed public ID without altering Messenger ID
+  ---
+  duration_ms: 33.1046
+  type: 'test'
+  ...
+# Subtest: Profile rejects 100076611888104
+ok 74 - Profile rejects 100076611888104
+  ---
+  duration_ms: 36.171419
+  type: 'test'
+  ...
+# Subtest: Profile rejects 393342417206745
+ok 75 - Profile rejects 393342417206745
+  ---
+  duration_ms: 19.145714
+  type: 'test'
+  ...
+# Subtest: Profile rejects javascript:alert(1)
+ok 76 - Profile rejects javascript:alert(1)
+  ---
+  duration_ms: 17.314067
+  type: 'test'
+  ...
+# Subtest: Profile rejects https://facebook.com.evil.test/name
+ok 77 - Profile rejects https://facebook.com.evil.test/name
+  ---
+  duration_ms: 16.385719
+  type: 'test'
+  ...
+# Subtest: Profile rejects https://business.facebook.com/latest/inbox/
+ok 78 - Profile rejects https://business.facebook.com/latest/inbox/
+  ---
+  duration_ms: 16.177902
+  type: 'test'
+  ...
+# Subtest: Profile rejects https://www.facebook.com/profile.php?id=123&id=456
+ok 79 - Profile rejects https://www.facebook.com/profile.php?id=123&id=456
+  ---
+  duration_ms: 29.565542
+  type: 'test'
+  ...
+# Subtest: Public username remains username, no invented ID
+ok 80 - Public username remains username, no invented ID
+  ---
+  duration_ms: 17.715698
+  type: 'test'
+  ...
+# Subtest: Profile requires confirmation
+ok 81 - Profile requires confirmation
+  ---
+  duration_ms: 19.55631
+  type: 'test'
+  ...
+# Subtest: Profile prevents stale user edit
+ok 82 - Profile prevents stale user edit
+  ---
+  duration_ms: 18.226258
+  type: 'test'
+  ...
+# Subtest: Profile removal preserves customer name
+ok 83 - Profile removal preserves customer name
+  ---
+  duration_ms: 32.952609
+  type: 'test'
+  ...
+# Subtest: Conversation open authorizes exact tenant/Page/customer
+ok 84 - Conversation open authorizes exact tenant/Page/customer
+  ---
+  duration_ms: 8.068694
+  type: 'test'
+  ...
+# Subtest: Conversation open rejects mismatch {"pageId":"111"}
+ok 85 - Conversation open rejects mismatch {"pageId":"111"}
+  ---
+  duration_ms: 9.804663
+  type: 'test'
+  ...
+# Subtest: Conversation open rejects mismatch {"threadId":"222"}
+ok 86 - Conversation open rejects mismatch {"threadId":"222"}
+  ---
+  duration_ms: 8.774095
+  type: 'test'
+  ...
+# Subtest: Conversation open rejects mismatch {"businessId":"b2"}
+ok 87 - Conversation open rejects mismatch {"businessId":"b2"}
+  ---
+  duration_ms: 9.67095
+  type: 'test'
+  ...
+# Subtest: Conversation open rejects mismatch {"conversationId":"other"}
+ok 88 - Conversation open rejects mismatch {"conversationId":"other"}
+  ---
+  duration_ms: 8.123387
+  type: 'test'
+  ...
+# Subtest: Conversation open rejects mismatch {"threadId":"uuid-conversation"}
+ok 89 - Conversation open rejects mismatch {"threadId":"uuid-conversation"}
+  ---
+  duration_ms: 9.057871
+  type: 'test'
+  ...
+# Subtest: Revoked device cannot navigate
+ok 90 - Revoked device cannot navigate
+  ---
+  duration_ms: 9.931805
+  type: 'test'
+  ...
+# Subtest: Edit group name and description leaves icon intact
+ok 91 - Edit group name and description leaves icon intact
+  ---
+  duration_ms: 14.792152
+  type: 'test'
+  ...
+# Subtest: General name and description are protected server-side
+ok 92 - General name and description are protected server-side
+  ---
+  duration_ms: 32.709241
+  type: 'test'
+  ...
+# Subtest: Agent cannot edit group as admin
+ok 93 - Agent cannot edit group as admin
+  ---
+  duration_ms: 17.622067
+  type: 'test'
+  ...
+# Subtest: Invalid group edit null
+ok 94 - Invalid group edit null
+  ---
+  duration_ms: 11.950335
+  type: 'test'
+  ...
+# Subtest: Invalid group edit []
+ok 95 - Invalid group edit []
+  ---
+  duration_ms: 13.381636
+  type: 'test'
+  ...
+# Subtest: Invalid group edit {"name":""}
+ok 96 - Invalid group edit {"name":""}
+  ---
+  duration_ms: 19.959544
+  type: 'test'
+  ...
+# Subtest: Invalid group edit {"name":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+ok 97 - Invalid group edit {"name":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+  ---
+  duration_ms: 13.115613
+  type: 'test'
+  ...
+# Subtest: Invalid group edit {"description":42}
+ok 98 - Invalid group edit {"description":42}
+  ---
+  duration_ms: 29.166263
+  type: 'test'
+  ...
+# Subtest: Profile edit honors customer manage permission
+ok 99 - Profile edit honors customer manage permission
+  ---
+  duration_ms: 21.954846
+  type: 'test'
+  ...
+1..99
+# tests 99
+# suites 0
+# pass 99
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2892.36875

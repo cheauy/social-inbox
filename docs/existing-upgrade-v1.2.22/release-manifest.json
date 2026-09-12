@@ -1,0 +1,241 @@
+{
+  "source": "social-inbox(20260912-112456).zip",
+  "source_sha256": "6c6ad113d03ef0bb0b832949cd358ea81a2b1be73ea4f474270d69addabb6391",
+  "extension_version": "1.2.22",
+  "removed_original_files": [],
+  "preserved_byte_identical_core_files": [
+    "app/api/facebook/send-attachment/route.ts",
+    "app/api/webhooks/facebook/route.ts",
+    "lib/facebook/process-message.ts",
+    "lib/facebook/native-reply.ts",
+    "lib/facebook/capture-native-reply.ts",
+    "app/api/conversations/[conversationId]/facebook-block/route.ts",
+    "components/inbox/customer-message-block.tsx",
+    "lib/telegram/reply-safety.ts",
+    "tenh-extension/src/facebook-bridge.js",
+    "tenh-extension/src/tenh-bridge.js",
+    "tenh-extension/src/sidepanel.js",
+    "tenh-extension/src/sidepanel.html",
+    "tenh-extension/src/sidepanel.css",
+    "tenh-extension/src/facebook-tab-manager.js",
+    "app/api/extension/conversations/open-context/route.ts"
+  ],
+  "preserved_extension_storage_realtime_retry_ack_delta_block": true,
+  "new_production_dependency": false,
+  "separate_service_or_database": false,
+  "supabase_additive_migration_required": true,
+  "tests": {
+    "node_passed": 241,
+    "node_failed": 0,
+    "synthetic_local_chromium_dom_passed": 23,
+    "full_next_build": "not verified: next not found",
+    "installed_extension_smoke": "not verified: service worker timeout",
+    "live_providers": "not tested"
+  },
+  "files": [
+    {
+      "path": "app/api/save-profile-url/route.ts",
+      "change": "added",
+      "sha256": "a07f58ba982a6a282871db9117cbfbe34d93293919a3184d15d0be6c368e4f10",
+      "size": 8836
+    },
+    {
+      "path": "app/api/stickers/search/route.ts",
+      "change": "added",
+      "sha256": "a6515ea63d62871a344ab6ec917a156f7e3f627f8562722760c353787670d42d",
+      "size": 1010
+    },
+    {
+      "path": "app/api/stickers/send/route.ts",
+      "change": "added",
+      "sha256": "b740b5c5623f01ba1a63b285b11bbe8ef3e5f1a9af4dc1be2ff9679f58e04889",
+      "size": 6877
+    },
+    {
+      "path": "components/inbox/customer-facebook-avatar.tsx",
+      "change": "modified",
+      "sha256": "4f85e4d981dcf2abb21438b5c7d5e5a64d707434bfb2b8c0ea2859ebc2e4f0b2",
+      "size": 5254
+    },
+    {
+      "path": "components/inbox/inbox-view.tsx",
+      "change": "modified",
+      "sha256": "82552d8707822f6c0a0f58990b384f0059d68f09abad385fc0302b9194d0a1ca",
+      "size": 229690
+    },
+    {
+      "path": "components/inbox/message-panel.tsx",
+      "change": "modified",
+      "sha256": "299b8808eb5504a9288ea57830a97802c498da0871256a62d459717f0304487a",
+      "size": 225629
+    },
+    {
+      "path": "components/inbox/reply-box.tsx",
+      "change": "modified",
+      "sha256": "ea473ccca4aa995cad51fe6a70cf7f856e482cc635735ed8ec3e0f841a9c5efe",
+      "size": 84064
+    },
+    {
+      "path": "components/inbox/stipop-sticker-grid.tsx",
+      "change": "added",
+      "sha256": "db7172a27555774e651fc4564829ca7aa5b3c6a495256e14c61fe33a52b648da",
+      "size": 7088
+    },
+    {
+      "path": "components/inbox/tenh-sticker-picker.tsx",
+      "change": "modified",
+      "sha256": "076e8e48290733c133dfa0ebab314dc922f4a7140f2c5254ac490fd7c9e4dda6",
+      "size": 22283
+    },
+    {
+      "path": "db/migrations/20260912_existing_tenh_upgrade.sql",
+      "change": "added",
+      "sha256": "ae29060e7dc3e569e9cc692a9fbaae72736d0fefed76911efc47810f0b56fb97",
+      "size": 1335
+    },
+    {
+      "path": "docs/existing-upgrade-v1.2.22/INSTALL.md",
+      "change": "added",
+      "sha256": "7d09e1f5373a6b88a73104a8bf8801842ab8cd10c52ef15f266bfce07ba52cee",
+      "size": 12735
+    },
+    {
+      "path": "docs/existing-upgrade-v1.2.22/build.log",
+      "change": "added",
+      "sha256": "ccbef755252828ebc5c31ef96400e7d22cd2de1b803b83d042e76afd4ea7cf5b",
+      "size": 65
+    },
+    {
+      "path": "docs/existing-upgrade-v1.2.22/dom-tests.json",
+      "change": "added",
+      "sha256": "6b244d364f4d4362c5a6b1ada215f5b22cab0ee7a4dabf3130e239f8ea23fdba",
+      "size": 1075
+    },
+    {
+      "path": "docs/existing-upgrade-v1.2.22/extension-smoke.json",
+      "change": "added",
+      "sha256": "e071b4a7fd651ecb51f3f610050fb15631036e64180f925723356cd8aa1a26d0",
+      "size": 182
+    },
+    {
+      "path": "docs/existing-upgrade-v1.2.22/node-tests.log",
+      "change": "added",
+      "sha256": "8778534d327708cd25841994baa22161efa252b171fd3348beb491b7ea713570",
+      "size": 45115
+    },
+    {
+      "path": "docs/existing-upgrade-v1.2.22/syntax.json",
+      "change": "added",
+      "sha256": "8ddcf68ebc194f3fa2ab6de5b06e212f7c6839fcce09eb71f9c356d765564dbe",
+      "size": 207
+    },
+    {
+      "path": "lib/facebook/customer-navigation.ts",
+      "change": "added",
+      "sha256": "559d40dcc23be369d09aa4428c655e80663b1a6568a0605c27457b2eee2656f9",
+      "size": 619
+    },
+    {
+      "path": "lib/facebook/customer-profile-url.ts",
+      "change": "modified",
+      "sha256": "f2670fe4c66ebdb056ef12c0f1aa19de644f2e43b669ff59b3ae642474042380",
+      "size": 2179
+    },
+    {
+      "path": "lib/stickers/catalog.ts",
+      "change": "added",
+      "sha256": "1b45418e0723d8cc21f0b71737782dde3ee9bf068ae636012dbf88f2ebd4851f",
+      "size": 952
+    },
+    {
+      "path": "lib/stickers/stipop-server.ts",
+      "change": "added",
+      "sha256": "defa7bdc932f30c8a9a94550d719df06ec912df0bf72eccdb9ba83d9ea3b8b11",
+      "size": 11904
+    },
+    {
+      "path": "supabase/migrations/202609120001_tenh_seven_updates.sql",
+      "change": "added",
+      "sha256": "733cdab918ab3fda14e9b50a1a18c49402703bfeb63ba9b87917ecb13bc5cff8",
+      "size": 1975
+    },
+    {
+      "path": "tenh-extension/manifest.json",
+      "change": "modified",
+      "sha256": "2391e81ac6aad1b6bb661965c8507e3b8bc5b394493322d028fa085a82c91c49",
+      "size": 1619
+    },
+    {
+      "path": "tenh-extension/src/background.js",
+      "change": "modified",
+      "sha256": "bf8d775e4c47715fc2661e33983fb3253b6611e431fa3f1e420d750a4edfc223",
+      "size": 53717
+    },
+    {
+      "path": "tenh-extension/src/popup.html",
+      "change": "modified",
+      "sha256": "73065bc87c7856c8be11d918727225b7137923c1c986a92eff3448b4e2758e88",
+      "size": 1956
+    },
+    {
+      "path": "tenh-extension/src/popup.js",
+      "change": "modified",
+      "sha256": "f580fe23d0dacebecfdd3b0b3609483b94399e48c5f865033e9f8c2d57c85f06",
+      "size": 4899
+    },
+    {
+      "path": "tenh-extension/src/profile-sync-helpers.js",
+      "change": "added",
+      "sha256": "3d21a3d0885edeaea1c80ea8e3eab142b686c4f880009d37e3454ec88410c515",
+      "size": 2415
+    },
+    {
+      "path": "tenh-extension/src/profile-sync-worker.js",
+      "change": "added",
+      "sha256": "9ab2d4661f2d9f6a3398a99207d2274d7263078fe750657ef375791cf897d834",
+      "size": 3287
+    },
+    {
+      "path": "tenh-extension/src/profile-sync.js",
+      "change": "added",
+      "sha256": "42210224e3ecd7836793541033156f68a77bc9f48ec7949004fbb3e35a9bf8cb",
+      "size": 7047
+    },
+    {
+      "path": "tests/existing-upgrade/harness.cjs",
+      "change": "added",
+      "sha256": "b0ac453179f7592e7638f06492271359dc9292b4ae438ae05d6238983b98ef7a",
+      "size": 3541
+    },
+    {
+      "path": "tests/existing-upgrade/profile-dom-fixtures.py",
+      "change": "added",
+      "sha256": "7fc79c22fcd0db5a1682a6eb5a73b950aa828803aaf15c8489dc15235f42fc4a",
+      "size": 5267
+    },
+    {
+      "path": "tests/existing-upgrade/profile-extension.test.cjs",
+      "change": "added",
+      "sha256": "dc6713b043d234e16d3636228af89f4708ddddf2c801bc8cb0f93dc8e925ef44",
+      "size": 4833
+    },
+    {
+      "path": "tests/existing-upgrade/profile.test.cjs",
+      "change": "added",
+      "sha256": "91bf46ab0e3515ab6a01c9f7a9b0631675e42c57558095dd20fb612305a3b675",
+      "size": 4715
+    },
+    {
+      "path": "tests/existing-upgrade/stickers.test.cjs",
+      "change": "added",
+      "sha256": "66ac5c21fe29da70334c112a95be075e4572efbf8a62df2573b31a79f9520afd",
+      "size": 9636
+    },
+    {
+      "path": "tests/tenh-seven/extension.test.cjs",
+      "change": "modified",
+      "sha256": "616e1184812ba1085e2d7a5803cef6db49b9733a534bab2e6b637796d6438e7f",
+      "size": 7955
+    }
+  ]
+}

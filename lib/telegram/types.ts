@@ -157,3 +157,5 @@ export type TelegramFile = {
   file_size?: number;
   file_path?: string;
 };
+
+export type TelegramStickerSet = { name: string; title: string; sticker_type: string; stickers: TelegramSticker[]; thumbnail?: TelegramPhotoSize };
