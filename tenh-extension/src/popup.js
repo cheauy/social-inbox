@@ -15,6 +15,7 @@ const view = {
   redetect: document.getElementById("redetect"),
   test: document.getElementById("test"),
   repairResult: document.getElementById("repairResult"),
+  profileLookupResult: document.getElementById("profileLookupResult"),
 };
 
 function ask(message) {
@@ -34,6 +35,13 @@ function setState(element, text, tone) {
 async function render() {
   const status = await ask({ type: "TENH_STATUS" });
   const connected = status.connected === true || status.paired === true;
+  const lookup = status.lastProfileLookup;
+  if (view.profileLookupResult) {
+    view.profileLookupResult.hidden = !lookup;
+    view.profileLookupResult.textContent = lookup
+      ? `Last profile lookup: ${lookup.reason} • stage=${lookup.stage} • version=${lookup.version} • ${lookup.durationMs} ms • matching tabs=${lookup.existingExactTabs} • prepared tab=${lookup.lookupTabCreated ? "yes" : "no"} • candidates=${lookup.candidateCount}`
+      : "";
+  }
 
   view.version.textContent = status.version ? `Version ${status.version}` : "";
 

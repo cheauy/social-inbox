@@ -1193,6 +1193,23 @@ function canonicalFacebookProfileUrl(value) {
 // same Page + conversation is still selected. A name alone is not an ID match.
 const PROFILE_TICKETS_KEY = "tenhProfileOpenTicketsV2";
 const PROFILE_TICKET_TTL_MS = 45000;
+const PROFILE_DIAGNOSTIC_KEY = "tenhLastProfileLookupV1";
+
+// One session-only diagnostic, with no names, IDs, URLs, tokens or messages.
+// This is deliberately separate from the sync queue and normal Page health.
+async function recordProfileOutcome(result, diagnostic, startedAt) {
+  const report = {
+    version: VERSION, at: new Date().toISOString(), stage: diagnostic.stage,
+    reason: result.reason || (result.opened ? "opened" : result.resolved ? "resolved" : "unknown"),
+    durationMs: Math.max(0, Date.now() - startedAt),
+    existingExactTabs: Number(diagnostic.existingExactTabs || 0),
+    lookupTabCreated: diagnostic.lookupTabCreated === true,
+    candidateCount: Number(diagnostic.candidateCount || 0),
+    detailsRevealed: diagnostic.detailsRevealed === true,
+  };
+  try { await chrome.storage.session.set({ [PROFILE_DIAGNOSTIC_KEY]: report }); } catch { /* Optional diagnostics. */ }
+  return { ...result, diagnostics: report };
+}
 let profileLookupRunning = false;
 let profileTicketQueue = Promise.resolve();
 
@@ -1222,7 +1239,8 @@ async function withProfileTimeout(promise, milliseconds, fallback) {
 async function authorizeProfileContext(context) {
   const state = await readState();
   if (!state.token) return { ok: false, reason: "tenh_sign_in_required" };
-  const params = new URLSearchParams({ pageId: context.pageId, threadId: context.threadId });
+  const params = new URLSearchParams({ pageId: context.pageId, threadId: context.threadId,
+    conversationId: context.conversationId, businessId: context.businessId });
   const response = await withProfileTimeout(
     callTenh(`/api/extension/context?${params}`, { token: state.token }).catch(() => null),
     8000, null,
@@ -1230,9 +1248,14 @@ async function authorizeProfileContext(context) {
   if (!response) return { ok: false, reason: "tenh_authorization_unavailable" };
   if ([401, 403].includes(response.status)) return { ok: false, reason: "tenh_sign_in_required" };
   const result = response.result;
-  if (!response.ok || !result?.matched) return { ok: false, reason: "profile_context_unmatched" };
+  if (!response.ok || !result?.matched) {
+    const knownReasons = new Set(["profile_context_incomplete", "profile_workspace_mismatch", "profile_conversation_missing",
+      "profile_page_mismatch", "profile_contact_mismatch", "profile_messenger_context_required", "profile_context_lookup_failed"]);
+    return { ok: false, reason: knownReasons.has(result?.reason) ? result.reason : "profile_context_unmatched" };
+  }
+  if (result.profileContextVersion !== 1) return { ok: false, reason: "profile_backend_update_required" };
   if (result.page?.id !== context.pageId || result.conversation?.id !== context.conversationId ||
-      result.workspace?.businessId !== context.businessId) {
+      result.conversation?.threadId !== context.threadId || result.workspace?.businessId !== context.businessId) {
     return { ok: false, reason: "profile_context_mismatch" };
   }
   // Use the name in the authorized TENH contact, never a caller-supplied substitute.
@@ -1250,6 +1273,18 @@ function profileInboxMatches(value, context) {
     return url.origin === "https://business.facebook.com" && url.pathname.startsWith("/latest/inbox/") &&
       ids.length > 0 && ids.every(id => id === context.pageId) &&
       selected.length === 1 && selected[0] === context.threadId && (!type || type === "FB_MESSAGE");
+  } catch { return false; }
+}
+
+// A lookup tab belongs only to this click, not to the regular managed sync tab.
+// A Suite redirect to the same Page inbox is cleaned up rather than left behind.
+function profileLookupCleanupMatches(value, context) {
+  if (profileInboxMatches(value, context) || isProfileLoginUrl(value)) return true;
+  try {
+    const url = new URL(value);
+    const pages = ["asset_id", "page_id", "mailbox_id"].flatMap(key => url.searchParams.getAll(key));
+    return url.origin === "https://business.facebook.com" && url.pathname.startsWith("/latest/inbox/") &&
+      pages.length > 0 && pages.every(id => id === context.pageId) && !url.searchParams.has("selected_item_id");
   } catch { return false; }
 }
 
@@ -1277,7 +1312,10 @@ async function runProfileRead(tabId, context, reveal = false) {
       });
     }
     return result?.[0]?.result || { reason: "profile_link_missing" };
-  } catch { return { reason: "facebook_bridge_unavailable" }; }
+  } catch (error) {
+    const denied = /cannot access contents|missing host permission|not allowed to access/i.test(String(error?.message || ""));
+    return { reason: denied ? "facebook_site_access_required" : "facebook_bridge_unavailable" };
+  }
 }
 
 async function waitForProfileDocument(tabId, timeout = 18000) {
@@ -1388,12 +1426,16 @@ async function openResolvedFacebookProfile(token, sender, expected = {}) {
   if (!entry.verified || !url || !isSafeFacebookProfileUrl(url, entry.threadId)) return { opened: false, reason: "profile_url_unsupported" };
   try {
     const tab = await chrome.tabs.create({ url, active: true, windowId: sender.tab.windowId });
-    return { opened: Boolean(tab?.id), verified: true, profileUrl: url, profileId: entry.profileId || null,
-      businessId: entry.businessId, pageId: entry.pageId, threadId: entry.threadId, conversationId: entry.conversationId };
+    return await recordProfileOutcome({ opened: Boolean(tab?.id), verified: true, profileUrl: url, profileId: entry.profileId || null,
+      businessId: entry.businessId, pageId: entry.pageId, threadId: entry.threadId, conversationId: entry.conversationId },
+      { stage: "open_profile", candidateCount: 1 }, Date.now());
   } catch { return { opened: false, reason: "profile_tab_unavailable" }; }
 }
 
 async function openFacebookCustomerProfile(options = {}, sender) {
+  const startedAt = Date.now();
+  const diagnostic = { stage: "authorize" };
+  const finish = result => recordProfileOutcome(result, diagnostic, startedAt);
   const { pageId, threadId, conversationId, businessId } = options;
   if (!trustedProfileSender(sender) || !/^\d{5,32}$/.test(pageId || "") || !/^\d{5,32}$/.test(threadId || "") ||
       typeof conversationId !== "string" || !conversationId || typeof businessId !== "string" || !businessId) {
@@ -1402,36 +1444,61 @@ async function openFacebookCustomerProfile(options = {}, sender) {
   if (profileLookupRunning) return { opened: false, reason: "profile_lookup_busy" };
   profileLookupRunning = true;
   const context = { pageId, threadId, conversationId, businessId };
+  let temporaryTab = null;
   try {
     const auth = await authorizeProfileContext(context);
-    if (!auth.ok) return { opened: false, reason: auth.reason };
+    if (!auth.ok) return await finish({ opened: false, reason: auth.reason });
     context.customerName = auth.customerName;
+    diagnostic.stage = "existing_conversation";
     const tabs = await chrome.tabs.query({ url: ["https://business.facebook.com/latest/inbox/*"] });
     const exact = tabs.filter(tab => tab.id && !tab.discarded && profileInboxMatches(tab.url, context));
+    diagnostic.existingExactTabs = exact.length;
     let resolved = null;
     for (const tab of exact.slice(0, 5)) {
+      // Existing agent tabs are read-only: never navigate, click or focus them.
       const result = await runProfileRead(tab.id, context);
-      if (result.reason === "ambiguous_profile") return { opened: false, reason: result.reason };
+      if (result.reason === "ambiguous_profile") return await finish({ opened: false, reason: result.reason });
+      if (result.reason === "facebook_site_access_required") return await finish({ opened: false, reason: result.reason });
       if (result.profileUrl && result.pageId === pageId && result.matchedThreadId === threadId) { resolved = result; break; }
     }
-    // Photo clicks never create or navigate a Business Suite tab. Only read
-    // an already loaded exact conversation; a missing mapping is not an ID.
-    if (!resolved) return { opened: false, reason: "profile_link_not_available" };
+    if (!resolved) {
+      // No pre-opened Facebook tab is required. Only this user-requested profile
+      // lookup may prepare ONE inactive temporary conversation tab. Startup,
+      // heartbeat, sync and other tab-management behavior are not changed.
+      diagnostic.stage = "prepare_conversation";
+      const target = new URL(facebookTarget({ pageId, threadId }));
+      target.searchParams.set("thread_type", "FB_MESSAGE");
+      temporaryTab = await chrome.tabs.create({ url: target.toString(), active: false, windowId: sender.tab.windowId });
+      diagnostic.lookupTabCreated = true;
+      if (!Number.isInteger(temporaryTab?.id)) return await finish({ opened: false, reason: "profile_tab_unavailable" });
+      const ready = await waitForProfileDocument(temporaryTab.id);
+      if (!ready.tab) return await finish({ opened: false, reason: ready.reason });
+      if (ready.tab.active) return await finish({ opened: false, reason: "facebook_tab_in_use" });
+      diagnostic.stage = "read_customer_link";
+      resolved = await withProfileTimeout(runProfileRead(temporaryTab.id, context, true), 14000, { reason: "profile_lookup_timeout" });
+    }
+    diagnostic.candidateCount = Number(resolved?.diagnostics?.candidateCount || (resolved?.profileUrl ? 1 : 0));
+    diagnostic.detailsRevealed = resolved?.diagnostics?.detailsRevealed === true;
     if (!resolved?.profileUrl || resolved.pageId !== pageId || resolved.matchedThreadId !== threadId) {
-      return { opened: false, reason: resolved?.reason || "profile_context_mismatch" };
+      return await finish({ opened: false, reason: resolved?.reason || "profile_context_mismatch" });
     }
     const profileUrl = canonicalFacebookProfileUrl(resolved.profileUrl);
-    if (!profileUrl || !isSafeFacebookProfileUrl(profileUrl, threadId)) return { opened: false, reason: "profile_url_unsupported" };
+    if (!profileUrl || !isSafeFacebookProfileUrl(profileUrl, threadId)) return await finish({ opened: false, reason: "profile_url_unsupported" });
+    diagnostic.stage = "validate_profile";
     const verified = await validateProfileCandidate(profileUrl, context, sender);
-    if (!verified.verified) return { opened: false, reason: verified.reason };
-    return { opened: false, resolved: true, ...context, ...verified,
-      selectedItemId: resolved.selectedItemId, openToken: await profileOpenTicket(verified, context, sender) };
-  } catch { return { opened: false, reason: "profile_resolution_unavailable" }; }
-  finally {
+    if (!verified.verified) return await finish({ opened: false, reason: verified.reason });
+    diagnostic.stage = "awaiting_website_confirmation";
+    return await finish({ opened: false, resolved: true, ...context, ...verified,
+      selectedItemId: resolved.selectedItemId, openToken: await profileOpenTicket(verified, context, sender) });
+  } catch {
+    return await finish({ opened: false, reason: "profile_resolution_unavailable" });
+  } finally {
+    try {
+      if (temporaryTab?.id) await closeOwnedProfileTab(temporaryTab.id, value => profileLookupCleanupMatches(value, context));
+    } catch { /* Cleanup failure must never break TENH or leave lookup locked. */ }
     profileLookupRunning = false;
   }
 }
-
 
 async function warmFacebookCompanion() {
   const state = await readState();
@@ -1454,6 +1521,8 @@ async function handle(message, sender) {
       return {
         type: "TENH_EXTENSION_PONG",
         version: VERSION,
+        lastProfileLookup: await chrome.storage.session.get(PROFILE_DIAGNOSTIC_KEY)
+          .then(value => value[PROFILE_DIAGNOSTIC_KEY] || null).catch(() => null),
         connected: Boolean(state.token),
         paired: Boolean(state.token),
         device: state.device ?? null,

@@ -226,6 +226,12 @@ var TenhFacebookSelectors = (() => {
     let url;
     try {
       url = new URL(rawHref, window.location.href);
+      // Read a Facebook link-shim destination locally, never fetch the redirect
+      // wrapper. The final destination must still pass the same strict allowlist.
+      for (let depth = 0; depth < 2 && ["l.facebook.com", "lm.facebook.com", "www.facebook.com", "facebook.com"].includes(url.hostname) && url.pathname === "/l.php"; depth++) {
+        if (url.protocol !== "https:" || url.username || url.password || url.port || url.searchParams.getAll("u").length !== 1) return null;
+        url = new URL(url.searchParams.get("u"));
+      }
     } catch {
       return null;
     }
@@ -256,15 +262,15 @@ var TenhFacebookSelectors = (() => {
 
     if (/\.php$/i.test(path)) return null;
 
-    if (/^\/people\/[^/]+\/\d{5,32}$/i.test(path)) {
-      return `https://www.facebook.com${path}`;
-    }
+    const peopleId = path.match(/^\/people\/[^/]+\/(\d{5,32})$/i)?.[1];
+    if (peopleId) return `https://www.facebook.com/profile.php?id=${peopleId}`;
 
     /* Username-style profile URLs contain a single path component. This is
        deliberately strict: if Facebook does not expose a clear profile link,
        TENH returns "unavailable" instead of guessing and opening the wrong
        account. */
     if (/^\/[A-Za-z0-9._-]{2,100}$/.test(path)) {
+      if (/^\/\d+$/.test(path)) return /^\/\d{5,32}$/.test(path) ? `https://www.facebook.com/profile.php?id=${path.slice(1)}` : null;
       return `https://www.facebook.com${path}`;
     }
 
@@ -449,7 +455,7 @@ var TenhFacebookSelectors = (() => {
       .filter(el => {
         const box = el.getBoundingClientRect(), style = getComputedStyle(el);
         return box.width > 0 && box.height > 0 && style.visibility !== "hidden" && style.display !== "none" &&
-          !el.closest('nav, [role="navigation"], [role="dialog"]');
+          !el.closest('nav, [role="navigation"], [role="dialog"], [role="feed"], [role="log"], article, [role="article"]');
       });
     const nameMatches = Boolean(wanted && headings.some(el => normalize(el.textContent) === wanted));
     if (!nameMatches) return { valid: false, nameMatches: false, reason: "profile_identity_unverified" };

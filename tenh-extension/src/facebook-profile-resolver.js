@@ -3,7 +3,7 @@
  * by name alone. Existing sync, sending, tags and quick replies are independent.
  */
 globalThis.TenhFacebookProfileResolver = (() => {
-  const version = "1.2.19";
+  const version = "1.2.20";
   const normalize = value => String(value ?? "").normalize("NFKC")
     .replace(/[\u200b-\u200d\ufeff]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -12,6 +12,8 @@ globalThis.TenhFacebookProfileResolver = (() => {
     return r.width > 0 && r.height > 0 && style.visibility !== "hidden" && style.display !== "none";
   };
   let lookupRunning = false;
+  const excludedIdentityArea = 'nav, [role="navigation"], [role="row"], [role="option"], [role="log"], [role="feed"], article, [role="article"]';
+  const isProfileLabel = label => /^(?:(?:view|see|open)(?: (?:on )?facebook)? profile|view on facebook|មើលប្រវត្តិរូប|មើលកម្រងព័ត៌មាន|xem trang cá nhân)$/i.test(label);
 
   function pageMatches(pageId) {
     const url = new URL(location.href);
@@ -64,21 +66,21 @@ globalThis.TenhFacebookProfileResolver = (() => {
     const wanted = normalize(name), leftBoundary = contentBoundary(input);
     for (const anchor of document.querySelectorAll('a[href]')) {
       if (!visible(anchor) || anchor.getBoundingClientRect().left <= leftBoundary ||
-          anchor.closest('nav, [role="navigation"], [role="row"], [role="option"]')) continue;
+          anchor.closest(excludedIdentityArea)) continue;
       const labels = [anchor.textContent, anchor.getAttribute("aria-label"), anchor.getAttribute("title"),
         anchor.querySelector("img")?.getAttribute("alt")].map(normalize);
-      if (!labels.some(label => label === wanted || /^(view (facebook )?profile|មើលប្រវត្តិរូប)$/i.test(label))) continue;
+      if (!labels.some(label => label === wanted || isProfileLabel(label))) continue;
       const url = globalThis.TenhFacebookSelectors.profileCandidateUrl(anchor.getAttribute("href"));
       if (!url) continue;
       const parsed = new URL(url);
       const publicId = parsed.searchParams.get("id") || parsed.pathname.match(/\/(\d+)\/?$/)?.[1];
       if (publicId && publicId === disallowedId) continue;
-      for (let node = anchor.parentElement, depth = 0; node && depth < 5; node = node.parentElement, depth++) {
+      for (let node = anchor, depth = 0; node && depth < 7; node = node.parentElement, depth++) {
         // Only the compact customer header/detail card, not a whole chat/history.
         const box = node.getBoundingClientRect();
         if (normalize(node.textContent).length > 700 || box.height > 400 ||
             node.matches('body, main, [role="main"], [role="log"], [role="feed"]')) break;
-        if (exactNames(node, wanted).length) { urls.add(url); break; }
+        if (normalize(node.textContent) === wanted || exactNames(node, wanted).length) { urls.add(url); break; }
       }
     }
     return [...urls];
@@ -88,10 +90,11 @@ globalThis.TenhFacebookProfileResolver = (() => {
     if (reason) return { reason };
     const threadId = options.threadId || options.disallowedId;
     const links = profileLinks(searchBox(), options.customerName, threadId);
-    if (links.length > 1) return { reason: "ambiguous_profile" };
-    if (!links.length) return { reason: "profile_link_missing" };
+    const diagnostics = { candidateCount: links.length };
+    if (links.length > 1) return { reason: "ambiguous_profile", diagnostics };
+    if (!links.length) return { reason: "profile_link_missing", diagnostics };
     return { profileUrl: links[0], pageId: options.pageId, selectedItemId: threadId,
-      matchedThreadId: threadId, matchedBy: "page_and_thread" };
+      matchedThreadId: threadId, matchedBy: "page_and_thread", diagnostics };
   }
   async function readCurrent(options) {
     if (lookupRunning) return { reason: "profile_lookup_busy" };
@@ -110,7 +113,7 @@ globalThis.TenhFacebookProfileResolver = (() => {
     const controls = [...document.querySelectorAll('button[aria-controls], [role="button"][aria-controls], button[aria-expanded="false"], [role="button"][aria-expanded="false"]')]
       .filter(el => {
         const r = el.getBoundingClientRect();
-        return visible(el) && !el.closest('a[href], [role="row"], [role="option"]') &&
+        return visible(el) && !el.closest(`a[href], ${excludedIdentityArea}`) &&
           r.left > boundary && r.top < Math.min(innerHeight * 0.5, 360) &&
           [normalize(el.textContent), normalize(el.getAttribute("aria-label"))].includes(name);
       });
@@ -129,8 +132,15 @@ globalThis.TenhFacebookProfileResolver = (() => {
       while (Date.now() < deadline) {
         if (document.visibilityState !== "hidden") return { reason: "facebook_tab_in_use" };
         const reason = contextReason(options);
-        if (reason) return { reason };
+        if (reason) {
+          const url = new URL(location.href);
+          const settling = reason === "conversation_mismatch" && pageMatches(options.pageId) &&
+            !url.searchParams.has("selected_item_id") && Date.now() < deadline - 7500;
+          if (settling) { await pause(300); continue; }
+          return { reason, diagnostics: { candidateCount: 0, detailsRevealed: revealed } };
+        }
         const result = snapshot(options);
+        result.diagnostics = { ...result.diagnostics, detailsRevealed: revealed };
         if (result.reason === "ambiguous_profile") return result;
         if (result.profileUrl) {
           if (result.profileUrl === previous && Date.now() - stableAt >= 800) return result;
@@ -141,7 +151,7 @@ globalThis.TenhFacebookProfileResolver = (() => {
         }
         await pause(300);
       }
-      return { reason: "profile_link_unavailable" };
+      return { reason: "profile_link_unavailable", diagnostics: { candidateCount: 0, detailsRevealed: revealed } };
     } finally { lookupRunning = false; }
   }
   return { version, readCurrent, resolveAutomatic, pageMatches, matchingRows, profileLinks };
