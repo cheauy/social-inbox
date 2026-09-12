@@ -4,7 +4,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { File, UploadType } from "expo-file-system";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
-import { VideoView, useVideoPlayer } from "expo-video";
+import { CachedVideo } from "../../../components/cached-video";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -37,7 +37,7 @@ import {
 import { TeamRoomIcon } from "../../../components/team-room-icon";
 import { RoomComposer } from "../../../components/room-composer";
 import type { RoomPending } from "../../../components/room-composer";
-import { api, ApiError, upload as uploadNativeFile } from "../../../lib/api/client";
+import { api, cachedApi, ApiError, upload as uploadNativeFile } from "../../../lib/api/client";
 import { useInbox } from "../../../lib/inbox-provider";
 import { supabase } from "../../../lib/supabase/client";
 
@@ -156,18 +156,7 @@ function MessageText({ value, mine, onLongPress }: { value: string; mine: boolea
 }
 
 function VideoPreview({ url }: { url: string }) {
-  const player = useVideoPlayer(url, (instance) => {
-    instance.play();
-  });
-
-  return (
-    <VideoView
-      player={player}
-      nativeControls
-      contentFit="contain"
-      style={{ width: "100%", aspectRatio: 16 / 9, maxHeight: "78%" }}
-    />
-  );
+  return <CachedVideo uri={url} style={{ width: "100%", height: "82%" }} />;
 }
 
 function InlineVideo({ url }: { url: string }) {
@@ -593,13 +582,20 @@ export default function RoomScreen() {
     const sequence = ++requestRef.current;
 
     try {
-      const data = await api<{
+      const data = await cachedApi<{
         room: Room;
         messages: RoomMessage[];
         hasMore: boolean;
       }>(
         `/api/team-chat/rooms/${encodeURIComponent(id)}/messages?limit=${PAGE_SIZE}`,
         workspace.businessId,
+        { freshMs: 0, onCached: cached => {
+          if (sequence !== requestRef.current) return;
+          setRoom(cached.room ?? null);
+          setMessages(current => mergeMessages(current, cached.messages ?? []));
+          setHasMore(current => current || Boolean(cached.hasMore));
+          setLoading(false);
+        } },
       );
 
       if (sequence !== requestRef.current) {

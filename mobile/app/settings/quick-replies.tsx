@@ -1,3 +1,4 @@
+import { AuthImage } from "../../components/auth-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -477,9 +478,10 @@ export default function QuickReplies() {
                   >
                     {reply.attachments.slice(0, 4).map((attachment) =>
                       attachment.kind === "image" ? (
-                        <Image
+                        <AuthImage
                           key={attachment.path}
-                          source={{ uri: attachment.url ?? undefined }}
+                          uri={attachment.url ?? ""}
+                          cacheKey={`reply:${attachment.path}`}
                           style={{
                             width: 44,
                             height: 44,

@@ -107,7 +107,7 @@ export async function GET(
     data,
     error,
   } =
-    await loadStoredAvatar(TELEGRAM_AVATAR_BUCKET, storagePath);
+    await loadStoredAvatar(TELEGRAM_AVATAR_BUCKET, storagePath, _request.nextUrl.searchParams.get("format") === "jpeg" ? "jpeg" : "webp");
 
   if (
     error ||

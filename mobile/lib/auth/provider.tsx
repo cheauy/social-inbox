@@ -1,4 +1,5 @@
 import { clearMediaCache } from "../media-cache";
+import { clearReadCache } from "../api/read-cache";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { AppState } from "react-native";
 import type { Session } from "@supabase/supabase-js";
@@ -16,7 +17,7 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
       if (!alive) return;
       setSession(data.session); setError(error?.message || ""); setReady(true);
     }).catch(() => { if (alive) { setError("Unable to restore your session. Please sign in."); setReady(true); } });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => { if (_event === "SIGNED_OUT") clearMediaCache(); if (alive) { setSession(next); setReady(true); } });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => { if (_event === "SIGNED_OUT") { clearMediaCache(); clearReadCache(); } if (alive) { setSession(next); setReady(true); } });
     if (AppState.currentState === "active") supabase.auth.startAutoRefresh();
     const state = AppState.addEventListener("change", value => value === "active" ? supabase.auth.startAutoRefresh() : supabase.auth.stopAutoRefresh());
     return () => { alive = false; listener.subscription.unsubscribe(); state.remove(); supabase.auth.stopAutoRefresh(); };

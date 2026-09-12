@@ -5,7 +5,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { Directory, File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as ImagePicker from "expo-image-picker";
-import { VideoView, useVideoPlayer } from "expo-video";
+import { CachedVideo } from "../../components/cached-video";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -57,6 +57,7 @@ import type {
 } from "../../components/customer-panel";
 import {
   api,
+  cachedApi,
   ApiError,
   upload as uploadNativeFile,
   uploadMany,
@@ -64,6 +65,8 @@ import {
 import { CHAT_BASE_COLOR, useDisplay } from "../../lib/display-provider";
 import { useInbox } from "../../lib/inbox-provider";
 import { useMediaSource } from "../../lib/media";
+import { cacheMedia } from "../../lib/media-cache";
+import { facebookPagePhoto } from "../../lib/facebook-page-photo";
 import { shrinkImage } from "../../lib/shrink";
 
 import { usePresence, useViewers } from "../../lib/presence";
@@ -680,31 +683,21 @@ function InlineVideo({ uri }: { uri: string }) {
 }
 
 function VideoPreview({ uri }: { uri: string }) {
-  const resolve = useMediaSource();
-  const player = useVideoPlayer(resolve(uri) ?? uri, (instance) => {
-    instance.play();
-  });
-
-  return (
-    <VideoView
-      player={player}
-      nativeControls
-      contentFit="contain"
-      style={{ width: "100%", height: "82%" }}
-    />
-  );
+  return <CachedVideo uri={uri} style={{ width: "100%", height: "82%" }} />;
 }
 
 function MediaGrid({
   items,
   onOpen,
+  sticker = false,
 }: {
   items: MediaPreview[];
   onOpen: (item: MediaPreview) => void;
+  sticker?: boolean;
 }) {
   const shown = items.slice(0, 9);
-  const width = items.length === 1 ? 224 : items.length === 2 ? 224 : 228;
-  const tile = items.length === 1 ? width : items.length === 2 ? 110 : 73;
+  const width = sticker ? 128 : items.length === 1 ? 224 : items.length === 2 ? 224 : 228;
+  const tile = sticker ? 128 : items.length === 1 ? width : items.length === 2 ? 110 : 73;
 
   return (
     <View
@@ -723,10 +716,10 @@ function MediaGrid({
           onPress={() => onOpen(item)}
           style={{
             width: tile,
-            height: items.length === 1 ? 220 : tile,
+            height: sticker ? 128 : items.length === 1 ? 220 : tile,
             overflow: "hidden",
-            borderRadius: items.length === 1 ? 13 : 8,
-            backgroundColor: "#071421",
+            borderRadius: sticker ? 0 : items.length === 1 ? 13 : 8,
+            backgroundColor: sticker ? "transparent" : "#071421",
           }}
         >
           {item.kind === "video" ? (
@@ -748,7 +741,7 @@ function MediaGrid({
               </View>
             </>
           ) : (
-            <AuthImage uri={item.uri} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+            <AuthImage uri={item.uri} style={{ width: "100%", height: "100%" }} resizeMode={sticker ? "contain" : "cover"} />
           )}
 
           {index === 8 && items.length > 9 ? (
@@ -806,7 +799,7 @@ function CommentReplyRow({
     ? conversation.social_account?.account_name || "Facebook Page"
     : words(raw?.commenter_name) ?? conversation.contact?.full_name ?? "Facebook commenter";
   const picture = outgoing
-    ? null
+    ? facebookPagePhoto(conversation.social_account?.platform_account_id)
     : words(raw?.commenter_profile_picture_url) ?? conversation.contact?.profile_picture_url;
   const photo = reply.message_type === "image" ? reply.attachment_url : null;
 
@@ -914,9 +907,7 @@ function FacebookCommentCard({
         {root && (postId || postPhoto || postText) ? (
           <View style={{ padding: 12, gap: 9, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: "#F8FBFE" }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#1877F2", alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="logo-facebook" size={16} color="white" />
-              </View>
+              <Avatar name={conversation.social_account?.account_name || "Facebook Page"} uri={facebookPagePhoto(conversation.social_account?.platform_account_id)} size={30} />
               <Text style={{ flex: 1, color: colors.ink, fontSize: 13, fontWeight: "800" }} numberOfLines={1}>
                 Comment on post{postId ? ` #${postId.split("_").pop()}` : ""}
               </Text>
@@ -925,7 +916,7 @@ function FacebookCommentCard({
             <View style={{ flexDirection: postPhoto ? "row" : "column", gap: 11, alignItems: "flex-start" }}>
               {postPhoto ? (
                 <Pressable onPress={() => onOpen({ kind: "image", uri: postPhoto })} style={{ width: 112, height: 112, overflow: "hidden", borderRadius: 12, backgroundColor: colors.border }}>
-                  <Image source={{ uri: postPhoto }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                  <AuthImage uri={postPhoto} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
                 </Pressable>
               ) : null}
               <View style={{ flex: 1, gap: 6 }}>
@@ -1113,7 +1104,7 @@ function Bubble({
   const text = message.message_text?.trim() ?? "";
   const isPlaceholder =
     /^\[(audio|voice|image|video|file|sticker)\]$/i.test(text) ||
-    (Boolean(url) && /^sent (?:an? )?(?:photo|video|voice message|audio file|file(?::.*)?)$/i.test(text));
+    (Boolean(url) && /^sent (?:an? )?(?:photo|video|sticker|voice message|audio file|file(?::.*)?)$/i.test(text));
   const body = isPlaceholder ? "" : text;
   const media = type === "image" || type === "video" || type === "sticker" ? messageMedia(message) : [];
 
@@ -1124,10 +1115,10 @@ function Bubble({
    * bubble re-adds the rectangle the artist removed. On our blue outgoing
    * bubble its soft edge reads as a badly cropped photo.
    *
-   * The bubble comes back the moment there is something to say: a caption, or
-   * a deleted sticker that is now a line of text.
+   * Captions stay readable below the artwork. Deleted stickers use the
+   * separate deleted-message rendering below.
    */
-  const bare = type === "sticker" && media.length > 0 && !body;
+  const bare = type === "sticker" && media.length > 0;
 
   /*
    * Still on its way. Optimistic messages are the ones this screen drew
@@ -1239,7 +1230,7 @@ function Bubble({
         }}
       >
         {media.length > 0 ? (
-          <MediaGrid items={media} onOpen={onViewMedia} />
+          <MediaGrid items={media} onOpen={onViewMedia} sticker={type === "sticker"} />
         ) : null}
 
         {url && (type === "audio" || type === "voice") ? (
@@ -1266,7 +1257,7 @@ function Bubble({
 
         {body || !url ? (
           <View style={{ paddingHorizontal: media.length > 0 ? 8 : 0 }}>
-            <MessageText body={body || "—"} outgoing={outgoing} />
+            <MessageText body={body || "—"} outgoing={outgoing && !bare} />
           </View>
         ) : null}
 
@@ -1293,14 +1284,14 @@ function Bubble({
             <Ionicons
               name="time-outline"
               size={11}
-              color={outgoing ? "rgba(255,255,255,0.75)" : colors.muted}
+              color={outgoing && !bare ? "rgba(255,255,255,0.75)" : colors.muted}
             />
           ) : null}
 
           <Text
             style={{
               fontSize: 11,
-              color: outgoing ? "rgba(255,255,255,0.75)" : colors.muted,
+              color: outgoing && !bare ? "rgba(255,255,255,0.75)" : colors.muted,
             }}
           >
             {pending
@@ -1320,7 +1311,7 @@ function Bubble({
               style={{
                 fontSize: 11,
                 fontWeight: receipt(message, conversation) === "✓✓ Seen" ? "800" : "400",
-                color: "rgba(255,255,255,0.85)",
+                color: bare ? colors.muted : "rgba(255,255,255,0.85)",
               }}
             >
               {receipt(message, conversation)}
@@ -1526,6 +1517,8 @@ function QuickReplySheet({
   onPick: (reply: SavedReply) => void;
   onClose: () => void;
 }) {
+  const [category, setCategory] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   /*
    * Grouped in the order the server sent them, which is the order the web
    * shows: a category appears where its first reply does, rather than
@@ -1554,6 +1547,15 @@ function QuickReplySheet({
       : groups;
   }, [replies]);
 
+  useEffect(() => {
+    if (category && !grouped.some(group => group.name === category)) setCategory(null);
+  }, [category, grouped]);
+  const query = search.trim().toLocaleLowerCase();
+  const visibleGroups = grouped
+    .filter(group => !category || group.name === category)
+    .map(group => ({ ...group, replies: group.replies.filter(reply => !query || `${reply.title} ${reply.message_text}`.toLocaleLowerCase().includes(query)) }))
+    .filter(group => group.replies.length > 0);
+
   return (
     <Sheet
       open={open}
@@ -1561,6 +1563,30 @@ function QuickReplySheet({
       detail="Loads into the box so you can change it before sending."
       onClose={onClose}
     >
+      <View style={{ flexShrink: 0, paddingHorizontal: 18, paddingVertical: 10, gap: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <TextInput
+          accessibilityLabel="Search quick replies"
+          placeholder="Search replies…"
+          placeholderTextColor={colors.muted}
+          value={search}
+          onChangeText={setSearch}
+          autoCorrect={false}
+          style={{ borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: colors.background, color: colors.ink }}
+        />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8 }}>
+          {[null, ...grouped.map(group => group.name)].map(name => (
+            <Pressable
+              key={name === null ? "all" : `category:${name}`}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: category === name }}
+              onPress={() => setCategory(name)}
+              style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 18, backgroundColor: category === name ? colors.blue : colors.pale }}
+            >
+              <Text style={{ color: category === name ? "white" : colors.ink, fontWeight: "700", fontSize: 13 }}>{name ?? "All"}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
       {loading ? (
         <SheetSkeleton rows={4} thumbs />
       ) : replies.length === 0 ? (
@@ -1570,8 +1596,9 @@ function QuickReplySheet({
           detail="Quick replies are written on the web, under Settings. They appear here as soon as they are saved."
         />
       ) : (
-        <ScrollView>
-          {grouped.map((group) => (
+        <ScrollView key={JSON.stringify([category, query])} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+          {visibleGroups.length === 0 ? <Empty icon="search-outline" title="No matching replies" detail="Try another category or search." /> : null}
+          {visibleGroups.map((group) => (
             <View key={group.name}>
               {/*
                 Categories, the way they are set on the web. A workspace with
@@ -1923,6 +1950,12 @@ function QuickTagSheet({
 
 export default function Conversation() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { workspace } = useInbox();
+  return <ConversationScreen key={JSON.stringify([id, workspace?.businessId])} />;
+}
+
+function ConversationScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const resolveMedia = useMediaSource();
@@ -2078,13 +2111,20 @@ export default function Conversation() {
     const sequence = ++requestRef.current;
 
     try {
-      const data = await api<{
+      const data = await cachedApi<{
         messages: InboxMessage[];
         hasMore: boolean;
         nextCursor: { sentAt: string; id: string } | null;
       }>(
         `/api/conversations/${encodeURIComponent(id)}/messages?limit=${PAGE_SIZE}`,
         scopeId,
+        { freshMs: 0, onCached: (cached) => {
+          if (sequence !== requestRef.current) return;
+          setMessages(current => mergeMessages(current, cached.messages ?? []));
+          setCursor(current => current ?? cached.nextCursor ?? null);
+          setHasMore(current => current || Boolean(cached.hasMore));
+          setLoading(false);
+        } },
       );
 
       // A slower earlier request must not overwrite a newer one.
@@ -2105,6 +2145,10 @@ export default function Conversation() {
     } catch (loadError) {
       if (sequence !== requestRef.current) {
         return;
+      }
+
+      if (loadError instanceof ApiError && [401, 403, 404].includes(loadError.status)) {
+        setMessages([]);
       }
 
       setError(
@@ -2233,16 +2277,13 @@ export default function Conversation() {
   async function openReplies() {
     setReplyOpen(true);
 
-    if (replies.length > 0) {
-      return;
-    }
-
-    setRepliesLoading(true);
+    setRepliesLoading(replies.length === 0);
 
     try {
-      const data = await api<{ savedReplies: SavedReply[] }>(
+      const data = await cachedApi<{ savedReplies: SavedReply[] }>(
         "/api/saved-replies?activeOnly=true",
         scopeId,
+        { onCached: data => { setReplies(data.savedReplies ?? []); setRepliesLoading(false); } },
       );
 
       const list = data.savedReplies ?? [];
@@ -2305,7 +2346,12 @@ export default function Conversation() {
             ? safe
             : `${safe}${extensionForMime(attachment.mimeType, attachment.kind)}`;
           const target = new File(Paths.cache, `${Date.now()}-${index}-${named}`);
-          const saved = await File.downloadFileAsync(attachment.url as string, target);
+          const source = resolveMedia(attachment.url);
+          const local = source && await cacheMedia(source.uri, `reply:${attachment.path}`, source.headers, source.cacheScope, attachment.kind === "video");
+          // Give the upload its own named copy; cache eviction must not remove
+          // an attachment already staged in the composer.
+          const saved = local ? (new File(local).copy(target), target)
+            : await File.downloadFileAsync(source?.uri ?? attachment.url as string, target, { headers: source?.headers });
 
           if (saved) {
             staged.push({
@@ -2894,9 +2940,14 @@ export default function Conversation() {
     setCustomerLoading(true);
 
     try {
-      const data = await api<CustomerDetail>(
+      const data = await cachedApi<CustomerDetail>(
         `/api/customers/${encodeURIComponent(contactId)}`,
         scopeId,
+        { freshMs: 0, onCached: data => {
+          setCustomer(data);
+          setAssigned(new Set((data.customer.tags ?? []).map(tag => tag.id)));
+          setCustomerLoading(false);
+        } },
       );
 
       setCustomer(data);
@@ -2924,6 +2975,10 @@ export default function Conversation() {
 
       return data;
     } catch (customerError) {
+      if (customerError instanceof ApiError && [401, 403, 404].includes(customerError.status)) {
+        setCustomer(null);
+        setAssigned(new Set());
+      }
       setError(
         customerError instanceof Error
           ? customerError.message
@@ -3196,11 +3251,14 @@ export default function Conversation() {
   async function openTags() {
     setError("");
     setTagOpen(true);
-    setTagsLoading(true);
+    setTagsLoading(tags.length === 0);
+    setAssigned(new Set((conversation?.contact?.tags ?? []).map(tag => tag.id)));
 
     try {
       const [tagList] = await Promise.all([
-        api<{ tags: Tag[] }>("/api/tags?activeOnly=true", scopeId),
+        cachedApi<{ tags: Tag[] }>("/api/tags?activeOnly=true", scopeId, {
+          onCached: data => { setTags(data.tags ?? []); setTagsLoading(false); },
+        }),
         loadCustomer(),
       ]);
 
@@ -3570,8 +3628,8 @@ export default function Conversation() {
         thread draws before a megabyte of PNG arrives, and bubbles have to be
         readable on that first frame.
       */}
-      <Image
-        source={{ uri: backgroundUri }}
+      <AuthImage
+        uri={backgroundUri}
         resizeMode="cover"
         style={{
           position: "absolute",
@@ -4023,6 +4081,7 @@ export default function Conversation() {
         detail={customer}
         loading={customerLoading}
         channelName={conversation?.social_account?.account_name ?? null}
+        platform={conversation?.social_account?.platform}
         channelIcon={
           conversation && platformOf(conversation) === "telegram"
             ? "paper-plane"

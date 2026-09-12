@@ -2,6 +2,7 @@ import { SerialTaskQueue } from "./serial-task-queue";
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { api, ApiError } from "./api/client";
+import { clearReadCache } from "./api/read-cache";
 import { useAuth } from "./auth/provider";
 import { sessionStorage } from "./auth/secure-storage";
 import { useNotificationSound } from "./notification-sound";
@@ -299,6 +300,7 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       if (state === "active") { setRevision(v => v + 1); setRoomRevision(v => v + 1); changed("inbox"); changed("rooms"); }
     });
     const settingsChanged = () => {
+      clearReadCache();
       threadDirty = true;
       setSettingsRevision(value => value + 1);
       changed("inbox");
@@ -363,6 +365,7 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     if (!session) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const sync = () => {
+      clearReadCache();
       clearTimeout(timer);
       timer = setTimeout(() => {
         setRevision(value => value + 1);

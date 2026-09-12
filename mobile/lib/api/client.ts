@@ -2,6 +2,14 @@ import { File as FileSystemFile, UploadType } from "expo-file-system";
 
 import { authCookieName, supabase } from "../supabase/client";
 import { sessionCookie } from "./session-cookie";
+import { cachedRead, clearReadCache, invalidateReadCache } from "./read-cache";
+
+// Explicit opt-in for read-only panels; never cache sends or subscription checks.
+export async function cachedApi<T>(path: string, workspaceId: string | null | undefined, options: { onCached?: (value: T) => void; freshMs?: number } = {}): Promise<T> {
+  const { data } = await supabase.auth.getSession();
+  if (!data.session || !workspaceId) return api<T>(path, workspaceId);
+  return cachedRead(JSON.stringify([data.session.user.id, workspaceId, path]), () => api<T>(path, workspaceId), options);
+}
 
 export class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
 
@@ -33,6 +41,8 @@ export async function api<T>(path: string, workspaceId?: string | null, init: { 
   if (!path.startsWith("/api/") || path.includes("..") || path.includes("\\")) throw new Error("Invalid API path.");
   const { data, error } = await supabase.auth.getSession();
   if (error || !data.session) throw new ApiError("Please sign in again.", 401);
+  const mutating = Boolean(init.method && init.method !== "GET");
+  if (mutating) invalidateReadCache(data.session.user.id, workspaceId, path);
   const controller = new AbortController();
   const abort = () => controller.abort();
   init.signal?.addEventListener("abort", abort);
@@ -75,9 +85,10 @@ export async function api<T>(path: string, workspaceId?: string | null, init: { 
 
     let result;
     try { result = await response.json(); } catch { throw new ApiError("TENH returned an unexpected response. Check the API address and deployment.", response.status); }
+    if ([401, 403, 404].includes(response.status)) clearReadCache();
     if (!response.ok || result.success === false) throw new ApiError(describeError(result.error ?? result, "Request failed. Please try again."), response.status);
     return result as T;
-  } finally { clearTimeout(timeout); init.signal?.removeEventListener("abort", abort); }
+  } finally { if (mutating) invalidateReadCache(data.session.user.id, workspaceId, path); clearTimeout(timeout); init.signal?.removeEventListener("abort", abort); }
 }
 
 /*

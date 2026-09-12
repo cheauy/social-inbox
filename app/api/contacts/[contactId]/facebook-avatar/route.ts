@@ -108,12 +108,12 @@ export async function GET(
     data,
     error,
   } =
-    await loadStoredAvatar(FACEBOOK_AVATAR_BUCKET, storagePath);
+    await loadStoredAvatar(FACEBOOK_AVATAR_BUCKET, storagePath, _request.nextUrl.searchParams.get("format") === "jpeg" ? "jpeg" : "webp");
 
   if (error || !data) {
     const repaired = await repairFacebookAvatar(authResult.member.business_id, contact.id);
     if (repaired) {
-      ({ data, error } = await loadStoredAvatar(FACEBOOK_AVATAR_BUCKET, storagePath));
+      ({ data, error } = await loadStoredAvatar(FACEBOOK_AVATAR_BUCKET, storagePath, _request.nextUrl.searchParams.get("format") === "jpeg" ? "jpeg" : "webp"));
     }
   }
 

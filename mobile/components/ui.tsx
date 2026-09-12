@@ -1,4 +1,5 @@
 import { AuthImage } from "./auth-image";
+import { customerPhotoCandidates } from "../lib/customer-photo";
 import React from "react";
 import { ActivityIndicator, Image, Keyboard, KeyboardAvoidingView, Modal, Platform as RNPlatform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -140,10 +141,14 @@ export function TagChip({
 export function Button({ title, onPress, busy = false, secondary = false, disabled = false }: { title: string; onPress: () => void; busy?: boolean; secondary?: boolean; disabled?: boolean }) {
   return <Pressable accessibilityRole="button" disabled={disabled || busy} onPress={onPress} style={({ pressed }) => [styles.button, secondary && { backgroundColor: colors.pale }, { opacity: disabled || pressed ? 0.55 : 1 }]}>{busy ? <ActivityIndicator color={secondary ? colors.blue : "white"} /> : <Text style={{ fontWeight: "700", color: secondary ? colors.blue : "white", fontSize: 16 }}>{title}</Text>}</Pressable>;
 }
-export function Avatar({ name, uri, size = 48 }: { name?: string | null; uri?: string | null; size?: number }) {
-  const [failed, setFailed] = React.useState(false);
-  React.useEffect(() => setFailed(false), [uri]);
-  return uri && !failed ? <AuthImage uri={uri} onError={() => setFailed(true)} style={{ width: size, height: size, borderRadius: size / 2 }} /> : <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.pale, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.blue, fontWeight: "700", fontSize: size * 0.36 }}>{Array.from(name?.trim() || "?")[0]}</Text></View>;
+export function Avatar({ name, uri, size = 48, contactId, platform }: { name?: string | null; uri?: string | null; size?: number; contactId?: string | null; platform?: string | null }) {
+  const candidates = customerPhotoCandidates(uri, contactId, platform);
+  return <AvatarImage key={JSON.stringify([uri, contactId, platform])} name={name} candidates={candidates} size={size} />;
+}
+function AvatarImage({ name, candidates, size }: { name?: string | null; candidates: string[]; size: number }) {
+  const [failed, setFailed] = React.useState<string[]>([]);
+  const uri = candidates.find(value => !failed.includes(value));
+  return uri ? <AuthImage uri={uri} onError={() => setFailed(values => values.includes(uri) ? values : [...values, uri])} style={{ width: size, height: size, borderRadius: size / 2 }} /> : <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.pale, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.blue, fontWeight: "700", fontSize: size * 0.36 }}>{Array.from(name?.trim() || "?")[0]}</Text></View>;
 }
 export const channel = (c: InboxConversation) => c.social_account?.platform === "telegram" ? "Telegram" : c.source_type === "comment" ? "Facebook Comments" : "Messenger";
 
@@ -202,7 +207,7 @@ export function ChannelAvatar({ conversation, size = 48 }: { conversation: Inbox
   const badge = Math.max(16, Math.round(size * 0.36));
   return (
     <View style={{ width: size, height: size }}>
-      <Avatar name={conversation.contact?.full_name} uri={conversation.contact?.profile_picture_url} size={size} />
+      <Avatar name={conversation.contact?.full_name} uri={conversation.contact?.profile_picture_url} contactId={conversation.contact?.id} platform={conversation.social_account?.platform} size={size} />
       <View style={{ position: "absolute", right: -1, bottom: -1, width: badge, height: badge, borderRadius: badge / 2, backgroundColor: mark.logo ? "white" : mark.tint, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "white" }}>
         {mark.logo ? (
           <Image source={mark.logo} style={{ width: badge - 2, height: badge - 2 }} resizeMode="contain" />

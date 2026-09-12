@@ -12,7 +12,7 @@ function routeHarness({authorized=true,photo=true,repaired=true}={}){
  if(name.includes('supabase/admin'))return {supabaseAdmin:{from:()=>chain,storage:{from:()=>({download:async()=>{downloads++;return photo||downloads>1?{data:image,error:null}:{data:null,error:{message:'missing'}}}})}}};
  throw Error(name);
  }});
- return {run:()=>exports.GET({}, {params:Promise.resolve({contactId:'contact'})}),counts:()=>({downloads,repairs})};
+ return {run:()=>exports.GET({nextUrl:new URL('https://app.test/api/avatar')}, {params:Promise.resolve({contactId:'contact'})}),counts:()=>({downloads,repairs})};
 }
 test('stored photo returns immediately without Facebook repair',async()=>{const h=routeHarness();const r=await h.run();assert.equal(r.status,200);assert.equal(await r.text(),'photo');assert.deepEqual(h.counts(),{downloads:1,repairs:0});});
 test('missing photo repairs then serves image in the same request',async()=>{const h=routeHarness({photo:false});const r=await h.run();assert.equal(r.status,200);assert.equal(await r.text(),'photo');assert.deepEqual(h.counts(),{downloads:2,repairs:1});});

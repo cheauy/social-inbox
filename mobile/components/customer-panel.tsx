@@ -1074,6 +1074,7 @@ export function CustomerPanel({
   detail,
   loading,
   channelName,
+  platform,
   channelIcon,
   status,
   pinned,
@@ -1097,6 +1098,7 @@ export function CustomerPanel({
   detail: CustomerDetail | null;
   loading: boolean;
   channelName: string | null;
+  platform?: string | null;
   channelIcon: IconName;
   status: ConversationStatus | null;
   pinned: boolean;
@@ -1403,6 +1405,8 @@ export function CustomerPanel({
                   <Avatar
                     name={customer.fullName}
                     uri={customer.profilePictureUrl}
+                    contactId={customer.id}
+                    platform={platform}
                     size={54}
                   />
 

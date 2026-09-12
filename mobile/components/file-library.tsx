@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { VideoView, useVideoPlayer } from "expo-video";
+import { CachedVideo } from "./cached-video";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -155,24 +155,7 @@ function MediaViewer({
 }
 
 function ViewerVideo({ uri }: { uri: string }) {
-  /*
-   * Resolved the same way a picture is: an attachment proxied through TENH
-   * needs the origin and the session cookie, or the player gets a 401 and
-   * shows a black rectangle.
-   */
-  const resolve = useMediaSource();
-  const player = useVideoPlayer(resolve(uri) ?? uri, (instance) => {
-    instance.play();
-  });
-
-  return (
-    <VideoView
-      player={player}
-      nativeControls
-      contentFit="contain"
-      style={{ width: "100%", height: "100%" }}
-    />
-  );
+  return <CachedVideo uri={uri} style={{ width: "100%", height: "100%" }} />;
 }
 /*
  * Everything a customer has sent, in the three shapes people look for it in.

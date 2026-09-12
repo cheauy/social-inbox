@@ -1,3 +1,4 @@
+import { AuthImage } from "../../components/auth-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
@@ -99,8 +100,8 @@ export default function Display() {
                 The wallpaper itself, at the size a bubble sits on. A name
                 like "Theme 3" tells nobody what they are choosing.
               */}
-              <Image
-                source={{ uri: option.uri }}
+              <AuthImage
+                uri={option.uri}
                 resizeMode="cover"
                 style={{
                   width: 46,
