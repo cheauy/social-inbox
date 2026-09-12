@@ -1241,9 +1241,18 @@ async function profileScript(tabId, options, action) {
 async function loadProfileScripts(tabId) {
   await chrome.scripting.executeScript({ target: { tabId }, files: ["src/facebook-selectors.js", "src/facebook-profile-resolver.js"] });
 }
+function profileLookupDetails(result, context) {
+  const count = value => typeof value === "number" && Number.isFinite(value) ? Math.min(1000, Math.max(0, Math.floor(value))) : null;
+  // Return only approved counters and the server-authorized name. No page HTML,
+  // message content, profile URLs, cookies, or arbitrary script fields.
+  return { expectedName: context.customerName.slice(0, 200),
+    headingRegions: count(result?.diagnostics?.headingRegions), cardRegions: count(result?.diagnostics?.cardRegions),
+    profileActions: count(result?.diagnostics?.profileActions), linkActions: count(result?.diagnostics?.linkActions) };
+}
 async function readStableCustomerLink(tabId, context, owned) {
   const deadline = Date.now() + 22000;
   let previous = null, injected = false, reason = "profile_link_not_rendered", missingReads = 0, revealAttempted = false;
+  let lookupDetails = profileLookupDetails(null, context);
   while (Date.now() < deadline) {
     const tab = await chrome.tabs.get(tabId);
     // A new Chrome tab can report a blank url + pendingUrl while loading.
@@ -1263,13 +1272,14 @@ async function readStableCustomerLink(tabId, context, owned) {
       try {
         if (!injected) { await loadProfileScripts(tabId); injected = true; }
         const result = await profileScript(tabId, context, "read");
+        lookupDetails = profileLookupDetails(result, context);
         const url = safePublicProfile(result.profileUrl, context);
         if (result.found && result.pageId === context.pageId && result.matchedThreadId === context.threadId && url) {
           if (previous === url) return { profileUrl: url };
           previous = url; missingReads = 0;
         } else {
           previous = null; reason = result.reason || "profile_link_not_rendered"; missingReads++;
-          if (["ambiguous_profile", "facebook_sign_in_required", "conversation_mismatch", "facebook_no_contact_card", "facebook_inbox_load_failed"].includes(reason)) return { reason };
+          if (["ambiguous_profile", "facebook_sign_in_required", "conversation_mismatch", "facebook_no_contact_card", "facebook_inbox_load_failed"].includes(reason)) return { reason, lookupDetails };
           if (result.canReveal === true && missingReads >= 2 && !revealAttempted) {
             // Existing tabs remain read-only. Reveal only one matching name
             // control, once, inside a disposable tab created for this click.
@@ -1284,7 +1294,7 @@ async function readStableCustomerLink(tabId, context, owned) {
     }
     await profilePause();
   }
-  return { reason };
+  return { reason, lookupDetails };
 }
 async function closeOwnedProfileTab(tabId, matches) {
   if (!tabId) return;
@@ -1316,7 +1326,7 @@ async function openFacebookCustomerProfile(options, sender) {
       lookupTabId = tab.id;
       found = await readStableCustomerLink(tab.id, context, true);
     }
-    if (!found.profileUrl) return { opened: false, reason: found.reason };
+    if (!found.profileUrl) return { opened: false, reason: found.reason, lookupDetails: found.lookupDetails };
     profileUrl = found.profileUrl;
     // Verify that Facebook loads the public profile, not an unavailable page.
     const preview = await chrome.tabs.create({ url: profileUrl, active: false });

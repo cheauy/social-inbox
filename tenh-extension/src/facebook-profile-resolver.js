@@ -99,18 +99,73 @@ globalThis.TenhFacebookProfileResolver = (() => {
     return [...regions];
   }
 
+  const profileLabel = label => /^(?:view (?:facebook )?profile|facebook profile|មើលប្រវត្តិរូប)$/.test(label);
+  const labelsFor = element => [element.textContent, element.getAttribute("aria-label"), element.getAttribute("title"), element.querySelector('img')?.alt].map(normalize).filter(Boolean);
+  const cardExcluded = `${excluded}, [role="row"], [role="listitem"], [role="listbox"], [aria-selected], [data-message-id]`;
+
+  function hasVisibleName(root, action, wanted) {
+    for (const element of root.querySelectorAll('span, div, p, strong, b, bdi, h1, h2, h3, [role="heading"]')) {
+      if (!visible(element) || element.closest(cardExcluded) || element.contains(action) || action.contains(element)) continue;
+      // Names may be split across inline elements. Compare complete visible
+      // text, retaining words and accents; never use a partial/fuzzy name.
+      const parts = [], walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.parentElement && visible(node.parentElement) && !node.parentElement.closest(cardExcluded)) parts.push(node.nodeValue || "");
+      }
+      if ([parts.join(""), parts.join(" ")].some(text => normalize(text) === wanted)) return true;
+    }
+    return false;
+  }
+
+  function inCustomerPanel(element) {
+    if (element.closest('aside, [role="complementary"], [role="dialog"]')) return true;
+    // Some Suite layouts use plain divs for the right-hand contact panel.
+    // Require a tall, narrow panel on the right, outside message content.
+    for (let node = element, depth = 0; node && depth < 10; node = node.parentElement, depth++) {
+      if (node.matches('body, main, [role="main"]') || node.closest(cardExcluded) ||
+          node.querySelector('[role="log"], [role="feed"], [contenteditable], [data-message-id]')) break;
+      const box = node.getBoundingClientRect();
+      if (visible(node) && box.left >= window.innerWidth * 0.6 && box.width >= 180 &&
+          box.width <= window.innerWidth * 0.4 && box.right <= window.innerWidth + 2 &&
+          box.height >= Math.min(300, window.innerHeight * 0.4)) return true;
+    }
+    return false;
+  }
+
+  function profileCardRegions(customerName) {
+    const wanted = normalize(customerName), regions = new Set();
+    const actions = [...document.querySelectorAll('a[href], [role="link"], button, [role="button"]')]
+      .filter(action => visible(action) && !action.closest(cardExcluded) && labelsFor(action).some(profileLabel));
+    let unlinkedCards = 0;
+    if (wanted) for (const action of actions) {
+      for (let node = action.parentElement, depth = 0; node && depth < 10; node = node.parentElement, depth++) {
+        if (node.matches('body, main, [role="main"], form') || node.closest(cardExcluded) ||
+            node.querySelector(`${cardExcluded}, [contenteditable]`) || normalize(node.textContent).length > 600) break;
+        if (!hasVisibleName(node, action, wanted) || ![...node.querySelectorAll('img, svg image, [role="img"]')].some(visible) || !inCustomerPanel(node)) continue;
+        regions.add(node);
+        if (!action.hasAttribute("href")) unlinkedCards++;
+        break;
+      }
+    }
+    return { regions: [...regions], unlinkedCards, profileActions: actions.length,
+      linkActions: actions.filter(action => action.hasAttribute("href")).length };
+  }
+
   function readCurrent(options = {}) {
     const match = context(options);
     if (match.reason) return match;
-    const urls = new Set(), regions = identityRegions(options.customerName);
+    const headings = identityRegions(options.customerName), cards = profileCardRegions(options.customerName);
+    const urls = new Set(), regions = [...new Set([...headings, ...cards.regions])];
+    const diagnostics = { headingRegions: headings.length, cardRegions: cards.regions.length,
+      profileActions: cards.profileActions, linkActions: cards.linkActions };
     let unrecognizedLabel = false, unsupportedLink = false;
     for (const region of regions) {
-      for (const anchor of region.querySelectorAll('a[href]')) {
+      for (const anchor of region.querySelectorAll('a[href], [role="link"][href]')) {
         if (!visible(anchor) || anchor.closest(excluded)) continue;
         // Check each label independently: whitespace or a different visible
         // caption must not mask a matching accessible label on the same link.
-        const labels = [anchor.textContent, anchor.getAttribute("aria-label"), anchor.getAttribute("title"), anchor.querySelector('img')?.alt].map(normalize).filter(Boolean);
-        const labelled = labels.some(label => label === normalize(options.customerName) || /^(?:view (?:facebook )?profile|facebook profile|មើលប្រវត្តិរូប)$/.test(label));
+        const labelled = labelsFor(anchor).some(label => label === normalize(options.customerName) || profileLabel(label));
         const url = selectors.profileCandidateUrl(anchor.getAttribute("href"));
         if (!url) { if (labelled) unsupportedLink = true; continue; }
         if (!labelled) { unrecognizedLabel = true; continue; }
@@ -119,10 +174,10 @@ globalThis.TenhFacebookProfileResolver = (() => {
         urls.add(url);
       }
     }
-    if (urls.size > 1) return { ...match, reason: "ambiguous_profile" };
-    if (!urls.size) return { ...match, canReveal: !unsupportedLink && !unrecognizedLabel && revealControls(options).length === 1,
+    if (urls.size > 1) return { ...match, diagnostics, reason: "ambiguous_profile" };
+    if (!urls.size) return { ...match, diagnostics, canReveal: !unsupportedLink && !unrecognizedLabel && !cards.unlinkedCards && revealControls(options).length === 1,
       reason: !regions.length ? "profile_customer_heading_missing" : unsupportedLink ? "profile_link_format_unsupported"
-        : unrecognizedLabel ? "profile_link_label_unrecognized" : "profile_link_not_rendered" };
+        : unrecognizedLabel ? "profile_link_label_unrecognized" : cards.unlinkedCards ? "profile_action_without_link" : "profile_link_not_rendered" };
     return { ...match, found: true, profileUrl: [...urls][0] };
   }
 

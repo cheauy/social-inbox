@@ -29,6 +29,13 @@ export type FacebookProfileOpenResult = {
   openToken?: string;
   conversationOpened?: boolean;
   reason?: string;
+  lookupDetails?: {
+    expectedName: string;
+    headingRegions: number | null;
+    cardRegions: number | null;
+    profileActions: number | null;
+    linkActions: number | null;
+  };
 };
 
 export type ReplyAvailability = {

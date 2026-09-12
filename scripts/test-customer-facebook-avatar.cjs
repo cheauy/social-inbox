@@ -9,9 +9,10 @@ const profile='https://www.facebook.com/profile.php?id=61555135812581';
 const result={...context,resolved:true,verified:true,profileUrl:profile,openToken:'ticket'};
 function harness(config={}){
  let answer,current={id:'conversation',business_id:'workspace',source_type:'messenger',social_account:{platform:'facebook',platform_account_id:'123456'},contact:{id:'contact',platform_user_id:'987654',full_name:'Customer',facebook_profile_id:config.savedId}};
- const pending=new Promise(resolve=>answer=resolve),lookups=[],opens=[],patches=[],states=[],refs=[],effects=[];
+ const pending=new Promise(resolve=>answer=resolve),lookups=[],opens=[],patches=[],states=[],refs=[],effects=[],clipboard=[];
  let si=0,ri=0,ei=0;const exports={};
  vm.runInNewContext(code,{exports,URL,AbortController,AbortSignal,
+ navigator:{clipboard:{writeText:async text=>{clipboard.push(text);}}},
  fetch:async(url,init={})=>{
    if(init.method==='PATCH'){patches.push({url,body:JSON.parse(init.body)});return {ok:!config.saveFailure,json:async()=>({success:!config.saveFailure})};}
    return {ok:true,json:async()=>({success:true,profileUrl:config.savedUrl??null,updatedAt:'original-revision'})};
@@ -23,15 +24,34 @@ function harness(config={}){
    if(name==='@/components/customer-avatar')return {CustomerAvatar:()=>null};
    if(name==='@/lib/facebook/customer-profile-url')return urls;
    if(name==='@/lib/facebook/profile-lookup-error')return {profileLookupError:r=>r};
-   if(name==='@/lib/extension/use-companion')return {useCompanion:()=>({installed:config.installed!==false,version:config.version||'1.2.25',
+   if(name==='@/lib/extension/use-companion')return {useCompanion:()=>({installed:config.installed!==false,version:config.version||'1.2.26',
      openFacebookProfile:options=>{lookups.push(options);return pending},
      openResolvedFacebookProfile:async(token,ctx)=>{opens.push({token,ctx});return config.openResult||{...context,opened:true,verified:true,profileUrl:profile};}})};
    throw Error(name);
  }});
  let tree;const render=()=>{si=ri=ei=0;return tree=exports.CustomerFacebookAvatar({conversation:current})};render();
- return {answer,lookups,opens,patches,render,tree:()=>tree,click:()=>tree.props.children[0].props.onClick(),
+ return {answer,lookups,opens,patches,clipboard,render,tree:()=>tree,click:()=>tree.props.children[0].props.onClick(),
    unmount:()=>effects.forEach(e=>e.cleanup?.()),switchTo:patch=>{current={...current,...patch};render();}};
 }
+function findElement(node,predicate){
+ if(Array.isArray(node)){for(const child of node){const found=findElement(child,predicate);if(found)return found;}return null;}
+ if(!node||typeof node!=='object')return null;
+ return predicate(node)?node:findElement(node.props?.children,predicate);
+}
+test('failed lookup details can be copied without including arbitrary extension fields',async()=>{
+ const h=harness();h.click();await tick();h.answer({reason:'profile_customer_heading_missing',token:'SECRET',
+  lookupDetails:{expectedName:'Facebook Customer',headingRegions:0,cardRegions:0,profileActions:1,linkActions:1,html:'PRIVATE_CHAT'}});await tick();
+ const button=findElement(h.render(),n=>n.type==='button'&&n.props.children==='Copy lookup details');assert.ok(button);
+ button.props.onClick();await tick();const report=JSON.parse(h.clipboard[0]);
+ assert.equal(report.tenhCustomerName,'Customer');assert.equal(report.expectedFacebookName,'Facebook Customer');assert.equal(report.profileActions,1);
+ assert.ok(!h.clipboard[0].includes('SECRET'));assert.ok(!h.clipboard[0].includes('PRIVATE_CHAT'));
+ assert.ok(findElement(h.render(),n=>n.type==='button'&&n.props.children==='Copied'));assert.equal(h.opens.length,0);
+});
+test('switching conversations clears the previous customer lookup details',async()=>{
+ const h=harness();h.click();await tick();h.answer({reason:'profile_customer_heading_missing',lookupDetails:{expectedName:'Previous Person'}});await tick();
+ assert.ok(findElement(h.render(),n=>n.type==='pre'));h.switchTo({id:'other'});
+ assert.equal(findElement(h.render(),n=>n.type==='pre'),null);
+});
 test('one click resolves, opens verified profile, saves for team with original revision',async()=>{
  const h=harness();h.click();await tick();assert.equal(h.lookups.length,1);h.answer(result);await tick();
  assert.equal(h.opens.length,1);assert.deepEqual(JSON.parse(JSON.stringify(h.opens[0].ctx)),context);
@@ -53,7 +73,7 @@ test('saved link is direct anchor, with no extension required',async()=>{
  assert.equal(a.type,'a');assert.equal(a.props.href,'https://www.facebook.com/customer.test');assert.equal(a.props.target,'_blank');assert.equal(h.lookups.length,0);
 });
 test('old or absent extension produces update instruction immediately',async()=>{
- for(const config of [{installed:false},{version:'1.2.24'}]){const h=harness(config);h.click();await tick();assert.equal(h.lookups.length,0);assert.ok(JSON.stringify(h.render()).includes('1.2.25'));}
+ for(const config of [{installed:false},{version:'1.2.25'}]){const h=harness(config);h.click();await tick();assert.equal(h.lookups.length,0);assert.ok(JSON.stringify(h.render()).includes('1.2.26'));}
 });
 test('comment conversation cannot masquerade as Messenger lookup',async()=>{
  const h=harness();h.switchTo({source_type:'facebook_comment'});h.click();await tick();assert.equal(h.lookups.length,0);assert.ok(JSON.stringify(h.render()).includes('profile_messenger_required'));

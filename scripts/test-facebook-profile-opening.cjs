@@ -68,6 +68,18 @@ test('customer card: mismatch or unavailable contact stops before any reveal',as
   assert.equal(r.reason,reason);assert.ok(h.read.every(x=>x.action==='read'));assert.equal(r.openToken,undefined);
  }
 });
+test('lookup diagnostics keep the authorized name and bounded counts only',async()=>{
+ const h=harness({result:{reason:'profile_customer_heading_missing',customerName:'Wrong script name',
+  diagnostics:{headingRegions:0,cardRegions:0,profileActions:2,linkActions:Infinity,rawHtml:'PRIVATE_CHAT',token:'SECRET'}}}),r=await lookup(h);
+ assert.deepEqual(JSON.parse(JSON.stringify(r.lookupDetails)),{expectedName:'Customer',headingRegions:0,cardRegions:0,profileActions:2,linkActions:null});
+ assert.ok(!JSON.stringify(r).includes('SECRET'));assert.ok(!JSON.stringify(r).includes('PRIVATE_CHAT'));
+ assert.equal(r.openToken,undefined);assert.equal(h.removed.length,1);
+});
+test('lookup diagnostics reset between customers and do not affect a successful next lookup',async()=>{
+ const h=harness({result:{reason:'profile_customer_heading_missing',diagnostics:{headingRegions:0,cardRegions:0,profileActions:1,linkActions:1}}});
+ assert.equal((await lookup(h)).lookupDetails.expectedName,'Customer');
+ const next=harness();const r=await lookup(next);assert.equal(r.resolved,true);assert.equal(r.lookupDetails,undefined);assert.equal((await open(next,r)).opened,true);
+});
 test('Page inbox: worker accepts actual provider path without converting its ID to a PSID',async()=>{
  const f=pageInboxFixture,conversationLink='https://www.facebook.com'+f.response.data[0].link;
  const ctx={...options,pageId:f.pageId,threadId:f.psid};

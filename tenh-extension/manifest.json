@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TENH v1",
-  "version": "1.2.25",
+  "version": "1.2.26",
   "description": "Optional TENH companion: Facebook conversation shortcuts, multi-Page tools, Quick Replies, Tags and live sync.",
   "minimum_chrome_version": "116",
   "permissions": [
