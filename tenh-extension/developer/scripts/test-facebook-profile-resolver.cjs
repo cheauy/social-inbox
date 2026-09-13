@@ -151,3 +151,61 @@ test('matching name in chat content, ambiguous headers or missing conversation p
   const h=load(html);assert.notEqual(h.w.TenhFacebookProfileResolver.readConversation(opts).found,true);h.close();
  }
 });
+
+function layoutConversationControls(h) {
+ const rect=(left,top,width,height)=>({left,top,width,height,right:left+width,bottom:top+height});
+ for(const el of h.w.document.querySelectorAll('button, [role="button"]')) el.getBoundingClientRect=()=>rect(330,90,200,48);
+ for(const el of h.w.document.querySelectorAll('[contenteditable]')) el.getBoundingClientRect=()=>rect(320,600,450,60);
+}
+const avatarHeader='<div role="button" aria-expanded="false"><img alt=""><span>Test Customer</span></div>';
+const replyComposer='<div role="textbox" contenteditable="true" aria-label="Reply"></div>';
+test('avatar/name button in a generic chat header can verify a direct provider route',()=>{
+ const h=load(avatarHeader+replyComposer);layoutConversationControls(h);
+ const r=h.w.TenhFacebookProfileResolver.readConversation(opts);
+ assert.equal(r.found,true);assert.equal(r.navigationIdentity,'header:test customer');assert.equal(r.diagnostics.headerCandidates,1);
+ assert.equal(r.diagnostics.matchingHeaders,1);assert.equal(r.diagnostics.composerFound,true);h.close();
+});
+test('matching avatar header can reveal a customer card only in a hidden tab',()=>{
+ const h=load(avatarHeader+replyComposer);layoutConversationControls(h);
+ let clicks=0;h.w.document.querySelector('[role="button"]').onclick=()=>{clicks++;h.w.document.body.innerHTML=fixture();};
+ assert.equal(h.read().canReveal,true);assert.equal(h.w.TenhFacebookProfileResolver.reveal(opts).reason,'facebook_tab_in_use');
+ Object.defineProperty(h.w.document,'visibilityState',{value:'hidden',configurable:true});
+ assert.equal(h.w.TenhFacebookProfileResolver.reveal(opts).revealed,true);assert.equal(clicks,1);assert.equal(h.read().profileUrl,profile);h.close();
+});
+test('avatar header alone cannot authenticate a legacy redirect',()=>{
+ const h=load(avatarHeader+replyComposer);layoutConversationControls(h);
+ const r=h.w.TenhFacebookProfileResolver.readConversation({...opts,conversationLink:'https://www.facebook.com/123456/inbox/888888/?section=messages',loadedConversationLink:base});
+ assert.notEqual(r.found,true);assert.equal(r.diagnostics.routeKind,'redirected');h.close();
+});
+test('visible composer is used when a hidden draft clone appears first',()=>{
+ const h=load('<div hidden role="textbox" contenteditable="true" aria-label="Reply"></div><header><h2>Test Customer</h2></header>'+replyComposer);
+ assert.equal(h.w.TenhFacebookProfileResolver.readConversation(opts).found,true);h.close();
+});
+test('a matching stale contact card cannot override the current chat customer',()=>{
+ const h=load(fixture()+'<header><h2>Different Customer</h2></header>'+replyComposer);
+ const r=h.w.TenhFacebookProfileResolver.readConversation(opts);assert.equal(r.found,false);assert.equal(r.reason,'facebook_customer_mismatch');
+ assert.equal(r.profileUrl,undefined);h.close();
+});
+test('avatar buttons in lists, message content and contact panels are not chat headers',()=>{
+ for(const parent of ['nav','div role="row"','div role="listitem"','div role="log"','article','div data-message-id="m1"','aside','div role="dialog"']){
+  const tag=parent.split(' ')[0],h=load(`<${parent}>${avatarHeader}</${tag}>`+replyComposer);layoutConversationControls(h);
+  const r=h.w.TenhFacebookProfileResolver.readConversation(opts);assert.notEqual(r.found,true,parent);assert.equal(r.diagnostics.headerCandidates,0,parent);h.close();
+ }
+});
+test('generic controls without an avatar, outside the composer column or below the header are rejected',()=>{
+ for(const variant of ['no_avatar','left_column','message_area','ambiguous']){
+  const h=load((variant==='no_avatar'?avatarHeader.replace('<img alt="">',''):avatarHeader)+(variant==='ambiguous'?avatarHeader:'')+replyComposer);
+  layoutConversationControls(h);const button=h.w.document.querySelector('[role="button"]');
+  if(variant==='left_column')button.getBoundingClientRect=()=>({left:10,right:200,top:90,bottom:138,width:190,height:48});
+  if(variant==='message_area')button.getBoundingClientRect=()=>({left:330,right:530,top:400,bottom:448,width:200,height:48});
+  assert.notEqual(h.w.TenhFacebookProfileResolver.readConversation(opts).found,true,variant);h.close();
+ }
+});
+test('missing-heading diagnostics distinguish an empty render from a known wrong customer',()=>{
+ const h=load('');Object.defineProperty(h.w.document,'visibilityState',{value:'hidden',configurable:true});
+ let r=h.w.TenhFacebookProfileResolver.readConversation(opts);assert.equal(r.reason,'profile_customer_heading_missing');
+ assert.equal(r.diagnostics.visibility,'hidden');assert.equal(r.diagnostics.headerCandidates,0);assert.equal(r.diagnostics.composerFound,false);
+ h.w.document.body.innerHTML='<header><h2>Other Customer</h2></header>'+replyComposer;
+ r=h.w.TenhFacebookProfileResolver.readConversation(opts);assert.equal(r.reason,'facebook_customer_mismatch');
+ assert.equal(r.diagnostics.matchingHeaders,0);assert.equal(r.diagnostics.headerCandidates,1);h.close();
+});

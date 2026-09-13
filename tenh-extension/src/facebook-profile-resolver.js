@@ -181,17 +181,46 @@ globalThis.TenhFacebookProfileResolver = (() => {
     if (!urls.size) return { ...match, diagnostics, canReveal: !unsupportedLink && !unrecognizedLabel && !cards.unlinkedCards && revealControls(options).length === 1,
       reason: !regions.length ? "profile_customer_heading_missing" : unsupportedLink ? "profile_link_format_unsupported"
         : unrecognizedLabel ? "profile_link_label_unrecognized" : cards.unlinkedCards ? "profile_action_without_link" : "profile_link_not_rendered" };
-    return { ...match, found: true, profileUrl: [...urls][0] };
+    return { ...match, diagnostics, found: true, profileUrl: [...urls][0] };
+  }
+
+  function visibleConversationComposer() {
+    // A hidden draft/composer clone must not mask the visible conversation.
+    const inputs = [...document.querySelectorAll('[contenteditable="true"][role="textbox"], [role="textbox"][contenteditable], textarea[aria-label]')]
+      .filter(el => visible(el) && !el.closest('nav, [role="navigation"], aside, [role="complementary"], [role="log"], [role="feed"]'));
+    const labelled = inputs.filter(el => /message|reply|^aa$|សារ|ឆ្លើយ/i.test(el.getAttribute('aria-label') || ''));
+    return labelled.length === 1 ? labelled[0] : inputs.length === 1 ? inputs[0] : null;
+  }
+
+  function conversationHeaders(composer) {
+    const nodes = [...document.querySelectorAll('header h1, header h2, header h3, header [role="heading"]')]
+      .filter(el => visible(el) && !el.closest(`${cardExcluded}, aside, [role="complementary"]`));
+    // Some Suite layouts render the customer as an avatar/name button rather
+    // than an HTML heading. Restrict that fallback to a compact control above
+    // and aligned with the visible composer, outside lists and message content.
+    if (composer) for (const control of document.querySelectorAll('button, [role="button"], a[href]')) {
+      if (!visible(control) || control.closest(`${cardExcluded}, aside, [role="complementary"], [role="dialog"]`) ||
+          control.querySelector('h1, h2, h3, [role="heading"]') || nodes.some(node => node.contains(control))) continue;
+      const label = normalize(control.getAttribute('aria-label') || control.textContent);
+      if (!label || label.length > 200 || ![...control.querySelectorAll('img, svg image, [role="img"]')].some(visible)) continue;
+      const box = control.getBoundingClientRect(), input = composer.getBoundingClientRect();
+      if (![box.bottom, box.right, input.top, input.left, input.right].every(Number.isFinite) ||
+          box.height > 100 || box.top < 0 || box.top > window.innerHeight * 0.35 || box.bottom > input.top ||
+          box.left < input.left - 24 || box.right > input.right + 24) continue;
+      nodes.push(control);
+    }
+    return nodes.map(node => ({ node, name: normalize(node.getAttribute('aria-label') || node.textContent) }));
   }
 
   function revealControls(options) {
     const wanted = normalize(options.customerName);
     if (!wanted) return [];
+    const headerControls = new Set(conversationHeaders(visibleConversationComposer()).map(header => header.node));
     return [...document.querySelectorAll('button, [role="button"]')].filter(control => {
-      if (!visible(control) || control.closest(`${excluded}, a[href], [role="row"], [role="listbox"], [aria-selected]`)) return false;
+      if (!visible(control) || control.closest(`${cardExcluded}, a[href]`)) return false;
       if (control.matches(':disabled, [aria-disabled="true"], [aria-expanded="true"]')) return false;
       const labels = [control.getAttribute("aria-label"), control.textContent].map(normalize);
-      return labels.includes(wanted) && Boolean(control.querySelector('h1, h2, h3, [role="heading"]') || control.closest('header'));
+      return labels.includes(wanted) && Boolean(control.querySelector('h1, h2, h3, [role="heading"]') || control.closest('header') || headerControls.has(control));
     });
   }
 
@@ -206,5 +235,31 @@ globalThis.TenhFacebookProfileResolver = (() => {
     controls[0].click();
     return { ...match, revealed: true };
   }
-  return { readCurrent, reveal };
+  function readConversation(options = {}) {
+    const result = readCurrent(options);
+    const wanted = normalize(options.customerName), composer = visibleConversationComposer();
+    const headers = conversationHeaders(composer);
+    const provider = profileInboxRoute(options.conversationLink, options.pageId);
+    const actual = profileInboxRoute(window.location.href, options.pageId);
+    const diagnostics = { ...result.diagnostics, visibility: document.visibilityState, readyState: document.readyState,
+      headerCandidates: headers.length, matchingHeaders: headers.filter(header => header.name === wanted).length,
+      composerFound: Boolean(composer), routeKind: provider && actual ? (provider.key === actual.key ? 'direct' : 'redirected') : 'unrecognized' };
+    const output = { ...result, diagnostics };
+    // A stale matching contact card must not override a different chat header.
+    if (result.pageId === options.pageId && result.matchedThreadId === options.threadId &&
+        composer && headers.length === 1 && wanted && headers[0].name !== wanted) {
+      return { ...output, found: false, canReveal: false, profileUrl: undefined, reason: 'facebook_customer_mismatch' };
+    }
+    if (result.found) return { ...output, navigationIdentity: result.profileUrl };
+    // Opening a chat does not always require a public-profile link. If the
+    // provider's exact route is retained, a matching chat header and composer
+    // can verify the rendered conversation even with the contact panel closed.
+    if (!provider || !actual || provider.key !== actual.key ||
+        !["profile_link_not_rendered", "profile_customer_heading_missing", "profile_action_without_link"].includes(result.reason)) return output;
+    const match = context(options);
+    if (match.reason) return match;
+    if (!wanted || headers.length !== 1 || headers[0].name !== wanted || !composer) return output;
+    return { ...match, diagnostics, found: true, navigationIdentity: `header:${wanted}` };
+  }
+  return { readCurrent, readConversation, reveal };
 })();

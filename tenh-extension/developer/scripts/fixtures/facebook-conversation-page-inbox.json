@@ -1,0 +1,19 @@
+{
+  "pageId": "203981939455120",
+  "psid": "26958541250498877",
+  "suiteUrl": "https://business.facebook.com/latest/inbox/all/?asset_id=203981939455120&mailbox_id=203981939455120&selected_item_id=100003773480379&thread_type=FB_MESSAGE",
+  "response": {
+    "data": [
+      {
+        "id": "t_971148639112183",
+        "link": "/203981939455120/inbox/1187032264483411/?section=messages",
+        "participants": {
+          "data": [
+            { "name": "Jame Jame", "id": "26958541250498877" },
+            { "name": "Apex Clothing", "id": "203981939455120" }
+          ]
+        }
+      }
+    ]
+  }
+}

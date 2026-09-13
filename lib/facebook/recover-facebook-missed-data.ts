@@ -9,6 +9,8 @@ import {
 } from "@/lib/facebook/process-comment";
 import { processFacebookMessage } from "@/lib/facebook/process-message";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { facebookRecoveryDay } from "@/lib/facebook/recovery-day";
+import { recoverFacebookToday } from "@/lib/facebook/recover-facebook-today";
 import type {
   FacebookAttachment,
   FacebookMessagingEvent,
@@ -147,65 +149,10 @@ function toUnixSeconds(value?: string | null) {
     : Math.floor(parsed / 1000);
 }
 
-/*
- * A day is the default in both modes.
- *
- * Reconnect used to fall back to a week, which meant any caller that forgot to
- * pass a window silently pulled seven days of conversations a shop had already
- * answered elsewhere. Both current callers pass one explicitly, so this was a
- * trap rather than a live fault -- but it is the kind that goes off later,
- * quietly, in the one place nobody re-reads.
- *
- * The ceiling stays a week so a longer window remains possible on purpose,
- * through FACEBOOK_RECONNECT_RECOVERY_LOOKBACK_MINUTES. It is no longer
- * possible by accident.
- */
-/*
- * Minutes elapsed since midnight, where the shop is.
- *
- * "Today" has to mean the customer's today. Cambodia runs UTC+7, so a UTC day
- * boundary would drop everything before 07:00 local into yesterday and a shop
- * opening at eight would find its whole morning missing. The analytics routes
- * already hit this and solved it the same way.
- *
- * The timezone is configurable but defaults to the market TENH serves, because
- * a wrong default here is invisible: the inbox simply looks emptier than it
- * should, with nothing to say why.
- */
-export function minutesSinceLocalMidnight(
-  timeZone = process.env.TENH_TIMEZONE?.trim() ||
-    "Asia/Phnom_Penh",
-) {
-  try {
-    const parts = new Intl.DateTimeFormat("en-GB", {
-      timeZone,
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).formatToParts(new Date());
-
-    const hour = Number(
-      parts.find((part) => part.type === "hour")?.value ?? "0",
-    );
-    const minute = Number(
-      parts.find((part) => part.type === "minute")?.value ?? "0",
-    );
-
-    if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
-      return 1_440;
-    }
-
-    /*
-     * Just after midnight this is a handful of minutes, which the caller's
-     * own floor widens back out. Reaching slightly into last night is the
-     * right way to be wrong -- a message sent at 23:58 is still worth
-     * answering at 00:05.
-     */
-    return hour * 60 + minute;
-  } catch {
-    /* An invalid timezone should not empty the inbox. */
-    return 1_440;
-  }
+/** Kept for callers that display how much of the local day has elapsed. */
+export function minutesSinceLocalMidnight(timeZone?: string) {
+  const now = Date.now();
+  return (now - facebookRecoveryDay(now, timeZone).startMs) / 60_000;
 }
 
 function clampLookbackMinutes(
@@ -307,32 +254,13 @@ async function recoverMessenger({
   cutoffMs: number;
   mode: FacebookRecoveryMode;
 }) {
-  const reconnect = mode === "reconnect";
-  /*
-   * The watchdog numbers were chosen for a three-hour window. Widening it to a
-   * day through FACEBOOK_RECOVERY_LOOKBACK_MINUTES multiplies what a single
-   * pass has to look at, and the old caps immediately started cutting it
-   * short -- one Page found 28 missing messages and stored 12. They are sized
-   * for the wider window now.
-   */
-  const conversationLimit = reconnect ? 100 : 60;
-  const messagesPerConversation = reconnect ? 100 : 50;
-  const maxMessageRefs = reconnect ? 1_500 : 600;
-
-  /*
-   * A ceiling high enough to finish an ordinary day, and a clock to stop it
-   * before the function does.
-   *
-   * Every message costs one sequential Graph call, so a fixed count is really
-   * a bet on how fast Meta answers today. 250 was a safe bet and a low one: a
-   * Page taking three hundred messages in a day connected and silently got
-   * part of it, with nothing to say so. Budgeting time instead lets a busy
-   * Page finish while a very busy one stops early and reports it, rather than
-   * either being cut short or running until the platform kills it mid-write.
-   */
-  const maxMessageDetails = reconnect ? 1_200 : 400;
-  const deadlineAt =
-    Date.now() + (reconnect ? 120_000 : 150_000);
+  // The existing short-window watchdog keeps its established limits.
+  // Initial/reconnect imports use the separate checkpointed today worker.
+  const conversationLimit = 60;
+  const messagesPerConversation = 50;
+  const maxMessageRefs = 600;
+  const maxMessageDetails = 400;
+  const deadlineAt = Date.now() + 150_000;
   let token = accessToken;
   let tokenRepaired = false;
 
@@ -559,9 +487,12 @@ async function recoverComments({
   mode: FacebookRecoveryMode;
 }) {
   const reconnect = mode === "reconnect";
-  const feedPostLimit = reconnect ? 100 : 20;
-  const maxPostIds = reconnect ? 100 : 50;
-  const maxCommentCandidates = reconnect ? 400 : 120;
+  const feedPostLimit = 20;
+  const maxPostIds = reconnect ? 20 : 50;
+  const maxCommentCandidates = reconnect ? 50 : 120;
+  const commentLimit = reconnect ? 50 : 100;
+  const deadlineAt = Date.now() + (reconnect ? 30_000 : Number.POSITIVE_INFINITY);
+  let stoppedEarly = false;
   let token = accessToken;
   let tokenRepaired = false;
 
@@ -603,6 +534,7 @@ async function recoverComments({
   const cutoffSeconds = Math.floor(cutoffMs / 1000);
 
   for (const postId of postIds) {
+    if (Date.now() >= deadlineAt) { stoppedEarly = true; break; }
     try {
       let comments =
         await facebookGraphJsonWithTokenRecovery<GraphCommentList>({
@@ -611,7 +543,7 @@ async function recoverComments({
           params: {
             fields: "id,message,from{id,name},created_time,parent{id}",
             filter: "stream",
-            limit: 100,
+            limit: commentLimit,
             since: cutoffSeconds,
           },
           accessToken: token,
@@ -630,7 +562,7 @@ async function recoverComments({
           params: {
             fields: "id,message,from{id,name},created_time,parent{id}",
             filter: "stream",
-            limit: 100,
+            limit: commentLimit,
           },
           accessToken: token,
         });
@@ -645,7 +577,7 @@ async function recoverComments({
 
       const recentComments = (comments.payload.data ?? []).filter((comment) => {
         const createdMs = dateToMs(comment.created_time);
-        return createdMs === null || createdMs >= cutoffMs;
+        return reconnect ? createdMs !== null && createdMs >= cutoffMs && createdMs <= Date.now() : createdMs === null || createdMs >= cutoffMs;
       });
       const ids = recentComments
         .map((comment) => cleanString(comment.id))
@@ -723,6 +655,7 @@ async function recoverComments({
     recovered,
     failed,
     truncated:
+      stoppedEarly ||
       candidates >= maxCommentCandidates ||
       postIds.length >= maxPostIds ||
       (posts.payload.data?.length ?? 0) >= feedPostLimit,
@@ -751,7 +684,19 @@ export async function recoverRecentFacebookData({
   mode?: FacebookRecoveryMode;
 }): Promise<FacebookRecoveryResult> {
   const lookback = clampLookbackMinutes(lookbackMinutes, mode);
-  const cutoffMs = Date.now() - lookback * 60_000;
+  let cutoffMs = mode === "reconnect" ? facebookRecoveryDay().startMs : Date.now() - lookback * 60_000;
+
+  if (mode === "watchdog") {
+    // Keep the connection-day boundary after OAuth clears the backfill flag.
+    // Otherwise a normal three-hour pass at 00:05 could import yesterday.
+    const { data, error } = await supabaseAdmin.from("facebook_today_recovery")
+      .select("cursor").eq("social_account_id", socialAccountId).maybeSingle();
+    if (error) throw new Error("Unable to read the Facebook connection-day import boundary.");
+    const cursor = data?.cursor as { version?: number; pageId?: string; dayStart?: number } | undefined;
+    if (cursor?.version === 1 && cursor.pageId === pageId && Number.isFinite(cursor.dayStart) && cursor.dayStart! <= Date.now()) {
+      cutoffMs = Math.max(cutoffMs, cursor.dayStart!);
+    }
+  }
 
   let messenger = {
     candidates: 0,
@@ -763,12 +708,10 @@ export async function recoverRecentFacebookData({
   };
 
   try {
-    messenger = await recoverMessenger({
-      pageId,
-      accessToken,
-      cutoffMs,
-      mode,
-    });
+    messenger = mode === "reconnect"
+      ? await recoverFacebookToday({ pageId, socialAccountId, accessToken,
+          normalizeAttachment: value => value && typeof value === "object" ? normalizeGraphAttachment(value as GraphAttachment) : null })
+      : await recoverMessenger({ pageId, accessToken, cutoffMs, mode });
   } catch (error) {
     messenger.failed += 1;
     console.warn(

@@ -49,6 +49,12 @@ export type ReplyAvailability = {
 export type FacebookConversationOpenResult = {
   opened?: boolean;
   exactRequested?: boolean;
+  verified?: boolean;
+  diagnostics?: {
+    extensionVersion?: string; pageId?: string; recipientId?: string; conversationId?: string;
+    expectedCustomerName?: string; reason?: string; observedNavigationId?: string | null;
+    phase?: string; cacheUsed?: boolean;
+  };
   reason?: string;
 };
 
@@ -117,7 +123,7 @@ export function useCompanion() {
       const answer = await awaitCompanionAnswer<FacebookConversationOpenResult>(
         "OPEN_IN_FACEBOOK_RESULT",
         requestId,
-        20000,
+        30000,
       );
 
       return answer;

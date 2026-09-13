@@ -7,8 +7,7 @@ const { createRoot } = req('react-dom/client');
 const { JSDOM } = require('jsdom');
 const { loader } = require('../tenh-seven/harness.cjs');
 
-// Reconcile the real header with BOTH real keyed siblings. A static render or
-// a stubbed status menu cannot detect duplicated DOM after changing chats.
+// Reconcile the real header and status menu across customer switches.
 async function mount(t) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://app.tenhchat.com' });
   global.window = dom.window; global.document = dom.window.document; global.IS_REACT_ACT_ENVIRONMENT = true;
@@ -17,15 +16,19 @@ async function mount(t) {
   console.error = (...args) => errors.push(args.map(String).join(' '));
   const overrides = {
     react: React, 'react/jsx-runtime': req('react/jsx-runtime'), 'lucide-react': req('lucide-react'),
-    '@/lib/extension/use-companion': { useCompanion: () => ({ installed: true, openInFacebook: async options => {
-      navigations.push(options); return { opened: true, exactRequested: false };
-    } }) },
-    '@/lib/extension/store-listing': { TENH_EXTENSION_STORE_URL: '' },
+    '@/lib/extension/use-companion': { useCompanion: () => { throw new Error('Conversation navigation must not require the extension'); } },
     '@/components/display/workspace-language-text': { useWorkspaceLanguageId: () => 'en' },
     '@/lib/supabase/client': { createClient: () => ({ auth: { getUser: async () => ({ data: { user: null } }) } }) },
     './conversation-visuals': { ConversationBookmark: () => null },
   };
-  const load = loader(overrides, { window: dom.window, document: dom.window.document });
+  dom.window.open = () => null;
+  const load = loader(overrides, { window: dom.window, document: dom.window.document, AbortController, URLSearchParams,
+    fetch: async value => {
+      const url = new URL(value, 'https://app.tenhchat.com');
+      navigations.push({ conversationId: url.pathname.split('/')[3], threadId: url.searchParams.get('recipientId') });
+      return new Response(JSON.stringify({ success: false, error: 'Meta did not return a link for this conversation.' }), { status: 424 });
+    },
+  });
   overrides['./conversation-status-menu'] = load('components/inbox/conversation-status-menu.tsx');
   overrides['./companion-facebook-action'] = load('components/inbox/companion-facebook-action.tsx');
   const { ConversationHeader } = load('components/inbox/conversation-header.tsx');
@@ -50,11 +53,11 @@ async function mount(t) {
   return { render, errors, navigations, statusChanges, statusButtons, shortcutButtons };
 }
 
-test('40 chat switches keep exactly one status menu and one shortcut, with no React key warnings', async t => {
+test('40 chat switches keep one status menu and no external shortcut, with no React key warnings', async t => {
   const ui = await mount(t);
   for (let index = 0; index < 40; index++) await ui.render(index % 2 ? 'c1' : 'c2');
   assert.equal(ui.statusButtons().length, 1, 'status controls must not accumulate across conversations');
-  assert.equal(ui.shortcutButtons().length, 1);
+  assert.equal(ui.shortcutButtons().length, 0);
   assert.deepEqual(ui.errors, []);
 });
 
@@ -74,22 +77,3 @@ test('switching chats closes the old status menu and keeps the new menu interact
   assert.deepEqual(ui.errors, []);
 });
 
-test('Companion notices reset across chats and the shortcut sends only the selected customer', async t => {
-  const ui = await mount(t);
-  await ui.render('c1');
-  await act(async () => ui.shortcutButtons()[0].click());
-  assert.ok(document.querySelector('[role="alert"]'));
-  await ui.render('c2');
-  assert.equal(document.querySelector('[role="alert"]'), null);
-  await act(async () => ui.shortcutButtons()[0].click());
-  assert.deepEqual(ui.navigations.map(({ conversationId, threadId }) => ({ conversationId, threadId })), [
-    { conversationId: 'c1', threadId: '111111' }, { conversationId: 'c2', threadId: '222222' },
-  ]);
-  await ui.render('c3', { source_type: 'comment' });
-  assert.equal(ui.shortcutButtons().length, 0);
-  assert.equal(ui.statusButtons().length, 1);
-  await ui.render('c1');
-  assert.equal(ui.shortcutButtons().length, 1);
-  assert.equal(ui.statusButtons().length, 1);
-  assert.deepEqual(ui.errors, []);
-});

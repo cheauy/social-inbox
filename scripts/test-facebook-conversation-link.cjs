@@ -87,9 +87,17 @@ test('provider legacy thread link and Messenger thread route are retained withou
 test('token stays in server Authorization header and requested PSID remains an exact string',async()=>{
  const h=setup({fetchResults:[payload()]}),r=await h.load(MODULE).getCustomerConversationLink(page,psid);
  assert.equal(r.linkSource,'meta_conversations_api');const call=h.calls[0],url=new URL(call.url);
- assert.equal(url.searchParams.get('user_id'),psid);assert.equal(url.searchParams.get('fields'),'id,link,participants');
+  assert.equal(url.searchParams.get('user_id'),psid);assert.equal(url.searchParams.get('fields'),'id,link,participants');
+  assert.equal(url.searchParams.get('platform'),'MESSENGER');
  assert.equal(url.searchParams.has('access_token'),false);assert.equal(call.init.headers.Authorization,'Bearer FAKE_TOKEN');
  assert.ok(!JSON.stringify(r).includes('FAKE_TOKEN'));
+});
+test('browser navigation can use exact participants without requiring a rendered customer name',async()=>{
+ const p=payload();delete p.data[0].participants.data[1].name;
+ const h=setup({fetchResults:[p]}),api=h.load(MODULE);
+ assert.equal(api.selectCustomerConversationLink(p,page,psid).reason,'profile_conversation_name_unavailable');
+ const r=await api.getCustomerConversationLink(page,psid,{requireCustomerName:false,accessToken:'SCOPED_TEST_TOKEN'});
+ assert.equal(r.conversationLink,link);assert.equal(r.customerName,'');assert.equal(h.calls[0].init.headers.Authorization,'Bearer SCOPED_TEST_TOKEN');
 });
 for(const code of [10,190,100])test('Meta refusal exposes a safe error without raw provider details '+code,async()=>{
  const h=setup({fetchResults:[{error:{code,message:'secret-sensitive-provider-text'}}]}),r=await h.load(MODULE).getCustomerConversationLink(page,psid);

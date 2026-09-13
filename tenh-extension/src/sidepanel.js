@@ -11,7 +11,7 @@
  * history, no search: those exist, they work, and they are one click away.
  */
 
-const TENH_ORIGIN = "https://app.tenhchat.com";
+const TENH_ORIGIN = "http://localhost:3000";
 
 
 function ask(message) {
@@ -266,7 +266,7 @@ document.addEventListener("visibilitychange", () => {
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") return;
-  if (changes.facebook || changes.token || changes.device) void refresh();
+  if (changes["tenh-localhost-3000:facebook"] || changes["tenh-localhost-3000:token"] || changes["tenh-localhost-3000:device"]) void refresh();
 });
 
 /* High-level TENH sync events refresh this lightweight view immediately. */

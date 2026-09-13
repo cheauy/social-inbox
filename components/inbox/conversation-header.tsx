@@ -2,7 +2,6 @@
 
 import { ConversationBookmark } from "./conversation-visuals";
 import { ConversationStatusMenu } from "./conversation-status-menu";
-import { CompanionFacebookAction } from "./companion-facebook-action";
 
 import { useEffect, useState } from "react";
 import {
@@ -593,14 +592,6 @@ export function ConversationHeader({
           />
 
           <div className="mx-0.5 h-7 w-px bg-slate-200" aria-hidden="true" />
-
-          {conversation.social_account?.platform === "facebook" &&
-            conversation.source_type === "messenger" && conversation.contact?.business_id ? (
-            <CompanionFacebookAction key={`facebook-action:${conversation.id}`} compact
-              pageId={conversation.social_account.platform_account_id ?? null}
-              threadId={conversation.contact.platform_user_id ?? null}
-              conversationId={conversation.id} businessId={conversation.contact.business_id} />
-          ) : null}
 
           <button
             type="button"

@@ -14,7 +14,6 @@ import { TenhStickerPicker } from "./tenh-sticker-picker";
 import type { TelegramStickerChoice } from "@/lib/telegram/sticker-catalog";
 import type { InboxStickerChoice } from "@/lib/stickers/catalog";
 
-import { CompanionFacebookAction } from "@/components/inbox/companion-facebook-action";
 import { CustomerTagSelector } from "@/components/inbox/customer-tag-selector";
 import {
   LocationPickerDialog,
@@ -338,9 +337,6 @@ export function ReplyBox({
   typingAgents = [],
   onTagsChange,
   conversationId,
-  canOpenInFacebook = false,
-  facebookPageId = null,
-  facebookThreadId = null,
   allowAttachments = true,
   onReplyChange,
   onSubmit,
@@ -2267,11 +2263,6 @@ export function ReplyBox({
                   {blockedReason ?? advisoryReason}
                 </p>
 
-                {canOpenInFacebook ? (
-                  <CompanionFacebookAction
-                    pageId={facebookPageId} threadId={facebookThreadId} conversationId={conversationId} businessId={businessId}
-                  />
-                ) : null}
               </div>
             </div>
           </div>

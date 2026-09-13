@@ -49,7 +49,6 @@ import {
   describeThreadOwnerConflict,
   detectFacebookThreadOwner,
 } from "@/lib/facebook/facebook-thread-owner";
-import { minutesSinceLocalMidnight } from "@/lib/facebook/recover-facebook-missed-data";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -582,21 +581,8 @@ export async function POST(
         continue;
       }
 
-      /*
-       * Deep history recovery is NOT run here.
-       *
-       * It used to run inline, in "reconnect" mode, once per selected Page.
-       * That mode issues up to ~250 sequential Graph calls for message details
-       * plus up to ~100 more for post comments, so a single Page could take
-       * one to two minutes and several Pages could exceed the serverless
-       * function timeout entirely — the customer just watched a spinner and
-       * sometimes got an error even though the Page had connected fine.
-       *
-       * Instead the Page is flagged for backfill. The hourly watchdog
-       * (/api/cron/facebook-connection-health) already performs exactly the
-       * same bounded, idempotent recovery pass, so nothing is lost — it simply
-       * happens in the background while the customer keeps using TENH.
-       */
+      // Queue a bounded import of today's messages. The recovery cursor lets
+      // later background runs continue after this request's batch limit.
       const { error: backfillFlagError } = await supabaseAdmin
         .from("social_accounts")
         .update({
@@ -612,27 +598,6 @@ export async function POST(
         );
       }
 
-      /*
-       * Bring today in straight away, without making the customer wait.
-       *
-       * The flag above hands the deep seven-day pass to the watchdog, which is
-       * the right place for work that can take minutes. But the code comment
-       * calling it "the hourly watchdog" does not match vercel.json, where it
-       * is scheduled daily -- so a Page connected at nine in the morning shows
-       * an empty inbox until midnight UTC. Someone who has just connected a
-       * Page looks at it immediately, and an empty screen reads as a failed
-       * connection.
-       *
-       * after() runs once the redirect has already been sent, so this costs
-       * the customer nothing. One day, not seven: the point is that the inbox
-       * has today's conversations in it when they first look, and a bounded
-       * pass is far likelier to finish inside the function's budget.
-       *
-       * The flag is deliberately left set. This pass is a head start, not a
-       * replacement -- if it fails, times out, or the deploy is cold, the
-       * watchdog still performs the full recovery later and nothing is lost.
-       * Both passes are idempotent, so overlapping them is safe.
-       */
       /*
        * Say so now if another app owns the Page's messages.
        *
@@ -679,9 +644,15 @@ export async function POST(
             pageId: backfillPageId,
             socialAccountId: backfillAccountId,
             accessToken: backfillToken,
-            lookbackMinutes: minutesSinceLocalMidnight(),
             mode: "reconnect",
           });
+
+          if (!result.messenger.truncated && result.messenger.failed === 0 && result.comments.failed === 0) {
+            const { error: clearError } = await supabaseAdmin.from("social_accounts")
+              .update({ facebook_backfill_requested_at: null }).eq("id", backfillAccountId)
+              .eq("business_id", currentMember.business_id).eq("facebook_backfill_requested_at", now);
+            if (clearError) console.warn("[Tenh Facebook OAuth] The completed recovery flag will be cleared by the watchdog.");
+          }
 
           console.info(
             `[Tenh Facebook OAuth] First-day backfill for ${backfillPageId}: ` +

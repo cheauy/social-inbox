@@ -11,6 +11,7 @@ function database(seed) {
   eq(k,v){this.filters.push(row=>k==='raw_payload'?JSON.stringify(row[k])===(typeof v==='string'?v:JSON.stringify(v)):val(row,k)===v);return this;}
   is(k,v){this.filters.push(row=>(val(row,k)??null)===v);return this;}
   in(k,vs){this.filters.push(row=>vs.includes(val(row,k)));return this;}
+  not(k,op,v){this.filters.push(row=>op==='is'&&(v===null||v==='null')?val(row,k)!=null:val(row,k)!==v);return this;}
   gt(k,v){this.filters.push(row=>val(row,k)>v);return this;}
   or(s){this.filters.push(row=>s.split(',').some(part=>{const [key,op,...vs]=part.split('.');const value=vs.join('.');return op==='is'?row[key]==null:op==='lt'?row[key]!=null&&row[key]<value:false;}));return this;}
   update(body){this.op='update';this.body=clone(body);return this;}
@@ -26,6 +27,7 @@ function database(seed) {
    if(!tables[this.name]) return {data:null,error:{code:'42P01',message:'Missing table'}};
    const rows=tables[this.name];let found=rows.filter(r=>this.filters.every(fn=>fn(r))).slice(0,this.count);
    if(this.op==='update')found.forEach(r=>Object.assign(r,clone(this.body)));
+   if(this.op==='delete')for(const row of found){const i=rows.indexOf(row);if(i>=0)rows.splice(i,1);}
    if(this.op==='upsert'||this.op==='insert') {
     const body=clone(this.body); const keys=(this.options.onConflict||'id').split(','); const old=rows.find(r=>keys.every(k=>body[k]!==undefined&&r[k]===body[k]));
     if(old) {if(!this.options.ignoreDuplicates)Object.assign(old,body); found=[old];}

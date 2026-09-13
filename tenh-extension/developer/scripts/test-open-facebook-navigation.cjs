@@ -1,5 +1,8 @@
 const fs=require('node:fs'),vm=require('node:vm'),{test}=require('node:test'),assert=require('node:assert/strict');
-const source=fs.readFileSync(process.env.TENH_NAV_BACKGROUND || 'tenh-extension/src/background.js','utf8');
+const extensionRoot=process.env.TENH_NAV_EXTENSION || 'tenh-extension';
+const source=fs.readFileSync(extensionRoot+'/src/background.js','utf8');
+const manifest=JSON.parse(fs.readFileSync(extensionRoot+'/manifest.json','utf8'));
+const localBuild=manifest.host_permissions.includes('http://localhost:3000/*');
 const args={businessId:'b1',conversationId:'uuid1',pageId:'393342417206745',threadId:'28288665770787398'};
 const legacy=`https://www.facebook.com/${args.pageId}/inbox/1187032264483411/?section=messages`;
 const suite=id=>`https://business.facebook.com/latest/inbox/all?asset_id=${args.pageId}&selected_item_id=${id}&thread_type=FB_MESSAGE`;
@@ -8,10 +11,15 @@ const provider=(patch={})=>({success:true,verified:true,...args,customerName:'Cu
 function extension(options={}) {
  let clock=Date.now(),nextId=100;class Clock extends Date {static now(){return clock;}}
  const tabs=structuredClone(options.tabs||[]),history=[],network=[],scripts=[];
- const state={installationId:'test-install',token:'FAKE_DEVICE_TOKEN',...(options.state||{})};
+ const initial={installationId:'test-install',token:'FAKE_DEVICE_TOKEN',...(options.state||{})};
+ const state=localBuild ? new Proxy(Object.fromEntries(Object.entries(initial).map(([k,v])=>['tenh-localhost-3000:'+k,v])),{
+  get:(obj,key)=>obj[String(key).startsWith('tenh-localhost-3000:')?key:'tenh-localhost-3000:'+String(key)],
+  set:(obj,key,value)=>{obj[String(key).startsWith('tenh-localhost-3000:')?key:'tenh-localhost-3000:'+String(key)]=value;return true;},
+  deleteProperty:(obj,key)=>{delete obj[String(key).startsWith('tenh-localhost-3000:')?key:'tenh-localhost-3000:'+String(key)];return true;}
+ }) : initial;
  const event=()=>({addListener(){}});
  const storage={get:async keys=>Object.fromEntries((Array.isArray(keys)?keys:[keys]).map(k=>[k,state[k]])),set:async patch=>Object.assign(state,patch),remove:async keys=>{for(const k of(Array.isArray(keys)?keys:[keys]))delete state[k];}};
- const chrome={runtime:{id:'testextension',getManifest:()=>({version:'1.2.29'}),onMessage:event(),onConnect:event(),onInstalled:event(),onStartup:event()},storage:{local:storage,session:storage},alarms:{onAlarm:event(),create(){}},action:{setBadgeText:async()=>{}},
+ const chrome={runtime:{id:'testextension',getManifest:()=>manifest,onMessage:event(),onConnect:event(),onInstalled:event(),onStartup:event()},storage:{local:storage,session:storage},alarms:{onAlarm:event(),create(){}},action:{setBadgeText:async()=>{}},
  tabs:{onUpdated:event(),onRemoved:event(),get:async id=>{const t=tabs.find(x=>x.id===id);if(!t)throw new Error('Missing');options.onGet?.(t);return {...t};},query:async()=>tabs.map(t=>({...t})),
   update:async(id,patch)=>{history.push({action:'update',id,patch});const t=tabs.find(t=>t.id===id);Object.assign(t,patch);options.onUpdate?.(t,patch);return {...t};},
   create:async props=>{history.push({action:'create',props});const t={id:nextId++,windowId:1,status:'complete',...props};if(options.redirect && !props.active)t.url=options.redirect;
@@ -29,7 +37,8 @@ function extension(options={}) {
  setTimeout:(fn,ms)=>{if(ms===350){clock+=ms;queueMicrotask(fn);return null;}return setTimeout(fn,ms);},clearTimeout,setInterval,clearInterval,
  fetch:async(url,init)=>{network.push({url,init});if(String(url).includes('/api/extension/conversations/open-context'))return new Response(JSON.stringify(options.response||provider()),{status:options.status||200});throw new Error('Unexpected fetch');}};
  vm.runInNewContext(source+'\nglobalThis.testAPI={openFacebook,cachedFacebookNavigationId,rememberFacebookNavigationId,navigationIdFromFacebookUrl};',sandbox);
- const sender={id:'testextension',frameId:0,tab:{id:9,url:'https://app.tenhchat.com/dashboard/inbox'},url:'https://app.tenhchat.com/dashboard/inbox'};
+ const senderUrl=(localBuild?'http://localhost:3000':'https://app.tenhchat.com')+'/dashboard/inbox';
+ const sender={id:'testextension',frameId:0,tab:{id:9,url:senderUrl},url:senderUrl};
  return {api:sandbox.testAPI,tabs,history,network,state,sender,scripts};
 }
 test('keeps the verified legacy redirect tab and focuses it without a second navigation',async()=>{
@@ -40,11 +49,43 @@ test('keeps the verified legacy redirect tab and focuses it without a second nav
  assert.ok(e.history.filter(x=>x.action==='update').every(x=>!('url' in x.patch)));
  assert.equal(e.history.filter(x=>x.action==='remove').length,0);
 });
-test('direct provider Suite URL also requires loaded customer verification',async()=>{
- const e=extension({response:provider({conversationLink:reported}),read:{reason:'profile_customer_heading_missing'}});
+test('direct provider Suite URL cannot override a known wrong customer',async()=>{
+ const e=extension({response:provider({conversationLink:reported}),read:{reason:'facebook_customer_mismatch'}});
  const r=await e.api.openFacebook(args,e.sender);assert.equal(r.opened,false);assert.equal(r.exactRequested,false);
  assert.equal(e.history.filter(x=>x.action==='update').length,0);assert.equal(e.tabs.length,0);
  assert.equal(r.diagnostics.observedNavigationId,'61576318208827');assert.equal(r.diagnostics.expectedCustomerName,'Customer');
+});
+test('a hidden customer panel receives one foreground retry, then verifies before caching',async()=>{
+ const e=extension({redirect:reported,read:(tab,context)=>tab.active?{
+  found:true,pageId:context.pageId,matchedThreadId:context.threadId,selectedItemId:'61576318208827',profileUrl:'https://www.facebook.com/customer'
+ }:{reason:'profile_customer_heading_missing',diagnostics:{visibility:'hidden',headerCandidates:0,matchingHeaders:0,composerFound:false}}});
+ const r=await e.api.openFacebook(args,e.sender);assert.equal(r.verified,true);assert.equal(r.foregroundRetry,true);
+ assert.equal(e.history.filter(x=>x.action==='update').length,1);assert.equal(e.history.filter(x=>x.action==='create').length,1);
+ assert.ok(Object.keys(e.state.facebookVerifiedConversationTabsV1).length===1);
+ const next=await e.api.openFacebook(args,e.sender);assert.equal(next.cacheUsed,true);assert.equal(next.tabId,r.tabId);
+});
+test('an unresolved foreground retry keeps the tab for inspection, returns diagnostics and does not cache',async()=>{
+ const e=extension({redirect:reported,read:tab=>({reason:'profile_customer_heading_missing',diagnostics:{visibility:tab.active?'visible':'hidden',headerCandidates:0,matchingHeaders:0,composerFound:tab.active,html:'private chat text'}})});
+ const r=await e.api.openFacebook(args,e.sender);assert.equal(r.opened,true);assert.equal(r.verified,false);
+ assert.equal(r.diagnostics.phase,'after_foreground_retry');assert.equal(r.diagnostics.dom.visibility,'visible');
+ assert.equal(r.diagnostics.background.dom.visibility,'hidden');assert.equal(r.diagnostics.dom.html,undefined);
+ assert.equal(e.tabs.length,1);assert.equal(e.tabs[0].active,true);assert.equal(e.state.facebookVerifiedConversationTabsV1,undefined);
+});
+test('foreground retries cannot accept a redirect to a different selected conversation',async()=>{
+ const e=extension({redirect:reported,onUpdate:(tab,patch)=>{if(patch.active)tab.url=suite('999999');},read:{reason:'profile_customer_heading_missing'}});
+ const r=await e.api.openFacebook(args,e.sender);assert.equal(r.opened,true);assert.equal(r.verified,false);
+ assert.equal(r.diagnostics.observedNavigationId,'999999');assert.equal(e.state.facebookVerifiedConversationTabsV1,undefined);
+});
+test('foreground retries preserve an inspection tab even if the user switches tabs',async()=>{
+ let opened=false;const e=extension({redirect:reported,onUpdate:()=>{opened=true;},onGet:tab=>{if(opened)tab.active=false;},read:{reason:'profile_customer_heading_missing'}});
+ const r=await e.api.openFacebook(args,e.sender);assert.equal(r.verified,false);assert.equal(e.tabs.length,1);
+ assert.equal(e.history.filter(x=>x.action==='remove').length,0);assert.equal(e.history.filter(x=>x.action==='update').length,1);
+});
+test('wrong customer, ambiguous profile and sign-in failures do not trigger foreground recovery',async()=>{
+ for(const reason of ['facebook_customer_mismatch','ambiguous_profile','facebook_sign_in_required','conversation_mismatch','facebook_inbox_load_failed']){
+  const e=extension({redirect:reported,read:{reason}});const r=await e.api.openFacebook(args,e.sender);
+  assert.equal(r.opened,false);assert.equal(e.history.filter(x=>x.action==='update').length,0);assert.equal(e.state.facebookVerifiedConversationTabsV1,undefined);
+ }
 });
 test('direct Suite URL retains routing parameters and verifies before and after activation',async()=>{
  const e=extension({response:provider({conversationLink:reported})});const r=await e.api.openFacebook(args,e.sender);

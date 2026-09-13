@@ -7,7 +7,6 @@ import {
   recoverRecentFacebookData,
 } from "@/lib/facebook/recover-facebook-missed-data";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { minutesSinceLocalMidnight } from "@/lib/facebook/recover-facebook-missed-data";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,40 +54,6 @@ function configuredLookbackMinutes() {
   return Math.min(1440, Math.max(60, Math.round(parsed)));
 }
 
-/*
- * One day, not one week.
- *
- * A shop reconnecting after a long gap has usually been answering customers in
- * Business Suite the whole time, and pulling a week of that back turns their
- * first look at TENH into a wall of conversations they have already dealt
- * with. What they want is today: the threads still live enough to need an
- * answer. Anything older is history they can read where it happened.
- *
- * Conversations with no activity inside the window are skipped entirely
- * further down, so a quiet thread is not merely empty here -- it is not
- * created at all.
- */
-function reconnectLookbackMinutes() {
-  const configured =
-    process.env.FACEBOOK_RECONNECT_RECOVERY_LOOKBACK_MINUTES?.trim();
-
-  /*
-   * Set the variable and it wins; otherwise the window is today, measured
-   * from midnight where the shop is rather than a rolling twenty-four hours.
-   * Reconnecting at nine in the morning should bring this morning, not also
-   * the whole of yesterday evening they have already dealt with.
-   */
-  if (configured) {
-    const parsed = Number(configured);
-
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  return minutesSinceLocalMidnight();
-}
-
 async function processAccount(
   account: FacebookAccountRow,
   lookbackMinutes: number,
@@ -124,54 +89,28 @@ async function processAccount(
     };
   }
 
-  /*
-   * A Page that was just connected or reconnected is flagged by
-   * /api/facebook/oauth/select instead of being backfilled inside that
-   * request (which took minutes and could exceed the function timeout).
-   * The first watchdog run after the flag does the deeper "reconnect" pass,
-   * then clears the flag so later runs go back to the normal short window.
-   */
+  // OAuth flags an initial/reconnect import. Resume only today's saved cursor.
   const needsBackfill = Boolean(account.facebook_backfill_requested_at);
 
   const recovery = await recoverRecentFacebookData({
     pageId,
     socialAccountId: account.id,
     accessToken: health.accessToken,
-    lookbackMinutes: needsBackfill
-      ? reconnectLookbackMinutes()
-      : lookbackMinutes,
+    lookbackMinutes: needsBackfill ? undefined : lookbackMinutes,
     mode: needsBackfill ? "reconnect" : "watchdog",
   });
 
-  /*
-   * Clear the flag only when the backfill actually finished.
-   *
-   * It used to clear unconditionally, so a pass that ran out of room left the
-   * Page marked as fully caught up. The next run then used the ordinary
-   * three-hour watchdog window, which cannot reach back to what was still
-   * missing -- and those messages were never collected at all. A Page busy
-   * enough to truncate is exactly the one that could least afford it.
-   *
-   * Leaving the flag set costs one more deep pass and is idempotent: already
-   * stored messages are skipped before any Graph call is made for them.
-   */
-  /*
-   * Only the Messenger signal is trustworthy here. comments.truncated is also
-   * set when the Page's feed simply returned a full page of posts, which is
-   * true of any active Page whether or not a single comment was missed -- a
-   * run recovering 38 of 38 still reports it. Gating on that would keep the
-   * flag set permanently and run a seven-day pass every night for nothing.
-   *
-   * messenger.truncated means what it says: there were more missing messages
-   * than this pass could fetch.
-   */
-  const backfillIncomplete = recovery.messenger.truncated;
+  // Retain the request after a capped or failed pass. The checkpoint, not
+  // repeated scanning from the first conversation, drives the next batch.
+  const backfillIncomplete = recovery.messenger.truncated || recovery.messenger.failed > 0 || recovery.comments.failed > 0;
 
   if (needsBackfill && !backfillIncomplete) {
     const { error: clearError } = await supabaseAdmin
       .from("social_accounts")
       .update({ facebook_backfill_requested_at: null })
-      .eq("id", account.id);
+      .eq("id", account.id)
+      .eq("business_id", account.business_id)
+      .eq("facebook_backfill_requested_at", account.facebook_backfill_requested_at);
 
     if (clearError) {
       console.warn(

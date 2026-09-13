@@ -1,6 +1,6 @@
 /* TENH Companion popup — status only. No manual pairing flow. */
 
-const TENH_ORIGIN = "https://app.tenhchat.com";
+const TENH_ORIGIN = "http://localhost:3000";
 
 const view = {
   version: document.getElementById("version"),

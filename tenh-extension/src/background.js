@@ -6,7 +6,29 @@
  * treated as hints that can be reconciled with the provider event later.
  */
 
-const TENH_ORIGIN = "https://app.tenhchat.com";
+const TENH_ORIGIN = "http://localhost:3000";
+
+// Local and production credentials/cursors/tickets must never share storage.
+// Reloading this build over the production folder preserves production keys.
+function localStorageArea(area) {
+  const prefix = "tenh-localhost-3000:";
+  return {
+    async get(keys) {
+      const names = typeof keys === "string" ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys || {});
+      const stored = await area.get(names.map(key => prefix + key));
+      return Object.fromEntries(names.filter(key => stored[prefix + key] !== undefined)
+        .map(key => [key, stored[prefix + key]]));
+    },
+    set(values) { return area.set(Object.fromEntries(Object.entries(values).map(([key, value]) => [prefix + key, value]))); },
+    remove(keys) { return area.remove((Array.isArray(keys) ? keys : [keys]).map(key => prefix + key)); },
+  };
+}
+const tenhStorage = { local: localStorageArea(chrome.storage.local), session: localStorageArea(chrome.storage.session) };
+function isTenhSenderUrl(value) {
+  try { const url = new URL(value); return url.origin === TENH_ORIGIN && !url.username && !url.password; }
+  catch { return false; }
+}
+
 const HEARTBEAT_ALARM = "tenh-heartbeat";
 const SYNC_ALARM = "tenh-sync";
 const HEARTBEAT_MINUTES = 0.5;
@@ -45,7 +67,7 @@ const tenhRealtimePorts = new Set();
 
 async function readState() {
   const [stored, session] = await Promise.all([
-    chrome.storage.local.get([
+    tenhStorage.local.get([
       "token",
       "device",
       "installationId",
@@ -61,26 +83,26 @@ async function readState() {
       "realtimeUnsupportedUntil",
       "recentFingerprints",
     ]),
-    chrome.storage.session.get([QUEUE_KEY]),
+    tenhStorage.session.get([QUEUE_KEY]),
   ]);
 
   stored[QUEUE_KEY] = Array.isArray(session[QUEUE_KEY]) ? session[QUEUE_KEY] : [];
 
   if (!stored.installationId) {
     stored.installationId = crypto.randomUUID();
-    await chrome.storage.local.set({ installationId: stored.installationId });
+    await tenhStorage.local.set({ installationId: stored.installationId });
   }
 
   if (stored.keepFacebookActive === undefined) {
     stored.keepFacebookActive = false;
-    await chrome.storage.local.set({ keepFacebookActive: false });
+    await tenhStorage.local.set({ keepFacebookActive: false });
   }
 
   return stored;
 }
 
 async function writeState(patch) {
-  await chrome.storage.local.set(patch);
+  await tenhStorage.local.set(patch);
 }
 
 async function facebookTabStates() {
@@ -230,14 +252,14 @@ async function currentFacebookContext() {
 async function clearAuth() {
   stopRealtime({ reason: "auth_cleared", reconnect: false });
   await Promise.all([
-    chrome.storage.local.remove(["token", "device", "syncCursor"]),
-    chrome.storage.session.remove([QUEUE_KEY]),
+    tenhStorage.local.remove(["token", "device", "syncCursor"]),
+    tenhStorage.session.remove([QUEUE_KEY]),
   ]);
 }
 
 /* ------------------------------------------------------------------ TENH */
 
-async function callTenh(path, { method = "GET", body, token } = {}) {
+async function callTenh(path, { method = "GET", body, token, signal } = {}) {
   const response = await fetch(`${TENH_ORIGIN}${path}`, {
     method,
     cache: "no-store",
@@ -247,6 +269,7 @@ async function callTenh(path, { method = "GET", body, token } = {}) {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
+    ...(signal ? { signal } : {}),
   });
 
   let result = {};
@@ -383,7 +406,7 @@ async function removeQueuedFingerprint(fingerprint) {
   const queue = Array.isArray(state[QUEUE_KEY]) ? state[QUEUE_KEY] : [];
   const next = queue.filter((item) => item.dedupeKey !== fingerprint && item.payload?.fingerprint !== fingerprint);
   if (next.length === queue.length) return false;
-  await chrome.storage.session.set({ [QUEUE_KEY]: next });
+  await tenhStorage.session.set({ [QUEUE_KEY]: next });
   return true;
 }
 
@@ -444,7 +467,7 @@ async function enqueueSyncEvent(type, payload, { dedupeKey } = {}) {
 
   queue.push(item);
   if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE);
-  await chrome.storage.session.set({ [QUEUE_KEY]: queue });
+  await tenhStorage.session.set({ [QUEUE_KEY]: queue });
   void flushSyncQueue();
   return item;
 }
@@ -559,7 +582,7 @@ async function flushSyncQueue() {
       });
     }
 
-    await chrome.storage.session.set({ [QUEUE_KEY]: queue });
+    await tenhStorage.session.set({ [QUEUE_KEY]: queue });
     await writeState({
       syncStatus: {
         reachable: true,
@@ -701,7 +724,7 @@ async function setRealtimeStatus(patch) {
 function isAllowedRealtimeUrl(value) {
   try {
     const url = new URL(value);
-    return url.protocol === "wss:" && url.hostname === "app.tenhchat.com";
+    return url.origin === "ws://localhost:3000" && !url.username && !url.password;
   } catch {
     return false;
   }
@@ -1215,6 +1238,172 @@ async function askFacebook(
   return best;
 }
 
+// Retain a loaded, verified tab for repeat clicks. This cache cannot authorize
+// an identity: every reuse still checks the provider context and live document.
+const VERIFIED_CONVERSATION_TABS = "facebookVerifiedConversationTabsV1";
+function verifiedConversationKey(context) {
+  return JSON.stringify([context.businessId, context.pageId, context.threadId,
+    profileInboxRoute(context.conversationLink, context.pageId)?.key]);
+}
+function conversationDomDiagnostics(value) {
+  // Copy bounded structural evidence only, never page HTML or message text.
+  const output = {};
+  for (const key of ['headingRegions', 'cardRegions', 'profileActions', 'linkActions', 'headerCandidates', 'matchingHeaders']) {
+    if (Number.isInteger(value?.[key]) && value[key] >= 0) output[key] = Math.min(value[key], 10000);
+  }
+  if (typeof value?.composerFound === 'boolean') output.composerFound = value.composerFound;
+  for (const [key, allowed] of Object.entries({ visibility: ['hidden', 'visible', 'prerender'], readyState: ['loading', 'interactive', 'complete'], routeKind: ['direct', 'redirected', 'unrecognized'] })) {
+    if (allowed.includes(value?.[key])) output[key] = value[key];
+  }
+  return output;
+}
+async function readConversationTab(tabId, context, { allowActive = false, timeoutMs = 8000, expectedRoute = null } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let previous = null, stableAt = 0, revealed = false;
+  let reason = "facebook_customer_selection_unverified", observedNavigationId = null;
+  let observedRoute = null, diagnostics = {};
+  while (Date.now() < deadline) {
+    const tab = await tabById(tabId);
+    if (!tab) return { reason: "facebook_tab_closed" };
+    if (tab.active && !allowActive) return { reason: "facebook_tab_in_use" };
+    if (/https:\/\/(?:www\.|business\.)?facebook\.com\/(?:login|checkpoint)/.test(tab.url || "")) return { reason: "facebook_sign_in_required" };
+    const provider = profileInboxRoute(context.conversationLink, context.pageId);
+    const actual = tab.status === "complete" ? profileInboxRoute(tab.url, context.pageId) : null;
+    observedNavigationId = actual?.selectedItemId || null;
+    if (observedRoute !== (actual?.key || null)) diagnostics = {};
+    observedRoute = actual?.key || null;
+    // Only the authorized legacy route may transition into a Suite route.
+    // A direct Suite URL must retain its requested thread, not a default thread.
+    const matches = provider && actual && (!expectedRoute || actual.key === expectedRoute) &&
+      (provider.key === actual.key || (!provider.suite && actual.suite));
+    if (matches && !tab.pendingUrl) {
+      const readContext = { ...context, loadedConversationLink: tab.url };
+      try {
+        await profileDeadline(loadProfileScripts(tabId), Math.max(1, deadline - Date.now()));
+        const result = await profileDeadline(profileScript(tabId, readContext, "conversation"), Math.max(1, deadline - Date.now()));
+        diagnostics = conversationDomDiagnostics(result.diagnostics);
+        const after = await tabById(tabId);
+        const afterRoute = after?.status === "complete" && !after.pendingUrl ? profileInboxRoute(after.url, context.pageId) : null;
+        if (after?.active && !allowActive) return { reason: "facebook_tab_in_use" };
+        const profileUrl = safePublicProfile(result.profileUrl, context);
+        const identity = profileUrl || (typeof result.navigationIdentity === "string" && result.navigationIdentity.startsWith("header:")
+          ? result.navigationIdentity.slice(0, 220) : null);
+        const valid = afterRoute?.key === actual.key && result.found === true &&
+          result.pageId === context.pageId && result.matchedThreadId === context.threadId &&
+          (result.selectedItemId ?? null) === (actual.selectedItemId ?? null) && identity;
+        const marker = valid ? `${actual.key}:${identity}` : null;
+        if (marker && marker === previous && Date.now() - stableAt >= 350) {
+          return { verified: true, tab: after, route: actual.key, identity, navigationId: actual.selectedItemId || null, diagnostics };
+        }
+        if (marker !== previous) stableAt = Date.now();
+        previous = marker;
+        reason = result.reason || "facebook_customer_selection_unverified";
+        if (!allowActive && !revealed && result.canReveal === true) {
+          // Reveal only the matching customer header, once, in our inactive tab.
+          const current = await tabById(tabId);
+          if (current?.active || profileInboxRoute(current?.url, context.pageId)?.key !== actual.key) return { reason: "facebook_tab_in_use" };
+          revealed = true;
+          await profileDeadline(profileScript(tabId, readContext, "reveal"), Math.max(1, deadline - Date.now()));
+          previous = null;
+        }
+        if (["facebook_sign_in_required", "facebook_inbox_load_failed", "ambiguous_profile", "facebook_customer_mismatch", "conversation_mismatch"].includes(reason)) return { reason, observedNavigationId, diagnostics };
+      } catch { previous = null; reason = "facebook_bridge_unavailable"; }
+    } else {
+      previous = null;
+      if (tab.status === "complete") reason = "facebook_conversation_mismatch";
+    }
+    await new Promise(resolve => setTimeout(resolve, 350));
+  }
+  return { reason, observedNavigationId, route: observedRoute, diagnostics };
+}
+async function openVerifiedConversation(context) {
+  const details = (reason, extra = {}) => ({ opened: false, exactRequested: false, verified: false, reason,
+    diagnostics: { extensionVersion: VERSION, pageId: context.pageId, recipientId: context.threadId,
+      conversationId: context.conversationId, expectedCustomerName: context.customerName,
+      reason, ...extra } });
+  if (context.linkSource !== "meta_conversations_api" || !profileInboxRoute(context.conversationLink, context.pageId)) {
+    return details("facebook_provider_link_unavailable");
+  }
+  if (typeof context.customerName !== "string" || !context.customerName.trim()) return details("facebook_customer_name_unavailable");
+  let ownedTabId = null, activatedTabId = null, cacheUsed = false, foregroundRetry = false;
+  const key = verifiedConversationKey(context);
+  const stored = await tenhStorage.session.get(VERIFIED_CONVERSATION_TABS);
+  const cache = stored[VERIFIED_CONVERSATION_TABS] || {};
+  const item = cache[key];
+  try {
+    let candidate;
+    if (item && Date.now() - item.verifiedAt < 7 * 24 * 60 * 60 * 1000 && Number.isInteger(item.tabId)) {
+      candidate = await readConversationTab(item.tabId, context, { allowActive: true, timeoutMs: 1500, expectedRoute: item.route });
+      if (candidate.verified) cacheUsed = true;
+      else { delete cache[key]; await tenhStorage.session.set({ [VERIFIED_CONVERSATION_TABS]: cache }); }
+    }
+    if (!candidate?.verified) {
+      // Open the full provider link, preserving its routing context. Never turn
+      // a verified tab back into an ID and navigate again to a rebuilt URL.
+      const tab = await chrome.tabs.create({ url: context.conversationLink, active: false });
+      ownedTabId = tab.id ?? null;
+      if (!ownedTabId) return details("facebook_tab_unavailable");
+      candidate = await readConversationTab(ownedTabId, context);
+    }
+    let backgroundDiagnostics;
+    if (!candidate.verified && ownedTabId && candidate.route &&
+        ['profile_customer_heading_missing', 'profile_link_not_rendered', 'profile_action_without_link'].includes(candidate.reason)) {
+      // Hidden tabs may defer rendering their customer panel. Activate our new
+      // tab once to allow rendering; this is NOT verified success or cacheable.
+      // Do not retry a conflicting customer, Page, selected row or sign-in page.
+      const pending = await tabById(ownedTabId);
+      if (!pending || pending.active || pending.status !== 'complete' || pending.pendingUrl ||
+          profileInboxRoute(pending.url, context.pageId)?.key !== candidate.route) {
+        return details('facebook_conversation_changed', { cacheUsed, phase: 'before_foreground_retry' });
+      }
+      backgroundDiagnostics = { reason: candidate.reason, dom: candidate.diagnostics };
+      const focused = await chrome.tabs.update(ownedTabId, { active: true });
+      activatedTabId = ownedTabId; foregroundRetry = true;
+      if (focused.windowId) await chrome.windows.update(focused.windowId, { focused: true });
+      candidate = await readConversationTab(ownedTabId, context, { allowActive: true, timeoutMs: 5000, expectedRoute: candidate.route });
+    }
+    if (!candidate.verified) return { ...details(candidate.reason, { observedNavigationId: candidate.observedNavigationId,
+      cacheUsed, foregroundRetry, phase: foregroundRetry ? 'after_foreground_retry' : 'before_activation',
+      dom: candidate.diagnostics, background: backgroundDiagnostics }), opened: Boolean(activatedTabId), tabId: activatedTabId };
+    // Recheck the route immediately before focusing; do not re-navigate it.
+    const current = await tabById(candidate.tab.id);
+    if (!current || current.status !== "complete" || current.pendingUrl ||
+        profileInboxRoute(current.url, context.pageId)?.key !== candidate.route || (ownedTabId && current.active && !foregroundRetry)) {
+      return { ...details("facebook_conversation_changed", { cacheUsed, foregroundRetry, phase: "before_activation" }), opened: Boolean(activatedTabId) };
+    }
+    if (!foregroundRetry) {
+      const focused = await chrome.tabs.update(current.id, { active: true });
+      activatedTabId = current.id;
+      if (focused.windowId) await chrome.windows.update(focused.windowId, { focused: true });
+    }
+    const final = await readConversationTab(current.id, context, { allowActive: true, timeoutMs: 2000, expectedRoute: candidate.route });
+    if (!final.verified || final.identity !== candidate.identity) {
+      delete cache[key]; await tenhStorage.session.set({ [VERIFIED_CONVERSATION_TABS]: cache });
+      return { ...details("facebook_conversation_changed", { observedNavigationId: final.observedNavigationId, cacheUsed, foregroundRetry,
+        phase: "after_activation", verificationReason: final.reason, dom: final.diagnostics, background: backgroundDiagnostics }), opened: true };
+    }
+    // Cached tabs are never closed or navigated on a failed recheck. The user
+    // may have moved them to a different conversation since the previous click.
+    cache[key] = { tabId: current.id, route: final.route, verifiedAt: Date.now() };
+    const entries = Object.entries(cache).filter(([, entry]) => Date.now() - entry.verifiedAt < 7 * 24 * 60 * 60 * 1000)
+      .sort((a, b) => b[1].verifiedAt - a[1].verifiedAt).slice(0, 40);
+    await tenhStorage.session.set({ [VERIFIED_CONVERSATION_TABS]: Object.fromEntries(entries) });
+    await writeState({ managedFacebookTabId: current.id, managedFacebookWindowId: current.windowId ?? null });
+    ownedTabId = null;
+    return { opened: true, exactRequested: true, verified: true, tabId: current.id, navigationId: final.navigationId,
+      pageId: context.pageId, threadId: context.threadId, conversationId: context.conversationId,
+      businessId: context.businessId, cacheUsed, foregroundRetry, extensionVersion: VERSION };
+  } catch { return { ...details("facebook_navigation_failed", { cacheUsed, foregroundRetry }), opened: Boolean(activatedTabId) }; }
+  finally {
+    if (ownedTabId && ownedTabId !== activatedTabId) {
+      const tab = await tabById(ownedTabId);
+      if (tab && !tab.active && /^https:\/\/(?:www\.|business\.)facebook\.com\//.test(tab.url || tab.pendingUrl || "")) {
+        try { await chrome.tabs.remove(ownedTabId); } catch { /* Already closed. */ }
+      }
+    }
+  }
+}
+
 let navigationQueue = Promise.resolve();
 const pendingNavigations = new Map();
 async function openFacebook(options = {}, sender) {
@@ -1233,37 +1422,15 @@ async function openFacebook(options = {}, sender) {
   const task = async () => {
     const state = await readState(); if (!state.token) return { opened: false, reason: "tenh_sign_in_required" };
     let response;
-    try { response = await callTenh("/api/extension/conversations/open-context", { token: state.token, method: "POST", body: { pageId, threadId, conversationId, businessId } }); }
+    try { response = await callTenh("/api/extension/conversations/open-context", { token: state.token, method: "POST", signal: AbortSignal.timeout(10000), body: { pageId, threadId, conversationId, businessId } }); }
     catch { return { opened: false, reason: "conversation_authorization_unavailable" }; }
     const result = response.result;
     if (!response.ok || result?.verified !== true || result.pageId !== pageId || result.threadId !== threadId || result.conversationId !== conversationId ||
         (businessId && result.businessId !== businessId)) return { opened: false, reason: response.status === 404 ? "website_update_required" : "conversation_context_mismatch" };
 
-    // Meta often uses a separate selected_item_id/global id for Business Suite.
-    // Prefer the participant-verified provider link. Redirects require a loaded
-    // matching customer card and are never cached as durable identity. Never
-    // manufacture selected_item_id from the Messenger PSID supplied by TENH.
-    const providerLink = typeof result.conversationLink === "string" && profileInboxRoute(result.conversationLink, pageId)
-      ? result.conversationLink : null;
-    const navigationId = await resolveFacebookNavigationId(providerLink, pageId, threadId, result.customerName);
-
-    if (navigationId) {
-      const tab = await ensureManagedFacebookTab({ pageId, threadId: navigationId, active: true });
-      return { opened: Boolean(tab?.id), tabId: tab?.id, pageId, threadId, navigationId, conversationId,
-        businessId: result.businessId, exactRequested: true };
-    }
-    if (providerLink) {
-      const tab = await openManagedProviderConversation(providerLink, pageId, true);
-      return { opened: Boolean(tab?.id), tabId: tab?.id, pageId, threadId, conversationId,
-        businessId: result.businessId, exactRequested: false, providerLink: true,
-        reason: tab?.id ? "facebook_customer_selection_unverified" : "facebook_navigation_failed" };
-    }
-
-    // Safe fallback: open only the correct Page inbox. Do not pretend that the
-    // PSID is an exact Business Suite selected_item_id.
-    const tab = await ensureManagedFacebookTab({ pageId, active: true });
-    return { opened: Boolean(tab?.id), tabId: tab?.id, pageId, threadId, conversationId,
-      businessId: result.businessId, exactRequested: false, reason: result.navigationReason || "facebook_navigation_id_unavailable" };
+    return openVerifiedConversation({ businessId: result.businessId, conversationId, pageId, threadId,
+      conversationLink: result.conversationLink, customerName: result.customerName,
+      linkSource: result.linkSource });
   };
   const operation = navigationQueue.then(task, task).catch(() => ({ opened: false, reason: "facebook_navigation_failed" }));
   navigationQueue = operation.then(() => undefined, () => undefined);
@@ -1385,6 +1552,7 @@ async function profileScript(tabId, options, action) {
     func: (context, action) => {
       if (action === "validate") return globalThis.TenhFacebookSelectors?.validateCurrentProfilePage(context.customerName, context.threadId);
       if (action === "reveal") return globalThis.TenhFacebookProfileResolver?.reveal(context);
+      if (action === "conversation") return globalThis.TenhFacebookProfileResolver?.readConversation(context);
       return globalThis.TenhFacebookProfileResolver?.readCurrent(context);
     },
   });
@@ -1501,12 +1669,12 @@ async function verifyPublicProfileCandidate(profileUrl, context) {
 async function createProfileOpenTicket(context, verifiedUrl, sender) {
   const openToken = crypto.randomUUID();
   const storeTicket = async () => {
-    const data = await chrome.storage.session.get(PROFILE_TICKETS_KEY);
+    const data = await tenhStorage.session.get(PROFILE_TICKETS_KEY);
     const tickets = Object.fromEntries(Object.entries(data[PROFILE_TICKETS_KEY] || {})
       .filter(([, ticket]) => ticket.expiresAt > Date.now()));
     tickets[openToken] = { context, url: verifiedUrl, expiresAt: Date.now() + 60000,
       tabId: sender.tab.id, documentId: sender.documentId ?? null };
-    await chrome.storage.session.set({ [PROFILE_TICKETS_KEY]: tickets });
+    await tenhStorage.session.set({ [PROFILE_TICKETS_KEY]: tickets });
   };
   const stored = profileOpenQueue.then(storeTicket, storeTicket);
   profileOpenQueue = stored.then(() => undefined, () => undefined);
@@ -1583,12 +1751,12 @@ async function openResolvedFacebookProfile(openToken, sender, options) {
   const task = async () => {
     if (!profileSenderAllowed(sender)) return { opened: false, reason: "untrusted_sender" };
     if (typeof openToken !== "string") return { opened: false, reason: "profile_resolution_expired" };
-    const data = await chrome.storage.session.get(PROFILE_TICKETS_KEY);
+    const data = await tenhStorage.session.get(PROFILE_TICKETS_KEY);
     const tickets = data[PROFILE_TICKETS_KEY] || {}, ticket = tickets[openToken];
     if (!ticket || ticket.expiresAt <= Date.now() || ticket.tabId !== sender.tab.id ||
         ticket.documentId !== (sender.documentId ?? null) || !profileContextEqual(ticket.context, options)) return { opened: false, reason: "profile_resolution_expired" };
     delete tickets[openToken];
-    await chrome.storage.session.set({ [PROFILE_TICKETS_KEY]: tickets });
+    await tenhStorage.session.set({ [PROFILE_TICKETS_KEY]: tickets });
     const authorization = await authorizeProfile(ticket.context, sender);
     if (!authorization.context) return { opened: false, reason: authorization.reason };
     const url = safePublicProfile(ticket.url, ticket.context);
@@ -1616,6 +1784,10 @@ async function warmFacebookCompanion() {
 /* ------------------------------------------------------------- messaging */
 
 async function handle(message, sender) {
+  if (["TENH_AUTO_CONNECTED", "TENH_AUTO_PAIRED"].includes(message?.type) &&
+      (sender?.id !== chrome.runtime.id || sender?.frameId !== 0 || !isTenhSenderUrl(sender.url || sender.tab?.url))) {
+    return { connected: false, paired: false, reason: "untrusted_sender" };
+  }
   switch (message?.type) {
     case "TENH_EXTENSION_PING": {
       const state = await readState();
@@ -1844,7 +2016,7 @@ async function handle(message, sender) {
       /* Optional fast path: current/future TENH web builds may push an already
          authorized realtime event into the extension. No database write here;
          extension views refresh from TENH as the source of truth. */
-      if (sender?.tab?.url && !sender.tab.url.startsWith(TENH_ORIGIN)) {
+      if (sender?.tab?.url && !isTenhSenderUrl(sender.tab.url)) {
         return { accepted: false };
       }
       const event = {
@@ -1958,6 +2130,11 @@ async function handle(message, sender) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  const url = sender?.url || sender?.tab?.url || "";
+  let trusted = sender?.id === chrome.runtime.id && url.startsWith(`chrome-extension://${chrome.runtime.id}/`);
+  try { trusted ||= sender?.id === chrome.runtime.id && sender?.frameId === 0 &&
+    (isTenhSenderUrl(url) || ["https://www.facebook.com", "https://business.facebook.com"].includes(new URL(url).origin)); } catch {}
+  if (!trusted) { sendResponse({ error: "untrusted_sender" }); return false; }
   handle(message, sender)
     .then(sendResponse)
     .catch((error) => sendResponse({ error: String(error?.message ?? error) }));
@@ -1969,7 +2146,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "TENH_REALTIME_BRIDGE") return;
   const senderUrl = port.sender?.tab?.url ?? port.sender?.url ?? "";
-  if (senderUrl && !senderUrl.startsWith(TENH_ORIGIN)) {
+  if (senderUrl && !isTenhSenderUrl(senderUrl)) {
     try { port.disconnect(); } catch { /* noop */ }
     return;
   }
@@ -2041,12 +2218,12 @@ function createAlarms() {
 
 async function reconnectOpenTabs() {
   const tabs = await chrome.tabs.query({ url: [
-    "https://app.tenhchat.com/*", "https://www.facebook.com/*", "https://business.facebook.com/*",
+    "http://localhost:3000/*", "https://www.facebook.com/*", "https://business.facebook.com/*",
   ] });
   await Promise.allSettled(tabs.filter((tab) => tab.id).map((tab) =>
     chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: new URL(tab.url).hostname === "app.tenhchat.com"
+      files: isTenhSenderUrl(tab.url)
         ? ["src/tenh-bridge.js"]
         : ["src/facebook-selectors.js", "src/facebook-bridge.js"],
     }),
@@ -2058,7 +2235,7 @@ chrome.runtime.onInstalled.addListener(() => {
   void heartbeat("extension_updated");
   createAlarms();
   void chrome.action.setBadgeText({ text: "" }).catch(() => {});
-  void chrome.storage.local.remove(["lastUnread", "notificationsEnabled"]);
+  void tenhStorage.local.remove(["lastUnread", "notificationsEnabled"]);
 
   if (chrome.sidePanel?.setPanelBehavior) {
     chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
@@ -2100,7 +2277,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   void (async () => {
     const state = await readState();
     if (state.managedFacebookTabId !== tabId) return;
-    await chrome.storage.local.remove(["managedFacebookTabId", "managedFacebookWindowId"]);
+    await tenhStorage.local.remove(["managedFacebookTabId", "managedFacebookWindowId"]);
 
     // Respect the user closing a Facebook tab; never recreate it.
   })();

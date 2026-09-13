@@ -1,4 +1,5 @@
 (() => {
+if (window.location.origin !== "http://localhost:3000") return;
 const bridgeVersion = chrome.runtime.getManifest().version;
 if (globalThis.__tenh_tenh_bridge === bridgeVersion) return;
 globalThis.__tenh_tenh_bridge = bridgeVersion;

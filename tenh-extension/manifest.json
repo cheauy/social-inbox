@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "TENH v1",
-  "version": "1.2.28",
-  "description": "Optional TENH companion: Facebook conversation shortcuts, multi-Page tools, Quick Replies, Tags and live sync.",
+  "name": "TENH Companion — Localhost",
+  "version": "1.2.32",
+  "description": "TENH development companion for http://localhost:3000, with isolated local connection state.",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",
@@ -12,7 +12,7 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://app.tenhchat.com/*",
+    "http://localhost:3000/*",
     "https://www.facebook.com/*",
     "https://business.facebook.com/*"
   ],
@@ -23,7 +23,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://app.tenhchat.com/*"
+        "http://localhost:3000/*"
       ],
       "js": [
         "src/tenh-bridge.js"
@@ -50,7 +50,7 @@
     "128": "icons/icon-128.png"
   },
   "action": {
-    "default_title": "TENH v1",
+    "default_title": "TENH Companion — Localhost",
     "default_popup": "src/popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",

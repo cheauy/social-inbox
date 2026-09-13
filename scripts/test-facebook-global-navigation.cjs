@@ -95,3 +95,12 @@ test('extension extracts global id only from the exact Page route', () => {
   assert.equal(sandbox.api.navigationIdFromFacebookUrl(pancake, '111', psid), null);
   assert.equal(sandbox.api.navigationIdFromFacebookUrl(pancake.replace(globalId, psid), pageId, psid), null);
 });
+test('provider Business Suite routing context survives normalization without unrelated query data',()=>{
+ const value=`https://business.facebook.com/latest/inbox/all?bpn_id=352037214598201&asset_id=${pageId}&nav_ref=manage_page_ap_plus_default&selected_item_id=${globalId}&mailbox_id=${pageId}&thread_type=FB_MESSAGE&access_token=REMOVE_ME`;
+ const normalized=new URL(api.normalizeFacebookConversationLink(value,pageId));
+ assert.equal(normalized.searchParams.get('bpn_id'),'352037214598201');
+ assert.equal(normalized.searchParams.get('nav_ref'),'manage_page_ap_plus_default');
+ assert.equal(normalized.searchParams.get('access_token'),null);
+ assert.equal(api.normalizeFacebookConversationLink(value+'&bpn_id=777',pageId),null);
+ assert.equal(api.normalizeFacebookConversationLink(value.replace('352037214598201','bad-value'),pageId),null);
+});

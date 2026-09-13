@@ -1,8 +1,7 @@
 "use client";
 
 import { CustomerMessageBlock } from "./customer-message-block";
-import { CompanionFacebookAction } from "./companion-facebook-action";
-import { CustomerFacebookAvatar } from "@/components/inbox/customer-facebook-avatar";
+import { CustomerAvatar } from "@/components/customer-avatar";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 
 import { useRouter } from "next/navigation";
@@ -357,7 +356,14 @@ async function saveProfile() {
     <div className="shrink-0 border-b border-slate-200 p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <CustomerFacebookAvatar key={JSON.stringify([contact.id, contact.platform_user_id, contact.full_name, activeConversation.social_account?.platform_account_id])} conversation={activeConversation} />
+          <CustomerAvatar
+            src={contact.profile_picture_url}
+            name={contact.full_name}
+            contactId={contact.id}
+            platform={activeConversation.social_account?.platform}
+            eager
+            className="h-16 w-16 text-2xl"
+          />
 
           <div className="min-w-0">
             <h2 className="truncate text-lg font-semibold text-slate-900">
@@ -682,12 +688,6 @@ async function saveProfile() {
             </p>
 
             <div className="mt-3 space-y-2">
-              {activeConversation.social_account?.platform === "facebook" && activeConversation.source_type === "messenger" ? (
-                <CompanionFacebookAction key={`view-conversation:${activeConversation.id}`} menu
-                  pageId={activeConversation.social_account.platform_account_id ?? null}
-                  threadId={activeConversation.contact?.platform_user_id ?? null}
-                  conversationId={activeConversation.id} businessId={activeConversation.business_id} />
-              ) : null}
               <button
                 type="button"
                 onClick={() => setFilesOpen(true)}
