@@ -79,7 +79,8 @@ const navSource = background.slice(
   background.indexOf('function summarizeFacebookPages', background.indexOf('function navigationIdFromFacebookUrl(')),
 );
 const sandbox = { URL };
-vm.runInNewContext(`${facebookTargetSource}\n${navSource}\nglobalThis.api={facebookTarget,navigationIdFromFacebookUrl};`, sandbox);
+const routeSource = background.slice(background.indexOf('function profileInboxRoute('), background.indexOf('function isExactProfileInbox('));
+vm.runInNewContext(`${routeSource}\n${facebookTargetSource}\n${navSource}\nglobalThis.api={facebookTarget,navigationIdFromFacebookUrl};`, sandbox);
 
 test('extension builds Meta/Pancake-style direct Business Suite URL', () => {
   const url = new URL(sandbox.api.facebookTarget({ pageId, threadId: globalId }));

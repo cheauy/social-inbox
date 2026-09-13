@@ -1,6 +1,7 @@
 "use client";
 
 import { CustomerMessageBlock } from "./customer-message-block";
+import { CompanionFacebookAction } from "./companion-facebook-action";
 import { CustomerFacebookAvatar } from "@/components/inbox/customer-facebook-avatar";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 
@@ -681,7 +682,12 @@ async function saveProfile() {
             </p>
 
             <div className="mt-3 space-y-2">
-              <CustomerMessageBlock key={activeConversation.id} conversation={activeConversation} />
+              {activeConversation.social_account?.platform === "facebook" && activeConversation.source_type === "messenger" ? (
+                <CompanionFacebookAction key={`view-conversation:${activeConversation.id}`} menu
+                  pageId={activeConversation.social_account.platform_account_id ?? null}
+                  threadId={activeConversation.contact?.platform_user_id ?? null}
+                  conversationId={activeConversation.id} businessId={activeConversation.business_id} />
+              ) : null}
               <button
                 type="button"
                 onClick={() => setFilesOpen(true)}
@@ -693,6 +699,7 @@ async function saveProfile() {
                 {isKhmer ? "ឯកសារ ឯកសារផ្សេងៗ និងតំណ" : "Files, documents & links"}
               </button>
 
+              <CustomerMessageBlock key={`block-user:${activeConversation.id}`} conversation={activeConversation} />
               <button
                 type="button"
                 onClick={() => setSpamConversationId(activeConversation.id)}

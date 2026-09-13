@@ -26,12 +26,11 @@ const RECENT_FINGERPRINT_TTL_MS = 15 * 60 * 1000;
 const MAX_RECENT_FINGERPRINTS = 120;
 const MAX_FACEBOOK_TAB_STATES = 50;
 const FACEBOOK_TAB_STATE_TTL_MS = 2 * 60 * 60 * 1000;
-const FACEBOOK_NAV_CACHE_KEY = "facebookNavigationCacheV1";
+// V1 could associate Facebook's last-opened thread with the wrong customer.
+// Ignore those entries without touching cookies, login, or extension pairing.
+const FACEBOOK_NAV_CACHE_KEY = "facebookNavigationCacheV2";
 const FACEBOOK_NAV_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_FACEBOOK_NAV_CACHE = 500;
-const FACEBOOK_SESSION_PROBE_TTL_MS = 60 * 1000;
-
-let facebookSessionProbeCache = { at: 0, loggedIn: null, url: null };
 
 let flushPromise = null;
 let deltaPromise = null;
@@ -101,19 +100,26 @@ function facebookNavigationKey(pageId, psid) {
   return `${pageId}:${psid}`;
 }
 
-async function cachedFacebookNavigationId(pageId, psid) {
+async function cachedFacebookNavigationId(pageId, psid, conversationLink) {
   if (![pageId, psid].every(value => typeof value === "string" && /^\d{1,32}$/.test(value))) return null;
   const state = await readState();
   const cache = state[FACEBOOK_NAV_CACHE_KEY] && typeof state[FACEBOOK_NAV_CACHE_KEY] === "object"
     ? state[FACEBOOK_NAV_CACHE_KEY] : {};
   const item = cache[facebookNavigationKey(pageId, psid)];
-  if (!item || Date.now() - Number(item.savedAt || 0) > FACEBOOK_NAV_CACHE_TTL_MS ||
+  const route = profileInboxRoute(conversationLink, pageId);
+  if (!route?.suite || !item || item.providerRoute !== route.key ||
+      item.navigationId !== navigationIdFromFacebookUrl(conversationLink, pageId, psid) ||
+      Date.now() - Number(item.savedAt || 0) > FACEBOOK_NAV_CACHE_TTL_MS ||
       typeof item.navigationId !== "string" || !/^\d{1,32}$/.test(item.navigationId) ||
       item.navigationId === pageId || item.navigationId === psid) return null;
   return item.navigationId;
 }
 
-async function rememberFacebookNavigationId(pageId, psid, navigationId) {
+async function rememberFacebookNavigationId(pageId, psid, navigationId, conversationLink) {
+  // Persist only mappings supplied directly by the participant-verified Meta
+  // conversation API. A browser redirect is never durable identity evidence.
+  const route = profileInboxRoute(conversationLink, pageId);
+  if (!route?.suite || navigationIdFromFacebookUrl(conversationLink, pageId, psid) !== navigationId) return false;
   if (![pageId, psid, navigationId].every(value => typeof value === "string" && /^\d{1,32}$/.test(value)) ||
       navigationId === pageId || navigationId === psid) return false;
   const state = await readState();
@@ -125,23 +131,15 @@ async function rememberFacebookNavigationId(pageId, psid, navigationId) {
     .sort((a, b) => Number(b[1].savedAt || 0) - Number(a[1].savedAt || 0))
     .slice(0, MAX_FACEBOOK_NAV_CACHE - 1);
   const cache = Object.fromEntries(entries);
-  cache[facebookNavigationKey(pageId, psid)] = { navigationId, savedAt: now };
+  cache[facebookNavigationKey(pageId, psid)] = { navigationId, providerRoute: route.key, savedAt: now };
   await writeState({ [FACEBOOK_NAV_CACHE_KEY]: cache });
   return true;
 }
 
 function navigationIdFromFacebookUrl(value, pageId, psid) {
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "https:" || url.hostname !== "business.facebook.com" ||
-        !/^\/latest\/inbox(?:\/[^/]+)?\/?$/.test(url.pathname)) return null;
-    if (url.searchParams.get("asset_id") !== pageId && url.searchParams.get("page_id") !== pageId &&
-        url.searchParams.get("mailbox_id") !== pageId) return null;
-    const ids = url.searchParams.getAll("selected_item_id");
-    if (ids.length !== 1) return null;
-    const id = ids[0];
-    return /^\d{1,32}$/.test(id) && id !== pageId && id !== psid ? id : null;
-  } catch { return null; }
+  const route = profileInboxRoute(value, pageId);
+  const id = route?.suite ? route.selectedItemId : null;
+  return id && id !== pageId && id !== psid ? id : null;
 }
 
 function summarizeFacebookPages(tabStates) {
@@ -227,31 +225,6 @@ async function currentFacebookContext() {
     (a, b) => Number(b.seenAt ?? 0) - Number(a.seenAt ?? 0),
   );
   return values.find((value) => value?.pageId) ?? null;
-}
-
-async function probeFacebookSession({ force = false } = {}) {
-  const now = Date.now();
-  if (!force && now - facebookSessionProbeCache.at < FACEBOOK_SESSION_PROBE_TTL_MS &&
-      typeof facebookSessionProbeCache.loggedIn === "boolean") return facebookSessionProbeCache;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 6000);
-  try {
-    // Lightweight browser-session check. It never opens a Facebook tab and
-    // never reads message/customer content. Host permission lets the service
-    // worker follow the logged-in browser session when cookies are available.
-    const response = await fetch("https://www.facebook.com/me", {
-      method: "GET", credentials: "include", redirect: "follow", cache: "no-store",
-      headers: { Accept: "text/html" }, signal: controller.signal,
-    });
-    const url = response.url || "";
-    const loggedIn = /^https:\/\/(?:www\.)?facebook\.com\//.test(url) &&
-      !/\/(?:login|checkpoint)(?:\/|\?|$)/.test(url) && response.status < 500;
-    facebookSessionProbeCache = { at: now, loggedIn, url };
-    return facebookSessionProbeCache;
-  } catch {
-    facebookSessionProbeCache = { at: now, loggedIn: null, url: null };
-    return facebookSessionProbeCache;
-  } finally { clearTimeout(timer); }
 }
 
 async function clearAuth() {
@@ -1023,28 +996,41 @@ async function tabById(tabId) {
   }
 }
 
-async function resolveFacebookNavigationId(conversationLink, pageId, psid) {
-  const cached = await cachedFacebookNavigationId(pageId, psid);
-  if (cached) return cached;
+async function resolveFacebookNavigationId(conversationLink, pageId, psid, customerName) {
   const direct = navigationIdFromFacebookUrl(conversationLink, pageId, psid);
-  if (direct) { await rememberFacebookNavigationId(pageId, psid, direct); return direct; }
-  if (typeof conversationLink !== "string" || !conversationLink) return null;
+  if (direct) {
+    const cached = await cachedFacebookNavigationId(pageId, psid, conversationLink);
+    if (!cached) await rememberFacebookNavigationId(pageId, psid, direct, conversationLink);
+    return direct;
+  }
+  if (!profileInboxRoute(conversationLink, pageId) || typeof customerName !== "string" || !customerName.trim()) return null;
 
   let ownedTabId = null;
   try {
-    // Resolve Meta's provider-returned legacy/page-inbox link in a disposable
-    // inactive tab. Facebook may redirect it to Business Suite and reveal the
-    // real selected_item_id; TENH never derives that value from the PSID.
+    // A redirect can select the last viewed customer. Require two stable reads
+    // of Facebook's matching customer card in the fully loaded document.
     const created = await chrome.tabs.create({ url: conversationLink, active: false });
     ownedTabId = created.id ?? null;
     if (!ownedTabId) return null;
     const deadline = Date.now() + 8000;
+    let previous = null;
     while (Date.now() < deadline) {
       const tab = await chrome.tabs.get(ownedTabId);
       if (tab.active) { ownedTabId = null; return null; }
       if (/https:\/\/(?:www\.)?facebook\.com\/(?:login|checkpoint)/.test(tab.url ?? "")) return null;
-      const id = navigationIdFromFacebookUrl(tab.url || tab.pendingUrl, pageId, psid);
-      if (id) { await rememberFacebookNavigationId(pageId, psid, id); return id; }
+      const id = tab.status === "complete" ? navigationIdFromFacebookUrl(tab.url, pageId, psid) : null;
+      if (id) {
+        const context = { pageId, threadId: psid, customerName, conversationLink,
+          loadedConversationLink: tab.url, linkSource: "meta_conversations_api" };
+        await loadProfileScripts(ownedTabId);
+        const result = await profileScript(ownedTabId, context, "read");
+        const profile = safePublicProfile(result.profileUrl, context);
+        const stable = result.found && result.pageId === pageId && result.matchedThreadId === psid && profile
+          ? `${id}:${profile}` : null;
+        if (stable && previous === stable) return id;
+        previous = stable;
+        if (["conversation_mismatch", "ambiguous_profile", "facebook_sign_in_required"].includes(result.reason)) return null;
+      } else previous = null;
       await new Promise(resolve => setTimeout(resolve, 350));
     }
     return null;
@@ -1254,18 +1240,14 @@ async function openFacebook(options = {}, sender) {
         (businessId && result.businessId !== businessId)) return { opened: false, reason: response.status === 404 ? "website_update_required" : "conversation_context_mismatch" };
 
     // Meta often uses a separate selected_item_id/global id for Business Suite.
-    // Prefer the exact Page/customer-bound provider link, resolve its redirect
-    // when needed, and cache that id. Never manufacture selected_item_id from
-    // the Messenger PSID supplied by TENH.
+    // Prefer the participant-verified provider link. Redirects require a loaded
+    // matching customer card and are never cached as durable identity. Never
+    // manufacture selected_item_id from the Messenger PSID supplied by TENH.
     const providerLink = typeof result.conversationLink === "string" && profileInboxRoute(result.conversationLink, pageId)
       ? result.conversationLink : null;
-    const navigationId = typeof result.navigationId === "string" && /^\d{1,32}$/.test(result.navigationId) &&
-      result.navigationId !== pageId && result.navigationId !== threadId
-      ? result.navigationId
-      : await resolveFacebookNavigationId(providerLink, pageId, threadId);
+    const navigationId = await resolveFacebookNavigationId(providerLink, pageId, threadId, result.customerName);
 
     if (navigationId) {
-      await rememberFacebookNavigationId(pageId, threadId, navigationId);
       const tab = await ensureManagedFacebookTab({ pageId, threadId: navigationId, active: true });
       return { opened: Boolean(tab?.id), tabId: tab?.id, pageId, threadId, navigationId, conversationId,
         businessId: result.businessId, exactRequested: true };
@@ -1273,8 +1255,8 @@ async function openFacebook(options = {}, sender) {
     if (providerLink) {
       const tab = await openManagedProviderConversation(providerLink, pageId, true);
       return { opened: Boolean(tab?.id), tabId: tab?.id, pageId, threadId, conversationId,
-        businessId: result.businessId, exactRequested: Boolean(tab?.id), providerLink: true,
-        reason: tab?.id ? undefined : "facebook_navigation_failed" };
+        businessId: result.businessId, exactRequested: false, providerLink: true,
+        reason: tab?.id ? "facebook_customer_selection_unverified" : "facebook_navigation_failed" };
     }
 
     // Safe fallback: open only the correct Page inbox. Do not pretend that the
@@ -1392,7 +1374,7 @@ async function authorizeProfile(context, sender) {
     const navigationId = typeof response.result.navigationId === "string" && /^\d{1,32}$/.test(response.result.navigationId) &&
       response.result.navigationId !== context.pageId && response.result.navigationId !== context.threadId
       ? response.result.navigationId : null;
-    if (navigationId) await rememberFacebookNavigationId(context.pageId, context.threadId, navigationId);
+    if (navigationId) await rememberFacebookNavigationId(context.pageId, context.threadId, navigationId, response.result.conversationLink);
     return { context: { businessId: context.businessId, conversationId: context.conversationId,
       pageId: context.pageId, threadId: context.threadId, customerName: response.result.customerName,
       conversationLink: response.result.conversationLink, linkSource: response.result.linkSource, navigationId } };
@@ -1433,8 +1415,6 @@ async function readStableCustomerLink(tabId, context, owned) {
     const routeNavigationId = routeNow?.selectedItemId;
     if (routeNavigationId && routeNavigationId !== context.threadId && routeNavigationId !== context.pageId) {
       navigationId = routeNavigationId;
-      context.navigationId = routeNavigationId;
-      await rememberFacebookNavigationId(context.pageId, context.threadId, routeNavigationId);
     }
     if (!isExactProfileInbox(tab, context)) {
       // A Meta-returned legacy thread link can redirect into Business Suite.
@@ -1550,10 +1530,9 @@ async function openFacebookCustomerProfile(options, sender) {
     // the candidate in an inactive tab and verify the customer's visible name
     // before TENH treats it as a public profile.
     const navigationId = context.navigationId ||
-      await resolveFacebookNavigationId(context.conversationLink, context.pageId, context.threadId);
+      await resolveFacebookNavigationId(context.conversationLink, context.pageId, context.threadId, context.customerName);
     if (navigationId) {
       context.navigationId = navigationId;
-      await rememberFacebookNavigationId(context.pageId, context.threadId, navigationId);
       const direct = await verifyPublicProfileCandidate(`https://www.facebook.com/profile.php?id=${navigationId}`, context);
       if (direct.verifiedUrl) {
         const openToken = await createProfileOpenTicket(context, direct.verifiedUrl, sender);
@@ -1576,17 +1555,15 @@ async function openFacebookCustomerProfile(options, sender) {
       lookupTabId = tab.id;
     }
     let found = await readStableCustomerLink(tab.id, context, !existing);
-    if (found.navigationId && !context.navigationId) {
+    if (found.profileUrl && found.navigationId && !context.navigationId) {
       context.navigationId = found.navigationId;
-      await rememberFacebookNavigationId(context.pageId, context.threadId, found.navigationId);
     }
     if (existing && found.needsDetailTab) {
       tab = await chrome.tabs.create({ url: context.conversationLink, active: false });
       lookupTabId = tab.id;
       found = await readStableCustomerLink(tab.id, context, true);
-      if (found.navigationId && !context.navigationId) {
+      if (found.profileUrl && found.navigationId && !context.navigationId) {
         context.navigationId = found.navigationId;
-        await rememberFacebookNavigationId(context.pageId, context.threadId, found.navigationId);
       }
     }
     if (!found.profileUrl) return { opened: false, reason: found.reason, lookupDetails: found.lookupDetails };
@@ -1685,18 +1662,12 @@ async function handle(message, sender) {
       const state = await readState();
       const tabStates = await facebookTabStates();
       const facebookPages = summarizeFacebookPages(tabStates);
-      let facebook = await currentFacebookContext() ?? state.facebook ?? null;
-      if (!facebook?.loggedIn) {
-        const session = await probeFacebookSession();
-        if (session.loggedIn === true) facebook = { ...(facebook || {}), loggedIn: true, sessionOnly: !facebook?.pageId, composerState: facebook?.composerState ?? "unknown" };
-        else if (!facebook && session.loggedIn === false) facebook = { loggedIn: false, sessionOnly: true, composerState: "unknown" };
-      }
       return {
         version: VERSION,
         connected: Boolean(state.token),
         paired: Boolean(state.token),
         device: state.device ?? null,
-        facebook,
+        facebook: await currentFacebookContext() ?? state.facebook ?? null,
         facebookPages,
         facebookPageCount: facebookPages.length,
         sync: {
@@ -1913,8 +1884,6 @@ async function handle(message, sender) {
     }
 
     case "TENH_REDETECT": {
-      // Session detection does not require opening Facebook/Business Suite.
-      const session = await probeFacebookSession({ force: true });
       await reconnectOpenTabs();
       const tabs = await chrome.tabs.query({
         url: ["https://www.facebook.com/*", "https://business.facebook.com/*"],
@@ -1925,9 +1894,7 @@ async function handle(message, sender) {
         if (value) detected.push(value);
       }
       const pages = summarizeFacebookPages(await facebookTabStates());
-      let facebook = await currentFacebookContext() ?? detected.find((value) => value.pageId) ?? detected[0] ?? null;
-      if (!facebook && typeof session.loggedIn === "boolean") facebook = { loggedIn: session.loggedIn, sessionOnly: true, composerState: "unknown" };
-      else if (facebook && session.loggedIn === true) facebook = { ...facebook, loggedIn: true };
+      const facebook = await currentFacebookContext() ?? detected.find((value) => value.pageId) ?? detected[0] ?? null;
       if (facebook) await writeState({ facebook });
       await heartbeat("facebook_detected");
       return {
@@ -1935,7 +1902,6 @@ async function handle(message, sender) {
         pages,
         pageCount: pages.length,
         foundTab: detected.length > 0,
-        sessionDetected: session.loggedIn,
       };
     }
 

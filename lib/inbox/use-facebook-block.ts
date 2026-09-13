@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { InboxConversation } from "@/types/inbox";
 export const FACEBOOK_BLOCK_CHANGED = "tenh:facebook-block-changed";
-type State = { is_blocked: boolean; updated_by_name?: string | null; operation_id?: string | null };
+type State = { is_blocked: boolean; block_mode?: "messages" | "page"; updated_by_name?: string | null; operation_id?: string | null };
 export function useFacebookBlock(conversation: InboxConversation | null) {
   const id = conversation?.id ?? ""; const businessId = conversation?.business_id ?? "";
   const page = conversation?.social_account?.id; const contact = conversation?.contact?.id;
@@ -15,8 +15,15 @@ export function useFacebookBlock(conversation: InboxConversation | null) {
     const seq = ++sequence.current;
     try {
       const response = await fetch(`/api/conversations/${encodeURIComponent(id)}/facebook-block`, { cache: "no-store" }); const data = await response.json();
-      if (response.ok && data.success && sequence.current === seq && liveId.current === id) setValue({ id, state: data.state, available: data.available });
-    } catch { /* Optional UI read; send endpoints still enforce the block. */ }
+      if (sequence.current === seq && liveId.current === id) {
+        if (response.ok && data.success) setValue({ id, state: data.state, available: data.available && data.modesAvailable !== false });
+        else setValue(previous => ({ id, state: previous.id === id ? previous.state : null, available: false }));
+      }
+    } catch {
+      if (sequence.current === seq && liveId.current === id) {
+        setValue(previous => ({ id, state: previous.id === id ? previous.state : null, available: false }));
+      }
+    }
   }, [id, enabled]);
   useEffect(() => {
     if (!enabled) return;
@@ -32,5 +39,6 @@ export function useFacebookBlock(conversation: InboxConversation | null) {
     return () => { sequence.current++; window.removeEventListener(FACEBOOK_BLOCK_CHANGED, changed); window.removeEventListener("focus", changed); void db.removeChannel(channel); };
   }, [enabled, id, businessId, page, contact, refresh]);
   const state = value.id === id ? value.state : null;
-  return { blocked: Boolean(enabled && state?.is_blocked), available: value.id !== id || value.available, actorName: state?.updated_by_name ?? null, refresh };
+  return { blocked: Boolean(enabled && state?.is_blocked), mode: state?.block_mode ?? "messages", loaded: value.id === id,
+    available: value.id === id && value.available, actorName: state?.updated_by_name ?? null, refresh };
 }
