@@ -13,8 +13,10 @@ export const FACEBOOK_REQUIRED_WEBHOOK_FIELDS = [
   "message_echoes",
   "feed",
   "messaging_postbacks",
+  "messaging_referrals",
   "message_deliveries",
   "message_reads",
+  "message_reactions",
 ] as const;
 
 type FacebookGraphError = {

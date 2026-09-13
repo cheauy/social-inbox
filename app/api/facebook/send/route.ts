@@ -1,3 +1,4 @@
+import { FacebookReplyError, getFacebookSendReply, requireFacebookReplyWindow } from "@/lib/facebook/send-reply-context";
 import { facebookSendBlockReason } from "@/lib/facebook/customer-block";
 import {
   NextRequest,
@@ -26,9 +27,7 @@ import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 
-import { createReplyContext, getMessageActions } from "@/lib/inbox/message-actions";
 import { mutateMessageMetadata } from "@/lib/inbox/mutate-message-metadata";
-import type { InboxMessage } from "@/types/inbox";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,8 +37,7 @@ type SendMessageBody = {
   recipientId?: string;
   message?: string;
 
-  /* A TENH-only quote reference. Never forward reply_to to the Messenger API.
-   * Existing send policy/recipient validation stays in force. */
+  /** Local row ID; the server resolves the native Messenger MID. */
   replyToMessageId?: string;
 };
 
@@ -159,21 +157,9 @@ export async function POST(
     );
   }
 
-  if (body.replyToMessageId !== undefined && typeof body.replyToMessageId !== "string") {
-    return NextResponse.json({ success: false, error: "Invalid reply message ID." }, { status: 400 });
-  }
-  const replyToMessageId = body.replyToMessageId?.trim() || null;
-  let replyContext: ReturnType<typeof createReplyContext> | null = null;
-  if (replyToMessageId) {
-    const { data: target, error } = await supabaseAdmin.from("messages").select("*")
-      .eq("id", replyToMessageId).eq("business_id", currentMember.business_id)
-      .eq("conversation_id", conversationId).maybeSingle();
-    if (error) return NextResponse.json({ success: false, error: "Unable to load the selected reply." }, { status: 500 });
-    if (!target || target.platform_message_id?.startsWith("telegram:") || !getMessageActions(target as InboxMessage, "facebook").reply) {
-      return NextResponse.json({ success: false, error: "The selected reply is not an available Messenger message in this conversation." }, { status: 400 });
-    }
-    replyContext = createReplyContext(target as InboxMessage, "tenh");
-  }
+  let replyContext: Awaited<ReturnType<typeof getFacebookSendReply>>;
+  try { replyContext = await getFacebookSendReply(body.replyToMessageId, currentMember.business_id, conversationId); }
+  catch (error) { return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Unable to load the selected reply." }, { status: error instanceof FacebookReplyError ? error.status : 503 }); }
 
   const graphVersion =
     process.env
@@ -494,6 +480,9 @@ export async function POST(
     );
   }
 
+  try { requireFacebookReplyWindow(replyContext, messengerPolicy.windowState); }
+  catch (error) { return NextResponse.json({ success: false, error: (error as Error).message }, { status: 409 }); }
+
   const hasRecentDirectCustomerMessage =
     messengerPolicy.hasRecentDirectCustomerMessage;
   const isPrivateReply = messengerPolicy.windowState === "private_reply_available";
@@ -548,6 +537,7 @@ export async function POST(
                 messaging_type:
                   "RESPONSE",
               }),
+          ...(replyContext ? { reply_to: replyContext.reply_to } : {}),
           message: {
             text: message,
           },
@@ -897,7 +887,7 @@ export async function POST(
         is_echo:
           false,
         raw_payload:
-          { ...facebookResult, ...(replyContext ? { tenh_reply: replyContext } : {}) },
+          { ...facebookResult, ...(replyContext || {}) },
         platform_created_at:
           now,
       });
@@ -959,7 +949,7 @@ export async function POST(
       if (error || !stored) throw new Error("Reply reference row unavailable");
       await mutateMessageMetadata(supabaseAdmin, {
         businessId: currentMember.business_id, conversationId: conversation.id, messageId: stored.id,
-      }, (current) => ({ raw_payload: { ...(current.raw_payload ?? {}), tenh_reply: replyContext } }));
+      }, (current) => ({ raw_payload: { ...(current.raw_payload ?? {}), ...replyContext } }));
     } catch {
       // The provider already sent the message: never invite a duplicate send.
       saveWarning = "Facebook sent your message, but TENH could not save its reply reference.";

@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: Facebook sticker UI no longer depends on the retired external provider
+ok 1 - Facebook sticker UI no longer depends on the retired external provider
+  ---
+  duration_ms: 2.742752
+  type: 'test'
+  ...
+# Subtest: Facebook picker calls TENH Meta sticker routes
+ok 2 - Facebook picker calls TENH Meta sticker routes
+  ---
+  duration_ms: 0.206862
+  type: 'test'
+  ...
+# Subtest: Facebook sends native sticker id rather than image attachment
+ok 3 - Facebook sends native sticker id rather than image attachment
+  ---
+  duration_ms: 0.209366
+  type: 'test'
+  ...
+# Subtest: Meta catalog is server-side and page token never goes to browser
+ok 4 - Meta catalog is server-side and page token never goes to browser
+  ---
+  duration_ms: 0.204839
+  type: 'test'
+  ...
+# Subtest: Telegram native sticker flow is preserved
+ok 5 - Telegram native sticker flow is preserved
+  ---
+  duration_ms: 1.090958
+  type: 'test'
+  ...
+# Subtest: Duplicate native Meta sticker sends use durable receipt fence
+ok 6 - Duplicate native Meta sticker sends use durable receipt fence
+  ---
+  duration_ms: 0.256467
+  type: 'test'
+  ...
+# Subtest: Patch does not contain Chrome extension files
+ok 7 - Patch does not contain Chrome extension files
+  ---
+  duration_ms: 0.190187
+  type: 'test'
+  ...
+# Subtest: Legacy online sticker routes no longer call an external sticker provider
+ok 8 - Legacy online sticker routes no longer call an external sticker provider
+  ---
+  duration_ms: 0.244068
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 70.691146

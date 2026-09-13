@@ -15,6 +15,8 @@ import {
 import {
   processFacebookMessage,
 } from "@/lib/facebook/process-message";
+import { processFacebookMessengerReferral } from "@/lib/facebook/process-messenger-referral";
+import { processFacebookMessageReaction } from "@/lib/facebook/process-message-reaction";
 import {
   markFacebookCommentThreadDeleted,
 } from "@/lib/facebook/mark-comment-thread-deleted";
@@ -37,7 +39,7 @@ export const dynamic =
 type FacebookFeedChange = {
   field?: string;
   value?:
-    FacebookFeedCommentValue;
+    FacebookFeedCommentValue & FacebookMessagingEvent;
 };
 
 type FacebookWebhookEntry = {
@@ -301,9 +303,20 @@ export async function POST(
      */
     for (
       const event of
-      entry.messaging ?? []
+      [
+        ...(entry.messaging ?? []),
+        // Meta also documents field/value envelopes for postback referrals.
+        ...(entry.changes ?? []).flatMap((change) =>
+          ["messages", "messaging_referrals", "messaging_postbacks"].includes(change.field ?? "") && change.value
+            ? [change.value] : [],
+        ),
+      ]
     ) {
       try {
+        if (event.reaction) {
+          await processFacebookMessageReaction(event, entry.id);
+          continue;
+        }
         const statusEvent =
           event as
             FacebookMessageStatusEvent;
@@ -326,6 +339,9 @@ export async function POST(
             event,
           );
         }
+        // Save context after the real message has reached Realtime. Referrals
+        // never synthesize messages or change unread / delivery state.
+        await processFacebookMessengerReferral(event, entry.id);
       } catch (error) {
         const message =
           error instanceof Error

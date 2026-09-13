@@ -2,13 +2,13 @@
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { StipopStickerGrid } from "./stipop-sticker-grid";
-import type { StipopStickerChoice } from "@/lib/stickers/catalog";
+import { MetaStickerGrid } from "./meta-sticker-grid";
+import type { MetaStickerChoice } from "@/lib/stickers/catalog";
 import { ChevronLeft, ChevronRight, Clock, Loader2, Plus, Search, Sticker, X } from "lucide-react";
 import { TELEGRAM_STICKER_PACKS, normalizeStickerSetName, type TelegramStickerChoice } from "@/lib/telegram/sticker-catalog";
 import { readStickerPack, rememberStickerChoice, stickerMatchesSearch, stickerPanelLayout, STICKER_PACK_CACHE_MS, type StickerPanelLayout } from "@/lib/inbox/sticker-picker-ui";
 
-// Same existing artwork and public export; these are NOT Facebook's native store packs.
+// Existing TENH artwork remains available on non-Facebook channels; Facebook uses Meta native stickers.
 export const TENH_STICKERS = [
   { id: "hello", label: "Hello" }, { id: "thanks", label: "Thank you" },
   { id: "ok", label: "OK" }, { id: "love", label: "Love it" },
@@ -18,20 +18,20 @@ type ImageId = typeof TENH_STICKERS[number]["id"];
 type Pack = { name: string; title: string; icon: string };
 type CachedPack = { title: string; stickers: TelegramStickerChoice[]; at: number };
 type Props = {
+  businessId: string;
   disabled: boolean;
   conversationId: string;
   platform?: string;
   onSelect: (file: File) => void;
   onSelectTelegram?: (sticker: TelegramStickerChoice) => void;
   onOpen: () => void;
-  onSendFacebook?: (sticker: StipopStickerChoice) => Promise<boolean>;
+  onSendFacebook?: (sticker: MetaStickerChoice) => Promise<boolean>;
 };
 
 /** Same draft-selection interface, with a scrollable grid and a fixed bottom pack strip. */
-export function TenhStickerPicker({ disabled, conversationId, platform, onSelect, onSelectTelegram, onOpen, onSendFacebook }: Props) {
+export function TenhStickerPicker({ businessId, disabled, conversationId, platform, onSelect, onSelectTelegram, onOpen, onSendFacebook }: Props) {
   const telegram = platform === "telegram" && Boolean(onSelectTelegram);
-  const [onlineSource, setOnlineSource] = useState(true);
-  const facebookOnline = platform === "facebook" && Boolean(onSendFacebook) && onlineSource;
+  const facebookMeta = platform === "facebook" && Boolean(onSendFacebook);
   const id = useId();
   const root = useRef<HTMLDivElement>(null), panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null), strip = useRef<HTMLDivElement>(null);
@@ -202,15 +202,17 @@ export function TenhStickerPicker({ disabled, conversationId, platform, onSelect
   ];
 
   return <div ref={root} className="relative shrink-0">
-    <button ref={trigger} type="button" disabled={disabled} aria-label="Stickers" aria-haspopup="dialog" aria-expanded={open} aria-controls={`${id}-dialog`} title="Stickers" onClick={() => { if (open) close(); else { onOpen(); setOpen(true); setError(""); setQuery(""); } }} className={`flex h-9 w-9 items-center justify-center rounded-xl transition disabled:opacity-40 ${open ? "bg-blue-50 text-blue-600" : "text-slate-500 hover:bg-slate-50"}`}><Sticker className="h-5 w-5" /></button>
+    <button ref={trigger} type="button" disabled={disabled} aria-label="Stickers" aria-haspopup="dialog" aria-expanded={open} aria-controls={`${id}-dialog`} title="Stickers" onClick={() => { if (open) close(); else { onOpen(); setOpen(true); setError(""); setQuery(""); } }} className={`flex h-9 w-9 items-center justify-center rounded-xl transition disabled:opacity-40 ${open ? "bg-blue-50 text-blue-600" : "text-slate-500 hover:bg-slate-50"}`}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
+      <path d="M20.5 13A8.5 8.5 0 1 0 12 20.5h1a3 3 0 0 0 2.1-.9l4.5-4.5a3 3 0 0 0 .9-2.1Z" />
+      <path d="M20 14h-4a2 2 0 0 0-2 2v4M8 9h.01M14 9h.01M7.5 12.5a4.5 4.5 0 0 0 5 2" />
+    </svg></button>
     {open && layout ? createPortal(
-      <div ref={panel} id={`${id}-dialog`} role="dialog" aria-label={telegram ? "Telegram stickers" : facebookOnline ? "Online sticker search" : "TENH image stickers"} style={layout} className="fixed z-[120] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <div ref={panel} id={`${id}-dialog`} role="dialog" aria-label={telegram ? "Telegram stickers" : facebookMeta ? "Messenger stickers" : "TENH image stickers"} style={layout} className="fixed z-[120] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex shrink-0 items-center justify-between gap-2 px-4 pt-3 pb-2">
-          <div className="min-w-0"><h3 className="truncate text-sm font-semibold text-slate-900">Stickers</h3><p className="text-[11px] text-slate-500">{telegram ? "Telegram packs" : facebookOnline ? "Stipop · online sticker search" : "TENH image library · not Facebook’s Sticker Store"}</p></div>
-          {platform === "facebook" && onSendFacebook ? <div className="flex rounded-lg bg-slate-100 p-0.5 text-[10px]"><button type="button" onClick={() => setOnlineSource(true)} className={`rounded px-2 py-1 ${onlineSource ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}>Online</button><button type="button" onClick={() => setOnlineSource(false)} className={`rounded px-2 py-1 ${!onlineSource ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}>TENH</button></div> : null}
+          <div className="min-w-0"><h3 className="truncate text-sm font-semibold text-slate-900">Stickers</h3><p className="text-[11px] text-slate-500">{telegram ? "Telegram packs" : facebookMeta ? "Messenger Sticker" : "TENH image library"}</p></div>
           <button type="button" aria-label="Close stickers" onClick={() => close(true)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
         </div>
-        {facebookOnline && onSendFacebook ? <StipopStickerGrid key={conversationId} conversationId={conversationId} disabled={disabled} onSend={onSendFacebook} onSent={() => close(true)} /> : <>
+        {facebookMeta && onSendFacebook ? <MetaStickerGrid key={conversationId} businessId={businessId} conversationId={conversationId} disabled={disabled} onSend={onSendFacebook} onSent={() => close(true)} /> : <>
         <div className="relative mx-3 mb-2 shrink-0"><Search className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400" /><input ref={searchInput} value={query} onChange={event => setQuery(event.target.value)} placeholder="Search this pack" aria-label="Search current sticker pack" className="h-9 w-full rounded-xl border-0 bg-slate-100 pr-8 pl-9 text-sm text-slate-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-300" />{query ? <button type="button" aria-label="Clear sticker search" onClick={() => { setQuery(""); searchInput.current?.focus(); }} className="absolute top-2 right-2 rounded p-0.5 text-slate-500"><X className="h-4 w-4" /></button> : null}</div>
         <div className="flex shrink-0 items-center justify-between px-4 pb-1 text-xs"><span id={`${id}-pack-title`} className="truncate font-medium text-slate-600">{currentTitle}</span><span className="ml-2 text-slate-400">{busy ? "" : itemCount}</span></div>
         <div id={`${id}-grid`} role="tabpanel" aria-labelledby={`${id}-pack-title`} aria-busy={busy} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2">

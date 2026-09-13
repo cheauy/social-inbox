@@ -25,6 +25,14 @@ function merge(first: InboxMessage, second: InboxMessage): InboxMessage {
   const oldPayload = asRecord(other.raw_payload);
   const newPayload = asRecord(preferred.raw_payload);
   const payload = { ...newPayload };
+  // History responses may omit an incoming message's ad referral. Retain the
+  // original event context so an older source card survives a refresh.
+  if (!asRecord(payload.message).referral && asRecord(oldPayload.message).referral) {
+    payload.message = { ...asRecord(payload.message), referral: asRecord(oldPayload.message).referral };
+    for (const field of ["timestamp", "sender", "recipient"]) {
+      if (payload[field] == null && oldPayload[field] != null) payload[field] = oldPayload[field];
+    }
+  }
   // Never strip local reference metadata when a bare Messenger echo arrives.
   const fallback = newPayload.tenh_reply_fallback || oldPayload.tenh_reply_fallback;
   if (fallback) {
@@ -34,10 +42,31 @@ function merge(first: InboxMessage, second: InboxMessage): InboxMessage {
     delete payload.tenh_reply;
     delete payload.reply_to_message;
   } else if (!payload.tenh_reply && oldPayload.tenh_reply) payload.tenh_reply = oldPayload.tenh_reply;
+  if (!fallback) {
+    // A send response / bare echo may omit the native quote. Preserve the
+    // previously confirmed MID and snapshot alongside the local jump target.
+    for (const field of ["reply_to", "tenh_facebook_reply"]) {
+      if (!payload[field] && oldPayload[field]) payload[field] = oldPayload[field];
+    }
+    if (!asRecord(payload.message).reply_to && asRecord(oldPayload.message).reply_to) {
+      payload.message = { ...asRecord(payload.message), reply_to: asRecord(oldPayload.message).reply_to };
+    }
+  }
   for (const [field, timeKey] of [["tenh_message_pin", "updated_at"], ["tenh_edit", "edited_at"]]) {
     if (oldPayload[field] && (!newPayload[field] || metadataTime(oldPayload[field], timeKey) > metadataTime(newPayload[field], timeKey))) {
       payload[field] = oldPayload[field];
       if (field === "tenh_edit") result.message_text = other.message_text;
+    }
+  }
+  // Preserve each participant's latest reaction, including a removal, when an
+  // older history response or bare echo arrives after the Realtime update.
+  for (const actor of ["page", "customer"] as const) {
+    const oldReaction = asRecord(asRecord(oldPayload.tenh_messenger_reactions)[actor]);
+    const newReaction = asRecord(asRecord(newPayload.tenh_messenger_reactions)[actor]);
+    const oldTime = Number(oldReaction.timestamp) || 0;
+    const newTime = Number(newReaction.timestamp) || 0;
+    if (oldTime > newTime) {
+      payload.tenh_messenger_reactions = { ...asRecord(payload.tenh_messenger_reactions), [actor]: oldReaction };
     }
   }
   const deletion = newPayload.tenh_deleted || oldPayload.tenh_deleted;

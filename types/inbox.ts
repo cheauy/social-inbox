@@ -171,6 +171,7 @@ export type ContactNote = {
 
 export type InboxConversation = {
   id: string;
+  facebook_messenger_sources?: import("@/lib/facebook/messenger-source").MessengerSource[];
   business_id: string;
   subscription_id?: string | null;
   status: ConversationStatus;

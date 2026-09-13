@@ -35,7 +35,9 @@ export function getFacebookMessageContent(
     };
   }
 
-  const attachment = message.attachments?.[0];
+  // During Meta's transition a sticker may also include an image attachment.
+  const attachment = message.attachments?.find(item => item.type === "sticker" || item.payload?.sticker_id != null)
+    ?? message.attachments?.[0];
 
   if (!attachment) {
     return {
@@ -46,13 +48,13 @@ export function getFacebookMessageContent(
   }
 
   if (
-    attachment.type === "image" &&
-    attachment.payload?.sticker_id
+    attachment.type === "sticker" ||
+    (attachment.type === "image" && attachment.payload?.sticker_id != null)
   ) {
     return {
       messageType: "sticker",
       messageText: "[Sticker]",
-      attachmentUrl: attachment.payload.url ?? null,
+      attachmentUrl: attachment.payload?.url ?? null,
     };
   }
 

@@ -1,3 +1,5 @@
+import { FacebookReplyError, getFacebookSendReply, requireFacebookReplyWindow } from "@/lib/facebook/send-reply-context";
+import { mutateMessageMetadata } from "@/lib/inbox/mutate-message-metadata";
 import { facebookSendBlockReason } from "@/lib/facebook/customer-block";
 import { facebookMediaMessage } from "@/lib/facebook/media-message";
 import {
@@ -596,6 +598,14 @@ export async function POST(
     );
   }
 
+  let replyContext: Awaited<ReturnType<typeof getFacebookSendReply>>;
+  try {
+    replyContext = await getFacebookSendReply(formData.get("replyToMessageId"), currentMember.business_id, conversationId);
+    requireFacebookReplyWindow(replyContext, messengerPolicy.windowState);
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Unable to load the selected reply." }, { status: error instanceof FacebookReplyError ? error.status : 503 });
+  }
+
   const shouldUseHumanAgent =
     messengerPolicy.windowState ===
     "human_agent";
@@ -829,6 +839,7 @@ export async function POST(
                   messaging_type:
                     "RESPONSE",
                 }),
+            ...(replyContext ? { reply_to: replyContext.reply_to } : {}),
             message: {
               ...facebookMediaMessage(kind, attachmentIds),
               ...(clientRequestId ? { metadata: clientRequestId } : {}),
@@ -1035,10 +1046,7 @@ export async function POST(
         // V2.14.1 — verified Tenh Chat sender attribution.
         sent_by_member_id:
           currentMember.id,
-        delivery_status:
-          "sent",
-        delivered_at: null,
-        seen_at: null,
+        // The echo may already be delivered/read. Never reset its receipts.
       })
       .eq(
         "id",
@@ -1099,6 +1107,7 @@ export async function POST(
         is_echo:
           false,
         raw_payload: {
+          ...replyContext,
           tenh_client_request_id: clientRequestId,
           source:
             "tenh-chat-v2.4",
@@ -1248,8 +1257,18 @@ export async function POST(
     );
   }
 
+  let replyWarning: string | undefined;
+  if (replyContext && savedMessage?.id) {
+    try {
+      savedMessage = await mutateMessageMetadata(supabaseAdmin, {
+        businessId: currentMember.business_id, conversationId, messageId: savedMessage.id,
+      }, current => ({ raw_payload: { ...(current.raw_payload || {}), ...replyContext } }));
+    } catch { replyWarning = "Attachment sent, but TENH could not save its reply reference. Do not resend."; }
+  }
+
   return NextResponse.json({
     success: true,
+    ...(replyWarning ? { warning: replyWarning } : {}),
     attachmentId,
     messageId:
       facebookMessageId,

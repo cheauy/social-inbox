@@ -1,5 +1,5 @@
 "use client";
-import { isStipopSticker, type InboxStickerChoice } from "@/lib/stickers/catalog";
+import { isMetaSticker, type InboxStickerChoice } from "@/lib/stickers/catalog";
 
 import { createReplyContext, getDeletedMessageText, getMessageActions, MESSAGE_ROW_CHANGED_EVENT } from "@/lib/inbox/message-actions";
 
@@ -94,6 +94,7 @@ type PendingOptimisticSend = {
 };
 
 type PendingOptimisticAttachmentSend = {
+  replyToMessageId?: string;
   albumFiles?: File[];
   albumPreviewUrls?: string[];
   tempId: string;
@@ -2829,6 +2830,15 @@ useInboxRealtime({
         ? new Date(rowLastMessageValue).getTime()
         : 0;
 
+      // A source-only update must not turn an existing unread badge into a
+      // teammate's manual "Mark unread" action if updated_at has a DB trigger.
+      const referralContextOnlyUpdate =
+        Array.isArray(row.facebook_messenger_sources) &&
+        JSON.stringify(row.facebook_messenger_sources) !==
+          JSON.stringify(existingConversation?.facebook_messenger_sources ?? []) &&
+        rowLastMessageTime === existingLastMessageTime &&
+        rowUnreadCount === existingUnreadCount;
+
       const deletedPreviewOverride =
         deletedPreviewOverrideRef.current.get(conversationId) ?? null;
       let activeDeletedPreviewOverride = deletedPreviewOverride;
@@ -2892,6 +2902,7 @@ useInboxRealtime({
         rowUpdatedTime > readRowVersion;
 
       const isSharedManualUnreadUpdate =
+        !referralContextOnlyUpdate &&
         rowUnreadCount !== null &&
         rowUnreadCount > 0 &&
         !unreadComesFromNewMessage &&
@@ -7291,6 +7302,7 @@ async function performOptimisticAttachmentSend(
     }
     if (pending.endpoint === "/api/facebook/send-attachment") {
       formData.set("clientRequestId", pending.tempId);
+      if (pending.replyToMessageId) formData.set("replyToMessageId", pending.replyToMessageId);
     }
 
     /*
@@ -7638,11 +7650,6 @@ async function handleSendAttachments(
   attachments: ReplyAttachment[],
   caption?: string,
 ): Promise<boolean> {
-  if (replyingToFacebookMessageId) {
-    setSendError("Cancel the Facebook reply reference before attaching media.");
-    return false;
-  }
-
   if (editingTelegramMessageId) {
     setSendError(
       "Finish or cancel Telegram editing before sending an attachment.",
@@ -7779,6 +7786,11 @@ async function handleSendAttachments(
     }
   }
 
+  const facebookReplyTarget = conversationPlatform === "facebook" && replyingToFacebookMessageId
+    ? liveMessagesRef.current.find(item => item.id === replyingToFacebookMessageId && item.conversation_id === activeConversation.id) : null;
+  if (conversationPlatform === "facebook" && replyingToFacebookMessageId && (!facebookReplyTarget || !getMessageActions(facebookReplyTarget, "facebook").reply)) {
+    setSendError("The selected message is no longer available. Cancel Reply and try again."); return false;
+  }
   let allSucceeded = true;
   const albumPendings: PendingOptimisticAttachmentSend[] = [];
 
@@ -7860,6 +7872,7 @@ async function handleSendAttachments(
         messageText,
         endpoint:
           attachmentEndpoint,
+        ...(facebookReplyTarget ? { replyToMessageId: facebookReplyTarget.id } : {}),
       };
 
     if (photoBatch.length > 1) {
@@ -7885,6 +7898,10 @@ async function handleSendAttachments(
         messageText,
       });
 
+    if (facebookReplyTarget) {
+      optimisticMessage.raw_payload = { ...(optimisticMessage.raw_payload || {}),
+        reply_to: { mid: facebookReplyTarget.platform_message_id }, tenh_reply: createReplyContext(facebookReplyTarget, "facebook") };
+    }
     if (pending.albumPreviewUrls) {
       optimisticMessage.raw_payload = {
         ...(optimisticMessage.raw_payload as Record<string, unknown>),
@@ -7978,6 +7995,9 @@ async function handleSendAttachments(
     }
   }
 
+  if (allSucceeded && facebookReplyTarget && activeConversationRef.current?.id === activeConversation.id) {
+    setReplyingToFacebookMessageId(current => current === facebookReplyTarget.id ? null : current);
+  }
   return allSucceeded;
 }
 
@@ -8325,7 +8345,8 @@ async function handleSendMessage(
       (conversationPlatform === "telegram" ? replyingToTelegramMessageId : replyingToFacebookMessageId));
   if (replyTarget && !isCommentReply) {
     optimisticMessage.raw_payload = { ...(optimisticMessage.raw_payload ?? {}),
-      tenh_reply: createReplyContext(replyTarget, conversationPlatform === "telegram" ? "telegram" : "tenh") };
+      ...(conversationPlatform === "facebook" ? { reply_to: { mid: replyTarget.platform_message_id } } : {}),
+      tenh_reply: createReplyContext(replyTarget, conversationPlatform === "telegram" ? "telegram" : "facebook") };
   }
 
   setLiveMessages(
@@ -8364,22 +8385,27 @@ async function handleSendMessage(
 
   async function handleSendSticker(sticker: InboxStickerChoice): Promise<boolean> {
     const conversation = activeConversationRef.current;
-    if (isStipopSticker(sticker)) {
+    if (isMetaSticker(sticker)) {
       if (!conversation?.contact || conversation.social_account?.platform !== "facebook") throw new Error("Open a Facebook conversation before sending this sticker.");
-      const requestId = crypto.randomUUID(), tempId = `optimistic:attachment:${requestId}`;
-      const pending: PendingOptimisticSend = { tempId, conversationId: conversation.id, message: "Sent a photo",
-        endpoint: "/api/stickers/send", requestBody: { conversationId: conversation.id, requestId, selectionToken: sticker.selectionToken },
+      const target = liveMessagesRef.current.find(item => item.conversation_id === conversation.id && item.id === replyingToFacebookMessageId);
+      if (replyingToFacebookMessageId && (!target || !getMessageActions(target, "facebook").reply)) throw new Error("The selected message is no longer available. Cancel Reply and try again.");
+      const requestId = crypto.randomUUID(), tempId = `optimistic:sticker:${requestId}`;
+      const pending: PendingOptimisticSend = { tempId, conversationId: conversation.id, message: "Sent a sticker",
+        endpoint: "/api/facebook/stickers/send", requestBody: { conversationId: conversation.id, requestId, stickerId: sticker.stickerId, previewUrl: sticker.previewUrl, label: sticker.label, ...(target ? { replyToMessageId: target.id } : {}) },
         isCommentConversation: false, commentId: null };
-      const optimistic = createOptimisticMessage({ tempId, conversationId: conversation.id, message: "Sent a photo",
+      const optimistic = createOptimisticMessage({ tempId, conversationId: conversation.id, message: "Sent a sticker",
         recipientPlatformId: conversation.contact.platform_user_id, commentReplyParentId: null });
-      optimistic.message_type = "image"; optimistic.attachment_url = sticker.imageUrl;
+      optimistic.message_type = "sticker"; optimistic.attachment_url = sticker.previewUrl;
       optimistic.raw_payload = { ...(optimistic.raw_payload || {}), tenh_client_request_id: tempId,
-        tenh_stipop: { sticker_id: sticker.stickerId, delivery: "image_attachment" } };
+        tenh_meta_sticker: { sticker_id: sticker.stickerId, native: true, pack_id: sticker.packId } };
+      if (target) optimistic.raw_payload = { ...optimistic.raw_payload, reply_to: { mid: target.platform_message_id }, tenh_reply: createReplyContext(target, "facebook") };
       pendingSendsRef.current[tempId] = pending;
       setLiveMessages(current => [...current, optimistic]);
-      updateConversationPreviewOptimistically({ conversationId: conversation.id, message: "You sent a photo", createdAt: optimistic.created_at });
+      updateConversationPreviewOptimistically({ conversationId: conversation.id, message: "You sent a sticker", createdAt: optimistic.created_at });
       setSendError(null);
-      return performOptimisticSend(pending);
+      const ok = await performOptimisticSend(pending);
+      if (ok && target && activeConversationRef.current?.id === conversation.id) setReplyingToFacebookMessageId(current => current === target.id ? null : current);
+      return ok;
     }
     if (!conversation?.contact || conversation.social_account?.platform !== "telegram" || editingTelegramMessageId) {
       setSendError("Open a Telegram conversation and finish editing before sending a sticker."); throw new Error("Sticker sending unavailable.");

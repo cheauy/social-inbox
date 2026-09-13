@@ -377,6 +377,7 @@ export async function getConversations(
 
       source_type,
       facebook_post_id,
+      facebook_messenger_sources,
       facebook_comment_id,
       parent_comment_id,
 

@@ -79,7 +79,7 @@ export function isMessagePinned(message: ActionMessage): boolean {
   return getMessagePin(message).pinned === true && !isMessageDeleted(message);
 }
 
-export function createReplyContext(message: ActionMessage, scope: "tenh" | "telegram") {
+export function createReplyContext(message: ActionMessage, scope: "tenh" | "telegram" | "facebook") {
   return {
     reply_to_local_message_id: message.id,
     reply_to_platform_message_id: message.platform_message_id,

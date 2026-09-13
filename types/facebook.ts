@@ -1,14 +1,30 @@
+export type FacebookMessengerReferral = {
+  ref?: string;
+  ad_id?: string;
+  source?: string;
+  type?: string;
+  ads_context_data?: {
+    ad_title?: string;
+    photo_url?: string;
+    video_url?: string;
+    post_id?: string;
+    product_id?: string;
+    flow_id?: string;
+  };
+};
+
 export type FacebookAttachment = {
   type?: string;
   payload?: {
     url?: string;
-    sticker_id?: number;
+    sticker_id?: number | string;
   };
 };
 
 export type FacebookMessagingEvent = {
   sender?: {
     id?: string;
+    user_ref?: string;
   };
 
   recipient?: {
@@ -17,17 +33,29 @@ export type FacebookMessagingEvent = {
 
   timestamp?: number;
 
+  referral?: FacebookMessengerReferral;
+
+  reaction?: {
+    mid?: string;
+    action?: string;
+    emoji?: string;
+    reaction?: string;
+  };
+
   message?: {
     mid?: string;
     text?: string;
     is_echo?: boolean;
+    referral?: FacebookMessengerReferral;
     reply_to?: { mid?: string; is_self_reply?: boolean };
     attachments?: FacebookAttachment[];
   };
 
   postback?: {
+    mid?: string;
     title?: string;
     payload?: string;
+    referral?: FacebookMessengerReferral;
   };
 
   delivery?: {

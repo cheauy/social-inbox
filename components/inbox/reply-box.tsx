@@ -2392,10 +2392,10 @@ export function ReplyBox({
             />
           </div>
 
-          <TenhStickerPicker conversationId={conversationId} platform={platform} disabled={isComposerDisabled || stickerSending || !allowAttachments}
+          <TenhStickerPicker businessId={businessId} conversationId={conversationId} platform={platform} disabled={isComposerDisabled || stickerSending || !allowAttachments}
             onSendFacebook={platform === "facebook" && onSendSticker ? async sticker => {
               if (isComposerDisabled || !allowAttachments || stickerFlight.current) return false;
-              if (attachments.length) throw new Error("Send or remove the attached files before sending an online sticker.");
+              if (attachments.length) throw new Error("Send or remove the attached files before sending a Meta sticker.");
               const seq = stickerScope.current; stickerFlight.current = true;
               try { return await onSendSticker(sticker); }
               finally { if (stickerScope.current === seq) stickerFlight.current = false; }

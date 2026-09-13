@@ -1,9 +1,12 @@
 "use client";
+import { MessengerSourceCard } from "@/components/inbox/messenger-source-card";
+import { messengerSourceTimeline } from "@/lib/facebook/messenger-source";
+import { rememberMetaStickerMessages } from "@/lib/stickers/meta-sticker-recents";
 import type { InboxStickerChoice } from "@/lib/stickers/catalog";
 import { facebookNativeReply } from "@/lib/facebook/native-reply";
 import { useFacebookBlock } from "@/lib/inbox/use-facebook-block";
 
-import { MessageActionToolbar } from "@/components/inbox/message-action-toolbar";
+import { MessengerMessageActions } from "@/components/inbox/messenger-message-actions";
 import { PinnedMessageHeader } from "@/components/inbox/pinned-message-header";
 import { usePinnedMessages } from "@/lib/inbox/use-pinned-messages";
 import { getMessageActions, getMessageSummary, getDeletedMessageText, isMessagePinned, isMessageDeleted } from "@/lib/inbox/message-actions";
@@ -1376,6 +1379,18 @@ export function MessagePanel({
       ? incomingMessages
       : Array.from(byId.values());
   }, [incomingMessages]);
+
+  useEffect(() => {
+    const businessId = activeConversation?.contact?.business_id;
+    if (businessId && activeConversation?.social_account?.platform === "facebook") rememberMetaStickerMessages(businessId, activeConversation.id, messages);
+  }, [activeConversation?.id, activeConversation?.contact?.business_id, activeConversation?.social_account?.platform, messages]);
+
+  const messengerSources = useMemo(() =>
+    activeConversation?.social_account?.platform === "facebook"
+      ? messengerSourceTimeline(activeConversation.facebook_messenger_sources, messages)
+      : messengerSourceTimeline([], []),
+    [activeConversation?.social_account?.platform, activeConversation?.facebook_messenger_sources, messages],
+  );
 
   const pinnedMessages = usePinnedMessages(activeConversation?.id ?? null, messages);
   const toggleMessagePin = async (message: InboxMessage, pinned: boolean) => {
@@ -2997,6 +3012,9 @@ export function MessagePanel({
           <div className="space-y-4">
           {messages.map(
             (message, messageIndex) => {
+              const sourceCards = (messengerSources.before.get(message.id) ?? []).map((source) => (
+                <MessengerSourceCard key={source.key} source={source} onOpenImage={setImagePreview} />
+              ));
               /*
                * Earlier photos of an album render nothing: the whole grid is
                * drawn once, on the run's last message.
@@ -3009,7 +3027,7 @@ export function MessagePanel({
                 photoGroup &&
                 photoGroup.lastId !== message.id
               ) {
-                return null;
+                return sourceCards.length ? <Fragment key={message.id}>{sourceCards}</Fragment> : null;
               }
 
               const isOutgoing =
@@ -3164,7 +3182,7 @@ export function MessagePanel({
                   tenh_reply_fallback?: { reason?: string; notice?: string | null } | null;
 
                   tenh_reply?: {
-                    scope?: "tenh" | "telegram";
+                    scope?: "tenh" | "telegram" | "facebook";
                     reply_to_local_message_id?:
                       | string
                       | null;
@@ -3261,16 +3279,15 @@ export function MessagePanel({
                 rawPayload?.message
                   ?.attachments?.find(
                     (attachment) =>
-                      attachment?.type ===
-                        "image" &&
-                      attachment?.payload
-                        ?.sticker_id != null,
+                      attachment?.type === "sticker" ||
+                      (attachment?.type === "image" &&
+                        attachment?.payload?.sticker_id != null),
                   ) ?? null;
 
               const isFacebookSticker =
                 Boolean(
                   facebookStickerAttachment,
-                );
+                ) || (message.message_type === "sticker" && activeConversation.social_account?.platform === "facebook");
 
               const facebookStickerUrl =
                 facebookStickerAttachment
@@ -3815,6 +3832,7 @@ export function MessagePanel({
 
                   return (
                     <Fragment key={message.id}>
+                      {sourceCards}
                       {showMessageDay && !isFacebookPostGroupContinuation ? (
                         <div className="flex items-center gap-3 py-1">
                           <div className="h-px flex-1 bg-blue-200/70" />
@@ -3914,6 +3932,7 @@ export function MessagePanel({
 
                 return (
                   <Fragment key={message.id}>
+                      {sourceCards}
                     {showMessageDay && !isFacebookPostGroupContinuation ? (
                       <div className="flex items-center gap-3 py-1">
                         <div className="h-px flex-1 bg-blue-200/70" />
@@ -5213,8 +5232,8 @@ export function MessagePanel({
                               }
 
                               return (
+                                <div key={`album-${photo.id}`} className="group/photo relative">
                                 <button
-                                  key={`album-${photo.id}`}
                                   type="button"
                                   onClick={() =>
                                     setImagePreview({
@@ -5243,6 +5262,25 @@ export function MessagePanel({
                                     decoding="async"
                                   />
                                 </button>
+                                {activeConversation.social_account?.platform === "facebook" ? (
+                                  <div className="absolute bottom-1 left-1">
+                                    <MessengerMessageActions
+                                      message={messages.find(item => item.platform_message_id === photo.platform_message_id) ?? message}
+                                      platform="facebook"
+                                      onMessagePatched={onMessagePatched}
+                                      photoHover
+                                      outgoing={false}
+                                      actions={{ reply: false, pin: false, edit: false, delete: false }}
+                                      replying={false}
+                                      pinned={false}
+                                      onReply={() => {}}
+                                      onPin={() => {}}
+                                      onEdit={() => {}}
+                                      onDelete={() => {}}
+                                    />
+                                  </div>
+                                ) : null}
+                                </div>
                               );
                             })}
 
@@ -5639,7 +5677,11 @@ export function MessagePanel({
                       {/* Facebook Comment Actions */}
                     </div>
 
-                    <MessageActionToolbar
+                    <MessengerMessageActions
+                      message={message}
+                      hideReaction={isImageMessage && Boolean(photoGroup && photoGroup.members.length > 1)}
+                      platform={activeConversation.social_account?.platform}
+                      onMessagePatched={onMessagePatched}
                       outgoing={isOutgoing}
                       actions={messageActions}
                       replying={isTelegramReplyTarget}
@@ -5864,6 +5906,9 @@ export function MessagePanel({
               );
             },
           )}
+          {messengerSources.after.map((source) => (
+            <MessengerSourceCard key={source.key} source={source} onOpenImage={setImagePreview} />
+          ))}
           </div>
         </div>
 
@@ -5944,7 +5989,7 @@ export function MessagePanel({
           <div className="min-w-0 flex-1 border-l-2 border-sky-400 pl-3">
             <p className="text-xs font-semibold text-sky-700">Replying to {quotedReplyTarget.direction === "outgoing" ? "your message" : activeConversation.contact?.full_name || "customer"}</p>
             <p className="truncate text-sm text-slate-600">{getMessageSummary(quotedReplyTarget)}</p>
-            {replyingToFacebookMessageId && <p className="mt-0.5 text-[11px] text-slate-500">Reference saved in TENH. Facebook receives a normal text message.</p>}
+            {replyingToFacebookMessageId && <p className="mt-0.5 text-[11px] text-slate-500">Reply in Messenger</p>}
           </div>
           <button type="button" aria-label="Cancel message reply" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" onClick={replyingToFacebookMessageId ? onCancelFacebookReply : onCancelTelegramReply}>×</button>
         </div>
@@ -6039,7 +6084,6 @@ export function MessagePanel({
         </div>
       ) : null}
 
-      {replyingToFacebookMessageId ? <p role="note" className="border-t border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800">This reply reference is visible to your TENH team only. TENH sends this message as normal text, not a native Messenger quoted reply.</p> : null}
 
       {/* Reply composer */}
       {activeConversation.contact ? (
@@ -6115,10 +6159,10 @@ export function MessagePanel({
             onSendAttachments
           }
           /* Only a targeted public comment reply is text-only. */
-          allowAttachments={!replyingToCommentId && !replyingToFacebookMessageId}
+          allowAttachments={!replyingToCommentId}
           showAttachmentsBlockedNotice={false}
           attachmentsBlockedReason={
-            replyingToFacebookMessageId ? "Cancel the Facebook reply reference before attaching media." : replyingToCommentId
+            replyingToCommentId
               ? isKhmer
                 ? "ការឆ្លើយតបលើមតិយោបល់ Facebook អាចផ្ញើបានតែអក្សរប៉ុណ្ណោះ។"
                 : "Facebook comment replies can only contain text."
