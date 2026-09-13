@@ -4798,6 +4798,8 @@ export function MessagePanel({
                     </div>
                   ) : null}
 
+                  {sourceCards}
+
                 <div
                   ref={(node) => {
                     if (node) {
