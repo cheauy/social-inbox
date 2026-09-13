@@ -59,6 +59,36 @@ test('missing photo retains the available IDs without substituting the customer 
   const r=referral();delete r.ads_context_data.photo_url;
   const source=pure.messengerSourceFromEvent(event({referral:r}));assert.equal(source.image_url,null);assert.equal(source.ad_id,r.ad_id);assert.equal(source.post_id,r.ads_context_data.post_id);
 });
+
+test('normal post metadata is persisted once and reused without calling Graph',async()=>{
+  const h=setup();
+  const r=referral();delete r.ad_id;r.source='POST';
+  r.post_id=r.ads_context_data.post_id;delete r.ads_context_data.post_id;
+  const postEvent=event({referral:undefined,message:{mid:'m_post',text:'Post question',referral:r}});
+  await h.process(postEvent,page);
+  const writes=h.db.history.filter(x=>x.table==='conversations'&&x.op==='update').length;
+  await h.process(postEvent,page);
+  assert.equal(h.db.history.filter(x=>x.table==='conversations'&&x.op==='update').length,writes);
+  const saved=h.db.tables.conversations[0].facebook_messenger_sources;
+  assert.equal(saved[0].kind,'post');assert.equal(saved[0].ad_id,null);
+  const row={id:'message1',platform_message_id:'m_post',direction:'incoming',created_at:new Date(timestamp).toISOString(),raw_payload:{}};
+  const card=pure.messengerSourceTimeline(saved,[row]).before.get(row.id)[0];
+  assert.equal(card.image_url,r.ads_context_data.photo_url);assert.equal(card.post_id,r.post_id);
+});
+
+test('a shared Facebook link and a post-looking message never become origin attribution',()=>{
+  for (const raw of [
+    {message:{mid:'m_direct',text:'Post ID 123456'}},
+    {message:{mid:'m_direct',attachments:[{type:'share',payload:{url:'https://www.facebook.com/123456/posts/777777'}}]}},
+  ]) assert.equal(pure.messengerSourceFromEvent(raw),null);
+});
+
+test('partial incoming payloads may use their exact row mid, but outgoing rows cannot gain cards',()=>{
+  const row={id:'row1',platform_message_id:'m_partial',direction:'incoming',created_at:new Date(timestamp).toISOString(),raw_payload:{message:{referral:referral()}}};
+  const timeline=pure.messengerSourceTimeline([],[row]);
+  assert.equal(timeline.before.get('row1')[0].message_id,'m_partial');
+  assert.equal(pure.messengerSourceTimeline([],[{...row,direction:'outgoing'}]).before.size,0);
+});
 test('repeat event is idempotent even when PostgreSQL returns JSON object keys in another order',async()=>{
   const h=setup();const before=clone(h.db.tables.conversations[0]);
   await h.process(event(),page);
@@ -106,12 +136,12 @@ test('out-of-order events keep the latest 20 contexts; a duplicate cannot erase 
   const saved=pure.mergeMessengerSources([],sources.reverse());assert.equal(saved.length,20);assert.equal(saved[0].occurred_at,new Date(timestamp+5000).toISOString());
   const last=saved.at(-1);assert.equal(pure.mergeMessengerSources(saved,[{...last,image_url:null}]).at(-1).image_url,last.image_url);
 });
-test('timeline deduplicates saved/message context, places standalone events and preserves older loaded referrals',()=>{
+test('timeline deduplicates message context, hides standalone opens and preserves older loaded referrals',()=>{
   const embedded=event({referral:undefined,message:{mid:'m_source',referral:referral()}});
   const row={id:'message1',platform_message_id:'m_source',direction:'incoming',created_at:new Date(timestamp).toISOString(),raw_payload:embedded};
   const timeline=pure.messengerSourceTimeline([pure.messengerSourceFromEvent(embedded)],[row]);assert.equal(timeline.before.get('message1').length,1);assert.equal(timeline.after.length,0);
-  const later=pure.messengerSourceFromEvent(event({timestamp:timestamp+5000}));assert.equal(pure.messengerSourceTimeline([later],[row]).after.length,1);
-  const earliest=pure.messengerSourceFromEvent(event({timestamp:timestamp-5000}));assert.equal(pure.messengerSourceTimeline([earliest],[{...row,raw_payload:{}}]).before.get('message1').length,1);
+  const later=pure.messengerSourceFromEvent(event({timestamp:timestamp+5000}));assert.equal(pure.messengerSourceTimeline([later],[row]).after.length,0);
+  const earliest=pure.messengerSourceFromEvent(event({timestamp:timestamp-5000}));assert.equal(pure.messengerSourceTimeline([earliest],[{...row,raw_payload:{}}]).before.size,0);
   const history=Array.from({length:25},(_,i)=>({...row,id:`m${i}`,raw_payload:{...embedded,timestamp:timestamp+i*1000,message:{...embedded.message,mid:`mid${i}`}},platform_message_id:`mid${i}`,created_at:new Date(timestamp+i*1000).toISOString()}));
   assert.equal(pure.messengerSourceTimeline([],history).before.size,25);
 });

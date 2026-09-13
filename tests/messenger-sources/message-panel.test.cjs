@@ -78,14 +78,14 @@ for (const kind of ['image', 'video', 'sticker', 'file']) {
   });
 }
 
-test('a saved standalone referral stays visible when the customer later sends a normal message', () => {
+test('a saved ad open stays hidden, including when followed by a direct message', () => {
   const standalone = { ...event, message: undefined, referral };
   const source = messengerSourceFromEvent(standalone);
-  assertCard(render([], { facebook_messenger_sources: [source] }));
+  assert.equal(cards(render([], { facebook_messenger_sources: [source] })).length, 0);
   const doc = render([message({ raw_payload: { ...event, timestamp: timestamp + 1000, message: { mid: 'm_test', text: 'Ad test 2' } },
     created_at: new Date(timestamp + 1000).toISOString(), platform_created_at: new Date(timestamp + 1000).toISOString() })],
     { facebook_messenger_sources: [source] });
-  assertCard(doc);
+  assert.equal(cards(doc).length, 0);
 });
 
 test('saved and embedded copies render once, including on reopening the conversation', () => {
@@ -109,10 +109,45 @@ test('ordinary Messenger messages and Telegram conversations do not gain an ad c
   assert.equal(cards(render([message()], { social_account: telegram })).length, 0);
 });
 
-test('an outgoing Seen message keeps its receipt next to a standalone ad source', () => {
+test('an outgoing Seen message keeps its receipt without a standalone ad source', () => {
   const source = messengerSourceFromEvent({ ...event, message: undefined, referral });
   const doc = render([message({ direction: 'outgoing', raw_payload: {}, delivery_status: 'seen', message_text: 'Existing Page reply' })],
     { facebook_messenger_sources: [source] });
-  assertCard(doc);
+  assert.equal(cards(doc).length, 0);
   assert.ok(doc.querySelector('[title="Seen"]'));
+});
+
+test('an ad open followed by an attributed message produces only the message card', () => {
+  const opened = messengerSourceFromEvent({ ...event, timestamp: timestamp - 5000, message: undefined, referral });
+  const sent = messengerSourceFromEvent(event);
+  const doc = render([message()], { facebook_messenger_sources: [opened, sent] });
+  assertCard(doc);
+  assert.equal(doc.querySelector('[aria-label="Opened an ad"]'), null);
+});
+
+test('a normal post message uses the same card layout with Post ID and photo, without Ad ID', () => {
+  const postReferral = { source: 'POST', post_id: page + '_777777', ads_context_data: {
+    ad_title: 'Normal Page post', photo_url: 'https://example.com/post.jpg',
+  } };
+  const doc = render([message({ raw_payload: { ...event, message: { mid: 'm_test', text: 'Post question', referral: postReferral } } })]);
+  const card = doc.querySelector('article[aria-label="Message from a post"]');
+  assert.ok(card);
+  assert.equal(doc.querySelectorAll('article').length, 1);
+  assert.ok(card.textContent.includes(postReferral.post_id));
+  assert.equal(card.textContent.includes('Ad ID'), false);
+  assert.equal(card.querySelector('img').getAttribute('src'), postReferral.ads_context_data.photo_url);
+  assert.equal(card.className, assertCard(render([message()])).className);
+});
+
+test('saved message context is reused on reopening and cannot attach to another message', () => {
+  const saved = messengerSourceFromEvent(event);
+  // Models a bare history payload: metadata comes from the saved conversation.
+  for (let reopen = 0; reopen < 3; reopen++) assertCard(render([message({ raw_payload: {} })], { facebook_messenger_sources: [saved] }));
+  assert.equal(cards(render([message({ platform_message_id: 'm_direct', raw_payload: {} })], { facebook_messenger_sources: [saved] })).length, 0);
+  assert.equal(cards(render([], { facebook_messenger_sources: [saved] })).length, 0);
+});
+
+test('saved and embedded copies with different timestamps still render one card per message', () => {
+  const saved = messengerSourceFromEvent({ ...event, timestamp: timestamp - 1000 });
+  assertCard(render([message()], { facebook_messenger_sources: [saved] }));
 });

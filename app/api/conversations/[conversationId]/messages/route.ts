@@ -81,6 +81,23 @@ export async function GET(
   request: NextRequest,
   context: RouteContext,
 ) {
+  try {
+    return await getConversationMessages(request, context);
+  } catch (error) {
+    // Auth/client initialization and access queries can throw before pagination.
+    // Keep those failures inside the API's JSON contract too.
+    console.error("Unable to load conversation messages:", error);
+    return NextResponse.json(
+      { success: false, error: "Unable to load conversation messages. Please try again." },
+      { status: 500 },
+    );
+  }
+}
+
+async function getConversationMessages(
+  request: NextRequest,
+  context: RouteContext,
+) {
   const {
     conversationId,
   } = await context.params;

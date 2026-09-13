@@ -26,9 +26,11 @@ test('an expired photo shows a fallback while preserving IDs; a new photo can lo
   await render({...source,image_url:'https://example.com/new-photo.jpg'});assert.equal(document.querySelector('img').getAttribute('src'),'https://example.com/new-photo.jpg');
   await act(async()=>root.unmount());
 });
-test('standalone referral labels and unavailable IDs stay accurate',async()=>{
+test('standalone opens render no card even when passed directly to the component',async()=>{
   const root=createRoot(document.getElementById('root'));
-  await act(async()=>root.render(React.createElement(MessengerSourceCard,{source:{...source,message_id:null,post_id:null,post_url:null,image_url:null},onOpenImage:()=>{}})));
-  assert.ok(document.querySelector('[aria-label="Opened an ad"]'));assert.equal(document.body.textContent.includes('Post ID'),false);assert.equal(document.querySelector('a'),null);assert.equal(document.querySelector('button'),null);
-  assert.ok(document.body.textContent.includes(source.ad_id));await act(async()=>root.unmount());
+  for (const kind of ['ad', 'post']) {
+    await act(async()=>root.render(React.createElement(MessengerSourceCard,{source:{...source,kind,message_id:null},onOpenImage:()=>{}})));
+    assert.equal(document.querySelector('article'),null);
+  }
+  await act(async()=>root.unmount());
 });

@@ -24,6 +24,7 @@ import type { FormEvent } from "react";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { confirmOutgoingMessage } from "@/lib/inbox/confirm-outgoing-message";
 import { normalizeMessages } from "@/lib/inbox/normalize-messages";
+import { readMessagePageResponse } from "@/lib/inbox/read-message-page-response";
 import { CustomerProfile } from "@/components/inbox/customer-profile";
 import { CustomerTimelineModal } from "@/components/inbox/customer-timeline-modal";
 import type { InboxViewProps } from "@/components/inbox/inbox-view-types";
@@ -4103,38 +4104,13 @@ const loadConversationMessagePage =
           {
             method: "GET",
             cache: "no-store",
+            headers: { Accept: "application/json" },
             signal:
               controller.signal,
           },
         );
 
-        const responseText =
-          await response.text();
-
-        const result =
-          responseText.trim()
-            ? (JSON.parse(
-                responseText,
-              ) as {
-                success?: boolean;
-                error?: string;
-                messages?: InboxMessage[];
-                hasMore?: boolean;
-              })
-            : {
-                success:
-                  response.ok,
-              };
-
-        if (
-          !response.ok ||
-          !result.success
-        ) {
-          throw new Error(
-            result.error ??
-              "Unable to load conversation messages.",
-          );
-        }
+        const result = await readMessagePageResponse(response);
 
         const nextMessages =
           (Array.isArray(
@@ -4840,6 +4816,7 @@ useEffect(() => {
   let cancelled = false;
   let timer: number | null = null;
   let inFlight = false;
+  const controller = new AbortController();
 
   /*
    * Seed the fallback with messages already loaded for this thread. If the
@@ -5006,26 +4983,13 @@ useEffect(() => {
         {
           method: "GET",
           cache: "no-store",
+          signal: controller.signal,
           headers: {
             Accept: "application/json",
           },
         },
       );
-      const responseText = await response.text();
-      const result = responseText.trim()
-        ? (JSON.parse(responseText) as {
-            success?: boolean;
-            error?: string;
-            messages?: InboxMessage[];
-          })
-        : { success: response.ok };
-
-      if (!response.ok || !result.success) {
-        throw new Error(
-          result.error ??
-            "Unable to synchronize live messages.",
-        );
-      }
+      const result = await readMessagePageResponse(response);
 
       const newestMessages = Array.isArray(result.messages)
         ? result.messages.filter(
@@ -5170,7 +5134,7 @@ useEffect(() => {
         );
       }
     } catch (error) {
-      if (!isAbortError(error)) {
+      if (!cancelled && !isAbortError(error)) {
         console.warn(
           "Unable to run active-thread live message fallback:",
           error,
@@ -5214,6 +5178,7 @@ useEffect(() => {
 
   return () => {
     cancelled = true;
+    controller.abort();
 
     if (timer !== null) {
       window.clearTimeout(timer);
@@ -5332,36 +5297,11 @@ async function handleLoadOlderMessages(): Promise<boolean> {
         {
           method: "GET",
           cache: "no-store",
+          headers: { Accept: "application/json" },
         },
       );
 
-    const responseText =
-      await response.text();
-
-    const result =
-      responseText.trim()
-        ? (JSON.parse(
-            responseText,
-          ) as {
-            success?: boolean;
-            error?: string;
-            messages?: InboxMessage[];
-            hasMore?: boolean;
-          })
-        : {
-            success:
-              response.ok,
-          };
-
-    if (
-      !response.ok ||
-      !result.success
-    ) {
-      throw new Error(
-        result.error ??
-          "Unable to load older messages.",
-      );
-    }
+    const result = await readMessagePageResponse(response);
 
     const olderMessages =
       Array.isArray(

@@ -46,6 +46,12 @@ export type ReplyAvailability = {
   reason?: string;
 };
 
+export type FacebookConversationOpenResult = {
+  opened?: boolean;
+  exactRequested?: boolean;
+  reason?: string;
+};
+
 function post(type: string, payload: Record<string, unknown> = {}) {
   const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -108,13 +114,13 @@ export function useCompanion() {
         conversationId: options.conversationId ?? undefined,
       });
 
-      const answer = await awaitCompanionAnswer<{ opened?: boolean }>(
+      const answer = await awaitCompanionAnswer<FacebookConversationOpenResult>(
         "OPEN_IN_FACEBOOK_RESULT",
         requestId,
         20000,
       );
 
-      return answer?.opened === true;
+      return answer;
     },
     [],
   );

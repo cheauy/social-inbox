@@ -1,6 +1,7 @@
 export type FacebookMessengerReferral = {
   ref?: string;
   ad_id?: string;
+  post_id?: string;
   source?: string;
   type?: string;
   ads_context_data?: {

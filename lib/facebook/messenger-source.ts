@@ -58,7 +58,7 @@ export function messengerSourceFromEvent(value: unknown): MessengerSource | null
   const referral = record(message.referral ?? record(event.postback).referral ?? event.referral);
   const context = record(referral.ads_context_data);
   const adId = id(referral.ad_id);
-  const postId = id(context.post_id, true);
+  const postId = id(context.post_id, true) ?? id(referral.post_id, true);
   const imageUrl = messengerSourceImageUrl(context.photo_url)
     // Meta documents video_url in ads_context_data as the video's thumbnail.
     ?? messengerSourceImageUrl(context.video_url);
@@ -125,22 +125,38 @@ type SourceMessage = {
   created_at: string;
 };
 
-/** Place referral events in the timeline without inventing customer messages. */
+/** Show only source context tied to an actual incoming message, never a visit. */
 export function messengerSourceTimeline(saved: unknown, messages: SourceMessage[]) {
-  const embedded = messages.flatMap((message) => {
-    if (message.direction !== "incoming") return [];
+  const incoming = messages.filter(message => message.direction === "incoming");
+  const embedded = incoming.flatMap((message) => {
     const source = messengerSourceFromEvent(message.raw_payload);
-    return source ? [source] : [];
+    // A persisted message row can supply the mid if a partial history payload
+    // retained the referral but omitted message.mid.
+    return source ? [{ ...source, message_id: source.message_id ?? message.platform_message_id ?? null }] : [];
   });
-  // Loaded message history retains its own referrals even beyond the standalone limit.
+  // Saved metadata is the cache; rendering/reopening never needs a Graph lookup.
+  // Loaded message history retains its own referrals beyond the saved limit.
   const sources = mergeMessengerSources(saved, embedded, Infinity);
-  const before = new Map<string, MessengerSource[]>();
-  const after: MessengerSource[] = [];
+  const targets = new Map(incoming.filter(message => message.platform_message_id)
+    .map(message => [message.platform_message_id!, message]));
+  const byMessage = new Map<string, MessengerSource>();
   for (const source of sources) {
-    const target = (source.message_id && messages.find(m => m.platform_message_id === source.message_id))
-      || (source.occurred_at && messages.find(m => Date.parse(m.platform_created_at ?? m.created_at) >= Date.parse(source.occurred_at!)));
-    if (target) before.set(target.id, [...(before.get(target.id) ?? []), source]);
-    else after.push(source);
+    // OPEN_THREAD alone must not be attached to the next direct message merely
+    // because its timestamp is later. Require the exact provider message ID.
+    const target = source.message_id ? targets.get(source.message_id) : null;
+    if (!target) continue;
+    const previous = byMessage.get(target.id);
+    byMessage.set(target.id, previous ? {
+      ...previous, ...source,
+      image_url: source.image_url ?? previous.image_url,
+      title: source.title ?? previous.title,
+      post_id: source.post_id ?? previous.post_id,
+      post_url: source.post_url ?? previous.post_url,
+      ad_id: source.ad_id ?? previous.ad_id,
+      kind: source.ad_id || previous.ad_id ? "ad" : source.kind,
+    } : source);
   }
-  return { before, after };
+  const before = new Map<string, MessengerSource[]>();
+  for (const [messageId, source] of byMessage) before.set(messageId, [source]);
+  return { before, after: [] as MessengerSource[] };
 }

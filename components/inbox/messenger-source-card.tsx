@@ -10,9 +10,8 @@ export function MessengerSourceCard({ source, onOpenImage }: {
 }) {
   const [imageFailed, setImageFailed] = useState(false);
   useEffect(() => setImageFailed(false), [source.image_url]);
-  const label = source.kind === "ad"
-    ? source.message_id ? "Message from an ad" : "Opened an ad"
-    : source.message_id ? "Message from a post" : "Opened a post";
+  if (!source.message_id) return null;
+  const label = source.kind === "ad" ? "Message from an ad" : "Message from a post";
   const Icon = source.kind === "ad" ? Megaphone : MessageSquare;
   return (
     <article aria-label={label} className="w-full max-w-[520px] rounded-2xl border border-blue-200 bg-white/95 p-3 shadow-sm">

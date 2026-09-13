@@ -11,6 +11,7 @@ import {
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/client";
+import { broadcastAgentPresence } from "@/lib/inbox/broadcast-agent-presence";
 import type { TeamMember } from "@/types/inbox";
 
 export type AgentPresenceStatus =
@@ -256,21 +257,28 @@ export function useAgentPresence({
            */
           const trackStatus = await channel.track(nextPresence);
 
+          // A workspace switch can remove this channel while track is pending.
+          if (channelRef.current !== channel) {
+            continue;
+          }
+
           try {
-            await channel.send({
-              type: "broadcast",
-              event: PRESENCE_BROADCAST_EVENT,
-              payload: {
-                presence_key: presenceClientKeyRef.current ?? undefined,
-                agent: nextPresence,
-              } satisfies PresenceBroadcastPayload,
-            });
+            await broadcastAgentPresence(channel, PRESENCE_BROADCAST_EVENT, {
+              presence_key: presenceClientKeyRef.current ?? undefined,
+              agent: nextPresence,
+            } satisfies PresenceBroadcastPayload);
           } catch (broadcastError) {
             /* Presence remains authoritative if broadcast delivery fails. */
-            console.warn(
-              "[Tenh Presence] Fast presence broadcast failed.",
-              broadcastError,
-            );
+            if (channelRef.current === channel) {
+              console.warn(
+                "[Tenh Presence] Fast presence broadcast failed.",
+                broadcastError,
+              );
+            }
+          }
+
+          if (channelRef.current !== channel) {
+            continue;
           }
 
           lastPublishedConversationIdRef.current =
@@ -286,10 +294,12 @@ export function useAgentPresence({
             conversationChanged,
           });
         } catch (presenceError) {
-          console.warn(
-            "[Tenh Presence] Unable to update presence.",
-            presenceError,
-          );
+          if (channelRef.current === channel) {
+            console.warn(
+              "[Tenh Presence] Unable to update presence.",
+              presenceError,
+            );
+          }
         }
       } while (publishQueuedRef.current);
     } finally {
