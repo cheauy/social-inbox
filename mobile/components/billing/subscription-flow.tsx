@@ -1,3 +1,4 @@
+import { requestAbaPaymentLink } from "../../lib/aba-payment";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import { File as FileSystemFile } from "expo-file-system";
@@ -267,6 +268,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
   const [method, setMethod] = useState<PaymentMethod>("payway");
   const [proof, setProof] = useState<Proof | null>(null);
   const [note, setNote] = useState("");
+  const [abaLink, setAbaLink] = useState<string | null>(null);
   const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [checkout, setCheckout] = useState<Checkout | null>(null);
   const [transactionId, setTransactionId] = useState<string | null>(null);
@@ -500,20 +502,27 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
         method: "POST",
         body: {
           ...selectionBody,
-          paymentMethod: "abapay_khqr",
+          paymentMethod: "abapay_deeplink",
           purchaseBusinessId: target,
         },
       });
       setPurchaseBusinessId(target);
       setTransactionId(result.transactionId);
       setPaymentState("waiting");
-      setCheckoutVisible(true);
-      setCheckout({
+      setCheckoutVisible(false);
+      setAbaLink(null);
+      const pendingCheckout = {
         url: result.checkoutUrl,
         fields: result.fields,
         transactionId: result.transactionId,
         businessId: target,
-      });
+      };
+      setCheckout(pendingCheckout);
+      const link = await requestAbaPaymentLink(pendingCheckout);
+      setAbaLink(link);
+      try { await Linking.openURL(link); }
+      catch { setError("Unable to open ABA Mobile. Install or open ABA Mobile, then tap Open ABA app below. Your payment is still pending."); }
+
     } catch (checkoutError) {
       setError(checkoutError instanceof Error ? checkoutError.message : "Unable to start payment.");
     } finally {
@@ -824,7 +833,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
             const disabled = busy || pendingPurchase || paymentState === "approved" || (option === "manual" && !catalog?.manualPayment.enabled);
             return <Pressable key={option} disabled={disabled} onPress={() => setMethod(option)} style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: method === option ? colors.blue : colors.border, backgroundColor: method === option ? colors.pale : "white", opacity: disabled ? 0.5 : 1 }}>
               {option === "payway" ? <Image source={require("../../assets/aba-khqr.png")} style={{ width: 54, height: 54, borderRadius: 12 }} resizeMode="contain" /> : <View style={{ width: 54, height: 54, backgroundColor: colors.blue, borderRadius: 12, alignItems: "center", justifyContent: "center" }}><Ionicons name="business-outline" size={27} color="white" /></View>}
-              <View style={{ flex: 1 }}><Text style={{ color: colors.ink, fontSize: 15, fontWeight: "800" }}>{option === "payway" ? "ABA KHQR" : "Manual bank transfer"}</Text><Text style={[styles.muted, { fontSize: 12, marginTop: 4 }]}>{option === "payway" ? "Scan with any banking app" : catalog?.manualPayment.enabled ? "Transfer and upload your receipt" : "Currently unavailable"}</Text></View>
+              <View style={{ flex: 1 }}><Text style={{ color: colors.ink, fontSize: 15, fontWeight: "800" }}>{option === "payway" ? "ABA app" : "Manual bank transfer"}</Text><Text style={[styles.muted, { fontSize: 12, marginTop: 4 }]}>{option === "payway" ? "Open ABA Mobile to review and pay" : catalog?.manualPayment.enabled ? "Transfer and upload your receipt" : "Currently unavailable"}</Text></View>
               <Ionicons name={method === option ? "checkmark-circle" : "ellipse-outline"} size={23} color={method === option ? colors.blue : colors.border} />
             </Pressable>;
           })}
@@ -892,7 +901,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
               </Text>
             )}
           </Pressable>
-          {checkout && !checkoutVisible && ["waiting", "pending"].includes(paymentState) ? <Choice selected={false} title="Reopen ABA checkout" onPress={() => setCheckoutVisible(true)} /> : null}
+          {abaLink && ["waiting", "pending"].includes(paymentState) ? <Choice selected={false} title="Open ABA app" onPress={() => void Linking.openURL(abaLink).catch(() => setError("Unable to open ABA Mobile. Please check that it is installed."))} /> : null}
           {transactionId && ["waiting", "pending"].includes(paymentState) ? (
             <Pressable disabled={busy} onPress={() => void cancelPayment()} style={{ alignItems: "center", padding: 9 }}>
               <Text style={{ color: colors.red, fontWeight: "700" }}>Cancel pending payment</Text>

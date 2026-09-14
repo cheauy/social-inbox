@@ -271,8 +271,7 @@ export async function POST(
 
     if (
       requestedPaymentMethod &&
-      requestedPaymentMethod !==
-        "abapay_khqr"
+      !["abapay_khqr", "abapay_deeplink"].includes(requestedPaymentMethod)
     ) {
       return NextResponse.json(
         {
@@ -285,6 +284,8 @@ export async function POST(
         },
       );
     }
+
+    const paymentOption = requestedPaymentMethod === "abapay_deeplink" ? "abapay_deeplink" : "abapay_khqr";
 
     const {
       data: subscription,
@@ -767,7 +768,7 @@ export async function POST(
       email,
       type: "purchase",
       payment_option:
-        "abapay_khqr",
+        paymentOption,
       /*
        * Keep the legacy sandbox gate that fixed TENH's sandbox modal.
        * Do NOT post payment_gate in production until ABA PayWay documents/
@@ -776,7 +777,7 @@ export async function POST(
        * known Purchase HMAC sequence.
        */
       ...(config.environment ===
-      "sandbox"
+      "sandbox" && paymentOption === "abapay_khqr"
         ? { payment_gate: "0" }
         : {}),
       amount,
@@ -867,9 +868,9 @@ export async function POST(
           payment_method:
             "abapay_khqr",
           provider_payment_option:
-            "abapay_khqr",
+            paymentOption,
           presentation_mode:
-            "payway_plugin_modal",
+            paymentOption === "abapay_deeplink" ? "aba_mobile_app" : "payway_plugin_modal",
           live_enabled:
             config.liveEnabled,
           member_limit: quote.users,
@@ -927,8 +928,7 @@ export async function POST(
       currency: "USD",
       paymentMethod:
         "abapay_khqr",
-      paymentOption:
-        "abapay_khqr",
+      paymentOption,
       purchaseType,
       plan: {
         code: plan.id,

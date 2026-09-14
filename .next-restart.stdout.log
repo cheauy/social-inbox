@@ -3068,3 +3068,45 @@
 {"event":"tenh.request_usage","at":"2026-09-14T09:51:46.690Z","businessId":"f92ebb56-d907-499e-a84d-c09180b849b6","route":"/api/team-chat/rooms","databaseRequests":17,"databaseResponseBytes":4502,"storageResponseBytes":0,"uploadBytes":0}
  GET /api/extension/status 200 in 611ms (next.js: 4ms, application-code: 607ms)
  GET /api/extension/observations 200 in 532ms (next.js: 4ms, application-code: 528ms)
+ GET /api/workspaces 200 in 1395ms (next.js: 4ms, application-code: 1391ms)
+{"event":"tenh.request_usage","at":"2026-09-14T09:52:14.519Z","businessId":"f92ebb56-d907-499e-a84d-c09180b849b6","route":"/api/workspaces","databaseRequests":12,"databaseResponseBytes":6300,"storageResponseBytes":0,"uploadBytes":0}
+ GET /api/system-announcements/current 200 in 472ms (next.js: 12ms, application-code: 460ms)
+ GET /api/team-notifications 200 in 898ms (next.js: 5ms, application-code: 893ms)
+ GET /api/team-chat/rooms 200 in 1472ms (next.js: 4ms, application-code: 1468ms)
+{"event":"tenh.request_usage","at":"2026-09-14T09:52:16.590Z","businessId":"f92ebb56-d907-499e-a84d-c09180b849b6","route":"/api/team-chat/rooms","databaseRequests":17,"databaseResponseBytes":4502,"storageResponseBytes":0,"uploadBytes":0}
+ GET /api/extension/status 200 in 719ms (next.js: 4ms, application-code: 715ms)
+ GET /api/extension/observations 200 in 493ms (next.js: 3ms, application-code: 489ms)
+ GET /api/system-announcements/current 200 in 758ms (next.js: 13ms, application-code: 745ms)
+ GET /api/invitations/pending 200 in 792ms (next.js: 17ms, application-code: 775ms)
+ GET /api/facebook/connection-attention 200 in 904ms (next.js: 25ms, application-code: 879ms)
+ GET /api/team-notifications 200 in 1849ms (next.js: 17ms, application-code: 1832ms)
+ GET /api/extension/status 200 in 1258ms (next.js: 5ms, application-code: 1254ms)
+ GET /api/team-chat/rooms 200 in 2.3s (next.js: 5ms, application-code: 2.3s)
+{"event":"tenh.request_usage","at":"2026-09-14T09:52:47.390Z","businessId":"f92ebb56-d907-499e-a84d-c09180b849b6","route":"/api/team-chat/rooms","databaseRequests":17,"databaseResponseBytes":4502,"storageResponseBytes":0,"uploadBytes":0}
+ GET /api/extension/observations 200 in 544ms (next.js: 4ms, application-code: 540ms)
+ GET /api/workspaces 200 in 1178ms (next.js: 3ms, application-code: 1175ms)
+{"event":"tenh.request_usage","at":"2026-09-14T09:53:14.299Z","businessId":"f92ebb56-d907-499e-a84d-c09180b849b6","route":"/api/workspaces","databaseRequests":12,"databaseResponseBytes":6300,"storageResponseBytes":0,"uploadBytes":0}
+ GET /api/invitations/pending 200 in 560ms (next.js: 4ms, application-code: 556ms)
+ GET /api/facebook/connection-attention 200 in 702ms (next.js: 8ms, application-code: 694ms)
+ GET /api/system-announcements/current 200 in 649ms (next.js: 28ms, application-code: 621ms)
+ GET /api/extension/status 200 in 1156ms (next.js: 16ms, application-code: 1141ms)
+ GET /api/team-notifications 200 in 1243ms (next.js: 8ms, application-code: 1235ms)
+ GET /api/workspaces 200 in 1558ms (next.js: 25ms, application-code: 1533ms)
+{"event":"tenh.request_usage","at":"2026-09-14T09:54:14.732Z","businessId":"f92ebb56-d907-499e-a84d-c09180b849b6","route":"/api/workspaces","databaseRequests":12,"databaseResponseBytes":6300,"storageResponseBytes":0,"uploadBytes":0}
+ GET /api/extension/observations 200 in 734ms (next.js: 4ms, application-code: 730ms)
+ GET /api/team-chat/rooms 200 in 2.3s (next.js: 6ms, application-code: 2.3s)
+{"event":"tenh.request_usage","at":"2026-09-14T09:54:15.415Z","businessId":"f92ebb56-d907-499e-a84d-c09180b849b6","route":"/api/team-chat/rooms","databaseRequests":17,"databaseResponseBytes":4502,"storageResponseBytes":0,"uploadBytes":0}
+ GET /api/invitations/pending 200 in 607ms (next.js: 4ms, application-code: 603ms)
+ GET /api/facebook/connection-attention 200 in 649ms (next.js: 7ms, application-code: 641ms)
+ GET /api/system-announcements/current 200 in 870ms (next.js: 40ms, application-code: 830ms)
+ GET /api/extension/status 200 in 1042ms (next.js: 10ms, application-code: 1032ms)
+ GET /api/team-notifications 200 in 1122ms (next.js: 32ms, application-code: 1090ms)
+ GET /api/extension/observations 200 in 675ms (next.js: 8ms, application-code: 668ms)
+ GET /api/workspaces 200 in 1720ms (next.js: 8ms, application-code: 1712ms)
+{"event":"tenh.request_usage","at":"2026-09-14T09:55:14.879Z","businessId":"f92ebb56-d907-499e-a84d-c09180b849b6","route":"/api/workspaces","databaseRequests":12,"databaseResponseBytes":6300,"storageResponseBytes":0,"uploadBytes":0}
+ GET /api/team-chat/rooms 200 in 2.0s (next.js: 19ms, application-code: 2.0s)
+{"event":"tenh.request_usage","at":"2026-09-14T09:55:15.193Z","businessId":"f92ebb56-d907-499e-a84d-c09180b849b6","route":"/api/team-chat/rooms","databaseRequests":17,"databaseResponseBytes":4502,"storageResponseBytes":0,"uploadBytes":0}
+ GET /api/facebook/connection-attention 200 in 592ms (next.js: 13ms, application-code: 579ms)
+ GET /api/workspaces 200 in 1078ms (next.js: 38ms, application-code: 1041ms)
+ GET /api/team-chat/rooms 200 in 1089ms (next.js: 16ms, application-code: 1073ms)
+ GET /api/extension/status 200 in 165ms (next.js: 8ms, application-code: 157ms)

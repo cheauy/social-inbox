@@ -21,7 +21,9 @@ export function MessengerConnect({ businessId, onClose, onComplete }: { business
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const base = new URL(process.env.EXPO_PUBLIC_TENH_API_URL || "https://app.tenhchat.com");
-  function retry() { setError(""); setPages(null); setSelected([]); setBusy(false); submitting.current = false; finished.current = false; setPath("/api/mobile/facebook-connect"); setAttempt(value => value + 1); }
+  const [hostname, setHostname] = useState(base.hostname);
+  const [canGoBack, setCanGoBack] = useState(false);
+  function retry() { setHostname(base.hostname); setCanGoBack(false); setError(""); setPages(null); setSelected([]); setBusy(false); submitting.current = false; finished.current = false; setPath("/api/mobile/facebook-connect"); setAttempt(value => value + 1); }
   function allow(url: string) {
     if (url === "about:blank") return true;
     let next: URL;
@@ -46,9 +48,10 @@ export function MessengerConnect({ businessId, onClose, onComplete }: { business
     }
     return next.protocol === "https:" && (next.hostname === "facebook.com" || next.hostname.endsWith(".facebook.com"));
   }
-  return <Modal visible animationType="slide" onRequestClose={onClose}>
-    <View style={{ flex: 1, backgroundColor: "white", paddingTop: insets.top, paddingBottom: insets.bottom }}>
-      <View style={{ flexDirection: "row", alignItems: "center", padding: 12 }}><IconButton icon="chevron-back" label="Back to Integrations" onPress={onClose} /><Text style={{ flex: 1, fontSize: 18, fontWeight: "700", color: colors.ink }}>{pages ? "Select Facebook Pages" : "Connect Messenger"}</Text></View>
+  return <Modal visible transparent statusBarTranslucent animationType="slide" onRequestClose={() => !pages && !error && canGoBack ? browser.current?.goBack() : onClose()}>
+    <View style={{ flex: 1, paddingTop: Math.max(insets.top + 12, 32), backgroundColor: "rgba(0,0,0,0.3)" }}>
+    <View style={{ flex: 1, backgroundColor: "white", borderTopLeftRadius: 30, borderTopRightRadius: 30, overflow: "hidden", paddingBottom: insets.bottom }}>
+      <View style={{ flexDirection: "row", alignItems: "center", padding: 12 }}><IconButton icon="close" label="Close Messenger connection" onPress={onClose} /><Text numberOfLines={1} accessibilityLabel={pages ? "Select Facebook Pages" : `Current website: ${hostname}`} style={{ flex: 1, textAlign: "center", fontSize: 18, fontWeight: "700", color: colors.ink }}>{pages ? "Select Facebook Pages" : hostname}</Text><View style={{ width: 44 }} /></View>
       {error ? <View style={{ padding: 20, gap: 16 }}><Text style={{ color: colors.red }}>{error}</Text><Button title="Retry" onPress={retry} /></View> : null}
       {pages && !error ? <>
         <Text style={{ color: colors.muted, paddingHorizontal: 20, paddingBottom: 12 }}>Choose the Pages you want to connect to this workspace.</Text>
@@ -69,7 +72,12 @@ export function MessengerConnect({ businessId, onClose, onComplete }: { business
       {session ? <View style={pages || error ? { position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden" } : { flex: 1 }} pointerEvents={pages || error ? "none" : "auto"}>
         <WebView key={attempt} ref={browser} source={{ uri: new URL(path, base).toString(), ...(path === "/api/mobile/facebook-connect" ? { headers: { Cookie: sessionCookie(authCookieName, session, businessId) } } : {}) }}
           style={{ flex: 1 }} incognito sharedCookiesEnabled={false} thirdPartyCookiesEnabled setSupportMultipleWindows={false} mixedContentMode="never" originWhitelist={["*"]}
-          onShouldStartLoadWithRequest={request => allow(request.url)} onNavigationStateChange={state => { allow(state.url); }}
+          onShouldStartLoadWithRequest={request => allow(request.url)} onNavigationStateChange={state => {
+            if (allow(state.url)) {
+              try { const url = new URL(state.url); if (url.protocol === "https:" || url.protocol === "http:") setHostname(url.hostname); } catch { /* Keep the last valid website address. */ }
+              setCanGoBack(state.canGoBack);
+            }
+          }}
           onMessage={event => {
             if (event.nativeEvent.url !== new URL("/api/mobile/facebook-pages", base).toString()) return;
             try {
@@ -90,6 +98,11 @@ export function MessengerConnect({ businessId, onClose, onComplete }: { business
           startInLoadingState renderLoading={() => <ActivityIndicator color={colors.blue} style={{ position: "absolute", top: "50%", alignSelf: "center" }} />}
         />
       </View> : <Text style={{ padding: 20 }}>Please sign in to the app again.</Text>}
+      {!pages && !error ? <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
+        <View style={{ opacity: canGoBack ? 1 : 0.35 }}><IconButton icon="chevron-back" label="Previous webpage" onPress={() => { if (canGoBack) browser.current?.goBack(); }} /></View>
+        <IconButton icon="reload" label="Reload webpage" onPress={() => browser.current?.reload()} />
+      </View> : null}
+    </View>
     </View>
   </Modal>;
 }
