@@ -1,4 +1,5 @@
 import { PostWebView } from "../../components/post-webview";
+import { PinnedMessageBar } from "../../components/pinned-message-bar";
 import { messengerSourceTimeline } from "../../../lib/facebook/messenger-source";
 import { MessengerSourceCard } from "../../components/messenger-source-card";
 import { StickerPicker, type StickerChoice } from "../../components/sticker-picker";
@@ -2082,6 +2083,22 @@ function ConversationScreen() {
   const scopeId = conversation?.business_id ?? workspace?.businessId;
 
   const [messages, setMessages] = useState<InboxMessage[]>([]);
+  const [pinUpdates, setPinUpdates] = useState<InboxMessage[]>([]);
+  const threadList = useRef<FlatList<InboxMessage>>(null);
+  const [pinJump, setPinJump] = useState<string | null>(null);
+  const [pinHighlight, setPinHighlight] = useState<string | null>(null);
+  const pinJumpPages = useRef(0);
+  const pinScrollRetries = useRef(0);
+  const pinScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    setPinUpdates([]); setPinJump(null); setPinHighlight(null);
+    return () => { if (pinScrollTimer.current) clearTimeout(pinScrollTimer.current); };
+  }, [id, scopeId]);
+  useEffect(() => {
+    if (!pinHighlight) return;
+    const timer = setTimeout(() => setPinHighlight(null), 2500);
+    return () => clearTimeout(timer);
+  }, [pinHighlight]);
   const [cursor, setCursor] = useState<{ sentAt: string; id: string } | null>(
     null,
   );
@@ -3117,6 +3134,10 @@ function ConversationScreen() {
             : { conversationId: target.conversation_id, messageId: target.id, reaction: emoji },
         });
       if (actionScope.current !== scope) return;
+      if (action === "pin" && result.message) {
+        const confirmed = result.message;
+        setPinUpdates(current => [...current.filter(row => row.id !== confirmed.id), confirmed].slice(-100));
+      }
       setMessages(current => current.map(row => {
         if (row.id !== target.id) return row;
         if (action === "reaction") {
@@ -3733,6 +3754,23 @@ function ConversationScreen() {
     };
   }, [messages]);
 
+  useEffect(() => {
+    if (!pinJump || loading) return;
+    const index = commentThreads.messages.findIndex(row => row.id === pinJump);
+    if (index >= 0) {
+      threadList.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+      setPinHighlight(pinJump); setPinJump(null);
+    } else if (!loadingOlder) {
+      if (hasMore && pinJumpPages.current < 12) {
+        pinJumpPages.current += 1;
+        void loadOlder();
+      } else {
+        setPinJump(null);
+        Alert.alert("Pinned message", "This message is further back or no longer available. Load older messages and try again.");
+      }
+    }
+  }, [pinJump, commentThreads.messages, loading, loadingOlder, hasMore, loadOlder]);
+
   const swipe = useThreadSwipe(
     () => void openPanel(),
     Boolean(contactId) && !panelOpen,
@@ -3836,6 +3874,10 @@ function ConversationScreen() {
         </View>
       </View>
 
+      {replyable && scopeId ? <PinnedMessageBar key={`${scopeId}:${id}`} conversationId={String(id)} workspaceId={scopeId}
+        messages={messages} updated={pinUpdates} busy={messageActionPending}
+        onJump={message => { pinJumpPages.current = 0; pinScrollRetries.current = 0; setPinJump(message.id); }}
+        onUnpin={message => void actOnMessage(message, "pin")} /> : null}
       <ErrorNotice message={error} onRetry={() => void load()} />
 
       {/*
@@ -3859,6 +3901,13 @@ function ConversationScreen() {
         </View>
       ) : (
         <FlatList
+          ref={threadList}
+          onScrollToIndexFailed={({ index, averageItemLength }) => {
+            if (pinScrollRetries.current++ >= 3) return;
+            threadList.current?.scrollToOffset({ offset: index * averageItemLength, animated: false });
+            if (pinScrollTimer.current) clearTimeout(pinScrollTimer.current);
+            pinScrollTimer.current = setTimeout(() => threadList.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 }), 250);
+          }}
           keyboardDismissMode="on-drag"
           /* A tap on the thread, not on a control, puts the keyboard away --
              the same rule every scroller in the app now follows. */
@@ -3880,7 +3929,7 @@ function ConversationScreen() {
 
             return (
               <>
-                <Bubble
+                <View style={pinHighlight === item.id ? { backgroundColor: "#D2EEFF", borderRadius: 12 } : undefined}><Bubble
                   message={item}
                   commentReplies={commentThreads.repliesByMessageId.get(item.id) ?? []}
                   conversation={conversation}
@@ -3899,7 +3948,7 @@ function ConversationScreen() {
                     duration: playerStatus.duration,
                     onToggle: toggleAudio,
                   }}
-                />
+                /></View>
 
                 {/*
                   After the bubble, not before it. An inverted list mirrors

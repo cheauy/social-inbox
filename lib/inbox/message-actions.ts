@@ -38,7 +38,7 @@ export function getMessageActions(message: ActionMessage, platform?: string | nu
       !raw.tenh_location && !raw.tenh_attachment && !raw.tenh_sticker &&
       !["photo", "video", "document", "voice", "audio", "animation", "sticker", "location"].some((key) => native[key]);
     const ownText = message.direction === "outgoing" && plainText;
-    return { reply: true, pin: ownText, edit: ownText && Boolean(text(message.message_text)), delete: true };
+    return { reply: true, pin: true, edit: ownText && Boolean(text(message.message_text)), delete: true };
   }
   if (platform === "facebook" || platform === "messenger") {
     return { reply: true, pin: true, edit: false, delete: false };
