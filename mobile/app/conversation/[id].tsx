@@ -1,3 +1,5 @@
+import { openInAppLink } from "../../components/in-app-browser";
+import { latestCustomerChannel } from "../../../lib/inbox/latest-customer-channel";
 import { PostWebView } from "../../components/post-webview";
 import { PinnedMessageBar } from "../../components/pinned-message-bar";
 import { messengerSourceTimeline } from "../../../lib/facebook/messenger-source";
@@ -25,7 +27,6 @@ import {
   Image,
   KeyboardAvoidingView,
   Modal,
-  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -773,7 +774,7 @@ function MessageText({ body, outgoing }: { body: string; outgoing: boolean }) {
           <Text
             key={`${part}:${index}`}
             accessibilityRole="link"
-            onPress={() => void Linking.openURL(part)}
+            onPress={() => void openInAppLink(part)}
             style={{ color: outgoing ? "white" : colors.blue, textDecorationLine: "underline", fontWeight: "600" }}
           >
             {part}
@@ -935,7 +936,7 @@ function FacebookCommentCard({
               </View>
             </View>
             {postUrl ? (
-              <Pressable onPress={() => void Linking.openURL(postUrl)} style={({ pressed }) => ({ alignSelf: "flex-start", opacity: pressed ? 0.6 : 1 })}>
+              <Pressable onPress={() => void openInAppLink(postUrl)} style={({ pressed }) => ({ alignSelf: "flex-start", opacity: pressed ? 0.6 : 1 })}>
                 <Text style={{ color: colors.blue, fontSize: 12.5, fontWeight: "800" }}>View post ↗</Text>
               </Pressable>
             ) : null}
@@ -1024,7 +1025,7 @@ function MessageFile({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Open ${label.toLowerCase()}`}
-      onPress={() => void Linking.openURL(uri)}
+      onPress={() => void openInAppLink(uri)}
       style={({ pressed }) => ({
         flexDirection: "row",
         alignItems: "center",
@@ -2083,6 +2084,12 @@ function ConversationScreen() {
   const scopeId = conversation?.business_id ?? workspace?.businessId;
 
   const [messages, setMessages] = useState<InboxMessage[]>([]);
+  const messageChannelPlatform = conversation?.social_account?.platform;
+  useEffect(() => {
+    if (messageChannelPlatform !== "facebook") return;
+    const source = latestCustomerChannel(messages, String(id));
+    if (source) updateConversation(String(id), { source_type: source });
+  }, [messages, id, messageChannelPlatform, updateConversation]);
   const [pinUpdates, setPinUpdates] = useState<InboxMessage[]>([]);
   const threadList = useRef<FlatList<InboxMessage>>(null);
   const [pinJump, setPinJump] = useState<string | null>(null);
@@ -2516,6 +2523,7 @@ function ConversationScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes,
       allowsMultipleSelection: multiple,
+      selectionLimit: 30,
       quality: 1,
     });
 
@@ -2897,6 +2905,10 @@ function ConversationScreen() {
     if ((!text && pending.length === 0) || !id || sending) {
       return;
     }
+    if (pending.length > 30) {
+      setError("Send up to 30 attachments at a time. Remove the extra attachments first.");
+      return;
+    }
 
     if (replyingToComment) {
       const target = replyingToComment;
@@ -2985,8 +2997,14 @@ function ConversationScreen() {
         (platform === "telegram" || visualFiles.every((file) => file.kind === "image"));
 
       if (canAlbum) {
-        await uploadAlbum(visualFiles, telegramCaption, quotedSnapshot?.id);
-        visualFiles.forEach((file) => sentFileKeys.add(file.key));
+        const albumLimit = platform === "telegram" ? 10 : 30;
+        for (let offset = 0; offset < visualFiles.length; offset += albumLimit) {
+          const batch = visualFiles.slice(offset, offset + albumLimit);
+          const caption = offset === 0 ? telegramCaption : "";
+          if (batch.length === 1) await uploadOne(batch[0], caption, quotedSnapshot?.id);
+          else await uploadAlbum(batch, caption, quotedSnapshot?.id);
+          batch.forEach((file) => sentFileKeys.add(file.key));
+        }
       } else {
         for (const file of pendingSnapshot) {
           await uploadOne(file, platform === "telegram" && pendingSnapshot.length === 1 ? telegramCaption : "", quotedSnapshot?.id);

@@ -11,6 +11,7 @@ import { LanguageProvider } from "../lib/language-provider";
 import { NotificationSoundProvider } from "../lib/notification-sound";
 import { PresenceProvider } from "../lib/presence";
 import { configured } from "../lib/supabase/client";
+import { InAppBrowserHost } from "../components/in-app-browser";
 
 /*
  * Nothing works without the three EXPO_PUBLIC_ values, and the failure without
@@ -36,7 +37,7 @@ function Unconfigured() {
  * already signed in, every cold start.
  */
 function Gate() {
-  const { ready, error } = useAuth();
+  const { ready, error, session } = useAuth();
 
   if (!ready) {
     return (
@@ -66,6 +67,7 @@ function Gate() {
           contentStyle: { backgroundColor: colors.background },
         }}
       />
+      <InAppBrowserHost key={session?.user.id ?? "signed-out"} />
     </>
   );
 }

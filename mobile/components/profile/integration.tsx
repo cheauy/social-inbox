@@ -1,10 +1,13 @@
+import { useFocusEffect, useRouter } from "expo-router";
+import { MessengerConnect } from "./messenger-connect";
+import { IntegrationGuide } from "./integration-guide";
 import { Ionicons } from "@expo/vector-icons";
-import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
@@ -12,7 +15,7 @@ import {
 
 import { SettingsGroup } from "../settings-screen";
 import { SlidePanel } from "../slide-panel";
-import { IconName, PlatformMark, colors, styles } from "../ui";
+import { Sheet, Avatar, IconName, PlatformMark, colors, styles } from "../ui";
 import { api } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
 import { useLanguage } from "../../lib/language-provider";
@@ -42,6 +45,7 @@ type Channel = {
   platform: "facebook" | "telegram";
   name: string;
   username: string | null;
+  platformAccountId?: string | null;
 };
 
 type AttentionPage = { id: string; name: string; status: string };
@@ -78,6 +82,8 @@ const COMING: { key: string; name: string; icon: IconName; tone: string; detail:
 ];
 
 export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const router = useRouter();
+  const [messengerOpen, setMessengerOpen] = useState(false);
   const { workspace, settingsRevision, loadWorkspaces, permissions } = useInbox();
 
   /*
@@ -95,6 +101,10 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [selectedChannel, setSelectedChannel] = useState<"all" | "facebook" | "telegram">("all");
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [botOpen, setBotOpen] = useState(false);
   const [token, setToken] = useState("");
   const [connecting, setConnecting] = useState(false);
@@ -142,6 +152,8 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
     void load();
   }, [load]);
 
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
+
   const seenSettingsRevision = useRef(settingsRevision);
   useEffect(() => {
     if (seenSettingsRevision.current === settingsRevision) return;
@@ -160,24 +172,7 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
    * somebody looks at it.
    */
   async function connectFacebook() {
-    try {
-      /*
-       * Straight at the route that starts the handshake, not at the page that
-       * has a button which starts it: one fewer screen to find your way
-       * through on a phone. If the browser has no TENH session it lands on
-       * the integrations page with Meta's own reason, which is the same place
-       * the button would have taken you.
-       */
-      await WebBrowser.openAuthSessionAsync(
-        `${WEB}/api/facebook/oauth/connect`,
-        `${WEB}/dashboard/integrations`,
-      );
-    } catch {
-      // Dismissed, or no browser -- the reload below is still the right move.
-    }
-
-    await load();
-    await loadWorkspaces();
+    setMessengerOpen(true);
   }
 
   /*
@@ -280,14 +275,47 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
 
   return (
     <SlidePanel
+      fullScreen
+      onHelp={() => setHelpOpen(true)}
+      headerContent={
+        <View style={{ gap: 10, paddingTop: 12 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+            {(["all", "facebook", "telegram"] as const).map(channel => {
+              const selected = !adding && selectedChannel === channel;
+              return (
+                <Pressable
+                  key={channel}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected }}
+                  onPress={() => { setSelectedChannel(channel); setAdding(false); setBotOpen(false); setToken(""); }}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: selected ? colors.pale : "transparent" }}
+                >
+                  {channel !== "all" ? <PlatformMark platform={channel === "facebook" ? "messenger" : "telegram"} size={20} /> : null}
+                  <Text style={{ color: selected ? colors.blue : colors.ink, fontWeight: selected ? "700" : "500" }}>
+                    {channel === "all" ? "ALL" : channel === "facebook" ? "Messenger" : "Telegram"}
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>{channels.filter(item => channel === "all" || item.platform === channel).length}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          {canManageChannels ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => { setPickerOpen(true); setBotOpen(false); setToken(""); }}
+              style={{ justifyContent: "center", flexDirection: "row", alignItems: "center", gap: 5, padding: 14, borderRadius: 10, backgroundColor: colors.blue }}
+            >
+              <Ionicons name="add" size={18} color="white" />
+              <Text style={{ color: "white", fontWeight: "700" }}>Add Connection</Text>
+            </Pressable>
+          ) : null}
+
+        </View>
+      }
       open={open}
       onClose={onClose}
       title={t("Integration", "ការតភ្ជាប់")}
-      detail={
-        loading
-          ? t("Loading…", "កំពុងផ្ទុក…")
-          : t(channels.length + " connected", "ភ្ជាប់ " + channels.length)
-      }
+      detail="Connect and manage the social accounts used by your business."
       loading={loading}
       error={error}
       onRetry={() => void load()}
@@ -346,13 +374,13 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
         </View>
       ) : null}
 
-      <SettingsGroup
+      {adding || selectedChannel !== "telegram" ? <SettingsGroup
         title={t(
-          "Messenger and comments · " + messenger.length,
+          "Messenger · " + messenger.length,
           "Messenger និងមតិ · " + messenger.length,
         )}
       >
-        {messenger.length === 0 ? (
+        {adding ? null : messenger.length === 0 ? (
           <Text
             style={[styles.muted, { fontSize: 13, padding: 16, textAlign: "center" }]}
           >
@@ -366,7 +394,7 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
             <ChannelRow
               key={channel.id}
               first={index === 0}
-              mark={<PlatformMark platform="messenger" size={30} />}
+              mark={<Avatar name={channel.name} uri={channel.platformAccountId ? `https://graph.facebook.com/${encodeURIComponent(channel.platformAccountId)}/picture?type=large&width=96&height=96` : null} size={48} />}
               name={channel.name}
               detail={
                 attention.some((page) => page.name === channel.name)
@@ -385,7 +413,7 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
           ))
         )}
 
-        {canManageChannels ? (
+        {canManageChannels && adding ? (
         <Connect
           icon="logo-facebook"
           tone="#1877F2"
@@ -398,10 +426,10 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
           onPress={() => void connectFacebook()}
         />
         ) : null}
-      </SettingsGroup>
+      </SettingsGroup> : null}
 
-      <SettingsGroup title={"Telegram · " + telegram.length}>
-        {telegram.length === 0 ? (
+      {adding || selectedChannel !== "facebook" ? <SettingsGroup title={"Telegram · " + telegram.length}>
+        {adding ? null : telegram.length === 0 ? (
           <Text
             style={[styles.muted, { fontSize: 13, padding: 16, textAlign: "center" }]}
           >
@@ -415,10 +443,11 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
             <ChannelRow
               key={channel.id}
               first={index === 0}
-              mark={<PlatformMark platform="telegram" size={30} />}
+              mark={<Avatar name={channel.name} uri={`/api/telegram/bot-avatar?businessId=${encodeURIComponent(channel.businessId)}&accountId=${encodeURIComponent(channel.id)}`} size={48} />}
               name={channel.name}
-              detail={channel.username ? `@${channel.username}` : "Telegram bot"}
-              tone={colors.muted}
+              detail={t("Connected", "បានភ្ជាប់")}
+              username={channel.username}
+              tone="#2FA36B"
               onDisconnect={
                 canManageChannels ? () => confirmDisconnect(channel) : null
               }
@@ -426,7 +455,7 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
           ))
         )}
 
-        {!canManageChannels ? null : botOpen ? (
+        {!canManageChannels || !adding ? null : botOpen ? (
           <View
             style={{
               gap: 10,
@@ -516,14 +545,14 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
             }}
           />
         )}
-      </SettingsGroup>
+      </SettingsGroup> : null}
 
       {/*
         What is coming, said once and greyed out.
         These are the three TENH already names on the website; a fourth here
         would be a promise nobody has made.
       */}
-      <SettingsGroup title={t("Coming soon", "មកដល់ឆាប់ៗនេះ")}>
+      {adding ? <SettingsGroup title={t("Coming soon", "មកដល់ឆាប់ៗនេះ")}>
         {COMING.map((platform, index) => (
           <View
             key={platform.key}
@@ -579,7 +608,22 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
             </View>
           </View>
         ))}
-      </SettingsGroup>
+      </SettingsGroup> : null}
+      {messengerOpen && workspace ? <MessengerConnect businessId={workspace.businessId} onClose={() => { setMessengerOpen(false); void load(); }} onComplete={(success, message) => {
+        setMessengerOpen(false);
+        if (success) { setConnected(message); setError(""); void load(); } else { setError(message); }
+        void loadWorkspaces();
+      }} /> : null}
+      {helpOpen ? <IntegrationGuide onClose={() => setHelpOpen(false)} /> : null}
+      <Sheet open={pickerOpen} floating heightPercent={60} title="Add Connection" detail="Choose a channel to connect." onClose={() => setPickerOpen(false)}>
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+          {(["messenger", "telegram"] as const).map(platform => <Pressable key={platform} accessibilityRole="button" onPress={() => { setPickerOpen(false); if (platform === "messenger") { void connectFacebook(); } else { router.push("/settings/telegram-connect"); } }} style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 14, backgroundColor: colors.pale }}>
+            <PlatformMark platform={platform} size={30} /><Text style={{ flex: 1, color: colors.ink, fontSize: 16, fontWeight: "700" }}>{platform === "messenger" ? "Messenger" : "Telegram"}</Text><Ionicons name="chevron-forward" size={18} color={colors.blue} />
+          </Pressable>)}
+          <Text style={{ color: colors.muted, fontWeight: "700", marginTop: 8 }}>More coming soon</Text>
+          {COMING.map(channel => <View key={channel.key} style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 12 }}><Ionicons name={channel.icon} size={24} color={channel.tone} /><Text style={{ flex: 1, color: colors.muted }}>{channel.name}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>Coming soon</Text></View>)}
+        </ScrollView>
+      </Sheet>
     </SlidePanel>
   );
 }
@@ -592,7 +636,9 @@ function ChannelRow({
   tone,
   first,
   onDisconnect,
+  username,
 }: {
+  username?: string | null;
   mark: React.ReactNode;
   name: string;
   detail: string;
@@ -626,6 +672,7 @@ function ChannelRow({
         <Text style={{ fontSize: 12, color: tone, fontWeight: "700" }}>
           {detail}
         </Text>
+        {username ? <Text style={{ color: colors.muted, fontSize: 12, marginTop: 3 }}>@{username.replace(/^@/, "")}</Text> : null}
       </View>
 
       {onDisconnect ? (

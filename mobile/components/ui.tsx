@@ -173,7 +173,7 @@ const PLATFORM_MARK: Record<
 > = {
   telegram: { logo: require("../assets/channels/telegram.png"), tint: "#2AABEE" },
   messenger: { logo: require("../assets/channels/messenger.png"), tint: "#0084FF" },
-  comment: { icon: "logo-facebook", tint: "#1877F2" },
+  comment: { icon: "chatbubble-ellipses", tint: "#1877F2" },
 };
 
 /*
@@ -235,7 +235,7 @@ export function ChannelBadge({ conversation }: { conversation: InboxConversation
  * quick replies, tags, the customer -- so the shell lives here and each one
  * only writes its own contents.
  */
-export function Sheet({ open, title, detail, onClose, children, floating = false, fullHeight = false, half = false }: { open: boolean; title: string; detail: string; onClose: () => void; children: React.ReactNode; floating?: boolean; fullHeight?: boolean; half?: boolean }) {
+export function Sheet({ open, title, detail, onClose, children, floating = false, fullHeight = false, half = false, heightPercent }: { open: boolean; title: string; detail: string; onClose: () => void; children: React.ReactNode; floating?: boolean; fullHeight?: boolean; half?: boolean; heightPercent?: number }) {
   const insets = useSafeAreaInsets();
 
   /*
@@ -279,8 +279,8 @@ export function Sheet({ open, title, detail, onClose, children, floating = false
           marginHorizontal: floating ? 10 : 0,
           marginBottom: floating ? Math.max(insets.bottom, 10) : 0,
           paddingBottom: floating ? 10 : Math.max(insets.bottom, 28),
-          height: fullHeight ? "94%" : half ? "56%" : undefined,
-          maxHeight: fullHeight ? "94%" : half ? "56%" : floating ? "76%" : "82%",
+          height: heightPercent ? `${heightPercent}%` : fullHeight ? "94%" : half ? "56%" : undefined,
+          maxHeight: heightPercent ? `${heightPercent}%` : fullHeight ? "94%" : half ? "56%" : floating ? "76%" : "82%",
           overflow: "hidden",
         }}
       >

@@ -16,6 +16,7 @@ import {
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
+import { latestCustomerChannel } from "@/lib/inbox/latest-customer-channel";
 
 import {
   getFacebookPostIdForComment,
@@ -146,6 +147,9 @@ async function getConversationMessages(
       contact_id,
       social_account_id,
       source_type,
+      platform,
+      updated_at,
+      last_message_at,
       facebook_post_id,
       facebook_comment_id
     `)
@@ -270,6 +274,20 @@ async function getConversationMessages(
 
     let responseMessages =
       page.messages;
+
+    // Repair legacy comment flags from the newest page only. The version check
+    // prevents this read from overwriting a concurrent conversation update.
+    if (!before && conversation.platform === "facebook" && conversation.updated_at) {
+      const source = latestCustomerChannel(page.messages, normalizedConversationId);
+      const newest = Math.max(0, ...page.messages.map(row => Date.parse(row.platform_created_at || row.created_at) || 0));
+      const currentTime = Date.parse(conversation.last_message_at ?? "") || 0;
+      if (source && source !== conversation.source_type && newest >= currentTime) {
+        const { error: repairError } = await supabaseAdmin.from("conversations")
+          .update({ source_type: source }).eq("id", normalizedConversationId)
+          .eq("business_id", currentMember.business_id).eq("updated_at", conversation.updated_at);
+        if (repairError) console.warn("Unable to repair conversation channel", { code: repairError.code });
+      }
+    }
 
     /*
      * Repair older Facebook comment rows that were saved while Meta omitted

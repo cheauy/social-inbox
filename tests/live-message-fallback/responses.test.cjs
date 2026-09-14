@@ -44,18 +44,34 @@ test('cancelling response body reading preserves AbortError', async () => {
   await assert.rejects(read({ text: async () => { throw aborted; } }), error => error === aborted);
 });
 
-function route({ access, queryThrows = false } = {}) {
+function route({ access, queryThrows = false, conversation = {}, rows = [message], onPage, query = '' } = {}) {
   let pageCalls = 0;
-  const db = database({ conversations: [{ id: 'c1', business_id: 'b1' }] });
+  const db = database({ conversations: [{ id: 'c1', business_id: 'b1', ...conversation }] });
   const load = loader({
     '@/lib/inbox/get-inbox-resource-access': { getInboxConversationAccess: access ?? (async () => ({ success: true, member: { business_id: 'b1' } })) },
     '@/lib/supabase/admin': { supabaseAdmin: queryThrows ? { from: () => { throw new Error('Database transport failed'); } } : db },
-    '@/lib/inbox/get-messages': { MESSAGE_PAGE_SIZE: 25, getMessagePage: async () => { pageCalls++; return { messages: [message], hasMore: false, nextCursor: null }; } },
+    '@/lib/inbox/get-messages': { MESSAGE_PAGE_SIZE: 25, getMessagePage: async () => { pageCalls++; onPage?.(db); return { messages: rows, hasMore: false, nextCursor: null }; } },
     '@/lib/facebook/get-post-preview': {},
   }, { console: { error() {}, warn() {} } });
   const { GET } = load('app/api/conversations/[conversationId]/messages/route.ts');
-  return { get: () => GET({ nextUrl: new URL('https://example.com/api/conversations/c1/messages') }, { params: Promise.resolve({ conversationId: 'c1' }) }), pageCalls: () => pageCalls };
+  return { db, get: () => GET({ nextUrl: new URL('https://example.com/api/conversations/c1/messages' + query) }, { params: Promise.resolve({ conversationId: 'c1' }) }), pageCalls: () => pageCalls };
 }
+
+const oldComment = { platform: 'facebook', source_type: 'comment', updated_at: '2026-09-13T08:00:00Z', last_message_at: message.created_at };
+const dm = { ...message, platform_message_id: 'mid1', platform_created_at: message.created_at };
+test('opening the latest page repairs a historical comment badge', async () => {
+  const api = route({ conversation: oldComment, rows: [dm] });
+  assert.equal((await api.get()).status, 200);
+  assert.equal(api.db.tables.conversations[0].source_type, 'messenger');
+});
+test('historical pagination cannot change the current channel', async () => {
+  const api = route({ conversation: oldComment, rows: [dm], query: '?beforeCreatedAt=2026-09-14T00:00:00Z&beforeId=m2' });
+  await api.get(); assert.equal(api.db.tables.conversations[0].source_type, 'comment');
+});
+test('a concurrent conversation change prevents stale channel repair', async () => {
+  const api = route({ conversation: oldComment, rows: [dm], onPage: db => { db.tables.conversations[0].updated_at = '2026-09-14T00:00:00Z'; } });
+  await api.get(); assert.equal(api.db.tables.conversations[0].source_type, 'comment');
+});
 
 for (const scenario of ['access exception', 'query exception']) {
   test(`${scenario} is contained in the message API JSON boundary`, async () => {

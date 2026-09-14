@@ -46,7 +46,7 @@ export function PinnedMessageBar({ conversationId, workspaceId, messages, update
   const pin = pins[index];
   return <>
     {pin ? <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.pale, borderBottomWidth: 1, borderBottomColor: colors.border, paddingHorizontal: 14, paddingVertical: 9 }}>
-      <Ionicons name="bookmark" size={19} color={colors.blue} />
+      <Text accessibilityLabel="Pinned" style={{ fontSize: 19 }}>📌</Text>
       <Pressable accessibilityRole="button" accessibilityLabel={`Jump to pinned message: ${getMessageSummary(pin)}`} onPress={() => onJump(pin)} style={{ flex: 1, borderLeftWidth: 2, borderLeftColor: colors.blue, paddingLeft: 9 }}>
         <Text style={{ color: colors.blue, fontSize: 12, fontWeight: "600" }}>Pinned message{pins.length > 1 ? ` · ${index + 1}/${pins.length}` : ""}</Text>
         <Text numberOfLines={1} style={{ color: colors.ink, fontSize: 13 }}>{getMessageSummary(pin)}</Text>

@@ -124,6 +124,7 @@ export function SubscriptionPanel({ open, onClose }: { open: boolean; onClose: (
 
   return (
     <SlidePanel
+      fullScreen
       open={open}
       onClose={onClose}
       title="Subscription"

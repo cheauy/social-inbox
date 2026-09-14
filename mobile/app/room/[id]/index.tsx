@@ -1,3 +1,4 @@
+import { openInAppLink } from "../../../components/in-app-browser";
 import { AuthImage } from "../../../components/auth-image";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
@@ -11,7 +12,6 @@ import {
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -139,7 +139,7 @@ function MessageText({ value, mine, onLongPress }: { value: string; mine: boolea
                 heldLinkRef.current = false;
                 return;
               }
-              void Linking.openURL(cleanLinkTarget(part));
+              void openInAppLink(cleanLinkTarget(part));
             }}
             style={{
               color: mine ? "white" : colors.blue,
@@ -276,7 +276,7 @@ function AttachmentView({
           } else if (attachment.kind === "audio") {
             onToggleAudio(attachment);
           } else {
-            void Linking.openURL(attachment.url);
+            void openInAppLink(attachment.url);
           }
         };
 

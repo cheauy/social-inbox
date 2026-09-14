@@ -399,7 +399,13 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
           }
           return;
         }
-        const row = ((payload.new as { id?: string })?.id ? payload.new : payload.old) as { id?: string };
+        const row = ((payload.new as { id?: string })?.id ? payload.new : payload.old) as { id?: string; source_type?: string };
+        // Update the channel badge immediately; the bounded refresh below
+        // still supplies the complete authorized conversation and counts.
+        if (payload.eventType !== "DELETE" && (row.source_type === "comment" || row.source_type === "messenger")) {
+          const source = row.source_type;
+          setConversations(current => current.map(item => item.id === row.id ? { ...item, source_type: source } : item));
+        }
         if (typeof row.id === "string") changed("conversation", row.id);
       });
     /*

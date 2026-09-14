@@ -1,6 +1,8 @@
+import { useNavigation } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
+  BackHandler,
   Dimensions,
   PanResponder,
   Pressable,
@@ -53,7 +55,13 @@ export function SlidePanel({
   onRetry,
   skeleton,
   children,
+  fullScreen = false,
+  headerContent,
+  onHelp,
 }: {
+  onHelp?: () => void;
+  fullScreen?: boolean;
+  headerContent?: React.ReactNode;
   open: boolean;
   onClose: () => void;
   title: string;
@@ -65,9 +73,30 @@ export function SlidePanel({
   children: React.ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
+  const panelWidth = fullScreen ? SCREEN : PANEL;
+  const closePanelRef = useRef(onClose);
+  closePanelRef.current = onClose;
 
-  const slide = useRef(new Animated.Value(PANEL)).current;
+  const slide = useRef(new Animated.Value(panelWidth)).current;
   const [mounted, setMounted] = useState(open);
+
+  // Keep this protection inside the shared panel, including its closing animation.
+  useEffect(() => {
+    if (!open && !mounted) return;
+    navigation.setOptions({ gestureEnabled: false });
+    return () => navigation.setOptions({ gestureEnabled: true });
+  }, [navigation, open, mounted]);
+
+  // Consume Android Back before the underlying profile route can pop.
+  useEffect(() => {
+    if (!open && !mounted) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (open) closePanelRef.current();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [open, mounted]);
 
   useEffect(() => {
     if (open) {
@@ -75,7 +104,7 @@ export function SlidePanel({
     }
 
     Animated.timing(slide, {
-      toValue: open ? 0 : PANEL,
+      toValue: open ? 0 : panelWidth,
       duration: open ? 220 : 180,
       useNativeDriver: true,
     }).start(({ finished }) => {
@@ -83,7 +112,7 @@ export function SlidePanel({
         setMounted(false);
       }
     });
-  }, [open, slide]);
+  }, [open, slide, panelWidth]);
 
   /*
    * Claimed only for a clearly horizontal drag: the panel scrolls, and a
@@ -91,16 +120,20 @@ export function SlidePanel({
    */
   const drag = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_event, gesture) =>
+      onMoveShouldSetPanResponderCapture: (_event, gesture) =>
         gesture.dx > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
 
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderTerminate: () => {
+        Animated.spring(slide, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+      },
       onPanResponderMove: (_event, gesture) => {
         slide.setValue(Math.max(0, gesture.dx));
       },
 
       onPanResponderRelease: (_event, gesture) => {
         if (gesture.dx > DISMISS_AFTER || gesture.vx > 0.5) {
-          onClose();
+          closePanelRef.current();
           return;
         }
 
@@ -118,14 +151,14 @@ export function SlidePanel({
   }
 
   return (
-    <View style={FILL} pointerEvents="box-none">
+    <View style={FILL} pointerEvents="box-none" accessibilityViewIsModal onAccessibilityEscape={onClose}>
       <Animated.View
         pointerEvents={open ? "auto" : "none"}
         style={{
           ...FILL,
           backgroundColor: "rgba(16,34,56,0.35)",
           opacity: slide.interpolate({
-            inputRange: [0, PANEL],
+            inputRange: [0, panelWidth],
             outputRange: [1, 0],
           }),
         }}
@@ -153,7 +186,7 @@ export function SlidePanel({
           top: 0,
           bottom: 0,
           right: 0,
-          width: PANEL,
+          width: panelWidth,
           backgroundColor: colors.background,
           borderLeftWidth: 1,
           borderLeftColor: colors.border,
@@ -162,11 +195,12 @@ export function SlidePanel({
       >
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <View style={styles.row}>
+            {fullScreen ? <IconButton icon="chevron-back" label={`Back from ${title}`} onPress={onClose} /> : null}
             <View style={{ flex: 1 }}>
               <Text numberOfLines={1} style={styles.heading}>
                 {title}
               </Text>
-              <Text numberOfLines={1} style={[styles.muted, { fontSize: 12.5 }]}>
+              <Text numberOfLines={fullScreen ? 3 : 1} style={[styles.muted, { fontSize: 12.5 }]}>
                 {detail}
               </Text>
             </View>
@@ -178,12 +212,13 @@ export function SlidePanel({
               into the panel you are already inside -- rather than as the way
               out of it.
             */}
-            <IconButton
+            {fullScreen ? (onHelp ? <IconButton icon="help-circle-outline" label={`${title} help`} onPress={onHelp} /> : null) : <IconButton
               icon="close"
               label={`Close ${title}`}
               onPress={onClose}
-            />
+            />}
           </View>
+          {headerContent}
         </View>
 
         <ErrorNotice message={error ?? ""} onRetry={onRetry} />

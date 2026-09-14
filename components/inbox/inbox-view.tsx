@@ -25,6 +25,7 @@ import { ConversationList } from "@/components/inbox/conversation-list";
 import { confirmOutgoingMessage } from "@/lib/inbox/confirm-outgoing-message";
 import { normalizeMessages } from "@/lib/inbox/normalize-messages";
 import { readMessagePageResponse } from "@/lib/inbox/read-message-page-response";
+import { latestCustomerChannel } from "@/lib/inbox/latest-customer-channel";
 import { CustomerProfile } from "@/components/inbox/customer-profile";
 import { CustomerTimelineModal } from "@/components/inbox/customer-timeline-modal";
 import type { InboxViewProps } from "@/components/inbox/inbox-view-types";
@@ -1312,6 +1313,15 @@ const activeConversation =
 
 const activeConversationRef = useRef(activeConversation);
 activeConversationRef.current = activeConversation;
+
+useEffect(() => {
+  if (!resolvedActiveConversationId) return;
+  const source = latestCustomerChannel(liveMessages, resolvedActiveConversationId);
+  if (!source) return;
+  setLiveConversations(current => current.map(row => row.id === resolvedActiveConversationId &&
+    row.social_account?.platform !== "telegram" && row.source_type !== source
+    ? { ...row, source_type: source } : row));
+}, [liveMessages, resolvedActiveConversationId]);
 
 useEffect(() => {
   const previousId =

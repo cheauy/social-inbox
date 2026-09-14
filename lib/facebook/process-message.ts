@@ -255,17 +255,9 @@ export async function processFacebookMessage(
           contact_id: contact.id,
           platform: "facebook",
 
-          /*
-           * A Messenger message means this is a Messenger conversation.
-           *
-           * Comments and DMs from one customer share a conversation row, and
-           * the comment path stamps source_type as "comment" on every comment.
-           * Nothing ever stamped it back, so a customer who once commented was
-           * treated as a comment thread forever -- attachments refused, and the
-           * conversation left out of analytics counts. The flag now follows the
-           * newest message, which is what the comment side already does.
-           */
-          source_type: "messenger",
+          // Only the customer's DM changes the inbox channel. A delayed Page
+          // echo must not turn a newer customer comment into Messenger.
+          ...(!isEcho ? { source_type: "messenger" } : {}),
           status: "open",
           updated_at: new Date().toISOString(),
         },

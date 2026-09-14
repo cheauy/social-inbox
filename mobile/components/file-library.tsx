@@ -1,9 +1,9 @@
+import { openInAppLink } from "./in-app-browser";
 import { Ionicons } from "@expo/vector-icons";
 import { CachedVideo } from "./cached-video";
 import { useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -203,7 +203,7 @@ export function FileLibrary({ files }: { files: CustomerFile[] }) {
       return;
     }
 
-    void Linking.openURL(item.url);
+    void openInAppLink(item.url);
   }
 
   const media = files.filter(

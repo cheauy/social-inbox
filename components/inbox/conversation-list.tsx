@@ -684,11 +684,14 @@ function TelegramSourceIcon({
 
 function ChannelAvatarBadge({
   platform,
+  sourceType,
 }: {
   platform: ConversationPlatform;
+  sourceType?: string | null;
 }) {
   const [pngFailed, setPngFailed] =
     useState(false);
+  const isComment = platform !== "telegram" && sourceType === "comment";
 
   const pngSrc =
     platform === "telegram"
@@ -705,15 +708,22 @@ function ChannelAvatarBadge({
       title={
         platform === "telegram"
           ? "Telegram"
-          : "Messenger"
+          : isComment ? "Facebook comment" : "Messenger"
       }
       aria-label={
         platform === "telegram"
           ? "Telegram conversation"
-          : "Messenger conversation"
+          : isComment ? "Facebook comment conversation" : "Messenger conversation"
       }
     >
-      {!pngFailed ? (
+      {isComment ? (
+        <svg viewBox="0 0 24 24" className="h-full w-full" fill="none" aria-hidden="true">
+          <path d="M20 11.5a8 8 0 0 1-8 8 9 9 0 0 1-3.5-.7L4 20l1.2-4.5a8 8 0 1 1 14.8-4Z" fill="white" />
+          <circle cx="8" cy="11.5" r="1" fill="#2563eb" />
+          <circle cx="12" cy="11.5" r="1" fill="#2563eb" />
+          <circle cx="16" cy="11.5" r="1" fill="#2563eb" />
+        </svg>
+      ) : !pngFailed ? (
         <img
           src={pngSrc}
           alt=""
@@ -1424,6 +1434,7 @@ const ConversationRow = memo(function ConversationRow({
 
                       {conversationPlatform ? (
                         <ChannelAvatarBadge
+                          sourceType={conversation.source_type}
                           platform={
                             conversationPlatform
                           }

@@ -1,3 +1,4 @@
+import { openInAppLink } from "../../components/in-app-browser";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -5,7 +6,6 @@ import {
   ActivityIndicator,
   Alert,
   Keyboard,
-  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -1022,7 +1022,7 @@ export default function Notifications() {
     } else if (link.includes("subscription")) {
       router.push("/settings/subscription");
     } else if (/^https?:\/\//i.test(link)) {
-      void Linking.openURL(link);
+      void openInAppLink(link);
     }
   }
 
@@ -1253,7 +1253,7 @@ export default function Notifications() {
                     <Pressable
                       accessibilityRole="button"
                       onPress={() =>
-                        void Linking.openURL(announcement.link_url as string)
+                        void openInAppLink(announcement.link_url as string)
                       }
                       style={({ pressed }) => ({
                         paddingHorizontal: 14,

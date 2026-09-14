@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Animated,
+  BackHandler,
   Dimensions,
   Keyboard,
   Linking,
@@ -1124,6 +1126,26 @@ export function CustomerPanel({
 
   const slide = useRef(new Animated.Value(PANEL)).current;
   const [mounted, setMounted] = useState(open);
+  const navigation = useNavigation();
+  // Keep this protection inside the shared panel so every screen using it
+  // retains its conversation, including while the closing animation runs.
+  useEffect(() => {
+    if (!open && !mounted) return;
+    navigation.setOptions({ gestureEnabled: false });
+    return () => navigation.setOptions({ gestureEnabled: true });
+  }, [navigation, open, mounted]);
+  const closePanelRef = useRef(onClose);
+  closePanelRef.current = onClose;
+  // Consume Android's system Back (including edge gestures) until the panel
+  // has finished closing. Never let the same action pop the conversation.
+  useEffect(() => {
+    if (!open && !mounted) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (open) closePanelRef.current();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [open, mounted]);
   const [statusOpen, setStatusOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
 
@@ -1265,6 +1287,8 @@ export function CustomerPanel({
    */
   const drag = useRef(
     PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (_event, gesture) =>
+        gesture.dx > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
       onMoveShouldSetPanResponder: (_event, gesture) =>
         gesture.dx > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
 
@@ -1274,7 +1298,7 @@ export function CustomerPanel({
 
       onPanResponderRelease: (_event, gesture) => {
         if (gesture.dx > DISMISS_AFTER || gesture.vx > 0.5) {
-          onClose();
+          closePanelRef.current();
           return;
         }
 
@@ -1283,6 +1307,10 @@ export function CustomerPanel({
           useNativeDriver: true,
           bounciness: 0,
         }).start();
+      },
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderTerminate: () => {
+        Animated.spring(slide, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
       },
     }),
   ).current;
@@ -1300,7 +1328,7 @@ export function CustomerPanel({
     members.find((member) => member.id === assignedTo)?.full_name ?? null;
 
   return (
-    <View style={FILL} pointerEvents="box-none">
+    <View style={FILL} pointerEvents="box-none" accessibilityViewIsModal onAccessibilityEscape={onClose}>
       <Animated.View
         pointerEvents={open ? "auto" : "none"}
         style={{

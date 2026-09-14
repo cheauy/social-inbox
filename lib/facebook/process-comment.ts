@@ -1427,8 +1427,6 @@ export async function processFacebookComment({
       await supabaseAdmin
         .from("conversations")
         .update({
-          source_type:
-            "comment",
           last_message_text:
             message,
           last_message_at:
