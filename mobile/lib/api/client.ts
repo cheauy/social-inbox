@@ -52,7 +52,7 @@ export async function api<T>(path: string, workspaceId?: string | null, init: { 
     const multipart = init.body instanceof FormData;
     const response = await fetch(new URL(path, base).toString(), {
       method: init.method || "GET", signal: controller.signal, credentials: "omit", redirect: "error",
-      headers: { Accept: "application/json", Cookie: sessionCookie(authCookieName, data.session, workspaceId), ...(init.body && !multipart ? { "Content-Type": "application/json" } : {}) },
+      headers: { Accept: "application/json", ...(mutating ? { Origin: base.origin } : {}), Cookie: sessionCookie(authCookieName, data.session, workspaceId), ...(init.body && !multipart ? { "Content-Type": "application/json" } : {}) },
       body: init.body ? multipart ? init.body as FormData : JSON.stringify(init.body) : undefined,
     });
 

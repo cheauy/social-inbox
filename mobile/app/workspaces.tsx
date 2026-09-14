@@ -214,7 +214,7 @@ export default function Workspaces() {
               numberOfLines={1}
               style={{ fontSize: 16, fontWeight: "800", color: colors.ink }}
             >
-              TENH Chat
+              Tenh Chat
             </Text>
 
             <Text numberOfLines={1} style={[styles.muted, { fontSize: 12 }]}>

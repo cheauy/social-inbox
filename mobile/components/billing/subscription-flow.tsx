@@ -639,7 +639,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
   return (
     <SettingsScreen
       title={page === "overview" ? "Subscription" : page === "plans" ? intent === "upgrade" ? "Upgrade subscription" : "Choose a plan" : "Payment summary"}
-      detail={intent === "buy-new" && page !== "overview" ? "New TENH subscription" : billingWorkspace?.businessName ?? "TENH Chat"}
+      detail={intent === "buy-new" && page !== "overview" ? "New TENH subscription" : billingWorkspace?.businessName ?? "Tenh Chat"}
       allowWithoutWorkspace
       loading={loading}
       error={loadError || error}

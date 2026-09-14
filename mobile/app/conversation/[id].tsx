@@ -1,3 +1,10 @@
+import { PostWebView } from "../../components/post-webview";
+import { messengerSourceTimeline } from "../../../lib/facebook/messenger-source";
+import { MessengerSourceCard } from "../../components/messenger-source-card";
+import { StickerPicker, type StickerChoice } from "../../components/sticker-picker";
+import { randomUUID } from "expo-crypto";
+import { getMessageActions, isMessagePinned } from "../../../lib/inbox/message-actions";
+import { canReactToMessengerMessage, getMessengerReaction, MESSENGER_QUICK_REACTIONS, withMessengerReaction } from "../../../lib/facebook/message-reactions";
 import { Ionicons } from "@expo/vector-icons";
 import { createAudioPlayer, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import * as Clipboard from "expo-clipboard";
@@ -7,7 +14,7 @@ import * as Sharing from "expo-sharing";
 import * as ImagePicker from "expo-image-picker";
 import { CachedVideo } from "../../components/cached-video";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -1044,6 +1051,7 @@ function Bubble({
   commentReplies,
   audio,
   conversation,
+  pageReactionOverride,
   onViewMedia,
   onReplyComment,
   onCommentAction,
@@ -1053,6 +1061,7 @@ function Bubble({
   message: InboxMessage;
   commentReplies: InboxMessage[];
   conversation: InboxConversation | null;
+  pageReactionOverride?: { emoji: string | null };
   onViewMedia: (item: MediaPreview) => void;
   onReplyComment: (message: InboxMessage) => void;
   onCommentAction: (message: InboxMessage, action: "like" | "hide" | "delete") => void;
@@ -1070,6 +1079,11 @@ function Bubble({
   const url = message.attachment_url;
   const type = message.message_type;
   const raw = record(message.raw_payload);
+  const reactions = (["page", "customer"] as const).flatMap(actor => {
+    const emoji = actor === "page" && pageReactionOverride ? pageReactionOverride.emoji : getMessengerReaction(message.raw_payload, actor)?.emoji;
+    return emoji ? [{ actor, emoji }] : [];
+  });
+  const quotedText = words(record(raw?.tenh_reply)?.preview_text);
   const attachmentMeta = record(raw?.tenh_attachment);
   const attachmentName = words(attachmentMeta?.name);
   const isComment =
@@ -1197,7 +1211,8 @@ function Bubble({
     <View
       style={{
         paddingHorizontal: 14,
-        paddingVertical: 4,
+        paddingTop: 4,
+        paddingBottom: reactions.length ? 20 : 4,
         alignItems: outgoing ? "flex-end" : "flex-start",
       }}
     >
@@ -1217,7 +1232,7 @@ function Bubble({
             y: event.nativeEvent.pageY,
           })
         }
-        delayLongPress={280}
+        delayLongPress={220}
         style={{
           maxWidth: "82%",
           backgroundColor: bare ? "transparent" : outgoing ? colors.blue : "white",
@@ -1229,6 +1244,10 @@ function Bubble({
           gap: 6,
         }}
       >
+        {quotedText ? <View style={{ alignSelf: "stretch", borderLeftWidth: 3, borderLeftColor: outgoing && !bare ? "#a9e4ff" : colors.blue, backgroundColor: outgoing && !bare ? "rgba(0,38,76,0.18)" : "#edf5fa", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 3 }}>
+          <Text style={{ fontSize: 11, fontWeight: "700", marginBottom: 3, color: outgoing && !bare ? "#d4f1ff" : colors.blue }}>Replying to message</Text>
+          <Text numberOfLines={3} style={{ fontSize: 13, lineHeight: 19, color: outgoing && !bare ? "white" : colors.ink }}>{quotedText}</Text>
+        </View> : null}
         {media.length > 0 ? (
           <MediaGrid items={media} onOpen={onViewMedia} sticker={type === "sticker"} />
         ) : null}
@@ -1250,6 +1269,9 @@ function Bubble({
             onToggle={() => audio.onToggle(message)}
           />
         ) : null}
+
+        {isMessagePinned(message) ? <Text style={{ fontSize: 11, color: outgoing && !bare ? "white" : colors.muted }}>📌 Pinned</Text> : null}
+
 
         {url && !["image", "audio", "voice", "video", "sticker"].includes(type) ? (
           <MessageFile outgoing={outgoing} uri={url} label={attachmentName || "File"} icon="document" />
@@ -1318,6 +1340,9 @@ function Bubble({
             </Text>
           ) : null}
         </View>
+        {reactions.length ? <View accessibilityLabel="Message reactions" style={{ position: "absolute", right: 8, bottom: -12.6, flexDirection: "row", gap: 2.7, paddingHorizontal: 6.3, paddingVertical: 1.8, borderRadius: 14.4, backgroundColor: "white", borderWidth: 1, borderColor: colors.border, shadowColor: "#20354b", shadowOpacity: 0.1, shadowRadius: 3, shadowOffset: { width: 0, height: 2 }, elevation: 2 }}>
+          {reactions.map(reaction => <Text key={reaction.actor} accessibilityLabel={`${reaction.actor} reaction ${reaction.emoji}`} style={{ fontSize: 15.3, lineHeight: 20.7 }}>{reaction.emoji}</Text>)}
+        </View> : null}
       </Pressable>
     </View>
   );
@@ -1342,13 +1367,36 @@ function Bubble({
  * card opens at the thumb: beside the bubble, above the finger when there is
  * no room below it, and always inside the screen.
  */
-const MENU_WIDTH = 186;
+const MENU_WIDTH = 318;
 const MENU_MARGIN = 10;
+
+type MessageMenuControl = {
+  open: (message: InboxMessage, at: { x: number; y: number }) => void;
+  close: () => void;
+};
+// Holding a bubble updates only this small host, not the message list/player/composer.
+function MessageMenuHost({ ref, canReply, saving, platform, onAction }: {
+  ref: Ref<MessageMenuControl>; canReply: boolean; saving: boolean; platform: string;
+  onAction: (action: "reply" | "pin" | "copy" | "download" | "reaction", message: InboxMessage, emoji?: string | null) => void;
+}) {
+  const [selection, setSelection] = useState<{ message: InboxMessage; at: { x: number; y: number } } | null>(null);
+  const close = () => setSelection(null);
+  useImperativeHandle(ref, () => ({ open: (message, at) => setSelection({ message, at }), close }), []);
+  const act = (action: Parameters<typeof onAction>[0], emoji?: string | null) => {
+    if (!selection || saving) return;
+    close(); onAction(action, selection.message, emoji);
+  };
+  return <MessageMenu message={selection?.message ?? null} at={selection?.at ?? null} canReply={canReply} saving={saving} platform={platform}
+    onReply={() => act("reply")} onPin={() => act("pin")} onCopy={() => act("copy")} onDownload={() => act("download")}
+    onReact={emoji => act("reaction", emoji)} onClose={close} />;
+}
 
 function MessageMenu({
   message,
   at,
   canReply,
+  platform,
+  onReact,
   saving,
   onReply,
   onCopy,
@@ -1359,6 +1407,8 @@ function MessageMenu({
   message: InboxMessage | null;
   at: { x: number; y: number } | null;
   canReply: boolean;
+  platform: string;
+  onReact: (emoji: string | null) => void;
   saving: boolean;
   onReply: () => void;
   onCopy: () => void;
@@ -1367,6 +1417,7 @@ function MessageMenu({
   onClose: () => void;
 }) {
   const screen = Dimensions.get("window");
+
 
   if (!message || !at) return null;
 
@@ -1386,11 +1437,14 @@ function MessageMenu({
    * Not on a message still on its way: it has no id on the network yet, so
    * the quote would be dropped on the way out and nobody would know why.
    */
-  if (canReply && !message.id.startsWith("optimistic:")) {
+  const actions = getMessageActions(message, platform);
+  const choosingReaction = canReactToMessengerMessage(message, platform);
+  const menuWidth = Math.min(MENU_WIDTH, screen.width - MENU_MARGIN * 2);
+  if (canReply && actions.reply) {
     rows.push({ icon: "arrow-undo-outline", label: "Reply", run: onReply });
   }
 
-  rows.push({ icon: "bookmark-outline", label: "Pin", run: onPin });
+  if (actions.pin) rows.push({ icon: "bookmark-outline", label: isMessagePinned(message) ? "Unpin" : "Pin", run: onPin });
 
   /*
    * Copy is for words. A photo, a clip, a voice note or a file has nothing to
@@ -1415,21 +1469,21 @@ function MessageMenu({
    * the screen. A menu that opens half off the edge is a menu with an action
    * nobody can reach.
    */
-  const height = rows.length * 46 + 10;
+  const height = rows.length * 46 + 10 + (choosingReaction ? 94 : 0);
   const below = at.y + 12;
   const top =
     below + height > screen.height - 24 ? Math.max(24, at.y - height - 12) : below;
 
   const left = Math.min(
-    Math.max(MENU_MARGIN, at.x - MENU_WIDTH / 2),
-    screen.width - MENU_WIDTH - MENU_MARGIN,
+    Math.max(MENU_MARGIN, at.x - menuWidth / 2),
+    screen.width - menuWidth - MENU_MARGIN,
   );
 
   return (
     <Modal
       visible
       transparent
-      animationType="fade"
+      animationType="none"
       onRequestClose={onClose}
       statusBarTranslucent
     >
@@ -1445,7 +1499,7 @@ function MessageMenu({
           position: "absolute",
           top,
           left,
-          width: MENU_WIDTH,
+          width: menuWidth,
           paddingVertical: 5,
           borderRadius: 16,
           backgroundColor: "white",
@@ -1456,6 +1510,15 @@ function MessageMenu({
           shadowOffset: { width: 0, height: 8 },
         }}
       >
+        {choosingReaction ? <View style={{ flexDirection: "row", flexWrap: "wrap", padding: 5 }}>
+          {MESSENGER_QUICK_REACTIONS.map(item => <Pressable key={item.emoji} disabled={saving}
+            accessibilityRole="button" accessibilityLabel={`React with ${item.label}`}
+            onPress={() => onReact(getMessengerReaction(message.raw_payload, "page")?.emoji === item.emoji ? null : item.emoji)}
+            style={{ width: (menuWidth - 10) / 7, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: getMessengerReaction(message.raw_payload, "page")?.emoji === item.emoji ? colors.pale : "transparent" }}>
+            <Text style={{ fontSize: 26 }}>{item.emoji}</Text>
+          </Pressable>)}
+          {getMessengerReaction(message.raw_payload, "page")?.emoji ? <Pressable disabled={saving} onPress={() => onReact(null)} style={{ padding: 10 }}><Text>Remove reaction</Text></Pressable> : null}
+        </View> : null}
         {rows.map((row, index) => (
           <Pressable
             key={row.label}
@@ -2051,11 +2114,10 @@ function ConversationScreen() {
   const [voiceReady, setVoiceReady] = useState(0);
 
   /* The message being acted on, and whether a download is in flight. */
-  const [held, setHeld] = useState<InboxMessage | null>(null);
-  const [heldAt, setHeldAt] = useState<{ x: number; y: number } | null>(null);
+  const messageMenu = useRef<MessageMenuControl>(null);
 
   /*
-   * The message the next send will quote. Telegram only -- see `replyable`.
+   * The message the next send will quote, using the website send routes.
    */
   const [quoted, setQuoted] = useState<InboxMessage | null>(null);
   const [saving, setSaving] = useState(false);
@@ -2063,6 +2125,9 @@ function ConversationScreen() {
   const [commentBusy, setCommentBusy] = useState<string | null>(null);
 
   const [replyOpen, setReplyOpen] = useState(false);
+  const [stickerOpen, setStickerOpen] = useState(false);
+  const stickerBusy = useRef(false);
+  const stickerAttempts = useRef(new Map<string, string>());
   const [replies, setReplies] = useState<SavedReply[]>([]);
   const [repliesLoading, setRepliesLoading] = useState(false);
   const [preparingReply, setPreparingReply] = useState(false);
@@ -2079,6 +2144,7 @@ function ConversationScreen() {
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
+  const [postUrl, setPostUrl] = useState<string | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
   const [customerLoading, setCustomerLoading] = useState(false);
@@ -2097,6 +2163,37 @@ function ConversationScreen() {
 
   const platform =
     conversation?.social_account?.platform === "telegram" ? "telegram" : "facebook";
+
+  const sourceTimeline = useMemo(() => messengerSourceTimeline(
+    conversation?.facebook_messenger_sources, platform === "facebook" ? messages : [],
+  ), [conversation?.facebook_messenger_sources, platform, messages]);
+
+  async function sendSticker(sticker: StickerChoice) {
+    if (stickerBusy.current || sending) throw new Error("A message is already sending.");
+    stickerBusy.current = true;
+    const quote = quoted;
+    const key = JSON.stringify([scopeId, id, sticker.stickerId, quote?.id]);
+    let requestId = stickerAttempts.current.get(key);
+    if (!requestId) {
+      requestId = randomUUID();
+      if (stickerAttempts.current.size >= 32) stickerAttempts.current.delete(stickerAttempts.current.keys().next().value!);
+      stickerAttempts.current.set(key, requestId);
+    }
+    try {
+      const result = await api<{ warning?: string }>(platform === "facebook" ? "/api/facebook/stickers/send" : "/api/telegram/send-sticker", scopeId, {
+        method: "POST", body: { conversationId: String(id), stickerId: sticker.stickerId,
+          ...("setName" in sticker ? { setName: sticker.setName } : { requestId, previewUrl: sticker.previewUrl, label: sticker.label }),
+          ...(quote ? { replyToMessageId: quote.id } : {}),
+        },
+      });
+      stickerAttempts.current.delete(key);
+      setQuoted(current => current?.id === quote?.id ? null : current);
+      setStickerOpen(false);
+      if (result.warning) Alert.alert("Sticker sent", result.warning);
+      // A refresh failure must not invite the user to send a confirmed sticker twice.
+      void load();
+    } finally { stickerBusy.current = false; }
+  }
 
   const contactId = conversation?.contact?.id ?? null;
   const recipientId = conversation?.contact?.platform_user_id?.trim() ?? "";
@@ -2558,7 +2655,7 @@ function ConversationScreen() {
     };
   }
 
-  async function uploadOne(original: Pending, caption = "") {
+  async function uploadOne(original: Pending, caption = "", replyToMessageId?: string) {
     const file = await sendable(original);
     const photoOrVideo = file.kind === "image" || file.kind === "video";
     const path =
@@ -2571,12 +2668,13 @@ function ConversationScreen() {
     await uploadNativeFile(path, scopeId, file, {
       conversationId: String(id),
       kind: file.kind,
+      ...(replyToMessageId ? { replyToMessageId } : {}),
       ...(platform === "facebook" ? { recipientId } : {}),
       ...(caption ? { caption } : {}),
     });
   }
 
-  async function uploadAlbum(originals: Pending[], caption = "") {
+  async function uploadAlbum(originals: Pending[], caption = "", replyToMessageId?: string) {
     const files = await Promise.all(originals.map(sendable));
 
     if (platform === "telegram") {
@@ -2584,7 +2682,7 @@ function ConversationScreen() {
         "/api/telegram/send-photo",
         scopeId,
         files.map((file) => ({ ...file, fieldName: "files" })),
-        { conversationId: String(id), ...(caption ? { caption } : {}) },
+        { conversationId: String(id), ...(replyToMessageId ? { replyToMessageId } : {}), ...(caption ? { caption } : {}) },
       );
       return;
     }
@@ -2596,7 +2694,7 @@ function ConversationScreen() {
         ...file,
         fieldName: index === 0 ? "file" : "additionalFiles",
       })),
-      { conversationId: String(id), recipientId, kind: "image" },
+      { conversationId: String(id), recipientId, kind: "image", ...(replyToMessageId ? { replyToMessageId } : {}) },
     );
   }
 
@@ -2870,11 +2968,11 @@ function ConversationScreen() {
         (platform === "telegram" || visualFiles.every((file) => file.kind === "image"));
 
       if (canAlbum) {
-        await uploadAlbum(visualFiles, telegramCaption);
+        await uploadAlbum(visualFiles, telegramCaption, quotedSnapshot?.id);
         visualFiles.forEach((file) => sentFileKeys.add(file.key));
       } else {
         for (const file of pendingSnapshot) {
-          await uploadOne(file, platform === "telegram" && pendingSnapshot.length === 1 ? telegramCaption : "");
+          await uploadOne(file, platform === "telegram" && pendingSnapshot.length === 1 ? telegramCaption : "", quotedSnapshot?.id);
           sentFileKeys.add(file.key);
         }
       }
@@ -2991,25 +3089,53 @@ function ConversationScreen() {
     }
   }, [contactId, scopeId, updateContactTags]);
 
-  /*
-   * Quoting a message -- on Telegram, on either side of the thread.
-   *
-   * Telegram carries a real reply: its send route takes the TENH message id,
-   * resolves it to Telegram's own, and the customer sees the quote in their
-   * app. Messenger cannot. reply_to is something Meta reports on the way in,
-   * on webhooks and in the Conversations API; passing it to the Send API is
-   * refused outright -- "(#100) Invalid keys reply_to were found in param
-   * message" -- which failed the whole send, so a reply that would have
-   * arrived plainly did not arrive at all.
-   *
-   * Offering it there anyway would mean a menu item that breaks the message
-   * it is attached to, so it is offered where it works.
-   *
-   * Facebook comment threads have their own reply, under the post.
-   */
-  const replyable =
-    conversation?.social_account?.platform === "telegram" &&
-    conversation.source_type !== "comment";
+  // Use the website's per-message eligibility; comment replies keep their own composer.
+  const replyable = conversation?.source_type !== "comment";
+  const messageActionBusy = useRef(false);
+  const [messageActionPending, setMessageActionPending] = useState(false);
+  const [reactionPreview, setReactionPreview] = useState<{ id: string; emoji: string | null } | null>(null);
+  const actionScope = useRef("");
+  actionScope.current = `${scopeId}:${id}`;
+  useEffect(() => {
+    actionScope.current = `${scopeId}:${id}`;
+    return () => { actionScope.current = ""; };
+  }, [scopeId, id]);
+
+  async function actOnMessage(target: InboxMessage, action: "pin" | "reaction", emoji: string | null = null) {
+    if (messageActionBusy.current || target.conversation_id !== String(id)) return;
+    const scope = actionScope.current;
+    messageActionBusy.current = true;
+    setMessageActionPending(true);
+    if (action === "reaction") setReactionPreview({ id: target.id, emoji });
+    messageMenu.current?.close();
+    try {
+      const result = await api<{ message?: InboxMessage; timestamp?: number; warning?: string }>(
+        action === "pin" ? `/api/conversations/${encodeURIComponent(String(id))}/message-pins` : "/api/facebook/messages/reaction",
+        scopeId, {
+          method: action === "pin" ? "PATCH" : "POST",
+          body: action === "pin" ? { messageId: target.id, pinned: !isMessagePinned(target) }
+            : { conversationId: target.conversation_id, messageId: target.id, reaction: emoji },
+        });
+      if (actionScope.current !== scope) return;
+      setMessages(current => current.map(row => {
+        if (row.id !== target.id) return row;
+        if (action === "reaction") {
+          const confirmed = getMessengerReaction(result.message?.raw_payload, "page") ?? { emoji, timestamp: result.timestamp ?? Date.now() };
+          return { ...row, raw_payload: withMessengerReaction(row.raw_payload, "page", confirmed) };
+        }
+        const pin = result.message?.raw_payload?.tenh_message_pin;
+        const existing = record(row.raw_payload?.tenh_message_pin);
+        if (!pin || String(existing?.updated_at ?? "") > String(record(pin)?.updated_at ?? "")) return row;
+        return { ...row, raw_payload: { ...row.raw_payload, tenh_message_pin: pin } };
+      }));
+      if (result.warning) Alert.alert("Reaction", result.warning);
+    } catch (error) {
+      if (actionScope.current === scope) Alert.alert("Message action", error instanceof Error ? error.message : "Unable to save. Please try again.");
+    } finally {
+      messageActionBusy.current = false;
+      if (actionScope.current) { setMessageActionPending(false); setReactionPreview(null); }
+    }
+  }
 
   function copyMessage(message: InboxMessage) {
     const text = message.message_text?.trim();
@@ -3017,7 +3143,7 @@ function ConversationScreen() {
     if (!text) return;
 
     void Clipboard.setStringAsync(text);
-    setHeld(null);
+    messageMenu.current?.close();
   }
 
   /*
@@ -3071,7 +3197,7 @@ function ConversationScreen() {
         Alert.alert("Saved", `It is on this phone as ${name}.`);
       }
 
-      setHeld(null);
+      messageMenu.current?.close();
     } catch (downloadError) {
       setError(
         downloadError instanceof Error
@@ -3758,12 +3884,12 @@ function ConversationScreen() {
                   message={item}
                   commentReplies={commentThreads.repliesByMessageId.get(item.id) ?? []}
                   conversation={conversation}
+                  pageReactionOverride={reactionPreview?.id === item.id ? reactionPreview : undefined}
                   onViewMedia={setMediaPreview}
                   onReplyComment={beginCommentReply}
                   onCommentAction={requestCommentAction}
                   onHold={(message, at) => {
-                    setHeld(message);
-                    setHeldAt(at);
+                    messageMenu.current?.open(message, at);
                   }}
                   commentBusy={commentBusy}
                   audio={{
@@ -3783,6 +3909,7 @@ function ConversationScreen() {
                   natural way round, "Yesterday" sat underneath the message it
                   was labelling.
                 */}
+                {(sourceTimeline.before.get(item.id) ?? []).map(source => <MessengerSourceCard key={source.key} source={source} onOpenImage={uri => setMediaPreview({ kind: "image", uri })} onOpenPost={setPostUrl} />)}
                 {startsADay ? (
                   <DaySeparator label={dayLabel(dayOf(item))} />
                 ) : null}
@@ -3990,6 +4117,7 @@ function ConversationScreen() {
         onPickFile={() => void pickFile()}
         onSendLocation={() => setMapOpen(true)}
         onQuickReplies={() => void openReplies()}
+        onStickers={conversation?.source_type !== "comment" ? () => setStickerOpen(true) : undefined}
         onVoice={stageVoice}
         onSend={() => void send()}
         fromQuickReply={fromQuickReply}
@@ -4003,24 +4131,15 @@ function ConversationScreen() {
         attachmentsDisabled={Boolean(replyingToComment)}
       />
 
-      <MessageMenu
-        message={held}
-        at={heldAt}
-        canReply={replyable}
-        saving={saving}
-        onReply={() => {
-          setQuoted(held);
-          setHeld(null);
-        }}
-        onCopy={() => held && copyMessage(held)}
-        onDownload={() => held && void downloadMessage(held)}
-        onPin={() => {
-          setHeld(null);
-          void togglePin();
-        }}
-        onClose={() => setHeld(null)}
-      />
+      <MessageMenuHost ref={messageMenu} canReply={replyable} platform={platform} saving={saving || messageActionPending}
+        onAction={(action, message, emoji) => {
+          if (action === "reply") setQuoted(message);
+          else if (action === "copy") copyMessage(message);
+          else if (action === "download") void downloadMessage(message);
+          else void actOnMessage(message, action, emoji);
+        }} />
 
+      {stickerOpen && scopeId ? <StickerPicker key={`${scopeId}:${id}`} conversationId={String(id)} workspaceId={scopeId} platform={platform} onClose={() => setStickerOpen(false)} onSend={sendSticker} /> : null}
       <QuickReplySheet
         open={replyOpen}
         replies={replies}
@@ -4076,6 +4195,7 @@ function ConversationScreen() {
         </View>
       </Modal>
 
+      {postUrl ? <PostWebView url={postUrl} onClose={() => setPostUrl(null)} /> : null}
       <CustomerPanel
         open={panelOpen}
         detail={customer}

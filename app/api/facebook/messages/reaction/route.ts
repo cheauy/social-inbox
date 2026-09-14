@@ -33,12 +33,16 @@ export async function POST(request: NextRequest) {
     const emoji = body.reaction as string | null;
     const access = await getInboxConversationAccess(body.conversationId);
     if (!access.success) return fail(access.error, access.status);
-    if (!(await memberHasPermission(access.member, "conversations", "manage"))) return fail("You do not have permission to react in this conversation.", 403);
-    const [messageResult, pageResult, contactResult] = await Promise.all([
+    const [permitted, blocked, messageResult, pageResult, contactResult] = await Promise.all([
+      memberHasPermission(access.member, "conversations", "manage"),
+      access.conversation.social_account_id && access.conversation.contact_id
+        ? facebookSendBlockReason({ businessId: access.businessId, socialAccountId: access.conversation.social_account_id, contactId: access.conversation.contact_id })
+        : Promise.resolve(null),
       supabaseAdmin.from("messages").select("*").eq("id", body.messageId).eq("conversation_id", access.conversation.id).eq("business_id", access.businessId).maybeSingle(),
       supabaseAdmin.from("social_accounts").select("id,platform,platform_account_id,is_active").eq("id", access.conversation.social_account_id).eq("business_id", access.businessId).maybeSingle(),
       supabaseAdmin.from("contacts").select("id,platform,platform_user_id").eq("id", access.conversation.contact_id).eq("business_id", access.businessId).maybeSingle(),
     ]);
+    if (!permitted) return fail("You do not have permission to react in this conversation.", 403);
     if (messageResult.error || pageResult.error || contactResult.error) return fail("Unable to verify this Messenger message.", 503);
     if (!messageResult.data) return fail("Message was not found in this conversation.", 404);
     const message = messageResult.data as InboxMessage, page = pageResult.data, contact = contactResult.data;
@@ -49,7 +53,6 @@ export async function POST(request: NextRequest) {
     const participants = new Set([pageId, psid]);
     if ((message.sender_platform_id && !participants.has(message.sender_platform_id)) ||
         (message.recipient_platform_id && !participants.has(message.recipient_platform_id))) return fail("This message does not belong to the selected Page and customer.", 409);
-    const blocked = await facebookSendBlockReason({ businessId: access.businessId, socialAccountId: page.id, contactId: contact.id });
     if (blocked) return fail(blocked, 403);
 
     let token = await getFacebookPageAccessToken(pageId);

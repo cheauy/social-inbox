@@ -150,6 +150,7 @@ export function Composer({
   onPickFile,
   onSendLocation,
   onQuickReplies,
+  onStickers,
   onVoice,
   onSend,
   fromQuickReply,
@@ -167,6 +168,7 @@ export function Composer({
   onPickFile: () => void;
   onSendLocation: () => void;
   onQuickReplies: () => void;
+  onStickers?: () => void;
   onVoice: (uri: string, millis: number) => void;
   onSend: () => void;
   /* Set while the box holds a quick reply nobody has edited away yet. */
@@ -643,6 +645,10 @@ export function Composer({
             >
               <Ionicons name="flash-outline" size={21} color={colors.blue} />
             </Pressable>
+            {onStickers ? <Pressable accessibilityRole="button" accessibilityLabel="Stickers" disabled={sending}
+              onPress={onStickers} style={{ width: ROW, height: ROW, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="happy-outline" size={21} color={colors.blue} />
+            </Pressable> : null}
 
             {/*
               The field, with the microphone inside it.

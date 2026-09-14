@@ -171,7 +171,7 @@ export type ContactNote = {
 
 export type InboxConversation = {
   id: string;
-  facebook_messenger_sources?: import("@/lib/facebook/messenger-source").MessengerSource[];
+  facebook_messenger_sources?: import("../lib/facebook/messenger-source").MessengerSource[];
   business_id: string;
   subscription_id?: string | null;
   status: ConversationStatus;
@@ -255,6 +255,7 @@ export type MobileConversation = Pick<
   | "facebook_post_id"
   | "facebook_comment_id"
   | "parent_comment_id"
+  | "facebook_messenger_sources"
 > & {
   contact:
     | (Pick<InboxContact, "id" | "full_name" | "profile_picture_url" | "phone" | "platform_user_id"> & {

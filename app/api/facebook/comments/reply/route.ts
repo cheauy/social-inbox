@@ -8,6 +8,7 @@ import {
   refreshFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { confirmCommentReply } from "@/lib/facebook/confirm-comment-reply";
 import {
   memberHasPermission,
   permissionDenied,
@@ -32,6 +33,8 @@ type GraphReplyResult = {
   error?: {
     message?: string;
     code?: number;
+    error_subcode?: number;
+    fbtrace_id?: string;
   };
 };
 
@@ -58,11 +61,11 @@ export async function POST(
     }
 
     const conversationId =
-      body.conversationId?.trim();
+      typeof body?.conversationId === "string" ? body.conversationId.trim() : "";
     const commentId =
-      body.commentId?.trim();
+      typeof body?.commentId === "string" ? body.commentId.trim() : "";
     const message =
-      body.message?.trim();
+      typeof body?.message === "string" ? body.message.trim() : "";
 
     if (
       !conversationId ||
@@ -124,7 +127,7 @@ export async function POST(
       pageAccessToken: string,
     ) {
       const response = await fetch(
-        `https://graph.facebook.com/${graphVersion}/${commentId}/comments`,
+        `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(commentId)}/comments`,
         {
           method: "POST",
           headers: {
@@ -165,6 +168,8 @@ export async function POST(
       };
     }
 
+    const startedAt = Date.now();
+    let activeToken = context.pageAccessToken;
     let attempt =
       await sendReply(
         context.pageAccessToken,
@@ -188,10 +193,23 @@ export async function POST(
           context.pageId,
         );
 
+      activeToken = refreshedToken;
+
       attempt =
         await sendReply(
           refreshedToken,
         );
+    }
+
+    // Meta can post a comment and still return code 1 instead of its ID.
+    // Confirm the actual Page-authored reply with a bounded read, never a resend.
+    if (attempt.invalidJson || attempt.result.error?.code === 1 ||
+        /reduce the amount of data/i.test(attempt.result.error?.message ?? "")) {
+      const confirmedId = await confirmCommentReply({ commentId, pageId: context.pageId,
+        message, startedAt, pageAccessToken: activeToken, graphVersion });
+      if (confirmedId) {
+        attempt = { response: new Response(null, { status: 200 }), result: { id: confirmedId }, invalidJson: false };
+      }
     }
 
     if (attempt.invalidJson) {
@@ -212,22 +230,17 @@ export async function POST(
       result,
     } = attempt;
 
-    if (
-      !response.ok ||
-      !result.id
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            result.error?.message ??
-            "Unable to reply to Facebook comment.",
-        },
-        {
-          status:
-            response.status || 500,
-        },
-      );
+    if (!response.ok || !result.id) {
+      const overloaded = /reduce the amount of data/i.test(result.error?.message ?? "");
+      const reference = result.error?.code ? ` (Meta ${result.error.code}${result.error.error_subcode ? `/${result.error.error_subcode}` : ""})` : "";
+      console.warn("Facebook comment reply not confirmed", { conversationId, commentId, status: response.status,
+        code: result.error?.code, subcode: result.error?.error_subcode, traceId: result.error?.fbtrace_id });
+      return NextResponse.json({ success: false,
+        code: overloaded ? "FACEBOOK_COMMENT_UNCONFIRMED" : "FACEBOOK_COMMENT_REJECTED",
+        error: overloaded
+          ? `Facebook could not confirm this comment reply. Check the post before trying again to avoid a duplicate. This is a Facebook API error, not a request to shorten your message.${reference}`
+          : (result.error?.message ?? "Unable to reply to Facebook comment.") + reference,
+      }, { status: response.status >= 400 ? response.status : 502 });
     }
 
     const now =
@@ -266,18 +279,12 @@ export async function POST(
             now,
         });
 
-    if (messageError) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Facebook posted the reply, but TENH could not save the local message.",
-        },
-        {
-          status: 500,
-        },
-      );
-    }
+    // A webhook may already have saved the same confirmed Facebook comment.
+    // Once Meta returns its ID, a local persistence error must not invite a resend.
+    const warning = messageError && messageError.code !== "23505"
+      ? "Facebook posted the reply, but TENH could not save its local copy. Refresh the conversation; do not resend it."
+      : undefined;
+    if (warning) console.warn("Confirmed comment could not be stored", { conversationId, commentId: result.id, code: messageError?.code });
 
     const { error: updateError } =
       await supabaseAdmin
@@ -307,6 +314,8 @@ export async function POST(
     return NextResponse.json({
       success: true,
       commentId: result.id,
+      messageId: result.id,
+      ...(warning ? { warning } : {}),
     });
   } catch (error) {
     if (

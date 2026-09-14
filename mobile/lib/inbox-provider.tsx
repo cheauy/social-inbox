@@ -3,6 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { AppState } from "react-native";
 import { api, ApiError } from "./api/client";
 import { clearReadCache } from "./api/read-cache";
+import { readInboxCache, writeInboxCache, clearInboxCache } from "./inbox-cache";
 import { useAuth } from "./auth/provider";
 import { sessionStorage } from "./auth/secure-storage";
 import { useNotificationSound } from "./notification-sound";
@@ -23,6 +24,7 @@ type InboxState = {
    */
   permissions: Record<string, string | boolean>;
   refresh: () => Promise<void>; loadWorkspaces: () => Promise<void>; selectWorkspace: (workspace: Workspace) => Promise<void>;
+  loadMore: () => Promise<void>; hasMore: boolean; loadingMore: boolean;
 
   /*
    * Merging.
@@ -78,6 +80,10 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
   const [member, setMember] = useState<Member | null>(null);
   const [permissions, setPermissions] = useState<Record<string, string | boolean>>({});
   const [conversations, setConversations] = useState<InboxConversation[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const nextOffset = useRef(0);
+  const morePending = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [live, setLive] = useState(false);
@@ -110,11 +116,13 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     alive.current = true;
     return () => { alive.current = false; generation.current++; };
   }, []);
-  const clear = useCallback(() => { workspaceRef.current = null; setWorkspace(null); mergedRef.current = []; setMerged([]); setMember(null); setPermissions({}); setConversations([]); setRooms([]); setRoomsLoading(true); setRoomsBadge(0); setAlertsBadge(0); setRoster([]); setCanManageRooms(false); }, []);
+  const clear = useCallback(() => { nextOffset.current = 0; setHasMore(false); workspaceRef.current = null; setWorkspace(null); mergedRef.current = []; setMerged([]); setMember(null); setPermissions({}); setConversations([]); setRooms([]); setRoomsLoading(true); setRoomsBadge(0); setAlertsBadge(0); setRoster([]); setCanManageRooms(false); }, []);
   const conversationSnapshot = useRef(conversations);
   conversationSnapshot.current = conversations;
+  const onboardingRef = useRef<{ userId: string; request: Promise<unknown> } | null>(null);
   const loadWorkspaces = useCallback(async (quiet = false) => {
     if (!session) {
+      onboardingRef.current = null;
       generation.current++;
       setWorkspaces([]);
       clear();
@@ -126,6 +134,21 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     if (!quiet) setLoading(true);
     setError("");
     try {
+      // Native sign-in bypasses the website callback. Use the same protected,
+      // idempotent onboarding endpoint before listing a new user's workspace.
+      if (onboardingRef.current?.userId !== session.user.id) {
+        onboardingRef.current = {
+          userId: session.user.id,
+          request: api("/api/onboarding/ensure-workspace", null, { method: "POST" }),
+        };
+      }
+      const onboarding = onboardingRef.current;
+      try { await onboarding.request; }
+      catch (error) {
+        if (onboardingRef.current === onboarding) onboardingRef.current = null;
+        throw error;
+      }
+      if (!alive.current || current !== generation.current) return;
       const data = await api<{ workspaces: Workspace[] }>("/api/workspaces", workspaceRef.current?.businessId);
       if (!alive.current || current !== generation.current) return;
       setWorkspaces(data.workspaces);
@@ -145,7 +168,7 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
         const next = live.includes(selected.businessId) ? live : [selected.businessId];
         mergedRef.current = next; setMerged(next);
       } else clear();
-    } catch (e) { if (alive.current && current === generation.current) { setError(e instanceof Error ? e.message : "Unable to load workspaces."); if (e instanceof ApiError && [401, 403].includes(e.status)) clear(); } }
+    } catch (e) { if (alive.current && current === generation.current) { setError(e instanceof Error ? e.message : "Unable to load workspaces."); if (e instanceof ApiError && [401, 403].includes(e.status)) { clear(); void clearInboxCache(); } } }
     finally { if (alive.current && current === generation.current) setLoading(false); }
   }, [session, storageKey, mergeKey, clear]);
   useEffect(() => { void loadWorkspaces(); }, [loadWorkspaces]);
@@ -182,6 +205,7 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       // previous workspace is briefly shown under the new workspace name.
       setMember(null);
       setConversations([]);
+      nextOffset.current = 0; setHasMore(false);
       setRooms([]);
       setRoomsLoading(true);
       setRoomsBadge(0);
@@ -200,10 +224,24 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     const selected = workspaceRef.current;
     if (!selected) return;
     const current = generation.current, sequence = ++request.current;
+    let networkFinished = false;
     try {
       const ids = mergedRef.current.length > 0 ? mergedRef.current : [selected.businessId];
-      const data = await api<{ conversations: InboxConversation[]; member: Member; permissions?: Record<string, string | boolean>; removedConversationIds?: string[] }>(`/api/mobile/bootstrap?workspaceIds=${encodeURIComponent(ids.join(","))}${conversationIds ? `&conversationIds=${encodeURIComponent(conversationIds.join(","))}` : ""}`, selected.businessId);
+      if (!conversationIds && session?.user.id && conversationSnapshot.current.length === 0) {
+        void readInboxCache(session.user.id, ids).then(rows => {
+          if (rows && !networkFinished && alive.current && current === generation.current && sequence === request.current) {
+            setConversations(rows); setLoading(false);
+          }
+        });
+      }
+      const data = await api<{ conversations: InboxConversation[]; member: Member; permissions?: Record<string, string | boolean>; removedConversationIds?: string[]; hasMore?: boolean; nextOffset?: number }>(`/api/mobile/bootstrap?workspaceIds=${encodeURIComponent(ids.join(","))}${conversationIds ? `&conversationIds=${encodeURIComponent(conversationIds.join(","))}` : "&limit=30"}`, selected.businessId);
+      networkFinished = true;
       if (!alive.current || current !== generation.current || sequence !== request.current) return;
+      if (!conversationIds) {
+        nextOffset.current = data.nextOffset ?? data.conversations.length;
+        setHasMore(Boolean(data.hasMore));
+        if (session?.user.id) writeInboxCache(session.user.id, ids, data.conversations);
+      }
       setConversations(previous => {
         if (!conversationIds) return data.conversations;
         const updates = new Map(data.conversations.map(row => [row.id, row]));
@@ -214,12 +252,35 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     } catch (e) {
       if (!alive.current || current !== generation.current || sequence !== request.current) return;
       setError(e instanceof Error ? e.message : "Unable to load Inbox.");
-      if (e instanceof ApiError && [401, 403].includes(e.status)) clear();
-    } finally { if (alive.current && current === generation.current && sequence === request.current) setLoading(false); }
-  }, [clear]);
+      if (e instanceof ApiError && [401, 403].includes(e.status)) { clear(); void clearInboxCache(); }
+    } finally { networkFinished = true; if (alive.current && current === generation.current && sequence === request.current) setLoading(false); }
+  }, [clear, session?.user.id]);
   // Serialize full and targeted refreshes: a fast single-row response must
   // never cancel a slower initial full list and leave just one conversation.
   const refreshQueue = useRef(new SerialTaskQueue());
+  const loadMore = useCallback(async () => {
+    if (morePending.current || !hasMore) return;
+    const selected = workspaceRef.current;
+    if (!selected) return;
+    const current = generation.current;
+    morePending.current = true; setLoadingMore(true);
+    try {
+      await refreshQueue.current.run(async () => {
+        if (!alive.current || current !== generation.current) return;
+        const ids = mergedRef.current.length > 0 ? mergedRef.current : [selected.businessId];
+        const data = await api<{ conversations: InboxConversation[]; hasMore: boolean; nextOffset: number }>(
+          `/api/mobile/bootstrap?workspaceIds=${encodeURIComponent(ids.join(","))}&limit=30&offset=${nextOffset.current}`, selected.businessId);
+        if (!alive.current || current !== generation.current) return;
+        setConversations(previous => [...new Map([...previous, ...data.conversations].map(row => [row.id, row])).values()]);
+        nextOffset.current = data.nextOffset; setHasMore(data.hasMore);
+      });
+    } catch (e) {
+      if (alive.current && current === generation.current) {
+        setError(e instanceof Error ? e.message : "Unable to load more conversations.");
+        if (e instanceof ApiError && [401, 403].includes(e.status)) { clear(); void clearInboxCache(); }
+      }
+    } finally { morePending.current = false; if (alive.current) setLoadingMore(false); }
+  }, [hasMore, clear]);
   const refresh = useCallback((ids?: string[]) => {
     const expectedGeneration = generation.current;
     const pending = refreshQueue.current.run(async () => {
@@ -435,5 +496,5 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       ),
     );
   }, []);
-  return <Context.Provider value={{ workspaces, workspace, member, conversations, permissions, loading, error, live, revision, roomRevision, settingsRevision, refresh, loadWorkspaces, selectWorkspace, merged, openWorkspaces, updateConversation, updateContactTags, rooms, roomsLoading, roomsBadge, alertsBadge, alertsRevision, refreshAlerts, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ workspaces, workspace, member, conversations, permissions, loading, error, live, revision, roomRevision, settingsRevision, refresh, loadMore, hasMore, loadingMore, loadWorkspaces, selectWorkspace, merged, openWorkspaces, updateConversation, updateContactTags, rooms, roomsLoading, roomsBadge, alertsBadge, alertsRevision, refreshAlerts, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
 }

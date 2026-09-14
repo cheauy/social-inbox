@@ -1,4 +1,4 @@
-import type { TelegramStickerChoice } from "@/lib/telegram/sticker-catalog";
+import type { TelegramStickerChoice } from "../telegram/sticker-catalog";
 
 /** A native first-party Meta Messenger sticker returned by Meta's Sticker API. */
 export type MetaStickerChoice = {

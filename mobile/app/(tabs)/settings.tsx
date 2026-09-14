@@ -497,7 +497,7 @@ export default function Settings() {
             { fontSize: 12, textAlign: "center", paddingTop: 2 },
           ]}
         >
-          {t("TENH Chat ", "TENH Chat ") + VERSION}
+          {t("Tenh Chat ", "Tenh Chat ") + VERSION}
         </Text>
       </ScrollView>
     </View>

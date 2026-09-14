@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button, ErrorNotice, colors, styles } from "../components/ui";
 import { useAuth } from "../lib/auth/provider";
-import { signInWithProvider, type OAuthProvider } from "../lib/auth/oauth";
+import { getAuthRedirectUrl, signInWithProvider, type OAuthProvider } from "../lib/auth/oauth";
 import { supabase } from "../lib/supabase/client";
 
 export default function SignIn() {
@@ -34,6 +34,8 @@ export default function SignIn() {
   const [mode, setMode] = useState<"sign-in" | "register">("sign-in");
 
   const [name, setName] = useState("");
+  const [workspaceName, setWorkspaceName] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -85,6 +87,7 @@ export default function SignIn() {
   }
 
   async function submit() {
+    if (working) return;
     const address = email.trim();
 
     if (!address || !password) {
@@ -95,6 +98,12 @@ export default function SignIn() {
     if (mode === "register" && !name.trim()) {
       setError("Enter your name so your team knows who you are.");
       return;
+    }
+    if (mode === "register") {
+      if (!workspaceName.trim()) { setError("Enter your business / workspace name."); return; }
+      if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
+      if (!confirmPassword) { setError("Confirm your password."); return; }
+      if (password !== confirmPassword) { setError("Passwords do not match."); return; }
     }
 
     setBusy(true);
@@ -112,7 +121,10 @@ export default function SignIn() {
         const { data, error: signUpError } = await supabase.auth.signUp({
           email: address,
           password,
-          options: { data: { full_name: name.trim() } },
+          options: {
+            emailRedirectTo: getAuthRedirectUrl(),
+            data: { full_name: name.trim(), business_name: workspaceName.trim() },
+          },
         });
 
         if (signUpError) {
@@ -121,6 +133,7 @@ export default function SignIn() {
         }
 
         setPassword("");
+        setConfirmPassword("");
 
         /*
          * A confirmed session comes straight back when the project does not
@@ -185,7 +198,7 @@ export default function SignIn() {
             resizeMode="contain"
           />
 
-          <Text style={[styles.title, { fontSize: 24 }]}>TENH Chat</Text>
+          <Text style={[styles.title, { fontSize: 24 }]}>Tenh Chat</Text>
 
           <Text style={[styles.muted, { textAlign: "center" }]}>
             {mode === "sign-in"
@@ -281,9 +294,10 @@ export default function SignIn() {
         ) : null}
 
         <View style={{ gap: 12 }}>
+          {mode === "register" ? <Text style={styles.muted}>* All fields are required.</Text> : null}
           {mode === "register" ? (
             <View style={{ gap: 6 }}>
-              <Text style={styles.muted}>Your name</Text>
+              <Text style={styles.muted}>Full Name *</Text>
               <TextInput
                 value={name}
                 onChangeText={setName}
@@ -298,8 +312,15 @@ export default function SignIn() {
             </View>
           ) : null}
 
+          {mode === "register" ? <View style={{ gap: 6 }}>
+            <Text style={styles.muted}>Business / workspace name *</Text>
+            <TextInput value={workspaceName} onChangeText={setWorkspaceName} style={styles.input}
+              placeholder="Your business name" placeholderTextColor={colors.muted}
+              autoCapitalize="words" editable={!working} returnKeyType="next" />
+          </View> : null}
+
           <View style={{ gap: 6 }}>
-            <Text style={styles.muted}>Email address</Text>
+            <Text style={styles.muted}>Email address{mode === "register" ? " *" : ""}</Text>
             <TextInput
               value={email}
               onChangeText={setEmail}
@@ -317,7 +338,7 @@ export default function SignIn() {
           </View>
 
           <View style={{ gap: 6 }}>
-            <Text style={styles.muted}>Password</Text>
+            <Text style={styles.muted}>Password{mode === "register" ? " *" : ""}</Text>
             <TextInput
               value={password}
               onChangeText={setPassword}
@@ -336,6 +357,14 @@ export default function SignIn() {
               onSubmitEditing={() => void submit()}
             />
           </View>
+
+          {mode === "register" ? <View style={{ gap: 6 }}>
+            <Text style={styles.muted}>Confirm password *</Text>
+            <TextInput value={confirmPassword} onChangeText={setConfirmPassword} style={styles.input}
+              placeholder="Re-enter your password" placeholderTextColor={colors.muted}
+              secureTextEntry autoCapitalize="none" autoComplete="new-password"
+              editable={!working} returnKeyType="go" onSubmitEditing={() => void submit()} />
+          </View> : null}
 
           <Button
             title={mode === "register" ? "Create account" : "Sign in"}

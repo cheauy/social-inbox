@@ -21,9 +21,26 @@ import { supabase } from "../supabase/client";
 export type OAuthProvider = "google" | "facebook";
 
 /* Matches the scheme declared in app.json. */
-const redirectTo = Linking.createURL("auth/callback");
+export function getAuthRedirectUrl() {
+  return Linking.createURL("auth/callback", { scheme: "tenhchat" });
+}
+
+// The auth browser and Router may receive the same callback. Exchange once.
+const exchanges = new Map<string, Promise<void>>();
+export function completeAuthCode(code: string): Promise<void> {
+  const existing = exchanges.get(code);
+  if (existing) return existing;
+  const pending = supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+    if (error) throw error;
+  });
+  exchanges.set(code, pending);
+  // Keep the cache bounded; it contains no session tokens.
+  if (exchanges.size > 5) exchanges.delete(exchanges.keys().next().value!);
+  return pending;
+}
 
 export async function signInWithProvider(provider: OAuthProvider) {
+  const redirectTo = getAuthRedirectUrl();
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
     options: {
@@ -55,10 +72,7 @@ export async function signInWithProvider(provider: OAuthProvider) {
     throw new Error(message || "Sign-in was not completed.");
   }
 
-  const { error: exchangeError } =
-    await supabase.auth.exchangeCodeForSession(code);
-
-  if (exchangeError) throw exchangeError;
+  await completeAuthCode(code);
 
   return true;
 }

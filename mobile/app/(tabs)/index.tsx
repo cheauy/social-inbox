@@ -1195,6 +1195,9 @@ export default function Inbox() {
     error,
     live,
     refresh,
+    loadMore,
+    hasMore,
+    loadingMore,
     loadWorkspaces,
     selectWorkspace,
   } = useInbox();
@@ -1900,6 +1903,16 @@ export default function Inbox() {
              the same rule every scroller in the app now follows. */
           keyboardShouldPersistTaps="handled"
           data={ordered}
+          onEndReached={() => { if (hasMore && !loadingMore) void loadMore(); }}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={hasMore ? (
+            <View style={{ padding: 20, alignItems: "center", gap: 8 }}>
+              <Text style={{ color: colors.muted, fontSize: 12, textAlign: "center" }}>Load more conversations to include older chats in search and filters.</Text>
+              <Pressable disabled={loadingMore} onPress={() => void loadMore()} style={{ padding: 10 }}>
+                {loadingMore ? <ActivityIndicator color={colors.blue} /> : <Text style={{ color: colors.blue }}>Load 30 more conversations</Text>}
+              </Pressable>
+            </View>
+          ) : null}
           keyExtractor={(item) => item.id}
           /*
             No scroll bar. It sat over the status stripe on the right edge --

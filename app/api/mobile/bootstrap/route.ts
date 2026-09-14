@@ -1,3 +1,4 @@
+import { readMessengerSources } from "@/lib/facebook/messenger-source";
 import { withTenantReadScope } from "@/lib/server/tenant-read-scope";
 import { NextRequest, NextResponse } from "next/server";
 import { loadPermissionContext } from "@/lib/auth/require-permission";
@@ -56,10 +57,17 @@ async function handleGET(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Request up to 50 valid conversation IDs." }, { status: 400 });
     }
 
-    const rows = await getConversations(
+    const paginated = request.nextUrl.searchParams.get("limit") === "30" && !conversationIds;
+    const offset = Number(request.nextUrl.searchParams.get("offset") ?? "0");
+    if (paginated && (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000)) {
+      return NextResponse.json({ success: false, error: "Invalid inbox page." }, { status: 400 });
+    }
+    const fetched = await getConversations(
       workspaceIds,
-      { workspaceId: workspaceIds.length === 1 ? workspaceIds[0] : undefined, conversationIds },
+      { workspaceId: workspaceIds.length === 1 ? workspaceIds[0] : undefined, conversationIds,
+        page: paginated ? { offset, size: 31 } : undefined },
     );
+    const rows = paginated ? fetched.slice(0, 30) : fetched;
 
     /*
      * Projected down to what the phone draws. The loader is shared with the
@@ -82,6 +90,7 @@ async function handleGET(request: NextRequest) {
       facebook_post_id: row.facebook_post_id,
       facebook_comment_id: row.facebook_comment_id,
       parent_comment_id: row.parent_comment_id,
+      facebook_messenger_sources: readMessengerSources(row.facebook_messenger_sources),
 
       contact: row.contact
         ? {
@@ -114,6 +123,8 @@ async function handleGET(request: NextRequest) {
       member: { id: member.id, full_name: member.full_name, email: member.email, role: member.role, profile_picture_url: member.profile_picture_url },
       permissions,
       conversations,
+      hasMore: paginated && fetched.length > 30,
+      nextOffset: paginated ? offset + rows.length : null,
       removedConversationIds: conversationIds?.filter(id => !rows.some(row => row.id === id)) ?? [],
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch {

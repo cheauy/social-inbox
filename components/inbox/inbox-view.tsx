@@ -7045,6 +7045,7 @@ async function performOptimisticSend(
       replyApplied?: boolean;
       replyFallback?: boolean;
       notice?: string | null;
+      warning?: string;
     };
 
     if (
@@ -7156,6 +7157,7 @@ async function performOptimisticSend(
         confirmOutgoingMessage(current, pending.tempId, platformId),
       );
     }
+    if (result.warning && activeConversationRef.current?.id === pending.conversationId) setSendError(result.warning);
     return true;
   } catch (error) {
     const errorMessage =

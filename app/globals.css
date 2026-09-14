@@ -28,6 +28,22 @@ body {
   font-family: var(--tenh-workspace-font, Arial, Helvetica, sans-serif);
 }
 
+.tenh-dashboard-nav-link {
+  color: var(--color-slate-600);
+}
+.tenh-dashboard-nav-link:hover,
+.tenh-dashboard-nav-link[aria-current="page"] {
+  background-color: var(--tenh-primary-tint, var(--tenh-primary-light, #dbeafe));
+  color: var(--tenh-primary-ink, var(--tenh-primary, #2563eb));
+}
+.tenh-dashboard-nav-link[aria-current="page"] {
+  font-weight: 600;
+}
+.tenh-dashboard-nav-link:focus-visible {
+  outline: 2px solid var(--tenh-primary, #2563eb);
+  outline-offset: 2px;
+}
+
 /*
  * The live recording bars. Each one scales on its own delay so the row reads
  * as a running meter rather than a frozen picture of one -- a still waveform

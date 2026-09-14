@@ -235,6 +235,7 @@ type InboxConversationFilter = {
   channelId?: string | null;
   workspaceId?: string | null;
   conversationIds?: string[];
+  page?: { offset: number; size: number };
 };
 
 export async function getConversations(
@@ -440,6 +441,9 @@ export async function getConversations(
   if (filter?.conversationIds) {
     if (filter.conversationIds.length === 0) return [];
     query = query.in("id", filter.conversationIds);
+  }
+  if (filter?.page && !filter.conversationIds) {
+    query = query.order("id", { ascending: false }).range(filter.page.offset, filter.page.offset + filter.page.size - 1);
   }
   const { data, error } = await query;
 
