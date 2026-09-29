@@ -6,7 +6,9 @@ import {
 
 import {
   getInboxConversationScope,
+  getConversations,
 } from "@/lib/inbox/get-conversations";
+import { DISCOVERY_BATCH, validSyncCursor, type InboxSyncCursor } from "@/lib/inbox/live-sync";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { chunkIds } from "@/lib/supabase/chunk-ids";
 import type {
@@ -20,6 +22,9 @@ export const dynamic = "force-dynamic";
 
 type LiveStateBody = {
   conversationIds?: string[];
+  cursor?: InboxSyncCursor;
+  channelId?: string;
+  workspaceId?: string;
 };
 
 /*
@@ -103,6 +108,7 @@ function normalizeIds(
 async function handlePOST(
   request: NextRequest,
 ) {
+  const syncStartedAt = new Date();
   let body: LiveStateBody;
 
   try {
@@ -118,23 +124,11 @@ async function handlePOST(
     );
   }
 
-  const conversationIds =
-    normalizeIds(body.conversationIds);
-
-  if (conversationIds.length === 0) {
-    return NextResponse.json(
-      {
-        success: true,
-        conversations: [],
-      },
-      {
-        headers: {
-          "Cache-Control":
-            "private, no-store, max-age=0",
-        },
-      },
-    );
+  if (!body || typeof body !== "object" || (body.cursor !== undefined && !validSyncCursor(body.cursor))) {
+    return NextResponse.json({ success: false, error: "Invalid sync request." }, { status: 400 });
   }
+  const conversationIds = normalizeIds(body.conversationIds);
+
 
   let scope;
 
@@ -162,6 +156,10 @@ async function handlePOST(
       {
         success: true,
         conversations: [],
+        hydratedConversations: [],
+        accessibleBusinessIds: [],
+        activeChannelIds: [],
+        hasMore: false,
       },
       {
         headers: {
@@ -172,6 +170,38 @@ async function handlePOST(
     );
   }
 
+  const { data: channels, error: channelError } = await supabaseAdmin.from("social_accounts")
+    .select("id,platform,facebook_token_status,telegram_token_status")
+    .in("business_id", scope.accessibleBusinessIds).eq("is_active", true);
+  if (channelError) return NextResponse.json({ success: false, error: "Unable to verify Inbox channels." }, { status: 503 });
+  const channelIds = (channels ?? []).filter(channel => channel.platform === "telegram"
+    ? channel.telegram_token_status === "verified" : channel.facebook_token_status !== "disconnected").map(channel => channel.id);
+  if (!channelIds.length) return NextResponse.json({ success: true, conversations: [], hydratedConversations: [], accessibleBusinessIds: scope.accessibleBusinessIds, activeChannelIds: [], hasMore: false }, { headers: { "Cache-Control": "private, no-store" } });
+
+  // The old endpoint only knew IDs already on the screen. An empty list or a
+  // brand-new customer could therefore NEVER recover from a missed INSERT.
+  // Page recent changes by (updated_at, id), with overlap after each drain.
+  const cursor = body.cursor ?? { updatedAt: new Date(syncStartedAt.getTime() - 120_000).toISOString() };
+  let discoveryQuery = supabaseAdmin.from("conversations").select("id,updated_at")
+    .in("business_id", scope.accessibleBusinessIds).in("social_account_id", channelIds)
+    .gte("updated_at", cursor.updatedAt);
+  if (cursor.id) discoveryQuery = discoveryQuery.or(`updated_at.gt.${cursor.updatedAt},and(updated_at.eq.${cursor.updatedAt},id.gt.${cursor.id})`);
+  const { data: discoveryData, error: discoveryError } = await discoveryQuery
+    .order("updated_at", { ascending: true }).order("id", { ascending: true }).limit(DISCOVERY_BATCH + 1);
+  if (discoveryError) return NextResponse.json({ success: false, error: "Unable to discover Inbox changes." }, { status: 503 });
+  const hasMore = (discoveryData?.length ?? 0) > DISCOVERY_BATCH;
+  const discovered = (discoveryData ?? []).slice(0, DISCOVERY_BATCH);
+  const lastDiscovered = discovered[discovered.length - 1];
+  const nextCursor: InboxSyncCursor = hasMore && lastDiscovered
+    ? { updatedAt: lastDiscovered.updated_at, id: lastDiscovered.id }
+    : { updatedAt: new Date(Math.max(Date.parse(cursor.updatedAt) || 0, syncStartedAt.getTime() - 10_000)).toISOString() };
+  const hydratedConversations = discovered.length ? await getConversations(scope.accessibleBusinessIds, {
+    conversationIds: discovered.map(row => row.id),
+    channelId: typeof body.channelId === "string" ? body.channelId : null,
+    workspaceId: typeof body.workspaceId === "string" ? body.workspaceId : null,
+  }) : [];
+  const queryIds = [...new Set([...conversationIds, ...hydratedConversations.map(row => row.id)])];
+
   /*
    * Batched because conversationIds comes straight from the client: it is every
    * conversation the Inbox currently has on screen, so it grows with the
@@ -180,7 +210,7 @@ async function handlePOST(
    * in the browser, as "Unable to synchronize Inbox state".
    */
   const conversationBatches = await Promise.all(
-    chunkIds(conversationIds).map((batch) =>
+    chunkIds(queryIds).map((batch) =>
       supabaseAdmin
         .from("conversations")
         .select(`
@@ -208,6 +238,7 @@ async function handlePOST(
       )
     `)
         .in("id", batch)
+        .in("social_account_id", channelIds)
         .in(
           "business_id",
           scope.accessibleBusinessIds,
@@ -405,8 +436,12 @@ async function handlePOST(
       success: true,
       conversations:
         responseConversations,
-      syncedAt:
-        new Date().toISOString(),
+      hydratedConversations,
+      cursor: nextCursor,
+      hasMore,
+      accessibleBusinessIds: scope.accessibleBusinessIds,
+      activeChannelIds: channelIds,
+      syncedAt: syncStartedAt.toISOString(),
     },
     {
       headers: {
@@ -417,4 +452,7 @@ async function handlePOST(
   );
 }
 
-export const POST = withTenantReadScope(handlePOST);
+export const POST = withTenantReadScope(async (request: NextRequest) => {
+  try { return await handlePOST(request); }
+  catch { return NextResponse.json({ success: false, error: "Unable to synchronize Inbox state. Please retry." }, { status: 503, headers: { "Cache-Control": "private, no-store" } }); }
+});

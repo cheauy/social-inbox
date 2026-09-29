@@ -18,10 +18,7 @@ import {
 } from "@/lib/supabase/admin";
 import { latestCustomerChannel } from "@/lib/inbox/latest-customer-channel";
 
-import {
-  getFacebookPostIdForComment,
-  getFacebookPostPreview,
-} from "@/lib/facebook/get-post-preview";
+
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,22 +58,6 @@ function parseLimit(
 }
 
 
-function isRecord(
-  value: unknown,
-): value is Record<string, unknown> {
-  return Boolean(value) &&
-    typeof value === "object" &&
-    !Array.isArray(value);
-}
-
-function cleanString(
-  value: unknown,
-) {
-  return typeof value === "string" &&
-    value.trim()
-    ? value.trim()
-    : null;
-}
 
 export async function GET(
   request: NextRequest,
@@ -272,7 +253,7 @@ async function getConversationMessages(
           ),
       });
 
-    let responseMessages =
+    const responseMessages =
       page.messages;
 
     // Repair legacy comment flags from the newest page only. The version check
@@ -289,139 +270,8 @@ async function getConversationMessages(
       }
     }
 
-    /*
-     * Repair older Facebook comment rows that were saved while Meta omitted
-     * post_id or while the optional post-preview lookup was unavailable. This
-     * runs only for the current root comment and only while preview data is
-     * missing, so the normal 2-second active-thread poll does not keep calling
-     * Graph after the row has been repaired once.
-     */
-    if (
-      conversation.source_type === "comment" &&
-      conversation.facebook_comment_id &&
-      conversation.social_account_id
-    ) {
-      const rootMessage =
-        responseMessages.find(
-          (message) =>
-            message.platform_message_id ===
-            conversation.facebook_comment_id,
-        ) ?? null;
-
-      const rootPayload =
-        isRecord(rootMessage?.raw_payload)
-          ? rootMessage.raw_payload
-          : null;
-      const savedPreview =
-        isRecord(rootPayload?.post_preview)
-          ? rootPayload.post_preview
-          : null;
-      const savedPostId =
-        cleanString(rootPayload?.post_id) ??
-        cleanString(savedPreview?.id) ??
-        cleanString(conversation.facebook_post_id);
-      const hasUsefulPreview =
-        Boolean(
-          savedPreview &&
-            (cleanString(savedPreview.message) ||
-              cleanString(savedPreview.full_picture) ||
-              cleanString(savedPreview.permalink_url)),
-        );
-
-      if (rootMessage && (!savedPostId || !hasUsefulPreview)) {
-        const {
-          data: socialAccount,
-          error: socialAccountError,
-        } = await supabaseAdmin
-          .from("social_accounts")
-          .select("platform,platform_account_id")
-          .eq("id", conversation.social_account_id)
-          .eq("business_id", currentMember.business_id)
-          .maybeSingle();
-
-        if (
-          !socialAccountError &&
-          socialAccount?.platform === "facebook" &&
-          cleanString(socialAccount.platform_account_id)
-        ) {
-          const pageId =
-            cleanString(socialAccount.platform_account_id)!;
-          const resolvedPostId =
-            savedPostId ??
-            (await getFacebookPostIdForComment(
-              conversation.facebook_comment_id,
-              pageId,
-            ));
-
-          if (resolvedPostId) {
-            const repairedPreview =
-              await getFacebookPostPreview(
-                resolvedPostId,
-                pageId,
-              );
-            const nextRawPayload = {
-              ...(rootPayload ?? {}),
-              post_id: resolvedPostId,
-              post_preview:
-                repairedPreview ??
-                savedPreview ??
-                {
-                  id: resolvedPostId,
-                  message: null,
-                  full_picture: null,
-                  permalink_url: null,
-                  created_time: null,
-                },
-            };
-
-            const { error: messageRepairError } =
-              await supabaseAdmin
-                .from("messages")
-                .update({
-                  raw_payload: nextRawPayload,
-                })
-                .eq("id", rootMessage.id)
-                .eq("conversation_id", normalizedConversationId);
-
-            if (messageRepairError) {
-              console.warn(
-                "Unable to persist repaired Facebook post preview:",
-                messageRepairError.message,
-              );
-            } else {
-              responseMessages =
-                responseMessages.map(
-                  (message) =>
-                    message.id === rootMessage.id
-                      ? {
-                          ...message,
-                          raw_payload: nextRawPayload,
-                        }
-                      : message,
-                );
-            }
-
-            if (conversation.facebook_post_id !== resolvedPostId) {
-              const { error: conversationRepairError } =
-                await supabaseAdmin
-                  .from("conversations")
-                  .update({
-                    facebook_post_id: resolvedPostId,
-                  })
-                  .eq("id", normalizedConversationId)
-                  .eq("business_id", currentMember.business_id);
-
-              if (conversationRepairError) {
-                console.warn(
-                  "Unable to persist repaired Facebook post ID:",
-                  conversationRepairError.message,
-                );
-              }
-            }
-          }
-        }
-      }
-    }
+    // Facebook post context is repaired independently by the on-demand card
+    // endpoint. Message delivery must never wait for a Graph preview lookup.
 
     return NextResponse.json({
       success: true,

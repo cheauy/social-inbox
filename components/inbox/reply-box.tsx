@@ -5,11 +5,13 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ClipboardEvent,
   type FormEvent,
 } from "react";
 
 import EmojiPicker from "emoji-picker-react";
 import { Send } from "lucide-react";
+import { clipboardImageFiles } from "@/lib/inbox/image-clipboard";
 import { TenhStickerPicker } from "./tenh-sticker-picker";
 import type { TelegramStickerChoice } from "@/lib/telegram/sticker-catalog";
 import type { InboxStickerChoice } from "@/lib/stickers/catalog";
@@ -1333,17 +1335,15 @@ export function ReplyBox({
   }, [error, onStatusChange, sending]);
 
   function addAttachments(
-    files: FileList | null,
+    files: FileList | File[] | null,
     kind: ReplyAttachmentKind,
   ) {
     if (!files?.length) {
       return;
     }
 
-    if (!allowAttachments) {
-      window.alert(
-        "Attachments are currently available for Messenger conversations only.",
-      );
+    if (isComposerDisabled || !allowAttachments || attachmentsBlocked) {
+      window.alert(blockedReason || attachmentsBlockedReason || "Attachments are unavailable in this conversation.");
       return;
     }
 
@@ -1422,6 +1422,15 @@ export function ReplyBox({
 
     setMoreOpen(false);
     clearToolbarPanel();
+  }
+
+  function handleImagePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const files = clipboardImageFiles(event.clipboardData);
+    if (!files.length) return; // Keep ordinary text/link paste completely native.
+    event.preventDefault();
+    // Reuse picker validation, size limits, previews and the existing send path.
+    // Pasting attaches only; it never sends a message automatically.
+    addAttachments(files, "image");
   }
 
   function handleImageChange(
@@ -2508,6 +2517,7 @@ export function ReplyBox({
               <textarea
                 ref={replyInputRef}
                 name="message"
+                onPaste={handleImagePaste}
                 value={reply}
                 onChange={(event) => onReplyChange(event.target.value)}
                 onKeyDown={(event) => {

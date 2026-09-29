@@ -370,6 +370,7 @@ export async function getConversations(
       unread_count,
       last_message_text,
       last_message_at,
+      updated_at,
 
       is_pinned,
       pinned_at,

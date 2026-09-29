@@ -70,8 +70,7 @@ function attachmentImageUrl(
     }
 
     const image =
-      cleanString(attachment.media?.image?.src) ??
-      cleanString(attachment.media?.source);
+      cleanString(attachment.media?.image?.src);
 
     if (image) {
       return image;
@@ -126,6 +125,7 @@ async function requestFacebookPostPreview({
   const response = await fetch(url, {
     method: "GET",
     cache: "no-store",
+    signal: AbortSignal.timeout(6_000),
   });
 
   const responseText = await response.text();
@@ -217,7 +217,7 @@ function normalizePreview({
   };
 }
 
-export async function getFacebookPostPreview(
+async function loadFacebookPostPreview(
   postId: string,
   pageId?: string,
 ): Promise<FacebookPostPreview | null> {
@@ -356,7 +356,7 @@ export async function getFacebookPostPreview(
   }
 }
 
-export async function getFacebookPostIdForComment(
+async function loadFacebookPostIdForComment(
   commentId: string,
   pageId?: string,
 ): Promise<string | null> {
@@ -407,4 +407,54 @@ export async function getFacebookPostIdForComment(
     );
     return null;
   }
+}
+
+// These caches contain only public post context, never tokens. Authorize the
+// caller before using them. Bound both positive and failed lookups so unavailable
+// posts cannot cause a Graph request on every inbox safety-net tick.
+const previewCache = new Map<string, { value: FacebookPostPreview | null; expires: number; fetchedAt: number }>();
+const previewInFlight = new Map<string, Promise<FacebookPostPreview | null>>();
+const commentCache = new Map<string, { value: string | null; expires: number }>();
+const commentInFlight = new Map<string, Promise<string | null>>();
+const MAX_CONTEXT_CACHE = 256;
+
+function trimContextCache<T>(cache: Map<string, T>) {
+  while (cache.size > MAX_CONTEXT_CACHE) cache.delete(cache.keys().next().value!);
+}
+
+export async function getFacebookPostPreview(
+  postId: string,
+  pageId?: string,
+  options: { refresh?: boolean } = {},
+): Promise<FacebookPostPreview | null> {
+  const key = `${pageId ?? ""}:${postId.trim()}`;
+  const pending = previewInFlight.get(key);
+  if (pending) return pending;
+  const cached = previewCache.get(key);
+  const now = Date.now();
+  // An image failure can refresh a positive cache, but many cards failing at
+  // once still perform at most one lookup per post per 30 seconds.
+  if (cached && cached.expires > now && (!options.refresh || now - cached.fetchedAt < 30_000)) return cached.value;
+  const work = loadFacebookPostPreview(postId, pageId).then(value => {
+    previewCache.set(key, { value, fetchedAt: Date.now(), expires: Date.now() + (value?.message || value?.full_picture ? 300_000 : 60_000) });
+    trimContextCache(previewCache);
+    return value;
+  }).finally(() => { previewInFlight.delete(key); });
+  previewInFlight.set(key, work);
+  return work;
+}
+
+export async function getFacebookPostIdForComment(commentId: string, pageId?: string): Promise<string | null> {
+  const key = `${pageId ?? ""}:${commentId.trim()}`;
+  const pending = commentInFlight.get(key);
+  if (pending) return pending;
+  const cached = commentCache.get(key);
+  if (cached && cached.expires > Date.now()) return cached.value;
+  const work = loadFacebookPostIdForComment(commentId, pageId).then(value => {
+    commentCache.set(key, { value, expires: Date.now() + (value ? 900_000 : 60_000) });
+    trimContextCache(commentCache);
+    return value;
+  }).finally(() => { commentInFlight.delete(key); });
+  commentInFlight.set(key, work);
+  return work;
 }

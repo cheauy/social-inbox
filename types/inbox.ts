@@ -170,6 +170,7 @@ export type ContactNote = {
 };
 
 export type InboxConversation = {
+  updated_at?: string | null;
   id: string;
   facebook_messenger_sources?: import("../lib/facebook/messenger-source").MessengerSource[];
   business_id: string;

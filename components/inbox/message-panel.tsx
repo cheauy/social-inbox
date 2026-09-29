@@ -1,4 +1,5 @@
 "use client";
+import { FacebookPostCard } from "@/components/inbox/facebook-post-card";
 import { MessengerSourceCard } from "@/components/inbox/messenger-source-card";
 import { messengerSourceTimeline } from "@/lib/facebook/messenger-source";
 import { rememberMetaStickerMessages } from "@/lib/stickers/meta-sticker-recents";
@@ -9,7 +10,12 @@ import { useFacebookBlock } from "@/lib/inbox/use-facebook-block";
 import { MessengerMessageActions } from "@/components/inbox/messenger-message-actions";
 import { PinnedMessageHeader } from "@/components/inbox/pinned-message-header";
 import { usePinnedMessages } from "@/lib/inbox/use-pinned-messages";
-import { getMessageActions, getMessageSummary, getDeletedMessageText, isMessagePinned, isMessageDeleted } from "@/lib/inbox/message-actions";
+import { getMessageActions, getMessageSummary, getDeletedMessageText, isMessagePinned, isMessageDeleted,
+  expandAlbumPhotos as facebookAlbumPhotos, resolvePhotoReplyTarget, parsePhotoReplyId,
+  getMessageImageUrl, getReplyImageReference, inboxImageEndpoint, type ReplyImageReference,
+} from "@/lib/inbox/message-actions";
+import { ImageCopyButton } from "@/components/inbox/image-copy-button";
+import { ReplyImageThumbnail } from "@/components/inbox/reply-image-thumbnail";
 
 import { isCommentReplyBlocked } from "@/components/inbox/comment-reply-access";
 
@@ -114,13 +120,6 @@ function isFacebookCommentInboxMessage(
   );
 }
 
-function facebookAlbumPhotos(message: InboxMessage): InboxMessage[] {
-  const raw = message.raw_payload as { message?: { attachments?: Array<{ type?: string; payload?: { url?: string } }> } } | null;
-  const photos = raw?.message?.attachments?.filter((item) => item.type === "image" && item.payload?.url) ?? [];
-  return photos.length > 1 ? photos.map((item, index) => ({
-    ...message, id: `${message.id}:photo:${index}`, attachment_url: item.payload!.url!,
-  })) : [];
-}
 
 function isDirectFacebookMessengerInboundMessage(
   message: InboxMessage,
@@ -1397,8 +1396,12 @@ export function MessagePanel({
     const updated = await pinnedMessages.toggle(message, pinned);
     if (updated) onMessagePatched(updated);
   };
-  const quotedReplyTarget = messages.find((message) =>
-    message.id === (replyingToFacebookMessageId ?? replyingToTelegramMessageId));
+  const quotedReplyTarget = resolvePhotoReplyTarget(messages,
+    replyingToFacebookMessageId ?? replyingToTelegramMessageId, activeConversation?.id);
+  const quotedReplyImage = quotedReplyTarget && getMessageImageUrl(quotedReplyTarget)
+    ? { conversationId: quotedReplyTarget.conversation_id, messageId: quotedReplyTarget.id, url: getMessageImageUrl(quotedReplyTarget) }
+    : null;
+  const photoElementRefs = useRef(new Map<string, HTMLDivElement>());
   const jumpConversationRef = useRef(activeConversation?.id ?? null);
   jumpConversationRef.current = activeConversation?.id ?? null;
 
@@ -1514,6 +1517,7 @@ export function MessagePanel({
     useState<{
       src: string;
       alt: string;
+      reference?: ReplyImageReference;
     } | null>(null);
 
   useEffect(() => {
@@ -2267,12 +2271,7 @@ export function MessagePanel({
             latestMessagesRef.current;
 
           if (localMessageId) {
-            const byLocalId =
-              currentMessages.find(
-                (item) =>
-                  item.id ===
-                  localMessageId,
-              );
+            const byLocalId = resolvePhotoReplyTarget(currentMessages, localMessageId, scopedConversationId);
 
             if (byLocalId) {
               return byLocalId;
@@ -2338,10 +2337,8 @@ export function MessagePanel({
           return;
         }
 
-        const targetElement =
-          messageElementRefs.current.get(
-            targetMessage.id,
-          );
+        const targetElement = photoElementRefs.current.get(targetMessage.id) ??
+          messageElementRefs.current.get(targetMessage.id);
 
         if (!targetElement) {
           return;
@@ -3309,6 +3306,7 @@ export function MessagePanel({
                 rawPayload?.reply_to_message ??
                 null;
 
+              const replyImageReference = getReplyImageReference(message, messages);
               const nativeFacebookQuote = facebookNativeReply(message, messages);
               const telegramReplyPreview =
                 (nativeFacebookQuote ? { text: nativeFacebookQuote.text, kind: nativeFacebookQuote.kind } : null) ??
@@ -3778,8 +3776,6 @@ export function MessagePanel({
               const showFacebookPostPreview =
                 Boolean(
                   isFacebookCommentMessage &&
-                    postPreview &&
-                    postId &&
                     !facebookReplyParentId &&
                     !isFacebookPostGroupContinuation &&
                     !commentState.deleted,
@@ -4003,96 +3999,12 @@ export function MessagePanel({
                             : ""
                       }`}
                     >
-                      {showFacebookPostPreview &&
-                      postPreview ? (
-                        <div className="max-w-[860px] p-1 sm:p-2">
-                          <div className="flex min-w-0 items-stretch gap-3 rounded-[18px] border border-slate-200 bg-white p-3 shadow-[0_3px_14px_rgba(15,23,42,0.04)] sm:gap-4">
-                            {postPreview.full_picture ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setImagePreview({
-                                    src: postPreview.full_picture!,
-                                    alt: "Facebook post",
-                                  })
-                                }
-                                className="h-[112px] w-[112px] shrink-0 overflow-hidden rounded-[15px] bg-white text-left sm:h-[132px] sm:w-[132px]"
-                                aria-label="Open Facebook post image"
-                              >
-                                <img decoding="async"
-                                  src={
-                                    postPreview.full_picture
-                                  }
-                                  alt="Facebook post"
-                                  className="h-full w-full object-cover transition duration-200 hover:scale-[1.02]"
-                                  loading="lazy"
-                                />
-                              </button>
-                            ) : (
-                              <div className="flex h-[112px] w-[112px] shrink-0 items-center justify-center rounded-[15px] bg-blue-50 text-blue-600 sm:h-[132px] sm:w-[132px]">
-                                <svg
-                                  viewBox="0 0 24 24"
-                                  fill="currentColor"
-                                  className="h-10 w-10"
-                                  aria-hidden="true"
-                                >
-                                  <path d="M13.6 22v-9h3l.5-3.5h-3.5V7.3c0-1 .3-1.7 1.8-1.7h1.9V2.5c-.3 0-1.5-.1-2.8-.1-2.8 0-4.7 1.7-4.7 4.8v2.3H6.7V13h3.1v9h3.8Z" />
-                                </svg>
-                              </div>
-                            )}
-
-                            <div className="min-w-0 flex-1 py-1">
-                              <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-500 sm:text-base">
-                                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#1877F2] text-white">
-                                  <svg
-                                    viewBox="0 0 24 24"
-                                    fill="currentColor"
-                                    className="h-4 w-4"
-                                    aria-hidden="true"
-                                  >
-                                    <path d="M13.6 22v-9h3l.5-3.5h-3.5V7.3c0-1 .3-1.7 1.8-1.7h1.9V2.5c-.3 0-1.5-.1-2.8-.1-2.8 0-4.7 1.7-4.7 4.8v2.3H6.7V13h3.1v9h3.8Z" />
-                                  </svg>
-                                </span>
-                                <span>
-                                  {isKhmer
-                                    ? "មតិយោបល់លើការបង្ហោះ"
-                                    : "Comment on post"}{" "}
-                                  <span className="font-semibold text-slate-400">
-                                    #{
-                                      postId
-                                        ?.replace(/[^A-Za-z0-9]/g, "")
-                                        .slice(-8) || "Facebook"
-                                    }
-                                  </span>
-                                </span>
-                              </div>
-
-                              <div className="mt-2 text-[22px] font-bold tracking-[-0.02em] text-slate-950 sm:text-[25px]">
-                                {headerChannelAccountName}
-                              </div>
-
-                              {postPreview.message ? (
-                                <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-slate-500 sm:text-base">
-                                  {postPreview.message}
-                                </p>
-                              ) : null}
-
-                              {postUrl ? (
-                                <a
-                                  href={postUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"
-                                >
-                                  {isKhmer
-                                    ? "មើលការបង្ហោះ"
-                                    : "View Post"}
-                                  <span aria-hidden="true">↗</span>
-                                </a>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
+                      {showFacebookPostPreview ? (
+                        <FacebookPostCard key={`${activeConversation.id}:${message.id}`}
+                          conversationId={activeConversation.id} messageId={message.id}
+                          postId={postId} savedPreview={postPreview}
+                          accountName={headerChannelAccountName} isKhmer={isKhmer}
+                          onOpenImage={setImagePreview} />
                       ) : null}
 
                       <div
@@ -4885,13 +4797,14 @@ export function MessagePanel({
                               }
 
                               void jumpToTelegramReplyTarget({
-                                localMessageId:
-                                  telegramReplyLocalMessageId,
+                                localMessageId: replyImageReference?.photoIndex != null && telegramReplyLocalMessageId
+                                  ? `${telegramReplyLocalMessageId}:photo:${replyImageReference.photoIndex}`
+                                  : telegramReplyLocalMessageId,
                                 platformMessageId:
                                   telegramReplyTargetPlatformMessageId,
                               });
                             }}
-                            className={`mb-2.5 block w-full border-l-[3px] pl-2.5 text-left text-xs transition ${
+                            className={`mb-2.5 flex w-full items-center gap-2.5 border-l-[3px] pl-2.5 text-left text-xs transition ${
                               isOutgoing
                                 ? "border-white/70"
                                 : "border-sky-500"
@@ -4908,6 +4821,8 @@ export function MessagePanel({
                                 : undefined
                             }
                           >
+                            {replyImageReference ? <ReplyImageThumbnail key={`${inboxImageEndpoint(replyImageReference, true)}:${replyImageReference.url ?? ""}`} reference={replyImageReference} /> : null}
+                            <span className="min-w-0 flex-1">
                             {/*
                               The quote sits inside the bubble, so it has to
                               follow the bubble's colour. Fixed slate greys were
@@ -4933,6 +4848,7 @@ export function MessagePanel({
                               }`}
                             >
                               {telegramReplyPreview.text}
+                            </span>
                             </span>
                           </button>
                         ) : null}
@@ -5001,45 +4917,10 @@ export function MessagePanel({
                           </div>
                         ) : postId ? (
                           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                            {/* Facebook post preview */}
-                            {postPreview ? (
-                              <div className="bg-slate-50">
-                                {postPreview.full_picture ? (
-                                  <a
-                                    href={
-                                      postUrl ??
-                                      undefined
-                                    }
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="block"
-                                  >
-                                    <img decoding="async"
-                                      src={
-                                        postPreview.full_picture
-                                      }
-                                      alt="Facebook post"
-                                      className="max-h-56 w-full object-cover"
-                                      loading="lazy"
-                                    />
-                                  </a>
-                                ) : null}
-
-                                {postPreview.message ? (
-                                  <div className="px-3 py-2.5">
-                                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                                      {isKhmer ? "Facebook Post" : "Facebook Post"}
-                                    </div>
-
-                                    <p className="whitespace-pre-wrap text-sm leading-5 text-slate-700">
-                                      {
-                                        postPreview.message
-                                      }
-                                    </p>
-                                  </div>
-                                ) : null}
-                              </div>
-                            ) : null}
+                            <FacebookPostCard key={`${activeConversation.id}:${message.id}:legacy`}
+                              conversationId={activeConversation.id} messageId={message.id} postId={postId}
+                              savedPreview={postPreview} accountName={activeConversation.social_account?.account_name ?? "Facebook Page"}
+                              isKhmer={isKhmer} onOpenImage={setImagePreview} />
 
                             {/* Customer comment */}
                             <div className="border-t border-slate-100 px-3 py-2.5">
@@ -5214,8 +5095,11 @@ export function MessagePanel({
                             } mb-1`}
                           >
                             {photoGroup.members.map((photo: InboxMessage) => {
-                              const photoUrl =
-                                photo.attachment_url;
+                              const photoUrl = photo.attachment_url;
+                              const basePhoto = messages.find(item => item.id === parsePhotoReplyId(photo.id).messageId) ?? message;
+                              const photoActions = getMessageActions(photo, activeConversation.social_account?.platform);
+                              const photoSelected = (replyingToFacebookMessageId ?? replyingToTelegramMessageId) === photo.id;
+                              const photoReference = { conversationId: photo.conversation_id, messageId: photo.id };
 
                               if (!photoUrl) {
                                 return (
@@ -5234,15 +5118,18 @@ export function MessagePanel({
                               }
 
                               return (
-                                <div key={`album-${photo.id}`} className="group/photo relative">
+                                <div key={`album-${photo.id}`} ref={node => {
+                                  if (node) photoElementRefs.current.set(photo.id, node);
+                                  else photoElementRefs.current.delete(photo.id);
+                                }} data-album-photo-id={photo.id}
+                                  className={`group/photo relative ${photoSelected || jumpHighlightedMessageId === photo.id ? "z-10 ring-2 ring-inset ring-blue-500" : ""}`}>
                                 <button
                                   type="button"
                                   onClick={() =>
                                     setImagePreview({
                                       src: photoUrl,
-                                      alt:
-                                        photo.message_text ||
-                                        "Photo",
+                                      alt: getMessageSummary(photo),
+                                      reference: photoReference,
                                     })
                                   }
                                   className={`group/media block w-full cursor-zoom-in overflow-hidden bg-slate-100 ${
@@ -5264,24 +5151,26 @@ export function MessagePanel({
                                     decoding="async"
                                   />
                                 </button>
-                                {activeConversation.social_account?.platform === "facebook" ? (
-                                  <div className="absolute bottom-1 left-1">
-                                    <MessengerMessageActions
-                                      message={messages.find(item => item.platform_message_id === photo.platform_message_id) ?? message}
-                                      platform="facebook"
-                                      onMessagePatched={onMessagePatched}
-                                      photoHover
-                                      outgoing={false}
-                                      actions={{ reply: false, pin: false, edit: false, delete: false }}
-                                      replying={false}
-                                      pinned={false}
-                                      onReply={() => {}}
-                                      onPin={() => {}}
-                                      onEdit={() => {}}
-                                      onDelete={() => {}}
-                                    />
-                                  </div>
-                                ) : null}
+                                <ImageCopyButton src={photoUrl} reference={photoReference}
+                                  className="absolute right-1 top-1 opacity-0 transition-opacity group-hover/photo:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100" />
+                                <div className="absolute bottom-1 left-1">
+                                  <MessengerMessageActions
+                                    message={basePhoto}
+                                    platform={activeConversation.social_account?.platform}
+                                    onMessagePatched={onMessagePatched}
+                                    photoHover outgoing={false}
+                                    actions={{ reply: photoActions.reply, pin: false, edit: false, delete: false }}
+                                    replying={photoSelected} pinned={false}
+                                    onReply={() => {
+                                      if (activeConversation.social_account?.platform === "telegram") {
+                                        if (photoSelected) onCancelTelegramReply(); else onReplyToTelegramMessage(photo.id);
+                                      } else {
+                                        if (photoSelected) onCancelFacebookReply(); else onReplyToFacebookMessage(photo.id);
+                                      }
+                                    }}
+                                    onPin={() => {}} onEdit={() => {}} onDelete={() => {}}
+                                  />
+                                </div>
                                 </div>
                               );
                             })}
@@ -5329,7 +5218,7 @@ export function MessagePanel({
                             })()}
                           </div>
                         ) : isImageMessage ? (
-                          <div className="w-[300px] max-w-full overflow-hidden rounded-[22px] bg-slate-100 ring-1 ring-slate-200/70">
+                          <div className="group/photo relative w-[300px] max-w-full overflow-hidden rounded-[22px] bg-slate-100 ring-1 ring-slate-200/70">
                             {attachmentUrl ? (
                               <button
                                 type="button"
@@ -5337,6 +5226,7 @@ export function MessagePanel({
                                   setImagePreview({
                                     src: attachmentUrl,
                                     alt: attachmentName,
+                                    reference: { conversationId: message.conversation_id, messageId: message.id },
                                   })
                                 }
                                 className="group/media block w-full cursor-zoom-in text-left"
@@ -5355,6 +5245,8 @@ export function MessagePanel({
                                 Photo unavailable
                               </div>
                             )}
+                            {attachmentUrl ? <ImageCopyButton src={attachmentUrl} reference={{ conversationId: message.conversation_id, messageId: message.id }}
+                              className="absolute right-2 top-2 opacity-0 transition-opacity group-hover/photo:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100" /> : null}
                           </div>
                         ) : isAnimationMessage ? (
                           <div className="min-w-[220px]">
@@ -5988,6 +5880,7 @@ export function MessagePanel({
 
       {quotedReplyTarget && !editingTelegramMessageId ? (
         <div className="flex shrink-0 items-center gap-3 border-t border-sky-100 bg-white px-4 py-2">
+          {quotedReplyImage ? <ReplyImageThumbnail key={quotedReplyTarget.id} reference={quotedReplyImage} /> : null}
           <div className="min-w-0 flex-1 border-l-2 border-sky-400 pl-3">
             <p className="text-xs font-semibold text-sky-700">Replying to {quotedReplyTarget.direction === "outgoing" ? "your message" : activeConversation.contact?.full_name || "customer"}</p>
             <p className="truncate text-sm text-slate-600">{getMessageSummary(quotedReplyTarget)}</p>
@@ -6196,6 +6089,8 @@ export function MessagePanel({
               className="max-h-[92vh] max-w-[94vw] rounded-2xl object-contain shadow-2xl"
             />
 
+            <ImageCopyButton key={imagePreview.src} src={imagePreview.src} reference={imagePreview.reference} shortcut
+              className="absolute bottom-3 left-3" />
             <button
               type="button"
               onClick={() => setImagePreview(null)}

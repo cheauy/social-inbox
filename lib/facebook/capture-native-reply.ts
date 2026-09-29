@@ -10,6 +10,6 @@ export async function captureFacebookNativeReply(event: unknown, scope: { busine
   const { data, error } = await supabaseAdmin.from("messages").select("*")
     .eq("business_id", scope.businessId).eq("conversation_id", scope.conversationId).eq("platform_message_id", mid).maybeSingle();
   if (error || !data) return null; // A missing parent must not delay message delivery.
-  return { platformMessageId: mid, conversationId: scope.conversationId, text: getMessageSummary(data as InboxMessage).slice(0, 500) };
+  return { platformMessageId: mid, conversationId: scope.conversationId, text: getMessageSummary(data as InboxMessage).slice(0, 500), messageType: data.message_type };
   } catch { return null; } // Quote enrichment must never prevent delivery.
 }

@@ -1,7 +1,10 @@
 "use client";
 import { isMetaSticker, type InboxStickerChoice } from "@/lib/stickers/catalog";
 
-import { createReplyContext, getDeletedMessageText, getMessageActions, MESSAGE_ROW_CHANGED_EVENT } from "@/lib/inbox/message-actions";
+import { createReplyContext, getDeletedMessageText, getMessageActions, resolvePhotoReplyTarget, MESSAGE_ROW_CHANGED_EVENT } from "@/lib/inbox/message-actions";
+import { INBOX_SYNC_EVENT, SYNC_TIMEOUT_MS, takeSyncBatch, isOlderConversationState, rowTime, liveMessageType, messageCoveredByRead, type InboxSyncCursor } from "@/lib/inbox/live-sync";
+import { snapshotUnread, receiptStillApplies, type ReadReceipt, type BulkReadResult } from "@/lib/inbox/bulk-read";
+import { stableConversationOrder } from "@/lib/inbox/stable-conversation-order";
 
 import { isCommentReplyBlocked } from "@/components/inbox/comment-reply-access";
 
@@ -376,46 +379,9 @@ function sameOutgoingText(
   );
 }
 
-function sortLiveConversations(
-  conversations: InboxConversation[],
-) {
-  return [...conversations].sort(
-    (first, second) => {
-      const firstPinned =
-        Boolean(
-          (first as {
-            is_pinned?: boolean;
-          }).is_pinned,
-        );
-
-      const secondPinned =
-        Boolean(
-          (second as {
-            is_pinned?: boolean;
-          }).is_pinned,
-        );
-
-      if (
-        firstPinned !==
-        secondPinned
-      ) {
-        return firstPinned
-          ? -1
-          : 1;
-      }
-
-      return (
-        new Date(
-          second.last_message_at ??
-            0,
-        ).getTime() -
-        new Date(
-          first.last_message_at ??
-            0,
-        ).getTime()
-      );
-    },
-  );
+function sortLiveConversations(conversations: InboxConversation[]) {
+  // The state setter preserves positions and handles explicit pin changes.
+  return conversations;
 }
 
 /*
@@ -655,6 +621,8 @@ const requestedConversationId =
   setCustomerPanelVisible,
 ] = useState(false);
 
+const [markingAllRead, setMarkingAllRead] = useState(false);
+const bulkReadInFlightRef = useRef(false);
 const [markingUnread, setMarkingUnread] =
   useState(false);
 
@@ -726,17 +694,7 @@ const deletedPreviewOverrideRef =
 
 const collaborationSyncInFlightRef =
   useRef(false);
-
-/*
- * If the optional collaborative fallback route is missing in a local/stale
- * deployment, disable only the polling safety net for this page load. Supabase
- * Realtime stays active, so Inbox collaboration keeps working without flooding
- * the console with 404/HTML JSON parse errors every three seconds.
- */
-const collaborationFallbackUnavailableRef =
-  useRef(false);
-const collaborationFallbackWarningShownRef =
-  useRef(false);
+const liveDiscoveredIdsRef = useRef(new Set<string>());
 
 /*
  * V3.11.18 — a manually-unread conversation stays unread while the agent
@@ -802,8 +760,20 @@ const previousActiveConversationIdRef =
    */
   const [
     liveConversations,
-    setLiveConversations,
+    setRawLiveConversations,
   ] = useState(conversations);
+
+  // Every update path goes through one ordering policy, including server prop
+  // refreshes and optimistic sends. Previews/unread counts still update live.
+  const setLiveConversations = useCallback((update: InboxConversation[] | ((current: InboxConversation[]) => InboxConversation[])) => {
+    setRawLiveConversations(current => {
+      const next = typeof update === "function" ? update(current) : update;
+      if (next === current) return current;
+      const ordered = stableConversationOrder(current, next);
+      return ordered.length === current.length && ordered.every((row, index) => row === current[index])
+        ? current : ordered;
+    });
+  }, []);
 
   const [
     liveMessages,
@@ -1858,6 +1828,11 @@ type CollaborativeInboxStateResponse = {
   success?: boolean;
   error?: string;
   conversations?: CollaborativeInboxConversationState[];
+  hydratedConversations?: InboxConversation[];
+  cursor?: InboxSyncCursor;
+  hasMore?: boolean;
+  accessibleBusinessIds?: string[];
+  activeChannelIds?: string[];
 };
 
 function updateContactTagsLive(
@@ -1996,6 +1971,14 @@ useInboxRealtime({
   onRealtimeEvent: (
     event,
   ) => {
+    if (event.table === "conversations" && typeof event.newRow.id === "string") {
+      const id = event.newRow.id;
+      const latestLoaded = liveMessagesRef.current.filter(message => message.conversation_id === id)
+        .reduce((time, message) => Math.max(time, messageOrderMs(message)), 0);
+      if (id === desiredConversationIdRef.current && rowTime(event.newRow.last_message_at) > latestLoaded) {
+        window.dispatchEvent(new CustomEvent(INBOX_SYNC_EVENT, { detail: { conversationId: id, activeOnly: true } }));
+      }
+    }
     /*
      * V2.8 — customer/tag/note changes are stored in
      * conversation_activity by the existing APIs.
@@ -2103,6 +2086,10 @@ useInboxRealtime({
         !conversationId
       ) {
         return;
+      }
+
+      if (!liveConversationsRef.current.some(conversation => conversation.id === conversationId)) {
+        window.dispatchEvent(new Event(INBOX_SYNC_EVENT));
       }
 
       // Fan out the existing stream to the pin header, including older rows.
@@ -2240,12 +2227,9 @@ useInboxRealtime({
             conversationId,
           ) ?? 0;
 
-        if (
-          existingReadBarrier > 0 &&
-          Number.isFinite(incomingMessageTime) &&
-          incomingMessageTime >
-            existingReadBarrier + 1000
-        ) {
+        const incomingCoveredByRead = messageCoveredByRead(lastMessageAt, row.created_at,
+          existingReadBarrier, readRowVersionRef.current.get(conversationId) ?? 0);
+        if (existingReadBarrier > 0 && !incomingCoveredByRead) {
           readBarrierMessageTimeRef.current.delete(
             conversationId,
           );
@@ -2263,14 +2247,15 @@ useInboxRealtime({
                     return conversation;
                   }
 
+                  const advancesPreview = rowTime(lastMessageAt) >= rowTime(conversation.last_message_at);
+                  const alreadyRead = incomingCoveredByRead;
                   return {
                     ...conversation,
-                    last_message_text:
-                      preview,
-                    last_message_at:
-                      lastMessageAt,
+                    ...(advancesPreview ? { last_message_text: preview, last_message_at: lastMessageAt,
+                      latest_message_type: liveMessageType(row.message_type) ?? conversation.latest_message_type,
+                      latest_message_direction: "incoming" as const } : {}),
                     unread_count:
-                      isActiveIncoming &&
+                      alreadyRead ? conversation.unread_count : isActiveIncoming &&
                       !keepActiveUnread
                         ? 0
                         : Math.max(
@@ -2380,6 +2365,8 @@ useInboxRealtime({
               return {
                 ...conversation,
                 last_message_text: eventPreview,
+                latest_message_type: liveMessageType(row.message_type) ?? conversation.latest_message_type,
+                latest_message_direction: row.direction === "incoming" || row.direction === "outgoing" ? row.direction as InboxConversation["latest_message_direction"] : conversation.latest_message_direction,
                 last_message_at:
                   eventTimestampValue ??
                   conversation.last_message_at ??
@@ -2788,7 +2775,7 @@ useInboxRealtime({
       if (
         rowPinned !== null &&
         activeConversation?.id === conversationId &&
-        Boolean(activeConversation.is_pinned) !== rowPinned &&
+        Boolean(activeConversation?.is_pinned) !== rowPinned &&
         !(pinOverride && pinOverride.isPinned === rowPinned)
       ) {
         const actorMemberId =
@@ -2820,6 +2807,8 @@ useInboxRealtime({
           (conversation) =>
             conversation.id === conversationId,
         ) ?? null;
+
+      if (existingConversation && isOlderConversationState(existingConversation, row)) return;
 
       const rowUnreadCount =
         typeof row.unread_count === "number"
@@ -2915,7 +2904,7 @@ useInboxRealtime({
       const isSharedManualUnreadUpdate =
         !referralContextOnlyUpdate &&
         rowUnreadCount !== null &&
-        rowUnreadCount > 0 &&
+        rowUnreadCount > existingUnreadCount &&
         !unreadComesFromNewMessage &&
         rowSupersedesRead;
 
@@ -3160,8 +3149,9 @@ useInboxRealtime({
                   Number.isFinite(mergedMessageTime)
                 ) {
                   if (
-                    mergedMessageTime <=
-                    readBarrier + 1000
+                    mergedMessageTime <= readBarrier &&
+                    (readInFlightRef.current.has(conversationId) ||
+                      rowTime(row.updated_at) <= (readRowVersionRef.current.get(conversationId) ?? 0))
                   ) {
                     return {
                       ...merged,
@@ -3204,8 +3194,9 @@ useInboxRealtime({
    * Normal messages/updates stay completely local.
    */
   onFallbackRefresh: () => {
-    router.refresh();
+    window.dispatchEvent(new Event(INBOX_SYNC_EVENT));
   },
+  onScopeChanged: () => { scheduleMultiAgentRefresh(); },
 });
 
 /*
@@ -3214,32 +3205,24 @@ useInboxRealtime({
  * delayed or unavailable. It keeps pin, assignment and customer tags aligned
  * for Owners and teammates without refreshing the page or replacing messages.
  */
-const collaborationConversationIdsKey = useMemo(
-  () =>
-    liveConversations
-      .map((conversation) => conversation.id)
-      .sort()
-      .join("|"),
-  [liveConversations],
-);
+const collaborationChannelId = searchParams.get("channel") ?? searchParams.get("page") ?? "";
+const collaborationWorkspaceId = searchParams.get("workspace") ?? "";
+const collaborationScopeKey = `${realtimeBusinessIds.join("|")}:${collaborationChannelId}:${collaborationWorkspaceId}`;
 
 useEffect(() => {
-  const conversationIds =
-    collaborationConversationIdsKey
-      ? collaborationConversationIdsKey.split("|")
-      : [];
-
-  if (conversationIds.length === 0) {
-    return;
-  }
-
+  // Run even for an empty inbox: missed INSERTs must still be discoverable.
+  let cursor: InboxSyncCursor | undefined;
+  let batchOffset = 0;
+  let hasMore = false;
+  let failures = 0;
+  let requestController: AbortController | null = null;
+  let resyncTimer: number | null = null;
   let cancelled = false;
   let timer: number | null = null;
 
   async function syncCollaborativeState() {
     if (
       cancelled ||
-      collaborationFallbackUnavailableRef.current ||
       collaborationSyncInFlightRef.current ||
       document.visibilityState === "hidden" ||
       !navigator.onLine
@@ -3248,6 +3231,11 @@ useEffect(() => {
     }
 
     collaborationSyncInFlightRef.current = true;
+    const controller = new AbortController();
+    requestController = controller;
+    const timeout = window.setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS);
+    const batch = takeSyncBatch(liveConversationsRef.current, batchOffset);
+    const conversationIds = batch.rows.map(conversation => conversation.id);
 
     try {
       const response = await fetch(
@@ -3259,8 +3247,12 @@ useEffect(() => {
             Accept: "application/json",
           },
           cache: "no-store",
+          signal: controller.signal,
           body: JSON.stringify({
             conversationIds,
+            cursor,
+            channelId: collaborationChannelId || undefined,
+            workspaceId: collaborationWorkspaceId || undefined,
           }),
         },
       );
@@ -3270,16 +3262,7 @@ useEffect(() => {
         response.headers.get("content-type") ?? "";
 
       if (response.status === 404) {
-        collaborationFallbackUnavailableRef.current = true;
-
-        if (!collaborationFallbackWarningShownRef.current) {
-          collaborationFallbackWarningShownRef.current = true;
-          console.warn(
-            "Collaborative Inbox fallback route is unavailable. Realtime remains active; restart Next.js after adding app/api/inbox/live-state/route.ts.",
-          );
-        }
-
-        return;
+        throw new Error("Inbox sync route is unavailable. Restart Next.js after installing the patch.");
       }
 
       if (!contentType.toLowerCase().includes("application/json")) {
@@ -3315,6 +3298,14 @@ useEffect(() => {
         return;
       }
 
+      failures = 0;
+      cursor = result.cursor ?? cursor;
+      batchOffset = batch.nextOffset;
+      hasMore = result.hasMore === true;
+      const hydrated = result.hydratedConversations ?? [];
+      const hydratedById = new Map(hydrated.map(row => [row.id, row]));
+      const allowedBusinesses = result.accessibleBusinessIds ? new Set(result.accessibleBusinessIds) : null;
+      const allowedChannels = result.activeChannelIds ? new Set(result.activeChannelIds) : null;
       const stateByConversationId = new Map(
         result.conversations.map((state) => [state.id, state]),
       );
@@ -3402,17 +3393,23 @@ useEffect(() => {
         );
       }
 
-      setLiveConversations((current) =>
-        sortLiveConversations(
-          current.map((conversation) => {
+      setLiveConversations((current) => {
+        const currentIds = new Set(current.map(row => row.id));
+        const additions = hydrated.filter(row => !currentIds.has(row.id));
+        for (const row of additions) liveDiscoveredIdsRef.current.add(row.id);
+        const combined = [...current, ...additions].filter(row =>
+          (!allowedBusinesses || allowedBusinesses.has(row.business_id)) &&
+          (!allowedChannels || !!row.social_account?.id && allowedChannels.has(row.social_account.id)));
+        return sortLiveConversations(
+          combined.map((conversation) => {
             const state = stateByConversationId.get(conversation.id);
 
-            if (!state) {
-              return conversation;
-            }
+            if (!state || isOlderConversationState(conversation, state)) return conversation;
 
             let nextConversation: InboxConversation = {
               ...conversation,
+              ...hydratedById.get(conversation.id),
+              updated_at: state.updated_at,
             };
 
             /*
@@ -3508,35 +3505,29 @@ useEffect(() => {
                   serverUnreadCount > localUnreadCount
                 )
               );
-            const fallbackManualUnread =
-              serverUnreadCount > 0 &&
-              !fallbackUnreadFromMessage;
+            const readBarrier = readBarrierMessageTimeRef.current.get(conversation.id) ?? 0;
+            const readVersion = readRowVersionRef.current.get(conversation.id) ?? 0;
+            const remoteVersion = rowTime(state.updated_at);
+            const readStillWins = readBarrier > 0 && serverLastMessageTime <= readBarrier &&
+              (readInFlightRef.current.has(conversation.id) || remoteVersion <= readVersion);
+            const fallbackManualUnread = serverUnreadCount > localUnreadCount &&
+              !fallbackUnreadFromMessage && !fallbackMessageAdvanced && !readStillWins &&
+              remoteVersion > Math.max(readVersion, rowTime(conversation.updated_at));
 
-            if (fallbackManualUnread) {
+            if (readStillWins) {
+              nextConversation.unread_count = 0;
+            } else if (fallbackManualUnread) {
               manualUnreadConversationIdsRef.current.add(conversation.id);
-              persistedManualUnreadCountsRef.current.set(
-                conversation.id,
-                Math.max(1, serverUnreadCount),
-              );
+              persistedManualUnreadCountsRef.current.set(conversation.id, serverUnreadCount);
               readBarrierMessageTimeRef.current.delete(conversation.id);
-              nextConversation = {
-                ...nextConversation,
-                unread_count: Math.max(1, serverUnreadCount),
-              };
-            } else if (serverUnreadCount === 0) {
-              if (!unreadWriteInFlightRef.current.has(conversation.id)) {
+              nextConversation.unread_count = serverUnreadCount;
+            } else if (!unreadWriteInFlightRef.current.has(conversation.id)) {
+              if (serverUnreadCount === 0 || fallbackMessageAdvanced) {
                 manualUnreadConversationIdsRef.current.delete(conversation.id);
                 persistedManualUnreadCountsRef.current.delete(conversation.id);
-                nextConversation = {
-                  ...nextConversation,
-                  unread_count: 0,
-                };
               }
-            } else {
-              nextConversation = {
-                ...nextConversation,
-                unread_count: serverUnreadCount,
-              };
+              if (fallbackMessageAdvanced) readBarrierMessageTimeRef.current.delete(conversation.id);
+              nextConversation.unread_count = serverUnreadCount;
             }
 
             const pinOverride =
@@ -3658,31 +3649,32 @@ useEffect(() => {
 
             return nextConversation;
           }),
-        ),
-      );
+        );
+      });
     } catch (error) {
+      if (cancelled) return;
+      failures += 1;
       // Realtime remains active; a temporary sync failure must never break Inbox.
       console.warn(
         "Unable to run collaborative Inbox fallback sync:",
         error,
       );
     } finally {
+      window.clearTimeout(timeout);
+      requestController = null;
       collaborationSyncInFlightRef.current = false;
     }
   }
 
   function scheduleNext() {
-    if (
-      cancelled ||
-      collaborationFallbackUnavailableRef.current
-    ) {
+    if (cancelled) {
       return;
     }
 
     timer = window.setTimeout(async () => {
       await syncCollaborativeState();
       scheduleNext();
-    }, realtimeHealthyRef.current ? 30_000 : 5_000);
+    }, failures ? Math.min(30_000, 5_000 * 2 ** Math.min(failures, 3)) : hasMore ? 250 : realtimeHealthyRef.current ? 10_000 : 5_000);
   }
 
   function handleVisibilityOrFocus() {
@@ -3691,6 +3683,11 @@ useEffect(() => {
     }
   }
 
+  function requestResync(event: Event) {
+    if ((event as CustomEvent<{ activeOnly?: boolean }>).detail?.activeOnly || resyncTimer !== null) return;
+    resyncTimer = window.setTimeout(() => { resyncTimer = null; void syncCollaborativeState(); }, 200);
+  }
+  window.addEventListener(INBOX_SYNC_EVENT, requestResync);
   void syncCollaborativeState();
   scheduleNext();
 
@@ -3700,6 +3697,9 @@ useEffect(() => {
 
   return () => {
     cancelled = true;
+    requestController?.abort();
+    window.removeEventListener(INBOX_SYNC_EVENT, requestResync);
+    if (resyncTimer !== null) window.clearTimeout(resyncTimer);
 
     if (timer !== null) {
       window.clearTimeout(timer);
@@ -3710,7 +3710,7 @@ useEffect(() => {
     document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
   };
 }, [
-  collaborationConversationIdsKey,
+  collaborationScopeKey,
   notifyIncomingMessage,
 ]);
 
@@ -3742,23 +3742,14 @@ useEffect(() => {
               previous.last_message_at,
             ).getTime()
           : 0;
-      const serverIsOlderThanLocal =
-        Boolean(previous) &&
-        Number.isFinite(
-          serverLastMessageTime,
-        ) &&
-        Number.isFinite(
-          localLastMessageTime,
-        ) &&
-        serverLastMessageTime > 0 &&
-        localLastMessageTime > 0 &&
-        serverLastMessageTime + 1000 <
-          localLastMessageTime;
+      const serverIsOlderThanLocal = previous
+        ? isOlderConversationState(previous, conversation) : false;
 
       let mergedConversation =
         serverIsOlderThanLocal && previous
           ? {
               ...conversation,
+              updated_at: previous.updated_at,
               last_message_at:
                 previous.last_message_at,
               last_message_text:
@@ -3907,8 +3898,9 @@ useEffect(() => {
         Number.isFinite(mergedMessageTime)
       ) {
         if (
-          mergedMessageTime <=
-          readBarrier + 1000
+          mergedMessageTime <= readBarrier &&
+          (readInFlightRef.current.has(conversation.id) ||
+            rowTime(mergedConversation.updated_at) <= (readRowVersionRef.current.get(conversation.id) ?? 0))
         ) {
           mergedConversation = {
             ...mergedConversation,
@@ -3923,6 +3915,14 @@ useEffect(() => {
 
       return mergedConversation;
     });
+
+    for (const id of liveDiscoveredIdsRef.current) {
+      if (next.some(row => row.id === id)) { liveDiscoveredIdsRef.current.delete(id); continue; }
+      const row = currentById.get(id);
+      if (row && accessibleBusinessIds.includes(row.business_id) &&
+          (!collaborationChannelId || row.social_account?.id === collaborationChannelId) &&
+          (!collaborationWorkspaceId || row.business_id === collaborationWorkspaceId)) next.push(row);
+    }
 
     /*
      * Status/channel/view navigation can legitimately omit the currently
@@ -4826,7 +4826,9 @@ useEffect(() => {
   let cancelled = false;
   let timer: number | null = null;
   let inFlight = false;
-  const controller = new AbortController();
+  let controller: AbortController | null = null;
+  let resyncTimer: number | null = null;
+  let failures = 0;
 
   /*
    * Seed the fallback with messages already loaded for this thread. If the
@@ -4976,12 +4978,16 @@ useEffect(() => {
     if (
       cancelled ||
       inFlight ||
+      document.visibilityState === "hidden" ||
       !navigator.onLine
     ) {
       return;
     }
 
     inFlight = true;
+    const requestController = new AbortController();
+    controller = requestController;
+    const timeout = window.setTimeout(() => requestController.abort(), SYNC_TIMEOUT_MS);
 
     try {
       const params = new URLSearchParams({
@@ -4993,13 +4999,14 @@ useEffect(() => {
         {
           method: "GET",
           cache: "no-store",
-          signal: controller.signal,
+          signal: requestController.signal,
           headers: {
             Accept: "application/json",
           },
         },
       );
       const result = await readMessagePageResponse(response);
+      failures = 0;
 
       const newestMessages = Array.isArray(result.messages)
         ? result.messages.filter(
@@ -5144,6 +5151,7 @@ useEffect(() => {
         );
       }
     } catch (error) {
+      if (!cancelled) failures += 1;
       if (!cancelled && !isAbortError(error)) {
         console.warn(
           "Unable to run active-thread live message fallback:",
@@ -5151,6 +5159,8 @@ useEffect(() => {
         );
       }
     } finally {
+      window.clearTimeout(timeout);
+      controller = null;
       inFlight = false;
     }
   }
@@ -5163,7 +5173,7 @@ useEffect(() => {
     timer = window.setTimeout(async () => {
       await syncNewestMessages();
       scheduleNext();
-    }, realtimeHealthyRef.current ? 30_000 : 3_000);
+    }, failures ? Math.min(30_000, 3_000 * 2 ** Math.min(failures, 4)) : realtimeHealthyRef.current ? 10_000 : 3_000);
   }
 
   function syncWhenVisible() {
@@ -5177,6 +5187,12 @@ useEffect(() => {
    * before this thread opened, fetch the latest page immediately and then keep
    * the lightweight safety-net poll running in the background.
    */
+  function requestMessageResync(event: Event) {
+    const id = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId;
+    if (id && id !== conversationId || resyncTimer !== null) return;
+    resyncTimer = window.setTimeout(() => { resyncTimer = null; void syncNewestMessages(); }, 150);
+  }
+  window.addEventListener(INBOX_SYNC_EVENT, requestMessageResync);
   void syncNewestMessages();
   scheduleNext();
   window.addEventListener("focus", syncWhenVisible);
@@ -5188,7 +5204,9 @@ useEffect(() => {
 
   return () => {
     cancelled = true;
-    controller.abort();
+    controller?.abort();
+    window.removeEventListener(INBOX_SYNC_EVENT, requestMessageResync);
+    if (resyncTimer !== null) window.clearTimeout(resyncTimer);
 
     if (timer !== null) {
       window.clearTimeout(timer);
@@ -5525,6 +5543,54 @@ useEffect(() => {
   resolvedActiveConversationId,
 ]);
 
+  const handleMarkAllRead = useCallback(async (rows: InboxConversation[]): Promise<BulkReadResult> => {
+    if (bulkReadInFlightRef.current) return { marked: 0, skipped: 0, failed: 0 };
+    const targets = snapshotUnread(rows);
+    const totals: BulkReadResult = { marked: 0, skipped: 0, failed: 0 };
+    if (!targets.length) return totals;
+    bulkReadInFlightRef.current = true;
+    setMarkingAllRead(true);
+    try {
+      // Sequential bounded batches, not hundreds of simultaneous PATCH calls.
+      for (let offset = 0; offset < targets.length; offset += 100) {
+        const batch = targets.slice(offset, offset + 100);
+        try {
+          const response = await fetch("/api/inbox/mark-all-read", {
+            method: "POST", cache: "no-store", signal: AbortSignal.timeout(SYNC_TIMEOUT_MS),
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ targets: batch }),
+          });
+          const result = await response.json() as { success?: boolean; conversations?: ReadReceipt[]; skippedIds?: string[]; failedIds?: string[] };
+          if (!response.ok || !result.success || !Array.isArray(result.conversations)) throw new Error("Unable to mark this batch as read.");
+          totals.marked += result.conversations.length;
+          totals.skipped += result.skippedIds?.length ?? 0;
+          totals.failed += result.failedIds?.length ?? 0;
+          const targetById = new Map(batch.map(target => [target.id, target]));
+          const receiptById = new Map(result.conversations.map(receipt => [receipt.id, receipt]));
+          setLiveConversations(current => current.map(conversation => {
+            const receipt = receiptById.get(conversation.id);
+            const target = targetById.get(conversation.id);
+            if (!receipt || !target || !receiptStillApplies(conversation, receipt, target)) return conversation;
+            manualUnreadConversationIdsRef.current.delete(conversation.id);
+            persistedManualUnreadCountsRef.current.delete(conversation.id);
+            readBarrierMessageTimeRef.current.set(conversation.id, rowTime(receipt.last_message_at));
+            readRowVersionRef.current.set(conversation.id, rowTime(receipt.updated_at));
+            return { ...conversation, unread_count: 0, updated_at: receipt.updated_at };
+          }));
+        } catch {
+          // Do not pretend a failed/unconfirmed batch was marked read.
+          totals.failed += targets.length - offset;
+          break;
+        }
+      }
+      return totals;
+    } finally {
+      bulkReadInFlightRef.current = false;
+      setMarkingAllRead(false);
+      window.dispatchEvent(new Event(INBOX_SYNC_EVENT));
+    }
+  }, [setLiveConversations]);
+
   async function handleMarkUnread() {
     if (!activeConversation) {
       return;
@@ -5842,14 +5908,14 @@ function handleCancelTelegramEdit() {
 }
 
 function handleReplyToFacebookMessage(messageId: string) {
-  const target = liveMessagesRef.current.find((item) => item.id === messageId && item.conversation_id === resolvedActiveConversationId);
+  const target = resolvePhotoReplyTarget(liveMessagesRef.current, messageId, resolvedActiveConversationId);
   if (!target || !getMessageActions(target, "facebook").reply) return;
   setEditingTelegramMessageId(null);
   setReplyingToTelegramMessageId(null);
   setReplyingToCommentId(null);
   setReplyingToFacebookMessageId(messageId);
   setSendError(null);
-  window.requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Write a reply..."]')?.focus());
+  window.requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Write a reply..."]')?.focus({ preventScroll: true }));
 }
 
 function handleMessagePatched(message: InboxMessage) {
@@ -6887,49 +6953,7 @@ function updateConversationPreviewOptimistically({
               : conversation,
         );
 
-      return [...next].sort(
-        (first, second) => {
-          const firstPinned =
-            Boolean(
-              (
-                first as {
-                  is_pinned?:
-                    boolean;
-                }
-              ).is_pinned,
-            );
-
-          const secondPinned =
-            Boolean(
-              (
-                second as {
-                  is_pinned?:
-                    boolean;
-                }
-              ).is_pinned,
-            );
-
-          if (
-            firstPinned !==
-            secondPinned
-          ) {
-            return firstPinned
-              ? -1
-              : 1;
-          }
-
-          return (
-            new Date(
-              second.last_message_at ??
-                0,
-            ).getTime() -
-            new Date(
-              first.last_message_at ??
-                0,
-            ).getTime()
-          );
-        },
-      );
+      return next;
     },
   );
 }
@@ -7739,7 +7763,7 @@ async function handleSendAttachments(
   }
 
   const facebookReplyTarget = conversationPlatform === "facebook" && replyingToFacebookMessageId
-    ? liveMessagesRef.current.find(item => item.id === replyingToFacebookMessageId && item.conversation_id === activeConversation.id) : null;
+    ? resolvePhotoReplyTarget(liveMessagesRef.current, replyingToFacebookMessageId, activeConversation.id) : null;
   if (conversationPlatform === "facebook" && replyingToFacebookMessageId && (!facebookReplyTarget || !getMessageActions(facebookReplyTarget, "facebook").reply)) {
     setSendError("The selected message is no longer available. Cancel Reply and try again."); return false;
   }
@@ -8039,7 +8063,7 @@ async function handleSendMessage(
   if (desiredConversationIdRef.current !== activeConversation.id) return;
   const selectedReplyId = conversationPlatform === "telegram" ? replyingToTelegramMessageId : replyingToFacebookMessageId;
   if (selectedReplyId && !isCommentReply) {
-    const selectedReply = liveMessagesRef.current.find((item) => item.id === selectedReplyId && item.conversation_id === activeConversation.id);
+    const selectedReply = resolvePhotoReplyTarget(liveMessagesRef.current, selectedReplyId, activeConversation.id);
     if (!selectedReply || !getMessageActions(selectedReply, conversationPlatform).reply) {
       setSendError("The selected message is no longer available. Cancel Reply and try again.");
       return;
@@ -8292,9 +8316,8 @@ async function handleSendMessage(
           : null,
     });
 
-  const replyTarget = liveMessagesRef.current.find((item) =>
-    item.conversation_id === activeConversation.id && item.id ===
-      (conversationPlatform === "telegram" ? replyingToTelegramMessageId : replyingToFacebookMessageId));
+  const replyTarget = resolvePhotoReplyTarget(liveMessagesRef.current,
+    conversationPlatform === "telegram" ? replyingToTelegramMessageId : replyingToFacebookMessageId, activeConversation.id);
   if (replyTarget && !isCommentReply) {
     optimisticMessage.raw_payload = { ...(optimisticMessage.raw_payload ?? {}),
       ...(conversationPlatform === "facebook" ? { reply_to: { mid: replyTarget.platform_message_id } } : {}),
@@ -8339,7 +8362,7 @@ async function handleSendMessage(
     const conversation = activeConversationRef.current;
     if (isMetaSticker(sticker)) {
       if (!conversation?.contact || conversation.social_account?.platform !== "facebook") throw new Error("Open a Facebook conversation before sending this sticker.");
-      const target = liveMessagesRef.current.find(item => item.conversation_id === conversation.id && item.id === replyingToFacebookMessageId);
+      const target = resolvePhotoReplyTarget(liveMessagesRef.current, replyingToFacebookMessageId, conversation.id);
       if (replyingToFacebookMessageId && (!target || !getMessageActions(target, "facebook").reply)) throw new Error("The selected message is no longer available. Cancel Reply and try again.");
       const requestId = crypto.randomUUID(), tempId = `optimistic:sticker:${requestId}`;
       const pending: PendingOptimisticSend = { tempId, conversationId: conversation.id, message: "Sent a sticker",
@@ -8783,6 +8806,8 @@ return (
     >
      <ConversationList
   conversations={liveConversations}
+  onMarkAllRead={handleMarkAllRead}
+  markingAllRead={markingAllRead}
   activeConversationId={
     resolvedActiveConversationId
   }

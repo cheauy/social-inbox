@@ -52,7 +52,7 @@ function loader(overrides={},globals={}) {
    if(spec==='next/server')return {NextResponse:{json:(data,init={})=>new Response(JSON.stringify(data),{status:init.status||200,headers:{'Content-Type':'application/json'}})}};
    if(spec.startsWith('@/')||spec.startsWith('.')) {
     let resolved=spec.startsWith('@/')?path.join(ROOT,spec.slice(2)):path.resolve(path.dirname(full),spec);
-    if(!path.extname(resolved))resolved+='.ts';return load(resolved);
+    if(!path.extname(resolved))resolved += fs.existsSync(resolved+'.ts') ? '.ts' : '.tsx';return load(resolved);
    }
    return require(spec);
   };

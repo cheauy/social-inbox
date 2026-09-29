@@ -1,4 +1,5 @@
 "use client";
+import type { BulkReadResult } from "@/lib/inbox/bulk-read";
 
 import { CustomerAvatar } from "@/components/customer-avatar";
 
@@ -77,6 +78,8 @@ function getTelegramSearchIdentity(
 }
 
 type ConversationListProps = {
+  onMarkAllRead?: (conversations: InboxConversation[]) => Promise<BulkReadResult>;
+  markingAllRead?: boolean;
   conversations:
     InboxConversation[];
   activeConversationId:
@@ -1570,6 +1573,8 @@ const ConversationRow = memo(function ConversationRow({
  * turn this back off.
  */
 function ConversationListView({
+  onMarkAllRead,
+  markingAllRead = false,
   conversations,
   activeConversationId,
   activeStatus,
@@ -1585,6 +1590,7 @@ function ConversationListView({
     useSearchParams();
 
   const isKhmer = useWorkspaceLanguageId() === "km";
+  const [bulkReadNotice, setBulkReadNotice] = useState<string | null>(null);
 
   /*
    * Handlers that never change identity, so memo on the row actually holds.
@@ -4766,6 +4772,29 @@ function ConversationListView({
               />
             </div>
           </div>
+
+          {selectedViewKey === "unread" && onMarkAllRead ? (
+            <div className="mt-3 border-t border-slate-100 pt-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-500">{isKhmer ? "មិនទាន់អាន" : "Unread"} · {filteredConversations.length}</span>
+                <button type="button" disabled={markingAllRead || filteredConversations.length === 0}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={async () => {
+                    setBulkReadNotice(null);
+                    try {
+                      const result = await onMarkAllRead(filteredConversations);
+                      setBulkReadNotice(isKhmer
+                        ? `បានអាន ${result.marked} · រំលង ${result.skipped} · បរាជ័យ ${result.failed}`
+                        : `${result.marked} marked as read${result.skipped ? ` · ${result.skipped} changed/already read` : ""}${result.failed ? ` · ${result.failed} not confirmed — retry` : ""}.`);
+                    } catch { setBulkReadNotice(isKhmer ? "មិនអាចសម្គាល់ថាបានអានបានទេ។ សូមព្យាយាមម្ដងទៀត។" : "Unable to mark as read. Please retry."); }
+                  }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden="true"><path d="m3 12 4 4 9-9M12 16l9-9" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  {markingAllRead ? (isKhmer ? "កំពុងសម្គាល់…" : "Marking…") : (isKhmer ? "សម្គាល់ទាំងអស់ថាបានអាន" : "Mark all as read")}
+                </button>
+              </div>
+              {bulkReadNotice ? <p role="status" aria-live="polite" className="mt-1.5 text-[11px] leading-4 text-slate-500">{bulkReadNotice}</p> : null}
+            </div>
+          ) : null}
 
           {filterOpen ? (
             <>

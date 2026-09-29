@@ -1,512 +1,134 @@
 "use client";
 
-import {
-  useEffect,
-  useRef,
-} from "react";
+import { useEffect, useRef } from "react";
+import { createClient } from "@/lib/supabase/client";
 
-import {
-  createClient,
-} from "@/lib/supabase/client";
-
-import {
-  isTransientRealtimeError,
-  TRANSIENT_ERRORS_BEFORE_ESCALATING,
-} from "@/lib/inbox/realtime-error";
-
-export type InboxRealtimeTable =
-  | "messages"
-  | "conversations"
-  | "conversation_activity";
-
-export type InboxRealtimeEventType =
-  | "INSERT"
-  | "UPDATE"
-  | "DELETE";
-
+export type InboxRealtimeTable = "messages" | "conversations" | "conversation_activity";
+export type InboxRealtimeEventType = "INSERT" | "UPDATE" | "DELETE";
 export type InboxRealtimeEvent = {
   table: InboxRealtimeTable;
   eventType: InboxRealtimeEventType;
   newRow: Record<string, unknown>;
   oldRow: Record<string, unknown>;
 };
-
-type UseInboxRealtimeInput = {
+type Input = {
   businessIds: string[];
-
-  onRealtimeEvent:
-    (
-      event: InboxRealtimeEvent,
-    ) => void;
-
-  /*
-   * Used only when we need a full server refresh,
-   * such as a brand-new conversation whose contact/social
-   * relations are not contained in the raw realtime row.
-   */
+  onRealtimeEvent: (event: InboxRealtimeEvent) => void;
   onFallbackRefresh?: () => void;
+  onScopeChanged?: () => void;
   onConnectionState?: (healthy: boolean) => void;
 };
 
-export function useInboxRealtime({
-  businessIds,
-  onRealtimeEvent,
-  onFallbackRefresh,
-  onConnectionState,
-}: UseInboxRealtimeInput) {
-  const connectionCallback = useRef(onConnectionState);
-  useEffect(() => { connectionCallback.current = onConnectionState; }, [onConnectionState]);
-
-  const eventCallbackRef =
-    useRef(onRealtimeEvent);
-
-  const fallbackRefreshRef =
-    useRef(onFallbackRefresh);
+export function useInboxRealtime(input: Input) {
+  const callbacks = useRef(input);
+  useEffect(() => { callbacks.current = input; }, [input]);
+  const businessIdsKey = [...new Set(input.businessIds.map(id => id.trim()).filter(Boolean))].sort().join("|");
 
   useEffect(() => {
-    eventCallbackRef.current =
-      onRealtimeEvent;
-  }, [onRealtimeEvent]);
+    const businessIds = businessIdsKey ? businessIdsKey.split("|") : [];
+    callbacks.current.onConnectionState?.(false);
+    if (!businessIds.length) return;
+    const supabase = createClient();
+    const channels: ReturnType<typeof supabase.channel>[] = [];
+    const ready = new Set<string>();
+    let cancelled = false;
+    let starting = false;
+    let generation = 0;
+    let authUserId: string | null = null;
+    let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
 
-  useEffect(() => {
-    fallbackRefreshRef.current =
-      onFallbackRefresh;
-  }, [onFallbackRefresh]);
-
-  /*
-   * Keep the effect stable when the caller recreates the array while
-   * preserving the exact set of accessible subscriptions.
-   */
-  const businessIdsKey =
-    Array.from(
-      new Set(
-        businessIds
-          .map((id) => id.trim())
-          .filter(Boolean),
-      ),
-    )
-      .sort()
-      .join("|");
-
-  useEffect(() => {
-    const scopedBusinessIds =
-      businessIdsKey
-        ? businessIdsKey.split("|")
-        : [];
-
-    if (
-      scopedBusinessIds.length ===
-      0
-    ) {
-      console.warn(
-        "[Tenh Realtime V3.11.31.39] No accessible business ids.",
-      );
-
-      return;
+    function resync() {
+      if (cancelled || recoveryTimer) return;
+      recoveryTimer = setTimeout(() => {
+        recoveryTimer = null;
+        if (!cancelled) callbacks.current.onFallbackRefresh?.();
+      }, 300);
     }
-
-    const readyBusinesses = new Set<string>();
-    connectionCallback.current?.(false);
-    const supabase =
-      createClient();
-
-    let cancelled =
-      false;
-
-    const channels: Array<
-      ReturnType<
-        typeof supabase.channel
-      >
-    > = [];
-
-    /*
-     * V3.11.32.1 — one safe resync for transient Realtime failures.
-     *
-     * Every Inbox view (All / Unread / Pinned / Smart View) is derived from
-     * the same live conversation state. If a Supabase channel briefly times
-     * out, ask the server for one enriched refresh after the realtime client
-     * starts recovering. Debounce across workspaces so a network hiccup does
-     * not cause a refresh storm.
-     */
-    let recoveryRefreshTimer:
-      | ReturnType<typeof setTimeout>
-      | null = null;
-
-    function scheduleRecoveryRefresh() {
-      if (cancelled || recoveryRefreshTimer) {
-        return;
-      }
-
-      recoveryRefreshTimer = setTimeout(() => {
-        recoveryRefreshTimer = null;
-
-        if (!cancelled) {
-          fallbackRefreshRef.current?.();
+    function emit(table: InboxRealtimeTable, payload: { eventType: string; new: unknown; old: unknown }) {
+      if (cancelled) return;
+      callbacks.current.onRealtimeEvent({ table, eventType: payload.eventType as InboxRealtimeEventType,
+        newRow: (payload.new ?? {}) as Record<string, unknown>, oldRow: (payload.old ?? {}) as Record<string, unknown> });
+      if (table === "conversations" && payload.eventType === "INSERT") resync();
+    }
+    async function start() {
+      if (cancelled || starting || channels.length) return;
+      starting = true;
+      const epoch = generation;
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (cancelled || epoch !== generation || error || !data.session?.access_token) { resync(); return; }
+        await supabase.realtime.setAuth(data.session.access_token);
+        if (cancelled || epoch !== generation) return;
+        authUserId = data.session.user?.id ?? null;
+        for (const businessId of businessIds) {
+          const filter = `business_id=eq.${businessId}`;
+          // Optional subscription/activity tables must not prevent the core
+          // message stream from joining when their publication is missing.
+          const core = supabase.channel(`tenh-inbox-v3-${businessId}`)
+            .on("postgres_changes", { event: "*", schema: "public", table: "messages", filter }, payload => { if (epoch === generation) emit("messages", payload); })
+            .on("postgres_changes", { event: "*", schema: "public", table: "conversations", filter }, payload => { if (epoch === generation) emit("conversations", payload); })
+            .subscribe((status) => {
+              if (cancelled || epoch !== generation) return;
+              if (status === "SUBSCRIBED") ready.add(businessId); else ready.delete(businessId);
+              callbacks.current.onConnectionState?.(ready.size === businessIds.length);
+              // A reconnect does not replay messages sent while disconnected.
+              // Also reconcile the initial subscription gap after server render.
+              resync();
+            });
+          channels.push(core);
+          const context = supabase.channel(`tenh-inbox-context-${businessId}`)
+            .on("postgres_changes", { event: "INSERT", schema: "public", table: "conversation_activity", filter }, payload => { if (epoch === generation) emit("conversation_activity", payload); })
+            .on("postgres_changes", { event: "*", schema: "public", table: "business_subscriptions", filter }, () => { if (!cancelled && epoch === generation) (callbacks.current.onScopeChanged ?? callbacks.current.onFallbackRefresh)?.(); })
+            .on("postgres_changes", { event: "*", schema: "public", table: "team_members", filter }, () => { if (!cancelled && epoch === generation) (callbacks.current.onScopeChanged ?? callbacks.current.onFallbackRefresh)?.(); })
+            .on("postgres_changes", { event: "*", schema: "public", table: "social_accounts", filter }, () => { if (!cancelled && epoch === generation) (callbacks.current.onScopeChanged ?? callbacks.current.onFallbackRefresh)?.(); })
+            .subscribe();
+          channels.push(context);
         }
-      }, 750);
+      } catch {
+        if (!cancelled) { callbacks.current.onConnectionState?.(false); resync(); }
+      } finally { if (epoch === generation) starting = false; }
     }
-
-    async function startRealtime() {
-      const {
-        data: sessionData,
-        error: sessionError,
-      } =
-        await supabase.auth
-          .getSession();
-
-      if (cancelled) {
-        return;
+    void start();
+    const { data: auth } = supabase.auth.onAuthStateChange((event, session) => {
+      if (cancelled) return;
+      if (!session?.access_token || (authUserId && session.user?.id && session.user.id !== authUserId)) {
+        generation += 1;
+        starting = false;
+        authUserId = null;
+        for (const channel of channels.splice(0)) void supabase.removeChannel(channel);
+        ready.clear();
+        callbacks.current.onConnectionState?.(false);
+        resync();
+        if (!session?.access_token) return;
       }
-
-      if (
-        sessionError ||
-        !sessionData.session
-      ) {
-        console.error(
-          "[Tenh Realtime V3.11.31.39] No authenticated session.",
-          sessionError?.message ??
-            "",
-        );
-
-        return;
+      if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN" || event === "INITIAL_SESSION") {
+        // Do not await an auth operation inside Supabase's auth callback.
+        const epoch = generation;
+        void Promise.resolve().then(async () => {
+          if (cancelled || epoch !== generation) return;
+          await supabase.realtime.setAuth(session.access_token);
+          if (cancelled || epoch !== generation) return;
+          await start(); // covers a session that was not ready on first mount
+          resync();
+        }).catch(() => { if (!cancelled) { callbacks.current.onConnectionState?.(false); resync(); } });
       }
-
-      const session =
-        sessionData.session;
-
-      await supabase.realtime.setAuth(
-        session.access_token,
-      );
-
-      if (cancelled) {
-        return;
-      }
-
-      console.log(
-        "[Tenh Realtime V3.11.31.39] JWT applied.",
-      );
-
-      for (
-        const businessId of
-          scopedBusinessIds
-      ) {
-        if (cancelled) {
-          break;
-        }
-
-        // Reset on every successful subscribe, so only an unbroken run counts.
-        let consecutiveTransientErrors = 0;
-
-        const channel =
-          supabase
-            .channel(
-              `tenh-inbox-v3-${businessId}`,
-            )
-
-            .on(
-              "postgres_changes",
-              {
-                event: "*",
-                schema: "public",
-                table: "messages",
-                filter:
-                  `business_id=eq.${businessId}`,
-              },
-              (payload) => {
-                const eventType =
-                  payload.eventType as
-                    InboxRealtimeEventType;
-
-                console.log(
-                  "[Tenh Realtime V3.11.31.39] messages",
-                  businessId,
-                  eventType,
-                );
-
-                eventCallbackRef.current({
-                  table: "messages",
-                  eventType,
-                  newRow:
-                    (payload.new ??
-                      {}) as Record<
-                      string,
-                      unknown
-                    >,
-                  oldRow:
-                    (payload.old ??
-                      {}) as Record<
-                      string,
-                      unknown
-                    >,
-                });
-              },
-            )
-
-            .on(
-              "postgres_changes",
-              {
-                event: "*",
-                schema: "public",
-                table:
-                  "conversations",
-                filter:
-                  `business_id=eq.${businessId}`,
-              },
-              (payload) => {
-                const eventType =
-                  payload.eventType as
-                    InboxRealtimeEventType;
-
-                console.log(
-                  "[Tenh Realtime V3.11.31.39] conversations",
-                  businessId,
-                  eventType,
-                );
-
-                eventCallbackRef.current({
-                  table:
-                    "conversations",
-                  eventType,
-                  newRow:
-                    (payload.new ??
-                      {}) as Record<
-                      string,
-                      unknown
-                    >,
-                  oldRow:
-                    (payload.old ??
-                      {}) as Record<
-                      string,
-                      unknown
-                    >,
-                });
-
-                /*
-                 * A new raw conversation row has no joined contact,
-                 * team-member or social-account objects. Ask the server for
-                 * enriched data only in this uncommon case.
-                 */
-                if (
-                  eventType ===
-                    "INSERT"
-                ) {
-                  fallbackRefreshRef
-                    .current?.();
-                }
-              },
-            )
-
-            .on(
-              "postgres_changes",
-              {
-                event: "INSERT",
-                schema: "public",
-                table:
-                  "conversation_activity",
-                filter:
-                  `business_id=eq.${businessId}`,
-              },
-              (payload) => {
-                console.log(
-                  "[Tenh Realtime V3.11.31.39] conversation_activity INSERT",
-                  businessId,
-                );
-
-                eventCallbackRef.current({
-                  table:
-                    "conversation_activity",
-                  eventType:
-                    "INSERT",
-                  newRow:
-                    (payload.new ??
-                      {}) as Record<
-                      string,
-                      unknown
-                    >,
-                  oldRow: {},
-                });
-              },
-            )
-
-            .on(
-              "postgres_changes",
-              {
-                event: "*",
-                schema: "public",
-                table: "business_subscriptions",
-                filter: `business_id=eq.${businessId}`,
-              },
-              () => {
-                // Subscription expiry/reactivation changes Inbox scope. Ask the
-                // server to recalculate accessible businesses and channels.
-                fallbackRefreshRef.current?.();
-              },
-            )
-
-            .on(
-              "postgres_changes",
-              {
-                event: "*",
-                schema: "public",
-                table: "team_members",
-                filter: `business_id=eq.${businessId}`,
-              },
-              () => {
-                // Access removal/reactivation must disappear from Inbox without
-                // waiting for a logout or hard browser refresh.
-                fallbackRefreshRef.current?.();
-              },
-            )
-
-            .on(
-              "postgres_changes",
-              {
-                event: "*",
-                schema: "public",
-                table: "social_accounts",
-                filter: `business_id=eq.${businessId}`,
-              },
-              () => {
-                // Channel enable/disable or disconnect changes the operational
-                // All Channels set immediately.
-                fallbackRefreshRef.current?.();
-              },
-            )
-
-            .subscribe(
-              (
-                status,
-                error,
-              ) => {
-                console.log(
-                  "[Tenh Realtime V3.11.31.39] Channel status:",
-                  businessId,
-                  status,
-                );
-
-                if (error) {
-                  const transient =
-                    isTransientRealtimeError(
-                      error,
-                    );
-
-                  if (transient) {
-                    consecutiveTransientErrors += 1;
-                  }
-
-                  if (
-                    transient &&
-                    consecutiveTransientErrors <
-                      TRANSIENT_ERRORS_BEFORE_ESCALATING
-                  ) {
-                    console.warn(
-                      "[Tenh Realtime V3.11.31.39] Channel dropped, reconnecting:",
-                      businessId,
-                      error,
-                    );
-                  } else {
-                    console.error(
-                      transient
-                        ? "[Tenh Realtime V3.11.31.39] Channel keeps dropping:"
-                        : "[Tenh Realtime V3.11.31.39] Channel error:",
-                      businessId,
-                      error,
-                    );
-                  }
-                }
-
-                if (
-                  status ===
-                    "SUBSCRIBED"
-                ) {
-                  readyBusinesses.add(businessId);
-                  connectionCallback.current?.(readyBusinesses.size === scopedBusinessIds.length);
-                  consecutiveTransientErrors = 0;
-
-                  console.log(
-                    "[Tenh Realtime V3.11.31.39] ✅ SUBSCRIPTION REALTIME READY",
-                    businessId,
-                  );
-                }
-
-                if (status !== "SUBSCRIBED") {
-                  readyBusinesses.delete(businessId);
-                  connectionCallback.current?.(false);
-                }
-
-                if (
-                  status === "CHANNEL_ERROR" ||
-                  status === "TIMED_OUT"
-                ) {
-                  scheduleRecoveryRefresh();
-                }
-              },
-            );
-
-        channels.push(
-          channel,
-        );
-      }
+    });
+    const resume = () => { void start(); resync(); };
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", resume);
+      window.addEventListener("focus", resume);
     }
-
-    void startRealtime();
-
-    const {
-      data:
-        authSubscriptionData,
-    } =
-      supabase.auth
-        .onAuthStateChange(
-          (
-            event,
-            session,
-          ) => {
-            if (
-              !session
-                ?.access_token
-            ) {
-              return;
-            }
-
-            if (
-              event ===
-                "TOKEN_REFRESHED" ||
-              event ===
-                "SIGNED_IN"
-            ) {
-              void supabase
-                .realtime
-                .setAuth(
-                  session
-                    .access_token,
-                );
-            }
-          },
-        );
-
     return () => {
-      connectionCallback.current?.(false);
-      cancelled =
-        true;
-
-      if (recoveryRefreshTimer) {
-        clearTimeout(recoveryRefreshTimer);
-        recoveryRefreshTimer = null;
+      cancelled = true;
+      generation += 1;
+      callbacks.current.onConnectionState?.(false);
+      if (recoveryTimer) clearTimeout(recoveryTimer);
+      auth.subscription.unsubscribe();
+      if (typeof window !== "undefined") {
+        window.removeEventListener("online", resume);
+        window.removeEventListener("focus", resume);
       }
-
-      authSubscriptionData
-        .subscription
-        .unsubscribe();
-
-      for (
-        const channel of
-          channels
-      ) {
-        void supabase
-          .removeChannel(
-            channel,
-          );
-      }
+      for (const channel of channels) void supabase.removeChannel(channel);
     };
   }, [businessIdsKey]);
 }
