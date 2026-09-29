@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { getInboxConversationAccess } from "@/lib/inbox/get-inbox-resource-access";
+import { getFacebookPageAccessToken } from "@/lib/facebook/get-facebook-page-access-token";
 import { memberHasPermission } from "@/lib/auth/require-permission";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getMessageImageUrl, isMessageDeleted, resolvePhotoReplyTarget } from "@/lib/inbox/message-actions";
@@ -12,6 +13,76 @@ import type { InboxMessage } from "@/types/inbox";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const fail = (status: number, error: string) => NextResponse.json({ success: false, error }, { status, headers: { "Cache-Control": "no-store" } });
+
+type FacebookGraphAttachment = {
+  image_data?: { url?: string | null } | null;
+  video_data?: { url?: string | null } | null;
+  file_url?: string | null;
+  url?: string | null;
+  payload?: { url?: string | null } | null;
+  subattachments?: { data?: FacebookGraphAttachment[] | null } | null;
+};
+
+function firstFacebookAttachmentUrl(attachments: FacebookGraphAttachment[]): string | null {
+  for (const attachment of attachments) {
+    const direct = attachment.image_data?.url || attachment.file_url || attachment.video_data?.url || attachment.payload?.url || attachment.url;
+    if (typeof direct === "string" && direct.trim()) return direct.trim();
+    const nested = attachment.subattachments?.data;
+    if (Array.isArray(nested)) {
+      const found = firstFacebookAttachmentUrl(nested);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * Meta CDN URLs carried by old webhook rows can expire. Only after the saved
+ * source fails, ask Graph for the same authorized message again and use its
+ * current attachment URL. The browser never receives the Page access token or
+ * the refreshed CDN URL; this route still returns only transformed image bytes.
+ */
+async function refreshFacebookMessageImage({
+  businessId,
+  socialAccountId,
+  platformMessageId,
+}: {
+  businessId: string;
+  socialAccountId: string | null;
+  platformMessageId: string | null;
+}): Promise<string | null> {
+  if (!socialAccountId || !platformMessageId) return null;
+
+  const { data: account, error } = await supabaseAdmin
+    .from("social_accounts")
+    .select("platform,platform_account_id,is_active")
+    .eq("id", socialAccountId)
+    .eq("business_id", businessId)
+    .maybeSingle();
+
+  if (error || !account || account.platform !== "facebook" || account.is_active !== true || !account.platform_account_id) return null;
+
+  const token = await getFacebookPageAccessToken(account.platform_account_id);
+  const version = process.env.FACEBOOK_GRAPH_API_VERSION?.trim() || "v26.0";
+  const url = new URL(`https://graph.facebook.com/${version}/${encodeURIComponent(platformMessageId)}`);
+  url.searchParams.set("fields", "attachments");
+
+  const response = await fetch(url, {
+    method: "GET",
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) {
+    await response.body?.cancel();
+    return null;
+  }
+
+  const payload = await response.json().catch(() => null) as { attachments?: { data?: FacebookGraphAttachment[] | null } | FacebookGraphAttachment[] | null } | null;
+  const raw = payload?.attachments;
+  const attachments = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : [];
+  return firstFacebookAttachmentUrl(attachments);
+}
 
 /** Same-origin PNG copying and small reply thumbnails. Never accepts a URL from the browser. */
 export async function GET(request: NextRequest) {
@@ -40,12 +111,24 @@ export async function GET(request: NextRequest) {
     // Private uploads get a fresh signed link. The path comes from the authorized
     // row, not a user URL; incoming CDN albums keep their selected-photo source.
     if (!source || source.startsWith("/api/messages/")) {
-      const path = telegramMessageMediaStoragePath({ businessId: access.businessId, messageId: original.id, mediaKind: "photo" });
+      const mediaKind = original.message_type === "sticker" ? "file" : "photo";
+      const path = telegramMessageMediaStoragePath({ businessId: access.businessId, messageId: original.id, mediaKind });
       const signed = await cachedSignedUrls(TELEGRAM_MESSAGE_MEDIA_BUCKET, [path], 300);
       source = signed[0]?.signedUrl || null;
     }
     if (!source) return fail(404, "Photo unavailable.");
-    const input = await fetchInboxImage(source, process.env.NEXT_PUBLIC_SUPABASE_URL);
+    let input: Uint8Array;
+    try {
+      input = await fetchInboxImage(source, process.env.NEXT_PUBLIC_SUPABASE_URL);
+    } catch (storedSourceError) {
+      const freshSource = await refreshFacebookMessageImage({
+        businessId: access.businessId,
+        socialAccountId: access.conversation.social_account_id,
+        platformMessageId: original.platform_message_id,
+      }).catch(() => null);
+      if (!freshSource || freshSource === source) throw storedSourceError;
+      input = await fetchInboxImage(freshSource, process.env.NEXT_PUBLIC_SUPABASE_URL);
+    }
     const thumbnail = params.get("thumbnail") === "1";
     const make = (size: number) => sharp(input, { limitInputPixels: 40_000_000, animated: false }).rotate()
       .resize(size, size, { fit: "inside", withoutEnlargement: true }).png().toBuffer();

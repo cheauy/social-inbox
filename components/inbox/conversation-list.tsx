@@ -497,6 +497,26 @@ function UnreadIcon() {
   );
 }
 
+function CommentIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+      aria-hidden="true"
+    >
+      <path
+        d="M5 5.5h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-8l-4.5 3v-3H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M7.5 10h9M7.5 13h6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function ReminderIcon() {
   return (
     <svg
@@ -3596,6 +3616,16 @@ function ConversationListView({
     },
     {
       value:
+        "comment",
+      label:
+        isKhmer ? "មតិយោបល់ Facebook" : "Facebook Comment",
+      count:
+        builtInCounts.comment,
+      icon:
+        <CommentIcon />,
+    },
+    {
+      value:
         "pinned",
       label:
         isKhmer ? "Pin" : "Pinned",
@@ -3715,34 +3745,6 @@ function ConversationListView({
             );
           },
         )}
-
-        <div className="px-2 pb-1.5">
-          <button
-            type="button"
-            onClick={() => {
-              setViewsOpen(false);
-              setFilterOpen((current) => !current);
-            }}
-            className={`group relative mx-auto flex h-11 w-11 items-center justify-center rounded-xl border transition ${
-              filterOpen || optimisticStatus !== "all"
-                ? "border-blue-600 bg-blue-50 text-blue-700"
-                : "border-transparent text-slate-500 hover:bg-white hover:text-slate-900"
-            }`}
-            aria-label={isKhmer ? "ត្រងតាមស្ថានភាព" : "Filter by status"}
-            aria-expanded={filterOpen}
-          >
-            <FilterIcon />
-
-            {optimisticStatus !== "all" ? (
-              <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-blue-600" />
-            ) : null}
-
-            <span className="pointer-events-none absolute left-[52px] top-1/2 z-[100] hidden -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-950 px-3 py-2 text-xs font-medium text-white shadow-xl group-hover:block">
-              {isKhmer ? "ស្ថានភាពការសន្ទនា" : "Conversation status"}
-              <span className="absolute right-full top-1/2 -translate-y-1/2 border-y-4 border-r-4 border-y-transparent border-r-slate-950" />
-            </span>
-          </button>
-        </div>
 
         {showReminderRailShortcut ? (
         <button
@@ -4731,8 +4733,7 @@ function ConversationListView({
         ) : (
           <>
         <div className="relative shrink-0 border-b border-slate-200 p-3">
-          {/* Full-width search: the status filter now lives in the rail. */}
-          <div className="relative w-full">
+          <div className="flex w-full items-center gap-2">
             <div className="relative min-w-0 flex-1">
               <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
                 <svg
@@ -4771,30 +4772,28 @@ function ConversationListView({
                 className="w-full rounded-xl border-0 bg-slate-100 py-3 pl-10 pr-3 text-[13px] text-slate-700 outline-none transition placeholder:text-[12.5px] placeholder:text-slate-400 focus:bg-slate-200/60 focus:ring-2 focus:ring-blue-200"
               />
             </div>
-          </div>
 
-          {selectedViewKey === "unread" && onMarkAllRead ? (
-            <div className="mt-3 border-t border-slate-100 pt-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-slate-500">{isKhmer ? "មិនទាន់អាន" : "Unread"} · {filteredConversations.length}</span>
-                <button type="button" disabled={markingAllRead || filteredConversations.length === 0}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"
-                  onClick={async () => {
-                    setBulkReadNotice(null);
-                    try {
-                      const result = await onMarkAllRead(filteredConversations);
-                      setBulkReadNotice(isKhmer
-                        ? `បានអាន ${result.marked} · រំលង ${result.skipped} · បរាជ័យ ${result.failed}`
-                        : `${result.marked} marked as read${result.skipped ? ` · ${result.skipped} changed/already read` : ""}${result.failed ? ` · ${result.failed} not confirmed — retry` : ""}.`);
-                    } catch { setBulkReadNotice(isKhmer ? "មិនអាចសម្គាល់ថាបានអានបានទេ។ សូមព្យាយាមម្ដងទៀត។" : "Unable to mark as read. Please retry."); }
-                  }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden="true"><path d="m3 12 4 4 9-9M12 16l9-9" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                  {markingAllRead ? (isKhmer ? "កំពុងសម្គាល់…" : "Marking…") : (isKhmer ? "សម្គាល់ទាំងអស់ថាបានអាន" : "Mark all as read")}
-                </button>
-              </div>
-              {bulkReadNotice ? <p role="status" aria-live="polite" className="mt-1.5 text-[11px] leading-4 text-slate-500">{bulkReadNotice}</p> : null}
-            </div>
-          ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                setViewsOpen(false);
+                setFilterOpen((current) => !current);
+              }}
+              className={`relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${
+                filterOpen || optimisticStatus !== "all"
+                  ? "border-blue-200 bg-blue-50 text-blue-700"
+                  : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+              }`}
+              aria-label={isKhmer ? "ត្រងតាមស្ថានភាព" : "Filter conversation status"}
+              title={isKhmer ? "ស្ថានភាពការសន្ទនា" : "Conversation status"}
+              aria-expanded={filterOpen}
+            >
+              <FilterIcon />
+              {optimisticStatus !== "all" ? (
+                <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-blue-600" />
+              ) : null}
+            </button>
+          </div>
 
           {filterOpen ? (
             <>
@@ -4809,7 +4808,7 @@ function ConversationListView({
                 className="fixed inset-0 z-30 cursor-default"
               />
 
-              <div className="absolute left-0 top-[64px] z-40 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+              <div className="absolute right-3 top-[64px] z-40 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
                 <div className="border-b border-slate-100 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                     Filter
@@ -5004,18 +5003,51 @@ function ConversationListView({
                 }
               </span>
 
-              <button
-                type="button"
-                onClick={() =>
-                  selectView(
-                    "all",
-                  )
-                }
-                className="shrink-0 text-xs font-semibold text-violet-700 hover:underline"
-              >
-                Clear view
-              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                {selectedViewKey === "unread" && onMarkAllRead ? (
+                  <button
+                    type="button"
+                    disabled={markingAllRead || filteredConversations.length === 0}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label={isKhmer ? "សម្គាល់ទាំងអស់ថាបានអាន" : "Mark all as read"}
+                    title={isKhmer ? "សម្គាល់ទាំងអស់ថាបានអាន" : "Mark all as read"}
+                    onClick={async () => {
+                      setBulkReadNotice(null);
+                      try {
+                        const result = await onMarkAllRead(filteredConversations);
+                        setBulkReadNotice(isKhmer
+                          ? `បានអាន ${result.marked} · រំលង ${result.skipped} · បរាជ័យ ${result.failed}`
+                          : `${result.marked} marked as read${result.skipped ? ` · ${result.skipped} changed/already read` : ""}${result.failed ? ` · ${result.failed} not confirmed — retry` : ""}.`);
+                      } catch {
+                        setBulkReadNotice(isKhmer ? "មិនអាចសម្គាល់ថាបានអានបានទេ។ សូមព្យាយាមម្ដងទៀត។" : "Unable to mark as read. Please retry.");
+                      }
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden="true">
+                      <path d="m3 12 4 4 9-9M12 16l9-9" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <span className="sr-only">{isKhmer ? "សម្គាល់ទាំងអស់ថាបានអាន" : "Mark all as read"}</span>
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    selectView(
+                      "all",
+                    )
+                  }
+                  className="text-xs font-semibold text-violet-700 hover:underline"
+                >
+                  Clear view
+                </button>
+              </div>
             </div>
+            {selectedViewKey === "unread" && bulkReadNotice ? (
+              <p role="status" aria-live="polite" className="mt-1 text-[11px] leading-4 text-violet-600">
+                {bulkReadNotice}
+              </p>
+            ) : null}
           </div>
         ) : null}
 

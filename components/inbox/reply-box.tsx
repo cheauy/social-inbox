@@ -2388,6 +2388,19 @@ export function ReplyBox({
                 void loadSavedReplyAttachments(
                   savedAttachments,
                 );
+
+                /*
+                 * A quick reply is already the message draft. Return keyboard
+                 * focus to the composer immediately so the agent can press
+                 * Enter to send it without first clicking "Write a reply".
+                 */
+                window.requestAnimationFrame(() => {
+                  const input = replyInputRef.current;
+                  if (!input || input.disabled) return;
+                  input.focus({ preventScroll: true });
+                  const end = input.value.length;
+                  input.setSelectionRange(end, end);
+                });
               }}
             />
           </div>

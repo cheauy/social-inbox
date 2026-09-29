@@ -78,6 +78,52 @@ const CHAT_BACKGROUND_CHANGE_EVENT = "tenh:chat-background-theme-change";
  */
 const DEFAULT_CHAT_BACKGROUND_SRC = "/images/bg-theme1.png";
 
+function ResilientStickerImage({
+  directSrc,
+  conversationId,
+  messageId,
+  alt,
+  emoji,
+}: {
+  directSrc: string;
+  conversationId: string;
+  messageId: string;
+  alt: string;
+  emoji?: string | null;
+}) {
+  const [useProxy, setUseProxy] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
+  const proxySrc = inboxImageEndpoint({ conversationId, messageId });
+
+  if (unavailable) {
+    return (
+      <div className="flex min-h-20 w-fit min-w-[104px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white/80 px-3 py-2.5">
+        <span className="text-3xl leading-none">{emoji ?? "✨"}</span>
+        <span className="mt-1.5 text-[10.5px] font-medium text-slate-500">Sticker</span>
+      </div>
+    );
+  }
+
+  const src = useProxy ? proxySrc : directSrc;
+
+  return (
+    <img
+      decoding="async"
+      src={src}
+      alt={alt}
+      className="max-h-40 max-w-[160px] object-contain"
+      loading="lazy"
+      onError={() => {
+        if (!useProxy) {
+          setUseProxy(true);
+          return;
+        }
+        setUnavailable(true);
+      }}
+    />
+  );
+}
+
 
 function isMessengerPolicyRecord(
   value: unknown,
@@ -4837,18 +4883,22 @@ export function MessagePanel({
                             >
                               <ReplyIcon />
                               <span>
-                                {rawPayload?.tenh_reply?.scope === "tenh" && !nativeFacebookQuote ? "Reply reference · TENH" : `Reply to ${telegramReplyPreview.kind}`}
+                                {rawPayload?.tenh_reply?.scope === "tenh" && !nativeFacebookQuote
+                                  ? "Reply reference · TENH"
+                                  : `Reply to ${replyImageReference ? "Photo" : telegramReplyPreview.kind}`}
                               </span>
                             </span>
-                            <span
-                              className={`mt-0.5 block max-w-[320px] truncate leading-4 ${
-                                isOutgoing
-                                  ? "text-white/80"
-                                  : "text-slate-500"
-                              }`}
-                            >
-                              {telegramReplyPreview.text}
-                            </span>
+                            {!(replyImageReference && /^\[(image|photo)\]$/i.test(telegramReplyPreview.text.trim())) ? (
+                              <span
+                                className={`mt-0.5 block max-w-[320px] truncate leading-4 ${
+                                  isOutgoing
+                                    ? "text-white/80"
+                                    : "text-slate-500"
+                                }`}
+                              >
+                                {telegramReplyPreview.text}
+                              </span>
+                            ) : null}
                             </span>
                           </button>
                         ) : null}
@@ -5008,11 +5058,12 @@ export function MessagePanel({
                           <div className="w-fit">
                             {isFacebookSticker &&
                             facebookStickerUrl ? (
-                              <img decoding="async"
-                                src={facebookStickerUrl}
+                              <ResilientStickerImage
+                                directSrc={facebookStickerUrl}
+                                conversationId={message.conversation_id}
+                                messageId={message.id}
                                 alt="Facebook sticker"
-                                className="max-h-40 max-w-[160px] object-contain"
-                                loading="lazy"
+                                emoji={stickerMeta?.emoji}
                               />
                             ) : attachmentUrl &&
                               stickerMeta
@@ -5030,15 +5081,16 @@ export function MessagePanel({
                               stickerMeta
                                 ?.preview_kind ===
                                 "image" ? (
-                              <img decoding="async"
-                                src={attachmentUrl}
+                              <ResilientStickerImage
+                                directSrc={attachmentUrl}
+                                conversationId={message.conversation_id}
+                                messageId={message.id}
                                 alt={
                                   stickerMeta?.emoji
                                     ? `Telegram sticker ${stickerMeta.emoji}`
                                     : "Telegram sticker"
                                 }
-                                className="max-h-40 max-w-[160px] object-contain"
-                                loading="lazy"
+                                emoji={stickerMeta?.emoji}
                               />
                             ) : (
                               /*

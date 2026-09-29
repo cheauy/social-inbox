@@ -105,7 +105,7 @@ export function getMessageImageUrl(message: ActionMessage): string | null {
   const { photoIndex } = parsePhotoReplyId(message.id);
   const photos = nativeAlbumImageUrls(message);
   if (photoIndex !== null) return photos[photoIndex] ?? null;
-  if (["image", "photo"].includes(message.message_type)) return message.attachment_url || photos[0] || null;
+  if (["image", "photo", "sticker"].includes(message.message_type)) return message.attachment_url || photos[0] || null;
   return photos[0] ?? null;
 }
 
