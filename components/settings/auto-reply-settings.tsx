@@ -6,7 +6,7 @@ type Page = { id: string; account_name: string | null; platform_account_id: stri
 type History = { id: string; rule_id: string; comment_id: string; action: string; status: string; reason: string | null; attempts: number; created_at: string };
 const field = "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm";
 const button = "rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium disabled:opacity-50";
-export function AutoReplySettings() {
+export function AutoReplySettings({includeDrafts=true}:{includeDrafts?:boolean}={}) {
   const [rules, setRules] = useState<AutoReplyRule[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
   const [history, setHistory] = useState<History[]>([]);
@@ -107,7 +107,7 @@ export function AutoReplySettings() {
     } catch (error) { setNotice((error as Error).message); }
   }
   return <div className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6">
-    <BotDraftSettings />
+    {includeDrafts ? <BotDraftSettings /> : null}
     <div><h1 className="text-2xl font-bold text-slate-900">Tenh Bot · Facebook comment Auto Reply</h1>
       <p className="mt-2 text-sm text-slate-600">Reply publicly, privately, or both to new comments on your connected Pages. Specific-post rules take priority. A comment with an existing reply is skipped.</p>
       <p className="mt-2 text-sm text-slate-600">All-post rules include future posts. Start times use {timezone || "your browser timezone"}; earlier comments are never backfilled. Private replies depend on Facebook eligibility and customer response.</p></div>

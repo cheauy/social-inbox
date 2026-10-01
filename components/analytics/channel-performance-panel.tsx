@@ -1,4 +1,5 @@
 "use client";
+import { useForegroundLoading } from "@/lib/display/foreground-loading";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -435,6 +436,7 @@ export function ChannelPerformancePanel() {
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  useForegroundLoading(loading);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {

@@ -11,6 +11,10 @@ import type {
   CustomerTag,
 } from "@/types/inbox";
 import { getReadableTagTextColor } from "@/lib/display/tag-contrast";
+import { createQuickPickerCache } from "@/lib/inbox/quick-picker-cache";
+import { QuickPickerLoading } from "./quick-picker-loading";
+
+const tagCatalogCache = createQuickPickerCache<{ tags: CustomerTag[]; loadedAt: number }>();
 
 type CustomerTagSelectorProps = {
   contactId: string;
@@ -124,7 +128,9 @@ export function CustomerTagSelector({
   ] =
     useState<
       CustomerTag[]
-    >([]);
+    >(() => tagCatalogCache.get(businessId)?.tags ?? []);
+  const [availableBusinessId, setAvailableBusinessId] = useState(businessId);
+  const scopedAvailableTags = useMemo(() => availableBusinessId === businessId ? availableTags : tagCatalogCache.get(businessId)?.tags ?? [], [availableBusinessId, availableTags, businessId]);
 
   const [
     selectedTags,
@@ -240,12 +246,15 @@ export function CustomerTagSelector({
       false;
 
     async function loadTags() {
-      setLoading(
-        true,
-      );
+      const cached = tagCatalogCache.get(businessId);
+      setAvailableBusinessId(businessId);
+      setAvailableTags(cached?.tags ?? []);
+      setLoading(!cached);
       setError(null);
+      if (tagCatalogCache.fresh(businessId)) { setLoading(false); return; }
 
       try {
+        const next = await tagCatalogCache.load(businessId, async () => {
         const params =
           new URLSearchParams({
             businessId,
@@ -273,22 +282,23 @@ export function CustomerTagSelector({
           !response.ok ||
           !result?.success
         ) {
-          throw new Error(
+          if (response.status === 401 || response.status === 403) tagCatalogCache.invalidate(businessId);
+          throw Object.assign(new Error(
             result?.error ??
               "Unable to load tags.",
-          );
+          ), { denied: response.status === 401 || response.status === 403 });
         }
+        return { tags: result.tags ?? [], loadedAt: Date.now() };
+        });
 
         if (!cancelled) {
-          setAvailableTags(
-            result.tags ??
-              [],
-          );
+          setAvailableTags(next.tags);
         }
       } catch (
         loadError
       ) {
         if (!cancelled) {
+          if ((loadError as { denied?: boolean }).denied) setAvailableTags([]);
           setError(
             loadError instanceof
               Error
@@ -336,10 +346,10 @@ export function CustomerTagSelector({
           .toLowerCase();
 
       if (!keyword) {
-        return availableTags;
+        return scopedAvailableTags;
       }
 
-      return availableTags.filter(
+      return scopedAvailableTags.filter(
         (tag) =>
           tag.name
             .toLowerCase()
@@ -356,7 +366,7 @@ export function CustomerTagSelector({
             ),
       );
     }, [
-      availableTags,
+      scopedAvailableTags,
       search,
     ]);
 
@@ -713,12 +723,9 @@ export function CustomerTagSelector({
             </div>
           </div>
 
-          <div className="max-h-[360px] overflow-y-auto overscroll-contain px-5 py-5">
-            {loading ? (
-              <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-slate-500">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
-                Loading tags...
-              </div>
+          <div className="h-[240px] max-h-[360px] overflow-y-auto overscroll-contain px-5 py-5" aria-busy={loading}>
+            {!tagCatalogCache.get(businessId) && !(error && availableBusinessId === businessId) ? (
+              <QuickPickerLoading kind="tags" />
             ) : filteredTags.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-slate-500">
                 No tags found.

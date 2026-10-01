@@ -15,14 +15,14 @@ const album = (patch = {}) => msg({ raw_payload: { message: { attachments: [
 ] } }, ...patch });
 const ids = rows => Array.from(rows, item => item.id);
 
-test('received/sent activity and reverse-sorted server refreshes update rows without moving them', () => {
+test('received/sent activity reorders rows by latest timestamp', () => {
   const before = [row('a'), row('b'), row('c')];
   const updated = [row('c', { last_message_at: '2099', unread_count: 8 }), row('b'), row('a')];
   const result = stableConversationOrder(before, updated);
-  assert.deepEqual(ids(result), ['a', 'b', 'c']); assert.equal(result[2].unread_count, 8); assert.equal(result[2].last_message_at, '2099');
+  assert.deepEqual(ids(result), ['c', 'a', 'b']); assert.equal(result[0].unread_count, 8); assert.equal(result[0].last_message_at, '2099');
   assert.deepEqual(ids(before), ['a', 'b', 'c']); assert.deepEqual(ids(updated), ['c', 'b', 'a']);
 });
-test('new conversations append instead of moving the reader; removed rows stay removed', () => {
+test('rows with no valid activity timestamp keep tie positions; removed rows stay removed', () => {
   assert.deepEqual(ids(stableConversationOrder([row('a'),row('b')], [row('new'),row('b')])), ['b','new']);
 });
 test('explicit pin and unpin remain supported', () => {

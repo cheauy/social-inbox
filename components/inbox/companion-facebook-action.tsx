@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { normalizeBusinessSuiteConversationLink } from "@/lib/facebook/conversation-link";
 
-type Props = { pageId: string | null; threadId: string | null; conversationId: string; businessId: string; compact?: boolean; menu?: boolean };
+type Props = { pageId: string | null; threadId: string | null; conversationId: string; businessId: string; compact?: boolean; menu?: boolean; navigationOnly?: boolean };
 type Pending = { key: string; controller: AbortController; popup: Window | null; navigated: boolean };
 type LookupDetails = { conversationId: string; businessId: string; pageId: string; recipientId: string;
   thread_id: string; threadIdSource: string; metaConversationLink: string | null; cacheUsed: boolean };
@@ -16,16 +16,17 @@ function closeLoadingWindow(pending: Pending) {
 }
 
 // Keep the exported name for existing callers; this action has no extension dependency.
-export function CompanionFacebookAction({ pageId, threadId, conversationId, businessId, compact = false, menu = false }: Props) {
+export function CompanionFacebookAction({ pageId, threadId, conversationId, businessId, compact = false, menu = false, navigationOnly = false }: Props) {
   const [busy, setBusy] = useState(false), [notice, setNotice] = useState("");
   const [fallbackUrl, setFallbackUrl] = useState("");
+  const [pageFallback, setPageFallback] = useState(false);
   const [lookupDetails, setLookupDetails] = useState<LookupDetails | null>(null);
   const [copyNotice, setCopyNotice] = useState("");
   const key = JSON.stringify([businessId, conversationId, pageId, threadId]);
   const current = useRef(key); current.current = key;
   const pending = useRef<Pending | null>(null);
   useEffect(() => {
-    setBusy(false); setNotice(""); setFallbackUrl("");
+    setBusy(false); setNotice(""); setFallbackUrl(""); setPageFallback(false);
     setLookupDetails(null); setCopyNotice("");
     return () => {
       const operation = pending.current;
@@ -55,11 +56,12 @@ export function CompanionFacebookAction({ pageId, threadId, conversationId, busi
     } catch { closeLoadingWindow(operation); operation.popup = null; }
     // A missing Suite link does not invalidate a successfully resolved Graph
     // thread. Reuse that cache; only retry a failed lookup with a refresh.
-    const refresh = Boolean(notice) && !lookupDetails;
-    setBusy(true); setNotice(""); setFallbackUrl("");
+    const refresh = !navigationOnly && Boolean(notice) && !lookupDetails;
+    setBusy(true); setNotice(""); setFallbackUrl(""); setPageFallback(false);
     const timer = setTimeout(() => operation.controller.abort(), 15000);
     try {
       const params = new URLSearchParams({ businessId, pageId, recipientId: threadId });
+      if (navigationOnly) params.set("lookup", "navigation");
       if (refresh) params.set("refresh", "1");
       const response = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/facebook-conversation?${params}`, {
         credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" }, signal: operation.controller.signal,
@@ -82,8 +84,15 @@ export function CompanionFacebookAction({ pageId, threadId, conversationId, busi
         setCopyNotice("");
       } else setLookupDetails(null);
       if (!response.ok || result.success !== true) throw new Error(typeof result.error === "string" ? result.error.slice(0, 300) : "Unable to get this conversation's Facebook link. Please try again.");
+      if (navigationOnly && matchesContext && result.navigationAvailable === false) {
+        const expected = `https://business.facebook.com/latest/inbox/all?asset_id=${encodeURIComponent(pageId)}`;
+        if (result.pageInboxUrl !== expected) throw new Error("The Page inbox destination could not be verified.");
+        setFallbackUrl(expected); setPageFallback(true);
+        setNotice("An exact conversation link is unavailable. Open this Page's inbox and select the customer there.");
+        return;
+      }
       if (result.conversationId !== conversationId || result.businessId !== businessId || result.pageId !== pageId ||
-          result.recipientId !== threadId || !["meta_conversations_api", "agent_saved_business_suite"].includes(String(result.linkSource))) throw new Error("The selected conversation changed. Reopen it and try again.");
+          result.recipientId !== threadId || !(navigationOnly ? ["meta_conversations_api"] : ["meta_conversations_api", "agent_saved_business_suite"]).includes(String(result.linkSource))) throw new Error("The selected conversation changed. Reopen it and try again.");
       const link = normalizeBusinessSuiteConversationLink(result.conversationLink, pageId, threadId);
       if (!link) throw new Error("Direct opening in Business Suite is unavailable for this chat.");
       const popup = loadingWindow(operation.popup);
@@ -108,7 +117,7 @@ export function CompanionFacebookAction({ pageId, threadId, conversationId, busi
       if (current.current === key) setCopyNotice("Copied");
     } catch { if (current.current === key) setCopyNotice("Select and copy the details below."); }
   }
-  const label = busy ? "Opening customer conversation…" : menu ? "View this conversation" : "Open in Meta Business Suite";
+  const label = busy ? "Opening customer conversation…" : navigationOnly ? "View conversation" : menu ? "View this conversation" : "Open in Meta Business Suite";
   return <div className={compact ? "relative shrink-0" : menu ? "" : "mt-2"}>
     <button type="button" disabled={busy} onClick={() => void open()} title={label} aria-label={label}
       className={menu ? "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50" : compact
@@ -118,7 +127,7 @@ export function CompanionFacebookAction({ pageId, threadId, conversationId, busi
     </button>
     {notice ? <div className={compact ? "absolute right-0 top-12 z-50 w-80 max-w-[85vw] rounded-xl border border-amber-200 bg-amber-50 p-3 shadow-lg" : "mt-2 max-w-lg"}>
       {notice ? <p role="alert" className="text-xs leading-5 text-amber-900">{notice}</p> : null}
-      {fallbackUrl ? <a href={fallbackUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs font-semibold underline">Open Facebook conversation</a> : null}
+      {fallbackUrl ? <a href={fallbackUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs font-semibold underline">{pageFallback ? "Open Page inbox" : "Open Facebook conversation"}</a> : null}
       {lookupDetails ? <details className="mt-2 text-xs text-slate-600">
         <summary className="cursor-pointer">Meta lookup details</summary>
         <p className="mt-2">Meta found the thread. Its ID alone does not verify a Business Suite destination.</p>

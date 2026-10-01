@@ -5,6 +5,7 @@ import { createReplyContext, getDeletedMessageText, getMessageActions, resolvePh
 import { INBOX_SYNC_EVENT, SYNC_TIMEOUT_MS, takeSyncBatch, isOlderConversationState, rowTime, liveMessageType, messageCoveredByRead, type InboxSyncCursor } from "@/lib/inbox/live-sync";
 import { snapshotUnread, receiptStillApplies, type ReadReceipt, type ReadTarget, type BulkReadResult } from "@/lib/inbox/bulk-read";
 import { stableConversationOrder } from "@/lib/inbox/stable-conversation-order";
+import { retainKnownConversationRows } from "@/lib/inbox/retain-known-conversation-rows";
 
 import { isCommentReplyBlocked } from "@/components/inbox/comment-reply-access";
 
@@ -22,13 +23,14 @@ import {
   useRef,
   useState,
 } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, SetStateAction } from "react";
 
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { INBOX_PAGE_CHANGED_EVENT, mergeConversationPage } from "@/lib/inbox/conversation-page-contract";
 import { matchesOptimisticMessage } from "@/lib/inbox/optimistic-message-match";
 import { confirmOutgoingMessage } from "@/lib/inbox/confirm-outgoing-message";
 import { normalizeMessages } from "@/lib/inbox/normalize-messages";
+import { retainLocalImagePreview } from "@/lib/inbox/local-image-preview";
 import { readMessagePageResponse } from "@/lib/inbox/read-message-page-response";
 import { latestCustomerChannel } from "@/lib/inbox/latest-customer-channel";
 import { CustomerProfile } from "@/components/inbox/customer-profile";
@@ -84,9 +86,11 @@ type OptimisticInboxMessage =
       OptimisticSendStatus;
     __optimistic_created_at?:
       number;
+    __optimistic_requires_review?: boolean;
   };
 
 type PendingOptimisticSend = {
+  requiresDeliveryReview?: boolean;
   tempId: string;
   conversationId: string;
   message: string;
@@ -104,6 +108,7 @@ type PendingOptimisticAttachmentSend = {
   replyToMessageId?: string;
   albumFiles?: File[];
   albumPreviewUrls?: string[];
+  albumGroupId?: string;
   tempId: string;
   conversationId: string;
   recipientId: string;
@@ -352,7 +357,7 @@ function buildMultiAgentToast(
 }
 
 function sortLiveConversations(conversations: InboxConversation[]) {
-  // The state setter preserves positions and handles explicit pin changes.
+  // The state setter orders latest activity within the pinned groups.
   return conversations;
 }
 
@@ -550,8 +555,25 @@ const requestedConversationId =
     setConversationMessagesError,
   ] = useState<string | null>(null);
 
-  const [reply, setReply] = useState("");
-  const [replyingToFacebookMessageId, setReplyingToFacebookMessageId] = useState<string | null>(null);
+  const [reply, setReplyState] = useState("");
+  const [replyingToFacebookMessageId, setFacebookReplyState] = useState<string | null>(null);
+  const composerDraftRef = useRef({ reply: "", quote: null as string | null, revision: 0 });
+  const textSubmissionsRef = useRef(new Set<string>());
+  const latestTextSubmissionRef = useRef(0);
+  const setReply = useCallback((value: SetStateAction<string>) => {
+    const current = composerDraftRef.current;
+    const next = typeof value === "function" ? value(current.reply) : value;
+    if (next !== current.reply) current.revision++;
+    current.reply = next;
+    setReplyState(next);
+  }, []);
+  const setReplyingToFacebookMessageId = useCallback((value: SetStateAction<string | null>) => {
+    const current = composerDraftRef.current;
+    const next = typeof value === "function" ? value(current.quote) : value;
+    if (next !== current.quote) current.revision++;
+    current.quote = next;
+    setFacebookReplyState(next);
+  }, []);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] =
     useState<string | null>(null);
@@ -1363,7 +1385,7 @@ useEffect(() => {
   setReply("");
   setSendError(null);
   setReplyingToCommentId(null);
-}, [resolvedActiveConversationId]);
+}, [resolvedActiveConversationId, setReply, setReplyingToFacebookMessageId]);
 
 const realtimeBusinessIds =
   useMemo(
@@ -1950,6 +1972,8 @@ useInboxRealtime({
   onRealtimeEvent: (
     event,
   ) => {
+    const eventBusinessId = (event.eventType === "DELETE" ? event.oldRow : event.newRow).business_id;
+    if (typeof eventBusinessId === "string" && !realtimeBusinessIds.includes(eventBusinessId)) return;
     if (pagination) window.dispatchEvent(new CustomEvent(INBOX_PAGE_CHANGED_EVENT, { detail: {
       conversationId: event.table === "conversations" ? event.newRow.id ?? event.oldRow.id : event.newRow.conversation_id ?? event.oldRow.conversation_id,
     } }));
@@ -2341,7 +2365,7 @@ useInboxRealtime({
               if (
                 Number.isFinite(currentTimestamp) &&
                 currentTimestamp > 0 &&
-                eventTimestamp + 1000 < currentTimestamp
+                eventTimestamp < currentTimestamp
               ) {
                 return conversation;
               }
@@ -2515,12 +2539,12 @@ useInboxRealtime({
                   ? optimisticMessage.attachment_url
                   : null;
 
-              const replacement = {
+              const replacement = retainLocalImagePreview({
                 ...row,
                 attachment_url:
                   row.attachment_url ??
                   localAttachmentUrl,
-              } as unknown as typeof current[number];
+              } as unknown as typeof current[number], optimisticMessage);
 
               return [
                 ...current.filter(
@@ -3663,13 +3687,7 @@ useEffect(() => {
         serverIsOlderThanLocal && previous
           ? {
               ...conversation,
-              updated_at: previous.updated_at,
-              last_message_at:
-                previous.last_message_at,
-              last_message_text:
-                previous.last_message_text,
-              unread_count:
-                previous.unread_count,
+              ...previous,
             }
           : conversation;
 
@@ -3830,17 +3848,12 @@ useEffect(() => {
       return mergedConversation;
     });
 
-    for (const id of liveDiscoveredIdsRef.current) {
-      if (next.some(row => row.id === id)) { liveDiscoveredIdsRef.current.delete(id); continue; }
-      const row = currentById.get(id);
-      if (row && accessibleBusinessIds.includes(row.business_id) &&
-          (!collaborationChannelId || row.social_account?.id === collaborationChannelId) &&
-          (!collaborationWorkspaceId || row.business_id === collaborationWorkspaceId)) next.push(row);
-    }
+    const retained = retainKnownConversationRows(current, next, accessibleBusinessIds, collaborationChannelId, collaborationWorkspaceId);
+    next.splice(0, next.length, ...retained);
 
     /*
      * Status/channel/view navigation can legitimately omit the currently
-     * selected row from fresh server props. Keep only that selected row in
+     * selected row from fresh server props. Keep that selected row in
      * local state so MessagePanel remains mounted; ConversationList applies
      * the active left-panel scope before rendering rows.
      */
@@ -3853,7 +3866,7 @@ useEffect(() => {
     ) {
       const selectedPrevious = currentById.get(selectedId);
 
-      if (selectedPrevious) {
+      if (selectedPrevious && accessibleBusinessIds.includes(selectedPrevious.business_id)) {
         const persistedManualUnreadCount =
           persistedManualUnreadCountsRef.current.get(selectedId) ?? 0;
 
@@ -4823,12 +4836,12 @@ useEffect(() => {
           optimisticId
         ];
 
-        merged[optimisticIndex] = {
+        merged[optimisticIndex] = retainLocalImagePreview({
           ...serverMessage,
           attachment_url:
             serverMessage.attachment_url ??
             localAttachmentUrl,
-        } as InboxMessage;
+        } as InboxMessage, optimisticMessage);
 
         continue;
       }
@@ -7029,7 +7042,9 @@ async function performOptimisticSend(
         result.code ===
           "MESSENGER_POLICY_UNKNOWN" ||
         result.code ===
-          "HUMAN_AGENT_APPROVAL_REQUIRED"
+          "HUMAN_AGENT_APPROVAL_REQUIRED" ||
+        result.code === "FACEBOOK_QUOTED_REPLY_REJECTED" ||
+        (pending.endpoint === "/api/facebook/send" && Boolean(pending.requestBody.replyToMessageId) && response.status >= 400 && response.status < 500)
       ) {
         setLiveMessages(
           (current) =>
@@ -7103,6 +7118,14 @@ async function performOptimisticSend(
         ? error.message
         : "Unable to send the message.";
 
+    if (pending.endpoint === "/api/facebook/send" && pending.requestBody.replyToMessageId) {
+      // No explicit refusal was received. Keep the quote/draft, but do not
+      // offer an uncertain request as a safe Retry operation.
+      pending.requiresDeliveryReview = true;
+      setLiveMessages(current => current.map(item => item.id === pending.tempId
+        ? { ...item, __optimistic_requires_review: true } : item));
+    }
+
     setOptimisticSendStatus(
       pending.tempId,
       "failed",
@@ -7128,7 +7151,7 @@ async function performOptimisticSend(
     }
 
     setSendError(
-      errorMessage,
+      pending.requiresDeliveryReview ? `Delivery of this quoted reply is unconfirmed. Check Messenger before sending again. ${errorMessage}` : errorMessage,
     );
     return false;
   } finally {
@@ -7288,14 +7311,6 @@ async function performOptimisticAttachmentSend(
     if (result.message) {
       const savedMessage =
         result.message as InboxMessage;
-      if (pending.albumPreviewUrls) {
-        savedMessage.raw_payload = {
-          ...(savedMessage.raw_payload as Record<string, unknown> ?? {}),
-          message: { attachments: pending.albumPreviewUrls.map((url) => ({ type: "image", payload: { url } })) },
-        };
-      }
-
-
       setLiveMessages((current) =>
         reconcileOptimisticMessage(
           current,
@@ -7356,12 +7371,13 @@ function reconcileOptimisticMessage(
       message.id !== tempId,
   );
 
-  const reconciled = {
+  const original = current.find(message => message.id === tempId);
+  const reconciled = retainLocalImagePreview({
     ...savedMessage,
-    attachment_url: previewUrl,
+    attachment_url: savedMessage.message_type === "image" ? savedMessage.attachment_url || previewUrl : previewUrl,
     __optimistic_status: "sent",
     __optimistic_created_at: Date.now(),
-  } as unknown as InboxMessage;
+  } as unknown as InboxMessage, original ?? savedMessage);
 
   if (alreadyStored) {
     return current.flatMap((message) => {
@@ -7400,6 +7416,11 @@ async function performOptimisticAlbumSend(
   pendings: PendingOptimisticAttachmentSend[],
   caption?: string,
 ): Promise<boolean> {
+  const albumGroupId = pendings[0].albumGroupId ?? crypto.randomUUID();
+  for (const pending of pendings) pending.albumGroupId = albumGroupId;
+  setLiveMessages(current => current.map(message => pendings.some(p => p.tempId === message.id)
+    ? { ...message, raw_payload: { ...message.raw_payload, tenh_media_group: { provider: "telegram", id: albumGroupId } } }
+    : message));
   for (const pending of pendings) {
     setOptimisticSendStatus(
       pending.tempId,
@@ -7412,6 +7433,8 @@ async function performOptimisticAlbumSend(
 
   try {
     const formData = new FormData();
+
+    formData.set("clientMediaGroupId", albumGroupId);
 
     formData.set(
       "conversationId",
@@ -7905,6 +7928,11 @@ async function handleRetryOptimisticMessage(
     return;
   }
 
+  if (pending.requiresDeliveryReview) {
+    setSendError("Delivery of this quoted reply is unconfirmed. Check Messenger before sending again.");
+    return;
+  }
+
   await performOptimisticSend(
     pending,
   );
@@ -8200,6 +8228,11 @@ async function handleSendMessage(
       commentId,
     };
 
+  const submissionKey = JSON.stringify([pending.conversationId, endpoint, message, commentId, selectedReplyId]);
+  if (textSubmissionsRef.current.has(submissionKey)) return;
+  textSubmissionsRef.current.add(submissionKey);
+  const submission = ++latestTextSubmissionRef.current;
+
   pendingSendsRef.current[
     tempId
   ] = pending;
@@ -8244,8 +8277,10 @@ async function handleSendMessage(
         .created_at,
   });
 
-  if (capturedMessage === undefined) setReply("");
-  setReplyingToFacebookMessageId(null);
+  const recoverFacebookQuote = !isCommentReply && conversationPlatform === "facebook" && Boolean(selectedReplyId);
+  if (capturedMessage === undefined) setReply(current => current === reply ? "" : current);
+  setReplyingToFacebookMessageId(current => current === selectedReplyId ? null : current);
+  const clearedRevision = composerDraftRef.current.revision;
   setReplyingToCommentId(
     null,
   );
@@ -8257,9 +8292,34 @@ async function handleSendMessage(
   );
   setSendError(null);
 
-  await performOptimisticSend(
-    pending,
-  );
+  let sent: boolean;
+  try { sent = await performOptimisticSend(pending); }
+  finally { textSubmissionsRef.current.delete(submissionKey); }
+  if (!sent && recoverFacebookQuote) {
+    const current = composerDraftRef.current;
+    const canRestore = capturedMessage === undefined && desiredConversationIdRef.current === activeConversation.id &&
+      submission === latestTextSubmissionRef.current && current.revision === clearedRevision && !current.reply && !current.quote;
+    if (canRestore) {
+      setReply(reply);
+      setReplyingToFacebookMessageId(selectedReplyId);
+    } else if (!pendingSendsRef.current[pending.tempId]) {
+      // Explicit rejection removed the optimistic copy. If recovery would
+      // replace newer work, keep the rejected request in its original thread.
+      pendingSendsRef.current[pending.tempId] = pending;
+      if (desiredConversationIdRef.current === activeConversation.id) setLiveMessages(current =>
+        current.some(item => item.id === pending.tempId) ? current : [...current, { ...optimisticMessage, __optimistic_status: "failed" }]);
+    }
+    if (desiredConversationIdRef.current !== activeConversation.id) {
+      const cached = conversationMessageCacheRef.current[activeConversation.id];
+      if (cached) {
+        const failed = { ...optimisticMessage, __optimistic_status: "failed" as const,
+          ...(pending.requiresDeliveryReview ? { __optimistic_requires_review: true } : {}) };
+        setCachedConversationPage(activeConversation.id, { ...cached,
+          messages: cached.messages.some(item => item.id === pending.tempId)
+            ? cached.messages.map(item => item.id === pending.tempId ? failed : item) : [...cached.messages, failed] });
+      }
+    }
+  }
 }
 
   async function handleSendSticker(sticker: InboxStickerChoice): Promise<boolean> {
@@ -8653,7 +8713,7 @@ async function handleAssignToMe() {
 }
 
 return (
-<div className="relative h-full min-h-0 w-full overflow-hidden bg-white">
+<div data-inbox-shell className="relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
   {multiAgentToast ? (
     <div className="pointer-events-none absolute right-5 top-5 z-[90] w-[min(390px,calc(100%-2.5rem))]">
       <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">

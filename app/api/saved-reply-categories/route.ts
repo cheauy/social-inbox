@@ -6,6 +6,7 @@ import {
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { authorizeInboxBusinessAccess } from "@/lib/inbox/get-inbox-resource-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,7 +37,7 @@ function cleanName(value: unknown) {
 }
 
 /** List a workspace's categories in the order the Owner arranged them. */
-export async function GET() {
+export async function GET(request?: NextRequest) {
   const authResult = await getCurrentMember();
 
   if (!authResult.success) {
@@ -46,12 +47,17 @@ export async function GET() {
     );
   }
 
+  const businessId = request?.nextUrl.searchParams.get("businessId")?.trim() || authResult.member.business_id;
+  if (businessId !== authResult.member.business_id) {
+    const scope = await authorizeInboxBusinessAccess(businessId);
+    if (!scope.success) return jsonError(scope.error, scope.status);
+  }
   const { data, error } = await supabaseAdmin
     .from("saved_reply_categories")
     .select(CATEGORY_COLUMNS)
     .eq(
       "business_id",
-      authResult.member.business_id,
+      businessId,
     )
     .order("sort_index", {
       ascending: true,

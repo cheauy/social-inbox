@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { InboxConversation } from "@/types/inbox";
+import { beginForegroundLoading } from "@/lib/display/foreground-loading";
 import { INBOX_SYNC_EVENT, SYNC_TIMEOUT_MS } from "@/lib/inbox/live-sync";
+import { isOlderConversationState } from "@/lib/inbox/live-sync";
 import { INBOX_PAGE_CHANGED_EVENT, mergeConversationPage, type ConversationPage, type ConversationPageRequest, type ConversationPagingInitial } from "./conversation-page-contract";
 
 type State = { key: string; rows: InboxConversation[]; page: ConversationPagingInitial["page"]; loading: boolean; error: string | null };
@@ -61,27 +63,40 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
     if (mode === "more" && (!current || current.key !== activeKey || !current.page.hasMore)) return;
     const controller = new AbortController(); controllerRef.current = controller;
     const generation = ++generationRef.current;
+    const finishForeground = mode === "refresh" ? () => {} : beginForegroundLoading();
     setState(previous => previous ? { ...previous, loading: true, error: null } : null);
     try {
       let rows = mode === "replace" ? [] : current?.rows ?? [];
-      const known = mode === "refresh" ? [...new Set([
-        ...(catchUpRef.current ? liveRowsRef.current.map(row => row.id) : []), ...pendingIdsRef.current,
-      ])] : [];
+      const known = [...new Set([
+        ...(mode === "replace" || mode === "refresh" && catchUpRef.current ? liveRowsRef.current.map(row => row.id) : []),
+        ...pendingIdsRef.current,
+      ])];
       pendingIdsRef.current.clear(); catchUpRef.current = false;
       // Resume validates every already visited row, in bounded batches, without fetching the entire inbox.
       const batches = Math.max(1, Math.ceil(known.length / 200));
       let latest: ConversationPage | null = null;
       for (let offset = 0; offset < batches; offset++) {
         const ids = known.slice(offset * 200, (offset + 1) * 200);
+        const before = new Map(liveRowsRef.current.map(row => [row.id, rowVersion(row)]));
         const page = await read({ ...activeRequest, cursor: mode === "more" ? current!.page.cursor : null,
           ...(ids.length ? { knownIds: ids } : {}) }, controller.signal);
         if (generation !== generationRef.current || controller.signal.aborted) return;
+        const live = new Map(liveRowsRef.current.map(row => [row.id,row]));
+        if ([...page.conversations, ...page.updates].some(row => live.has(row.id) && live.get(row.id)!.business_id !== row.business_id)) {
+          throw new Error("The conversation page returned a mismatched workspace. Please retry.");
+        }
+        const changed = new Set(liveRowsRef.current.filter(row => before.get(row.id) !== rowVersion(row)).map(row => row.id));
         if (mode === "refresh") {
           const qualified = new Set(page.matchedKnownIds);
-          rows = rows.filter(row => !ids.includes(row.id) || qualified.has(row.id));
+          rows = rows.filter(row => !ids.includes(row.id) || qualified.has(row.id) || changed.has(row.id));
         }
-        rows = mergeConversationPage(rows, [...page.conversations,...page.updates]);
-        const updatedRows = [...page.conversations,...page.updates];
+        const updatedRows = [...page.conversations,...page.updates].flatMap(row => {
+          const current = live.get(row.id);
+          if (current && current.business_id !== row.business_id) return [];
+          return [current && isOlderConversationState(current, row) ? current : row];
+        });
+        rows = mergeConversationPage(rows, updatedRows);
+        for (const id of changed) { pendingIdsRef.current.add(id); dirtyRef.current = true; }
         for (const row of updatedRows) versionsRef.current.set(row.id,rowVersion(row));
         onRowsRef.current?.(updatedRows);
         latest = page;
@@ -100,6 +115,7 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
         ...previous, loading: false, error: error instanceof Error ? error.message : "Unable to load conversations. Please retry.",
       } : null);
     } finally {
+      finishForeground();
       if (controllerRef.current === controller) controllerRef.current = null;
       if (dirtyRef.current && visible()) {
         dirtyRef.current = false;

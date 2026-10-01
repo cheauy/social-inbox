@@ -29,6 +29,9 @@ export async function getFacebookSendReply(value: unknown, businessId: string, c
   };
 }
 
-export function requireFacebookReplyWindow(reply: unknown, windowState: string) {
-  if (reply && windowState !== "standard") throw new FacebookReplyError("Messenger quoted replies require the 24-hour messaging window. Cancel Reply to use the available support message option.", 409);
+export function requireFacebookReplyWindow(reply: unknown, windowState: string, options: { allowHumanAgentText?: boolean } = {}) {
+  // Only the authenticated manual text route opts in. Media/private replies
+  // retain their existing restrictions; Meta still decides payload acceptance.
+  const allowed = windowState === "standard" || (options.allowHumanAgentText === true && windowState === "human_agent");
+  if (reply && !allowed) throw new FacebookReplyError("Messenger quoted replies require the 24-hour messaging window. Cancel Reply to use the available support message option.", 409);
 }

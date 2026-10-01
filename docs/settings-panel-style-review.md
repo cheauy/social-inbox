@@ -1,0 +1,25 @@
+# Settings surface and rail style follow-up
+
+Subsequent local completion: tenh-bot-stage2-drafts.md documents all seven selected Stage 2 draft-only types and their NEW tests; queued/unimplemented descriptions below are historical to this earlier batch.
+Local-only follow-up after the original Inbox UI batch. No push, deployment, live write, migration application or real customer messages. All album/media/realtime/paging/Bot work remains intact. Stage 2 Bot drafts remain queued without code changes or Stage 2 validation.
+
+The parent inspected the actual pixels of libfile_a9b4b9d4668081918f791f376779a734 and libfile_8ccbe6b94bac819196e2727ee734691f; this executor used those reviews, not an independently materialized image. The user explicitly clarified that the MAIN/global icon rail should hide on Settings, while the secondary Settings sidebar remains. This supersedes the prior UI review's always-visible global Settings rail description.
+
+## Changes
+
+- app/dashboard/settings/layout.tsx: connected 205px sidebar/content shell, 16px corners, thin pale slate border at 70% opacity, soft downward 0/6px/16px shadow at 6% opacity and the same small responsive outer margin as Inbox. SettingsSidebar, permission filtering, destinations, page content/background and independent content scrolling are unchanged. No internal floating gutters.
+- components/dashboard/dashboard-utility-navigation.tsx: main rail hidden only for /dashboard/settings and its nested routes. It returns automatically elsewhere. Both direct-path render and client path changes use the existing pathname. The existing header logo remains a usable Inbox exit on desktop/mobile; the desktop Inbox header link also remains. Settings' secondary section sidebar is not hidden. Admin still uses the existing server identity visibility check and destination guards. Selected utility links use a pale blue tile/blue outline icon with a separate three-pixel blue left pill, without a strong tile border. Existing focus outlines remain.
+- components/inbox/inbox-view.tsx: Inbox shell gets the matching pale outline and soft downward shadow, preserving its connected layout and scroll containers.
+- components/inbox/conversation-list.tsx: list seam lightened; selected primary Inbox view buttons get the pale blue tile/left blue pill and explicit keyboard focus/pressed state. Existing Unread/Pinned count values and count caps are unchanged; the sample badge number is never copied. Smart View/reminder semantic colors are preserved.
+
+No routes, permission grants, APIs, database schema or business rules changed. The earlier unified Emoji | Sticker toggle and caret insertion/send safeguards remain.
+
+## Verification
+
+- 97 focused regression tests passed, zero failures/skips: actual server admin identity forwarding, signed-out redirect, subscription failure access, caret insertion, albums, paging, realtime/background safety, workspace/performance helpers and sticker caching. Temp/tenh-settings-tests.txt. These are regressions, not Stage 2 Bot validation.
+- Real SettingsLayout and utility navigation component fixture, production-generated CSS: all 49 checks passed at measured 1384x905 desktop and verified 390x844 CSS viewport. New checks cover initial Settings-path rail hiding, client Settings navigation, nested Settings paths, header-logo-equivalent Inbox exit, restoring Admin active state and returning to Inbox, secondary navigation preservation, actual 16px/one-pixel/downward-shadow styles, touching sidebar/content seam, independent Settings content scroll and selected utility left-pill dimensions. Prior picker, paging/realtime, media and album checks also pass.
+- Navigation transport is a fixture next/link/usePathname stub. SettingsSidebar is a fixture stub so its unchanged live permission/filter/fetch logic is not exercised here. The exit control uses the same /dashboard/inbox destination as the unchanged real header logo. Full authenticated Settings routing/browser-back and deployed role visibility remain staging checks. The 390px run uses DevTools CSS metrics with mobile=false to prevent layout auto-expansion; real mobile touch/keyboard/OS behavior is not established. Logs: Temp/tenh-settings-desktop-result.json and tenh-settings-mobile-390-result.json.
+- Final TypeScript and production build passed. Temp/tenh-settings-final-typecheck.txt and tenh-settings-final-build.txt. Existing Google Font access required an authorized network-enabled local build, not deployment.
+- No introduced lint findings in the compared existing files; Settings layout and the new shared utility navigation component are clean. Existing unrelated lint baseline remains. Temp/tenh-settings-lint-comparison.json. Diff whitespace check passed.
+
+The fixture checks real layout classes/seams and interactions in a synthetic shell; it is not a pixel-perfect screenshot comparison or the full authenticated dashboard. Prior full customer Inbox seam/scroll/device limitations remain. No remote SQL was applied; paging/index proposals retain their earlier installation/plan-verification limitations.

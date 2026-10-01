@@ -1,6 +1,12 @@
 "use client";
 
+import { MessageViewportFrame, MessageScrollSurface } from "./inbox-layout-surfaces";
 import { captureScrollAnchor, restoreScrollAnchor, type ScrollAnchor } from "@/lib/inbox/scroll-anchor";
+import { buildPhotoGroups, photoGroupCaption } from "@/lib/inbox/photo-groups";
+import { PhotoAlbumFrame } from "@/components/inbox/photo-album-frame";
+import { InboxPhotoImage } from "@/components/inbox/inbox-photo-image";
+import { localImagePreview } from "@/lib/inbox/local-image-preview";
+import { useForegroundLoading } from "@/lib/display/foreground-loading";
 import { InboxEmptyState } from "@/components/inbox/inbox-empty-state";
 import { DeferredInboxItem } from "@/components/inbox/deferred-inbox-item";
 import { FacebookPostCard } from "@/components/inbox/facebook-post-card";
@@ -15,7 +21,7 @@ import { MessengerMessageActions } from "@/components/inbox/messenger-message-ac
 import { PinnedMessageHeader } from "@/components/inbox/pinned-message-header";
 import { usePinnedMessages } from "@/lib/inbox/use-pinned-messages";
 import { getMessageActions, getMessageSummary, getDeletedMessageText, isMessagePinned, isMessageDeleted,
-  expandAlbumPhotos as facebookAlbumPhotos, resolvePhotoReplyTarget, parsePhotoReplyId,
+  resolvePhotoReplyTarget, parsePhotoReplyId,
   getMessageImageUrl, getReplyImageReference, inboxImageEndpoint, type ReplyImageReference,
 } from "@/lib/inbox/message-actions";
 import { ImageCopyButton } from "@/components/inbox/image-copy-button";
@@ -1570,6 +1576,7 @@ export function MessagePanel({
       alt: string;
       reference?: ReplyImageReference;
     } | null>(null);
+  useForegroundLoading(loadingConversationMessages || loadingOlderMessages);
 
   useEffect(() => {
     if (!imagePreview) {
@@ -1813,103 +1820,7 @@ export function MessagePanel({
   const olderLoadRequestedRef =
     useRef(false);
 
-  /*
-   * Photo albums.
-   *
-   * A message carries a single attachment, so sending six photos creates six
-   * messages. Rendered one bubble each they filled the thread; grouped they
-   * read as one album. Consecutive image messages from the same side, sent
-   * close together, are collected into a run and drawn as a grid on the run's
-   * LAST message — last so the album sits where the sending finished, and so
-   * the timestamp and delivery status shown are the newest ones.
-   *
-   * Every photo keeps its own message id, so opening, replying to and
-   * deleting a single photo all still act on the right message.
-   */
-  const photoGroups = useMemo(() => {
-    const ALBUM_WINDOW_MS = 60_000;
-    const groups = new Map<
-      string,
-      { lastId: string; members: InboxMessage[] }
-    >();
-
-    let run: InboxMessage[] = [];
-
-    const flush = () => {
-      if (run.length > 1) {
-        const lastId = run[run.length - 1].id;
-        const members = run;
-
-        for (const item of members) {
-          groups.set(item.id, { lastId, members });
-        }
-      }
-
-      run = [];
-    };
-
-    for (const message of messages) {
-      const nativePhotos = facebookAlbumPhotos(message);
-      if (nativePhotos.length > 1) {
-        flush();
-        groups.set(message.id, { lastId: message.id, members: nativePhotos });
-        continue;
-      }
-      /*
-       * A deleted photo leaves the album. It renders its own "Message deleted"
-       * bubble instead, so keeping it in the grid would show art that is no
-       * longer in the chat -- which is what happens when a delete only partly
-       * succeeds, or when the customer removes one photo on Telegram's side.
-       */
-      const isDeleted = Boolean(
-        (
-          message.raw_payload as {
-            tenh_deleted?: unknown;
-          } | null
-        )?.tenh_deleted,
-      );
-
-      const isPhoto =
-        !isDeleted &&
-        message.message_type === "image" &&
-        Boolean(message.attachment_url);
-
-      if (!isPhoto) {
-        flush();
-        continue;
-      }
-
-      const previous = run[run.length - 1];
-
-      if (previous) {
-        const sameSide =
-          previous.direction === message.direction;
-        const previousAt = new Date(
-          previous.platform_created_at ??
-            previous.created_at,
-        ).getTime();
-        const currentAt = new Date(
-          message.platform_created_at ??
-            message.created_at,
-        ).getTime();
-        const closeEnough =
-          Number.isFinite(previousAt) &&
-          Number.isFinite(currentAt) &&
-          Math.abs(currentAt - previousAt) <=
-            ALBUM_WINDOW_MS;
-
-        if (!sameSide || !closeEnough) {
-          flush();
-        }
-      }
-
-      run.push(message);
-    }
-
-    flush();
-
-    return groups;
-  }, [messages]);
+  const photoGroups = useMemo(() => buildPhotoGroups(messages), [messages]);
 
   const scrollToNewest =
     useCallback(
@@ -2540,12 +2451,13 @@ export function MessagePanel({
       return;
     }
 
-    /*
-     * V3.11.33 — keep the open conversation pinned to its newest message for
-     * every genuinely new message, including customer/incoming messages.
-     * Delivery/seen-only updates are filtered above because the latest message
-     * id does not change, so ordinary status updates do not cause a jump.
-     */
+    // Opening still lands at latest, but subsequent arrivals must not pull
+    // an agent away from history. Offer the existing Latest indicator instead.
+    if (!userNearBottomRef.current) {
+      setNewMessageCount(current => current + 1);
+      setShowScrollToLatest(true);
+      return;
+    }
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         scrollToNewest("smooth");
@@ -2937,7 +2849,7 @@ export function MessagePanel({
       ) : null}
 
       {/* Messages */}
-      <div className="relative min-h-0 flex-1">
+      <MessageViewportFrame>
         {loadingConversationMessages ? (
           <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden bg-slate-100 px-6 py-5">
             <div className="mx-auto flex h-full max-w-4xl flex-col justify-end gap-4">
@@ -2982,12 +2894,11 @@ export function MessagePanel({
           </div>
         ) : null}
 
-        <div
+        <MessageScrollSurface
           ref={messagesContainerRef}
           onScroll={
             handleMessagesScroll
           }
-          className="h-full space-y-4 overflow-y-auto p-6"
           data-tenh-chat-surface="true"
           style={{
             overflowAnchor: messages.length > 100 && typeof IntersectionObserver !== "undefined" ? "none" : "auto",
@@ -3092,6 +3003,7 @@ export function MessagePanel({
                     | "sending"
                     | "sent"
                     | "failed";
+                  __optimistic_requires_review?: boolean;
 
                   delivery_status?:
                     | "sent"
@@ -4309,6 +4221,7 @@ export function MessagePanel({
                               </button>
 
                               {optimisticStatus === "failed" &&
+                              !messageStatus.__optimistic_requires_review &&
                               onRetryMessage ? (
                                 <button
                                   type="button"
@@ -5120,19 +5033,7 @@ export function MessagePanel({
                            * the screen. Bounding the width bounds the height
                            * too, since every cell is on a fixed aspect ratio.
                            */
-                          <div
-                            className={`-mx-4 grid w-[300px] max-w-[calc(100%+2rem)] gap-[3px] overflow-hidden ${
-                              photoGroup.members.length === 2
-                                ? "grid-cols-1"
-                                : photoGroup.members.length <= 4
-                                  ? "grid-cols-2"
-                                  : "grid-cols-3"
-                            } ${
-                              telegramReplyPreview
-                                ? "mt-1"
-                                : "-mt-3"
-                            } mb-1`}
-                          >
+                          <PhotoAlbumFrame count={photoGroup.members.length} hasReplyPreview={Boolean(telegramReplyPreview)}>
                             {photoGroup.members.map((photo: InboxMessage) => {
                               const photoUrl = photo.attachment_url;
                               const basePhoto = messages.find(item => item.id === parsePhotoReplyId(photo.id).messageId) ?? message;
@@ -5162,34 +5063,27 @@ export function MessagePanel({
                                   else photoElementRefs.current.delete(photo.id);
                                 }} data-album-photo-id={photo.id}
                                   className={`group/photo relative ${photoSelected || jumpHighlightedMessageId === photo.id ? "z-10 ring-2 ring-inset ring-blue-500" : ""}`}>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setImagePreview({
-                                      src: photoUrl,
-                                      alt: getMessageSummary(photo),
-                                      reference: photoReference,
-                                    })
-                                  }
+                                <div
                                   className={`group/media block w-full cursor-zoom-in overflow-hidden bg-slate-100 ${
                                     photoGroup.members
                                       .length === 2
                                       ? "aspect-[3/2]"
                                       : "aspect-square"
                                   }`}
-                                  aria-label="Open photo"
                                 >
-                                  <img
+                                  <InboxPhotoImage
+                                    reference={photoReference}
                                     src={photoUrl}
+                                    previewSrc={localImagePreview(photo)}
+                                    onOpen={() => setImagePreview({ src: localImagePreview(photo) || photoUrl,
+                                      alt: getMessageSummary(photo), reference: photoReference })}
                                     alt={
                                       photo.message_text ||
                                       "Photo"
                                     }
                                     className="h-full w-full object-cover transition duration-200 group-hover/media:scale-[1.02]"
-                                    loading="lazy"
-                                    decoding="async"
                                   />
-                                </button>
+                                </div>
                                 <ImageCopyButton src={photoUrl} reference={photoReference}
                                   className="absolute right-1 top-1 opacity-0 transition-opacity group-hover/photo:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100" />
                                 <div className="absolute bottom-1 left-1">
@@ -5226,9 +5120,7 @@ export function MessagePanel({
                               filing, not something anyone wrote.
                             */}
                             {(() => {
-                              const albumCaption =
-                                photoGroup.members[0]
-                                  ?.message_text?.trim();
+                              const albumCaption = photoGroupCaption(photoGroup.members);
 
                               if (
                                 !albumCaption ||
@@ -5255,30 +5147,23 @@ export function MessagePanel({
                                 </p>
                               );
                             })()}
-                          </div>
+                          </PhotoAlbumFrame>
                         ) : isImageMessage ? (
                           <div className="group/photo relative w-[300px] max-w-full overflow-hidden rounded-[22px] bg-slate-100 ring-1 ring-slate-200/70">
                             {attachmentUrl ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setImagePreview({
-                                    src: attachmentUrl,
-                                    alt: attachmentName,
-                                    reference: { conversationId: message.conversation_id, messageId: message.id },
-                                  })
-                                }
+                              <div
                                 className="group/media block w-full cursor-zoom-in text-left"
-                                aria-label={`Open ${attachmentName}`}
                               >
-                                <img
+                                <InboxPhotoImage
+                                  reference={{conversationId:message.conversation_id,messageId:message.id}}
                                   src={attachmentUrl}
+                                  layout="single" previewSrc={localImagePreview(message)}
+                                  onOpen={() => setImagePreview({ src: localImagePreview(message) || attachmentUrl,
+                                    alt: attachmentName, reference: { conversationId: message.conversation_id, messageId: message.id } })}
                                   alt={attachmentName}
                                   className="max-h-[360px] w-full object-cover transition duration-200 group-hover/media:scale-[1.01]"
-                                  loading="lazy"
-                                  decoding="async"
                                 />
-                              </button>
+                              </div>
                             ) : (
                               <div className="flex h-40 w-full items-center justify-center rounded-[22px] border border-dashed border-slate-300 bg-slate-50 text-sm font-medium text-slate-500">
                                 Photo unavailable
@@ -5536,10 +5421,10 @@ export function MessagePanel({
                                       : "text-red-600"
                                   }`}
                                 >
-                                  Failed to send
+                                  {messageStatus.__optimistic_requires_review ? "Delivery unconfirmed" : "Failed to send"}
                                 </span>
 
-                                {onRetryMessage ? (
+                                {onRetryMessage && !messageStatus.__optimistic_requires_review ? (
                                   <button
                                     type="button"
                                     onClick={() =>
@@ -5844,7 +5729,7 @@ export function MessagePanel({
             <MessengerSourceCard key={source.key} source={source} onOpenImage={setImagePreview} />
           ))}
           </div>
-        </div>
+        </MessageScrollSurface>
 
         {newMessageCount > 0 ? (
           <div className="pointer-events-none absolute bottom-4 left-1/2 z-40 -translate-x-1/2">
@@ -5916,7 +5801,7 @@ export function MessagePanel({
             </button>
           </div>
         ) : null}
-      </div>
+      </MessageViewportFrame>
 
       {quotedReplyTarget && !editingTelegramMessageId ? (
         <div className="flex shrink-0 items-center gap-3 border-t border-sky-100 bg-white px-4 py-2">
@@ -6123,7 +6008,7 @@ export function MessagePanel({
             className="relative flex max-h-[92vh] max-w-[94vw] items-center justify-center"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <img decoding="async"
+            <InboxPhotoImage layout="preview" reference={imagePreview.reference}
               src={imagePreview.src}
               alt={imagePreview.alt}
               className="max-h-[92vh] max-w-[94vw] rounded-2xl object-contain shadow-2xl"

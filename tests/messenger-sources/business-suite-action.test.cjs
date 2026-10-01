@@ -94,10 +94,11 @@ for(const patch of [{businessId:'other'},{conversationId:'other'},{recipientId:'
 test('missing Page/customer context does not open a blank tab or call the API',async t=>{
  const h=await mount(t,{props:{pageId:null}});await h.click();assert.equal(h.calls.length,0);assert.equal(h.opened.length,0);
 });
-test('the real header keeps external conversation navigation hidden',()=>{
+test('the real header exposes View conversation only for Messenger',()=>{
  const conversation={id:'c1',source_type:'messenger',status:'open',social_account:{id:'s1',platform:'facebook',platform_account_id:context.pageId,account_name:'Page'},contact:{id:'ct1',business_id:'b1',platform_user_id:context.threadId,full_name:'Customer'}};
  const render=value=>new JSDOM(renderToStaticMarkup(React.createElement(ConversationHeader,{conversation:value,teamMembers:[],viewingAgents:[],typingAgents:[],teamPresence:[],agentPresenceStatus:'connected',channelPlatform:'messenger',channelAccountName:'Page'}))).window.document;
  assert.equal(render(conversation).querySelector('[aria-label="Open in Meta Business Suite"]'),null);
+ assert.ok(render(conversation).querySelector('[aria-label="View conversation"]'));
  for(const other of [{...conversation,source_type:'comment'},{...conversation,social_account:{...conversation.social_account,platform:'telegram'}},{...conversation,social_account:null}])assert.equal(render(other).querySelector('[aria-label="Open in Meta Business Suite"]'),null);
 });
 
@@ -137,4 +138,25 @@ test('the customer menu exposes View this conversation without an editing form',
  const h=await mount(t,{props:{compact:false,menu:true}});
  assert.ok(buttonWith('View this conversation'));assert.equal(buttonWith('Edit conversation link'),undefined);
  assert.equal(document.querySelector('form'),null);assert.equal(h.calls.length,0);
+});
+
+test('navigation-only opens a validated provider link on click with no render fetch',async t=>{
+ const h=await mount(t,{props:{navigationOnly:true},response:good({navigationAvailable:true})});assert.equal(h.calls.length,0);
+ assert.ok(document.querySelector('[aria-label="View conversation"]'));await h.click();assert.deepEqual(h.navigations,[link]);
+ assert.equal(new URL(h.calls[0].url,'https://app.tenhchat.com').searchParams.get('lookup'),'navigation');
+});
+test('navigation-only fallback is explicit and never automatically opens another conversation',async t=>{
+ const pageInboxUrl=`https://business.facebook.com/latest/inbox/all?asset_id=${context.pageId}`;
+ const h=await mount(t,{props:{navigationOnly:true},response:good({navigationAvailable:false,conversationLink:null,pageInboxUrl})});await h.click();
+ assert.equal(h.navigations.length,0);assert.equal(h.opened[0].popup.closed,true);
+ assert.equal(document.querySelector('a').textContent,'Open Page inbox');assert.equal(document.querySelector('a').href,pageInboxUrl);
+ assert.match(document.querySelector('[role="alert"]').textContent,/exact conversation link is unavailable/);
+});
+test('navigation-only rejects arbitrary fallback URLs and saved-link substitution',async t=>{
+ const h=await mount(t,{props:{navigationOnly:true},response:good({navigationAvailable:false,pageInboxUrl:'https://evil.test/'})});await h.click();
+ assert.equal(h.navigations.length,0);assert.equal(document.querySelector('a'),null);
+});
+test('navigation-only rejects saved links instead of treating them as provider matched',async t=>{
+ const h=await mount(t,{props:{navigationOnly:true},response:good({navigationAvailable:true,linkSource:'agent_saved_business_suite'})});await h.click();
+ assert.equal(h.navigations.length,0);assert.equal(document.querySelector('a'),null);
 });

@@ -101,6 +101,7 @@ export type TelegramLocation = {
 
 export type TelegramMessage = {
   message_id: number;
+  media_group_id?: string;
   date: number;
   edit_date?: number;
   from?: TelegramUser;

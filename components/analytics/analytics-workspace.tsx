@@ -464,9 +464,9 @@ export function AnalyticsWorkspace() {
   }
 
   return (
-    <main className="h-[calc(100vh-72px)] overflow-hidden bg-slate-50">
-      <div className="grid h-full min-h-0 lg:grid-cols-[248px_minmax(0,1fr)]">
-        <aside className="min-h-0 overflow-y-auto border-b border-slate-200 bg-white lg:border-b-0 lg:border-r">
+    <main data-analytics-workspace className="h-full min-h-0 w-full overflow-hidden bg-slate-50">
+      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[248px_minmax(0,1fr)] md:grid-rows-1">
+        <aside data-dashboard-context-menu="analytics" aria-label="Analytics sections" className="max-h-[35vh] min-h-0 overflow-y-auto border-b border-slate-200 bg-white md:max-h-none md:border-b-0 md:border-r">
           <div className="border-b border-slate-200 px-5 py-5">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">
               Analytics

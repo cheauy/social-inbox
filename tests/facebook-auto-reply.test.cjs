@@ -134,7 +134,7 @@ test("desktop/mobile Group Chat navigation removed while routes and data remain"
   assert.match(mobile,/href: canViewBot \? "\/bot" : null/);
   assert.match(mobile,/title: "Tenh Bot"/);
   const dedicated=readFileSync(require("node:path").join(__dirname,"../app/dashboard/tenh-bot/page.tsx"),"utf8");
-  assert.ok(!dedicated.includes("SettingsSidebar"));assert.match(dedicated,/<AutoReplySettings/);
+  assert.ok(!dedicated.includes("SettingsSidebar"));assert.match(dedicated,/<TenhBotWorkspace/);
   assert.ok(!dedicated.includes("<aside"));assert.ok(!dedicated.includes("<nav"));
   const dashboardLayout=readFileSync(require("node:path").join(__dirname,"../app/dashboard/layout.tsx"),"utf8");
   assert.match(dashboardLayout,/<DashboardHeader/);

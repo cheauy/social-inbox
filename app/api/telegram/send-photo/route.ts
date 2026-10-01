@@ -215,6 +215,13 @@ export async function POST(
   const albumFiles =
     albumValues.length > 0 ? albumValues : [file];
 
+  const clientMediaGroupId = formData.get("clientMediaGroupId");
+  if (clientMediaGroupId !== null && (typeof clientMediaGroupId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientMediaGroupId))) {
+    return NextResponse.json({success:false,error:"Invalid album batch identity."},{status:400});
+  }
+  const albumGroupId = albumFiles.length > 1 ? clientMediaGroupId ?? randomUUID() : null;
+
   if (albumFiles.length > 10) {
     return NextResponse.json(
       {
@@ -625,6 +632,7 @@ export async function POST(
 
     const rawPayload = {
       ...sentMessage,
+      ...(albumGroupId ? {tenh_media_group:{provider:"telegram",id:albumGroupId}} : {}),
       tenh_attachment: {
         type: "image",
         name:

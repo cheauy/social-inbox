@@ -29,6 +29,7 @@ type MessageRow = {
   business_id: string;
   platform_message_id: string;
   message_type: string;
+  raw_payload?: {tenh_image_album?: {count?:number;saved_indices?:number[]};tenh_deleted?:unknown};
 };
 
 export async function GET(
@@ -72,7 +73,7 @@ export async function GET(
     await supabaseAdmin
       .from("messages")
       .select(
-        "id,business_id,platform_message_id,message_type",
+        "id,business_id,platform_message_id,message_type,raw_payload",
       )
       .eq("id", messageId)
       .eq(
@@ -141,6 +142,15 @@ export async function GET(
             ? "voice"
             : "file";
 
+  const photoIndexValue = _request.nextUrl.searchParams.get("photoIndex");
+  const photoIndex = photoIndexValue === null ? 0 : Number(photoIndexValue);
+  const album = message.raw_payload?.tenh_image_album;
+  if (message.raw_payload?.tenh_deleted || (photoIndexValue !== null &&
+      (!/^(0|[1-9]\d*)$/.test(photoIndexValue) || !Number.isSafeInteger(photoIndex) ||
+       photoIndex >= (album?.count ?? 0) || !album?.saved_indices?.includes(photoIndex)))) {
+    return new NextResponse(null,{status:404});
+  }
+
   const storagePath =
     telegramMessageMediaStoragePath({
       businessId:
@@ -149,7 +159,7 @@ export async function GET(
       messageId:
         message.id,
       mediaKind,
-    });
+    }) + (photoIndex ? `-${photoIndex}` : "");
 
   const {
     data: signed,

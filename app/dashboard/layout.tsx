@@ -2,6 +2,9 @@ import type { ReactNode } from "react";
 
 import { redirect } from "next/navigation";
 
+import { DashboardUtilityNavigation, DashboardUtilityNavigationProvider } from "@/components/dashboard/dashboard-utility-navigation";
+import { isCurrentUserTenhAdminIdentity } from "@/lib/admin/tenh-admin-auth";
+
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { PendingInvitationsBanner } from "@/components/dashboard/pending-invitations-banner";
 import { FacebookConnectionAttentionBanner } from "@/components/dashboard/facebook-connection-attention-banner";
@@ -87,6 +90,8 @@ export default async function DashboardLayout({
     );
   }
 
+  const isAdmin = await isCurrentUserTenhAdminIdentity();
+
   let subscriptionAccess: BusinessSubscriptionAccess;
 
   try {
@@ -106,9 +111,12 @@ export default async function DashboardLayout({
     });
 
     return (
+      <DashboardUtilityNavigationProvider isAdmin={isAdmin}>
       <div className="flex min-h-dvh flex-col overflow-hidden bg-slate-100">
         <DashboardHeader />
 
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+        <DashboardUtilityNavigation placement="shared" />
         <main className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
           <div className="w-full max-w-xl rounded-2xl border border-red-200 bg-white p-6 shadow-sm">
             <h1 className="text-lg font-bold text-slate-950">
@@ -124,27 +132,34 @@ export default async function DashboardLayout({
             </p>
           </div>
         </main>
+        </div>
       </div>
+      </DashboardUtilityNavigationProvider>
     );
   }
 
   return (
-    <WorkspacePermissionsProvider>
-      <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100">
-        <DashboardHeader />
+    <DashboardUtilityNavigationProvider isAdmin={isAdmin}>
+      <WorkspacePermissionsProvider>
+        <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100">
+          <DashboardHeader />
 
-        <PendingInvitationsBanner />
-        <FacebookConnectionAttentionBanner />
+          <PendingInvitationsBanner />
+          <FacebookConnectionAttentionBanner />
 
-        <main className="min-h-0 flex-1 overflow-hidden">
-          {/* Floats above everything, on every dashboard page. */}
-          <ConnectionStatusBanner />
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            <DashboardUtilityNavigation placement="shared" />
+            <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
+              {/* Floats above everything, on every dashboard page. */}
+              <ConnectionStatusBanner />
 
-          <SubscriptionAccessGate access={subscriptionAccess}>
-            {children}
-          </SubscriptionAccessGate>
-        </main>
-      </div>
-    </WorkspacePermissionsProvider>
+              <SubscriptionAccessGate access={subscriptionAccess}>
+                {children}
+              </SubscriptionAccessGate>
+            </main>
+          </div>
+        </div>
+      </WorkspacePermissionsProvider>
+    </DashboardUtilityNavigationProvider>
   );
 }

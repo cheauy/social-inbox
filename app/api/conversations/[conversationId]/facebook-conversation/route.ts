@@ -40,7 +40,7 @@ async function load(request: NextRequest, context: Context) {
     return { response: fail("Facebook access is unavailable. Ask an Owner to reconnect this Page in Integrations.", 424) };
   }
   // A read-only Graph thread lookup does not depend on the manual-link table.
-  const threadOnly = request.method === "GET" && query.get("lookup") === "thread";
+  const threadOnly = request.method === "GET" && ["thread", "navigation"].includes(query.get("lookup") || "");
   const { data: saved, error } = threadOnly ? { data: null, error: null } : await supabaseAdmin.from(table)
     .select("contact_id,page_id,selected_item_id,conversation_link,confirmed_at")
     .eq("business_id", businessId).eq("social_account_id", page.id).eq("recipient_id", recipientId).maybeSingle();
@@ -57,19 +57,25 @@ export async function GET(request: NextRequest, context: Context) {
     if (loaded.response) return loaded.response;
     const { access, page, pageId, recipientId, businessId, conversationId, saved, savedLink, query } = loaded;
     const identity = { conversationId, businessId, pageId, recipientId };
-    const threadOnly = query.get("lookup") === "thread";
+    const navigation = query.get("lookup") === "navigation";
+    const threadOnly = navigation || query.get("lookup") === "thread";
+    const pageInboxUrl = `https://business.facebook.com/latest/inbox/all?asset_id=${encodeURIComponent(pageId)}`;
+    const unavailable = (reason: string) => json({ success: true, ...identity, navigationAvailable: false,
+      conversationLink: null, pageInboxUrl, reason,
+      error: "An exact conversation link is unavailable. Open this Page's inbox and select the customer there." });
     if (!threadOnly && query.get("settings") === "1") return json({ success: true, ...identity,
       conversationLink: savedLink, confirmedAt: saved?.confirmed_at ?? null, canSaveLink: await memberHasPermission(access!.member, "customers", "manage") });
     if (!threadOnly && savedLink) return json({ success: true, ...identity, conversationLink: savedLink,
       linkSource: "agent_saved_business_suite", confirmedAt: saved?.confirmed_at, cacheUsed: true });
-    if (!page.facebook_page_access_token_encrypted) return fail("This Page needs to be reconnected in Integrations.", 424);
+    if (!page.facebook_page_access_token_encrypted) return navigation ? unavailable("page_reconnection_required") : fail("This Page needs to be reconnected in Integrations.", 424);
     let token: string;
     try { token = decryptFacebookToken(page.facebook_page_access_token_encrypted); }
-    catch { return fail("This Page needs to be reconnected in Integrations.", 424); }
-    if (!token.trim()) return fail("This Page needs to be reconnected in Integrations.", 424);
+    catch { return navigation ? unavailable("page_reconnection_required") : fail("This Page needs to be reconnected in Integrations.", 424); }
+    if (!token.trim()) return navigation ? unavailable("page_reconnection_required") : fail("This Page needs to be reconnected in Integrations.", 424);
     const { thread, cacheUsed } = await getCachedConversationThread({ businessId: businessId!, conversationId: conversationId!, socialAccountId: page.id,
-      pageId, recipientId, connectionVersion: page.updated_at ?? null }, token, query.get("refresh") === "1");
+      pageId, recipientId, connectionVersion: page.updated_at ?? null }, token, !navigation && query.get("refresh") === "1");
     if ("reason" in thread) {
+      if (navigation) return unavailable(thread.reason || "profile_conversation_lookup_failed");
       const error = thread.reason === "profile_conversation_access_unavailable"
         ? "Meta denied conversation access. Ask an Owner to check this Page in Integrations."
         : thread.reason === "profile_conversation_not_found"
@@ -80,6 +86,8 @@ export async function GET(request: NextRequest, context: Context) {
       return json({ success: false, ...identity, threadLookupSucceeded: false, reason: thread.reason, cacheUsed, error }, 424);
     }
     const directLink = normalizeBusinessSuiteConversationLink(thread.providerLink, pageId, recipientId);
+    if (navigation) return directLink ? json({ success: true, ...identity, navigationAvailable: true,
+      conversationLink: directLink, linkSource: "meta_conversations_api", cacheUsed }) : unavailable("facebook_direct_link_required");
     const details = { threadLookupSucceeded: true, thread_id: thread.threadId, threadIdSource: thread.threadSource,
       metaConversationLink: thread.providerLink, cacheUsed };
     // Meta's conversation ID is returned exactly. It is not a Suite routing ID.

@@ -31,7 +31,7 @@ export async function getCachedConversationThread(context: Context, accessToken:
   try {
     const thread = await entry.result;
     if (cache.get(key) === entry) {
-      if ("reason" in thread) cache.delete(key);
+      if ("reason" in thread) entry.expiresAt = Date.now() + 30_000;
       else entry.expiresAt = Date.now() + TTL_MS;
     }
     return { thread, cacheUsed: false };

@@ -1,6 +1,7 @@
 "use client";
 
 import { readWorkspaces, invalidateWorkspaceRead } from "@/lib/workspaces/read-workspaces";
+import { useForegroundLoading } from "@/lib/display/foreground-loading";
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -68,6 +69,7 @@ export function WorkspaceSwitcher() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
+  useForegroundLoading(Boolean(switchingId));
   const [data, setData] = useState<WorkspacesResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
