@@ -1,12 +1,14 @@
 import Image from "next/image";
 import { DashboardNavLink } from "./dashboard-nav-link";
+import { DashboardLoadingProgress } from "./dashboard-loading-progress";
 
 import { CurrentUserProfileMenu } from "@/components/dashboard/current-user-profile-menu";
 import { TeamNotificationCenter } from "@/components/dashboard/team-notification-center";
 import { DashboardNavigationLabel } from "@/components/dashboard/dashboard-navigation-label";
 import { NavPermissionGate } from "@/components/dashboard/nav-permission-gate";
 import { WorkspaceSwitcher } from "@/components/dashboard/workspace-switcher";
-import { isCurrentUserTenhAdminIdentity } from "@/lib/admin/tenh-admin-auth";
+import { TENH_BOT_AVAILABLE } from "@/lib/bot/availability";
+
 
 type NavItem = {
   label: string;
@@ -26,20 +28,15 @@ const normalNavigation: NavItem[] = [
    * agent does their job. The page itself is still reviewable at
    * /dashboard/market.
    */
-  { label: "Settings", href: "/dashboard/settings" },
+
 ];
 
 export async function DashboardHeader() {
-  const isAdmin = await isCurrentUserTenhAdminIdentity();
-  const navigation = isAdmin
-    ? [
-        ...normalNavigation,
-        { label: "Admin", href: "/dashboard/admin" },
-      ]
-    : normalNavigation;
+  const navigation = normalNavigation.filter(item=>TENH_BOT_AVAILABLE||item.href!=="/dashboard/tenh-bot");
 
   return (
-    <header data-dashboard-header className="flex h-[72px] shrink-0 items-center border-b border-slate-200 bg-white px-5">
+    <header data-dashboard-header className="relative flex h-[72px] shrink-0 items-center border-b border-slate-200 bg-white px-5">
+      <DashboardLoadingProgress />
       <div className="flex w-full min-w-0 items-center">
         <a
           href="/dashboard/inbox"

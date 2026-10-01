@@ -1,9 +1,12 @@
 "use client";
 
+import { DashboardUtilityNavigation } from "@/components/dashboard/dashboard-utility-navigation";
+import { ConversationHeaderSurface, ConversationRail } from "./inbox-layout-surfaces";
 import { ConversationListHeader } from "@/components/inbox/conversation-list-header";
 import { DeferredInboxItem } from "@/components/inbox/deferred-inbox-item";
 import type { BulkReadResult, ReadTarget } from "@/lib/inbox/bulk-read";
 import { useConversationPages } from "@/lib/inbox/use-conversation-pages";
+import { useConversationListAnchor } from "@/lib/inbox/use-conversation-list-anchor";
 import { CONVERSATION_PAGE_SIZE, type ConversationPagingInitial } from "@/lib/inbox/conversation-page-contract";
 
 import { CustomerAvatar } from "@/components/customer-avatar";
@@ -2906,6 +2909,8 @@ function ConversationListView({
             ),
       [filteredConversations, visibleRowCount, pager.enabled],
     );
+  useConversationListAnchor(listContainerRef, JSON.stringify(pageRequest),
+    JSON.stringify(visibleConversations.map(row => [row.id, row.last_message_at, row.last_message_text, row.unread_count])));
 
   useEffect(() => {
     const marker = loadMoreRowsRef.current;
@@ -3652,8 +3657,8 @@ function ConversationListView({
     );
 
   return (
-    <section data-inbox-surface className="relative flex h-full min-h-0 w-full min-w-0 overflow-hidden border-r border-slate-100 dark:border-slate-800/60 bg-white">
-      <aside className="relative z-30 flex h-full w-15 shrink-0 flex-col overflow-visible border-r border-slate-100 dark:border-slate-800/60 bg-slate-50 py-3">
+    <section data-inbox-surface className="relative flex h-full min-h-0 w-full min-w-0 rounded-r-2xl overflow-hidden border-r border-slate-200/70 dark:border-slate-800/60 bg-white">
+      <ConversationRail>
         {/*
          * Channel picker and status filter sit above the Smart Views. The
          * channel panel floats to the right of the rail the same way Smart
@@ -3684,11 +3689,12 @@ function ConversationListView({
                     view.value,
                   )
                 }
-                className={`group relative mx-2 mb-1 flex h-12 shrink-0 items-center justify-center rounded-xl transition ${
+                className={`group relative mx-2 mb-1 flex h-12 shrink-0 items-center justify-center rounded-xl transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ${
                   isActive
-                    ? "bg-blue-100 text-blue-700"
+                    ? "bg-blue-50 text-blue-600 after:pointer-events-none after:absolute after:-left-2 after:top-1/2 after:h-6 after:w-[3px] after:-translate-y-1/2 after:rounded-full after:bg-blue-600"
                     : "text-slate-600 hover:bg-white hover:text-slate-900"
                 }`}
+                aria-pressed={isActive}
                 aria-label={
                   view.label
                 }
@@ -3837,7 +3843,8 @@ function ConversationListView({
             <span className="absolute right-full top-1/2 -translate-y-1/2 border-y-4 border-r-4 border-y-transparent border-r-slate-950" />
           </span>
         </button>
-      </aside>
+        <DashboardUtilityNavigation placement="inbox" />
+      </ConversationRail>
 
       {viewsOpen ? (
         <>
@@ -4741,7 +4748,7 @@ function ConversationListView({
           />
         ) : (
           <>
-        <div className="relative shrink-0 border-b border-slate-200 p-3">
+        <ConversationHeaderSurface>
           <ConversationListHeader search={search} onSearchChange={setSearch} filterOpen={filterOpen}
             filterApplied={optimisticStatus !== "all"} searchPlaceholder={isKhmer ? "ស្វែងរកការសន្ទនា ទំនាក់ទំនង ឬសារ..." : "Search conversations, customers..."}
             filterLabel={isKhmer ? "ត្រងតាមស្ថានភាព" : "Filter conversation status"} filterTitle={isKhmer ? "ស្ថានភាពការសន្ទនា" : "Conversation status"}
@@ -4894,7 +4901,7 @@ function ConversationListView({
               </div>
             </>
           ) : null}
-        </div>
+        </ConversationHeaderSurface>
 
         {optimisticStatus !==
         "all" ? (
@@ -5006,7 +5013,7 @@ function ConversationListView({
         ) : null}
 
 
-        <div ref={listContainerRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" aria-busy={statusSwitching || channelSwitching}>
+        <div ref={listContainerRef} style={{ overflowAnchor: "none" }} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" aria-busy={statusSwitching || channelSwitching}>
           {pager.enabled && pager.error ? <p role="alert" className="p-3 text-sm">{pager.error} <button type="button" onClick={pager.retry} className="underline">Retry</button></p> : null}
           {/*
             The skeleton wins over both the rows and the empty state, so a
@@ -5035,8 +5042,9 @@ function ConversationListView({
               {visibleConversations.map(
                 (conversation, index) => (
                   <DeferredInboxItem key={conversation.id} enabled={visibleConversations.length > 100}
+                    onElement={element => { if (element) element.dataset.conversationListId = `${conversation.business_id}:${conversation.id}`; }}
                     initiallyVisible={index < 40} forceVisible={conversation.id === activeConversationId}
-                    estimatedHeight={100} manualAnchoring={false} containerRef={listContainerRef}>
+                    estimatedHeight={100} manualAnchoring containerRef={listContainerRef}>
                   {() => <ConversationRow
                     key={conversation.id}
                     conversation={conversation}

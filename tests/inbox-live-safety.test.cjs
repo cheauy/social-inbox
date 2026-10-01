@@ -10,8 +10,9 @@ test('identical teammate text/time cannot acknowledge a local pending send',()=>
  assert.equal(matchesOptimisticMessage(candidate,{...teammate,conversation_id:'other',raw_payload:{tenh_client_request_id:candidate.id}}),false);
 });
 test('hidden automatic read returns before touching state or issuing a request',async()=>{
- const source=fs.readFileSync('components/inbox/inbox-view.tsx','utf8'),start=source.indexOf('async function markConversationReadRealtime('),end=source.indexOf('\n}\n',start)+3;
- const code=ts.transpileModule(source.slice(start,end),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+ const source=fs.readFileSync('components/inbox/inbox-view.tsx','utf8'),parsed=ts.createSourceFile('inbox.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ let declaration;function visit(node){if(ts.isFunctionDeclaration(node)&&node.name?.text==='markConversationReadRealtime')declaration=node;ts.forEachChild(node,visit);}visit(parsed);assert.ok(declaration,'read handler exists');
+ const code=ts.transpileModule(declaration.getText(parsed),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
  const context={document:{visibilityState:'hidden',hasFocus:()=>false}};vm.createContext(context);vm.runInContext(code,context);await context.markConversationReadRealtime('c1');
  context.document.visibilityState='visible';await context.markConversationReadRealtime('c1');
  // No refs/fetch exist in this context: touching either would throw.
@@ -37,10 +38,10 @@ test('view switches reevaluate live rows while preserving comment, pin and Smart
  assert.equal(match('pinned',{...teammate,is_pinned:false}),false);assert.equal(match('saved:vip',{...teammate,is_pinned:false}),false);assert.equal(match('comment',{...teammate,source_type:'messenger'}),false);
 });
 
-test('duplicates and out-of-order provider events preserve one stored bubble and stable list positions',()=>{
+test('duplicates preserve one stored bubble while newer activity moves its conversation first',()=>{
  const {normalizeMessages}=loader()('lib/inbox/normalize-messages.ts');const {stableConversationOrder}=loader()('lib/inbox/stable-conversation-order.ts');
  const row={id:'stored',conversation_id:'c1',platform_message_id:'mid',message_text:'Newest',direction:'outgoing',created_at:'2026-09-30T12:00:00Z',delivery_status:'seen'};
  const result=normalizeMessages([row,{...row,delivery_status:'sent'},{...row,id:'optimistic:one',__optimistic_status:'sent'}],[row]);assert.equal(result.length,1);assert.equal(result[0].id,'stored');assert.equal(result[0].delivery_status,'seen');
  const before=[{id:'c1',is_pinned:false,last_message_at:'2026-09-30T12:00:00Z'},{id:'c2',is_pinned:false,last_message_at:'2026-09-30T11:00:00Z'}];
- const next=stableConversationOrder(before,[before[0],{...before[1],last_message_at:'2026-09-30T13:00:00Z'}]);assert.deepEqual(Array.from(next,r=>r.id),['c1','c2']);
+ const next=stableConversationOrder(before,[before[0],{...before[1],last_message_at:'2026-09-30T13:00:00Z'}]);assert.deepEqual(Array.from(next,r=>r.id),['c2','c1']);
 });

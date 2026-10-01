@@ -3,6 +3,21 @@
 @import "./theme-ramps.css";
 @import "./theme.css";
 
+@keyframes tenh-picker-shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+.tenh-picker-shimmer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.8), transparent);
+  animation: tenh-picker-shimmer 1.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tenh-picker-shimmer::before { animation: none; }
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -83,3 +98,11 @@ body.dark:has([data-inbox-surface]) [data-dashboard-header],
     animation: none;
   }
 }
+
+.tenh-header-progress {
+  background: linear-gradient(90deg, #3b82f6, #06b6d4, #facc15, #f97316, #d946ef, #ef4444, #3b82f6);
+  background-size: 200% 100%;
+  animation: tenh-header-progress-shift 1.8s linear infinite;
+}
+@keyframes tenh-header-progress-shift { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .tenh-header-progress { animation: none; } }

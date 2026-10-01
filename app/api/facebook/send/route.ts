@@ -1,5 +1,6 @@
 import { FacebookReplyError, getFacebookSendReply, requireFacebookReplyWindow } from "@/lib/facebook/send-reply-context";
 import { facebookSendBlockReason } from "@/lib/facebook/customer-block";
+import { holdBotForManualReply } from "@/lib/bot/execution-store";
 import {
   NextRequest,
   NextResponse,
@@ -480,7 +481,7 @@ export async function POST(
     );
   }
 
-  try { requireFacebookReplyWindow(replyContext, messengerPolicy.windowState); }
+  try { requireFacebookReplyWindow(replyContext, messengerPolicy.windowState, { allowHumanAgentText: true }); }
   catch (error) { return NextResponse.json({ success: false, error: (error as Error).message }, { status: 409 }); }
 
   const hasRecentDirectCustomerMessage =
@@ -562,6 +563,11 @@ export async function POST(
     };
   }
 
+  try {
+    await holdBotForManualReply(currentMember.business_id, conversation.id);
+  } catch {
+    return NextResponse.json({ success: false, error: "Unable to pause active Bot work for this reply. Please retry." }, { status: 503 });
+  }
   let facebookResponse: Response | null = null;
   let facebookResult:
     FacebookSendResult = {};
@@ -728,11 +734,15 @@ export async function POST(
         success: false,
         code: humanAgentApprovalRequired
           ? "HUMAN_AGENT_APPROVAL_REQUIRED"
+          : replyContext && usedHumanAgentTag && facebookResult.error
+          ? "FACEBOOK_QUOTED_REPLY_REJECTED"
           : undefined,
         error: anotherAppControlsThread
           ? "Another app is set as the Primary Receiver for this Facebook Page, so Meta sends its messages there instead of to TENH. Open the Page on Facebook, then Settings → Messaging → Advanced Messaging → Handover Protocol, and set TENH Chat as the Primary Receiver."
           : humanAgentApprovalRequired
           ? "Extended messaging access is not available for this Facebook Page yet. Ask an administrator to finish the required Meta approval, or wait for the customer to message again."
+          : replyContext && usedHumanAgentTag
+            ? `Meta rejected this quoted support reply. Your draft and selected reply are kept. ${metaMessage}`
           : usedHumanAgentTag
             ? `Meta rejected this extended support reply. ${metaMessage}`
             : hasRecentDirectCustomerMessage

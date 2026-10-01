@@ -1,4 +1,5 @@
 "use client";
+import { useForegroundLoading } from "@/lib/display/foreground-loading";
 
 import type { ReactNode } from "react";
 import {
@@ -141,6 +142,7 @@ export function AgentWorkloadPanel() {
   const [unassignedCount, setUnassignedCount] =
     useState(0);
   const [loading, setLoading] = useState(true);
+  useForegroundLoading(loading);
   const [refreshing, setRefreshing] =
     useState(false);
   const [error, setError] =

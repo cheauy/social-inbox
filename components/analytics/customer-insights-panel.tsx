@@ -1,4 +1,5 @@
 "use client";
+import { useForegroundLoading } from "@/lib/display/foreground-loading";
 
 import Link from "next/link";
 import {
@@ -277,6 +278,7 @@ export function CustomerInsightsPanel() {
   >(null);
   const [loading, setLoading] =
     useState(true);
+  useForegroundLoading(loading);
   const [
     refreshing,
     setRefreshing,

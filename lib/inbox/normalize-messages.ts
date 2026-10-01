@@ -1,4 +1,5 @@
 import type { InboxMessage } from "@/types/inbox";
+import { retainLocalImagePreview } from "./local-image-preview";
 
 const asRecord = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const metadataTime = (value: unknown, key: string) => {
@@ -25,6 +26,17 @@ function merge(first: InboxMessage, second: InboxMessage): InboxMessage {
   const oldPayload = asRecord(other.raw_payload);
   const newPayload = asRecord(preferred.raw_payload);
   const payload = { ...newPayload };
+  // A bare echo/history projection must not erase authoritative album metadata.
+  for (const field of ["tenh_media_group", "tenh_image_album", "media_group_id"]) {
+    if (payload[field] == null && oldPayload[field] != null) payload[field] = oldPayload[field];
+  }
+  const oldNative = asRecord(oldPayload.message), newNative = asRecord(payload.message);
+  if (newNative.attachments == null && Array.isArray(oldNative.attachments)) {
+    payload.message = { ...newNative, attachments: oldNative.attachments };
+  }
+  if (asRecord(payload.message).media_group_id == null && oldNative.media_group_id != null) {
+    payload.message = { ...asRecord(payload.message), media_group_id: oldNative.media_group_id };
+  }
   // History responses may omit an incoming message's ad referral. Retain the
   // original event context so an older source card survives a refresh.
   if (!asRecord(payload.message).referral && asRecord(oldPayload.message).referral) {
@@ -86,7 +98,7 @@ function merge(first: InboxMessage, second: InboxMessage): InboxMessage {
     delete result.__optimistic_status;
     delete result.__optimistic_created_at;
   }
-  return result;
+  return retainLocalImagePreview(result, other);
 }
 
 /** One row per platform message, across responses, polling, caches and Realtime. */

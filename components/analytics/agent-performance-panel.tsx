@@ -1,4 +1,5 @@
 "use client";
+import { useForegroundLoading } from "@/lib/display/foreground-loading";
 
 import {
   useCallback,
@@ -303,6 +304,7 @@ export function AgentPerformancePanel() {
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  useForegroundLoading(loading);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

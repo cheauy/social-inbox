@@ -2,6 +2,8 @@
 
 import { createPortal } from "react-dom";
 import { quickReplyPosition } from "@/lib/inbox/quick-reply-position";
+import { createQuickPickerCache } from "@/lib/inbox/quick-picker-cache";
+import { QuickPickerLoading } from "./quick-picker-loading";
 
 import { AttachmentThumbnails } from "@/components/settings/saved-reply-attachment-thumbnails";
 import type {
@@ -88,13 +90,9 @@ type SavedReplyCache = {
   loadedAt: number;
 };
 
-const savedReplyCache = new Map<
-  string,
-  SavedReplyCache
->();
+const savedReplyCache = createQuickPickerCache<SavedReplyCache>();
 
 /* Long enough to make repeated opens instant, short enough that an edit shows up. */
-const SAVED_REPLY_CACHE_TTL_MS = 60_000;
 
 export function SavedReplySelector({
   businessId,
@@ -105,7 +103,7 @@ export function SavedReplySelector({
   const [category, setCategory] = useState<string | null>(null);
 
   const [
-    managedCategories,
+    categoriesState,
     setManagedCategories,
   ] = useState<SavedReplyCategory[]>(
     () =>
@@ -113,12 +111,15 @@ export function SavedReplySelector({
         ?.categories ?? [],
   );
   const [visibleCount, setVisibleCount] = useState(20);
-  const [replies, setReplies] = useState<SavedReply[]>(
+  const [repliesState, setReplies] = useState<SavedReply[]>(
     () =>
       savedReplyCache.get(businessId)
         ?.replies ?? [],
   );
   const [loading, setLoading] = useState(false);
+  const [dataBusinessId, setDataBusinessId] = useState(businessId);
+  const replies = useMemo(() => dataBusinessId === businessId ? repliesState : savedReplyCache.get(businessId)?.replies ?? [], [dataBusinessId, repliesState, businessId]);
+  const managedCategories = useMemo(() => dataBusinessId === businessId ? categoriesState : savedReplyCache.get(businessId)?.categories ?? [], [dataBusinessId, categoriesState, businessId]);
   const [error, setError] = useState<string | null>(null);
   const popupRootRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -216,10 +217,11 @@ export function SavedReplySelector({
 
     const cached =
       savedReplyCache.get(businessId);
-    const isFresh =
-      cached &&
-      Date.now() - cached.loadedAt <
-        SAVED_REPLY_CACHE_TTL_MS;
+    const isFresh = savedReplyCache.fresh(businessId);
+    setDataBusinessId(businessId);
+    setReplies(cached?.replies ?? []);
+    setManagedCategories(cached?.categories ?? []);
+    setLoading(!cached);
 
     async function load() {
       /*
@@ -233,6 +235,7 @@ export function SavedReplySelector({
       setError(null);
 
       try {
+        const next = await savedReplyCache.load(businessId, async () => {
         const [repliesResponse, categoriesResponse] =
           await Promise.all([
             fetch(
@@ -242,7 +245,7 @@ export function SavedReplySelector({
               { cache: "no-store" },
             ),
             fetch(
-              "/api/saved-reply-categories",
+              `/api/saved-reply-categories?businessId=${encodeURIComponent(businessId)}`,
               { cache: "no-store" },
             ),
           ]);
@@ -251,9 +254,10 @@ export function SavedReplySelector({
           (await repliesResponse.json()) as Response;
 
         if (!repliesResponse.ok || !result.success) {
-          throw new Error(
+          if (repliesResponse.status === 401 || repliesResponse.status === 403) savedReplyCache.invalidate(businessId);
+          throw Object.assign(new Error(
             result.error ?? "Unable to load quick replies.",
-          );
+          ), { denied: repliesResponse.status === 401 || repliesResponse.status === 403 });
         }
 
         const nextReplies =
@@ -279,16 +283,17 @@ export function SavedReplySelector({
             ? categoriesResult.categories
             : cached?.categories ?? [];
 
-        savedReplyCache.set(businessId, {
+        return {
           replies: nextReplies,
           categories: nextCategories,
           loadedAt: Date.now(),
+        };
         });
 
         if (!cancelled) {
-          setReplies(nextReplies);
+          setReplies(next.replies);
           setManagedCategories(
-            nextCategories,
+            next.categories,
           );
         }
       } catch (loadError) {
@@ -296,7 +301,8 @@ export function SavedReplySelector({
          * A stale list beats an error screen: the agent came here to send a
          * reply, and last minute's copy almost certainly still does that.
          */
-        if (!cancelled && !cached) {
+        if (!cancelled) {
+          if ((loadError as { denied?: boolean }).denied) { setReplies([]); setManagedCategories([]); }
           setError(
             loadError instanceof Error
               ? loadError.message
@@ -318,6 +324,7 @@ export function SavedReplySelector({
     }
 
     if (isFresh) {
+      setLoading(false);
       return () => {
         cancelled = true;
       };
@@ -488,11 +495,9 @@ export function SavedReplySelector({
             </div>
           </div>
 
-          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
-            {loading ? (
-              <p className="p-8 text-center text-sm text-slate-500">
-                Loading...
-              </p>
+          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3" aria-busy={loading}>
+            {!savedReplyCache.get(businessId) && !(error && dataBusinessId === businessId) ? (
+              <QuickPickerLoading kind="replies" />
             ) : filteredReplies.length === 0 ? (
               <p className="p-8 text-center text-sm text-slate-500">
                 No quick replies found.

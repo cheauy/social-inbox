@@ -9,7 +9,7 @@ import {
   type FormEvent,
 } from "react";
 
-import EmojiPicker from "emoji-picker-react";
+
 import { Send } from "lucide-react";
 import { clipboardImageFiles } from "@/lib/inbox/image-clipboard";
 import { TenhStickerPicker } from "./tenh-sticker-picker";
@@ -240,28 +240,6 @@ function FileIcon() {
   );
 }
 
-function EmojiIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="h-5 w-5"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="9" />
-      <path
-        d="M8.5 10h.01M15.5 10h.01"
-        strokeLinecap="round"
-      />
-      <path
-        d="M8.5 14.5c1 1.3 2.1 2 3.5 2s2.5-.7 3.5-2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 
 function AttachIcon() {
   return (
@@ -586,8 +564,6 @@ export function ReplyBox({
     }
   }
 
-  const [emojiOpen, setEmojiOpen] =
-    useState(false);
 
   const [moreOpen, setMoreOpen] =
     useState(false);
@@ -700,7 +676,7 @@ export function ReplyBox({
   }
 
   function dismissToolbarPanels() {
-    setEmojiOpen(false);
+
     setMoreOpen(false);
 
     closeExpandedChildSelector("Quick tags");
@@ -772,7 +748,7 @@ export function ReplyBox({
           return;
         }
 
-        if (!emojiOpen && !moreOpen) {
+        if (!moreOpen) {
           setActiveToolbarPanel(null);
         }
       });
@@ -792,7 +768,7 @@ export function ReplyBox({
       observer.disconnect();
       cancelAnimationFrame(frame);
     };
-  }, [activeToolbarPanel, emojiOpen, moreOpen]);
+  }, [activeToolbarPanel, moreOpen]);
 
   function clearRecordingTimer() {
     if (recordingTimerRef.current) {
@@ -875,7 +851,7 @@ export function ReplyBox({
       return;
     }
 
-    setEmojiOpen(false);
+
     setMoreOpen(false);
 
     clearToolbarPanel();
@@ -1782,7 +1758,7 @@ export function ReplyBox({
 
 
   return (
-    <div className="shrink-0 w-full border-t border-slate-200 bg-white">
+    <div className="shrink-0 w-full border border-slate-200 bg-white">
       {/*
         Say that the media is coming, rather than leaving a disabled Send with
         no explanation. Sending is held until it lands, so the wait needs a
@@ -2287,12 +2263,12 @@ export function ReplyBox({
         onSubmit={handleSubmit}
         className="relative w-full min-w-0 bg-white px-3 py-2"
       >
-        <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:flex-nowrap">
           {/* Real TENH quick tag selector */}
           <div
             onMouseDownCapture={() => {
               if (!isComposerBlocked) {
-                setEmojiOpen(false);
+
                 setMoreOpen(false);
 
                 setActiveToolbarPanel("quick-tag");
@@ -2341,7 +2317,7 @@ export function ReplyBox({
           <div
             onMouseDownCapture={() => {
               if (!isComposerBlocked) {
-                setEmojiOpen(false);
+
                 setMoreOpen(false);
 
                 setActiveToolbarPanel("quick-reply");
@@ -2405,7 +2381,7 @@ export function ReplyBox({
             />
           </div>
 
-          <TenhStickerPicker businessId={businessId} conversationId={conversationId} platform={platform} disabled={isComposerDisabled || stickerSending || !allowAttachments}
+          <TenhStickerPicker businessId={businessId} conversationId={conversationId} platform={platform} disabled={isComposerDisabled} stickersDisabled={stickerSending || !allowAttachments} onEmojiSelect={insertEmoji}
             onSendFacebook={platform === "facebook" && onSendSticker ? async sticker => {
               if (isComposerDisabled || !allowAttachments || stickerFlight.current) return false;
               if (attachments.length) throw new Error("Send or remove the attached files before sending a Meta sticker.");
@@ -2414,7 +2390,7 @@ export function ReplyBox({
               finally { if (stickerScope.current === seq) stickerFlight.current = false; }
             } : undefined}
             onSelectTelegram={onSendSticker ? sticker => { if (isComposerDisabled || !allowAttachments || stickerFlight.current) return; setNativeSticker(sticker); setStickerNotice(null); } : undefined}
-            onOpen={() => { setEmojiOpen(false); setMoreOpen(false); closeExpandedChildSelector("Quick tags"); closeExpandedChildSelector("Quick replies"); clearToolbarPanel(); }}
+            onOpen={() => { setMoreOpen(false); closeExpandedChildSelector("Quick tags"); closeExpandedChildSelector("Quick replies"); clearToolbarPanel(); }}
             onSelect={file => { if (isComposerDisabled || !allowAttachments) return; setAttachments(current => [...current, { id: createId(), file, previewUrl: URL.createObjectURL(file), kind: "image" }]); }}
           />
 
@@ -2442,7 +2418,7 @@ export function ReplyBox({
             className="hidden"
           />
 
-          <div className="min-w-0 flex-[1_1_320px] pl-1">
+          <div className="order-first min-w-0 flex-[1_0_100%] pl-1 sm:order-none sm:flex-[1_1_320px]">
             <div className="flex min-h-12 min-w-0 items-center rounded-2xl border border-slate-200 bg-white pl-1.5 pr-1 transition focus-within:border-violet-300 focus-within:ring-2 focus-within:ring-violet-100">
               <button
                 type="button"
@@ -2454,7 +2430,7 @@ export function ReplyBox({
                   closeExpandedChildSelector("Quick replies");
                   setActiveToolbarPanel(nextOpen ? "attach" : null);
                   setMoreOpen(nextOpen);
-                  setEmojiOpen(false);
+
 
                 }}
                 className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${
@@ -2501,31 +2477,6 @@ export function ReplyBox({
               </button>
 
               <span className="mx-1 h-6 w-px shrink-0 bg-slate-200" aria-hidden="true" />
-
-          {/* Real emoji picker */}
-          <button
-            type="button"
-            disabled={isComposerDisabled}
-            onClick={() => {
-              const nextOpen = !emojiOpen;
-
-              closeExpandedChildSelector("Quick tags");
-              closeExpandedChildSelector("Quick replies");
-              setActiveToolbarPanel(nextOpen ? "emoji" : null);
-              setEmojiOpen(nextOpen);
-              setMoreOpen(false);
-
-            }}
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${
-              emojiOpen
-                ? "bg-blue-50 text-blue-600"
-                : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
-            } disabled:opacity-40`}
-            aria-label={isKhmer ? "ជ្រើសរើស Emoji" : "Choose emoji"}
-            aria-expanded={emojiOpen}
-          >
-            <EmojiIcon />
-          </button>
 
               <textarea
                 ref={replyInputRef}
@@ -2579,7 +2530,7 @@ export function ReplyBox({
           <button
             type="submit"
             disabled={isSendDisabled || (!reply.trim() && attachments.length === 0 && !nativeSticker)}
-            className="inline-flex h-12 min-w-[96px] shrink-0 items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="ml-auto inline-flex h-12 min-w-[96px] shrink-0 items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 sm:ml-0"
             title={blockedReason || (isKhmer ? "ផ្ញើ" : "Send")}
           >
             <Send className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -2595,35 +2546,6 @@ export function ReplyBox({
       </form>
       </>
       )}
-
-      {/* Existing, functional emoji picker */}
-      {emojiOpen ? (
-        <>
-          <button
-            type="button"
-            onClick={() => {
-              setEmojiOpen(false);
-              clearToolbarPanel();
-            }}
-            className="fixed inset-0 z-40 cursor-default bg-slate-950/5"
-            aria-label="Close emoji picker"
-          />
-          <div className="fixed bottom-28 left-1/2 z-50 -translate-x-1/2 overflow-hidden rounded-xl shadow-2xl">
-            <EmojiPicker
-              width={350}
-              height={420}
-              lazyLoadEmojis
-              searchDisabled={false}
-              skinTonesDisabled={false}
-              onEmojiClick={(emojiData) =>
-                insertEmoji(
-                  emojiData.emoji,
-                )
-              }
-            />
-          </div>
-        </>
-      ) : null}
 
       <LocationPickerDialog
         open={locationPickerOpen}

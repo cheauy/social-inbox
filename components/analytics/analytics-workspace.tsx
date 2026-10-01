@@ -6,6 +6,9 @@ import {
   useState,
 } from "react";
 
+import { DashboardPanelFrame, dashboardPanelSurfaceClassName } from "@/components/dashboard/dashboard-panel-frame";
+import { DashboardUtilityNavigation } from "@/components/dashboard/dashboard-utility-navigation";
+
 import { AgentPerformancePanel } from "@/components/analytics/agent-performance-panel";
 import { CustomerInsightsPanel } from "@/components/analytics/customer-insights-panel";
 import { DashboardOverviewPanel } from "@/components/analytics/dashboard-overview-panel";
@@ -464,124 +467,26 @@ export function AnalyticsWorkspace() {
   }
 
   return (
-    <main className="h-[calc(100vh-72px)] overflow-hidden bg-slate-50">
-      <div className="grid h-full min-h-0 lg:grid-cols-[248px_minmax(0,1fr)]">
-        <aside className="min-h-0 overflow-y-auto border-b border-slate-200 bg-white lg:border-b-0 lg:border-r">
-          <div className="border-b border-slate-200 px-5 py-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">
-              Analytics
-            </p>
-
-            <h2 className="mt-1 text-lg font-bold text-slate-950">
-              Insights & reports
-            </h2>
-
-          </div>
-
-          <nav className="space-y-5 p-3">
-            {menuSections.map(
-              (section) => (
-                <div
-                  key={
-                    section.label
-                  }
-                >
-                  <p className="px-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                    {
-                      section.label
-                    }
-                  </p>
-
-                  <div className="mt-2 space-y-1">
-                    {section.items.map(
-                      (
-                        item,
-                      ) => {
-                        const isActive =
-                          item.view ===
-                          activeView;
-                        const isAvailable =
-                          Boolean(
-                            item.view,
-                          );
-
-                        return (
-                          <button
-                            key={
-                              item.id
-                            }
-                            type="button"
-                            onClick={() => {
-                              if (
-                                item.view
-                              ) {
-                                selectView(
-                                  item.view,
-                                );
-                              }
-                            }}
-                            disabled={
-                              !isAvailable
-                            }
-                            className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
-                              isActive
-                                ? "bg-blue-50 text-blue-700"
-                                : isAvailable
-                                  ? "text-slate-700 hover:bg-slate-50 hover:text-slate-950"
-                                  : "cursor-default text-slate-400"
-                            }`}
-                          >
-                            <span
-                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${
-                                isActive
-                                  ? "border-blue-200 bg-white text-blue-600"
-                                  : "border-slate-200 bg-white"
-                              }`}
-                            >
-                              <AnalyticsIcon
-                                icon={
-                                  item.icon
-                                }
-                              />
-                            </span>
-
-                            <span className="min-w-0 flex-1">
-                              <span className="flex items-center gap-2">
-                                <span className="truncate text-sm font-semibold">
-                                  {
-                                    item.label
-                                  }
-                                </span>
-
-                                {item.badge ? (
-                                  <span
-                                    className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
-                                      item.badge ===
-                                      "Next"
-                                        ? "bg-violet-100 text-violet-700"
-                                        : "bg-slate-100 text-slate-500"
-                                    }`}
-                                  >
-                                    {
-                                      item.badge
-                                    }
-                                  </span>
-                                ) : null}
-                              </span>
-
-                            </span>
-                          </button>
-                        );
-                      },
-                    )}
-                  </div>
-                </div>
-              ),
-            )}
+    <DashboardPanelFrame><main data-analytics-workspace className={dashboardPanelSurfaceClassName}>
+      <div className="flex h-full min-h-0">
+        <aside data-dashboard-context-menu="analytics" data-analytics-icon-rail aria-label="Analytics sections" className="relative z-30 flex h-full w-15 shrink-0 flex-col overflow-visible border-r border-slate-200/70 bg-slate-50 py-3">
+          <h2 className="sr-only">Analytics — Insights &amp; reports</h2>
+          <nav aria-label="Analytics reports" className="space-y-3 px-2">
+            {menuSections.map((section,index) => <div key={section.label} role="group" aria-label={section.label} className={index ? "space-y-1 border-t border-slate-200 pt-3" : "space-y-1"}>
+              {section.items.map(item => <button key={item.id} type="button" title={item.label} aria-label={item.label}
+                aria-current={item.view===activeView?"page":undefined} disabled={!item.view}
+                onClick={()=>{if(item.view)selectView(item.view)}}
+                className={`group relative flex h-10 w-10 items-center justify-center rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ${item.view===activeView?"bg-blue-50 text-blue-600 after:pointer-events-none after:absolute after:-left-2 after:top-1/2 after:h-6 after:w-[3px] after:-translate-y-1/2 after:rounded-full after:bg-blue-600":"text-slate-500 hover:bg-slate-100 hover:text-slate-800"}`}>
+                <AnalyticsIcon icon={item.icon}/>
+                <span className="pointer-events-none absolute left-full z-[150] ml-2 hidden whitespace-nowrap rounded-lg bg-slate-950 px-2 py-1 text-xs text-white group-hover:block group-focus-visible:block">{item.label}</span>
+              </button>)}
+            </div>)}
           </nav>
+          <DashboardUtilityNavigation placement="analytics"/>
         </aside>
 
-        <section className="min-h-0 overflow-y-auto">
+        <section className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+
           <div className="mx-auto w-full max-w-[1500px] space-y-5 px-[clamp(18px,4vw,72px)] pt-[clamp(18px,4vh,56px)]">
             {activeView !== "dashboard" &&
             activeView !== "team-workload" ? (
@@ -632,6 +537,6 @@ export function AnalyticsWorkspace() {
           </div>
         </section>
       </div>
-    </main>
+    </main></DashboardPanelFrame>
   );
 }

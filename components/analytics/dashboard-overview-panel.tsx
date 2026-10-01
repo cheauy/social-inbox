@@ -1,4 +1,5 @@
 "use client";
+import { beginForegroundLoading, useForegroundLoading } from "@/lib/display/foreground-loading";
 
 import Link from "next/link";
 import {
@@ -914,6 +915,7 @@ export function DashboardOverviewPanel({
 
   const [currentMemberRole, setCurrentMemberRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  useForegroundLoading(loading);
   const [refreshing, setRefreshing] = useState(false);
   const [warnings, setWarnings] = useState<string[]>([]);
   const mountedRef = useRef(true);
@@ -1204,7 +1206,7 @@ export function DashboardOverviewPanel({
 
           <button
             type="button"
-            onClick={() => void loadOverview(true)}
+            onClick={() => { const finish = beginForegroundLoading(); void loadOverview(true).finally(finish); }}
             disabled={refreshing}
             className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-50"
           >

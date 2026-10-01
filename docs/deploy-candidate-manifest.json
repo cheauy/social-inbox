@@ -1,8 +1,37 @@
 {
-  "createdAt": "2026-10-01T05:15:48.394Z",
+  "createdAt": "2026-10-01T12:46:07.022Z",
   "baseRevision": "cff45fc4b27375d51bbd877f5a53d773b687ab5b",
-  "status": "LOCAL PREPARATION ONLY; no deploy or database application",
-  "sourceSnapshot": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-source-candidate-1790831748224",
+  "checkoutRevision": "b27e557ad17cb2ae14deaa85f3890e43a3142cdf",
+  "userPushedRevision": "b27e557ad17cb2ae14deaa85f3890e43a3142cdf",
+  "priorManifest": "docs/deploy-prior-candidate-manifest.json",
+  "stage1DraftPaths": [
+    "lib/bot/draft-rules.ts",
+    "components/settings/bot-draft-settings.tsx",
+    "tests/bot-drafts.test.cjs",
+    "app/api/facebook/auto-reply/route.ts",
+    "components/settings/auto-reply-settings.tsx",
+    "app/dashboard/tenh-bot/page.tsx"
+  ],
+  "unpublishedStage2DraftPaths": [
+    "lib/bot/draft-rules.ts",
+    "components/settings/bot-draft-settings.tsx",
+    "app/api/facebook/auto-reply/route.ts",
+    "tests/bot-stage2-drafts.test.cjs",
+    "docs/tenh-bot-stage2-drafts.md"
+  ],
+  "unpublishedFollowups": [
+    "albums",
+    "Inbox/Settings/picker styling",
+    "Stage 2 session-only draft proposals",
+    "Inbox divider/message fit",
+    "Mobile composer fit",
+    "Quoted HUMAN_AGENT text and immediate composer recovery",
+    "Quick picker shimmer/cache refresh",
+    "Authorized View conversation and explicit Page fallback",
+    "Latest activity ordering, cross-view retention and independent scroll anchoring"
+  ],
+  "status": "LOCAL PREPARATION ONLY; user independently pushed commit; assistant performed no deploy, database application or activation",
+  "sourceSnapshot": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-source-candidate-1790858766668",
   "excluded": [
     ".serena",
     ".env*",
@@ -12,6 +41,18 @@
     "Library transfer files"
   ],
   "files": [
+    {
+      "action": "M",
+      "path": "app/api/conversations/[conversationId]/facebook-conversation/route.ts",
+      "bytes": 12094,
+      "sha256": "c182fd7a7730ef5f00f1403c3866289ead6ea2f91aa1a599b17f43c7f9548158"
+    },
+    {
+      "action": "A",
+      "path": "app/api/cron/facebook-auto-reply/route.ts",
+      "bytes": 892,
+      "sha256": "ee9be125cd4810d1f0b43f974b92aae69949ee4af6fd8a70f499a4ee6ebe0c40"
+    },
     {
       "action": "M",
       "path": "app/api/extension/disconnect/route.ts",
@@ -25,6 +66,12 @@
       "sha256": "923803dbb1ddba484b2a9c68bf481987e6c294a4e73da005f165c108524f38ad"
     },
     {
+      "action": "A",
+      "path": "app/api/facebook/auto-reply/route.ts",
+      "bytes": 13866,
+      "sha256": "dca7e498632a4cf16ad916625222a2ddf2e319aac910e50ab07630a35b3809c1"
+    },
+    {
       "action": "M",
       "path": "app/api/facebook/post-preview/route.ts",
       "bytes": 5509,
@@ -32,9 +79,51 @@
     },
     {
       "action": "M",
+      "path": "app/api/facebook/send-attachment/route.ts",
+      "bytes": 31968,
+      "sha256": "bcffa110d8ed521380d5f860371f2b2d07065e27740c00f535ba663250bdb18f"
+    },
+    {
+      "action": "M",
+      "path": "app/api/facebook/send/route.ts",
+      "bytes": 25067,
+      "sha256": "4337ae7d392ee2ce5eaf15e5be6c4d3e44dca8ea3a9952667639717e73e8a131"
+    },
+    {
+      "action": "M",
       "path": "app/api/facebook/stickers/pack/route.ts",
       "bytes": 1108,
       "sha256": "c2450b874467edef3e2710691af4d0abc7e0da72f78174283c144ca66da190cd"
+    },
+    {
+      "action": "A",
+      "path": "app/api/inbox/conversation-page/route.ts",
+      "bytes": 1197,
+      "sha256": "484723ef69741d0988309d664a306234ee2f3bbd685b700280a2e44717f193d5"
+    },
+    {
+      "action": "M",
+      "path": "app/api/inbox/message-image/route.ts",
+      "bytes": 8478,
+      "sha256": "420af7bbbeca747911ad9793f78c5209cc89ff7caaeb65e32f53003636a1b894"
+    },
+    {
+      "action": "M",
+      "path": "app/api/messages/[messageId]/media/route.ts",
+      "bytes": 4279,
+      "sha256": "b357b5c8331b39c94e5279d001db06b393e51fe341fa46559c48e4a90f55e527"
+    },
+    {
+      "action": "M",
+      "path": "app/api/saved-reply-categories/route.ts",
+      "bytes": 6052,
+      "sha256": "8122512082d1abe7e14442286d467ccbe82d95e45d88956d7933c7bfb13f07d0"
+    },
+    {
+      "action": "A",
+      "path": "app/api/team-chat/[[...retired]]/route.ts",
+      "bytes": 424,
+      "sha256": "ce816a3937e5581f3c4ce16aa54b23f4af70db1dc4e573ef5f2f26c9835d14df"
     },
     {
       "action": "D",
@@ -110,6 +199,12 @@
     },
     {
       "action": "M",
+      "path": "app/api/telegram/send-photo/route.ts",
+      "bytes": 17913,
+      "sha256": "8b405d6e062af10c5aa2fed234b0d0de792dcdd2dc18c09642877ca10596e605"
+    },
+    {
+      "action": "M",
       "path": "app/api/webhooks/facebook/route.ts",
       "bytes": 12318,
       "sha256": "0cdadaa4a64c18abc9d17d7d999e4fc62b3c112e0a80fce2f5ef3327dd184414"
@@ -129,26 +224,56 @@
     {
       "action": "M",
       "path": "app/dashboard/inbox/page.tsx",
-      "bytes": 6514,
-      "sha256": "f942651370bd50cb1bac157a7c1e29b98ee1ca46a9cdbf9622658ee6a6c55ea1"
+      "bytes": 6541,
+      "sha256": "c4ca915cb0781a5f64201db05d62720636c0b3eb8cd307fd5a74070e488cad2d"
+    },
+    {
+      "action": "M",
+      "path": "app/dashboard/layout.tsx",
+      "bytes": 5545,
+      "sha256": "08da0b0debde611f568225cbe8d32e04e9c8df57df5ddbdda624c9c74d2767b4"
+    },
+    {
+      "action": "A",
+      "path": "app/dashboard/settings/auto-reply/page.tsx",
+      "bytes": 112,
+      "sha256": "283080e553cf8582e7d67177cc550734e0ebfe34800fa30f55324173a269d1f8"
+    },
+    {
+      "action": "M",
+      "path": "app/dashboard/settings/layout.tsx",
+      "bytes": 814,
+      "sha256": "8691f218b9a6198cd4bec6a9aa1dda17fc34a33a16ff9354f819d35355e22a8c"
+    },
+    {
+      "action": "A",
+      "path": "app/dashboard/tenh-bot/page.tsx",
+      "bytes": 521,
+      "sha256": "d8332d30296c9f7a99f5214655f857fb4f2e41ec5be1b3bf20bb7fa2db037149"
     },
     {
       "action": "M",
       "path": "app/globals.css",
-      "bytes": 2524,
-      "sha256": "8a7e20792dc0e86a67bf67ca453b085b6947a6ad035c18620ad580360044a6bd"
+      "bytes": 3350,
+      "sha256": "d46b100f36360cbe6e463304b31fdfb5ef3539e54d306f26e341d23cad02c434"
     },
     {
       "action": "M",
       "path": "components/dashboard/dashboard-header.tsx",
-      "bytes": 3478,
-      "sha256": "9e1bd5805c9b83f86e3ebb9df1b1ee8842032327cae282b09a43fcb2abf71877"
+      "bytes": 3294,
+      "sha256": "386191fc9339313a61b62e057db85a41f69177739bb06242fcc632075fd54e00"
     },
     {
       "action": "M",
       "path": "components/dashboard/dashboard-loading-skeleton.tsx",
       "bytes": 2646,
       "sha256": "a14e59551acc7dd811bbcb4590c16e987eb939c3ee0929bf50cc6b900f32c661"
+    },
+    {
+      "action": "M",
+      "path": "components/dashboard/dashboard-nav-link.tsx",
+      "bytes": 779,
+      "sha256": "0877d6ee372d39bb9a394687323946a93e5882dfd02d936a47af01c2ba6f730c"
     },
     {
       "action": "M",
@@ -177,20 +302,56 @@
     {
       "action": "M",
       "path": "components/dashboard/workspace-switcher.tsx",
-      "bytes": 18396,
-      "sha256": "054f41ca4eeed6b26ea729606f03cb61d7c2093aa746e192b578e2038c177311"
+      "bytes": 18515,
+      "sha256": "e9ae2fe2e70d19358fc3132b86e843f6e767aaa91d76f977b095bfa785e9c581"
+    },
+    {
+      "action": "M",
+      "path": "components/inbox/companion-facebook-action.tsx",
+      "bytes": 10118,
+      "sha256": "6aa9361ac293fb0534e9802e315a677e7e59b20dfd07d85b4f670449d2be1544"
+    },
+    {
+      "action": "M",
+      "path": "components/inbox/conversation-header.tsx",
+      "bytes": 26881,
+      "sha256": "ab2ac0595712831ce2e29c3214d7e63069aa540d03e8fc3076603d6fc956ec15"
+    },
+    {
+      "action": "A",
+      "path": "components/inbox/conversation-list-header.tsx",
+      "bytes": 2258,
+      "sha256": "5d03db50a53761f919fab1bf94036618a45e3249579a4d18494f461ae99cb902"
     },
     {
       "action": "M",
       "path": "components/inbox/conversation-list.tsx",
-      "bytes": 150867,
-      "sha256": "265229811d64ea05902332038bb2880b096490f629bf1b2a633db1317b2fed59"
+      "bytes": 151725,
+      "sha256": "5e90b7ee61f428331b63e8d9ae0fc51d83eca10ff0d3f00f298330780d278ff6"
     },
     {
       "action": "M",
       "path": "components/inbox/customer-files-modal.tsx",
       "bytes": 12650,
       "sha256": "b03ccd6915e31535ba7dddec7c2651bba8b73b6ff608fb5e89cf0d14af60bc82"
+    },
+    {
+      "action": "M",
+      "path": "components/inbox/customer-tag-selector.tsx",
+      "bytes": 22251,
+      "sha256": "0023196738a60f09948ae27d268ac810702e8e13e47689b398e1af6500a17142"
+    },
+    {
+      "action": "A",
+      "path": "components/inbox/deferred-inbox-item.tsx",
+      "bytes": 3782,
+      "sha256": "ccb4c06813d0c5f5d8a19db17231493d97c31a34c3dccd3b4afa5867e040a904"
+    },
+    {
+      "action": "A",
+      "path": "components/inbox/inbox-empty-state.tsx",
+      "bytes": 3668,
+      "sha256": "4632542e70c8a00eb61e97abc3f1765c29c7bfd905c4293b313fa3e2e73f7f16"
     },
     {
       "action": "M",
@@ -201,14 +362,14 @@
     {
       "action": "M",
       "path": "components/inbox/inbox-view.tsx",
-      "bytes": 238052,
-      "sha256": "645073c6e2c5ef90fd99fb6d65dd557e82af087fef5e9df0d9f1ff5ebf92b0a5"
+      "bytes": 242663,
+      "sha256": "74beba66b60694edf339e79ac4bc5045662952cec45456fd77c34737888b8953"
     },
     {
       "action": "M",
       "path": "components/inbox/message-panel.tsx",
-      "bytes": 227590,
-      "sha256": "9d61522062697edbb68e1e84be8e81d47878f0a7bb7273c45f39b67156a6b39b"
+      "bytes": 224629,
+      "sha256": "d26d4ae0a6b8049b2606d054bb1aeabef8854b8812fc923a1ddcf52a6e8f5824"
     },
     {
       "action": "M",
@@ -221,6 +382,24 @@
       "path": "components/inbox/meta-sticker-grid.tsx",
       "bytes": 15980,
       "sha256": "3de6ca80acce2d0bfe71dba231c4cd127f01252ffc75dfbbfad9a04c1ecd0060"
+    },
+    {
+      "action": "M",
+      "path": "components/inbox/reply-box.tsx",
+      "bytes": 82506,
+      "sha256": "4af7f98ac24a8617916f39ae66355f6cb54d734cbc622a45f4b41bc6681f061f"
+    },
+    {
+      "action": "M",
+      "path": "components/inbox/saved-reply-selector.tsx",
+      "bytes": 20749,
+      "sha256": "811d3cb81695a1c0b491074a56bdc16debcb153e87694f8615525896874d4444"
+    },
+    {
+      "action": "M",
+      "path": "components/inbox/tenh-sticker-picker.tsx",
+      "bytes": 24109,
+      "sha256": "474a88bcb654f57435f8dc53cc69ff6211c70e72fed9f404645188c9067cc34c"
     },
     {
       "action": "M",
@@ -239,6 +418,18 @@
       "path": "components/profile/profile-form.tsx",
       "bytes": 19056,
       "sha256": "96da38e6b01c6fc5006013bf1c5c5ed129451e8fe628e959c7dd29286555e68b"
+    },
+    {
+      "action": "A",
+      "path": "components/settings/auto-reply-settings.tsx",
+      "bytes": 21242,
+      "sha256": "a9fc055241c45705dda999ae47369d581c2194388057049deaf0b49cafe4b926"
+    },
+    {
+      "action": "A",
+      "path": "components/settings/bot-draft-settings.tsx",
+      "bytes": 22397,
+      "sha256": "2e1e041ac982256b783108414d7fc09238036ee12296ba054bff514868a17007"
     },
     {
       "action": "M",
@@ -277,10 +468,136 @@
       "sha256": null
     },
     {
+      "action": "A",
+      "path": "db/migrations/20260930_facebook_auto_reply.sql",
+      "bytes": 12612,
+      "sha256": "13168752fe5549b52a0cd4a1ccc0b33594fb917e78e06fc4b745ab0fb5a427ac"
+    },
+    {
+      "action": "A",
+      "path": "db/migrations/20261001_facebook_auto_reply_safety.sql",
+      "bytes": 12490,
+      "sha256": "36cb612ac7c0433f5b62899ddbaa7d9f65f02b935457cbf2f327d6d5418e723c"
+    },
+    {
+      "action": "A",
+      "path": "db/migrations/20261002_facebook_auto_reply_recovery_test_gate.sql",
+      "bytes": 13465,
+      "sha256": "4ca84c51276e7fe5b4e7c6a3ba3ee7cd009006459d30beca48de140c600a4c2f"
+    },
+    {
+      "action": "A",
+      "path": "db/migrations/20261003_inbox_server_paging.sql",
+      "bytes": 10079,
+      "sha256": "ac57fe3ac3089c9584d8c9788fef745a55608404fbf5d172c0c4f539db59d9e7"
+    },
+    {
+      "action": "A",
+      "path": "docs/deploy-preflight-and-rollback.md",
+      "bytes": 22545,
+      "sha256": "4e4002f578de54efe72208c82a8aa8c5d914b73a4c86efb96b113bc73fd8140e"
+    },
+    {
+      "action": "A",
+      "path": "docs/facebook-comment-auto-reply.md",
+      "bytes": 22361,
+      "sha256": "69052f07882b8d55f597940b80aa798cb129d48b416827c4827f2c248a2d6e89"
+    },
+    {
+      "action": "A",
+      "path": "docs/inbox-performance-review.md",
+      "bytes": 13673,
+      "sha256": "3ec01f47b0a5be772391655bec33230e99854285c8739ef535f1d05e27e2087b"
+    },
+    {
+      "action": "A",
+      "path": "docs/sql/inbox-performance-index-proposals.sql",
+      "bytes": 2365,
+      "sha256": "35feece68b71b12a67a377b75b2e8d69401068ceafa7e729658d5dd66fb35458"
+    },
+    {
+      "action": "A",
+      "path": "lib/bot/draft-rules.ts",
+      "bytes": 22879,
+      "sha256": "51d86620b7a30e9639ad4772634f5e9b0f3e3e6989e794cb2a912e17dc065d6f"
+    },
+    {
+      "action": "A",
+      "path": "lib/facebook/auto-reply.ts",
+      "bytes": 15686,
+      "sha256": "4597ed3b1d2b8431dafd1e121a875e07ab6dd4bd7d0c1ba05b506c7c82d64da6"
+    },
+    {
+      "action": "M",
+      "path": "lib/facebook/cached-conversation-link.ts",
+      "bytes": 2283,
+      "sha256": "d60a58958c783af0707161015da0f54cfb93036600d31b3a757a010e9d68f0eb"
+    },
+    {
       "action": "M",
       "path": "lib/facebook/get-facebook-page-access-token.ts",
       "bytes": 18900,
       "sha256": "cea7a20843ff33e847d01bd3161b53b865e8eccb246a8a6c9a26f662ffa78a46"
+    },
+    {
+      "action": "M",
+      "path": "lib/facebook/send-attachment.test.mjs",
+      "bytes": 7538,
+      "sha256": "128a8006c2241d9175f5a3ce129c482cc909dde0ea6c120b3be5ccf47dfbce82"
+    },
+    {
+      "action": "M",
+      "path": "lib/facebook/send-reply-context.ts",
+      "bytes": 2451,
+      "sha256": "da5201765d8d9a93576d4212347e06e64c140e4a7d0490f68a478b6b6ae78cec"
+    },
+    {
+      "action": "A",
+      "path": "lib/inbox/conversation-page-contract.ts",
+      "bytes": 4194,
+      "sha256": "73e019da03338fd71a71184d74b82e56d5ceab64a0e768e9ee7d565892ecece3"
+    },
+    {
+      "action": "A",
+      "path": "lib/inbox/get-conversation-page.ts",
+      "bytes": 3638,
+      "sha256": "100cf20a3ae98a1c85fcf197e648b00cfc47f72d8df1aa617563f8bf18b97c31"
+    },
+    {
+      "action": "M",
+      "path": "lib/inbox/normalize-messages.ts",
+      "bytes": 6388,
+      "sha256": "36c72bf34a7d9e7c1c3f7f31f0b900d52331b19c91dca39e08cffc9c9d1b34ce"
+    },
+    {
+      "action": "A",
+      "path": "lib/inbox/optimistic-message-match.ts",
+      "bytes": 758,
+      "sha256": "24fadffc07c4dbf5bac67a3b2a1777316d8edeba1da7df907669dab3c740916f"
+    },
+    {
+      "action": "A",
+      "path": "lib/inbox/page-filter-normalization.ts",
+      "bytes": 4269,
+      "sha256": "97bb6431db0b1b533807bc7b84660e4e43074580e0c1f95b095c9e4b452aa990"
+    },
+    {
+      "action": "A",
+      "path": "lib/inbox/scroll-anchor.ts",
+      "bytes": 1261,
+      "sha256": "59c5d8204f62f4e859098459e4efbe2e0a119b12346f2ebc69f3a759bbd5564a"
+    },
+    {
+      "action": "M",
+      "path": "lib/inbox/stable-conversation-order.ts",
+      "bytes": 1073,
+      "sha256": "9ea8763125434c444b9ffae5baefbbec5d19828f9ffe9259bf7c92fbf3143674"
+    },
+    {
+      "action": "A",
+      "path": "lib/inbox/use-conversation-pages.ts",
+      "bytes": 10642,
+      "sha256": "3d687a09372017476cab337146a09fd4e451d9732c79e3d2e8a215827f110538"
     },
     {
       "action": "M",
@@ -313,10 +630,34 @@
       "sha256": null
     },
     {
+      "action": "A",
+      "path": "lib/team/team-members-server.ts",
+      "bytes": 672,
+      "sha256": "d3e38698508c12719c7d00baa218d8c4001b9c5cac90de74ab7ef24b17ec639e"
+    },
+    {
+      "action": "M",
+      "path": "lib/telegram/types.ts",
+      "bytes": 3228,
+      "sha256": "2a130977e7c403ffb753f2a31e47420ba669f08b87c785b1ccab018c9cda5f71"
+    },
+    {
+      "action": "A",
+      "path": "lib/workspaces/read-workspaces.ts",
+      "bytes": 1060,
+      "sha256": "82cda1ac1ce1ef39f394b14a3753251119fe65dd0733e8165b97673ceec2c448"
+    },
+    {
       "action": "M",
       "path": "mobile/app/(tabs)/_layout.tsx",
       "bytes": 4168,
       "sha256": "40eca5b5446222a48f09c71cc7c1ce5c427e1aa794c7b3da054f677f88358ec0"
+    },
+    {
+      "action": "A",
+      "path": "mobile/app/(tabs)/bot.tsx",
+      "bytes": 11121,
+      "sha256": "3acb66c1d5427454f49b4d3a5e71abb338a64eef16d84991a62327b66cbc902d"
     },
     {
       "action": "M",
@@ -367,10 +708,94 @@
       "sha256": "8927b5d5f710275ec91f1290aabae360df51e8525d7348c6956f58f872032575"
     },
     {
+      "action": "A",
+      "path": "tests/bot-drafts.test.cjs",
+      "bytes": 8166,
+      "sha256": "43b0126dcfa7f8e3a85ee17d7dfeaf888b048c8abb0500d1413bd77d353c3dcb"
+    },
+    {
+      "action": "A",
+      "path": "tests/facebook-auto-reply-browser.test.cjs",
+      "bytes": 28877,
+      "sha256": "85c91dc0e42846817c42c26d3e0f720747c552b969f61f0fa158d93d1aa95b41"
+    },
+    {
+      "action": "A",
+      "path": "tests/facebook-auto-reply-safety.test.mjs",
+      "bytes": 19055,
+      "sha256": "2de396b254943188bd1dcd0c26ef8945f995605556abf1af6016af577ffa1fd6"
+    },
+    {
+      "action": "A",
+      "path": "tests/facebook-auto-reply-sql.test.mjs",
+      "bytes": 8605,
+      "sha256": "950b1947ab966a3e7cda3635188d572c26cef7d47af85778a2519801c7ec33ed"
+    },
+    {
+      "action": "A",
+      "path": "tests/facebook-auto-reply.test.cjs",
+      "bytes": 11524,
+      "sha256": "c6834c8e9169015f5da0b1ecc094a059c4af92036293a30878ffbb5d6cb65354"
+    },
+    {
+      "action": "A",
+      "path": "tests/fixtures/auto-reply-browser-loader.cjs",
+      "bytes": 636,
+      "sha256": "56899ca41674191f3a4616e0d5563ac32191babb0e5532103921996e05f5d91a"
+    },
+    {
+      "action": "A",
+      "path": "tests/fixtures/inbox-paging-browser.entry.cjs",
+      "bytes": 34553,
+      "sha256": "fbfba03bd3a8ef3802183d63fa5c1c037bd311b6a2309d04ff7198a225018a73"
+    },
+    {
+      "action": "M",
+      "path": "tests/inbox-image-workflow.test.cjs",
+      "bytes": 12631,
+      "sha256": "e5ee575d386a9f8cad70ab0407964d28e4d72059c0aa60894696f90c8c8b916f"
+    },
+    {
       "action": "M",
       "path": "tests/inbox-live-recovery.test.cjs",
       "bytes": 13089,
       "sha256": "2b579cf83166905ebf76d0c32eae783fe1195cfffaf716b5c0f5cacd3212a33f"
+    },
+    {
+      "action": "A",
+      "path": "tests/inbox-live-safety.test.cjs",
+      "bytes": 5421,
+      "sha256": "67457dd5ccb7df3b14eb66bf6dc2f20f0e20a35a71026e519082f230d9bae8bf"
+    },
+    {
+      "action": "A",
+      "path": "tests/inbox-media-recovery.test.cjs",
+      "bytes": 7417,
+      "sha256": "2fd01c21f4709443194d63f284a5440716c8ce97f165de0e24d112aabd99d017"
+    },
+    {
+      "action": "A",
+      "path": "tests/inbox-paging-browser-build.cjs",
+      "bytes": 1659,
+      "sha256": "9a2f2d78a9639cba2cc021ac08a01db37b933f5355e2cede590a1d5a3a1cc354"
+    },
+    {
+      "action": "A",
+      "path": "tests/inbox-performance.test.cjs",
+      "bytes": 9626,
+      "sha256": "499ac1ec20de9ab27a555b6fce06b55480aba0a17520cb12c24a8bab8b6d32b3"
+    },
+    {
+      "action": "A",
+      "path": "tests/inbox-server-paging-sql.test.mjs",
+      "bytes": 16376,
+      "sha256": "4be58e73afaeff1c306c8d599d8ac50a5b653e77380f4816e379dfdb67f6f7e8"
+    },
+    {
+      "action": "A",
+      "path": "tests/inbox-server-paging.test.cjs",
+      "bytes": 16800,
+      "sha256": "02f1573da5e89e81462145436c762c7982604c8eb76b59ac6928b57f166019b1"
     },
     {
       "action": "M",
@@ -380,9 +805,21 @@
     },
     {
       "action": "M",
+      "path": "tests/messenger-sources/business-suite-action.test.cjs",
+      "bytes": 15603,
+      "sha256": "1cde0a214421ee69ccebcfebdb51a9c20377ecb0f670dd0250f961ad7fda167c"
+    },
+    {
+      "action": "M",
       "path": "tests/meta-stickers/cache.test.cjs",
       "bytes": 5898,
       "sha256": "67da5dc19316288ae4b87244f8f982af3ead0200df060cc90bec9f1872437a78"
+    },
+    {
+      "action": "A",
+      "path": "tests/team-chat-retirement.test.cjs",
+      "bytes": 8775,
+      "sha256": "86e863e5e4c69a9ed2553c44f39d063627913becb87dbb5fe730cde3ee1fad18"
     },
     {
       "action": "M",
@@ -398,249 +835,321 @@
     },
     {
       "action": "??",
-      "path": "app/api/cron/facebook-auto-reply/route.ts",
-      "bytes": 892,
-      "sha256": "ee9be125cd4810d1f0b43f974b92aae69949ee4af6fd8a70f499a4ee6ebe0c40"
+      "path": "app/api/tenh-bot/rules/route.ts",
+      "bytes": 4318,
+      "sha256": "580eeea26e98131b78df5f3ed01aea6203a6d494eb43fc113c265da3cc49eaaa"
     },
     {
       "action": "??",
-      "path": "app/api/facebook/auto-reply/route.ts",
-      "bytes": 10845,
-      "sha256": "267af12ddebfb8ae9fc3f74c862b26f4fdcf2f0d78000605fcc364532cd35d2c"
+      "path": "app/dashboard/loading.tsx",
+      "bytes": 295,
+      "sha256": "d68eb9f9d16a32866cb576122858668a568369d216bf7aa8a3ecb399b6cab5e4"
     },
     {
       "action": "??",
-      "path": "app/api/inbox/conversation-page/route.ts",
-      "bytes": 1197,
-      "sha256": "484723ef69741d0988309d664a306234ee2f3bbd685b700280a2e44717f193d5"
+      "path": "components/dashboard/dashboard-loading-progress.tsx",
+      "bytes": 556,
+      "sha256": "98b33a9009f0926941af3933fd0f25113d7a9adffc685d0612381ad2d776f09f"
     },
     {
       "action": "??",
-      "path": "app/api/team-chat/[[...retired]]/route.ts",
-      "bytes": 424,
-      "sha256": "ce816a3937e5581f3c4ce16aa54b23f4af70db1dc4e573ef5f2f26c9835d14df"
+      "path": "components/dashboard/dashboard-utility-navigation.tsx",
+      "bytes": 2993,
+      "sha256": "d81bf4eb6000f8427c2afae626e27e8cdb78552f817936c66e2f67fd4dbd1c30"
     },
     {
       "action": "??",
-      "path": "app/dashboard/settings/auto-reply/page.tsx",
-      "bytes": 112,
-      "sha256": "283080e553cf8582e7d67177cc550734e0ebfe34800fa30f55324173a269d1f8"
+      "path": "components/inbox/inbox-layout-surfaces.tsx",
+      "bytes": 946,
+      "sha256": "bc02b7d93ddc0b3a398b0ef5be008a717456029b359d63ba50d2de297277a196"
     },
     {
       "action": "??",
-      "path": "app/dashboard/tenh-bot/page.tsx",
-      "bytes": 482,
-      "sha256": "78b6bbbe2649c0ecf0ecaeba98156d94e06c6a3e1592393d422cebfc0b9ceb67"
+      "path": "components/inbox/inbox-photo-image.tsx",
+      "bytes": 3752,
+      "sha256": "aa69aca2a760092dd69668f3d93ea23139c91a923b32060497e449559a980d46"
     },
     {
       "action": "??",
-      "path": "components/inbox/conversation-list-header.tsx",
-      "bytes": 2258,
-      "sha256": "5d03db50a53761f919fab1bf94036618a45e3249579a4d18494f461ae99cb902"
+      "path": "components/inbox/photo-album-frame.tsx",
+      "bytes": 421,
+      "sha256": "a7e974648518ec56ccf3b883dead68ea84b747186a30db447f0dd61f5174064c"
     },
     {
       "action": "??",
-      "path": "components/inbox/deferred-inbox-item.tsx",
-      "bytes": 3782,
-      "sha256": "ccb4c06813d0c5f5d8a19db17231493d97c31a34c3dccd3b4afa5867e040a904"
+      "path": "components/inbox/quick-picker-loading.tsx",
+      "bytes": 1036,
+      "sha256": "bf03f2332b98b395befd595f728c5967cd50eba9a0453d607a8a45006bb5715b"
     },
     {
       "action": "??",
-      "path": "components/inbox/inbox-empty-state.tsx",
-      "bytes": 3668,
-      "sha256": "4632542e70c8a00eb61e97abc3f1765c29c7bfd905c4293b313fa3e2e73f7f16"
+      "path": "db/migrations/20261004_tenh_bot_durable_rules.sql",
+      "bytes": 2636,
+      "sha256": "49c6e7ba616928319985d6b68a9e30fd5c33566233598c7a5896bfd4bdc7cba3"
     },
     {
       "action": "??",
-      "path": "components/settings/auto-reply-settings.tsx",
-      "bytes": 21140,
-      "sha256": "6363385fa8bc295d41dbf4f826f0e700602c04c409beacc39ffb76205e029702"
+      "path": "docs/authenticated-local-qa-review.md",
+      "bytes": 6904,
+      "sha256": "5cff48f71cf3e11967572853584b103c7b40f2ee34f951f760e42d0337a3491d"
     },
     {
       "action": "??",
-      "path": "db/migrations/20260930_facebook_auto_reply.sql",
-      "bytes": 12612,
-      "sha256": "13168752fe5549b52a0cd4a1ccc0b33594fb917e78e06fc4b745ab0fb5a427ac"
+      "path": "docs/deploy-prior-candidate-manifest.json",
+      "bytes": 19813,
+      "sha256": "45a16cbbcc65694069dd4827a21fadf267a5324dd3ca5e183673ba33b7e0a9f6"
     },
     {
       "action": "??",
-      "path": "db/migrations/20261001_facebook_auto_reply_safety.sql",
-      "bytes": 12490,
-      "sha256": "36cb612ac7c0433f5b62899ddbaa7d9f65f02b935457cbf2f327d6d5418e723c"
+      "path": "docs/facebook-human-agent-quoted-reply-review.md",
+      "bytes": 1858,
+      "sha256": "90943cdd269426f7141dd67908576a3c483a8bd72d9dd4c611a94ecaf2c40adc"
     },
     {
       "action": "??",
-      "path": "db/migrations/20261002_facebook_auto_reply_recovery_test_gate.sql",
-      "bytes": 13465,
-      "sha256": "4ca84c51276e7fe5b4e7c6a3ba3ee7cd009006459d30beca48de140c600a4c2f"
+      "path": "docs/facebook-view-conversation-review.md",
+      "bytes": 2942,
+      "sha256": "dcf1309163a82eb6b1e87988be1765c996b0e14d9d0fdfb78cb030ca258ece2f"
     },
     {
       "action": "??",
-      "path": "db/migrations/20261003_inbox_server_paging.sql",
-      "bytes": 10079,
-      "sha256": "ac57fe3ac3089c9584d8c9788fef745a55608404fbf5d172c0c4f539db59d9e7"
+      "path": "docs/header-progress-durable-bot-review.md",
+      "bytes": 5637,
+      "sha256": "2349f3d85f9fa9db456787b60ed3508b6d420b0912a94cdfb0c5a94206873fcd"
     },
     {
       "action": "??",
-      "path": "docs/deploy-preflight-and-rollback.md",
-      "bytes": 15928,
-      "sha256": "83a1d749d8f6b4b58e5bab7e9a79280c214da1dc5769366a16078e8867c90eb1"
+      "path": "docs/inbox-album-image-review.md",
+      "bytes": 6734,
+      "sha256": "76e62df897179d5b707c5c44c9d58b67ef0b5cf172817c2d77091361692133bb"
     },
     {
       "action": "??",
-      "path": "docs/facebook-comment-auto-reply.md",
-      "bytes": 22361,
-      "sha256": "69052f07882b8d55f597940b80aa798cb129d48b416827c4827f2c248a2d6e89"
+      "path": "docs/inbox-divider-message-fit-review.md",
+      "bytes": 2659,
+      "sha256": "c9d733ec595d749a18d615dda214d2f252d5a3700b4c0b47bdf6b08a31bc47f6"
     },
     {
       "action": "??",
-      "path": "docs/inbox-performance-review.md",
-      "bytes": 13673,
-      "sha256": "3ec01f47b0a5be772391655bec33230e99854285c8739ef535f1d05e27e2087b"
+      "path": "docs/inbox-live-order-and-scroll-review.md",
+      "bytes": 4543,
+      "sha256": "be4bc51ded31be24c62b7f7ed0652e21845e61023b8223f5addbb20fae90abd7"
     },
     {
       "action": "??",
-      "path": "docs/sql/inbox-performance-index-proposals.sql",
-      "bytes": 2365,
-      "sha256": "35feece68b71b12a67a377b75b2e8d69401068ceafa7e729658d5dd66fb35458"
+      "path": "docs/inbox-photo-loading-review.md",
+      "bytes": 5091,
+      "sha256": "8f5c6138eb80ab8317892e5f32e9f824cb493b4bec0d1f72fa1b28289214b3ce"
     },
     {
       "action": "??",
-      "path": "lib/facebook/auto-reply.ts",
-      "bytes": 15686,
-      "sha256": "4597ed3b1d2b8431dafd1e121a875e07ab6dd4bd7d0c1ba05b506c7c82d64da6"
+      "path": "docs/inbox-ui-refinement-review.md",
+      "bytes": 6711,
+      "sha256": "32ece7c3b84244b635a0b3ed633fb56f79a236d8c542dda4a734281cdefb44ce"
     },
     {
       "action": "??",
-      "path": "lib/inbox/conversation-page-contract.ts",
-      "bytes": 4194,
-      "sha256": "73e019da03338fd71a71184d74b82e56d5ceab64a0e768e9ee7d565892ecece3"
+      "path": "docs/quick-picker-loading-review.md",
+      "bytes": 1946,
+      "sha256": "0379f68536bfd9c6c55bbb44a9d9c75f96bef51d03c6ee179f2e82d4b0c0924b"
     },
     {
       "action": "??",
-      "path": "lib/inbox/get-conversation-page.ts",
-      "bytes": 3638,
-      "sha256": "100cf20a3ae98a1c85fcf197e648b00cfc47f72d8df1aa617563f8bf18b97c31"
+      "path": "docs/settings-panel-style-review.md",
+      "bytes": 5077,
+      "sha256": "f67c3e5c6b1198a3e2485f9a5544b6bc21d010124e4b796cc07ec0e1d4875e62"
     },
     {
       "action": "??",
-      "path": "lib/inbox/optimistic-message-match.ts",
-      "bytes": 758,
-      "sha256": "24fadffc07c4dbf5bac67a3b2a1777316d8edeba1da7df907669dab3c740916f"
+      "path": "docs/sql/inbox-release-readonly-checks.sql",
+      "bytes": 5038,
+      "sha256": "7f78cc8486e5aad70241c946f4b241e12670c230962b5969c311580ae4d2c534"
     },
     {
       "action": "??",
-      "path": "lib/inbox/page-filter-normalization.ts",
-      "bytes": 4269,
-      "sha256": "97bb6431db0b1b533807bc7b84660e4e43074580e0c1f95b095c9e4b452aa990"
+      "path": "docs/tenh-bot-stage1-drafts.md",
+      "bytes": 6965,
+      "sha256": "6b0b7be511b63ff65b347569b775446e2151ccce18be8d5b02f4b6f712065990"
     },
     {
       "action": "??",
-      "path": "lib/inbox/scroll-anchor.ts",
-      "bytes": 1261,
-      "sha256": "59c5d8204f62f4e859098459e4efbe2e0a119b12346f2ebc69f3a759bbd5564a"
+      "path": "docs/tenh-bot-stage2-drafts.md",
+      "bytes": 9562,
+      "sha256": "b535419a99008be1324d116b826f4389901244d862c115f0355a566b45955a7f"
     },
     {
       "action": "??",
-      "path": "lib/inbox/use-conversation-pages.ts",
-      "bytes": 9496,
-      "sha256": "3133b4bfdba47b3d05e62dcc277e096c3ea279f2fea22e00bb5ebb3eefae9d59"
+      "path": "lib/display/foreground-loading.ts",
+      "bytes": 791,
+      "sha256": "c5afea59ac64218703c19ebc142f3ff8f790ae1b1a712351fe8dff3c15d92bd2"
     },
     {
       "action": "??",
-      "path": "lib/team/team-members-server.ts",
-      "bytes": 672,
-      "sha256": "d3e38698508c12719c7d00baa218d8c4001b9c5cac90de74ab7ef24b17ec639e"
+      "path": "lib/inbox/local-image-preview.ts",
+      "bytes": 2777,
+      "sha256": "de5673b2d4c3de31cd962318705bd1aa4ebd345e47a657ff85f7b92861560fda"
     },
     {
       "action": "??",
-      "path": "lib/workspaces/read-workspaces.ts",
-      "bytes": 1060,
-      "sha256": "82cda1ac1ce1ef39f394b14a3753251119fe65dd0733e8165b97673ceec2c448"
+      "path": "lib/inbox/photo-groups.ts",
+      "bytes": 4456,
+      "sha256": "023cb71a0716e441aaeda522dd9a9fde456957e892c62520f402338b12a261c3"
     },
     {
       "action": "??",
-      "path": "mobile/app/(tabs)/bot.tsx",
-      "bytes": 11121,
-      "sha256": "3acb66c1d5427454f49b4d3a5e71abb338a64eef16d84991a62327b66cbc902d"
+      "path": "lib/inbox/quick-picker-cache.ts",
+      "bytes": 1259,
+      "sha256": "1d20914c523522d53dd06bde025881cab4ea587c0af6b2fd8b60655529266330"
     },
     {
       "action": "??",
-      "path": "tests/facebook-auto-reply-browser.test.cjs",
-      "bytes": 28855,
-      "sha256": "a847b71c56cfa230f101c0b9e97f60f7b932212b5d31c520c4fbdaf9eedccb1e"
+      "path": "lib/inbox/retain-known-conversation-rows.ts",
+      "bytes": 1162,
+      "sha256": "c919da395dd9c4fdf0f55d8d283a65a8bcd7928fa9eb09dc341cb46478598a70"
     },
     {
       "action": "??",
-      "path": "tests/facebook-auto-reply-safety.test.mjs",
-      "bytes": 19055,
-      "sha256": "2de396b254943188bd1dcd0c26ef8945f995605556abf1af6016af577ffa1fd6"
+      "path": "lib/inbox/use-conversation-list-anchor.ts",
+      "bytes": 1834,
+      "sha256": "6a398bedfd2a019e589214735a4afbf2fb039b0670caa3c450ba5676fb95cf66"
     },
     {
       "action": "??",
-      "path": "tests/facebook-auto-reply-sql.test.mjs",
-      "bytes": 8605,
-      "sha256": "950b1947ab966a3e7cda3635188d572c26cef7d47af85778a2519801c7ec33ed"
+      "path": "tests/bot-stage2-drafts.test.cjs",
+      "bytes": 18832,
+      "sha256": "960f6533ff4c4bc5ed35ab17d0795b81549b309ecafeb7dda49da0435196b714"
     },
     {
       "action": "??",
-      "path": "tests/facebook-auto-reply.test.cjs",
-      "bytes": 11524,
-      "sha256": "c6834c8e9169015f5da0b1ecc094a059c4af92036293a30878ffbb5d6cb65354"
+      "path": "tests/dashboard-loading-progress.test.cjs",
+      "bytes": 2542,
+      "sha256": "6a5b424dfab1efc11d49a620f9b33b134737f4e07a2aad2914f029e8ed6d5d4e"
     },
     {
       "action": "??",
-      "path": "tests/fixtures/auto-reply-browser-loader.cjs",
-      "bytes": 636,
-      "sha256": "56899ca41674191f3a4616e0d5563ac32191babb0e5532103921996e05f5d91a"
+      "path": "tests/dashboard-utility-navigation.test.cjs",
+      "bytes": 3020,
+      "sha256": "8aa34e932368be8ab843388a639e3a05d6ae83ec3cf052533ed4beb6beecc486"
     },
     {
       "action": "??",
-      "path": "tests/fixtures/inbox-paging-browser.entry.cjs",
-      "bytes": 12904,
-      "sha256": "ed276ac5e0203fa2bf6a456b92d4f25fe58a44949a3e36700a8174f18be7d778"
+      "path": "tests/facebook-conversation-navigation.test.cjs",
+      "bytes": 4548,
+      "sha256": "32e904aec93e8b56faa58e0d8eb1341ca8a30e1e2cef68cff07aeef46bdc802f"
     },
     {
       "action": "??",
-      "path": "tests/inbox-live-safety.test.cjs",
-      "bytes": 5430,
-      "sha256": "4f19ad0f81ff8e6d09101d98fb25d34b1852d4d5ba999c64316a13702f127887"
+      "path": "tests/facebook-human-agent-quoted-reply.test.cjs",
+      "bytes": 13243,
+      "sha256": "dc37b64bf433c94d607a0a531cf8bf1f8bd9ba932f82d0b059c7c08117ae601e"
     },
     {
       "action": "??",
-      "path": "tests/inbox-media-recovery.test.cjs",
-      "bytes": 7417,
-      "sha256": "2fd01c21f4709443194d63f284a5440716c8ce97f165de0e24d112aabd99d017"
+      "path": "tests/facebook-navigation-browser-build.cjs",
+      "bytes": 1329,
+      "sha256": "2cd5f6a4e2e7ff57aef3809d6b152b57619f9d0ed718e7e1d898bb50bf4dfdf2"
     },
     {
       "action": "??",
-      "path": "tests/inbox-paging-browser-build.cjs",
-      "bytes": 1298,
-      "sha256": "af9733bc69df80815e0c02396ea53ba94c0641db8c083d8f799570f44122e462"
+      "path": "tests/fixtures/dashboard-navigation-stub.cjs",
+      "bytes": 588,
+      "sha256": "6fc904a3be0e9896d7d5f05a74d953e98b95552143b6a9da4e5244480eb5e430"
     },
     {
       "action": "??",
-      "path": "tests/inbox-performance.test.cjs",
-      "bytes": 9626,
-      "sha256": "499ac1ec20de9ab27a555b6fce06b55480aba0a17520cb12c24a8bab8b6d32b3"
+      "path": "tests/fixtures/facebook-navigation-browser.entry.cjs",
+      "bytes": 3287,
+      "sha256": "1c417b9dd2a724654752fed16a80f4b459725149bc9aae834eeb5d8e6dfb7f95"
     },
     {
       "action": "??",
-      "path": "tests/inbox-server-paging-sql.test.mjs",
-      "bytes": 16376,
-      "sha256": "4be58e73afaeff1c306c8d599d8ac50a5b653e77380f4816e379dfdb67f6f7e8"
+      "path": "tests/fixtures/inbox-live-order-browser.entry.cjs",
+      "bytes": 5741,
+      "sha256": "38559f6b9441a193f0becba1f78cacfa823e8a35b7eebcfd16e75a0571a1fca9"
     },
     {
       "action": "??",
-      "path": "tests/inbox-server-paging.test.cjs",
-      "bytes": 14935,
-      "sha256": "5902f5331cee6c249d910aa7c93e2608123e9b9b2cfe9fc1a378192cb803b5c7"
+      "path": "tests/fixtures/photo-loading-browser.entry.cjs",
+      "bytes": 4846,
+      "sha256": "08ca612e7d43ba792c7a9ab4b0360f200e0cfcf24e155f45ea73d48da9da50ce"
     },
     {
       "action": "??",
-      "path": "tests/team-chat-retirement.test.cjs",
-      "bytes": 8775,
-      "sha256": "86e863e5e4c69a9ed2553c44f39d063627913becb87dbb5fe730cde3ee1fad18"
+      "path": "tests/fixtures/quick-picker-browser.entry.cjs",
+      "bytes": 6884,
+      "sha256": "a5d1d8577d09b9c0ca239878d352d62267ae708a3b2930cb60a745390431db67"
+    },
+    {
+      "action": "??",
+      "path": "tests/fixtures/settings-sidebar-stub.cjs",
+      "bytes": 304,
+      "sha256": "625439fcdeeb9838f594899059c8b8731f4a6607cacbc7d8cd40d2072efd6939"
+    },
+    {
+      "action": "??",
+      "path": "tests/inbox-albums.test.cjs",
+      "bytes": 11161,
+      "sha256": "165e4a47158770e49d8b29a54a2f05875d54e3aefb876ffef0112693a1e384a9"
+    },
+    {
+      "action": "??",
+      "path": "tests/inbox-live-order-anchor.test.cjs",
+      "bytes": 5720,
+      "sha256": "bff89756b94283ace02c41cd5689d28fd25ba3ff6c4a8c850ff2199c0936f829"
+    },
+    {
+      "action": "??",
+      "path": "tests/inbox-live-order-browser-build.cjs",
+      "bytes": 1329,
+      "sha256": "f105d0149fc5557614225e07d0d74def7ef3abeefe1444abd2b272fc74d1c863"
+    },
+    {
+      "action": "??",
+      "path": "tests/inbox-photo-loading.test.cjs",
+      "bytes": 8435,
+      "sha256": "7e0d628e1452c892aeb6b81ff4fde4c2d98e6951a87c4e63a9b66315694ec6c4"
+    },
+    {
+      "action": "??",
+      "path": "tests/inbox-unified-picker.test.cjs",
+      "bytes": 1651,
+      "sha256": "4112e7edb1bbb19a233c23116a2be18539db1031fea4b9e551e6534682dd2039"
+    },
+    {
+      "action": "??",
+      "path": "tests/photo-loading-browser-build.cjs",
+      "bytes": 1605,
+      "sha256": "c59a5c37d39db45f814bfb9df8ad125daf8cf5c7c386d675058a4cb690c39b4d"
+    },
+    {
+      "action": "??",
+      "path": "tests/photo-loading-browser-server.cjs",
+      "bytes": 1765,
+      "sha256": "ef255f0169e44349422b13941a5322ab04d833cad4c37a10b415adcb754c17d5"
+    },
+    {
+      "action": "??",
+      "path": "tests/quick-picker-browser-build.cjs",
+      "bytes": 1599,
+      "sha256": "3ab9bee723f6f7a1f8866b566c2b751a6d5bd03023fd382d942d6e083400d211"
+    },
+    {
+      "action": "??",
+      "path": "tests/quick-picker-loading.test.cjs",
+      "bytes": 3282,
+      "sha256": "33c2930e395c2bc0dc787991135249f49adedd6e07de385fca075330093bb3ec"
+    },
+    {
+      "action": "??",
+      "path": "tests/tenh-bot-durable-rules-sql.test.mjs",
+      "bytes": 2287,
+      "sha256": "75fd2bb6c5e4a7b804e46c795bcf05b13bf64dbebc5c293cfb2a0197204f2d1b"
+    },
+    {
+      "action": "??",
+      "path": "tests/tenh-bot-durable-rules.test.cjs",
+      "bytes": 2988,
+      "sha256": "004d850330402ea91c146d80b003630c87479ed428a98cf50f57cf984b16e3ca"
     }
   ]
 }

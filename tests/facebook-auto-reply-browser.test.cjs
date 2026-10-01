@@ -69,7 +69,7 @@ async function bundle(folder) {
     mode: "development", target: "web", devtool: false,
     entry: join(ROOT, "components/settings/auto-reply-settings.tsx"),
     output: { path: folder, filename: "ui.js" },
-    resolve: { extensions: [".tsx", ".ts", ".js"], modules: [join(ROOT, "node_modules")] },
+    resolve: { extensions: [".tsx", ".ts", ".js"], alias: { "@": ROOT }, modules: [join(ROOT, "node_modules")] },
     module: { rules: [{ test: /\.tsx?$/, use: join(__dirname, "fixtures/auto-reply-browser-loader.cjs") }] },
   });
   await new Promise((done, fail) => instance.run((error, stats) => instance.close(() => {

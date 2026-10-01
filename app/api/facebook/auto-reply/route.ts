@@ -1,9 +1,11 @@
+import { TENH_BOT_AVAILABLE } from "@/lib/bot/availability";
+import { tenhBotComingSoonResponse } from "@/lib/bot/coming-soon-response";
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { supabaseAdmin as db } from "@/lib/supabase/admin";
 import { resolveStoredFacebookPageAccessToken } from "@/lib/facebook/get-facebook-page-access-token";
 import { autoReplyGraph, inspectAutoReply, type AutoReplyJob } from "@/lib/facebook/auto-reply";
-import { parseDraftRules, parseDraftEvents, previewDraftRules } from "@/lib/bot/draft-rules";
+import { parseDraftRules, parseDraftEvents, previewDraftRules, draftRecordedHealth } from "@/lib/bot/draft-rules";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const reply = (data: object, status = 200) => NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } });
@@ -11,17 +13,18 @@ const uuid = (value: unknown): value is string => typeof value === "string" && /
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
 
 export async function GET(request: NextRequest) {
+  if(!TENH_BOT_AVAILABLE)return tenhBotComingSoonResponse();
   const guard = await requirePermission("channels", "view");
   if (!guard.success) return guard.response;
   const business = guard.context.member.business_id;
   if (request.nextUrl.searchParams.get("scope") === "drafts") {
     const teamGuard = await requirePermission("team_members", "view");
     const [pages, members] = await Promise.all([
-      db.from("social_accounts").select("id,account_name,platform").eq("business_id", business).eq("is_active",true).limit(100),
+      db.from("social_accounts").select("id,account_name,platform,platform_account_id,facebook_token_status").eq("business_id", business).eq("is_active",true).limit(100),
       teamGuard.success ? db.from("team_members").select("id,full_name").eq("business_id",business).eq("is_active",true).limit(100) : Promise.resolve({data:[],error:null}),
     ]);
     if (pages.error || members.error) return reply({error:"Draft context unavailable."},503);
-    return reply({businessId:business,pages:pages.data,members:members.data,canManage:guard.context.permissions.channels === "manage" || guard.context.isOwner,
+    return reply({businessId:business,pages:(pages.data??[]).map(p=>({id:p.id,account_name:p.account_name,platform:p.platform,platform_account_id:p.platform_account_id,recordedConnectionStatus:draftRecordedHealth(p.facebook_token_status)})),members:members.data,canManage:guard.context.permissions.channels === "manage" || guard.context.isOwner,
       executionAvailable:false,note:"Draft tests only. Live channel execution unavailable."});
   }
   const before = request.nextUrl.searchParams.get("before");
@@ -58,6 +61,7 @@ function postReference(input: string, pageId: string) {
 }
 
 export async function POST(request: NextRequest) {
+  if(!TENH_BOT_AVAILABLE)return tenhBotComingSoonResponse();
   const guard = await requirePermission("channels", "manage");
   if (!guard.success) return guard.response;
   const business = guard.context.member.business_id;
@@ -67,14 +71,14 @@ export async function POST(request: NextRequest) {
     if (body.operation === "draftPreview") {
       if (JSON.stringify(body).length > 262144) return reply({error:"Draft test is too large."},413);
       if (!uuid(body.channelId)) return reply({error:"Choose a connected channel."},400);
-      const page = await db.from("social_accounts").select("id,platform").eq("id",body.channelId).eq("business_id",business).eq("is_active",true).maybeSingle();
+      const page = await db.from("social_accounts").select("id,platform,platform_account_id,facebook_token_status").eq("id",body.channelId).eq("business_id",business).eq("is_active",true).maybeSingle();
       if(page.error)return reply({error:"Channel lookup unavailable."},503);
       if(!page.data)return reply({error:"Channel not found."},404);
-      // Only Messenger-style hypothetical text plans are defined in this stage.
+      // Facebook-only synthetic plans; no provider capability or live eligibility is asserted.
       if(page.data.platform!=="facebook")return reply({error:"Draft evaluation for this channel is unavailable."},422);
       const context={businessId:business,channelId:body.channelId};
       let rules,events;
-      try{rules=parseDraftRules(body.rules,context);events=parseDraftEvents(body.events);}catch(error){return reply({error:(error as Error).message},400);}
+      try{rules=parseDraftRules(body.rules,context);events=parseDraftEvents(body.events,context);}catch(error){return reply({error:(error as Error).message},400);}
       let staff:{id:string;load:number}[]=[];
       if(rules.some(r=>r.memberIds.length)){
         const teamGuard=await requirePermission("team_members","view");if(!teamGuard.success)return teamGuard.response;
@@ -82,7 +86,7 @@ export async function POST(request: NextRequest) {
         if(members.error)return reply({error:"Staff lookup unavailable."},503);
         staff=(members.data??[]).map(m=>({id:m.id,load:0}));
       }
-      try{return reply(previewDraftRules(rules,events,{...context,staff,now:body.now}));}
+      try{return reply(previewDraftRules(rules,events,{...context,staff,now:body.now,publicPageId:page.data.platform_account_id,recordedConnectionStatus:draftRecordedHealth(page.data.facebook_token_status)}));}
       catch(error){return reply({error:(error as Error).message},400);}
     }
     if (body.operation === "globalPause") {

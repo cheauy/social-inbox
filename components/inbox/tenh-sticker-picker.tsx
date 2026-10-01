@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
+import EmojiPicker, { EmojiStyle } from "emoji-picker-react";
 import { MetaStickerGrid } from "./meta-sticker-grid";
 import type { MetaStickerChoice } from "@/lib/stickers/catalog";
 import { ChevronLeft, ChevronRight, Clock, Loader2, Plus, Search, Sticker, X } from "lucide-react";
@@ -20,6 +21,8 @@ type CachedPack = { title: string; stickers: TelegramStickerChoice[]; at: number
 type Props = {
   businessId: string;
   disabled: boolean;
+  stickersDisabled?: boolean;
+  onEmojiSelect?: (emoji: string) => void;
   conversationId: string;
   platform?: string;
   onSelect: (file: File) => void;
@@ -29,13 +32,15 @@ type Props = {
 };
 
 /** Same draft-selection interface, with a scrollable grid and a fixed bottom pack strip. */
-export function TenhStickerPicker({ businessId, disabled, conversationId, platform, onSelect, onSelectTelegram, onOpen, onSendFacebook }: Props) {
+export function TenhStickerPicker({ businessId, disabled, conversationId, platform, onSelect, onSelectTelegram, onOpen, onSendFacebook, stickersDisabled = false, onEmojiSelect }: Props) {
+  const [mode, setMode] = useState<"emoji" | "sticker">(onEmojiSelect ? "emoji" : "sticker");
   const telegram = platform === "telegram" && Boolean(onSelectTelegram);
   const facebookMeta = platform === "facebook" && Boolean(onSendFacebook);
   const id = useId();
   const root = useRef<HTMLDivElement>(null), panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null), strip = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
+  const focusedOnOpen = useRef(false);
   const request = useRef<AbortController | null>(null), generation = useRef(0);
   const context = `${platform || "other"}:${conversationId}`;
   const current = useRef({ context, disabled }); current.current = { context, disabled };
@@ -54,6 +59,7 @@ export function TenhStickerPicker({ businessId, disabled, conversationId, platfo
   const packs: Pack[] = [...TELEGRAM_STICKER_PACKS, ...extraPacks];
 
   function close(restoreFocus = false) {
+    focusedOnOpen.current = false;
     generation.current++; request.current?.abort(); setBusy(false); setOpen(false);
     if (restoreFocus) trigger.current?.focus();
   }
@@ -74,12 +80,13 @@ export function TenhStickerPicker({ businessId, disabled, conversationId, platfo
     let frame = 0;
     const position = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
+      const measure = () => {
         const anchor = trigger.current?.getBoundingClientRect(); if (!anchor) return;
         const viewport = window.visualViewport;
         const next = stickerPanelLayout(anchor, { width: viewport?.width || window.innerWidth, height: viewport?.height || window.innerHeight, left: viewport?.offsetLeft, top: viewport?.offsetTop });
         setLayout(old => old && old.left === next.left && old.top === next.top && old.width === next.width && old.height === next.height ? old : next);
-      });
+      };
+      if (!panel.current) measure(); else frame = requestAnimationFrame(measure);
     };
     const outside = (event: PointerEvent) => {
       if (!root.current?.contains(event.target as Node) && !panel.current?.contains(event.target as Node)) close();
@@ -98,7 +105,7 @@ export function TenhStickerPicker({ businessId, disabled, conversationId, platfo
   }, [open]);
 
   useEffect(() => {
-    if (!open || !telegram || recentTab || disabled) return;
+    if (!open || mode !== "sticker" || !telegram || recentTab || disabled || stickersDisabled) return;
     const seq = ++generation.current, expectedContext = context;
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
     setError(""); setQuery("");
@@ -125,7 +132,15 @@ export function TenhStickerPicker({ businessId, disabled, conversationId, platfo
       } finally { if (seq === generation.current) setBusy(false); }
     })();
     return () => { controller.abort(); if (seq === generation.current) generation.current++; };
-  }, [open, telegram, recentTab, disabled, context, conversationId, packName, reload]);
+  }, [open, mode, telegram, recentTab, disabled, stickersDisabled, context, conversationId, packName, reload]);
+
+  useEffect(() => {
+    if (!open) { focusedOnOpen.current = false; return; }
+    if (layout && !focusedOnOpen.current) {
+      focusedOnOpen.current = true;
+      (panel.current?.querySelector<HTMLButtonElement>("[aria-pressed=\"true\"]") ?? searchInput.current)?.focus({ preventScroll: true });
+    }
+  }, [open, layout]);
 
   function updateScrollButtons() {
     const element = strip.current; if (!element) return;
@@ -202,17 +217,20 @@ export function TenhStickerPicker({ businessId, disabled, conversationId, platfo
   ];
 
   return <div ref={root} className="relative shrink-0">
-    <button ref={trigger} type="button" disabled={disabled} aria-label="Stickers" aria-haspopup="dialog" aria-expanded={open} aria-controls={`${id}-dialog`} title="Stickers" onClick={() => { if (open) close(); else { onOpen(); setOpen(true); setError(""); setQuery(""); } }} className={`flex h-9 w-9 items-center justify-center rounded-xl transition disabled:opacity-40 ${open ? "bg-blue-50 text-blue-600" : "text-slate-500 hover:bg-slate-50"}`}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
+    <button ref={trigger} type="button" disabled={disabled} aria-label={onEmojiSelect ? "Emoji and stickers" : "Stickers"} aria-haspopup="dialog" aria-expanded={open} aria-controls={`${id}-dialog`} title={onEmojiSelect ? "Emoji and stickers" : "Stickers"} onClick={() => { if (open) close(); else { onOpen(); setOpen(true); setError(""); setQuery(""); } }} className={`flex h-9 w-9 items-center justify-center rounded-xl transition disabled:opacity-40 ${open ? "bg-blue-50 text-blue-600" : "text-slate-500 hover:bg-slate-50"}`}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
       <path d="M20.5 13A8.5 8.5 0 1 0 12 20.5h1a3 3 0 0 0 2.1-.9l4.5-4.5a3 3 0 0 0 .9-2.1Z" />
       <path d="M20 14h-4a2 2 0 0 0-2 2v4M8 9h.01M14 9h.01M7.5 12.5a4.5 4.5 0 0 0 5 2" />
     </svg></button>
     {open && layout ? createPortal(
-      <div ref={panel} id={`${id}-dialog`} role="dialog" aria-label={telegram ? "Telegram stickers" : facebookMeta ? "Messenger stickers" : "TENH image stickers"} style={layout} className="fixed z-[120] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <div ref={panel} id={`${id}-dialog`} role="dialog" aria-label={onEmojiSelect ? "Emoji and stickers" : telegram ? "Telegram stickers" : facebookMeta ? "Messenger stickers" : "TENH image stickers"} style={layout} className="fixed z-[120] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex shrink-0 items-center justify-between gap-2 px-4 pt-3 pb-2">
-          <div className="min-w-0"><h3 className="truncate text-sm font-semibold text-slate-900">Stickers</h3><p className="text-[11px] text-slate-500">{telegram ? "Telegram packs" : facebookMeta ? "Messenger Sticker" : "TENH image library"}</p></div>
+          <div className="min-w-0"><h3 className="truncate text-sm font-semibold text-slate-900">{mode === "emoji" ? "Emoji" : "Stickers"}</h3><p className="text-[11px] text-slate-500">{telegram ? "Telegram packs" : facebookMeta ? "Messenger Sticker" : "TENH image library"}</p></div>
+          {onEmojiSelect ? <div role="group" aria-label="Emoji or Sticker" className="ml-auto inline-flex shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+            {(["emoji", "sticker"] as const).map(value => <button key={value} type="button" aria-pressed={mode === value} onClick={() => setMode(value)} className={`px-2.5 py-1.5 text-xs font-medium focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-blue-500 ${value === "sticker" ? "border-l border-slate-200" : ""} ${mode === value ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-white"}`}>{value === "emoji" ? "Emoji" : "Sticker"}</button>)}
+          </div> : null}
           <button type="button" aria-label="Close stickers" onClick={() => close(true)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
         </div>
-        {facebookMeta && onSendFacebook ? <MetaStickerGrid key={conversationId} businessId={businessId} conversationId={conversationId} disabled={disabled} onSend={onSendFacebook} onSent={() => close(true)} /> : <>
+        {mode === "emoji" && onEmojiSelect ? <div className="min-h-0 flex-1 overflow-auto"><EmojiPicker width="100%" height="100%" emojiStyle={EmojiStyle.NATIVE} autoFocusSearch={false} lazyLoadEmojis onEmojiClick={data => { if (!disabled) onEmojiSelect(data.emoji); }} /></div> : stickersDisabled ? <p role="status" className="p-4 text-sm text-slate-500">Stickers are unavailable while attachments are blocked or a sticker is sending.</p> : facebookMeta && onSendFacebook ? <MetaStickerGrid key={conversationId} businessId={businessId} conversationId={conversationId} disabled={disabled} onSend={onSendFacebook} onSent={() => close(true)} /> : <>
         <div className="relative mx-3 mb-2 shrink-0"><Search className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400" /><input ref={searchInput} value={query} onChange={event => setQuery(event.target.value)} placeholder="Search this pack" aria-label="Search current sticker pack" className="h-9 w-full rounded-xl border-0 bg-slate-100 pr-8 pl-9 text-sm text-slate-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-300" />{query ? <button type="button" aria-label="Clear sticker search" onClick={() => { setQuery(""); searchInput.current?.focus(); }} className="absolute top-2 right-2 rounded p-0.5 text-slate-500"><X className="h-4 w-4" /></button> : null}</div>
         <div className="flex shrink-0 items-center justify-between px-4 pb-1 text-xs"><span id={`${id}-pack-title`} className="truncate font-medium text-slate-600">{currentTitle}</span><span className="ml-2 text-slate-400">{busy ? "" : itemCount}</span></div>
         <div id={`${id}-grid`} role="tabpanel" aria-labelledby={`${id}-pack-title`} aria-busy={busy} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2">

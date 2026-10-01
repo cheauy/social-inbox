@@ -1,8 +1,8 @@
-/** Preserve the reader's row positions across Realtime, sends and refreshes.
- * New conversations append; explicit pin/unpin still changes the pinned group.
- * Keys include the workspace so switching businesses cannot reuse row positions.
+/** Latest activity wins within each pinned group. Equal activity keeps its
+ * prior position so duplicate events do not shuffle rows. Workspace keys keep
+ * independent businesses from sharing tie positions.
  */
-export function stableConversationOrder<T extends { id: string; business_id: string; is_pinned?: boolean | null }>(
+export function stableConversationOrder<T extends { id: string; business_id: string; is_pinned?: boolean | null; last_message_at?: string | null }>(
   previous: readonly T[], next: readonly T[],
 ): T[] {
   const key = (row: T) => `${row.business_id}:${row.id}`;
@@ -13,8 +13,7 @@ export function stableConversationOrder<T extends { id: string; business_id: str
     if (updated) { ordered.push(updated); remaining.delete(key(row)); }
   }
   ordered.push(...remaining.values());
-  return [
-    ...ordered.filter(row => Boolean(row.is_pinned)),
-    ...ordered.filter(row => !row.is_pinned),
-  ];
+  const time = (row: T) => { const value = row.last_message_at ? Date.parse(row.last_message_at) : NaN; return Number.isFinite(value) ? value : -Infinity; };
+  return ordered.sort((a, b) => Number(Boolean(b.is_pinned)) - Number(Boolean(a.is_pinned)) ||
+    (time(a) === time(b) ? 0 : time(a) > time(b) ? -1 : 1));
 }

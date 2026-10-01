@@ -21,7 +21,7 @@ const overrides = {
 };
 let fetcher,copyDetails;
 const load=loader(overrides,{AbortController,URLSearchParams,window:{open:(...args)=>global.window.open(...args)},navigator:{clipboard:{writeText:value=>copyDetails(value)}},fetch:(...args)=>fetcher(...args)});
-const {CompanionFacebookAction}=load('components/inbox/companion-facebook-action.tsx');
+const {CompanionFacebookAction,FacebookConversationActionProvider}=load('components/inbox/companion-facebook-action.tsx');
 overrides['./companion-facebook-action']={CompanionFacebookAction};
 const {ConversationHeader}=load('components/inbox/conversation-header.tsx');
 async function mount(t,{response=good(),status=200,blocked=false,props={},fetchImpl}={}) {
@@ -94,10 +94,12 @@ for(const patch of [{businessId:'other'},{conversationId:'other'},{recipientId:'
 test('missing Page/customer context does not open a blank tab or call the API',async t=>{
  const h=await mount(t,{props:{pageId:null}});await h.click();assert.equal(h.calls.length,0);assert.equal(h.opened.length,0);
 });
-test('the real header keeps external conversation navigation hidden',()=>{
+test('the real header omits View conversation while keeping its other actions',()=>{
  const conversation={id:'c1',source_type:'messenger',status:'open',social_account:{id:'s1',platform:'facebook',platform_account_id:context.pageId,account_name:'Page'},contact:{id:'ct1',business_id:'b1',platform_user_id:context.threadId,full_name:'Customer'}};
  const render=value=>new JSDOM(renderToStaticMarkup(React.createElement(ConversationHeader,{conversation:value,teamMembers:[],viewingAgents:[],typingAgents:[],teamPresence:[],agentPresenceStatus:'connected',channelPlatform:'messenger',channelAccountName:'Page'}))).window.document;
  assert.equal(render(conversation).querySelector('[aria-label="Open in Meta Business Suite"]'),null);
+ assert.equal(render(conversation).querySelector('[aria-label="View conversation"]'),null);
+ for(const label of ['Assign conversation','Pin conversation','Mark as unread','Customer history','Show customer information'])assert.ok(render(conversation).querySelector(`[aria-label="${label}"]`));
  for(const other of [{...conversation,source_type:'comment'},{...conversation,social_account:{...conversation.social_account,platform:'telegram'}},{...conversation,social_account:null}])assert.equal(render(other).querySelector('[aria-label="Open in Meta Business Suite"]'),null);
 });
 
@@ -137,4 +139,35 @@ test('the customer menu exposes View this conversation without an editing form',
  const h=await mount(t,{props:{compact:false,menu:true}});
  assert.ok(buttonWith('View this conversation'));assert.equal(buttonWith('Edit conversation link'),undefined);
  assert.equal(document.querySelector('form'),null);assert.equal(h.calls.length,0);
+});
+
+test('navigation-only opens a validated provider link on click with no render fetch',async t=>{
+ const h=await mount(t,{props:{navigationOnly:true},response:good({navigationAvailable:true})});assert.equal(h.calls.length,0);
+ assert.ok(document.querySelector('[aria-label="View conversation"]'));await h.click();assert.deepEqual(h.navigations,[link]);
+ assert.equal(new URL(h.calls[0].url,'https://app.tenhchat.com').searchParams.get('lookup'),'navigation');
+});
+test('navigation-only fallback is explicit and never automatically opens another conversation',async t=>{
+ const pageInboxUrl=`https://business.facebook.com/latest/inbox/all?asset_id=${context.pageId}`;
+ const h=await mount(t,{props:{navigationOnly:true},response:good({navigationAvailable:false,conversationLink:null,pageInboxUrl})});await h.click();
+ assert.equal(h.navigations.length,0);assert.equal(h.opened[0].popup.closed,true);
+ assert.equal(document.querySelector('a').textContent,'Open Page inbox');assert.equal(document.querySelector('a').href,pageInboxUrl);
+ assert.match(document.querySelector('[role="alert"]').textContent,/exact conversation link is unavailable/);
+});
+test('navigation-only rejects arbitrary fallback URLs and saved-link substitution',async t=>{
+ const h=await mount(t,{props:{navigationOnly:true},response:good({navigationAvailable:false,pageInboxUrl:'https://evil.test/'})});await h.click();
+ assert.equal(h.navigations.length,0);assert.equal(document.querySelector('a'),null);
+});
+test('navigation-only rejects saved links instead of treating them as provider matched',async t=>{
+ const h=await mount(t,{props:{navigationOnly:true},response:good({navigationAvailable:true,linkSource:'agent_saved_business_suite'})});await h.click();
+ assert.equal(h.navigations.length,0);assert.equal(document.querySelector('a'),null);
+});
+
+test('header and Other actions share one pending lookup and reset together on conversation change',async t=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'https://app.tenhchat.com'});global.window=dom.window;global.document=dom.window.document;global.IS_REACT_ACT_ENVIRONMENT=true;
+ const calls=[],popups=[];let resolve;window.open=()=>{const popup={closed:false,opener:{},document:document.implementation.createHTMLDocument(),location:{href:'about:blank',replace(value){this.href=value}},close(){this.closed=true}};popups.push(popup);return popup};fetcher=(url,options)=>{calls.push({url,options});return new Promise(r=>resolve=r)};
+ const root=createRoot(document.getElementById('root'));const render=async props=>act(async()=>root.render(React.createElement(FacebookConversationActionProvider,{...props,navigationOnly:true},React.createElement(CompanionFacebookAction,{...props,navigationOnly:true,compact:true}),React.createElement(CompanionFacebookAction,{...props,navigationOnly:true,menu:true}))));t.after(async()=>{await act(async()=>root.unmount());dom.window.close()});
+ await render(context);let buttons=[...document.querySelectorAll('button')];assert.equal(buttons.length,2);assert.equal(buttons[1].textContent,'View conversation');assert.equal(calls.length,0);
+ await act(async()=>{buttons[0].click();buttons[1].click()});assert.equal(calls.length,1);assert.equal(popups.length,1);assert.ok(buttons.every(x=>x.disabled));
+ await act(async()=>resolve(new Response(JSON.stringify(good({navigationAvailable:true})))));assert.equal(popups[0].location.href,link);assert.ok(buttons.every(x=>!x.disabled));
+ await act(async()=>buttons[1].click());assert.equal(calls.length,2);const oldResolve=resolve;await render({...context,conversationId:'c2',threadId:'new'});assert.equal(calls[1].options.signal.aborted,true);assert.equal(popups[1].closed,true);await act(async()=>oldResolve(new Response(JSON.stringify(good({navigationAvailable:true})))));assert.equal(popups[1].location.href,'about:blank');
 });

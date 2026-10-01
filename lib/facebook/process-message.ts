@@ -1,4 +1,5 @@
 import { captureFacebookNativeReply } from "@/lib/facebook/capture-native-reply";
+import { noteStoredFacebookBotEvent } from "@/lib/bot/execution-store";
 import { readFacebookBlock } from "@/lib/facebook/customer-block";
 import "server-only";
 import { saveDetectedCustomerPhone } from "@/lib/inbox/save-detected-customer-phone";
@@ -314,6 +315,11 @@ export async function processFacebookMessage(
     throw new Error(messageError.message);
   }
 
+  try {
+    await noteStoredFacebookBotEvent({ businessId: socialAccount.business_id, conversationId: conversation.id, platformMessageId: messageId });
+  } catch {
+    console.warn("[TENH Bot] Stored event requires bounded catch-up; Inbox delivery remains saved.");
+  }
   await saveDetectedCustomerPhone({
     businessId: socialAccount.business_id, contactId: contact.id, conversationId: conversation.id,
     messageId, text: event.message?.text, incoming: !isEcho,

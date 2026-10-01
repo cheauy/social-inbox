@@ -1,0 +1,9 @@
+# Quoted manual support replies — local review
+
+The application previously rejected all Facebook quoted replies outside the standard 24-hour window. Manual text sends now opt into the existing eligible HUMAN_AGENT window while retaining the selected provider reply target. Existing policy, authorization, closed-window and media restrictions remain. This is an application restriction correction; live Meta acceptance of this combination is unverified.
+
+Following the user's composer correction, validated submission immediately moves the text and quote into the optimistic sending bubble and clears only the matching composer. Failure restores both only if the composer has not changed and no newer send/conversation switch occurred. Otherwise, the failed original request retains its context in the original thread/bounded existing local cache. Identical in-flight submissions are blocked; a different new draft can send. Uncertain delivery displays “Delivery unconfirmed” and disables the failed bubble's Retry action; check Messenger before attempting another send. There is no automatic unquoted fallback. This does not provide provider-wide idempotency for a newly composed send, nor durable recovery across reload/cache eviction.
+
+Changed runtime files: `lib/facebook/send-reply-context.ts`, `app/api/facebook/send/route.ts`, `components/inbox/inbox-view.tsx`, `components/inbox/message-panel.tsx`.
+
+Validation: 29 focused quote/composer tests plus the actual attachment-route window regression; the final combined quote/navigation/picker/attachment/realtime suite passed 95 tests. TypeScript and production build passed. Touched-file lint comparison introduced no additional findings; preexisting lint errors remain. No real message was sent, no provider compatibility claim was established, and no deployment or database change was performed.

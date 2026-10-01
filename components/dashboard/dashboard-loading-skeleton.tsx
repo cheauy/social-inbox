@@ -1,3 +1,5 @@
+"use client";
+import { useForegroundLoading } from "@/lib/display/foreground-loading";
 /*
  * The instant skeleton behind every dashboard tab.
  *
@@ -30,6 +32,7 @@ export function DashboardLoadingSkeleton({
   label,
   panel = "tall",
 }: DashboardLoadingSkeletonProps) {
+  useForegroundLoading(true);
   return (
     <div
       className="h-full w-full overflow-hidden p-6"

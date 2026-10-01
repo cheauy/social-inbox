@@ -23,7 +23,7 @@ const overrides = {
   '@/components/ui/delete-confirm-dialog': { DeleteConfirmDialog: empty },
   '@/components/display/workspace-language-text': { useWorkspaceLanguageId: () => 'en' },
 };
-const load = loader(overrides);
+const load = loader(overrides, { URLSearchParams });
 overrides['@/components/inbox/messenger-source-card'] = load('components/inbox/messenger-source-card.tsx');
 const { MessagePanel } = load('components/inbox/message-panel.tsx');
 const { messengerSourceFromEvent } = load('lib/facebook/messenger-source.ts');

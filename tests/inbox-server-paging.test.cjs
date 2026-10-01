@@ -73,6 +73,25 @@ test('late responses from an earlier search cannot replace a newer view',async()
 test('bounded recovery discoveries are server-qualified even outside the first page',async()=>{
  const d=harness();try{d.render();d.answer(body=>({...page([]),matchedKnownIds:body.knownIds,updates:[row(800,{source_type:'comment'})]}));d.props.live=[...d.props.live,row(800)];d.render();const s=await d.flush();assert.deepEqual(d.calls[0].knownIds,[uuid(800)]);assert.equal(s.rows.some(r=>r.id===uuid(800)),true);}finally{d.h.cleanup()}
 });
+
+test('new customer discovered in Unread remains server-qualified when switching to All with an older first page',async()=>{
+ const d=harness();try{d.render();const customer=row(801,{last_message_at:'2026-10-01T20:00:00Z',updated_at:'2026-10-01T20:00:00Z'});
+ d.props.live=[...d.props.live,customer];d.props.request={...request(),view:'unread'};
+ d.answer(body=>({...page(d.props.live.slice(0,30)),matchedKnownIds:body.knownIds??[],updates:body.knownIds?.includes(customer.id)?[customer]:[]}));
+ d.render();await tick();let s=d.render();assert.equal(s.rows[0].id,customer.id);
+ d.props.request=request();d.render();await tick();s=d.render();assert.equal(s.rows[0].id,customer.id);assert.ok(d.calls.at(-1).knownIds.includes(customer.id));
+ }finally{d.h.cleanup()}
+});
+test('late page response cannot overwrite newer incoming or teammate activity in global rows',async()=>{
+ const d=harness();try{d.render();let finish;const published=[];d.props.onRows=rows=>published.push(...rows);d.answer(()=>new Promise(r=>finish=r));
+ d.events.get('focus')();d.flush();await tick();const newer=row(10,{last_message_at:'2026-10-01T22:00:00Z',updated_at:'2026-10-01T22:00:00Z',last_message_text:'Teammate latest'});
+ d.props.live=d.props.live.map(r=>r.id===newer.id?newer:r);d.render();finish({...page([row(10)]),matchedKnownIds:[newer.id]});await tick();const s=d.render();
+ assert.equal(s.rows[0].id,newer.id);assert.equal(published.find(r=>r.id===newer.id).last_message_text,'Teammate latest');assert.ok(d.jobs.size>0);
+ }finally{d.h.cleanup()}
+});
+test('wrong-workspace row cannot replace a same-ID live row',async()=>{
+ const d=harness();try{d.render();d.answer(()=>page([row(1,{business_id:uuid(999),last_message_text:'wrong'})]));d.events.get('focus')();const s=await d.flush();assert.equal(s.rows.find(r=>r.id===uuid(1)).business_id,uuid(900));}finally{d.h.cleanup()}
+});
 function adapter(options={}){
  const fixtures=Array.from({length:1000},(_,i)=>row(i+1,{contact:{full_name:'Customer '+i,phone:'12345',tags:[]},last_message_text:'Customer message '.repeat(30)}));
  const calls=[],hydrates=[];
@@ -103,14 +122,15 @@ test('page API exposes private no-store responses and malformed requests never c
  const bad=await route.POST(req({view:'admin'}));assert.equal(bad.status,400);assert.equal(calls,0);const good=await route.POST(req(request()));assert.equal(good.status,200);assert.equal(good.headers.get('Cache-Control'),'private, no-store');assert.equal((await good.json()).page.conversations.length,1);
 });
 test('page metadata preserves manual unread, acknowledged reads and optimistic tags/pin/status/assignment',()=>{
- const source=fs.readFileSync('components/inbox/inbox-view.tsx','utf8');const start=source.indexOf('  const handlePageRows = useCallback('),end=source.indexOf('\n\n  const handleMarkAllRead',start);
+ const source=fs.readFileSync('components/inbox/inbox-view.tsx','utf8');const parsed=ts.createSourceFile('inbox.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ let declaration;function visit(node){if(ts.isVariableDeclaration(node)&&node.name.getText(parsed)==='handlePageRows')declaration=node;ts.forEachChild(node,visit);}visit(parsed);assert.ok(declaration,'page handler exists');
  let current=[row(1,{contact:{id:'ct',tags:[]}})];const ref=value=>({current:value});
  const context={useCallback:fn=>fn,mergeConversationPage:contract.mergeConversationPage,setLiveConversations:fn=>current=fn(current),rowTime:value=>Date.parse(value)||0,
   liveDiscoveredIdsRef:ref(new Set()),persistedManualUnreadCountsRef:ref(new Map([[uuid(1),3]])),manualUnreadConversationIdsRef:ref(new Set([uuid(1)])),
   readBarrierMessageTimeRef:ref(new Map()),readInFlightRef:ref(new Set()),readRowVersionRef:ref(new Map()),
   pinOverrideRef:ref(new Map([[uuid(1),{isPinned:true,expiresAt:Date.now()+60000}]])),statusOverrideRef:ref(new Map([[uuid(1),{status:'pending',expiresAt:Date.now()+60000}]])),
   assignmentOverrideRef:ref(new Map([[uuid(1),{assignedTo:uuid(901),expiresAt:Date.now()+60000}]])),contactTagsOverrideRef:ref(new Map([['ct',{tags:[{id:'vip',name:'VIP'}],expiresAt:Date.now()+60000}]]))};
- vm.createContext(context);vm.runInContext(ts.transpileModule(source.slice(start,end)+'\n globalThis.applyPage = handlePageRows;',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);
+ vm.createContext(context);vm.runInContext(ts.transpileModule('const '+declaration.getText(parsed)+';\n globalThis.applyPage = handlePageRows;',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);
  context.applyPage([row(1,{unread_count:0,contact:{id:'ct',tags:[]}})]);assert.equal(current[0].unread_count,3);assert.equal(current[0].is_pinned,true);assert.equal(current[0].status,'pending');assert.equal(current[0].assigned_to,uuid(901));assert.equal(current[0].contact.tags[0].id,'vip');
  context.persistedManualUnreadCountsRef.current.clear();context.manualUnreadConversationIdsRef.current.clear();context.readBarrierMessageTimeRef.current.set(uuid(1),Date.parse(current[0].last_message_at));context.readRowVersionRef.current.set(uuid(1),Date.parse(current[0].updated_at));
  context.applyPage([row(1,{unread_count:2,contact:{id:'ct',tags:[]}})]);assert.equal(current[0].unread_count,0);assert.equal(current[0].contact.tags[0].id,'vip');

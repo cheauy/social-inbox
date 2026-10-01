@@ -1,0 +1,1 @@
+const React=require('react');function Link(props){const {children,...rest}=props;return React.createElement('a',rest,children)};module.exports=Link;module.exports.default=Link;module.exports.useLinkStatus=()=>({pending:false});

@@ -1,18 +1,21 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { useBotPreviewRegistration } from "@/components/bot/bot-messenger-preview";
+import { useBotSaveRegistration, type BotSaveResult } from "@/components/bot/bot-save-toolbar";
 import type { AutoReplyRule } from "@/lib/facebook/auto-reply";
 import { BotDraftSettings } from "@/components/settings/bot-draft-settings";
 type Page = { id: string; account_name: string | null; platform_account_id: string };
 type History = { id: string; rule_id: string; comment_id: string; action: string; status: string; reason: string | null; attempts: number; created_at: string };
 const field = "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm";
 const button = "rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium disabled:opacity-50";
-export function AutoReplySettings() {
+export function AutoReplySettings({includeDrafts=true}:{includeDrafts?:boolean}={}) {
   const [rules, setRules] = useState<AutoReplyRule[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
   const [history, setHistory] = useState<History[]>([]);
   const [canManage, setCanManage] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadFailed,setLoadFailed]=useState(false);
   const [paused, setPaused] = useState(true);
   const [workerEnabled, setWorkerEnabled] = useState(false);
   const [circuitUntil, setCircuitUntil] = useState<string | null>(null);
@@ -41,7 +44,7 @@ export function AutoReplySettings() {
     const response = await fetch("/api/facebook/auto-reply" + (before ? "?before=" + encodeURIComponent(before) : ""), { cache: "no-store" });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error ?? "Unable to load Auto Reply.");
-    setRules(result.rules); setPages(result.pages); setCanManage(result.canManage);
+    setLoadFailed(false);setRules(result.rules); setPages(result.pages); setCanManage(result.canManage);
     setWorkerEnabled(!!result.workerEnabled);
     setPaused(result.paused); setCircuitUntil(result.circuitUntil && Date.parse(result.circuitUntil) > Date.now() ? result.circuitUntil : null); setLoading(false);
     setHistory(current => before ? [...current, ...result.history] : result.history);
@@ -49,7 +52,7 @@ export function AutoReplySettings() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void load().then(() => setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone))
-        .catch(error => { setNotice(error.message); setLoading(false); });
+        .catch(error => { setLoadFailed(true);setNotice(error.message); setLoading(false); });
     }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
@@ -81,15 +84,20 @@ export function AutoReplySettings() {
     }
     setNotice(""); setStep(current => current + 1);
   }
-  async function save(event: React.FormEvent) {
-    event.preventDefault();
-    if (step !== 3) { next(); return; }
+  async function persistLegacy():Promise<BotSaveResult> {
+    if(!creating||step!==3||!canManage||busy)return {ok:false,message:"Complete the Comment Auto Reply review before saving."};
     try {
       await request({ operation: "save", id: editing || undefined, name, targets, scope,
         publicTemplate: publicOn ? publicTemplate : "", privateTemplate: privateOn ? privateTemplate : "" });
-      setCreating(false); await load(); setNotice("Saved disabled. Choose a start time before turning on.");
-    } catch (error) { setNotice((error as Error).message); }
+    } catch(error){const message=(error as Error).message;setNotice(message);return {ok:false,message:"Comment Auto Reply: "+message};}
+    setCreating(false);
+    try {await load();setNotice("Saved disabled. Choose a start time before turning on.");return {ok:true,message:"Comment Auto Reply saved disabled."};}
+    catch{setLoadFailed(true);setNotice("Saved disabled, but the rule list could not refresh. Reload to verify.");return {ok:true,message:"Comment Auto Reply saved disabled, but its list could not refresh. Reload to verify."};}
   }
+  async function save(event:React.FormEvent){event.preventDefault();if(step!==3){next();return;}await persistLegacy();}
+  const sharedSave=useBotSaveRegistration("comments",{dirty:creating,busy:busy||loading,canSave:creating&&step===3&&canManage&&!busy&&!loading&&!loadFailed,
+    message:loadFailed?"Comment Auto Reply setup is unavailable.":!canManage?"Channel management permission is required.":"Complete the Comment Auto Reply review before saving."},persistLegacy);
+  useEffect(()=>{if(!creating)return;const prevent=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};window.addEventListener("beforeunload",prevent);return()=>window.removeEventListener("beforeunload",prevent);},[creating]);
   async function toggle(rule: AutoReplyRule) {
     try {
       const start = starts[rule.id];
@@ -106,9 +114,11 @@ export function AutoReplySettings() {
       setNotice(paused ? "Global pause released. Enabled rules can process only new eligible comments." : "All Auto Reply sending paused. A send already in flight may finish.");
     } catch (error) { setNotice((error as Error).message); }
   }
-  return <div className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6">
-    <BotDraftSettings />
-    <div><h1 className="text-2xl font-bold text-slate-900">Tenh Bot · Facebook comment Auto Reply</h1>
+  useBotPreviewRegistration("comments",{kind:"facebook_comment_auto_reply",channel:pages.find(page=>page.id===pageId)?.account_name??"Selected Pages",customerText:comment,
+    reply:privateOn?privateTemplate:"",publicReply:publicOn?publicTemplate:"",internal:"Public replies appear on the Facebook post. Private reply templates appear separately in Messenger; eligibility is tested before any action."});
+  return <div className={sharedSave?"space-y-5":"mx-auto max-w-5xl space-y-6 p-4 sm:p-6"}>
+    {includeDrafts ? <BotDraftSettings /> : null}
+    <div><h1 className={sharedSave?"sr-only":"text-2xl font-bold text-slate-900"}>Tenh Bot · Facebook comment Auto Reply</h1>
       <p className="mt-2 text-sm text-slate-600">Reply publicly, privately, or both to new comments on your connected Pages. Specific-post rules take priority. A comment with an existing reply is skipped.</p>
       <p className="mt-2 text-sm text-slate-600">All-post rules include future posts. Start times use {timezone || "your browser timezone"}; earlier comments are never backfilled. Private replies depend on Facebook eligibility and customer response.</p></div>
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
@@ -120,7 +130,7 @@ export function AutoReplySettings() {
     </div>
     {!loading && !workerEnabled && <p className="text-sm text-amber-700">The sending worker is not enabled on this deployment. Saved or enabled rules will not send automated replies until setup is completed.</p>}
     {notice && <p role="status" className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm">{notice}</p>}
-    {!canManage && <p className="text-sm text-slate-600">Channel management permission is required to change or test rules.</p>}
+    {!loading&&!loadFailed&&!canManage && <p className="text-sm text-slate-600">Channel management permission is required to change or test rules.</p>}
     {creating && <form onSubmit={save} className="space-y-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
       <h2 className="font-semibold">{editing ? "Edit paused rule" : "New rule"}</h2>
       <ol aria-label="Rule creation steps" className="grid grid-cols-3 gap-2 text-sm">{["Choose scope", "Write replies", "Review"].map((label, index) => <li key={label} aria-current={step === index + 1 ? "step" : undefined} className={"border-b-2 pb-2 " + (step === index + 1 ? "border-blue-600 font-semibold text-blue-700" : "border-slate-200 text-slate-500")}>{index + 1}. {label}</li>)}</ol>
@@ -154,7 +164,7 @@ export function AutoReplySettings() {
           {publicOn && <p className="whitespace-pre-wrap break-words">Public: {publicTemplate}</p>}{privateOn && <p className="whitespace-pre-wrap break-words">Private: {privateTemplate}</p>}
           <p className="text-slate-600">Saved disabled. Each scope is managed separately. Conflicts reject the entire save. Only new comments after activation and your chosen start are eligible; existing replies are skipped.</p>
         </div>}
-        <div className="flex flex-wrap gap-2">{step > 1 && <button type="button" className={button} onClick={() => setStep(current => current - 1)}>Back</button>}{step < 3 ? <button type="button" className={button} onClick={next}>Continue</button> : <button className={button} type="submit">Save disabled</button>}<button type="button" className={button} onClick={() => { setCreating(false); setNotice(""); }}>Cancel</button></div>
+        <div className="flex flex-wrap gap-2">{step > 1 && <button type="button" className={button} onClick={() => setStep(current => current - 1)}>Back</button>}{step < 3 ? <button type="button" className={button} onClick={next}>Continue</button> : <button className={button} type="submit" hidden={sharedSave}>Save disabled</button>}<button type="button" className={button} onClick={() => { setCreating(false); setNotice(""); }}>Cancel</button></div>
       </fieldset>
     </form>}
     <section className="space-y-3"><h2 className="font-semibold">Rules</h2>{!rules.length && <p className="text-sm">No rules saved yet.</p>}

@@ -993,6 +993,8 @@ export async function POST(
       "platform_message_id",
       facebookMessageId,
     )
+    .eq("business_id", currentMember.business_id)
+    .eq("conversation_id", conversation.id)
     .maybeSingle();
 
   if (existingMessageError) {
@@ -1227,6 +1229,33 @@ export async function POST(
         );
       }
     }
+  }
+
+  // Preserve every explicitly submitted album item, even when Meta's follow-up
+  // attachment lookup/echo is unavailable. Never persist browser blob URLs.
+  if (kind === "image" && uploadFiles.length > 1 && savedMessage?.id) {
+    const savedIndices: number[] = [];
+    for (let index = 0; index < uploadFiles.length; index++) {
+      if (index === 0 && savedMessage.attachment_url === telegramMessageMediaUrl(savedMessage.id)) {
+        savedIndices.push(0); continue;
+      }
+      try {
+        const path = telegramMessageMediaStoragePath({businessId:currentMember.business_id,messageId:savedMessage.id,mediaKind:"photo"}) + (index ? `-${index}` : "");
+        const {error} = await supabaseAdmin.storage.from(TELEGRAM_MESSAGE_MEDIA_BUCKET).upload(path,
+          new Uint8Array(await uploadFiles[index].arrayBuffer()),{contentType:uploadFiles[index].type||"image/jpeg",upsert:true});
+        if (!error) savedIndices.push(index);
+      } catch { /* Sent already: never retry the provider because local storage failed. */ }
+    }
+    const urls = uploadFiles.map((_,index)=>savedIndices.includes(index)
+      ? `${telegramMessageMediaUrl(savedMessage!.id)}?photoIndex=${index}`
+      : albumAttachments[index]?.payload.url || `${telegramMessageMediaUrl(savedMessage!.id)}?photoIndex=${index}`);
+    try {
+      savedMessage = await mutateMessageMetadata(supabaseAdmin,{businessId:currentMember.business_id,conversationId,messageId:savedMessage.id},current=>({
+        raw_payload:{...current.raw_payload,tenh_image_album:{count:uploadFiles.length,saved_indices:savedIndices},
+          message:{...(current.raw_payload?.message as Record<string,unknown>??{}),attachments:urls.map(url=>({type:"image",payload:{url}}))}},
+        attachment_url:urls[0],
+      }));
+    } catch { console.warn("[TENH attachments] Album sent; local album metadata unavailable. Do not resend."); }
   }
 
   const {

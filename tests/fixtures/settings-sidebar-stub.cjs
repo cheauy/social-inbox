@@ -1,0 +1,1 @@
+const React=require('react');exports.SettingsSidebar=function SettingsSidebar(){return React.createElement('nav',{'aria-label':'Fixture Settings sections'},React.createElement('a',{href:'/dashboard/settings/general'},'General'),React.createElement('a',{href:'/dashboard/settings/display'},'Display'));};

@@ -15,6 +15,7 @@ export const dynamic = "force-dynamic";
 const fail = (status: number, error: string) => NextResponse.json({ success: false, error }, { status, headers: { "Cache-Control": "no-store" } });
 
 type FacebookGraphAttachment = {
+  type?: string | null;
   image_data?: { url?: string | null } | null;
   video_data?: { url?: string | null } | null;
   file_url?: string | null;
@@ -46,10 +47,12 @@ async function refreshFacebookMessageImage({
   businessId,
   socialAccountId,
   platformMessageId,
+  photoIndex = 0,
 }: {
   businessId: string;
   socialAccountId: string | null;
   platformMessageId: string | null;
+  photoIndex?: number;
 }): Promise<string | null> {
   if (!socialAccountId || !platformMessageId) return null;
 
@@ -81,7 +84,12 @@ async function refreshFacebookMessageImage({
   const payload = await response.json().catch(() => null) as { attachments?: { data?: FacebookGraphAttachment[] | null } | FacebookGraphAttachment[] | null } | null;
   const raw = payload?.attachments;
   const attachments = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : [];
-  return firstFacebookAttachmentUrl(attachments);
+  const imageUrls = (items:FacebookGraphAttachment[]):string[] => items.flatMap(item => {
+    const url = item.image_data?.url || (item.type === "image" ? item.payload?.url : null);
+    return url ? [url] : imageUrls(item.subattachments?.data ?? []);
+  });
+  const urls = imageUrls(attachments);
+  return urls[photoIndex] ?? (photoIndex === 0 ? firstFacebookAttachmentUrl(attachments) : null);
 }
 
 /** Same-origin PNG copying and small reply thumbnails. Never accepts a URL from the browser. */
@@ -112,7 +120,10 @@ export async function GET(request: NextRequest) {
     // row, not a user URL; incoming CDN albums keep their selected-photo source.
     if (!source || source.startsWith("/api/messages/")) {
       const mediaKind = original.message_type === "sticker" ? "file" : "photo";
-      const path = telegramMessageMediaStoragePath({ businessId: access.businessId, messageId: original.id, mediaKind });
+      const index = photo === null ? 0 : Number(photo);
+      const album = original.raw_payload?.tenh_image_album as {saved_indices?:number[]} | undefined;
+      if (index > 0 && !album?.saved_indices?.includes(index)) return fail(404,"Photo unavailable.");
+      const path = telegramMessageMediaStoragePath({ businessId: access.businessId, messageId: original.id, mediaKind }) + (index ? `-${index}` : "");
       const signed = await cachedSignedUrls(TELEGRAM_MESSAGE_MEDIA_BUCKET, [path], 300);
       source = signed[0]?.signedUrl || null;
     }
@@ -125,6 +136,7 @@ export async function GET(request: NextRequest) {
         businessId: access.businessId,
         socialAccountId: access.conversation.social_account_id,
         platformMessageId: original.platform_message_id,
+        photoIndex: photo === null ? 0 : Number(photo),
       }).catch(() => null);
       if (!freshSource || freshSource === source) throw storedSourceError;
       input = await fetchInboxImage(freshSource, process.env.NEXT_PUBLIC_SUPABASE_URL);
