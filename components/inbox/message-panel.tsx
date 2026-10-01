@@ -900,8 +900,9 @@ function CompactAudioPlayer({
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [playError, setPlayError] = useState("");
 
-  function togglePlayback() {
+  async function togglePlayback() {
     const audio = audioRef.current;
 
     if (!audio) {
@@ -909,7 +910,13 @@ function CompactAudioPlayer({
     }
 
     if (audio.paused) {
-      void audio.play();
+      setPlayError("");
+      try {
+        await audio.play();
+      } catch {
+        setPlaying(false);
+        setPlayError("Audio couldn’t be played. Try again.");
+      }
       return;
     }
 
@@ -933,6 +940,9 @@ function CompactAudioPlayer({
   }
 
   const remaining = Math.max(0, duration - currentTime);
+  const progress = duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0;
+  // ponytail: decorative waveform; decode audio samples if amplitude accuracy is needed.
+  const bars = [8, 14, 22, 30, 40, 32, 24, 18, 28, 14, 8, 20, 12, 25, 16, 9, 18, 30, 36, 25, 14, 9, 12, 8, 15, 22, 29, 20, 12, 16, 10, 8];
 
   /*
    * No card of its own. The message bubble is already a container, so a
@@ -941,11 +951,12 @@ function CompactAudioPlayer({
    * controls that inherit the bubble they sit in.
    */
   return (
-    <div className="flex w-[218px] max-w-full items-center gap-2.5">
+    <div className="w-[300px] max-w-full">
+      <div className="flex min-w-0 items-center gap-3 py-1">
       <audio
         ref={audioRef}
         src={src}
-        preload="none"
+        preload="metadata"
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
@@ -953,48 +964,64 @@ function CompactAudioPlayer({
           setCurrentTime(event.currentTarget.currentTime)
         }
         onLoadedMetadata={(event) =>
-          setDuration(event.currentTarget.duration || 0)
+          setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)
         }
+        onDurationChange={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
+        onError={() => { setPlaying(false); setPlayError("Audio is unavailable."); }}
         className="hidden"
       />
 
       <button
         type="button"
-        onClick={togglePlayback}
+        onClick={() => void togglePlayback()}
         suppressHydrationWarning
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition active:scale-95 ${
+        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full shadow-sm transition active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 [&_svg]:h-6 [&_svg]:w-6 ${
           isOutgoing
-            ? "bg-white/25 text-white hover:bg-white/35"
-            : "bg-sky-600 text-white hover:bg-sky-700"
+            ? "bg-white text-[var(--tenh-primary,#2563EB)] hover:bg-white/90 focus-visible:outline-white"
+            : "bg-sky-50 text-sky-600 hover:bg-sky-100 focus-visible:outline-sky-600"
         }`}
         aria-label={playing ? "Pause audio" : "Play audio"}
       >
         <PlayIcon paused={!playing} />
       </button>
 
-      <input
+      <div className="relative min-w-0 flex-1 rounded-md focus-within:ring-2 focus-within:ring-current">
+        <div aria-hidden="true" className="flex h-12 items-center justify-between gap-[2px] overflow-hidden">
+          {bars.map((height, index) => (
+            <span key={index} className={`min-w-0 flex-1 rounded-full transition-colors ${playing ? "tenh-recording-bar" : ""} ${
+              (index + 1) / bars.length <= progress
+                ? isOutgoing ? "bg-white" : "bg-sky-600"
+                : isOutgoing ? "bg-white/40" : "bg-slate-300"
+            }`} style={{ height, maxWidth: 3, animationDelay: `${-index * 0.13}s`, animationDuration: `${0.7 + (index % 5) * 0.12}s` }} />
+          ))}
+        </div>
+        <span aria-hidden="true" className={`pointer-events-none absolute top-1/2 h-6 w-2.5 -translate-y-1/2 rounded-full shadow-sm ${isOutgoing ? "bg-white" : "bg-sky-600"}`} style={{ left: `calc(${progress * 100}% - ${progress * 10}px)` }} />
+        <input
         type="range"
         min={0}
         max={duration > 0 ? duration : 1}
         step={0.01}
-        value={Math.min(currentTime, duration > 0 ? duration : 1)}
+        value={Math.min(currentTime, duration > 0 ? duration : 0)}
+        disabled={duration <= 0}
         onChange={(event) =>
           seek(Number(event.target.value))
         }
-        className={`h-1 min-w-0 flex-1 cursor-pointer ${
-          isOutgoing ? "accent-white" : "accent-sky-600"
-        }`}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-default"
         aria-label={isVoice ? "Voice message progress" : label || "Audio progress"}
+        aria-valuetext={`${formatAudioTime(currentTime)} of ${formatAudioTime(duration)}`}
       />
+      </div>
 
       {/* Counts down while playing, like every other voice note. */}
       <span
-        className={`shrink-0 text-right text-[11px] tabular-nums ${
+        className={`min-w-[36px] shrink-0 text-right text-sm tabular-nums ${
           isOutgoing ? "text-white/80" : "text-slate-500"
         }`}
       >
         {formatAudioTime(playing || currentTime > 0 ? remaining : duration)}
       </span>
+      </div>
+      {playError ? <p role="alert" className={`mt-1 text-xs ${isOutgoing ? "text-white" : "text-red-600"}`}>{playError}</p> : null}
     </div>
   );
 }
@@ -4695,8 +4722,8 @@ export function MessagePanel({
                               }`
                             : `overflow-hidden border shadow-[0_2px_8px_rgba(15,23,42,0.06)] ${
                               isOutgoing
-                                ? "rounded-[18px] rounded-br-[5px] text-white"
-                                : "rounded-[18px] rounded-bl-[5px] border-slate-200/90 bg-white text-slate-900"
+                                ? `${isAudioMessage || isVoiceMessage ? "rounded-[24px]" : "rounded-[18px] rounded-br-[5px]"} text-white`
+                                : `${isAudioMessage || isVoiceMessage ? "rounded-[24px]" : "rounded-[18px] rounded-bl-[5px]"} border-slate-200/90 bg-white text-slate-900`
                             }`
                       } ${
                         isJumpHighlighted
@@ -5238,6 +5265,7 @@ export function MessagePanel({
                           isVoiceMessage ? (
                           attachmentUrl ? (
                             <CompactAudioPlayer
+                              key={attachmentUrl}
                               src={attachmentUrl}
                               label={attachmentName}
                               isVoice={isVoiceMessage || (isAudioMessage && isOutgoing)}
