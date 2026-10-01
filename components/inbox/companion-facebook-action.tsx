@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
 import { normalizeBusinessSuiteConversationLink } from "@/lib/facebook/conversation-link";
 
@@ -16,7 +16,7 @@ function closeLoadingWindow(pending: Pending) {
 }
 
 // Keep the exported name for existing callers; this action has no extension dependency.
-export function CompanionFacebookAction({ pageId, threadId, conversationId, businessId, compact = false, menu = false, navigationOnly = false }: Props) {
+function useFacebookConversationAction({ pageId, threadId, conversationId, businessId, navigationOnly = false }: Props) {
   const [busy, setBusy] = useState(false), [notice, setNotice] = useState("");
   const [fallbackUrl, setFallbackUrl] = useState("");
   const [pageFallback, setPageFallback] = useState(false);
@@ -117,13 +117,31 @@ export function CompanionFacebookAction({ pageId, threadId, conversationId, busi
       if (current.current === key) setCopyNotice("Copied");
     } catch { if (current.current === key) setCopyNotice("Select and copy the details below."); }
   }
+  return {key,busy,notice,fallbackUrl,pageFallback,lookupDetails,copyNotice,open,copyLookupDetails,setNotice,setFallbackUrl};
+}
+const FacebookActionContext = createContext<ReturnType<typeof useFacebookConversationAction>|null>(null);
+export function FacebookConversationActionProvider({children,...props}: Props & {children:ReactNode}) {
+  const action=useFacebookConversationAction(props);
+  return <FacebookActionContext.Provider value={action}>{children}</FacebookActionContext.Provider>;
+}
+export function CompanionFacebookAction(props:Props) {
+  const shared=useContext(FacebookActionContext);
+  const key=JSON.stringify([props.businessId,props.conversationId,props.pageId,props.threadId]);
+  return shared?.key===key ? <FacebookActionButton {...props} action={shared}/> : <StandaloneFacebookAction {...props}/>;
+}
+function StandaloneFacebookAction(props:Props) {
+  const action=useFacebookConversationAction(props);
+  return <FacebookActionButton {...props} action={action}/>;
+}
+function FacebookActionButton({compact=false,menu=false,navigationOnly=false,action}:Props & {action:ReturnType<typeof useFacebookConversationAction>}) {
+  const {busy,notice,fallbackUrl,pageFallback,lookupDetails,copyNotice,open,copyLookupDetails,setNotice,setFallbackUrl}=action;
   const label = busy ? "Opening customer conversation…" : navigationOnly ? "View conversation" : menu ? "View this conversation" : "Open in Meta Business Suite";
   return <div className={compact ? "relative shrink-0" : menu ? "" : "mt-2"}>
     <button type="button" disabled={busy} onClick={() => void open()} title={label} aria-label={label}
       className={menu ? "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50" : compact
-        ? "flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-[0_4px_12px_rgba(15,23,42,0.07)] transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50"
+        ? `flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-[0_4px_12px_rgba(15,23,42,0.07)] transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50 ${navigationOnly ? "lg:w-auto lg:gap-2 lg:px-3" : ""}`
         : "inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"}>
-      <ExternalLink className={compact ? "h-[18px] w-[18px]" : menu ? "h-4 w-4 text-slate-400" : "h-3.5 w-3.5"} aria-hidden="true" />{compact ? null : label}
+      <ExternalLink className={compact ? "h-[18px] w-[18px]" : menu ? "h-4 w-4 text-slate-400" : "h-3.5 w-3.5"} aria-hidden="true" />{compact ? navigationOnly ? <span className="hidden whitespace-nowrap text-xs font-semibold lg:inline">View conversation</span> : null : label}
     </button>
     {notice ? <div className={compact ? "absolute right-0 top-12 z-50 w-80 max-w-[85vw] rounded-xl border border-amber-200 bg-amber-50 p-3 shadow-lg" : "mt-2 max-w-lg"}>
       {notice ? <p role="alert" className="text-xs leading-5 text-amber-900">{notice}</p> : null}

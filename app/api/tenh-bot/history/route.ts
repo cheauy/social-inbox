@@ -1,9 +1,12 @@
+import { TENH_BOT_AVAILABLE } from "@/lib/bot/availability";
+import { tenhBotComingSoonResponse } from "@/lib/bot/coming-soon-response";
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { supabaseAdmin as db } from "@/lib/supabase/admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
+  if(!TENH_BOT_AVAILABLE)return tenhBotComingSoonResponse();
   const guard = await requirePermission("channels", "view");
   if (!guard.success) return guard.response;
   const business = guard.context.member.business_id, channel = request.nextUrl.searchParams.get("channelId");

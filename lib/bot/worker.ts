@@ -1,3 +1,4 @@
+import { TENH_BOT_AVAILABLE } from "./availability";
 import "server-only";
 import { supabaseAdmin as db } from "@/lib/supabase/admin";
 import { recordStoredBotMessage, runStoredBotJobs } from "./execution-store";
@@ -7,7 +8,7 @@ import type { ExecutionJob } from "./execution-safety";
 
 const internal = new Set<ExecutionJob["kind"]>(["assign", "alert", "handoff", "context", "health", "filter", "flow"]);
 export async function runTenhBotWorker() {
-  if (process.env.TENH_BOT_EXECUTION_ENABLED !== "true") return { paused: true, processed: 0 };
+  if (!TENH_BOT_AVAILABLE || process.env.TENH_BOT_EXECUTION_ENABLED !== "true") return { paused: true, processed: 0 };
   const recovery = await db.rpc("tenh_bot_recover_jobs", { p_limit: 10 });
   if (recovery.error) throw Error("bot_recovery_unavailable");
   const pending = await db.rpc("tenh_bot_pending_event_ids", { p_limit: 10 });

@@ -1,3 +1,4 @@
+import { TENH_BOT_AVAILABLE } from "./availability";
 import "server-only";
 import { supabaseAdmin as db } from "@/lib/supabase/admin";
 import { autoReplyGraph } from "@/lib/facebook/auto-reply";
@@ -10,7 +11,7 @@ export const facebookBotCommentHideTransport = {
   supported: (job: ExecutionJob) => job.kind === "hide_comment" && process.env.TENH_BOT_COMMENT_HIDE_ENABLED === "true",
   async execute(job: ExecutionJob) {
     const reject = () => ({ confirmed: false, definitiveRejection: true });
-    if (process.env.TENH_BOT_EXECUTION_ENABLED !== "true" || !facebookBotCommentHideTransport.supported(job) ||
+    if (!TENH_BOT_AVAILABLE || process.env.TENH_BOT_EXECUTION_ENABLED !== "true" || !facebookBotCommentHideTransport.supported(job) ||
         !job.messageId || !await businessSubscriptionIsOperational(job.businessId)) return reject();
     const [message, conversation, page] = await Promise.all([
       db.from("messages").select("platform_message_id,sender_platform_id,raw_payload,comment_is_deleted")

@@ -1,3 +1,4 @@
+import { TENH_BOT_AVAILABLE } from "../../../lib/bot/availability";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { View } from "react-native";
@@ -109,7 +110,7 @@ export default function TabsLayout() {
         name="bot"
         options={{
           title: "Tenh Bot",
-          href: canViewBot ? "/bot" : null,
+          href: TENH_BOT_AVAILABLE && canViewBot ? "/bot" : null,
           tabBarIcon: ({ color }) => <TabIcon name="chatbox-ellipses-outline" color={color} />,
         }}
       />

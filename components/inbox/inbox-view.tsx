@@ -1,4 +1,5 @@
 "use client";
+import { FacebookConversationActionProvider } from "./companion-facebook-action";
 import { isMetaSticker, type InboxStickerChoice } from "@/lib/stickers/catalog";
 
 import { createReplyContext, getDeletedMessageText, getMessageActions, resolvePhotoReplyTarget, MESSAGE_ROW_CHANGED_EVENT } from "@/lib/inbox/message-actions";
@@ -8713,6 +8714,7 @@ async function handleAssignToMe() {
 }
 
 return (
+<FacebookConversationActionProvider navigationOnly businessId={activeConversation?.contact?.business_id ?? activeConversation?.business_id ?? ""} conversationId={activeConversation?.id ?? ""} pageId={activeConversation?.social_account?.platform_account_id ?? null} threadId={activeConversation?.contact?.platform_user_id ?? null}>
 <div data-inbox-shell className="relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
   {multiAgentToast ? (
     <div className="pointer-events-none absolute right-5 top-5 z-[90] w-[min(390px,calc(100%-2.5rem))]">
@@ -9005,5 +9007,6 @@ return (
 
 
   </div>
+</FacebookConversationActionProvider>
 );
 }

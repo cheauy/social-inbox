@@ -1,3 +1,5 @@
+import { TENH_BOT_AVAILABLE } from "@/lib/bot/availability";
+import { tenhBotComingSoonResponse } from "@/lib/bot/coming-soon-response";
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { supabaseAdmin as db } from "@/lib/supabase/admin";
@@ -11,6 +13,7 @@ const uuid = (value: unknown): value is string => typeof value === "string" && /
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
 
 export async function GET(request: NextRequest) {
+  if(!TENH_BOT_AVAILABLE)return tenhBotComingSoonResponse();
   const guard = await requirePermission("channels", "view");
   if (!guard.success) return guard.response;
   const business = guard.context.member.business_id;
@@ -58,6 +61,7 @@ function postReference(input: string, pageId: string) {
 }
 
 export async function POST(request: NextRequest) {
+  if(!TENH_BOT_AVAILABLE)return tenhBotComingSoonResponse();
   const guard = await requirePermission("channels", "manage");
   if (!guard.success) return guard.response;
   const business = guard.context.member.business_id;

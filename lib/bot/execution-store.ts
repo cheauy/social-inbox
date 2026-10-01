@@ -1,10 +1,11 @@
+import { TENH_BOT_AVAILABLE } from "./availability";
 import "server-only";
 import { supabaseAdmin as db } from "@/lib/supabase/admin";
 import { trustedStoredBotEvent, trustedStoredCommentEvent, runBoundedBotExecution, type ExecutionJob, type StoredBotEvent } from "./execution-safety";
 import { parseDraftRules, previewDraftRules, safeDraftRefToken, draftRecordedHealth } from "./draft-rules";
 import { messengerSourceFromEvent } from "@/lib/facebook/messenger-source";
 
-const enabled = () => process.env.TENH_BOT_EXECUTION_ENABLED === "true";
+const enabled = () => TENH_BOT_AVAILABLE && process.env.TENH_BOT_EXECUTION_ENABLED === "true";
 export async function holdBotForManualReply(businessId: string, conversationId: string) {
   if (!enabled()) return;
   const result = await db.rpc("tenh_bot_set_human_hold", { p_business: businessId, p_conversation: conversationId, p_hold: true });

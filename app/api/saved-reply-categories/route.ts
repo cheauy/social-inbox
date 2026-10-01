@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 const CATEGORY_COLUMNS =
   "id,business_id,name,sort_index,created_at,updated_at";
 
-export const SAVED_REPLY_CATEGORY_NAME_MAX = 100;
+const SAVED_REPLY_CATEGORY_NAME_MAX = 100;
 
 function jsonError(
   error: string,
@@ -37,7 +37,7 @@ function cleanName(value: unknown) {
 }
 
 /** List a workspace's categories in the order the Owner arranged them. */
-export async function GET(request?: NextRequest) {
+export async function GET(request: NextRequest) {
   const authResult = await getCurrentMember();
 
   if (!authResult.success) {

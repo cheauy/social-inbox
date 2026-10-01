@@ -1,3 +1,4 @@
+import { TENH_BOT_AVAILABLE } from "../../../lib/bot/availability";
 import { useEffect, useState } from "react";
 import { Alert, Switch, Text, TextInput, View } from "react-native";
 import { TabScreen, useWorkspaceResource } from "../../components/screen";
@@ -6,6 +7,10 @@ import { api } from "../../lib/api/client";
 type Rule = { id: string; name: string; social_account_id: string; post_id: string | null; post_url: string | null; public_template: string | null; private_template: string | null; enabled: boolean };
 type Data = { rules: Rule[]; pages: {id: string; account_name: string | null}[]; canManage: boolean; paused: boolean; workerEnabled: boolean; circuitUntil: string | null; history: {id: string; comment_id: string; action: string; status: string; reason: string | null}[] };
 export default function Bot() {
+  if(!TENH_BOT_AVAILABLE)return <TabScreen title="Tenh Bot"><View style={{padding:24,gap:12}}><Text style={{fontSize:24,fontWeight:"700"}}>Coming soon</Text><Text style={styles.muted}>Bot configuration and automation are paused.</Text></View></TabScreen>;
+  return <BotConfiguration/>;
+}
+function BotConfiguration() {
   const { data, loading, error, reload, workspace } = useWorkspaceResource<Data>("/api/facebook/auto-reply");
   const [editing, setEditing] = useState(""); const [name, setName] = useState(""); const [page, setPage] = useState("");
   const [specific, setSpecific] = useState(false); const [post, setPost] = useState("");

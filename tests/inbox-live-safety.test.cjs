@@ -10,8 +10,9 @@ test('identical teammate text/time cannot acknowledge a local pending send',()=>
  assert.equal(matchesOptimisticMessage(candidate,{...teammate,conversation_id:'other',raw_payload:{tenh_client_request_id:candidate.id}}),false);
 });
 test('hidden automatic read returns before touching state or issuing a request',async()=>{
- const source=fs.readFileSync('components/inbox/inbox-view.tsx','utf8'),start=source.indexOf('async function markConversationReadRealtime('),end=source.indexOf('\n}\n',start)+3;
- const code=ts.transpileModule(source.slice(start,end),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+ const source=fs.readFileSync('components/inbox/inbox-view.tsx','utf8'),parsed=ts.createSourceFile('inbox.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ let declaration;function visit(node){if(ts.isFunctionDeclaration(node)&&node.name?.text==='markConversationReadRealtime')declaration=node;ts.forEachChild(node,visit);}visit(parsed);assert.ok(declaration,'read handler exists');
+ const code=ts.transpileModule(declaration.getText(parsed),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
  const context={document:{visibilityState:'hidden',hasFocus:()=>false}};vm.createContext(context);vm.runInContext(code,context);await context.markConversationReadRealtime('c1');
  context.document.visibilityState='visible';await context.markConversationReadRealtime('c1');
  // No refs/fetch exist in this context: touching either would throw.

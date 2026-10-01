@@ -21,7 +21,7 @@ const overrides = {
 };
 let fetcher,copyDetails;
 const load=loader(overrides,{AbortController,URLSearchParams,window:{open:(...args)=>global.window.open(...args)},navigator:{clipboard:{writeText:value=>copyDetails(value)}},fetch:(...args)=>fetcher(...args)});
-const {CompanionFacebookAction}=load('components/inbox/companion-facebook-action.tsx');
+const {CompanionFacebookAction,FacebookConversationActionProvider}=load('components/inbox/companion-facebook-action.tsx');
 overrides['./companion-facebook-action']={CompanionFacebookAction};
 const {ConversationHeader}=load('components/inbox/conversation-header.tsx');
 async function mount(t,{response=good(),status=200,blocked=false,props={},fetchImpl}={}) {
@@ -159,4 +159,14 @@ test('navigation-only rejects arbitrary fallback URLs and saved-link substitutio
 test('navigation-only rejects saved links instead of treating them as provider matched',async t=>{
  const h=await mount(t,{props:{navigationOnly:true},response:good({navigationAvailable:true,linkSource:'agent_saved_business_suite'})});await h.click();
  assert.equal(h.navigations.length,0);assert.equal(document.querySelector('a'),null);
+});
+
+test('header and Other actions share one pending lookup and reset together on conversation change',async t=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'https://app.tenhchat.com'});global.window=dom.window;global.document=dom.window.document;global.IS_REACT_ACT_ENVIRONMENT=true;
+ const calls=[],popups=[];let resolve;window.open=()=>{const popup={closed:false,opener:{},document:document.implementation.createHTMLDocument(),location:{href:'about:blank',replace(value){this.href=value}},close(){this.closed=true}};popups.push(popup);return popup};fetcher=(url,options)=>{calls.push({url,options});return new Promise(r=>resolve=r)};
+ const root=createRoot(document.getElementById('root'));const render=async props=>act(async()=>root.render(React.createElement(FacebookConversationActionProvider,{...props,navigationOnly:true},React.createElement(CompanionFacebookAction,{...props,navigationOnly:true,compact:true}),React.createElement(CompanionFacebookAction,{...props,navigationOnly:true,menu:true}))));t.after(async()=>{await act(async()=>root.unmount());dom.window.close()});
+ await render(context);let buttons=[...document.querySelectorAll('button')];assert.equal(buttons.length,2);assert.equal(buttons[1].textContent,'View conversation');assert.equal(calls.length,0);
+ await act(async()=>{buttons[0].click();buttons[1].click()});assert.equal(calls.length,1);assert.equal(popups.length,1);assert.ok(buttons.every(x=>x.disabled));
+ await act(async()=>resolve(new Response(JSON.stringify(good({navigationAvailable:true})))));assert.equal(popups[0].location.href,link);assert.ok(buttons.every(x=>!x.disabled));
+ await act(async()=>buttons[1].click());assert.equal(calls.length,2);const oldResolve=resolve;await render({...context,conversationId:'c2',threadId:'new'});assert.equal(calls[1].options.signal.aborted,true);assert.equal(popups[1].closed,true);await act(async()=>oldResolve(new Response(JSON.stringify(good({navigationAvailable:true})))));assert.equal(popups[1].location.href,'about:blank');
 });

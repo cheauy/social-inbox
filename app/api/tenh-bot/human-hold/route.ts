@@ -1,3 +1,5 @@
+import { TENH_BOT_AVAILABLE } from "@/lib/bot/availability";
+import { tenhBotComingSoonResponse } from "@/lib/bot/coming-soon-response";
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getInboxConversationAccess } from "@/lib/inbox/get-inbox-resource-access";
@@ -5,6 +7,7 @@ import { supabaseAdmin as db } from "@/lib/supabase/admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
+  if(!TENH_BOT_AVAILABLE)return tenhBotComingSoonResponse();
   const guard = await requirePermission("channels", "manage");
   if (!guard.success) return guard.response;
   try {

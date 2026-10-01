@@ -1,3 +1,4 @@
+import { TENH_BOT_AVAILABLE } from "@/lib/bot/availability";
 import "server-only";
 import { supabaseAdmin as db } from "@/lib/supabase/admin";
 import { resolveStoredFacebookPageAccessToken, refreshFacebookPageAccessToken, isFacebookAccessTokenError } from "@/lib/facebook/get-facebook-page-access-token";
@@ -86,6 +87,7 @@ async function context(job: AutoReplyJob) {
 }
 
 export async function inspectAutoReply(job: AutoReplyJob, dryRun = false) {
+  if(!TENH_BOT_AVAILABLE)return {reason:"tenh_bot_coming_soon"};
   const ctx = await context(job);
   if (!ctx) return { reason: "page_or_comment_unavailable" };
   if (!dryRun && (!autoReplyCutoff(ctx.rule, ctx.message.platform_created_at) ||
@@ -160,6 +162,7 @@ async function saveSent(job: AutoReplyJob, replyId: string, template: string) {
 }
 
 export async function processAutoReplyJob(job: AutoReplyJob) {
+  if(!TENH_BOT_AVAILABLE)return;
   let crossedSendBoundary = false;
   let knownReplyId: string | null = null;
   let token = ""; let template = ""; let pageId = ""; let startedAt = Date.now();
@@ -202,6 +205,7 @@ export async function processAutoReplyJob(job: AutoReplyJob) {
 }
 
 export async function runAutoReplyBatch() {
+  if(!TENH_BOT_AVAILABLE)return {paused:true,repaired:0,claimed:0,errors:0};
   // Incoming comments are already durable. Enqueue recovery is outside core inbox INSERT/reads.
   const repair = await db.rpc("facebook_auto_reply_repair", { p_limit: 100 });
   if (repair.error) throw new Error("auto_reply_repair_failed");
@@ -222,6 +226,7 @@ export async function runAutoReplyBatch() {
 }
 
 export async function reconcileAutoReplyJob(job: AutoReplyJob) {
+  if(!TENH_BOT_AVAILABLE)return false;
   if (job.action !== "public" || !job.send_started_at || !job.send_template) return false;
   const { data: claimed, error } = await db.from("facebook_auto_reply_jobs")
     .update({ reconciliation_attempted_at: new Date().toISOString() }).eq("id", job.id)

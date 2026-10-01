@@ -7,6 +7,7 @@ import { TeamNotificationCenter } from "@/components/dashboard/team-notification
 import { DashboardNavigationLabel } from "@/components/dashboard/dashboard-navigation-label";
 import { NavPermissionGate } from "@/components/dashboard/nav-permission-gate";
 import { WorkspaceSwitcher } from "@/components/dashboard/workspace-switcher";
+import { TENH_BOT_AVAILABLE } from "@/lib/bot/availability";
 
 
 type NavItem = {
@@ -31,7 +32,7 @@ const normalNavigation: NavItem[] = [
 ];
 
 export async function DashboardHeader() {
-  const navigation = normalNavigation;
+  const navigation = normalNavigation.filter(item=>TENH_BOT_AVAILABLE||item.href!=="/dashboard/tenh-bot");
 
   return (
     <header data-dashboard-header className="relative flex h-[72px] shrink-0 items-center border-b border-slate-200 bg-white px-5">

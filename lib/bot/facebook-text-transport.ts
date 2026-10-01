@@ -1,3 +1,4 @@
+import { TENH_BOT_AVAILABLE } from "./availability";
 import "server-only";
 import { supabaseAdmin as db } from "@/lib/supabase/admin";
 import { autoReplyGraph } from "@/lib/facebook/auto-reply";
@@ -12,7 +13,7 @@ export const facebookBotTextTransport = {
   supported: (job: ExecutionJob) => ["reply", "followup"].includes(job.kind),
   async execute(job: ExecutionJob) {
     const reject = () => ({ confirmed: false, definitiveRejection: true });
-    if (process.env.TENH_BOT_EXECUTION_ENABLED !== "true" || !facebookBotTextTransport.supported(job) ||
+    if (!TENH_BOT_AVAILABLE || process.env.TENH_BOT_EXECUTION_ENABLED !== "true" || !facebookBotTextTransport.supported(job) ||
         !job.text?.trim() || job.text.length > 2000 || !/^\d{1,30}$/.test(job.recipientId)) return reject();
     if (!await businessSubscriptionIsOperational(job.businessId)) return reject();
     const conversation = await db.from("conversations").select("id,contact_id,social_account_id,source_type")

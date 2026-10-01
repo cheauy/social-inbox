@@ -1,3 +1,5 @@
+import { TENH_BOT_AVAILABLE } from "@/lib/bot/availability";
+import { tenhBotComingSoonResponse } from "@/lib/bot/coming-soon-response";
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { supabaseAdmin as db } from "@/lib/supabase/admin";
@@ -11,6 +13,7 @@ async function channel(business: string, id: string) {
   return db.from("social_accounts").select("id,platform").eq("business_id", business).eq("id", id).eq("is_active", true).maybeSingle();
 }
 export async function GET(request: NextRequest) {
+  if(!TENH_BOT_AVAILABLE)return tenhBotComingSoonResponse();
   const guard = await requirePermission("channels", "view");
   if (!guard.success) return guard.response;
   const business = guard.context.member.business_id, id = request.nextUrl.searchParams.get("channelId");
@@ -24,6 +27,7 @@ export async function GET(request: NextRequest) {
     updatedAt: saved.data?.updated_at ?? null, enabled: false, executionAvailable: false });
 }
 export async function POST(request: NextRequest) {
+  if(!TENH_BOT_AVAILABLE)return tenhBotComingSoonResponse();
   const guard = await requirePermission("channels", "manage");
   if (!guard.success) return guard.response;
   const business = guard.context.member.business_id;

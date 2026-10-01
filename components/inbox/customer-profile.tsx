@@ -1,5 +1,6 @@
 "use client";
 
+import { CompanionFacebookAction } from "./companion-facebook-action";
 import { CustomerMessageBlock } from "./customer-message-block";
 import { CustomerAvatar } from "@/components/customer-avatar";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
@@ -698,6 +699,10 @@ async function saveProfile() {
                 </span>
                 {isKhmer ? "ឯកសារ ឯកសារផ្សេងៗ និងតំណ" : "Files, documents & links"}
               </button>
+
+              {activeConversation.source_type === "messenger" && activeConversation.social_account?.platform === "facebook" && activeConversation.contact ? <CompanionFacebookAction menu navigationOnly
+                businessId={activeConversation.contact.business_id} conversationId={activeConversation.id}
+                pageId={activeConversation.social_account.platform_account_id} threadId={activeConversation.contact.platform_user_id}/> : null}
 
               <CustomerMessageBlock key={`block-user:${activeConversation.id}`} conversation={activeConversation} />
               <button
