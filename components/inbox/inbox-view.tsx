@@ -1789,6 +1789,15 @@ function showMultiAgentToast(
     );
 }
 
+function showSuccessToast(message: string) {
+  showMultiAgentToast({
+    id: `success-${crypto.randomUUID()}`,
+    activity_type: "success",
+    actor_name: "Success",
+    description: message,
+  });
+}
+
 function normalizeCustomerTags(
   tags: CustomerTag[],
 ) {
@@ -5636,6 +5645,7 @@ useEffect(() => {
           ),
         );
       }
+      showSuccessToast("Conversation marked as unread successfully.");
     } catch (error) {
       manualUnreadConversationIdsRef.current.delete(
         conversationId,
@@ -5753,6 +5763,9 @@ async function handleTogglePin() {
         ),
       );
     }
+    showSuccessToast((result.conversation?.is_pinned ?? nextPinned)
+      ? "Conversation pinned successfully."
+      : "Conversation unpinned successfully.");
   } catch (error) {
     const localOverride =
       pinOverrideRef.current.get(conversationId);
@@ -8609,6 +8622,9 @@ async function handleAssignmentChange(
         ),
       );
     }
+    showSuccessToast(nextAssignedTo
+      ? "Conversation assigned successfully."
+      : "Conversation unassigned successfully.");
   } catch (error) {
     assignmentOverrideRef.current.delete(conversationId);
 
@@ -8701,6 +8717,7 @@ async function handleAssignToMe() {
         ),
       ),
     );
+    showSuccessToast("Conversation assigned to you successfully.");
   } catch (error) {
     assignmentOverrideRef.current.delete(conversationId);
     setAssignmentError(
@@ -8717,19 +8734,19 @@ return (
 <FacebookConversationActionProvider navigationOnly businessId={activeConversation?.contact?.business_id ?? activeConversation?.business_id ?? ""} conversationId={activeConversation?.id ?? ""} pageId={activeConversation?.social_account?.platform_account_id ?? null} threadId={activeConversation?.contact?.platform_user_id ?? null}>
 <div data-inbox-shell className="relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
   {multiAgentToast ? (
-    <div className="pointer-events-none absolute right-5 top-5 z-[90] w-[min(390px,calc(100%-2.5rem))]">
+    <div role="status" aria-live="polite" aria-atomic="true" className="pointer-events-none absolute right-5 top-5 z-[90] w-[min(390px,calc(100%-2.5rem))]">
       <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
-            {multiAgentToast.actorName
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${multiAgentToast.activityType === "success" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
+            {multiAgentToast.activityType === "success" ? "✓" : multiAgentToast.actorName
               ?.trim()
               .charAt(0)
               .toUpperCase() || "T"}
           </div>
 
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold uppercase tracking-wide text-blue-600">
-              Team update
+            <p className={`text-xs font-bold uppercase tracking-wide ${multiAgentToast.activityType === "success" ? "text-emerald-600" : "text-blue-600"}`}>
+              {multiAgentToast.activityType === "success" ? "Success" : "Team update"}
             </p>
 
             <p className="mt-1 text-sm font-medium leading-5 text-slate-800">
@@ -8754,7 +8771,7 @@ return (
               }
             }}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-            aria-label="Dismiss team update"
+            aria-label={multiAgentToast.activityType === "success" ? "Dismiss success alert" : "Dismiss team update"}
           >
             ×
           </button>
@@ -8950,6 +8967,7 @@ return (
 />
       {customerPanelVisible ? (
         <CustomerProfile
+          onReminderCreated={() => showSuccessToast("Reminder created successfully.")}
           onReportSpam={() => handleStatusChange("spam")}
           reportingSpam={updatingStatus}
           reportSpamError={statusError}

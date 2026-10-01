@@ -25,6 +25,7 @@ type CustomerProfileProps = {
   activeConversation: InboxConversation | null;
   assigning?: boolean;
   onAssignToMe?: () => void;
+  onReminderCreated?: () => void;
   onReportSpam: () => Promise<boolean>;
   reportingSpam?: boolean;
   reportSpamError?: string | null;
@@ -105,6 +106,7 @@ export function CustomerProfile({
   activeConversation,
   assigning = false,
   onAssignToMe,
+  onReminderCreated,
   onContactTagsChange,
   onReportSpam,
   reportingSpam = false,
@@ -781,6 +783,7 @@ async function saveProfile() {
         onClose={() => setReminderOpen(false)}
         onCreated={() => {
           setReminderOpen(false);
+          onReminderCreated?.();
           window.dispatchEvent(
             new CustomEvent("tenh-reminder-changed"),
           );

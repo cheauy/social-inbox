@@ -1758,7 +1758,7 @@ export function ReplyBox({
 
 
   return (
-    <div className="shrink-0 w-full rounded-2xl border border-slate-200 bg-white">
+    <div className="shrink-0 w-full border border-slate-200 bg-white">
       {/*
         Say that the media is coming, rather than leaving a disabled Send with
         no explanation. Sending is held until it lands, so the wait needs a
