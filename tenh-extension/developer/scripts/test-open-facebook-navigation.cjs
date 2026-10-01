@@ -36,7 +36,7 @@ function extension(options={}) {
  const sandbox={Date:Clock,chrome,console,URL,URLSearchParams,crypto:require('crypto').webcrypto,AbortSignal,WebSocket:{OPEN:1},
  setTimeout:(fn,ms)=>{if(ms===350){clock+=ms;queueMicrotask(fn);return null;}return setTimeout(fn,ms);},clearTimeout,setInterval,clearInterval,
  fetch:async(url,init)=>{network.push({url,init});if(String(url).includes('/api/extension/conversations/open-context'))return new Response(JSON.stringify(options.response||provider()),{status:options.status||200});throw new Error('Unexpected fetch');}};
- vm.runInNewContext(source+'\nglobalThis.testAPI={openFacebook,cachedFacebookNavigationId,rememberFacebookNavigationId,navigationIdFromFacebookUrl};',sandbox);
+ vm.runInNewContext(source+'\nglobalThis.testAPI={openFacebook,prepareFacebookConversation,commitFacebookConversation,cancelFacebookConversation,handle,cachedFacebookNavigationId,rememberFacebookNavigationId,navigationIdFromFacebookUrl};',sandbox);
  const senderUrl=(localBuild?'http://localhost:3000':'https://app.tenhchat.com')+'/dashboard/inbox';
  const sender={id:'testextension',frameId:0,tab:{id:9,url:senderUrl},url:senderUrl};
  return {api:sandbox.testAPI,tabs,history,network,state,sender,scripts};
@@ -153,4 +153,77 @@ test('unverified browser observations cannot enter the persistent navigation cac
 test('conflicting Page identifiers and PSIDs are rejected as navigation destinations',()=>{
  const e=extension();assert.equal(e.api.navigationIdFromFacebookUrl(reported+'&page_id=999',args.pageId,args.threadId),null);
  assert.equal(e.api.navigationIdFromFacebookUrl(suite(args.threadId),args.pageId,args.threadId),null);
+});
+
+const verifiedRequest = { ...args, navigationRequestId:'verified-request-1' };
+test('capability comes from the live worker and identifies its app origin',async()=>{
+ const e=extension(),r=await e.api.handle({type:'TENH_EXTENSION_PING'},e.sender);
+ assert.equal(r.verifiedConversationNavigation,true);assert.equal(r.appOrigin,localBuild?'http://localhost:3000':'https://app.tenhchat.com');assert.equal(r.connected,true);
+});
+test('two phase navigation keeps provider routing intact and focuses only after commit',async()=>{
+ const e=extension({redirect:reported});const p=await e.api.prepareFacebookConversation(verifiedRequest,e.sender);
+ assert.equal(p.prepared,true);assert.equal(p.opened,false);assert.equal(e.tabs[0].active,false);assert.equal(e.history.filter(x=>x.action==='update').length,0);
+ const r=await e.api.commitFacebookConversation({...verifiedRequest,openToken:p.openToken},e.sender);
+ assert.equal(r.opened,true);assert.equal(r.exactRequested,true);assert.equal(r.verified,true);assert.equal(r.businessId,args.businessId);
+ assert.equal(e.network.length,2);assert.equal(e.tabs[0].url,reported);assert.ok(e.history.filter(x=>x.action==='update').every(x=>!('url' in x.patch)));
+});
+test('strict prepare fails closed for wrong, ambiguous and hidden customers without foreground retry',async()=>{
+ for(const reason of ['facebook_customer_mismatch','ambiguous_profile','profile_customer_heading_missing','facebook_sign_in_required']){
+  const e=extension({redirect:reported,read:{reason}});const r=await e.api.prepareFacebookConversation(verifiedRequest,e.sender);
+  assert.notEqual(r.prepared,true);assert.equal(r.opened,false);assert.equal(e.history.filter(x=>x.action==='update').length,0);assert.equal(e.tabs.length,0);
+ }
+});
+test('cancelling a prepared customer removes only its untouched inactive tab and makes the ticket unusable',async()=>{
+ const e=extension({redirect:reported}),p=await e.api.prepareFacebookConversation(verifiedRequest,e.sender);
+ await e.api.cancelFacebookConversation(verifiedRequest,e.sender);
+ assert.equal((await e.api.commitFacebookConversation({...verifiedRequest,openToken:p.openToken},e.sender)).opened,false);
+ assert.equal(e.tabs.length,0);assert.equal(e.history.filter(x=>x.action==='update').length,0);
+});
+test('cancel during provider authorization opens no stale tab',async()=>{
+ const e=extension({redirect:reported});const task=e.api.prepareFacebookConversation(verifiedRequest,e.sender);
+ await e.api.cancelFacebookConversation(verifiedRequest,e.sender);const r=await task;
+ assert.equal(r.opened,false);assert.equal(e.tabs.length,0);assert.equal(e.history.filter(x=>x.action==='create').length,0);
+});
+test('ticket binds full context and sender document, and can only be consumed once',async()=>{
+ const e=extension({redirect:reported}),p=await e.api.prepareFacebookConversation(verifiedRequest,{...e.sender,documentId:'doc-1'}),opts={...verifiedRequest,openToken:p.openToken};
+ for(const key of ['businessId','conversationId','pageId','threadId'])assert.equal((await e.api.commitFacebookConversation({...opts,[key]:'wrong'},{...e.sender,documentId:'doc-1'})).opened,false);
+ assert.equal((await e.api.commitFacebookConversation(opts,{...e.sender,documentId:'doc-2'})).opened,false);
+ const both=await Promise.all([e.api.commitFacebookConversation(opts,{...e.sender,documentId:'doc-1'}),e.api.commitFacebookConversation(opts,{...e.sender,documentId:'doc-1'})]);
+ assert.equal(both.filter(x=>x.verified===true).length,1);assert.equal(e.history.filter(x=>x.action==='update').length,1);
+});
+test('customer or route changes between prepare and commit cannot be activated',async()=>{
+ const e=extension({redirect:reported}),p=await e.api.prepareFacebookConversation(verifiedRequest,e.sender);
+ e.tabs[0].url=suite('999999');
+ const r=await e.api.commitFacebookConversation({...verifiedRequest,openToken:p.openToken},e.sender);
+ assert.equal(r.opened,false);assert.equal(e.history.filter(x=>x.action==='update').length,0);assert.equal(e.tabs.length,1,'user navigation is preserved');
+});
+test('authorization is repeated and revocation or changed provider context blocks activation',async()=>{
+ const response=provider(),e=extension({redirect:reported,response}),p=await e.api.prepareFacebookConversation(verifiedRequest,e.sender);
+ response.threadId='999999';
+ const r=await e.api.commitFacebookConversation({...verifiedRequest,openToken:p.openToken},e.sender);
+ assert.equal(r.opened,false);assert.equal(e.history.filter(x=>x.action==='update').length,0);assert.equal(e.tabs.length,0);
+});
+test('DOM mismatch after prepare blocks activation even if the route stays the same',async()=>{
+ let mismatch=false;const e=extension({redirect:reported,read:(tab,ctx)=>mismatch?{reason:'facebook_customer_mismatch'}:{found:true,pageId:ctx.pageId,matchedThreadId:ctx.threadId,selectedItemId:'61576318208827',profileUrl:'https://www.facebook.com/customer'}});
+ const p=await e.api.prepareFacebookConversation(verifiedRequest,e.sender);mismatch=true;
+ assert.equal((await e.api.commitFacebookConversation({...verifiedRequest,openToken:p.openToken},e.sender)).opened,false);assert.equal(e.history.filter(x=>x.action==='update').length,0);
+});
+test('a redirect after activation cannot become verified success or a durable mapping',async()=>{
+ const e=extension({redirect:reported,onUpdate:(tab,patch)=>{if(patch.active)tab.url=suite('999999');}}),p=await e.api.prepareFacebookConversation(verifiedRequest,e.sender);
+ assert.equal((await e.api.commitFacebookConversation({...verifiedRequest,openToken:p.openToken},e.sender)).verified,false);
+ assert.equal(e.state.facebookNavigationCacheV2,undefined);assert.equal(e.state.facebookVerifiedConversationTabsV1,undefined);assert.equal(e.tabs.length,1);
+});
+test('cancellation during commit DOM recheck prevents tab activation',async()=>{
+ let reads=0,e; e=extension({redirect:reported,read:(tab,ctx)=>{
+  if(++reads===3)void e.api.cancelFacebookConversation(verifiedRequest,e.sender);
+  return {found:true,pageId:ctx.pageId,matchedThreadId:ctx.threadId,selectedItemId:'61576318208827',profileUrl:'https://www.facebook.com/customer'};
+ }});
+ const p=await e.api.prepareFacebookConversation(verifiedRequest,e.sender);
+ assert.equal((await e.api.commitFacebookConversation({...verifiedRequest,openToken:p.openToken},e.sender)).opened,false);
+ assert.equal(e.history.filter(x=>x.action==='update').length,0);
+});
+test('user navigation during prepare is preserved when its route changed',async()=>{
+ let reads=0;const e=extension({redirect:reported,read:tab=>{if(++reads===1)tab.url=suite('999999');return {reason:'facebook_customer_mismatch'};}});
+ assert.equal((await e.api.prepareFacebookConversation(verifiedRequest,e.sender)).opened,false);
+ assert.equal(e.tabs.length,1);assert.equal(e.tabs[0].url,suite('999999'));assert.equal(e.history.filter(x=>x.action==='update').length,0);
 });

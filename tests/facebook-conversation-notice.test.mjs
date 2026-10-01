@@ -32,7 +32,7 @@ const exact = inbox + '&selected_item_id=54321&thread_type=FB_MESSAGE';
 function action(body, status = 200) {
   const h = hooks(), popups = [], calls = [];
   h.React.createContext = () => ({ Provider: 'provider' });
-  const load = loader({ react: h.React, 'react/jsx-runtime': h.jsx, 'lucide-react': { ExternalLink: 'icon' } }, {
+  const load = loader({ react: h.React, 'react/jsx-runtime': h.jsx, 'lucide-react': { ExternalLink: 'icon' }, '@/lib/extension/use-companion': { useCompanion: () => ({ verifiedConversationNavigation: false }) } }, {
     AbortController, URLSearchParams,
     window: { open: () => {
       const popup = { closed: false, location: { href: 'about:blank', replace(url) { this.href = url; } },

@@ -4,13 +4,16 @@ export function awaitCompanionAnswer<T>(
   requestId: string,
   timeout: number,
   host: Window = window,
+  signal?: AbortSignal,
 ): Promise<T | null> {
   return new Promise((resolve) => {
     const done = (value: T | null) => {
       host.removeEventListener("message", listener);
       host.clearTimeout(timer);
+      signal?.removeEventListener("abort", aborted);
       resolve(value);
     };
+    const aborted = () => done(null);
     const listener = (event: MessageEvent) => {
       if (event.source !== host || event.origin !== host.location.origin) return;
       const data = event.data;
@@ -28,5 +31,7 @@ export function awaitCompanionAnswer<T>(
     };
     const timer = host.setTimeout(() => done(null), timeout);
     host.addEventListener("message", listener);
+    signal?.addEventListener("abort", aborted, { once: true });
+    if (signal?.aborted) done(null);
   });
 }

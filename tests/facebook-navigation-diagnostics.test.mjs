@@ -106,7 +106,7 @@ function actionFixture(body) {
   h.React.createContext = () => ({});
   let shared, calls = 0;
   h.React.useContext = () => shared;
-  const load = loader({ react: h.React, 'react/jsx-runtime': h.jsx, 'lucide-react': { ExternalLink: 'icon' } }, {
+  const load = loader({ react: h.React, 'react/jsx-runtime': h.jsx, 'lucide-react': { ExternalLink: 'icon' }, '@/lib/extension/use-companion': { useCompanion: () => ({ verifiedConversationNavigation: false }) } }, {
     AbortController, URLSearchParams,
     window: { open: () => ({ closed: false, opener: null, location: { href: 'about:blank', replace() {} },
       document: { createElement: () => ({ style: {} }), body: { appendChild() {} } }, close() { this.closed = true; } }) },

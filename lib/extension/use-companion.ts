@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { awaitCompanionAnswer } from "./companion-response";
+import { matchesConversationContext, supportsVerifiedConversation, type ConversationContext } from "./verified-conversation";
 
 /*
  * Asking the browser whether TENH Companion is there, and asking it for things.
@@ -47,6 +48,13 @@ export type ReplyAvailability = {
 };
 
 export type FacebookConversationOpenResult = {
+  prepared?: boolean;
+  openToken?: string;
+  businessId?: string;
+  conversationId?: string;
+  pageId?: string;
+  threadId?: string;
+  extensionVersion?: string;
   opened?: boolean;
   exactRequested?: boolean;
   verified?: boolean;
@@ -72,20 +80,30 @@ function post(type: string, payload: Record<string, unknown> = {}) {
 export function useCompanion() {
   const [installed, setInstalled] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
+  const [verifiedConversationNavigation, setVerifiedConversationNavigation] = useState(false);
   useEffect(() => {
-    const detect = () => { post("TENH_EXTENSION_PING"); };
+    let ping: string | null = null, expiry: number | undefined;
+    const detect = () => {
+      window.clearTimeout(expiry);
+      ping = post("TENH_EXTENSION_PING");
+      expiry = window.setTimeout(() => setVerifiedConversationNavigation(false), 3000);
+    };
     const receive = (event: MessageEvent) => {
       if (event.source !== window || event.origin !== window.location.origin) return;
       const data = event.data;
       if (!data || data.source !== "TENH_EXTENSION") return;
       if (data.type === "TENH_EXTENSION_CONTEXT_INVALIDATED" || data.requiresRefresh || data.error === "extension_unavailable") {
-        setInstalled(false); setVersion(null); return;
+        setInstalled(false); setVersion(null); setVerifiedConversationNavigation(false); return;
       }
       if (!["TENH_EXTENSION_PONG", "TENH_EXTENSION_READY"].includes(data.type)) return;
       // Invalidated scripts can still answer after a reload. Only live replies count.
       if (data.error || data.requiresRefresh || typeof data.version !== "string") return;
       setInstalled(true);
       setVersion(data.version);
+      if (data.type === "TENH_EXTENSION_PONG" && data.requestId === ping) {
+        window.clearTimeout(expiry);
+        setVerifiedConversationNavigation(supportsVerifiedConversation(data, window.location.origin));
+      }
     };
     window.addEventListener("message", receive);
     window.addEventListener("focus", detect);
@@ -95,6 +113,7 @@ export function useCompanion() {
       window.removeEventListener("message", receive);
       window.removeEventListener("focus", detect);
       window.clearInterval(timer);
+      window.clearTimeout(expiry);
     };
   }, []);
 
@@ -130,6 +149,25 @@ export function useCompanion() {
     },
     [],
   );
+
+  const openVerifiedConversation = useCallback(async (context: ConversationContext, signal: AbortSignal, isCurrent: () => boolean) => {
+    if (!verifiedConversationNavigation || signal.aborted || !isCurrent()) return null;
+    const navigationRequestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const cancel = () => { post("CANCEL_FACEBOOK_CONVERSATION", { navigationRequestId }); };
+    signal.addEventListener("abort", cancel, { once: true });
+    try {
+      const preparedId = post("PREPARE_FACEBOOK_CONVERSATION", { ...context, navigationRequestId });
+      const prepared = await awaitCompanionAnswer<FacebookConversationOpenResult>("PREPARE_FACEBOOK_CONVERSATION_RESULT", preparedId, 30000, window, signal);
+      if (signal.aborted || !isCurrent() || !prepared || prepared.prepared !== true || prepared.opened !== false ||
+          prepared.exactRequested !== true || prepared.verified !== true || !matchesConversationContext(prepared, context) ||
+          typeof prepared.openToken !== "string" || !/^[a-f0-9-]{36}$/.test(prepared.openToken)) return null;
+      const commitId = post("COMMIT_FACEBOOK_CONVERSATION", { ...context, navigationRequestId, openToken: prepared.openToken });
+      return await awaitCompanionAnswer<FacebookConversationOpenResult>("COMMIT_FACEBOOK_CONVERSATION_RESULT", commitId, 15000, window, signal);
+    } finally {
+      signal.removeEventListener("abort", cancel);
+      cancel();
+    }
+  }, [verifiedConversationNavigation]);
 
   /**
    * Open the real Facebook profile link that Facebook itself exposes for the
@@ -199,5 +237,5 @@ export function useCompanion() {
     [],
   );
 
-  return { installed, version, openInFacebook, openFacebookProfile, openResolvedFacebookProfile, checkReplyAvailability };
+  return { installed, version, verifiedConversationNavigation, openVerifiedConversation, openInFacebook, openFacebookProfile, openResolvedFacebookProfile, checkReplyAvailability };
 }

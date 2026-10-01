@@ -13,7 +13,7 @@ function harness() {
   const noTabMutation = () => { throw new Error('Passive operation must not create or navigate tabs'); };
   const context = {
     chrome: {
-      runtime: { onInstalled: { addListener: fn => listeners.installed = fn }, onStartup: { addListener: fn => listeners.startup = fn } },
+      runtime: { id: 'test', onInstalled: { addListener: fn => listeners.installed = fn }, onStartup: { addListener: fn => listeners.startup = fn } },
       alarms: { onAlarm: { addListener: fn => listeners.alarm = fn } },
       tabs: { create: noTabMutation, update: noTabMutation, onUpdated: { addListener() {} }, onRemoved: { addListener: fn => listeners.removed = fn } },
       storage: { local: { remove: async () => {} } }, action: { setBadgeText: async () => {} },
@@ -24,7 +24,10 @@ function harness() {
     ensureManagedFacebookTab: noTabMutation,
     askFacebook: async (_message, options) => { probes.push(options); assert.equal(options.ensure, false); return {}; },
     setTimeout: noTabMutation,
+    TENH_ORIGIN: 'https://app.tenhchat.com',
+    isTenhSenderUrl: value => new URL(value).origin === 'https://app.tenhchat.com',
   };
+  context.tenhStorage = context.chrome.storage;
   vm.createContext(context);
   vm.runInContext(functions + '\n' + source.slice(source.indexOf('chrome.runtime.onInstalled.addListener(')), context);
   return { context, listeners, probes };
@@ -33,7 +36,7 @@ test('install, startup and pairing never open Business Suite, even with old keep
   const h = harness();
   h.listeners.installed();
   h.listeners.startup();
-  await h.context.handle({ type: 'TENH_AUTO_CONNECTED', token: 'test' }, {});
+  await h.context.handle({ type: 'TENH_AUTO_CONNECTED', token: 'test' }, { id:'test', frameId:0, url:'https://app.tenhchat.com/dashboard/inbox' });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.probes.length, 3);
 });

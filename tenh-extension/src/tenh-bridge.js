@@ -1,5 +1,5 @@
 (() => {
-if (window.location.origin !== "http://localhost:3000") return;
+if (window.location.origin !== "https://app.tenhchat.com") return;
 const bridgeVersion = chrome.runtime.getManifest().version;
 if (globalThis.__tenh_tenh_bridge === bridgeVersion) return;
 globalThis.__tenh_tenh_bridge = bridgeVersion;
@@ -22,6 +22,9 @@ const ALLOWED = new Set([
   "TENH_EXTENSION_PING",
   "TENH_UNPAIR",
   "OPEN_IN_FACEBOOK",
+  "PREPARE_FACEBOOK_CONVERSATION",
+  "COMMIT_FACEBOOK_CONVERSATION",
+  "CANCEL_FACEBOOK_CONVERSATION",
   "OPEN_FACEBOOK_PROFILE",
   "OPEN_RESOLVED_FACEBOOK_PROFILE",
   "CHECK_FACEBOOK_REPLY_AVAILABILITY",
@@ -202,6 +205,7 @@ window.addEventListener("message", (event) => {
 
   const outgoing = {
     type: data.type,
+    navigationRequestId: typeof data.navigationRequestId === "string" ? data.navigationRequestId.slice(0, 100) : undefined,
     pageId: typeof data.pageId === "string" ? data.pageId : undefined,
     businessId: typeof data.businessId === "string" ? data.businessId.slice(0, 100) : undefined,
     threadId: typeof data.threadId === "string" ? data.threadId : undefined,

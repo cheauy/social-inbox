@@ -13,7 +13,7 @@ function worker(){
 }
 const sender=url=>({id:'test',frameId:0,url,tab:{id:3,url}});
 test('manifest injects the TENH bridge on exactly the requested local server',()=>{
- const m=JSON.parse(fs.readFileSync(root+'/manifest.json'));assert.equal(m.version,'1.2.32');assert.ok(m.host_permissions.includes('http://localhost:3000/*'));
+ const m=JSON.parse(fs.readFileSync(root+'/manifest.json'));const production=JSON.parse(fs.readFileSync('tenh-extension/manifest.json'));assert.equal(m.version,production.version.replace(/(\d+)$/,n=>String(Number(n)+1)));assert.ok(m.host_permissions.includes('http://localhost:3000/*'));
  assert.deepEqual(m.content_scripts.find(x=>x.js.includes('src/tenh-bridge.js')).matches,['http://localhost:3000/*']);
 });
 test('localhost connection cannot inherit production credentials or cursors',async()=>{
