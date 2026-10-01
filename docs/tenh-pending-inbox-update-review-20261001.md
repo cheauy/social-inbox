@@ -1,4 +1,4 @@
-# Pending Inbox candidate — 2026-10-01
+# Reviewed Inbox and conversation diagnostics candidate — 2026-10-01
 
 Base: c8034190ebbe0b96dd77cb5f623831dc2e617cf9. Prepared and validated in an isolated Temp checkout before publication. The user assigned voice UI to a separate Codex session; voice changes and the reference-image wait are excluded from this release. The original checkout is preserved for that session.
 
@@ -13,9 +13,15 @@ Base: c8034190ebbe0b96dd77cb5f623831dc2e617cf9. Prepared and validated in an iso
 Runtime files: components/inbox/inbox-view.tsx, components/inbox/customer-profile.tsx, components/inbox/conversation-header.tsx, components/inbox/reply-box.tsx.
 Tests: tests/inbox-success-alerts.test.mjs, tests/dashboard-header.test.mjs.
 
+## Approved Show details diagnostics
+
+View conversation now offers a native, compact Show details disclosure. The server reports fixed-enum providerLinkState, providerRouteKind, directLinkRejectReason and actual cacheUsed. Missing/rejected links, retained legacy Page inbox/Messages routes, and required Suite routing checks are distinguished. The UI drops unknown or inherited values and renders fixed labels only; raw provider fields, identifiers, links and errors do not appear in this disclosure. Diagnostics reset on conversation changes and never run before the existing access/context checks. Existing destination normalization, provider selection and saved-link handling remain unchanged.
+
+Additional files: app/api/conversations/[conversationId]/facebook-conversation/route.ts; components/inbox/companion-facebook-action.tsx; lib/facebook/conversation-navigation-diagnostics.ts; tests/facebook-navigation-diagnostics.test.mjs.
+
 ## Already in production
 
-The original checkout's shared audio/message player, photo loading and albums, unified emoji/sticker picker, Analytics workspace, dashboard header and loading infrastructure, Facebook conversation notices, Smart Views trimming, and false Bot availability gate match the verified production files. Their local historical commits need no wholesale republishing.
+At snapshot time, the original checkout's shared audio/message player, photo loading and albums, unified emoji/sticker picker, Analytics workspace, dashboard header and loading infrastructure, Facebook conversation notices, Smart Views trimming, and false Bot availability gate match the verified production files. Their local historical commits need no wholesale republishing.
 
 ## Kept out of this candidate
 
@@ -27,10 +33,12 @@ The original checkout's shared audio/message player, photo loading and albums, u
 
 ## Validation
 
-- 84 focused tests passed for success alerts/reminders, dashboard availability, Facebook error notices, Inbox live safety/recovery, customer panel gestures, media recovery, composer insertion and source-level Bot pause.
-- 30 real-component Messenger source/action tests passed, including customer-panel View conversation, pending state, stale cancellation and validated navigation.
+- Final combined candidate: 161 focused tests passed, including 34 new diagnostics tests for provider routing rejection, cache reuse, authorization/context boundaries, token/provider failures, unexpected values, secret suppression and native disclosure/reset behavior. The diagnostics test file was converted to ESM for repository lint compatibility and all 34 tests re-passed.
+- Existing Messenger source/action tests remain green, including customer-panel View conversation, pending state, stale cancellation and validated navigation.
 - The Next.js 16.2.12 production webpack build passed, including TypeScript and page generation, using synthetic Supabase values. The first sandboxed attempt failed solely on existing Google Fonts downloads; the network-enabled retry passed.
 - git diff --check passed.
-- Lint comparison against the exact production base: 36 findings on both versions (10 errors and 26 warnings), with no introduced diagnostic after accounting for shifted source frames.
+- Lint comparison against the exact production base: 38 findings on both versions across six touched runtime files (12 errors and 26 warnings), with no introduced diagnostic after accounting for shifted source frames. The new diagnostics helper and ESM test lint cleanly.
 
 No live customer audio, chat/provider requests, SQL, activation, permissions, extension code, or production environment changes were used. Tests use local doubles. A full authenticated desktop/mobile Inbox session was not exercised. The separate voice task requires its own validation.
+
+Browser proof: the real diagnostics action and native disclosure passed eight Chrome checks at a measured 1384px desktop viewport, using synthetic responses and production CSS. Screenshot and browser results are retained outside the source checkout. The original checkout now has active voice edits in message-panel.tsx and tests/voice-message-ui.test.mjs; neither is included here.

@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { decryptFacebookToken } from "@/lib/facebook/facebook-token-crypto";
 import { getCachedConversationThread } from "@/lib/facebook/cached-conversation-link";
 import { normalizeBusinessSuiteConversationLink } from "@/lib/facebook/conversation-link";
+import { facebookNavigationDiagnostics, type NavigationDiagnostics } from "@/lib/facebook/conversation-navigation-diagnostics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest, context: Context) {
     const navigation = query.get("lookup") === "navigation";
     const threadOnly = navigation || query.get("lookup") === "thread";
     const pageInboxUrl = `https://business.facebook.com/latest/inbox/all?asset_id=${encodeURIComponent(pageId)}`;
-    const unavailable = (reason: string) => json({ success: true, ...identity, navigationAvailable: false,
+    const unavailable = (reason: string, diagnostics?: Partial<NavigationDiagnostics>) => json({ success: true, ...identity, ...diagnostics, navigationAvailable: false,
       conversationLink: null, pageInboxUrl, reason,
       error: "An exact conversation link is unavailable. Open this Page's inbox and select the customer there." });
     if (!threadOnly && query.get("settings") === "1") return json({ success: true, ...identity,
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest, context: Context) {
     const { thread, cacheUsed } = await getCachedConversationThread({ businessId: businessId!, conversationId: conversationId!, socialAccountId: page.id,
       pageId, recipientId, connectionVersion: page.updated_at ?? null }, token, !navigation && query.get("refresh") === "1");
     if ("reason" in thread) {
-      if (navigation) return unavailable(thread.reason || "profile_conversation_lookup_failed");
+      if (navigation) return unavailable(thread.reason || "profile_conversation_lookup_failed", { cacheUsed });
       const error = thread.reason === "profile_conversation_access_unavailable"
         ? "Meta denied conversation access. Ask an Owner to check this Page in Integrations."
         : thread.reason === "profile_conversation_not_found"
@@ -86,8 +87,11 @@ export async function GET(request: NextRequest, context: Context) {
       return json({ success: false, ...identity, threadLookupSucceeded: false, reason: thread.reason, cacheUsed, error }, 424);
     }
     const directLink = normalizeBusinessSuiteConversationLink(thread.providerLink, pageId, recipientId);
-    if (navigation) return directLink ? json({ success: true, ...identity, navigationAvailable: true,
-      conversationLink: directLink, linkSource: "meta_conversations_api", cacheUsed }) : unavailable("facebook_direct_link_required");
+    if (navigation) {
+      const diagnostics = facebookNavigationDiagnostics(thread, pageId, recipientId, cacheUsed);
+      return directLink ? json({ success: true, ...identity, navigationAvailable: true,
+        conversationLink: directLink, linkSource: "meta_conversations_api", ...diagnostics }) : unavailable("facebook_direct_link_required", diagnostics);
+    }
     const details = { threadLookupSucceeded: true, thread_id: thread.threadId, threadIdSource: thread.threadSource,
       metaConversationLink: thread.providerLink, cacheUsed };
     // Meta's conversation ID is returned exactly. It is not a Suite routing ID.

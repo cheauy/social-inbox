@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { ExternalLink } from "lucide-react";
 import { normalizeBusinessSuiteConversationLink } from "@/lib/facebook/conversation-link";
 import { facebookConversationNavigationError } from "@/lib/facebook/conversation-navigation-error";
+import { readNavigationDiagnostics, providerLinkStates, providerRouteKinds, directLinkRejectReasons, type NavigationDiagnostics } from "@/lib/facebook/conversation-navigation-diagnostics";
 
 type Props = { pageId: string | null; threadId: string | null; conversationId: string; businessId: string; compact?: boolean; menu?: boolean; navigationOnly?: boolean };
 type Pending = { key: string; controller: AbortController; popup: Window | null; navigated: boolean };
@@ -22,13 +23,14 @@ function useFacebookConversationAction({ pageId, threadId, conversationId, busin
   const [fallbackUrl, setFallbackUrl] = useState("");
   const [pageFallback, setPageFallback] = useState(false);
   const [lookupDetails, setLookupDetails] = useState<LookupDetails | null>(null);
+  const [navigationDetails, setNavigationDetails] = useState<Partial<NavigationDiagnostics> | null>(null);
   const [copyNotice, setCopyNotice] = useState("");
   const key = JSON.stringify([businessId, conversationId, pageId, threadId]);
   const current = useRef(key); current.current = key;
   const pending = useRef<Pending | null>(null);
   useEffect(() => {
     setBusy(false); setNotice(""); setFallbackUrl(""); setPageFallback(false);
-    setLookupDetails(null); setCopyNotice("");
+    setLookupDetails(null); setNavigationDetails(null); setCopyNotice("");
     return () => {
       const operation = pending.current;
       if (operation?.key === key) {
@@ -58,7 +60,7 @@ function useFacebookConversationAction({ pageId, threadId, conversationId, busin
     // A missing Suite link does not invalidate a successfully resolved Graph
     // thread. Reuse that cache; only retry a failed lookup with a refresh.
     const refresh = !navigationOnly && Boolean(notice) && !lookupDetails;
-    setBusy(true); setNotice(""); setFallbackUrl(""); setPageFallback(false);
+    setBusy(true); setNotice(""); setFallbackUrl(""); setPageFallback(false); setNavigationDetails(null);
     const timer = setTimeout(() => operation.controller.abort(), 15000);
     try {
       const params = new URLSearchParams({ businessId, pageId, recipientId: threadId });
@@ -77,7 +79,8 @@ function useFacebookConversationAction({ pageId, threadId, conversationId, busin
       if (operation.controller.signal.aborted) throw new Error("Request timed out.");
       const matchesContext = result.conversationId === conversationId && result.businessId === businessId &&
         result.pageId === pageId && result.recipientId === threadId;
-      if (matchesContext && result.threadLookupSucceeded === true && result.threadIdSource === "meta_conversations_api" &&
+      setNavigationDetails(navigationOnly && matchesContext ? readNavigationDiagnostics(result) : null);
+      if (!navigationOnly && matchesContext && result.threadLookupSucceeded === true && result.threadIdSource === "meta_conversations_api" &&
           typeof result.thread_id === "string" && /^[A-Za-z0-9_.:-]{1,200}$/.test(result.thread_id)) {
         setLookupDetails({ conversationId, businessId, pageId, recipientId: threadId, thread_id: result.thread_id,
           threadIdSource: result.threadIdSource, metaConversationLink: typeof result.metaConversationLink === "string" ? result.metaConversationLink : null,
@@ -120,7 +123,7 @@ function useFacebookConversationAction({ pageId, threadId, conversationId, busin
       if (current.current === key) setCopyNotice("Copied");
     } catch { if (current.current === key) setCopyNotice("Select and copy the details below."); }
   }
-  return {key,busy,notice,fallbackUrl,pageFallback,lookupDetails,copyNotice,open,copyLookupDetails,setNotice,setFallbackUrl};
+  return {key,busy,notice,fallbackUrl,pageFallback,lookupDetails,navigationDetails,copyNotice,open,copyLookupDetails,setNotice,setFallbackUrl};
 }
 const FacebookActionContext = createContext<ReturnType<typeof useFacebookConversationAction>|null>(null);
 export function FacebookConversationActionProvider({children,...props}: Props & {children:ReactNode}) {
@@ -137,7 +140,7 @@ function StandaloneFacebookAction(props:Props) {
   return <FacebookActionButton {...props} action={action}/>;
 }
 function FacebookActionButton({compact=false,menu=false,navigationOnly=false,action}:Props & {action:ReturnType<typeof useFacebookConversationAction>}) {
-  const {busy,notice,fallbackUrl,pageFallback,lookupDetails,copyNotice,open,copyLookupDetails,setNotice,setFallbackUrl}=action;
+  const {busy,notice,fallbackUrl,pageFallback,lookupDetails,navigationDetails,copyNotice,open,copyLookupDetails,setNotice,setFallbackUrl}=action;
   const label = busy ? "Opening customer conversation…" : navigationOnly ? "View conversation" : menu ? "View this conversation" : "Open in Meta Business Suite";
   return <div className={compact ? "relative shrink-0" : menu ? "" : "mt-2"}>
     <button type="button" disabled={busy} onClick={() => void open()} title={label} aria-label={label}
@@ -149,6 +152,15 @@ function FacebookActionButton({compact=false,menu=false,navigationOnly=false,act
     {notice ? <div className={compact ? "absolute right-0 top-12 z-50 w-80 max-w-[85vw] rounded-xl border border-amber-200 bg-amber-50 p-3 shadow-lg" : "mt-2 max-w-lg"}>
       {notice ? <p role="alert" className="text-xs leading-5 text-amber-900">{notice}</p> : null}
       {fallbackUrl ? <a href={fallbackUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs font-semibold underline">{pageFallback ? "Open Page inbox" : "Open Facebook conversation"}</a> : null}
+      {navigationOnly && navigationDetails ? <details className="mt-2 rounded-lg border border-amber-200 p-2 text-xs text-slate-700">
+        <summary className="cursor-pointer font-semibold focus-visible:outline-2 focus-visible:outline-offset-2">Show details</summary>
+        <dl className="mt-2 space-y-1">
+          {navigationDetails.providerLinkState ? <div><dt className="font-semibold">Provider link</dt><dd>{providerLinkStates[navigationDetails.providerLinkState]}</dd></div> : null}
+          {navigationDetails.providerRouteKind ? <div><dt className="font-semibold">Provider route</dt><dd>{providerRouteKinds[navigationDetails.providerRouteKind]}</dd></div> : null}
+          {navigationDetails.directLinkRejectReason ? <div><dt className="font-semibold">Direct opening</dt><dd>{directLinkRejectReasons[navigationDetails.directLinkRejectReason]}</dd></div> : null}
+          {typeof navigationDetails.cacheUsed === "boolean" ? <div><dt className="font-semibold">Lookup</dt><dd>{navigationDetails.cacheUsed ? "Cached result" : "Fresh lookup"}</dd></div> : null}
+        </dl>
+      </details> : null}
       {lookupDetails ? <details className="mt-2 text-xs text-slate-600">
         <summary className="cursor-pointer">Meta lookup details</summary>
         <p className="mt-2">Meta found the thread. Its ID alone does not verify a Business Suite destination.</p>
