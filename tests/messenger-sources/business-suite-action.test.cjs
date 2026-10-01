@@ -94,12 +94,25 @@ for(const patch of [{businessId:'other'},{conversationId:'other'},{recipientId:'
 test('missing Page/customer context does not open a blank tab or call the API',async t=>{
  const h=await mount(t,{props:{pageId:null}});await h.click();assert.equal(h.calls.length,0);assert.equal(h.opened.length,0);
 });
-test('the real header exposes View conversation only for Messenger',()=>{
+test('the real header omits View conversation while keeping its other actions',()=>{
  const conversation={id:'c1',source_type:'messenger',status:'open',social_account:{id:'s1',platform:'facebook',platform_account_id:context.pageId,account_name:'Page'},contact:{id:'ct1',business_id:'b1',platform_user_id:context.threadId,full_name:'Customer'}};
  const render=value=>new JSDOM(renderToStaticMarkup(React.createElement(ConversationHeader,{conversation:value,teamMembers:[],viewingAgents:[],typingAgents:[],teamPresence:[],agentPresenceStatus:'connected',channelPlatform:'messenger',channelAccountName:'Page'}))).window.document;
  assert.equal(render(conversation).querySelector('[aria-label="Open in Meta Business Suite"]'),null);
- assert.ok(render(conversation).querySelector('[aria-label="View conversation"]'));
+ assert.equal(render(conversation).querySelector('[aria-label="View conversation"]'),null);
+ for(const label of ['Assign conversation','Pin conversation','Mark as unread','Customer history','Show customer information'])assert.ok(render(conversation).querySelector(`[aria-label="${label}"]`));
  for(const other of [{...conversation,source_type:'comment'},{...conversation,social_account:{...conversation.social_account,platform:'telegram'}},{...conversation,social_account:null}])assert.equal(render(other).querySelector('[aria-label="Open in Meta Business Suite"]'),null);
+});
+test('the real customer panel keeps View conversation inside Other',()=>{
+ const profileOverrides={...overrides,'next/navigation':{useRouter:()=>({refresh(){}})},
+  './customer-message-block':{CustomerMessageBlock:()=>null},'@/components/customer-avatar':{CustomerAvatar:()=>null},
+  '@/components/ui/confirm-action-dialog':{ConfirmActionDialog:()=>null},'@/components/inbox/customer-notes':{CustomerNotes:()=>null},
+  '@/components/inbox/customer-files-modal':{CustomerFilesModal:()=>null},'@/components/inbox/reminder-modal':{ReminderModal:()=>null},
+  '@/components/inbox/conversation-reminder-summary':{ConversationReminderSummary:()=>null},
+  './conversation-visuals':{ConversationTag:()=>null},'@/components/inbox/inbox-utils':{getStatusClasses:()=>'',getStatusLabel:()=> 'Open'}};
+ const {CustomerProfile}=loader(profileOverrides)('components/inbox/customer-profile.tsx');
+ const conversation={id:'c1',source_type:'messenger',status:'open',social_account:{id:'s1',platform:'facebook',platform_account_id:context.pageId,account_name:'Page'},contact:{id:'ct1',business_id:'b1',platform_user_id:context.threadId,full_name:'Customer',tags:[]}};
+ const dom=new JSDOM(renderToStaticMarkup(React.createElement(CustomerProfile,{activeConversation:conversation,onReportSpam:async()=>false})));
+ const button=dom.window.document.querySelector('[aria-label="View conversation"]');assert.ok(button);assert.ok(button.closest('section').textContent.includes('Other'));assert.equal(button.textContent,'View conversation');dom.window.close();
 });
 
 const buttonWith=text=>Array.from(document.querySelectorAll('button')).find(button=>button.textContent===text);
