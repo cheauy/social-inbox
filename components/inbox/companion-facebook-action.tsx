@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
 import { normalizeBusinessSuiteConversationLink } from "@/lib/facebook/conversation-link";
+import { facebookConversationNavigationError } from "@/lib/facebook/conversation-navigation-error";
 
 type Props = { pageId: string | null; threadId: string | null; conversationId: string; businessId: string; compact?: boolean; menu?: boolean; navigationOnly?: boolean };
 type Pending = { key: string; controller: AbortController; popup: Window | null; navigated: boolean };
@@ -83,12 +84,14 @@ function useFacebookConversationAction({ pageId, threadId, conversationId, busin
           cacheUsed: result.cacheUsed === true });
         setCopyNotice("");
       } else setLookupDetails(null);
-      if (!response.ok || result.success !== true) throw new Error(typeof result.error === "string" ? result.error.slice(0, 300) : "Unable to get this conversation's Facebook link. Please try again.");
+      if (!response.ok || result.success !== true) throw new Error(navigationOnly
+        ? facebookConversationNavigationError(result.reason, response.status)
+        : typeof result.error === "string" ? result.error.slice(0, 300) : "Unable to get this conversation's Facebook link. Please try again.");
       if (navigationOnly && matchesContext && result.navigationAvailable === false) {
         const expected = `https://business.facebook.com/latest/inbox/all?asset_id=${encodeURIComponent(pageId)}`;
         if (result.pageInboxUrl !== expected) throw new Error("The Page inbox destination could not be verified.");
         setFallbackUrl(expected); setPageFallback(true);
-        setNotice("An exact conversation link is unavailable. Open this Page's inbox and select the customer there.");
+        setNotice(facebookConversationNavigationError(result.reason, response.status));
         return;
       }
       if (result.conversationId !== conversationId || result.businessId !== businessId || result.pageId !== pageId ||

@@ -249,7 +249,6 @@ function parseSmartViewTagReference(
 const DEFAULT_SMART_VIEW_ORDER_IDS = [
   "default:my",
   "default:unassigned",
-  "default:comment",
   "default:open",
 ] as const;
 
@@ -3071,12 +3070,6 @@ function ConversationListView({
           count: builtInCounts.unassigned,
         },
         {
-          orderId: "default:comment",
-          key: "comment" as BuiltInViewKey,
-          name: isKhmer ? "មតិយោបល់ Facebook" : "Facebook Comment",
-          count: builtInCounts.comment,
-        },
-        {
           orderId: "default:open",
           key: "open" as BuiltInViewKey,
           name: isKhmer ? "ការសន្ទនាបើក" : "Open conversation",
@@ -3084,7 +3077,6 @@ function ConversationListView({
         },
       ],
       [
-        builtInCounts.comment,
         builtInCounts.my,
         builtInCounts.open,
         builtInCounts.unassigned,
@@ -3652,7 +3644,7 @@ function ConversationListView({
 
   const isSmartViewSelected =
     selectedViewKey.startsWith("saved:") ||
-    ["my", "unassigned", "comment", "open"].includes(
+    ["my", "unassigned", "open"].includes(
       selectedViewKey,
     );
 
