@@ -79,7 +79,7 @@ function setup(options={}) {
   '@/lib/extension/device-auth':{authenticateDevice:async()=>options.denied?{success:false,status:403,error:'Revoked'}:{success:true,device:{id:'d1',business_id:'b1',member_id:'m1'},member}},
   '@/lib/facebook/get-facebook-page-access-token':{getFacebookPageAccessToken:async()=> 'FAKE_TOKEN',refreshFacebookPageAccessToken:async()=>{refreshes++;return 'NEW_FAKE_TOKEN'},isFacebookAccessTokenError:e=>e?.code===190||e?.code===102},
   '@/lib/inbox/create-conversation-activity':{createConversationActivity:async entry=>db.tables.conversation_activity.push(entry)},
-  '@/lib/team/team-chat-server':{canManageTeamChat:role=>['owner','admin'].includes(role),roomIconFromSlug:()=> 'heart',slugWithRoomIcon:(name,icon)=>`${name}-${icon}`,safeDetails:()=>({})},
+  '@/lib/team/team-members-server':{canManageTeamSettings:role=>['owner','admin'].includes(role),roomIconFromSlug:()=> 'heart',slugWithRoomIcon:(name,icon)=>`${name}-${icon}`,safeDetails:()=>({})},
  },{fetch:async(url,init)=>{calls.push({url,init});if(options.fetchThrow)throw new Error('Network');const result=options.fetchResults?.shift()||{success:true};return new Response(JSON.stringify(result),{status:result.error?400:200});}});
  const request=(body,method='POST',origin='https://app.tenhchat.com')=>new Request('https://app.tenhchat.com/api/test',{method,headers:{'Content-Type':'application/json',Origin:origin},...(method==='GET'?{}:{body:JSON.stringify(body)})});
  return {db,load,request,calls,refreshes:()=>refreshes,context:{params:Promise.resolve({conversationId:'conv1',roomId:'r1'})}};

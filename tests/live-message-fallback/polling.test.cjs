@@ -6,6 +6,7 @@ const path = require('node:path');
 const { ROOT, loader } = require('../tenh-seven/harness.cjs');
 const ts = require('node:module').createRequire(path.join(ROOT, 'package.json'))('typescript');
 const { readMessagePageResponse } = loader()('lib/inbox/read-message-page-response.ts');
+const { matchesOptimisticMessage } = loader()('lib/inbox/optimistic-message-match.ts');
 
 // Execute the actual InboxView safety-net effect with controlled transport and
 // state. The merge, cancellation, notification and retry code is not mocked.
@@ -31,7 +32,8 @@ function run(fetchImpl, healthy = false) {
   vm.runInNewContext(code, {
     useEffect: fn => { cleanup = fn(); }, resolvedActiveConversationId: 'c1',
     window: win, document: doc, navigator: { onLine: true }, URLSearchParams, AbortController,
-    MESSAGE_PAGE_SIZE: 25, readMessagePageResponse,
+    MESSAGE_PAGE_SIZE: 25, readMessagePageResponse, INBOX_SYNC_EVENT: 'tenh:inbox-sync', SYNC_TIMEOUT_MS: 12000,
+    matchesOptimisticMessage,
     fetch: async (url, init) => { calls.push({ url, init }); return fetchImpl(url, init); },
     console: { warn: (...args) => warnings.push(args) },
     realtimeHealthyRef: { current: healthy }, liveMessagesRef: messages, liveConversationsRef: conversations,
@@ -72,7 +74,7 @@ test('HTML failure preserves history; the next successful poll merges and sounds
 test('switching chats aborts the request and ignores even a late successful response', async () => {
   let resolve;
   const poll = run(() => new Promise(done => { resolve = done; }), true);
-  assert.equal(poll.timers.values().next().value.delay, 30000);
+  assert.ok([...poll.timers.values()].some(timer => timer.delay === 60000));
   poll.cleanup();
   assert.equal(poll.calls[0].init.signal.aborted, true);
   assert.equal(poll.timers.size, 0);

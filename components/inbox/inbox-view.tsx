@@ -3,7 +3,7 @@ import { isMetaSticker, type InboxStickerChoice } from "@/lib/stickers/catalog";
 
 import { createReplyContext, getDeletedMessageText, getMessageActions, resolvePhotoReplyTarget, MESSAGE_ROW_CHANGED_EVENT } from "@/lib/inbox/message-actions";
 import { INBOX_SYNC_EVENT, SYNC_TIMEOUT_MS, takeSyncBatch, isOlderConversationState, rowTime, liveMessageType, messageCoveredByRead, type InboxSyncCursor } from "@/lib/inbox/live-sync";
-import { snapshotUnread, receiptStillApplies, type ReadReceipt, type BulkReadResult } from "@/lib/inbox/bulk-read";
+import { snapshotUnread, receiptStillApplies, type ReadReceipt, type ReadTarget, type BulkReadResult } from "@/lib/inbox/bulk-read";
 import { stableConversationOrder } from "@/lib/inbox/stable-conversation-order";
 
 import { isCommentReplyBlocked } from "@/components/inbox/comment-reply-access";
@@ -25,6 +25,8 @@ import {
 import type { FormEvent } from "react";
 
 import { ConversationList } from "@/components/inbox/conversation-list";
+import { INBOX_PAGE_CHANGED_EVENT, mergeConversationPage } from "@/lib/inbox/conversation-page-contract";
+import { matchesOptimisticMessage } from "@/lib/inbox/optimistic-message-match";
 import { confirmOutgoingMessage } from "@/lib/inbox/confirm-outgoing-message";
 import { normalizeMessages } from "@/lib/inbox/normalize-messages";
 import { readMessagePageResponse } from "@/lib/inbox/read-message-page-response";
@@ -349,36 +351,6 @@ function buildMultiAgentToast(
   };
 }
 
-/*
- * Compare outgoing text the way a human would.
- *
- * An optimistic bubble is matched to the row that comes back by its text, and
- * that was an exact === . The text does not always survive the round trip
- * byte-for-byte: emoji and Khmer both have more than one valid encoding, and a
- * platform may hand back a different one, or trim differently. The bubble then
- * failed to match, so the message appeared twice until a refresh replaced the
- * list with the server's single row.
- *
- * Normalising to NFC and trimming compares what was written rather than how it
- * happened to be encoded.
- */
-function sameOutgoingText(
-  first: unknown,
-  second: unknown,
-) {
-  if (
-    typeof first !== "string" ||
-    typeof second !== "string"
-  ) {
-    return first === second;
-  }
-
-  return (
-    first.normalize("NFC").trim() ===
-    second.normalize("NFC").trim()
-  );
-}
-
 function sortLiveConversations(conversations: InboxConversation[]) {
   // The state setter preserves positions and handles explicit pin changes.
   return conversations;
@@ -509,6 +481,7 @@ function getRealtimeMessagePreview(
 }
 
 export function InboxView({
+  pagination,
   conversations,
   activeConversationId,
   messages,
@@ -1534,6 +1507,8 @@ async function markConversationReadRealtime(
   conversationId: string,
 ) {
   if (
+    document.visibilityState !== "visible" ||
+    !document.hasFocus() ||
     manualUnreadConversationIdsRef.current.has(
       conversationId,
     ) ||
@@ -1964,13 +1939,20 @@ function applyRealtimeTagActivity(
 
 const realtimeHealthyRef = useRef(false);
 useInboxRealtime({
-  onConnectionState: (healthy) => { realtimeHealthyRef.current = healthy; },
+  onConnectionState: (healthy) => {
+    const recovered = healthy && !realtimeHealthyRef.current;
+    realtimeHealthyRef.current = healthy;
+    if (recovered) window.dispatchEvent(new Event(INBOX_PAGE_CHANGED_EVENT));
+  },
   businessIds:
     realtimeBusinessIds,
 
   onRealtimeEvent: (
     event,
   ) => {
+    if (pagination) window.dispatchEvent(new CustomEvent(INBOX_PAGE_CHANGED_EVENT, { detail: {
+      conversationId: event.table === "conversations" ? event.newRow.id ?? event.oldRow.id : event.newRow.conversation_id ?? event.oldRow.conversation_id,
+    } }));
     if (event.table === "conversations" && typeof event.newRow.id === "string") {
       const id = event.newRow.id;
       const latestLoaded = liveMessagesRef.current.filter(message => message.conversation_id === id)
@@ -2151,6 +2133,8 @@ useInboxRealtime({
         }
 
         const isActiveIncoming =
+          document.visibilityState === "visible" &&
+          document.hasFocus() &&
           conversationId ===
           resolvedActiveConversationId;
         const keepActiveUnread =
@@ -2499,82 +2483,10 @@ useInboxRealtime({
           if (
             existingIndex === -1
           ) {
-            const realDirection =
-              typeof row.direction ===
-              "string"
-                ? row.direction
-                : null;
-
-            const realMessageText =
-              typeof row.message_text ===
-              "string"
-                ? row.message_text
-                : null;
-
-            const realPlatformMessageId =
-              typeof row.platform_message_id ===
-              "string"
-                ? row.platform_message_id
-                : null;
-
-            const realCreatedAt =
-              typeof row.created_at ===
-              "string"
-                ? new Date(
-                    row.created_at,
-                  ).getTime()
-                : Date.now();
-
-            const optimisticIndex =
-              realDirection ===
-                "outgoing" &&
-              realMessageText
-                ? current.findIndex(
-                    (message) => {
-                      const optimistic =
-                        message as OptimisticInboxMessage;
-
-                      if (
-                        !optimistic.__optimistic_status ||
-                        message.conversation_id !==
-                          conversationId ||
-                        !sameOutgoingText(
-                          message.message_text,
-                          realMessageText,
-                        )
-                      ) {
-                        return false;
-                      }
-
-                      /*
-                       * If this bubble already knows the platform id, that is
-                       * the answer -- no need to weigh text and timing.
-                       */
-                      if (
-                        message.platform_message_id
-                      ) {
-                        return (
-                          message.platform_message_id ===
-                          realPlatformMessageId
-                        );
-                      }
-
-                      const optimisticTime =
-                        optimistic.__optimistic_created_at ??
-                        new Date(
-                          message.created_at,
-                        ).getTime();
-
-                      return (
-                        Math.abs(
-                          realCreatedAt -
-                            optimisticTime,
-                        ) <
-                        120_000
-                      );
-                    },
-                  )
-                : -1;
+            const optimisticIndex = current.findIndex(message => {
+              const optimistic = message as OptimisticInboxMessage;
+              return Boolean(optimistic.__optimistic_status) && matchesOptimisticMessage(message, row);
+            });
 
             if (
               optimisticIndex >= 0
@@ -3009,6 +2921,8 @@ useInboxRealtime({
           }
 
           const isActiveConversation =
+            document.visibilityState === "visible" &&
+            document.hasFocus() &&
             conversationId ===
             resolvedActiveConversationId;
 
@@ -3674,7 +3588,7 @@ useEffect(() => {
     timer = window.setTimeout(async () => {
       await syncCollaborativeState();
       scheduleNext();
-    }, failures ? Math.min(30_000, 5_000 * 2 ** Math.min(failures, 3)) : hasMore ? 250 : realtimeHealthyRef.current ? 10_000 : 5_000);
+    }, failures ? Math.min(30_000, 5_000 * 2 ** Math.min(failures, 3)) : hasMore ? 250 : realtimeHealthyRef.current ? 60_000 : 5_000);
   }
 
   function handleVisibilityOrFocus() {
@@ -4827,6 +4741,7 @@ useEffect(() => {
   let timer: number | null = null;
   let inFlight = false;
   let controller: AbortController | null = null;
+  let requestTimeout: number | null = null;
   let resyncTimer: number | null = null;
   let failures = 0;
 
@@ -4884,51 +4799,11 @@ useEffect(() => {
 
       let optimisticIndex = -1;
 
-      if (
-        serverMessage.direction === "outgoing" &&
-        serverMessage.message_text
-      ) {
-        const serverCreatedAt =
-          new Date(serverMessage.created_at).getTime();
-        let closestDifference =
-          Number.POSITIVE_INFINITY;
-
-        for (let index = 0; index < merged.length; index += 1) {
-          const candidate = merged[index];
-          const optimistic =
-            candidate as OptimisticInboxMessage;
-
-          if (
-            !optimistic.__optimistic_status ||
-            candidate.conversation_id !== conversationId ||
-            candidate.direction !== "outgoing" ||
-            !sameOutgoingText(
-              candidate.message_text,
-              serverMessage.message_text,
-            ) ||
-            (candidate.message_type ?? "text") !==
-              (serverMessage.message_type ?? "text") ||
-            (!pendingSendsRef.current[candidate.id] &&
-              !pendingAttachmentSendsRef.current[candidate.id])
-          ) {
-            continue;
-          }
-
-          const optimisticCreatedAt =
-            optimistic.__optimistic_created_at ??
-            new Date(candidate.created_at).getTime();
-          const difference = Math.abs(
-            serverCreatedAt - optimisticCreatedAt,
-          );
-
-          if (
-            difference < 120_000 &&
-            difference < closestDifference
-          ) {
-            optimisticIndex = index;
-            closestDifference = difference;
-          }
-        }
+      if (serverMessage.direction === "outgoing") {
+        optimisticIndex = merged.findIndex(candidate => {
+          const optimistic = candidate as OptimisticInboxMessage;
+          return Boolean(optimistic.__optimistic_status) && matchesOptimisticMessage(candidate, serverMessage);
+        });
       }
 
       if (optimisticIndex >= 0) {
@@ -4988,6 +4863,7 @@ useEffect(() => {
     const requestController = new AbortController();
     controller = requestController;
     const timeout = window.setTimeout(() => requestController.abort(), SYNC_TIMEOUT_MS);
+    requestTimeout = timeout;
 
     try {
       const params = new URLSearchParams({
@@ -5160,6 +5036,7 @@ useEffect(() => {
       }
     } finally {
       window.clearTimeout(timeout);
+      requestTimeout = null;
       controller = null;
       inFlight = false;
     }
@@ -5173,7 +5050,7 @@ useEffect(() => {
     timer = window.setTimeout(async () => {
       await syncNewestMessages();
       scheduleNext();
-    }, failures ? Math.min(30_000, 3_000 * 2 ** Math.min(failures, 4)) : realtimeHealthyRef.current ? 10_000 : 3_000);
+    }, failures ? Math.min(30_000, 3_000 * 2 ** Math.min(failures, 4)) : realtimeHealthyRef.current ? 60_000 : 3_000);
   }
 
   function syncWhenVisible() {
@@ -5205,6 +5082,7 @@ useEffect(() => {
   return () => {
     cancelled = true;
     controller?.abort();
+    if (requestTimeout !== null) window.clearTimeout(requestTimeout);
     window.removeEventListener(INBOX_SYNC_EVENT, requestMessageResync);
     if (resyncTimer !== null) window.clearTimeout(resyncTimer);
 
@@ -5543,9 +5421,35 @@ useEffect(() => {
   resolvedActiveConversationId,
 ]);
 
-  const handleMarkAllRead = useCallback(async (rows: InboxConversation[]): Promise<BulkReadResult> => {
+  const handlePageRows = useCallback((rows: InboxConversation[]) => {
+    for (const row of rows) liveDiscoveredIdsRef.current.add(row.id);
+    setLiveConversations(current => {
+      const merged = mergeConversationPage(current, rows);
+      return merged.map(row => {
+        const pin = pinOverrideRef.current.get(row.id);
+        const status = statusOverrideRef.current.get(row.id);
+        const assignment = assignmentOverrideRef.current.get(row.id);
+        const tags = row.contact?.id ? contactTagsOverrideRef.current.get(row.contact.id) : null;
+        let next = { ...row,
+          ...(pin && pin.expiresAt > Date.now() ? { is_pinned: pin.isPinned } : {}),
+          ...(status && status.expiresAt > Date.now() ? { status: status.status } : {}),
+          ...(assignment && assignment.expiresAt > Date.now() ? { assigned_to: assignment.assignedTo } : {}),
+          ...(tags && tags.expiresAt > Date.now() && row.contact ? { contact: { ...row.contact, tags: tags.tags } } : {}),
+        };
+        const unread = persistedManualUnreadCountsRef.current.get(row.id) ?? 0;
+        if (manualUnreadConversationIdsRef.current.has(row.id) || unread > 0) next = { ...next, unread_count: Math.max(1, unread, row.unread_count ?? 0) };
+        else {
+          const barrier = readBarrierMessageTimeRef.current.get(row.id) ?? 0;
+          if (barrier && rowTime(row.last_message_at) <= barrier && (readInFlightRef.current.has(row.id) || rowTime(row.updated_at) <= (readRowVersionRef.current.get(row.id) ?? 0))) next = { ...next, unread_count: 0 };
+        }
+        return next;
+      });
+    });
+  }, [setLiveConversations]);
+
+  const handleMarkAllRead = useCallback(async (rows: InboxConversation[], completeTargets?: ReadTarget[]): Promise<BulkReadResult> => {
     if (bulkReadInFlightRef.current) return { marked: 0, skipped: 0, failed: 0 };
-    const targets = snapshotUnread(rows);
+    const targets = completeTargets ?? snapshotUnread(rows);
     const totals: BulkReadResult = { marked: 0, skipped: 0, failed: 0 };
     if (!targets.length) return totals;
     bulkReadInFlightRef.current = true;
@@ -8805,6 +8709,8 @@ return (
       }`}
     >
      <ConversationList
+  pagination={pagination}
+  onPageRows={handlePageRows}
   conversations={liveConversations}
   onMarkAllRead={handleMarkAllRead}
   markingAllRead={markingAllRead}

@@ -1,15 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExternalLink, ImageOff, Megaphone, MessageSquare } from "lucide-react";
 import type { MessengerSource } from "@/lib/facebook/messenger-source";
+import { messengerSourceImageUrl } from "@/lib/facebook/messenger-source";
 
-export function MessengerSourceCard({ source, onOpenImage }: {
+export function MessengerSourceCard({ source, conversationId, messageId, onOpenImage }: {
   source: MessengerSource;
+  conversationId?: string;
+  messageId?: string;
   onOpenImage: (image: { src: string; alt: string }) => void;
 }) {
-  const [imageFailed, setImageFailed] = useState(false);
-  useEffect(() => setImageFailed(false), [source.image_url]);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const [freshUrl, setFreshUrl] = useState<string | null>(null);
+  const attempted = useRef(false);
+  const imageUrl = freshUrl ?? source.image_url;
+  useEffect(() => {
+    if ((!imageUrl || failedUrl === imageUrl) && source.post_id && conversationId && messageId && !attempted.current) {
+      attempted.current = true;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15_000);
+      void (async () => {
+        try {
+          const params = new URLSearchParams({ conversationId, messageId, source: "1", refresh: "1" });
+          const response = await fetch(`/api/facebook/post-preview?${params}`, { cache: "no-store", signal: controller.signal });
+          if (!response.ok) return;
+          const result = await response.json();
+          if (!controller.signal.aborted && result.success) setFreshUrl(messengerSourceImageUrl(result.preview?.full_picture));
+        } catch { /* Preserve the source IDs and text if Meta cannot recover the photo. */ }
+        finally { clearTimeout(timeout); }
+      })();
+      return () => { clearTimeout(timeout); controller.abort(); };
+    }
+  }, [imageUrl, failedUrl, source.post_id, conversationId, messageId]);
   if (!source.message_id) return null;
   const label = source.kind === "ad" ? "Message from an ad" : "Message from a post";
   const Icon = source.kind === "ad" ? Megaphone : MessageSquare;
@@ -20,13 +43,13 @@ export function MessengerSourceCard({ source, onOpenImage }: {
         <span>{label}</span>
       </div>
       <div className="flex items-start gap-3">
-        {source.image_url && !imageFailed ? (
+        {imageUrl && failedUrl !== imageUrl ? (
           <button type="button" aria-label="Open source photo"
             className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-slate-50 focus-visible:outline-2 focus-visible:outline-blue-500 sm:h-28 sm:w-28"
-            onClick={() => onOpenImage({ src: source.image_url!, alt: source.title ?? "Facebook source photo" })}>
-            <img src={source.image_url} alt={source.title ?? "Facebook source photo"}
+            onClick={() => onOpenImage({ src: imageUrl, alt: source.title ?? "Facebook source photo" })}>
+            <img key={imageUrl} src={imageUrl} alt={source.title ?? "Facebook source photo"}
               loading="lazy" decoding="async" referrerPolicy="no-referrer"
-              className="h-full w-full object-cover" onError={() => setImageFailed(true)} />
+              className="h-full w-full object-cover" onError={() => setFailedUrl(imageUrl)} />
           </button>
         ) : (
           <div className="flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-xl bg-slate-50 px-2 text-center text-[11px] text-slate-400 sm:h-28 sm:w-28">

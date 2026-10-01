@@ -78,16 +78,6 @@ type NoteResult = {
     | null;
 };
 
-type TeamMessageResult = {
-  id: string;
-  roomId: string;
-  roomName: string;
-  senderMemberId: string;
-  senderName: string;
-  messageText: string;
-  createdAt: string;
-};
-
 type SearchResults = {
   customers:
     CustomerResult[];
@@ -95,8 +85,6 @@ type SearchResults = {
     MessageResult[];
   notes:
     NoteResult[];
-  teamMessages:
-    TeamMessageResult[];
 };
 
 type SearchResponse = {
@@ -111,7 +99,6 @@ const EMPTY_RESULTS:
     customers: [],
     messages: [],
     notes: [],
-    teamMessages: [],
   };
 
 function SearchIcon({
@@ -330,9 +317,7 @@ export function GlobalSearchCommand() {
           .length +
         results.messages
           .length +
-        results.notes.length +
-        results.teamMessages
-          .length,
+        results.notes.length,
       [results],
     );
 
@@ -505,10 +490,6 @@ export function GlobalSearchCommand() {
                 data.results
                   ?.notes ??
                 [],
-              teamMessages:
-                data.results
-                  ?.teamMessages ??
-                [],
             });
           } catch (
             searchError
@@ -639,7 +620,7 @@ export function GlobalSearchCommand() {
                     event.target.value,
                   )
                 }
-                placeholder="Search customers, messages, notes, or team chat..."
+                placeholder="Search customers, messages, or notes..."
                 className="h-16 min-w-0 flex-1 bg-transparent text-base text-slate-950 outline-none placeholder:text-slate-400"
                 maxLength={200}
                 autoComplete="off"
@@ -677,7 +658,7 @@ export function GlobalSearchCommand() {
                   </p>
 
                   <p className="mt-1 text-sm leading-6 text-slate-500">
-                    Type at least 2 characters to find customers, customer messages, internal notes, and Group Chat messages.
+                    Type at least 2 characters to find customers, customer messages, and internal notes.
                   </p>
                 </div>
               ) : error ? (
@@ -699,7 +680,7 @@ export function GlobalSearchCommand() {
                   </p>
 
                   <p className="mt-1 text-sm text-slate-500">
-                    Try another customer name, phone number, message, note, or team-chat phrase.
+                    Try another customer name, phone number, message, note, or customer message phrase.
                   </p>
                 </div>
               ) : (
@@ -905,66 +886,7 @@ export function GlobalSearchCommand() {
                     )}
                   </ResultSection>
 
-                  <ResultSection
-                    title="Group chat"
-                    count={
-                      results
-                        .teamMessages
-                        .length
-                    }
-                  >
-                    {results.teamMessages.map(
-                      (
-                        message,
-                      ) => (
-                        <Link
-                          key={
-                            message.id
-                          }
-                          href={`/dashboard/group-chat?room=${encodeURIComponent(
-                            message.roomId,
-                          )}`}
-                          onClick={
-                            closeSearch
-                          }
-                          className="flex items-start gap-3 rounded-xl px-3 py-3 transition hover:bg-slate-50"
-                        >
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-50 text-xs font-bold text-violet-700">
-                            #
-                          </span>
 
-                          <span className="min-w-0 flex-1">
-                            <span className="flex items-center gap-2">
-                              <span className="truncate text-sm font-semibold text-slate-950">
-                                #
-                                {
-                                  message.roomName
-                                }
-                              </span>
-
-                              <span className="truncate text-[10px] text-slate-400">
-                                {
-                                  message.senderName
-                                }
-                              </span>
-                            </span>
-
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">
-                              {truncateText(
-                                message.messageText,
-                              )}
-                            </span>
-                          </span>
-
-                          <span className="shrink-0 pt-0.5 text-[10px] text-slate-400">
-                            {formatWhen(
-                              message.createdAt,
-                            )}
-                          </span>
-                        </Link>
-                      ),
-                    )}
-                  </ResultSection>
                 </>
               )}
             </div>

@@ -61,14 +61,21 @@ test('invalid cursor is rejected before data access',async()=>{
 function stream(initialSession={access_token:'t1',user:{id:'u1'}}){
  const rt=hooks(), channels=[],removed=[],health=[],events=[],resyncs=[],scope=[];let session=initialSession,authCallback;
  const timers=new Map();let timerId=0;
- const window=new EventTarget();
+ const window=new EventTarget(), document=new EventTarget();document.visibilityState='visible';
  const client={auth:{getSession:async()=>({data:{session}}),onAuthStateChange:fn=>{authCallback=fn;return {data:{subscription:{unsubscribe(){authCallback=null;}}}};}},realtime:{setAuth:async()=>{}},removeChannel:async ch=>removed.push(ch),channel(name){const ch={name,handlers:[],on(event,filter,fn){ch.handlers.push({event,filter,fn});return ch},subscribe(fn){ch.status=fn;channels.push(ch);return ch}};return ch}};
- const load=loader({react:rt.React,'@/lib/supabase/client':{createClient:()=>client}},{window,setTimeout:fn=>{timers.set(++timerId,fn);return timerId},clearTimeout:id=>timers.delete(id)});
+ const load=loader({react:rt.React,'@/lib/supabase/client':{createClient:()=>client}},{window,document,setTimeout:fn=>{timers.set(++timerId,fn);return timerId},clearTimeout:id=>timers.delete(id)});
  const {useInboxRealtime}=load('lib/inbox/use-inbox-realtime.ts');
  const props={businessIds:['b2','b1','b1'],onRealtimeEvent:e=>events.push(e),onFallbackRefresh:()=>resyncs.push(true),onScopeChanged:()=>scope.push(true),onConnectionState:h=>health.push(h)};
  const render=changes=>rt.render(useInboxRealtime,{...props,...changes});render();
- return {rt,channels,removed,health,events,resyncs,scope,render,window,flush(){const work=[...timers.values()];timers.clear();work.forEach(fn=>fn());},auth(event,value){session=value;authCallback?.(event,value);}};
+ return {rt,channels,removed,health,events,resyncs,scope,render,window,document,flush(){const work=[...timers.values()];timers.clear();work.forEach(fn=>fn());},auth(event,value){session=value;authCallback?.(event,value);}};
 }
+
+test('background event delivery continues and visibility resume coalesces catch-up without new channels',async()=>{
+ const h=stream();await tick();h.flush();const initial=h.resyncs.length;h.document.visibilityState='hidden';h.document.dispatchEvent(new Event('visibilitychange'));h.flush();assert.equal(h.resyncs.length,initial);
+ h.channels[0].handlers[0].fn({eventType:'INSERT',new:{id:uuid(11),direction:'outgoing'},old:{}});assert.equal(h.events.length,1);
+ h.document.visibilityState='visible';h.document.dispatchEvent(new Event('visibilitychange'));h.window.dispatchEvent(new Event('focus'));h.window.dispatchEvent(new Event('online'));await tick();h.flush();assert.equal(h.resyncs.length,initial+1);assert.equal(h.channels.length,4);h.rt.cleanup();
+ h.document.dispatchEvent(new Event('visibilitychange'));h.flush();assert.equal(h.resyncs.length,initial+1);
+});
 test('core channels exclude optional tables and initial subscription requests catch-up',async()=>{
  const h=stream();await tick();const cores=h.channels.filter(ch=>ch.name.startsWith('tenh-inbox-v3'));
  assert.equal(cores.length,2);assert.deepEqual(cores[0].handlers.map(h=>h.filter.table),['messages','conversations']);

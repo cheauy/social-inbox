@@ -4,7 +4,7 @@
  * Ten of the twelve dashboard routes had no loading.tsx. Each one is a server
  * component that awaits getCurrentMember() and its own Supabase queries before
  * returning any markup, and without a loading file Next.js has nothing to show
- * during that wait -- so clicking Analytics or Group Chat left the previous
+ * during that wait -- so clicking Analytics or Settings left the previous
  * page frozen on screen until the server replied. Nothing moved, so there was
  * no way to tell a slow query from a click that had not registered.
  *

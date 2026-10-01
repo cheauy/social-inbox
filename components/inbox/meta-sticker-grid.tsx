@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Clock, Loader2, Search, X } from "lucide-react";
 import type { MetaStickerChoice, MetaStickerPack } from "@/lib/stickers/catalog";
 
-import { META_STICKER_RECENTS_CHANGED, readMetaStickerRecents, rememberMetaSticker } from "@/lib/stickers/meta-sticker-recents";
+import { META_STICKER_RECENTS_CHANGED, readMetaStickerRecents, rememberMetaSticker, refreshMetaStickerRecents } from "@/lib/stickers/meta-sticker-recents";
 
 import { invalidateMetaStickerCache, loadMetaStickerItems, loadMetaStickerPacks, loadMetaStickerPreviews, metaStickerItemsKey, readMetaStickerCache } from "@/lib/stickers/meta-sticker-cache";
 
@@ -15,6 +15,12 @@ function cachedCovers(businessId: string, packs: MetaStickerPack[]) {
     if (preview?.previewUrl) covers[pack.packId] = preview.previewUrl;
   }
   return covers;
+}
+
+function StickerPreview({ src, label, onFailure, className }: { src: string | null; label: string; onFailure: () => void; className: string }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  return src && src !== failedUrl ? <img src={src} referrerPolicy="no-referrer" alt={label} loading="lazy" className={className}
+    onError={() => { setFailedUrl(src); onFailure(); }} /> : <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-500">Sticker</span>;
 }
 type Props = {
   businessId: string;
@@ -39,8 +45,10 @@ export function MetaStickerGrid({ businessId, conversationId, disabled, onSend, 
   const current = useRef({ conversationId, disabled }); current.current = { conversationId, disabled };
 
   const catalogScope = useRef(`${businessId}:${conversationId}`);
+  const repairedPacks = useRef(new Set<string>());
   useEffect(() => {
     const seq = ++generation.current, target = conversationId;
+    repairedPacks.current.clear();
     let disposed = false;
     itemRequest.current++;
     const cached = readMetaStickerCache<MetaStickerPack[]>(businessId, "packs"), known = cached?.value || [];
@@ -146,6 +154,22 @@ export function MetaStickerGrid({ businessId, conversationId, disabled, onSend, 
 
   const shown = useMemo(() => query.trim().length >= 2 ? items : activePack === "recent" ? recent : items, [query, activePack, recent, items]);
 
+  async function repairPack(packId: string | null) {
+    if (!packId || disabled || repairedPacks.current.has(packId)) return;
+    repairedPacks.current.add(packId);
+    const seq = generation.current, target = conversationId;
+    try {
+      const fresh = await loadMetaStickerItems(businessId, target, packId, "", true);
+      if (generation.current !== seq || current.current.conversationId !== target) return;
+      const replacements = new Map(fresh.map(sticker => [sticker.stickerId, sticker]));
+      const merge = (previous: MetaStickerChoice[]) => previous.map(sticker => replacements.get(sticker.stickerId) ?? sticker);
+      setItems(merge); setRecent(merge);
+      refreshMetaStickerRecents(businessId, fresh);
+      const cover = fresh.find(sticker => sticker.previewUrl)?.previewUrl;
+      if (cover) setCovers(previous => ({ ...previous, [packId]: cover }));
+    } catch { /* Failed previews must not trigger send retries or block the catalog. */ }
+  }
+
   async function send(choice: MetaStickerChoice) {
     if (inFlight.current || current.current.disabled || current.current.conversationId !== conversationId) return;
     const seq = generation.current, target = conversationId;
@@ -182,7 +206,7 @@ export function MetaStickerGrid({ businessId, conversationId, disabled, onSend, 
       {displayError ? <div role="alert" className="mb-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">{displayError}<button type="button" disabled={loading || Boolean(sendingId)} onClick={retry} className="ml-2 font-semibold underline">Try again</button></div> : null}
       <div className="grid grid-cols-4 gap-2">
         {shown.map(item => <button key={item.stickerId} type="button" disabled={disabled || busy || Boolean(sendingId)} title={item.label} aria-label={`Send sticker: ${item.label}`} onClick={() => void send(item)} className="relative flex aspect-square items-center justify-center rounded-xl p-1 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-40">
-          {item.previewUrl ? <img src={item.previewUrl} referrerPolicy="no-referrer" alt={item.label} loading="lazy" className="h-full w-full object-contain" /> : <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-500">Sticker</span>}
+          <StickerPreview src={item.previewUrl} label={item.label} onFailure={() => void repairPack(item.packId)} className="h-full w-full object-contain" />
           {sendingId === item.stickerId ? <Loader2 className="absolute h-6 w-6 animate-spin text-blue-600" /> : null}
         </button>)}
       </div>
@@ -192,7 +216,7 @@ export function MetaStickerGrid({ businessId, conversationId, disabled, onSend, 
       <button type="button" aria-label="Previous sticker packs" onClick={() => scrollPacks(-1)} className="flex h-10 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"><ChevronLeft className="h-5 w-5" /></button>
       <div ref={strip} className="flex min-w-0 flex-1 gap-1 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Messenger sticker packs">
         <button data-pack-id="recent" type="button" role="tab" aria-selected={activePack === "recent" && query.trim().length < 2} title="Recent" aria-label="Recently sent stickers" onClick={() => selectPack("recent")} className={`relative flex h-11 min-w-11 items-center justify-center rounded-xl ${activePack === "recent" && query.trim().length < 2 ? "bg-blue-50 ring-1 ring-blue-200" : "hover:bg-slate-50"}`}><Clock className="h-6 w-6 text-blue-500" /></button>
-        {packs.map(pack => <button key={pack.packId} data-pack-id={pack.packId} type="button" role="tab" aria-selected={activePack === pack.packId && query.trim().length < 2} title={pack.name} onClick={() => selectPack(pack.packId)} className={`relative flex h-11 min-w-11 items-center justify-center overflow-hidden rounded-xl ${activePack === pack.packId && query.trim().length < 2 ? "bg-blue-50 ring-1 ring-blue-200" : "hover:bg-slate-50"}`}>{covers[pack.packId] ? <img src={covers[pack.packId]} referrerPolicy="no-referrer" alt="" className="h-9 w-9 object-contain" /> : <span className="text-xs font-semibold text-slate-500">{pack.name.slice(0, 2).toUpperCase()}</span>}</button>)}
+        {packs.map(pack => <button key={pack.packId} data-pack-id={pack.packId} type="button" role="tab" aria-selected={activePack === pack.packId && query.trim().length < 2} title={pack.name} onClick={() => selectPack(pack.packId)} className={`relative flex h-11 min-w-11 items-center justify-center overflow-hidden rounded-xl ${activePack === pack.packId && query.trim().length < 2 ? "bg-blue-50 ring-1 ring-blue-200" : "hover:bg-slate-50"}`}>{covers[pack.packId] ? <StickerPreview src={covers[pack.packId]} label="" onFailure={() => void repairPack(pack.packId)} className="h-9 w-9 object-contain" /> : <span className="text-xs font-semibold text-slate-500">{pack.name.slice(0, 2).toUpperCase()}</span>}</button>)}
       </div>
       <button type="button" aria-label="Next sticker packs" onClick={() => scrollPacks(1)} className="flex h-10 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"><ChevronRight className="h-5 w-5" /></button>
     </div>

@@ -36,6 +36,12 @@ export function rememberMetaSticker(businessId: string, sticker: MetaStickerChoi
   remember(businessId, [{ sticker, sentAt: Date.now() }]);
 }
 
+/** Repair preview metadata without inventing a new send or changing recency. */
+export function refreshMetaStickerRecents(businessId: string, stickers: MetaStickerChoice[]) {
+  const fresh = new Map(stickers.map(sticker => [sticker.stickerId, sticker]));
+  remember(businessId, read(businessId).map(entry => ({ ...entry, sticker: fresh.get(entry.sticker.stickerId) ?? entry.sticker })));
+}
+
 /** Reuse loaded history; opening Recents never needs another message query. */
 export function rememberMetaStickerMessages(businessId: string, conversationId: string, messages: InboxMessage[]) {
   const entries: Recent[] = [];

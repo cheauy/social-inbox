@@ -1,4 +1,8 @@
 "use client";
+
+import { captureScrollAnchor, restoreScrollAnchor, type ScrollAnchor } from "@/lib/inbox/scroll-anchor";
+import { InboxEmptyState } from "@/components/inbox/inbox-empty-state";
+import { DeferredInboxItem } from "@/components/inbox/deferred-inbox-item";
 import { FacebookPostCard } from "@/components/inbox/facebook-post-card";
 import { MessengerSourceCard } from "@/components/inbox/messenger-source-card";
 import { messengerSourceTimeline } from "@/lib/facebook/messenger-source";
@@ -1448,6 +1452,7 @@ export function MessagePanel({
     ? { conversationId: quotedReplyTarget.conversation_id, messageId: quotedReplyTarget.id, url: getMessageImageUrl(quotedReplyTarget) }
     : null;
   const photoElementRefs = useRef(new Map<string, HTMLDivElement>());
+  const deferredMessageRefs = useRef(new Map<string, HTMLDivElement>());
   const jumpConversationRef = useRef(activeConversation?.id ?? null);
   jumpConversationRef.current = activeConversation?.id ?? null;
 
@@ -1994,7 +1999,15 @@ export function MessagePanel({
     }
   }
 
+  const viewportAnchorRef = useRef<ScrollAnchor | null>(null);
+  const anchorElementFor = useCallback((id: string) => deferredMessageRefs.current.get(photoGroups.get(id)?.lastId ?? id), [photoGroups]);
+  const captureViewportAnchor = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (container) viewportAnchorRef.current = captureScrollAnchor(messages, anchorElementFor, container);
+  }, [messages, anchorElementFor]);
+
   function handleMessagesScroll() {
+    captureViewportAnchor();
     const container =
       messagesContainerRef.current;
 
@@ -2384,7 +2397,8 @@ export function MessagePanel({
         }
 
         const targetElement = photoElementRefs.current.get(targetMessage.id) ??
-          messageElementRefs.current.get(targetMessage.id);
+          messageElementRefs.current.get(targetMessage.id) ??
+          deferredMessageRefs.current.get(photoGroups.get(targetMessage.id)?.lastId ?? targetMessage.id);
 
         if (!targetElement) {
           return;
@@ -2411,37 +2425,22 @@ export function MessagePanel({
           );
         }, 1800);
       },
-      [onLoadOlderMessages],
+      [onLoadOlderMessages, photoGroups],
     );
 
   useLayoutEffect(() => {
-    const snapshot =
-      prependScrollSnapshotRef.current;
-
-    const container =
-      messagesContainerRef.current;
-
-    if (
-      !snapshot ||
-      !container
-    ) {
-      return;
+    const snapshot = prependScrollSnapshotRef.current;
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    if (snapshot) {
+      container.scrollTop = snapshot.scrollTop + Math.max(0, container.scrollHeight - snapshot.scrollHeight);
+      prependScrollSnapshotRef.current = null;
+    } else if (messages.length > 100 && typeof IntersectionObserver !== "undefined" && !userNearBottomRef.current) {
+      // Recovery can insert older messages above a reader without a Load Older request.
+      restoreScrollAnchor(viewportAnchorRef.current, anchorElementFor, container);
     }
-
-    const heightAdded =
-      container.scrollHeight -
-      snapshot.scrollHeight;
-
-    container.scrollTop =
-      snapshot.scrollTop +
-      Math.max(
-        0,
-        heightAdded,
-      );
-
-    prependScrollSnapshotRef.current =
-      null;
-  }, [messages]);
+    captureViewportAnchor();
+  }, [messages, anchorElementFor, captureViewportAnchor]);
 
   useEffect(() => {
     const nextState: Record<
@@ -2565,27 +2564,7 @@ export function MessagePanel({
     messageElementRefs.current.clear();
   }, [activeConversation?.id]);
 
-  if (!activeConversation) {
-    return (
-      <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-        <div className="flex flex-1 items-center justify-center bg-slate-50 p-8">
-          <div className="text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-100 text-2xl">
-              💬
-            </div>
-
-            <p className="mt-4 font-semibold text-slate-900">
-              {isKhmer ? "ជ្រើសរើសការសន្ទនា" : "Select a conversation"}
-            </p>
-
-            <p className="mt-1 text-sm text-slate-500">
-              {isKhmer ? "ជ្រើសរើសអតិថិជនពីប្រអប់សារ។" : "Choose a customer from the inbox."}
-            </p>
-          </div>
-        </div>
-      </section>
-    );
-  }
+  if (!activeConversation) return <InboxEmptyState />;
 
   const replyingToMessage =
     replyingToCommentId
@@ -3011,6 +2990,7 @@ export function MessagePanel({
           className="h-full space-y-4 overflow-y-auto p-6"
           data-tenh-chat-surface="true"
           style={{
+            overflowAnchor: messages.length > 100 && typeof IntersectionObserver !== "undefined" ? "none" : "auto",
             backgroundColor: "#EEF2F6",
             backgroundImage: `url("${chatBackgroundSrc}")`,
             /*
@@ -3053,10 +3033,17 @@ export function MessagePanel({
           </div>
 
           <div className="space-y-4">
-          {messages.map(
-            (message, messageIndex) => {
+          {messages.map((message, messageIndex) => {
+            const album = photoGroups.get(message.id);
+            if (album && album.lastId !== message.id && !(messengerSources.before.get(message.id)?.length)) return null;
+            return <DeferredInboxItem key={message.id} enabled={messages.length > 100}
+              initiallyVisible={messageIndex >= messages.length - 40}
+              forceVisible={jumpHighlightedMessageId === message.id}
+              containerRef={messagesContainerRef}
+              onElement={element => { if (element) deferredMessageRefs.current.set(message.id, element); else deferredMessageRefs.current.delete(message.id); }}>
+              {() => {
               const sourceCards = (messengerSources.before.get(message.id) ?? []).map((source) => (
-                <MessengerSourceCard key={source.key} source={source} onOpenImage={setImagePreview} />
+                <MessengerSourceCard key={source.key} source={source} conversationId={activeConversation?.id} messageId={message.id} onOpenImage={setImagePreview} />
               ));
               /*
                * Earlier photos of an album render nothing: the whole grid is
@@ -5850,8 +5837,9 @@ export function MessagePanel({
                 </div>
                 </Fragment>
               );
-            },
-          )}
+            }}
+            </DeferredInboxItem>;
+          })}
           {messengerSources.after.map((source) => (
             <MessengerSourceCard key={source.key} source={source} onOpenImage={setImagePreview} />
           ))}

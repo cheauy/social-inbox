@@ -1,5 +1,7 @@
 "use client";
 
+import { readWorkspaces } from "@/lib/workspaces/read-workspaces";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
@@ -506,9 +508,7 @@ export function SubscriptionMembershipList({
     setError(null);
 
     try {
-      const response = await fetch("/api/workspaces", {
-        cache: "no-store",
-      });
+      const response = await readWorkspaces();
       const data = (await response.json()) as WorkspaceResponse;
 
       if (!response.ok || !data.success) {

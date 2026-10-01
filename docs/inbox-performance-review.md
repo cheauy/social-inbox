@@ -1,0 +1,68 @@
+# Inbox performance changes and paging validation
+
+Local changes only. No deployment, migration application, customer messages, or live database writes were performed.
+
+## Implemented
+
+- All seven web workspace GET consumers share overlapping requests through lib/workspaces/read-workspaces.ts. Each receives its own readable Response clone. Completed responses are not cached. Failure permits retry; a consumer abort does not cancel other consumers. Workspace mutation invalidates the current shared flight.
+- The header keeps its 20-second visible-tab fallback, skips hidden polls/events, and coalesces focus, visibility resume and subscription reconnect. Sequence and mount guards discard obsolete header responses. PATCH/switch/create operations are unchanged.
+- Long threads and conversation lists defer expensive item content outside an 800px viewport margin once their loaded item count exceeds 100. All loaded records and lightweight placeholder nodes remain present. Height measurements preserve scroll position; keyboard focus, playing media, active conversation rows and reply jumps remain mounted. Browsers without IntersectionObserver render normally.
+- Message-ID anchoring also handles recovered older messages inserted above a reader outside the explicit older-page path. Conversation lists keep native browser scroll anchoring. Existing 25-message history fetches remain unchanged.
+- Server conversation paging is implemented locally behind the presence of the prepared read RPC. Normal page responses hydrate at most 30 conversations, as requested by the user; explicit selected off-page conversations are separately authorized. Initial and incremental conversation windows share that limit. Existing complete loading remains the compatibility fallback only when the read RPC or personal-view table is absent. Other read errors remain visible.
+
+## Local measurements and validation
+
+Tests use the real helper/components with bounded hook/DOM doubles, not a browser latency benchmark:
+
+- Seven overlapping workspace GET calls: one actual fetch, seven readable bodies. An independent later read fetches again.
+- Three hidden header poll ticks: zero requests. Simultaneous visible resume/focus/reconnect: one scheduled refresh. Visible periodic refresh remains enabled.
+- A comparable 1,000-record rendering fixture: 1,000 rich content calls without deferral versus 40 initially with deferral. All 1,000 data records remain. This does not measure paint time, real scroll smoothness, or reduce the conversation response payload.
+- Recovery insertion, append, duplicate handling, reply jumps, measured resize anchoring, focus/media preservation, missing observer support, filters, background read safety and reconnect are covered by local focused tests.
+- Playwright is not installed and no browser connector is exposed. A native Chrome headless fixture was subsequently run as described below. Actual user-device click/paint latency remains unmeasured.
+
+Final check logs are under C:/Users/TUF/AppData/Local/Temp/tenh-performance-*.txt and tenh-performance-lint-comparison.json.
+
+## Database evidence
+
+The parent supplied read-only live Supabase metadata and normalized statistics; this executor did not run SQL or EXPLAIN. Statistics reset/window is unknown and there is no controlled before/after plan comparison.
+
+- messages has idx_messages_conversation_created_id (conversation_id, created_at DESC, id DESC). Current web history in lib/inbox/get-messages.ts instead uses platform_created_at DESC, id DESC with a keyset cursor. Supplied metadata found no exact matching conversation/platform-time/id index. Keep the existing insertion-time index for other callers.
+- conversations has business_id and business_id/status indexes and a pin index beginning is_pinned DESC, pinned_at DESC, last_message_at DESC. Those differ from the current Inbox order and tenant filtering. A tenant-leading ordering index is a candidate, not a proven improvement for every merged workspace/channel scope.
+- lib/facebook/process-message.ts currently performs an exact global platform_message_id duplicate lookup in parallel with connected Page resolution. The business ID is not yet available for that lookup. Existing business_id/platform_message_id uniqueness does not begin with the queried field. The proposal includes an optional non-unique global lookup index; it does not change receive/authorization behavior.
+- Supplied normalized message-history statistics included 46,673 calls and maximum 770ms; duplicate lookup statistics included 14,161 calls and maximum 1,814ms. Conversation variants included 386 calls/31.27s total/max 1,444ms and 2,602 calls/41.39s total/max 373ms. These are database query statistics, may include older code and are not end-to-end latency or proof that any selected field/index caused the difference.
+
+Three separate candidate statements and bounded metadata/plain-EXPLAIN examples are prepared in docs/sql/inbox-performance-index-proposals.sql. Review equivalent existing indexes and plans first. Do not execute the whole file or apply it automatically; concurrent index builds must run separately outside a transaction.
+
+## Server conversation paging: implemented locally, migration not applied
+
+The read-only contract is prepared in db/migrations/20261003_inbox_server_paging.sql. It changes no tables or data. Functions are SECURITY INVOKER and executable only by service_role; the server supplies authenticated identities and active business scopes. The SQL independently intersects active membership, operational subscription and enabled-channel access.
+
+- Status, All/Unread/My/Unassigned/Comments/Open/Pinned, personal Smart Views, workspace/channel scope, assignments and tag rules apply before LIMIT. Literal contact/preview/Telegram identity search and history EXISTS search are part of the same complete filtered query. History search has no 200-message cap. Status and view counts are separate complete aggregates, rather than counts over cached pages.
+- Normal reads hydrate 30 rows in stable pin/time/id order with a keyset cursor. Read/realtime versions reject older metadata. The independently selected conversation stays available without becoming part of the page's IDs or cursor. Failed reads retain visited history/cursors and show retry controls.
+- Realtime IDs are coalesced for 300ms. Targeted requalification handles up to 200 IDs per request, plus the current first page. Resume/reconnect checks previously cached IDs in sequential batches of 200; existing bounded live-state recovery discoveries also get server-qualified even outside page one. No polling interval was added. Hidden events never mark messages read.
+- Explicit bulk-read first requests all matching unread ID/version snapshots, including off-page rows. The existing sequential 100-target conditional writes retain their authorization and race guards. Background refreshes never request this snapshot.
+- The client keeps visited rows and its history cursor during live revalidation. New metadata flows into the existing selected-conversation cache, manual-unread barriers and optimistic pin/status/assignment handling. Expensive offscreen rows still use render deferral.
+
+Local tests execute the real adapter/API/hook against bounded doubles. A comparable 1,000-row JSON fixture measured 828,891 bytes for the complete records versus 26,366 bytes for a 30-row page response. This is a mocked-SQL response fixture, not a production measurement. Tests cover page deduplication, stale search responses, history-only matches, targeted teammate changes, off-page recovery, hidden/resume/reconnect, bounded catch-up, retries, complete bulk-read snapshots and server-owned scope/member IDs.
+
+Final 30-row paging validation: 116 focused tests passed, including optimistic tags/pin/status/assignment with manual-unread and acknowledged-read guards; TypeScript and production build passed. The initial sandbox build could not fetch Google Fonts; a network-enabled local retry passed. Four touched existing TS/TSX files retain the same HEAD lint baseline (9 errors/18 warnings); five new modules/routes are clean, with no introduced lint findings. Logs: C:/Users/TUF/AppData/Local/Temp/tenh-30-paging-tests.txt, tenh-30-paging-typecheck.txt, tenh-30-paging-build.txt and tenh-paging-lint-comparison.json.
+
+A broader 124-case invocation produced 122 passes and two unrelated existing harness failures: presence.test.cjs cannot load its missing jsdom dependency; meta-sticker-patch.test.cjs asserts that no tenh-extension directory exists anywhere in the checkout, while this checkout already contains that directory. Those tests were not changed or declared successful.
+
+## Isolated Chrome validation after the 30-row change
+
+Installed Chrome and Edge were found during the follow-up capability check. Native Chrome headless failed inside the executor sandbox with GPU subprocess exit -1073741790 and a fatal GPU-unusable error, including a GPU-disabled retry. An approved launch outside the executor sandbox succeeded with Chrome's own sandbox enabled, an isolated Temp profile, background networking disabled, local fixture data and no authenticated session or live writes. No packages were installed and no browser sandbox/security protection was disabled.
+
+The fixture imports the real useConversationPages hook and DeferredInboxItem component into a small React shell. Its controls and read API are fixtures, not the complete authenticated Inbox or executed SQL. All 15 assertions passed: initial/incremental 30-row reads without an initial duplicate request; stable selected chat; list append scroll 600px before/after; Comments and Pinned; off-page history search; authoritative unread membership; complete off-page bulk snapshots; real IntersectionObserver/ResizeObserver long-thread rendering (19 rich rows out of 180 near the viewport); stable 6,000px thread scroll; simulated hidden/resume coalescing; duplicate customer events; teammate preview updates without selection/scroll loss; reconnect deduplication.
+
+Sources: tests/fixtures/inbox-paging-browser.entry.cjs and tests/inbox-paging-browser-build.cjs. Run the builder from the repository root with Node; it writes only the bundle/HTML/loader under Temp and uses existing Next.js/TypeScript/React dependencies. A separately authorized headless Chrome launch can then open the Temp HTML with a dedicated Temp user-data-dir; keep Chrome's sandbox enabled. Evidence: C:/Users/TUF/AppData/Local/Temp/tenh-30-paging-browser-result.json, tenh-30-paging-browser-dom.txt and tenh-30-paging-browser-stderr.txt.
+
+Activation and validation limits: the migration was not applied. A later capability check found an already installed PGlite under Temp and PostgreSQL 17.11 client utilities in the relocated backup tools; no server/cluster utilities were available. All 35 isolated SQL tests passed with synthetic schema/roles/data, including real Inbox SSR and page API execution with fixture authentication, all three existing Bot migrations, paging privileges and atomic rollback. This caught and fixed NULL assignment-filter semantics. Concurrent index creation is replaced with ordinary creation only inside this serialized test engine. Live schema compatibility, concurrency/locks, aggregate plans, production payload reduction, full authenticated Inbox browser behavior and actual user-device performance remain unverified. No live EXPLAIN was executed. Document visibility in the headless fixture was simulated, so actual browser background-tab throttling/suspension is untested. Until the read RPC is separately validated and installed, complete legacy loading remains in use. Foreground/reconnect recovery remains necessary.
+
+## Final local validation and requested Inbox appearance
+
+The final focused source/API/hook suite passed 132 tests. The isolated Inbox Chrome fixture passed 21 assertions, adding the real header/empty-state components, icon-only filter toggle, accessible broken-sticker fallback retaining the selected sticker ID, one sticker-pack recovery and one ad-photo recovery preserving source context. The fixture makes no external provider requests or real sends. A temporary failed assertion counted ad recovery as sticker recovery; the request log isolated the mistake, the assertion was corrected, and no speculative media-code change was retained. The existing Bot browser test also passed with isolated SQL and zero Meta calls/sends.
+
+TypeScript passed. Seven existing touched runtime files retain their HEAD lint baseline with no introduced findings; seven new paging/UI modules are clean. The production build and diff whitespace check passed. Evidence is in Temp: tenh-deploy-focused-tests.txt, tenh-deploy-sql-tests.txt, tenh-deploy-bot-browser.txt, tenh-deploy-inbox-browser-result.json, tenh-final-typecheck.txt, tenh-final-lint.txt and tenh-deploy-final-build.txt.
+
+The conversation list now has the requested Conversations heading/subtitle, search placeholder and accessible sliders button without Add. The unselected message panel has a vector blue/lavender bubble illustration, Start a conversation text and three feature labels without the handwritten signature. Selected-chat logic remains unchanged. Structural Inbox dividers and its top navigation hairline are lighter; active blue/focus styling is preserved. Supported Library transfers of the two exact UI references failed, so implementation used the parent's actual pixel reviews. The Chrome fixture verifies component copy and filter behavior, not a pixel comparison or responsive full-Inbox layout; those remain staging review items. See deploy-preflight-and-rollback.md for release and rollback gates.

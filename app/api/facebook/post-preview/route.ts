@@ -4,6 +4,7 @@ import { memberHasPermission } from "@/lib/auth/require-permission";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getFacebookPostIdForComment, getFacebookPostPreview } from "@/lib/facebook/get-post-preview";
 import { mergePostPreview, record, text } from "@/lib/facebook/post-preview-data";
+import { messengerSourceFromEvent, readMessengerSources } from "@/lib/facebook/messenger-source";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
     if (!access.success) return json({ success: false, error: access.error }, access.status);
     if (!await memberHasPermission(access.member, "conversations", "view")) return json({ success: false, error: "Not allowed to view this conversation." }, 403);
     const { data: message, error } = await supabaseAdmin.from("messages")
-      .select("id,platform_message_id,message_type,raw_payload,comment_is_deleted")
+      .select("id,platform_message_id,message_type,direction,raw_payload,comment_is_deleted")
       .eq("id", messageId).eq("conversation_id", conversationId).eq("business_id", access.businessId).maybeSingle();
     if (error) return json({ success: false, error: "Unable to load comment context." }, 503);
     if (!message || message.comment_is_deleted) return json({ success: false, error: "Comment unavailable." }, 404);
@@ -31,6 +32,20 @@ export async function GET(request: NextRequest) {
     if (!account || account.platform !== "facebook" || !account.is_active || account.facebook_token_status === "disconnected") return json({ success: false, error: "Facebook Page unavailable." }, 404);
     const payload = record(message.raw_payload);
     const saved = record(payload.post_preview);
+    if (params.get("source") === "1") {
+      if (message.direction !== "incoming") return json({ success: false, error: "Incoming source required." }, 400);
+      const { data: conversation, error: sourceError } = await supabaseAdmin.from("conversations")
+        .select("facebook_messenger_sources").eq("id", conversationId).eq("business_id", access.businessId).maybeSingle();
+      if (sourceError) return json({ success: false, error: "Unable to load source context." }, 503);
+      const embedded = messengerSourceFromEvent(payload);
+      const sources = [...readMessengerSources(conversation?.facebook_messenger_sources), ...(embedded ? [{ ...embedded, message_id: embedded.message_id ?? message.platform_message_id }] : [])];
+      const source = sources.findLast(item => item.message_id === message.platform_message_id && item.post_id);
+      const pageId = text(account.platform_account_id);
+      if (!source?.post_id || !pageId) return json({ success: true, preview: null, available: false });
+      const fresh = await getFacebookPostPreview(source.post_id, pageId, { refresh: params.get("refresh") === "1" });
+      // Source IDs come only from this authorized message's exact referral.
+      return json({ success: true, preview: fresh, available: !!fresh?.full_picture });
+    }
     const isComment = message.message_type === "comment" || payload.source === "facebook_comment" ||
       payload.source === "facebook_comment_reply" || payload.tenh_source === "facebook_page_reply" ||
       payload.source_type === "comment" || payload.item === "comment" ||

@@ -1,5 +1,7 @@
 "use client";
 
+import { readWorkspaces, invalidateWorkspaceRead } from "@/lib/workspaces/read-workspaces";
+
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -70,17 +72,19 @@ export function WorkspaceSwitcher() {
   const [error, setError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const initializedRef = useRef(false);
+  const loadSequenceRef = useRef(0);
+  const mountedRef = useRef(true);
   const currentOperationalRef = useRef<boolean | null>(null);
 
   const load = useCallback(async (quiet = false) => {
+    const sequence = ++loadSequenceRef.current;
     if (!quiet) setLoading(true);
     setError(null);
 
     try {
-      const response = await fetch("/api/workspaces", {
-        cache: "no-store",
-      });
+      const response = await readWorkspaces();
       const result = (await response.json()) as WorkspacesResponse;
+      if (!mountedRef.current || sequence !== loadSequenceRef.current) return;
 
       if (!response.ok || !result.success) {
         throw new Error(result.error ?? "Unable to load workspaces.");
@@ -115,28 +119,35 @@ export function WorkspaceSwitcher() {
 
       currentOperationalRef.current = nextOperational;
     } catch (loadError) {
+      if (!mountedRef.current || sequence !== loadSequenceRef.current) return;
       setError(
         loadError instanceof Error
           ? loadError.message
           : "Unable to load workspaces.",
       );
     } finally {
-      if (!quiet) setLoading(false);
+      if (mountedRef.current && sequence === loadSequenceRef.current) setLoading(false);
     }
   }, [router]);
 
   useEffect(() => {
+    mountedRef.current = true;
     void load();
+    return () => { mountedRef.current = false; };
   }, [load]);
 
   useEffect(() => {
-    const refreshQuietly = () => void load(true);
+    let disposed = false;
+    const refreshQuietly = () => {
+      if (!disposed && document.visibilityState === "visible") void load(true);
+    };
     const supabase = createClient();
     let timer: number | null = null;
 
     const scheduleRefresh = () => {
-      if (timer !== null) window.clearTimeout(timer);
-      timer = window.setTimeout(refreshQuietly, 120);
+      if (document.visibilityState !== "visible") return;
+      if (timer !== null) return;
+      timer = window.setTimeout(() => { timer = null; refreshQuietly(); }, 120);
     };
 
     const channel = supabase
@@ -156,19 +167,26 @@ export function WorkspaceSwitcher() {
         { event: "*", schema: "public", table: "businesses" },
         scheduleRefresh,
       )
-      .subscribe();
+      .subscribe((status) => { if (status === "SUBSCRIBED") scheduleRefresh(); });
 
     const poll = window.setInterval(refreshQuietly, 20_000);
-    const handleFocus = () => refreshQuietly();
-    const handleWorkspaceChanged = () => refreshQuietly();
+    const handleFocus = () => scheduleRefresh();
+    const handleWorkspaceChanged = () => { loadSequenceRef.current++; invalidateWorkspaceRead(); scheduleRefresh(); };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") scheduleRefresh();
+      else if (timer !== null) { window.clearTimeout(timer); timer = null; }
+    };
 
     window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("tenh:workspace-data-changed", handleWorkspaceChanged);
 
     return () => {
+      disposed = true;
       if (timer !== null) window.clearTimeout(timer);
       window.clearInterval(poll);
       window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("tenh:workspace-data-changed", handleWorkspaceChanged);
       void supabase.removeChannel(channel);
     };
@@ -372,8 +390,8 @@ export function WorkspaceSwitcher() {
             </p>
             <p className="mt-1 text-xs leading-5 text-slate-500">
               {isKhmer
-                ? "Group Chat, Analytics, Integrations និង Settings នឹងប្រើកន្លែងធ្វើការដែលអ្នកជ្រើសរើស។ Inbox នៅតែបង្ហាញឆានែលសកម្មទាំងអស់។"
-                : "Group Chat, Analytics, Integrations, and Settings use the selected workspace. Inbox keeps all active customer channels together."}
+                ? "Analytics, Integrations និង Settings នឹងប្រើកន្លែងធ្វើការដែលអ្នកជ្រើសរើស។ Inbox នៅតែបង្ហាញឆានែលសកម្មទាំងអស់។"
+                : "Analytics, Integrations, and Settings use the selected workspace. Inbox keeps all active customer channels together."}
             </p>
           </div>
 

@@ -114,16 +114,19 @@ export function useInboxRealtime(input: Input) {
       }
     });
     const resume = () => { void start(); resync(); };
+    const visible = () => { if (document.visibilityState === "visible") resume(); };
     if (typeof window !== "undefined") {
       window.addEventListener("online", resume);
       window.addEventListener("focus", resume);
     }
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", visible);
     return () => {
       cancelled = true;
       generation += 1;
       callbacks.current.onConnectionState?.(false);
       if (recoveryTimer) clearTimeout(recoveryTimer);
       auth.subscription.unsubscribe();
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", visible);
       if (typeof window !== "undefined") {
         window.removeEventListener("online", resume);
         window.removeEventListener("focus", resume);

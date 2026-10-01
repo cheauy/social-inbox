@@ -324,8 +324,6 @@ function normalizeLink(value: string | null) {
   return null;
 }
 
-const TEAM_NOTIFICATIONS_ROOM_READ_EVENT =
-  "tenh:team-notifications-room-read";
 
 function readRealtimeNotification(value: unknown): TeamNotification | null {
   if (!value || typeof value !== "object") {
@@ -408,21 +406,12 @@ export function TeamNotificationCenter() {
       return;
     }
 
-    // GroupChatView already handles its own mention alert while the user is
-    // inside Group Chat. The global header notification center only fills the
-    // gap on every other TENH page, which avoids duplicate sounds.
-    if (window.location.pathname.startsWith("/dashboard/group-chat")) {
-      return;
-    }
-
     const audio = groupMentionAudioRef.current;
 
     if (!audio) {
       return;
     }
 
-    // Same setting the inbox alert obeys; see group-chat-view for why this is
-    // read at play time rather than captured once at mount.
     audio.volume = getStoredNotificationVolume();
     audio.currentTime = 0;
 
@@ -520,11 +509,9 @@ export function TeamNotificationCenter() {
               return;
             }
 
-            if (
-              !incoming.is_read &&
-              (incoming.notification_type === "team_chat_mention" ||
-                incoming.notification_type === "conversation_reminder")
-            ) {
+            if (incoming.notification_type === "team_chat_mention") return;
+
+            if (!incoming.is_read && incoming.notification_type === "conversation_reminder") {
               playGroupMentionSound();
             }
 
@@ -600,37 +587,6 @@ export function TeamNotificationCenter() {
       }
     };
   }, [loadNotifications, memberIdsKey, playGroupMentionSound]);
-
-  useEffect(() => {
-    function handleRoomRead(event: Event) {
-      const roomId =
-        event instanceof CustomEvent &&
-        event.detail &&
-        typeof event.detail.roomId === "string"
-          ? event.detail.roomId
-          : null;
-
-      if (!roomId) {
-        return;
-      }
-
-      setNotifications((current) =>
-        current.filter((item) => item.room_id !== roomId),
-      );
-    }
-
-    window.addEventListener(
-      TEAM_NOTIFICATIONS_ROOM_READ_EVENT,
-      handleRoomRead,
-    );
-
-    return () => {
-      window.removeEventListener(
-        TEAM_NOTIFICATIONS_ROOM_READ_EVENT,
-        handleRoomRead,
-      );
-    };
-  }, []);
 
   useEffect(() => {
     if (!open) {

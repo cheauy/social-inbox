@@ -69,6 +69,15 @@ body {
   transform-origin: center;
 }
 
+/* Keep the lighter navigation divider limited to the Inbox screen. */
+body:has([data-inbox-surface]) [data-dashboard-header] {
+  border-bottom-color: var(--color-slate-100);
+}
+body.dark:has([data-inbox-surface]) [data-dashboard-header],
+.dark body:has([data-inbox-surface]) [data-dashboard-header] {
+  border-bottom-color: color-mix(in srgb, var(--color-slate-800) 60%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tenh-recording-bar {
     animation: none;

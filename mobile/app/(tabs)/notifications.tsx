@@ -96,7 +96,6 @@ type Subscription = {
  */
 const VISUALS: Record<string, { icon: IconName; tone: string }> = {
   conversation_reminder: { icon: "alarm-outline", tone: "#C77700" },
-  team_chat_mention: { icon: "at-outline", tone: "#6D4AFF" },
   manual_payment_approved: { icon: "checkmark-circle-outline", tone: "#2FA36B" },
   manual_payment_rejected: { icon: "close-circle-outline", tone: colors.red },
   facebook_reauthorization_required: {
@@ -130,16 +129,14 @@ function daysUntil(value: string | null) {
  * come here for: everything, the operational alerts, the times somebody said
  * your name, and what you have promised to do.
  */
-type Tab = "all" | "alerts" | "team" | "remind";
+type Tab = "all" | "alerts" | "remind";
 
 const TABS: { key: Tab; label: string; icon: IconName }[] = [
   { key: "all", label: "All", icon: "albums-outline" },
   { key: "alerts", label: "Alerts", icon: "notifications-outline" },
-  { key: "team", label: "Team", icon: "at-outline" },
   { key: "remind", label: "Remind", icon: "alarm-outline" },
 ];
 
-const MENTION = "team_chat_mention";
 const REMINDER = "conversation_reminder";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -720,31 +717,12 @@ export default function Notifications() {
     void load(true);
   }, [alertsRevision, load]);
 
-  /*
-   * A mention and a reminder are errands, not records.
-   *
-   * Somebody said your name in a room, or something you promised to do has
-   * come due: both are asking you to go somewhere, and once you have been the
-   * asking is finished. Leaving them on the list afterwards means the list
-   * only ever grows, and a screen you have to prune is a screen nobody reads.
-   *
-   * Everything else stays after it is read. A payment result or a Page that
-   * has stopped authorising is a fact about the workspace, and somebody may
-   * well want to look at it twice.
-   */
-  const visible = items.filter(
-    (item) =>
-      !item.is_read ||
-      (item.notification_type !== MENTION &&
-        item.notification_type !== REMINDER),
-  );
+  // Completed reminders leave the list; unrelated alerts remain available.
+  const visible = items.filter(item => item.notification_type !== "team_chat_mention" && (!item.is_read || item.notification_type !== REMINDER));
 
   const unread = visible.filter((item) => !item.is_read).length;
 
-  const mentions = visible.filter(
-    (item) => item.notification_type === MENTION,
-  );
-  const alerts = visible.filter((item) => item.notification_type !== MENTION);
+  const alerts = visible;
 
   /* A reminder whose time has come, against one still to come. */
   const overdue = reminders.filter(
@@ -754,11 +732,10 @@ export default function Notifications() {
   const counts: Record<Tab, number> = {
     all: unread,
     alerts: alerts.filter((item) => !item.is_read).length,
-    team: mentions.filter((item) => !item.is_read).length,
     remind: reminders.length,
   };
 
-  const shown = tab === "team" ? mentions : tab === "alerts" ? alerts : visible;
+  const shown = tab === "alerts" ? alerts : visible;
 
   async function markRead(id: string) {
     if (!workspace) {
@@ -966,26 +943,14 @@ export default function Notifications() {
       });
   }
 
-  /*
-   * Alerts carry the web's own links -- /dashboard/inbox?conversation=…,
-   * /dashboard/group-chat?room=…. The two that name something this app can
-   * open are followed; the rest just mark themselves read, because sending
-   * somebody to a browser to read a payment receipt is not an improvement.
-   */
+  // Alert links open customer conversations in their own workspace.
   async function open(item: Notification) {
     void markRead(item.id);
 
     const link = item.link ?? "";
     const conversation = /[?&]conversation=([0-9a-f-]{36})/i.exec(link);
-    const room = /[?&]room=([0-9a-f-]{36})/i.exec(link);
 
-    /*
-     * The notification API is account-wide, just like the website's bell.
-     * A room always needs its own workspace active; an Inbox conversation
-     * only needs switching when it is outside the currently merged Inbox.
-     */
     const needsWorkspace =
-      Boolean(room && item.business_id !== workspace?.businessId) ||
       Boolean(conversation && !merged.includes(item.business_id));
 
     if (needsWorkspace) {
@@ -1017,8 +982,6 @@ export default function Notifications() {
         pathname: "/conversation/[id]",
         params: { id: conversation[1] },
       });
-    } else if (room) {
-      router.push({ pathname: "/room/[id]", params: { id: room[1] } });
     } else if (link.includes("subscription")) {
       router.push("/settings/subscription");
     } else if (/^https?:\/\//i.test(link)) {
@@ -1379,9 +1342,7 @@ export default function Notifications() {
           ) : (
           <Section
             title={
-              tab === "team"
-                ? "Mentions"
-                : counts[tab] > 0
+              counts[tab] > 0
                   ? `Alerts · ${counts[tab]} unread`
                   : "Alerts"
             }
@@ -1405,13 +1366,11 @@ export default function Notifications() {
                 />
 
                 <Text style={{ fontSize: 15, fontWeight: "700", color: colors.ink }}>
-                  {tab === "team" ? "No mentions" : "Nothing waiting"}
+                  Nothing waiting
                 </Text>
 
                 <Text style={[styles.muted, { fontSize: 13, textAlign: "center" }]}>
-                  {tab === "team"
-                    ? "When somebody writes your name in a team room, it lands here."
-                    : "Payments, page warnings and anything TENH needs you to know appear here."}
+                  Payments, page warnings and anything TENH needs you to know appear here.
                 </Text>
               </View>
             ) : (

@@ -13,7 +13,6 @@ import {
 
 const khmerNavigationLabels: Record<string, string> = {
   Inbox: "ប្រអប់សារ",
-  "Group Chat": "ជជែកជាក្រុម",
   Analytics: "វិភាគទិន្នន័យ",
   Subscription: "ការជាវ",
   Integrations: "ការតភ្ជាប់",

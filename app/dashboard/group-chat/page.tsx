@@ -1,5 +1,5 @@
-import { GroupChatView } from "@/components/team/group-chat-view";
+import { redirect } from "next/navigation";
 
-export default function GroupChatPage() {
-  return <GroupChatView />;
+export default function RetiredTeamChatPage() {
+  redirect("/dashboard/inbox");
 }

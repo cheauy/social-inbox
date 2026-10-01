@@ -298,6 +298,7 @@ export async function GET() {
     `)
     .in("business_id", scope.businessIds)
     .in("recipient_member_id", scope.memberIds)
+    .neq("notification_type", "team_chat_mention")
     .order("created_at", { ascending: false })
     .limit(80);
 

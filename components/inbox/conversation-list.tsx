@@ -1,5 +1,10 @@
 "use client";
-import type { BulkReadResult } from "@/lib/inbox/bulk-read";
+
+import { ConversationListHeader } from "@/components/inbox/conversation-list-header";
+import { DeferredInboxItem } from "@/components/inbox/deferred-inbox-item";
+import type { BulkReadResult, ReadTarget } from "@/lib/inbox/bulk-read";
+import { useConversationPages } from "@/lib/inbox/use-conversation-pages";
+import { CONVERSATION_PAGE_SIZE, type ConversationPagingInitial } from "@/lib/inbox/conversation-page-contract";
 
 import { CustomerAvatar } from "@/components/customer-avatar";
 
@@ -78,7 +83,9 @@ function getTelegramSearchIdentity(
 }
 
 type ConversationListProps = {
-  onMarkAllRead?: (conversations: InboxConversation[]) => Promise<BulkReadResult>;
+  onMarkAllRead?: (conversations: InboxConversation[], targets?: ReadTarget[]) => Promise<BulkReadResult>;
+  pagination?: ConversationPagingInitial;
+  onPageRows?: (rows: InboxConversation[]) => void;
   markingAllRead?: boolean;
   conversations:
     InboxConversation[];
@@ -403,24 +410,6 @@ const filterOptions: Array<{
   },
   ...statusOptions,
 ];
-
-function FilterIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      className="h-5 w-5"
-      aria-hidden="true"
-    >
-      <path
-        d="M4 6h16M7 12h10M10 18h4"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 
 function AllConversationIcon() {
   return (
@@ -1296,7 +1285,7 @@ function ConversationListSkeleton() {
       {[0, 1, 2, 3, 4, 5].map((row) => (
         <div
           key={row}
-          className="flex items-start gap-2.5 border-b border-slate-100 py-2.5 pl-3 pr-3"
+          className="flex items-start gap-2.5 border-b border-slate-100/70 dark:border-slate-800/50 py-2.5 pl-3 pr-3"
         >
           <div className="mt-0.5 h-10 w-10 shrink-0 rounded-full bg-slate-200/80" />
 
@@ -1444,7 +1433,7 @@ const ConversationRow = memo(function ConversationRow({
                      * skipped is still in the DOM and still found by Ctrl+F.
                      */
                     aria-current={isActive ? "true" : undefined}
-                    className={`relative flex w-full items-start gap-2.5 border-b border-b-slate-100 py-2.5 pl-3 pr-3 text-left transition [contain-intrinsic-size:auto_72px] [content-visibility:auto] ${
+                    className={`relative flex w-full items-start gap-2.5 border-b border-b-slate-100/70 dark:border-b-slate-800/50 py-2.5 pl-3 pr-3 text-left transition [contain-intrinsic-size:auto_72px] [content-visibility:auto] ${
                       isActive
                         ? "bg-blue-50"
                         : "hover:bg-slate-100/70"
@@ -1593,6 +1582,8 @@ const ConversationRow = memo(function ConversationRow({
  * turn this back off.
  */
 function ConversationListView({
+  pagination,
+  onPageRows,
   onMarkAllRead,
   markingAllRead = false,
   conversations,
@@ -1610,6 +1601,7 @@ function ConversationListView({
     useSearchParams();
 
   const isKhmer = useWorkspaceLanguageId() === "km";
+  const listContainerRef = useRef<HTMLDivElement | null>(null);
   const [bulkReadNotice, setBulkReadNotice] = useState<string | null>(null);
 
   /*
@@ -1901,7 +1893,7 @@ function ConversationListView({
   const [
     currentBusinessId,
     setCurrentBusinessId,
-  ] = useState<string | null>(null);
+  ] = useState<string | null>(pagination?.request.workspaceContextId ?? null);
 
   const [
     smartViewWorkspaces,
@@ -2425,6 +2417,14 @@ function ConversationListView({
   const workspaceContextId =
     selectedWorkspaceId ?? currentBusinessId;
 
+  const pageRequest = useMemo(() => ({ status: optimisticStatus, view: selectedViewKey,
+    search: deferredSearch.trim(), channelId: selectedChannelId, workspaceId: selectedWorkspaceId,
+    workspaceContextId: workspaceContextId ?? null, cursor: null }),
+    [optimisticStatus, selectedViewKey, deferredSearch, selectedChannelId, selectedWorkspaceId, workspaceContextId]);
+  const pager = useConversationPages(pagination, pageRequest, conversations, onPageRows);
+  const { enabled: pagingEnabled, loading: pagingLoading, error: pagingError, more: loadNextPage } = pager;
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
+
   const fallbackWorkspaceOptions =
     useMemo(() => {
       const businessIds = Array.from(
@@ -2611,7 +2611,7 @@ function ConversationListView({
       availableSmartViewWorkspaces,
     ]);
 
-  const totalUnreadCount =
+  const legacyTotalUnreadCount =
     useMemo(
       () =>
         scopedConversations.reduce(
@@ -2630,7 +2630,7 @@ function ConversationListView({
       [scopedConversations],
     );
 
-  const unreadConversationCount =
+  const legacyUnreadConversationCount =
     useMemo(
       () =>
         scopedConversations.filter(
@@ -2641,6 +2641,8 @@ function ConversationListView({
       [scopedConversations],
     );
 
+  const totalUnreadCount = pager.enabled ? pager.page?.counts.totalUnreadCount ?? 0 : legacyTotalUnreadCount;
+  const unreadConversationCount = pager.enabled ? pager.page?.counts.unreadConversationCount ?? 0 : legacyUnreadConversationCount;
   const baseViewConversations =
     useMemo(
       () =>
@@ -2748,7 +2750,7 @@ function ConversationListView({
    * React still builds every element and every DOM node before the browser
    * gets the chance to skip them.
    *
-   * Forty is several screens deep, and the window grows before the reader
+   * Thirty is several screens deep, and the window grows before the reader
    * reaches the end of it, so scrolling stays continuous. It never shrinks:
    * somebody who has scrolled a long way and then searches and clears the
    * search finds their place still there, and re-slicing on every filter
@@ -2757,7 +2759,7 @@ function ConversationListView({
    * Filtering and search are untouched -- both run over the whole array, and
    * only the last step, building the rows, is windowed.
    */
-  const ROWS_PER_WINDOW = 40;
+  const ROWS_PER_WINDOW = CONVERSATION_PAGE_SIZE;
 
   const [visibleRowCount, setVisibleRowCount] =
     useState(ROWS_PER_WINDOW);
@@ -2791,6 +2793,7 @@ function ConversationListView({
       .trim()
       .replace(/^@/, "");
 
+    if (pagination) return;
     const controller = new AbortController();
 
     async function searchMessageHistory() {
@@ -2855,9 +2858,9 @@ function ConversationListView({
     return () => {
       controller.abort();
     };
-  }, [deferredSearch]);
+  }, [deferredSearch, pagination]);
 
-  const filteredConversations =
+  const legacyFilteredConversations =
     useMemo(() => {
       const keyword =
         deferredSearch
@@ -2890,23 +2893,24 @@ function ConversationListView({
       messageMatchIds,
     ]);
 
+  const filteredConversations = pager.enabled ? pager.rows : legacyFilteredConversations;
   const visibleConversations =
     useMemo(
       () =>
-        filteredConversations.length <=
+        pager.enabled || filteredConversations.length <=
         visibleRowCount
           ? filteredConversations
           : filteredConversations.slice(
               0,
               visibleRowCount,
             ),
-      [filteredConversations, visibleRowCount],
+      [filteredConversations, visibleRowCount, pager.enabled],
     );
 
   useEffect(() => {
     const marker = loadMoreRowsRef.current;
 
-    if (!marker) {
+    if (!marker || typeof IntersectionObserver === "undefined") {
       return;
     }
 
@@ -2916,6 +2920,7 @@ function ConversationListView({
           return;
         }
 
+        if (pagingEnabled) { if (!pagingLoading && !pagingError) loadNextPage(); return; }
         setVisibleRowCount(
           (current) =>
             current + ROWS_PER_WINDOW,
@@ -2934,9 +2939,11 @@ function ConversationListView({
   }, [
     visibleRowCount,
     filteredConversations.length,
+    pagingEnabled, pagingLoading, pagingError, loadNextPage,
+    ROWS_PER_WINDOW,
   ]);
 
-  const builtInCounts =
+  const legacyBuiltInCounts =
     useMemo(
       () => ({
         all:
@@ -3041,6 +3048,8 @@ function ConversationListView({
       ],
     );
 
+  const builtInCounts = pager.enabled ? pager.page?.counts.views ?? legacyBuiltInCounts : legacyBuiltInCounts;
+  const effectiveStatusCounts = pager.enabled ? pager.page?.counts.statusCounts ?? statusCounts : statusCounts;
   const defaultSmartViews =
     useMemo(
       () => [
@@ -3643,8 +3652,8 @@ function ConversationListView({
     );
 
   return (
-    <section className="relative flex h-full min-h-0 w-full min-w-0 overflow-hidden border-r border-slate-200 bg-white">
-      <aside className="relative z-30 flex h-full w-15 shrink-0 flex-col overflow-visible border-r border-slate-200 bg-slate-50 py-3">
+    <section data-inbox-surface className="relative flex h-full min-h-0 w-full min-w-0 overflow-hidden border-r border-slate-100 dark:border-slate-800/60 bg-white">
+      <aside className="relative z-30 flex h-full w-15 shrink-0 flex-col overflow-visible border-r border-slate-100 dark:border-slate-800/60 bg-slate-50 py-3">
         {/*
          * Channel picker and status filter sit above the Smart Views. The
          * channel panel floats to the right of the rail the same way Smart
@@ -3654,7 +3663,7 @@ function ConversationListView({
           <InboxChannelSelector variant="rail" onSwitchingChange={setChannelSwitching} />
         </div>
 
-        <div className="mx-3 mb-2 mt-0.5 border-t border-slate-200" />
+        <div className="mx-3 mb-2 mt-0.5 border-t border-slate-100 dark:border-slate-800/60" />
 
         {railViews.map(
           (view) => {
@@ -4517,7 +4526,7 @@ function ConversationListView({
                         : item.view.name;
                       const count = isDefault
                         ? item.count
-                        : scopedConversations.filter((conversation) =>
+                        : pager.enabled ? pager.page?.counts.views[`saved:${item.view.id}`] ?? 0 : scopedConversations.filter((conversation) =>
                             matchesSavedView({
                               conversation,
                               view: item.view,
@@ -4733,67 +4742,10 @@ function ConversationListView({
         ) : (
           <>
         <div className="relative shrink-0 border-b border-slate-200 p-3">
-          <div className="flex w-full items-center gap-2">
-            <div className="relative min-w-0 flex-1">
-              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="h-4 w-4"
-                  aria-hidden="true"
-                >
-                  <circle
-                    cx="11"
-                    cy="11"
-                    r="7"
-                  />
-                  <path
-                    d="m20 20-3.5-3.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </span>
-
-              <input
-                type="search"
-                placeholder={isKhmer ? "ស្វែងរកការសន្ទនា ទំនាក់ទំនង ឬសារ..." : "Search conversations, contacts or messages..."}
-                value={
-                  search
-                }
-                onChange={(
-                  event,
-                ) =>
-                  setSearch(
-                    event.target.value,
-                  )
-                }
-                className="w-full rounded-xl border-0 bg-slate-100 py-3 pl-10 pr-3 text-[13px] text-slate-700 outline-none transition placeholder:text-[12.5px] placeholder:text-slate-400 focus:bg-slate-200/60 focus:ring-2 focus:ring-blue-200"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setViewsOpen(false);
-                setFilterOpen((current) => !current);
-              }}
-              className={`relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${
-                filterOpen || optimisticStatus !== "all"
-                  ? "border-blue-200 bg-blue-50 text-blue-700"
-                  : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800"
-              }`}
-              aria-label={isKhmer ? "ត្រងតាមស្ថានភាព" : "Filter conversation status"}
-              title={isKhmer ? "ស្ថានភាពការសន្ទនា" : "Conversation status"}
-              aria-expanded={filterOpen}
-            >
-              <FilterIcon />
-              {optimisticStatus !== "all" ? (
-                <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-blue-600" />
-              ) : null}
-            </button>
-          </div>
+          <ConversationListHeader search={search} onSearchChange={setSearch} filterOpen={filterOpen}
+            filterApplied={optimisticStatus !== "all"} searchPlaceholder={isKhmer ? "ស្វែងរកការសន្ទនា ទំនាក់ទំនង ឬសារ..." : "Search conversations, customers..."}
+            filterLabel={isKhmer ? "ត្រងតាមស្ថានភាព" : "Filter conversation status"} filterTitle={isKhmer ? "ស្ថានភាពការសន្ទនា" : "Conversation status"}
+            onToggleFilter={() => { setViewsOpen(false); setFilterOpen(current => !current); }} />
 
           {filterOpen ? (
             <>
@@ -4808,7 +4760,7 @@ function ConversationListView({
                 className="fixed inset-0 z-30 cursor-default"
               />
 
-              <div className="absolute right-3 top-[64px] z-40 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+              <div id="inbox-status-filters" className="absolute right-3 top-full z-40 mt-2 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
                 <div className="border-b border-slate-100 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                     Filter
@@ -4929,7 +4881,7 @@ function ConversationListView({
                             }`}
                           >
                             {
-                              statusCounts[
+                              effectiveStatusCounts[
                                 filter.value
                               ]
                             }
@@ -4999,7 +4951,7 @@ function ConversationListView({
                 }{" "}
                 ·{" "}
                 {
-                  baseViewConversations.length
+                  pager.enabled ? pager.page?.total ?? 0 : baseViewConversations.length
                 }
               </span>
 
@@ -5007,20 +4959,22 @@ function ConversationListView({
                 {selectedViewKey === "unread" && onMarkAllRead ? (
                   <button
                     type="button"
-                    disabled={markingAllRead || filteredConversations.length === 0}
+                    disabled={markingAllRead || snapshotLoading || (pager.enabled ? !pager.page?.total : filteredConversations.length === 0)}
                     className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-40"
                     aria-label={isKhmer ? "សម្គាល់ទាំងអស់ថាបានអាន" : "Mark all as read"}
                     title={isKhmer ? "សម្គាល់ទាំងអស់ថាបានអាន" : "Mark all as read"}
                     onClick={async () => {
                       setBulkReadNotice(null);
+                      setSnapshotLoading(true);
                       try {
-                        const result = await onMarkAllRead(filteredConversations);
+                        const targets = pager.enabled ? await pager.snapshot() : undefined;
+                        const result = await onMarkAllRead(filteredConversations, targets);
                         setBulkReadNotice(isKhmer
                           ? `បានអាន ${result.marked} · រំលង ${result.skipped} · បរាជ័យ ${result.failed}`
                           : `${result.marked} marked as read${result.skipped ? ` · ${result.skipped} changed/already read` : ""}${result.failed ? ` · ${result.failed} not confirmed — retry` : ""}.`);
                       } catch {
                         setBulkReadNotice(isKhmer ? "មិនអាចសម្គាល់ថាបានអានបានទេ។ សូមព្យាយាមម្ដងទៀត។" : "Unable to mark as read. Please retry.");
-                      }
+                      } finally { setSnapshotLoading(false); }
                     }}
                   >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden="true">
@@ -5052,13 +5006,14 @@ function ConversationListView({
         ) : null}
 
 
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" aria-busy={statusSwitching || channelSwitching}>
+        <div ref={listContainerRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" aria-busy={statusSwitching || channelSwitching}>
+          {pager.enabled && pager.error ? <p role="alert" className="p-3 text-sm">{pager.error} <button type="button" onClick={pager.retry} className="underline">Retry</button></p> : null}
           {/*
             The skeleton wins over both the rows and the empty state, so a
             status with no conversations gets the same transition as one with
             plenty rather than snapping straight to "none found".
           */}
-          {statusSwitching || channelSwitching ? (
+          {statusSwitching || channelSwitching || (pager.enabled && pager.loading && !pager.rows.length) ? (
             <ConversationListSkeleton />
           ) : filteredConversations.length ===
             0 ? (
@@ -5078,8 +5033,11 @@ function ConversationListView({
           ) : (
             <>
               {visibleConversations.map(
-                (conversation) => (
-                  <ConversationRow
+                (conversation, index) => (
+                  <DeferredInboxItem key={conversation.id} enabled={visibleConversations.length > 100}
+                    initiallyVisible={index < 40} forceVisible={conversation.id === activeConversationId}
+                    estimatedHeight={100} manualAnchoring={false} containerRef={listContainerRef}>
+                  {() => <ConversationRow
                     key={conversation.id}
                     conversation={conversation}
                     isActive={
@@ -5100,7 +5058,8 @@ function ConversationListView({
                     onPrefetchConversation={
                       stablePrefetchConversation
                     }
-                  />
+                  />}
+                  </DeferredInboxItem>
                 ),
               )}
 
@@ -5112,7 +5071,8 @@ function ConversationListView({
                 and it costs nothing while the reader stays at the top, which
                 is where they spend nearly all of their time.
               */}
-              {visibleConversations.length <
+              {pager.enabled && pager.page?.hasMore ? <div ref={loadMoreRowsRef} className="p-3 text-center"><button type="button" onClick={pager.more} disabled={pager.loading} className="text-sm underline">{pager.loading ? "Loading…" : "Load more"}</button></div> : null}
+              {!pager.enabled && visibleConversations.length <
               filteredConversations.length ? (
                 <div
                   ref={loadMoreRowsRef}

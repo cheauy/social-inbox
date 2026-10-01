@@ -390,16 +390,16 @@ const COPY = {
         },
       },
       {
-        title: "Team chat & mentions",
-        body: "Talk to your team inside TENH and mention someone when a conversation needs them.",
+        title: "Internal customer notes",
+        body: "Keep context for your team on the customer profile, separate from customer messages.",
         preview: {
-          header: "Support team",
+          header: "Customer notes",
           rows: [
             { title: "Maya", sub: "@Ben can you take Alex Morgan?" },
             { title: "Ben", sub: "Taking it now." },
             { title: "Maya", sub: "Thanks, customer is waiting." },
           ],
-          note: "Internal chat. It is never sent to the customer.",
+          note: "Internal notes are never sent to the customer.",
         },
       },
       {

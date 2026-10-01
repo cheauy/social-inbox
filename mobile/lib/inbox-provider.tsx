@@ -8,11 +8,11 @@ import { useAuth } from "./auth/provider";
 import { sessionStorage } from "./auth/secure-storage";
 import { useNotificationSound } from "./notification-sound";
 import { supabase } from "./supabase/client";
-import type { InboxConversation, Member, TeamRoom, Workspace } from "./types";
+import type { InboxConversation, Member, Workspace } from "./types";
 
 type InboxState = {
   workspaces: Workspace[]; workspace: Workspace | null; member: Member | null;
-  conversations: InboxConversation[]; loading: boolean; error: string; live: boolean; revision: number; roomRevision: number; settingsRevision: number;
+  conversations: InboxConversation[]; loading: boolean; error: string; live: boolean; revision: number; settingsRevision: number;
 
   /*
    * What this member is allowed to do here, as the server resolved it.
@@ -45,16 +45,6 @@ type InboxState = {
   updateContactTags: (contactId: string, tags: NonNullable<InboxConversation["contact"]>["tags"]) => void;
 
   /*
-   * Team chat lives here rather than in the Group Chat tab because three
-   * places need it at once: the tab bar draws a badge from it, the tab lists
-   * it, and a room's own header reads its name, description and mute state
-   * out of it. One fetch, one truth.
-   */
-  rooms: TeamRoom[];
-  roomsLoading: boolean;
-  roomsBadge: number;
-
-  /*
    * Unread alerts and reminders that have fallen due.
    *
    * The Notifications tab is the only one that could not say it had anything
@@ -66,9 +56,6 @@ type InboxState = {
   alertsBadge: number;
   alertsRevision: number;
   refreshAlerts: () => Promise<void>;
-  roster: Member[];
-  canManageRooms: boolean;
-  refreshRooms: () => Promise<void>;
 };
 const Context = createContext<InboxState | null>(null);
 export const useInbox = () => { const value = useContext(Context); if (!value) throw new Error("Inbox provider missing"); return value; };
@@ -88,15 +75,9 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
   const [error, setError] = useState("");
   const [live, setLive] = useState(false);
   const [revision, setRevision] = useState(0);
-  const [roomRevision, setRoomRevision] = useState(0);
   const [settingsRevision, setSettingsRevision] = useState(0);
-  const [rooms, setRooms] = useState<TeamRoom[]>([]);
-  const [roomsLoading, setRoomsLoading] = useState(true);
-  const [roomsBadge, setRoomsBadge] = useState(0);
   const [alertsBadge, setAlertsBadge] = useState(0);
   const [alertsRevision, setAlertsRevision] = useState(0);
-  const [roster, setRoster] = useState<Member[]>([]);
-  const [canManageRooms, setCanManageRooms] = useState(false);
   const generation = useRef(0), request = useRef(0), alive = useRef(true);
   /*
    * Held in a ref so the realtime subscription does not have to be torn down
@@ -116,7 +97,7 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     alive.current = true;
     return () => { alive.current = false; generation.current++; };
   }, []);
-  const clear = useCallback(() => { nextOffset.current = 0; setHasMore(false); workspaceRef.current = null; setWorkspace(null); mergedRef.current = []; setMerged([]); setMember(null); setPermissions({}); setConversations([]); setRooms([]); setRoomsLoading(true); setRoomsBadge(0); setAlertsBadge(0); setRoster([]); setCanManageRooms(false); }, []);
+  const clear = useCallback(() => { nextOffset.current = 0; setHasMore(false); workspaceRef.current = null; setWorkspace(null); mergedRef.current = []; setMerged([]); setMember(null); setPermissions({}); setConversations([]); setAlertsBadge(0); }, []);
   const conversationSnapshot = useRef(conversations);
   conversationSnapshot.current = conversations;
   const onboardingRef = useRef<{ userId: string; request: Promise<unknown> } | null>(null);
@@ -206,12 +187,9 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       setMember(null);
       setConversations([]);
       nextOffset.current = 0; setHasMore(false);
-      setRooms([]);
-      setRoomsLoading(true);
-      setRoomsBadge(0);
+
       setAlertsBadge(0);
-      setRoster([]);
-      setCanManageRooms(false);
+
       workspaceRef.current = live[0]; setWorkspace(live[0]);
       mergedRef.current = ids; setMerged(ids);
     } catch (e) { if (alive.current && current === generation.current) setError(e instanceof Error ? e.message : "Unable to switch workspace."); throw e; }
@@ -307,33 +285,14 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     }
   }, []);
 
-  const refreshRooms = useCallback(async () => {
-    const selected = workspaceRef.current;
-    if (!selected) return;
-    const current = generation.current;
-    try {
-      const data = await api<{ rooms: TeamRoom[]; totalBadgeCount: number; members: Member[]; canManage: boolean }>("/api/team-chat/rooms", selected.businessId);
-      if (!alive.current || current !== generation.current) return;
-      setRooms(data.rooms ?? []);
-      setRoomsBadge(data.totalBadgeCount ?? 0);
-      setRoster(data.members ?? []);
-      setCanManageRooms(Boolean(data.canManage));
-    } catch {
-      // The Group Chat tab shows its own empty state; a failed poll here is
-      // not worth taking over the Inbox's error line.
-    } finally {
-      if (alive.current && current === generation.current) setRoomsLoading(false);
-    }
-  }, []);
   useEffect(() => {
     if (!workspace?.businessId) return;
-    setLoading(true); setRoomsLoading(true); void refresh(); void refreshRooms(); void refreshAlerts();
+    setLoading(true); void refresh(); void refreshAlerts();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let fullInbox = false, roomsDirty = false, threadDirty = false, flushing = false, disposed = false, subscribedOnce = false;
+    let fullInbox = false, threadDirty = false, flushing = false, disposed = false, subscribedOnce = false;
     const changedIds = new Set<string>();
-    const changed = (kind: "inbox" | "rooms" | "conversation", id?: string) => {
+    const changed = (kind: "inbox" | "conversation", id?: string) => {
       if (kind === "inbox") fullInbox = true;
-      if (kind === "rooms") roomsDirty = true;
       if (kind === "conversation" && id && !fullInbox) changedIds.add(id);
       if (changedIds.size > 500) { fullInbox = true; changedIds.clear(); }
       // A continuous message stream must not postpone the refresh forever.
@@ -343,22 +302,20 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       timer = undefined;
       if (disposed || flushing || AppState.currentState !== "active") return;
       flushing = true;
-      const all = fullInbox, rooms = roomsDirty, ids = [...changedIds];
+      const all = fullInbox, ids = [...changedIds];
       if (threadDirty) setRevision(v => v + 1);
-      if (rooms) setRoomRevision(v => v + 1);
       threadDirty = false;
-      fullInbox = false; roomsDirty = false; changedIds.clear();
+      fullInbox = false; changedIds.clear();
       try {
         if (all) await refresh();
         else for (let i = 0; i < ids.length && !disposed; i += 50) await refresh(ids.slice(i, i + 50));
-        if (rooms && !disposed) await refreshRooms();
       } finally {
         flushing = false;
-        if (!disposed && (fullInbox || roomsDirty || changedIds.size)) timer = setTimeout(flush, 300);
+        if (!disposed && (fullInbox || changedIds.size)) timer = setTimeout(flush, 300);
       }
     }
     const resumed = AppState.addEventListener("change", state => {
-      if (state === "active") { setRevision(v => v + 1); setRoomRevision(v => v + 1); changed("inbox"); changed("rooms"); }
+      if (state === "active") { setRevision(v => v + 1); changed("inbox"); }
     });
     const settingsChanged = () => {
       clearReadCache();
@@ -374,15 +331,7 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
     const listening = merged.length > 0 ? merged : [workspace.businessId];
     let channel = supabase.channel(`tenh-mobile-${listening.join("-")}`);
     for (const id of listening)
-      /*
-       * team_chat_room_members is in here because being added to a private
-       * room is a change to what this phone may see, and nothing else reports
-       * it: the room's own row does not change, no message has arrived yet,
-       * and the list would keep saying the room does not exist until somebody
-       * happened to reopen the app. Removal is the same fact in reverse, and
-       * matters more.
-       */
-      for (const table of ["messages", "conversations", "contacts", "team_chat_messages", "team_chat_rooms", "team_chat_room_members"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${id}` }, payload => {
+      for (const table of ["messages", "conversations", "contacts"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${id}` }, payload => {
         if (table === "messages") {
           threadDirty = true;
           const row = ((payload.new as { conversation_id?: string })?.conversation_id ? payload.new : payload.old) as { conversation_id?: string };
@@ -390,7 +339,6 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
           else changed("inbox");
           return;
         }
-        if (table.startsWith("team_chat_")) { changed("rooms"); return; }
         if (table === "contacts") {
           threadDirty = true;
           const row = ((payload.new as { id?: string })?.id ? payload.new : payload.old) as { id?: string };
@@ -417,9 +365,9 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       channel = channel.on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `business_id=eq.${id}` }, payload => { if ((payload.new as { direction?: string } | null)?.direction === "incoming") alert.current(); });
     for (const id of listening)
       for (const table of ["social_accounts", "tags", "saved_replies", "saved_reply_categories"]) channel = channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `business_id=eq.${id}` }, settingsChanged);
-    channel.subscribe(status => { setLive(status === "SUBSCRIBED"); if (status === "SUBSCRIBED") { if (subscribedOnce) { threadDirty = true; changed("inbox"); changed("rooms"); } subscribedOnce = true; } });
+    channel.subscribe(status => { setLive(status === "SUBSCRIBED"); if (status === "SUBSCRIBED") { if (subscribedOnce) { threadDirty = true; changed("inbox"); } subscribedOnce = true; } });
     return () => { disposed = true; clearTimeout(timer); resumed.remove(); void supabase.removeChannel(channel); setLive(false); };
-  }, [workspace?.businessId, merged.join(","), refresh, refreshRooms, refreshAlerts]);
+  }, [workspace?.businessId, merged.join(","), refresh, refreshAlerts]);
 
   /*
    * Workspace access and subscription state can be changed by an Owner or a
@@ -477,7 +425,8 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
         .channel(`tenh-mobile-alerts-${memberId}`)
         .on("postgres_changes", { event: "*", schema: "public", table: "team_notifications", filter: `recipient_member_id=eq.${memberId}` }, payload => {
           const row = payload.new as { is_read?: boolean; notification_type?: string } | null;
-          if (payload.eventType === "INSERT" && row?.is_read === false && ["team_chat_mention", "conversation_reminder"].includes(row.notification_type ?? "")) alert.current();
+          if (row?.notification_type === "team_chat_mention") return;
+          if (payload.eventType === "INSERT" && row?.is_read === false && row.notification_type === "conversation_reminder") alert.current();
           updated();
         })
         .subscribe(),
@@ -502,5 +451,5 @@ export function InboxProvider({ children }: React.PropsWithChildren) {
       ),
     );
   }, []);
-  return <Context.Provider value={{ workspaces, workspace, member, conversations, permissions, loading, error, live, revision, roomRevision, settingsRevision, refresh, loadMore, hasMore, loadingMore, loadWorkspaces, selectWorkspace, merged, openWorkspaces, updateConversation, updateContactTags, rooms, roomsLoading, roomsBadge, alertsBadge, alertsRevision, refreshAlerts, roster, canManageRooms, refreshRooms }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ workspaces, workspace, member, conversations, permissions, loading, error, live, revision, settingsRevision, refresh, loadMore, hasMore, loadingMore, loadWorkspaces, selectWorkspace, merged, openWorkspaces, updateConversation, updateContactTags, alertsBadge, alertsRevision, refreshAlerts }}>{children}</Context.Provider>;
 }

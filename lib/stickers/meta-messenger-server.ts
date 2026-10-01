@@ -89,11 +89,14 @@ function firstValue(raw: any, keys: string[]) {
   return null;
 }
 function firstPreview(raw: any) {
-  const direct = firstValue(raw, ["preview_url", "preview_image_url", "thumbnail_url", "cover_url", "image_url", "url", "uri", "cdn_url"]);
-  if (typeof direct === "string") return safePreview(direct);
-  const nested = firstValue(raw, ["preview", "preview_image", "preview_sticker", "cover", "thumbnail", "image", "asset"]);
-  if (typeof nested === "string") return safePreview(nested);
-  if (nested && typeof nested === "object") return safePreview(firstValue(nested, ["url", "uri", "src", "image_url"]));
+  for (const key of ["preview_url", "preview_image_url", "thumbnail_url", "cover_url", "image_url", "url", "uri", "cdn_url", "preview", "preview_image", "preview_sticker", "cover", "thumbnail", "image", "asset"]) {
+    const value = raw?.[key];
+    const candidates = typeof value === "string" ? [value] : value && typeof value === "object" ? [value.url, value.uri, value.src, value.image_url] : [];
+    for (const candidate of candidates) {
+      const url = safePreview(candidate);
+      if (url) return url;
+    }
+  }
   return null;
 }
 
@@ -134,9 +137,9 @@ export function normalizeMetaStickerPack(raw: any): MetaStickerPack | null {
  * https://developers.facebook.com/documentation/business-messaging/messenger-platform/send-messages/sticker-api
  * Only the Send API uses the Page token. Keep all credentials on the server.
  */
-const catalogCache = new Map<string, { expires: number; result: Promise<MetaPage<unknown>> }>();
+const catalogCache = new Map<string, { expires: number; refreshedAt?: number; result: Promise<MetaPage<unknown>> }>();
 
-async function graphGetCatalog<T>(path: string, params: Record<string, string> = {}): Promise<MetaPage<T>> {
+async function graphGetCatalog<T>(path: string, params: Record<string, string> = {}, refresh = false): Promise<MetaPage<T>> {
   const appId = process.env.FACEBOOK_APP_ID?.trim();
   const appSecret = process.env.FACEBOOK_APP_SECRET?.trim();
   const token = process.env.FACEBOOK_APP_ACCESS_TOKEN?.trim() || (appId && appSecret ? `${appId}|${appSecret}` : "");
@@ -145,7 +148,7 @@ async function graphGetCatalog<T>(path: string, params: Record<string, string> =
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   const key = createHash("sha256").update(`${token}:${url.href}`).digest("hex");
   const cached = catalogCache.get(key);
-  if (cached && cached.expires > Date.now()) return cached.result as Promise<MetaPage<T>>;
+  if (cached && cached.expires > Date.now() && (!refresh || Date.now() - (cached.refreshedAt ?? 0) < 30_000)) return cached.result as Promise<MetaPage<T>>;
   const result = (async (): Promise<MetaPage<T>> => {
     let response: Response;
     try {
@@ -161,7 +164,7 @@ async function graphGetCatalog<T>(path: string, params: Record<string, string> =
     return payload;
   })();
   if (catalogCache.size >= 180) catalogCache.delete(catalogCache.keys().next().value!);
-  catalogCache.set(key, { expires: Date.now() + (path === "sticker_search" ? 5 * 60_000 : 60 * 60_000), result });
+  catalogCache.set(key, { expires: Date.now() + (path === "sticker_search" ? 5 * 60_000 : 60 * 60_000), ...(refresh ? { refreshedAt: Date.now() } : {}), result });
   try { return await result; }
   catch (error) { if (catalogCache.get(key)?.result === result) catalogCache.delete(key); throw error; }
 }
@@ -174,11 +177,11 @@ export async function listMetaStickerPacks(_scope: MetaStickerScope, after?: str
   return { packs, nextCursor: nextCursor(payload) };
 }
 
-export async function listMetaStickers(_scope: MetaStickerScope, packId: string, after?: string | null) {
+export async function listMetaStickers(_scope: MetaStickerScope, packId: string, after?: string | null, refresh = false) {
   if (!numericId(packId)) throw new MetaStickerError("Choose a valid Meta sticker pack.");
   const params: Record<string, string> = {};
   if (after && /^[A-Za-z0-9_=-]{1,512}$/.test(after)) params.after = after;
-  const payload = await graphGetCatalog<any>(`sticker_packs/${encodeURIComponent(packId)}/stickers`, params);
+  const payload = await graphGetCatalog<any>(`sticker_packs/${encodeURIComponent(packId)}/stickers`, params, refresh);
   const stickers = metaItems(payload).map(item => normalizeMetaSticker(item, packId)).filter(Boolean) as MetaStickerChoice[];
   return { stickers, nextCursor: nextCursor(payload) };
 }

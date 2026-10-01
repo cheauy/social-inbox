@@ -1,5 +1,7 @@
 "use client";
 
+import { readWorkspaces } from "@/lib/workspaces/read-workspaces";
+
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -107,10 +109,7 @@ export function FacebookPageSelectUi({
 
     async function loadWorkspaceUsage() {
       try {
-        const response = await fetch("/api/workspaces", {
-          method: "GET",
-          cache: "no-store",
-        });
+        const response = await readWorkspaces();
         const result = (await response.json()) as WorkspaceResponse;
         if (!response.ok || !result.success || cancelled) return;
 

@@ -6,6 +6,7 @@ import {
 import {
   NextRequest,
   NextResponse,
+  after,
 } from "next/server";
 
 import {
@@ -17,6 +18,7 @@ import {
 } from "@/lib/facebook/process-message";
 import { processFacebookMessengerReferral } from "@/lib/facebook/process-messenger-referral";
 import { processFacebookMessageReaction } from "@/lib/facebook/process-message-reaction";
+import { runAutoReplyBatch } from "@/lib/facebook/auto-reply";
 import {
   markFacebookCommentThreadDeleted,
 } from "@/lib/facebook/mark-comment-thread-deleted";
@@ -551,6 +553,15 @@ export async function POST(
    * Always 200. Failures are already logged and stored in webhook_events;
    * a non-2xx here would only make Meta re-send the same batch.
    */
+  const hasIncomingComment = (payload.entry ?? []).some(entry =>
+    (entry.changes ?? []).some(change => change.field === "feed" &&
+      change.value?.item === "comment" && change.value?.verb === "add"));
+  if (hasIncomingComment && process.env.FACEBOOK_AUTO_REPLY_WORKER_ENABLED === "true") {
+    after(async () => {
+      try { await runAutoReplyBatch(); }
+      catch { console.error("[TENH Auto Reply] Background batch failed; queued work remains durable."); }
+    });
+  }
   return NextResponse.json({
     received: true,
     failed: failures.length,

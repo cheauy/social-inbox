@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
   try {
     const q = new URL(request.url).searchParams;
     const scope = await metaStickerConversation(q.get("conversationId") || "");
-    const result = await listMetaStickers(scope, q.get("packId") || "", q.get("after"));
+    const result = await listMetaStickers(scope, q.get("packId") || "", q.get("after"), q.get("refresh") === "1");
     return NextResponse.json({ success: true, provider: "meta", packId: q.get("packId"), ...result }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     const known = error instanceof MetaStickerError;

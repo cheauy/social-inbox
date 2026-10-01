@@ -88,11 +88,9 @@ async function readGraphJson<T>(
 
 async function loadFacebookTokenRow(
   pageId: string,
+  socialAccountId?: string,
 ): Promise<FacebookTokenRow | null> {
-  const {
-    data,
-    error,
-  } = await supabaseAdmin
+  const query = supabaseAdmin
     .from("social_accounts")
     .select(`
       id,
@@ -111,7 +109,9 @@ async function loadFacebookTokenRow(
     .eq(
       "platform_account_id",
       pageId,
-    )
+    );
+  if (socialAccountId) query.eq("id", socialAccountId);
+  const { data, error } = await query
     /*
      * A Page can legitimately appear twice: once as the live connection, and
      * once as a released claim left behind in the workspace that used to own
@@ -473,12 +473,14 @@ export function isFacebookAccessTokenError(
  */
 export async function refreshFacebookPageAccessToken(
   pageIdInput?: string,
+  socialAccountId?: string,
 ): Promise<string> {
   const pageId =
     getPageId(pageIdInput);
   const socialAccount =
     await loadFacebookTokenRow(
       pageId,
+      socialAccountId,
     );
 
   if (

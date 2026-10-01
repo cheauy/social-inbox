@@ -97,12 +97,12 @@ export function loadMetaStickerPacks(businessId: string, conversationId: string)
 export function metaStickerItemsKey(packId: string, query: string) {
   return query.trim().length >= 2 ? `search:${query.trim()}` : `pack:${packId}`;
 }
-export function loadMetaStickerItems(businessId: string, conversationId: string, packId: string, query: string): Promise<MetaStickerChoice[]> {
+export function loadMetaStickerItems(businessId: string, conversationId: string, packId: string, query: string, refresh = false): Promise<MetaStickerChoice[]> {
   const key = metaStickerItemsKey(packId, query), cached = readMetaStickerCache<MetaStickerChoice[]>(businessId, key);
-  if (cached?.fresh) return Promise.resolve(cached.value);
+  if (cached?.fresh && !refresh) return Promise.resolve(cached.value);
   return shareRequest(businessId, key, async () => {
     const search = query.trim().length >= 2;
-    const data = await get(search ? "search" : "pack", search ? { conversationId, q: query.trim() } : { conversationId, packId });
+    const data = await get(search ? "search" : "pack", search ? { conversationId, q: query.trim() } : { conversationId, packId, ...(refresh ? { refresh: "1" } : {}) });
     if (!valid(key, data.stickers)) throw new Error("Unable to load Messenger stickers.");
     const values: Record<string, Value> = { [key]: data.stickers };
     if (!search) values[`preview:${packId}`] = data.stickers.find((sticker: MetaStickerChoice) => sticker.previewUrl) || null;

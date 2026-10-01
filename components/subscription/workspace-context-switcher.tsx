@@ -1,5 +1,7 @@
 "use client";
 
+import { readWorkspaces } from "@/lib/workspaces/read-workspaces";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
@@ -129,11 +131,7 @@ export function WorkspaceContextSwitcher({
     }, WORKSPACE_LOAD_TIMEOUT_MS);
 
     try {
-      const response = await fetch("/api/workspaces", {
-        method: "GET",
-        cache: "no-store",
-        signal: controller.signal,
-      });
+      const response = await readWorkspaces(controller.signal);
       const result = (await response.json()) as WorkspaceResponse;
 
       if (!response.ok || !result.success) {

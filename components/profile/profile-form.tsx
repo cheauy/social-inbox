@@ -1,5 +1,7 @@
 "use client";
 
+import { readWorkspaces } from "@/lib/workspaces/read-workspaces";
+
 import {
   useEffect,
   useRef,
@@ -83,9 +85,7 @@ export function ProfileForm({
 
     async function loadWorkspaceName() {
       try {
-        const response = await fetch("/api/workspaces", {
-          cache: "no-store",
-        });
+        const response = await readWorkspaces();
 
         const result = (await response.json()) as WorkspacesResponse;
 

@@ -1,3 +1,5 @@
+import { getConversationPage, ConversationPagingUnavailable } from "@/lib/inbox/get-conversation-page";
+import { parseConversationPageRequest } from "@/lib/inbox/conversation-page-contract";
 import { InboxView } from "@/components/inbox/inbox-view";
 import {
   getConversations,
@@ -26,6 +28,7 @@ type InboxPageProps = {
     channel?: string | string[];
     page?: string | string[];
     workspace?: string | string[];
+    view?: string | string[];
   }>;
 };
 
@@ -73,22 +76,6 @@ export default async function InboxPage({
    * channel did the same work as opening all of them and then discarded most
    * of it. getConversations applies exactly these conditions.
    */
-  const [
-    channelConversations,
-    teamMembers,
-  ] = await Promise.all([
-    getConversations(
-      inboxScope.accessibleBusinessIds,
-      {
-        channelId: selectedChannelId,
-        workspaceId: selectedWorkspaceId,
-      },
-    ),
-    getTeamMembers(
-      inboxScope.accessibleBusinessIds,
-    ),
-  ]);
-
   const requestedStatus =
     getSingleSearchParam(
       params.status,
@@ -104,38 +91,45 @@ export default async function InboxPage({
       ? (requestedStatus as ConversationStatus)
       : "all";
 
-  /*
-   * Every status goes to the client, and the client filters.
-   *
-   * The status filter used to be applied here, so switching status was a
-   * server round trip -- measured at 1.6 to 2.2 seconds in development. The
-   * browser then had only that status's conversations, which is what made
-   * switching from one status to another show nothing at all until the server
-   * answered: a conversation has exactly one status, so filtering Open's
-   * conversations for Closed always finds none.
-   *
-   * Sending all of them costs almost nothing. This workspace holds 466 open,
-   * 5 pending and 4 closed, and All Conversations -- the default view --
-   * already sends all 475. Filtering to Closed now sends the same 475 rather
-   * than 4, and in exchange every status switch is instant and needs no
-   * loading state at all.
-   *
-   * The URL still changes, so a filtered view stays shareable, and
-   * statusCounts below are still counted here. Only the filtering moved.
-   */
+  const pageRequest = parseConversationPageRequest({
+    status: activeStatus, view: getSingleSearchParam(params.view) ?? "all", search: "",
+    channelId: selectedChannelId, workspaceId: selectedWorkspaceId && inboxScope.accessibleBusinessIds.includes(selectedWorkspaceId) ? selectedWorkspaceId : null,
+    workspaceContextId: selectedWorkspaceId && inboxScope.accessibleBusinessIds.includes(selectedWorkspaceId) ? selectedWorkspaceId : inboxScope.accessibleBusinessIds.includes(inboxScope.currentBusinessId) ? inboxScope.currentBusinessId : null,
+  });
+  let initialPage;
+  try { initialPage = await getConversationPage(pageRequest); }
+  catch (error) {
+    // Safe rollout: only an absent read RPC retains the complete legacy dataset.
+    // Other errors must not masquerade as complete or empty results.
+    if (!(error instanceof ConversationPagingUnavailable)) throw error;
+  }
+  const [
+    channelConversations,
+    teamMembers,
+  ] = await Promise.all([
+    initialPage ? Promise.resolve([...initialPage.conversations]) : getConversations(
+      inboxScope.accessibleBusinessIds,
+      { channelId: selectedChannelId, workspaceId: selectedWorkspaceId },
+    ),
+    getTeamMembers(
+      inboxScope.accessibleBusinessIds,
+    ),
+  ]);
+
+  // An explicitly selected conversation is independently authorized even
+  // when it falls outside the visible page. Keep it out of the page cursor.
   const requestedConversationId =
     getSingleSearchParam(
       params.conversation,
     );
 
-  const requestedConversation =
-    requestedConversationId
-      ? channelConversations.find(
-          (conversation) =>
-            conversation.id ===
-            requestedConversationId,
-        ) ?? null
-      : null;
+  let requestedConversation = requestedConversationId
+    ? channelConversations.find(row => row.id === requestedConversationId) ?? null : null;
+  if (initialPage && requestedConversationId && !requestedConversation) {
+    const selected = await getConversations(inboxScope.accessibleBusinessIds, { conversationIds: [requestedConversationId], channelId: selectedChannelId, workspaceId: selectedWorkspaceId });
+    requestedConversation = selected[0] ?? null;
+    if (requestedConversation) channelConversations.push(requestedConversation);
+  }
 
   /*
    * This exact ID controls both the header
@@ -207,7 +201,8 @@ export default async function InboxPage({
           }
           messages={messages}
           activeStatus={activeStatus}
-          statusCounts={statusCounts}
+          statusCounts={initialPage?.counts.statusCounts ?? statusCounts}
+          pagination={initialPage ? { request: pageRequest, page: { total: initialPage.total, hasMore: initialPage.hasMore, cursor: initialPage.cursor, counts: initialPage.counts, ids: initialPage.conversations.map(row => row.id) } } : undefined}
           teamMembers={teamMembers}
           currentBusinessId={
             inboxScope.currentBusinessId

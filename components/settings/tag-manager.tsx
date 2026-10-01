@@ -1,5 +1,7 @@
 "use client";
 
+import { readWorkspaces } from "@/lib/workspaces/read-workspaces";
+
 import { useMemo, useState } from "react";
 
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
@@ -262,9 +264,7 @@ export function TagManager({
     setCopySourcesLoading(true);
 
     try {
-      const response = await fetch("/api/workspaces", {
-        cache: "no-store",
-      });
+      const response = await readWorkspaces();
       const result =
         (await response.json()) as WorkspacesResponse;
 

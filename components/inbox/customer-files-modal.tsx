@@ -6,7 +6,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 
@@ -81,12 +80,6 @@ type CustomerFilesModalProps = {
   customerName: string;
   onClose: () => void;
 };
-
-const MAX_FILE_SIZE =
-  20 * 1024 * 1024;
-
-const ACCEPT =
-  "image/*,video/*,audio/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip";
 
 function formatFileSize(
   value:
@@ -247,7 +240,6 @@ function CloseIcon() {
 
 export function CustomerFilesModal({
   contactId,
-  conversationId,
   customerName,
   onClose,
 }: CustomerFilesModalProps) {
@@ -287,12 +279,6 @@ export function CustomerFilesModal({
     useState(true);
 
   const [
-    uploading,
-    setUploading,
-  ] =
-    useState(false);
-
-  const [
     deletingId,
     setDeletingId,
   ] =
@@ -304,35 +290,6 @@ export function CustomerFilesModal({
     useState<
       string | null
     >(null);
-
-  const [
-    linkFormOpen,
-    setLinkFormOpen,
-  ] =
-    useState(false);
-
-  const [
-    linkTitle,
-    setLinkTitle,
-  ] =
-    useState("");
-
-  const [
-    linkUrl,
-    setLinkUrl,
-  ] =
-    useState("");
-
-  const [
-    savingLink,
-    setSavingLink,
-  ] =
-    useState(false);
-
-  const inputRef =
-    useRef<HTMLInputElement | null>(
-      null,
-    );
 
   const loadFiles =
     useCallback(
@@ -474,265 +431,6 @@ export function CustomerFilesModal({
       );
     };
   }, [onClose]);
-
-  async function uploadFile(
-    file: File,
-  ) {
-    if (
-      file.size <= 0 ||
-      file.size >
-        MAX_FILE_SIZE
-    ) {
-      setError(
-        "Choose a file between 1 byte and 20 MB.",
-      );
-      return;
-    }
-
-    if (!file.type) {
-      setError(
-        "This file has no recognized MIME type. Choose a supported image, video, audio, PDF, Office document, text/CSV, or ZIP file.",
-      );
-      return;
-    }
-
-    setUploading(true);
-    setError(null);
-
-    try {
-      const prepareResponse =
-        await fetch(
-          `/api/customers/${encodeURIComponent(
-            contactId,
-          )}/files`,
-          {
-            method:
-              "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-            body:
-              JSON.stringify(
-                {
-                  action:
-                    "prepare-upload",
-                  fileName:
-                    file.name,
-                  mimeType:
-                    file.type,
-                  sizeBytes:
-                    file.size,
-                  conversationId,
-                },
-              ),
-          },
-        );
-
-      const prepareResult =
-        (await prepareResponse.json()) as {
-          success?: boolean;
-          error?: string;
-          upload?: {
-            bucket: string;
-            path: string;
-            token: string;
-          };
-        };
-
-      if (
-        !prepareResponse.ok ||
-        !prepareResult.success ||
-        !prepareResult.upload
-      ) {
-        throw new Error(
-          prepareResult.error ??
-            "Unable to prepare the upload.",
-        );
-      }
-
-      const {
-        bucket,
-        path,
-        token,
-      } =
-        prepareResult.upload;
-
-      const {
-        error:
-          uploadError,
-      } =
-        await supabase
-          .storage
-          .from(bucket)
-          .uploadToSignedUrl(
-            path,
-            token,
-            file,
-            {
-              contentType:
-                file.type,
-            },
-          );
-
-      if (uploadError) {
-        throw new Error(
-          uploadError.message,
-        );
-      }
-
-      const finalizeResponse =
-        await fetch(
-          `/api/customers/${encodeURIComponent(
-            contactId,
-          )}/files`,
-          {
-            method:
-              "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-            body:
-              JSON.stringify(
-                {
-                  action:
-                    "finalize-upload",
-                  fileName:
-                    file.name,
-                  mimeType:
-                    file.type,
-                  sizeBytes:
-                    file.size,
-                  storagePath:
-                    path,
-                  conversationId,
-                },
-              ),
-          },
-        );
-
-      const finalizeResult =
-        (await finalizeResponse.json()) as {
-          success?: boolean;
-          error?: string;
-        };
-
-      if (
-        !finalizeResponse.ok ||
-        !finalizeResult.success
-      ) {
-        throw new Error(
-          finalizeResult.error ??
-            "Unable to save the customer file.",
-        );
-      }
-
-      await loadFiles(
-        true,
-      );
-      setActiveTab(file.type.startsWith("image/") || file.type.startsWith("video/") ? "media" : "files");
-    } catch (
-      uploadError
-    ) {
-      setError(
-        uploadError instanceof
-          Error
-          ? uploadError.message
-          : "Unable to upload the customer file.",
-      );
-    } finally {
-      setUploading(false);
-
-      if (
-        inputRef.current
-      ) {
-        inputRef.current.value =
-          "";
-      }
-    }
-  }
-
-  async function addLink() {
-    if (
-      !linkUrl.trim()
-    ) {
-      setError(
-        "Enter a link first.",
-      );
-      return;
-    }
-
-    setSavingLink(true);
-    setError(null);
-
-    try {
-      const response =
-        await fetch(
-          `/api/customers/${encodeURIComponent(
-            contactId,
-          )}/files`,
-          {
-            method:
-              "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-            body:
-              JSON.stringify(
-                {
-                  action:
-                    "add-link",
-                  linkTitle:
-                    linkTitle.trim(),
-                  linkUrl:
-                    linkUrl.trim(),
-                  conversationId,
-                },
-              ),
-          },
-        );
-
-      const result =
-        (await response.json()) as {
-          success?: boolean;
-          error?: string;
-        };
-
-      if (
-        !response.ok ||
-        !result.success
-      ) {
-        throw new Error(
-          result.error ??
-            "Unable to save this link.",
-        );
-      }
-
-      setLinkFormOpen(
-        false,
-      );
-      setLinkTitle("");
-      setLinkUrl("");
-
-      await loadFiles(
-        true,
-      );
-      setActiveTab("links");
-    } catch (
-      linkError
-    ) {
-      setError(
-        linkError instanceof
-          Error
-          ? linkError.message
-          : "Unable to save this link.",
-      );
-    } finally {
-      setSavingLink(false);
-    }
-  }
 
   async function deleteItem(
     item:
@@ -931,109 +629,6 @@ export function CustomerFilesModal({
             <CloseIcon />
           </button>
         </header>
-
-        <div className="flex flex-wrap items-center justify-end gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3">
-          <div className="flex items-center gap-2">
-            <input
-              ref={inputRef}
-              type="file"
-              className="hidden"
-              accept={ACCEPT}
-              onChange={(
-                event,
-              ) => {
-                const file =
-                  event.target.files?.[0];
-
-                if (file) {
-                  void uploadFile(
-                    file,
-                  );
-                }
-              }}
-            />
-
-            <button
-              type="button"
-              onClick={() =>
-                setLinkFormOpen(
-                  (current) =>
-                    !current,
-                )
-              }
-              disabled={
-                uploading
-              }
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Add link
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                inputRef.current?.click()
-              }
-              disabled={
-                uploading
-              }
-              className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-            >
-              {uploading
-                ? "Uploading..."
-                : "Upload file"}
-            </button>
-          </div>
-        </div>
-
-        {linkFormOpen ? (
-          <div className="border-b border-slate-200 bg-white px-5 py-4">
-            <div className="grid gap-3 sm:grid-cols-[minmax(160px,0.45fr)_minmax(0,1fr)_auto]">
-              <input
-                value={
-                  linkTitle
-                }
-                onChange={(
-                  event,
-                ) =>
-                  setLinkTitle(
-                    event.target.value,
-                  )
-                }
-                placeholder="Link title (optional)"
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-
-              <input
-                value={linkUrl}
-                onChange={(
-                  event,
-                ) =>
-                  setLinkUrl(
-                    event.target.value,
-                  )
-                }
-                placeholder="https://..."
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-
-              <button
-                type="button"
-                onClick={() =>
-                  void addLink()
-                }
-                disabled={
-                  savingLink
-                }
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
-              >
-                {savingLink
-                  ? "Saving..."
-                  : "Save link"}
-              </button>
-            </div>
-          </div>
-        ) : null}
 
         {error ? (
           <div className="border-b border-red-200 bg-red-50 px-5 py-3 text-sm text-red-700">

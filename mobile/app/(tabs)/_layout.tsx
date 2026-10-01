@@ -41,17 +41,6 @@ function InboxBadge() {
 }
 
 /*
- * The same dot on Group Chat. The server has already decided what counts --
- * unread in a room you follow, mentions only in one you have muted -- so the
- * tab just draws whatever total it sends.
- */
-function RoomsBadge() {
-  const { roomsBadge } = useInbox();
-
-  return roomsBadge === 0 ? null : <Dot />;
-}
-
-/*
  * The same dot on Notifications: an unread alert, or a reminder that has come
  * due. Both are things somebody is meant to act on, and until now the only
  * way to find out either had happened was to open the tab and look.
@@ -71,13 +60,12 @@ function TabIcon({
   // What Tabs hands the callback is a ColorValue, not a string, and Ionicons
   // takes the same union -- so borrow its type rather than narrowing.
   color: React.ComponentProps<typeof Ionicons>["color"];
-  badge?: "inbox" | "rooms" | "alerts";
+  badge?: "inbox" | "alerts";
 }) {
   return (
     <View>
       <Ionicons name={name} size={23} color={color} />
       {badge === "inbox" ? <InboxBadge /> : null}
-      {badge === "rooms" ? <RoomsBadge /> : null}
       {badge === "alerts" ? <AlertsBadge /> : null}
     </View>
   );
@@ -85,6 +73,8 @@ function TabIcon({
 
 export default function TabsLayout() {
   const { t } = useLanguage();
+  const { permissions, member } = useInbox();
+  const canViewBot = member?.role === "owner" || permissions.channels === "view" || permissions.channels === "manage";
 
   return (
     <Tabs
@@ -116,13 +106,17 @@ export default function TabsLayout() {
       />
 
       <Tabs.Screen
-        name="group-chat"
+        name="bot"
         options={{
-          title: t("Group Chat", "ឆាតក្រុម"),
-          tabBarIcon: ({ color }) => (
-            <TabIcon name="people" color={color} badge="rooms" />
-          ),
+          title: "Tenh Bot",
+          href: canViewBot ? "/bot" : null,
+          tabBarIcon: ({ color }) => <TabIcon name="chatbox-ellipses-outline" color={color} />,
         }}
+      />
+
+      <Tabs.Screen
+        name="group-chat"
+        options={{ href: null }}
       />
 
       <Tabs.Screen

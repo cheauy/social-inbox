@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
-import { canManageTeamChat } from "@/lib/team/team-chat-server";
+import { canManageTeamSettings } from "@/lib/team/team-members-server";
 import { authenticateDevice } from "@/lib/extension/device-auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -76,7 +76,7 @@ export async function GET(request: Request) {
   }
 
   const member = authResult.member;
-  const admin = canManageTeamChat(member.role);
+  const admin = canManageTeamSettings(member.role);
 
   /*
    * Two shapes, because a deploy can land before its migration.

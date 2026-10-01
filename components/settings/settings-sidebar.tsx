@@ -1,5 +1,7 @@
 "use client";
 
+import { readWorkspaces } from "@/lib/workspaces/read-workspaces";
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -396,9 +398,7 @@ export function SettingsSidebar() {
     setWorkspaceLoading(true);
 
     try {
-      const response = await fetch("/api/workspaces", {
-        cache: "no-store",
-      });
+      const response = await readWorkspaces();
       const result = (await response.json()) as WorkspacesResponse;
 
       if (response.ok && result.success) {

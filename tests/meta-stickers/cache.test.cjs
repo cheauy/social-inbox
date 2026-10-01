@@ -43,3 +43,9 @@ test('explicit retry invalidates one resource while retaining other cached packs
  const h=setup();for(const id of ['123','456']){const pending=h.api.loadMetaStickerItems('b1','conv1',id,'');h.resolve(h.calls.at(-1),{success:true,stickers:[{...sticker,packId:id}]});await pending}
  h.api.invalidateMetaStickerCache('b1',['pack:123']);assert.equal(h.api.readMetaStickerCache('b1','pack:123'),null);assert.equal(h.api.readMetaStickerCache('b1','pack:456').fresh,true);
 });
+
+test('image recovery bypasses fresh catalog metadata and shares one bounded refresh',async()=>{
+ const h=setup(),first=h.api.loadMetaStickerItems('b1','conv1','123','');h.resolve(h.calls[0],{success:true,stickers:[sticker]});await first;
+ const refresh=h.api.loadMetaStickerItems('b1','conv1','123','',true),same=h.api.loadMetaStickerItems('b1','conv1','123','',true);assert.equal(refresh,same);assert.equal(h.calls.length,2);assert.match(h.calls[1].url,/refresh=1/);
+ h.resolve(h.calls[1],{success:true,stickers:[{...sticker,previewUrl:'https://example.com/new.png'}]});await refresh;assert.match(h.api.readMetaStickerCache('b1','pack:123').value[0].previewUrl,/new.png/);
+});

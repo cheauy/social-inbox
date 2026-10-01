@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
-import { canManageTeamChat } from "@/lib/team/team-chat-server";
+import { canManageTeamSettings } from "@/lib/team/team-members-server";
 import {
   authenticateDevice,
   recordExtensionEvent,
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (device.member_id !== member.id && !canManageTeamChat(member.role)) {
+  if (device.member_id !== member.id && !canManageTeamSettings(member.role)) {
     return NextResponse.json(
       {
         success: false,

@@ -13,12 +13,11 @@ export function clearReadCache(matches?: (key: string) => boolean) {
 }
 
 export function invalidateReadCache(userId: string, workspaceId: string | null | undefined, path: string) {
-  if (/\/(conversations|team-chat\/rooms)\/[^/]+\/(read|unread|pin)$/.test(path)) return;
+  if (/\/conversations\/[^/]+\/(read|unread|pin)$/.test(path)) return;
   clearReadCache(key => {
     const [user, workspace, resource] = JSON.parse(key) as string[];
     if (user !== userId || (workspaceId && workspace !== workspaceId)) return false;
     if (path.startsWith("/api/saved-repl")) return resource.startsWith("/api/saved-repl");
-    if (path.startsWith("/api/team-chat/")) return resource.startsWith("/api/team-chat/");
     if (/^\/api\/(facebook|telegram)\//.test(path) || path.startsWith("/api/conversations/")) {
       return resource.startsWith("/api/conversations/") || resource.startsWith("/api/customers/");
     }

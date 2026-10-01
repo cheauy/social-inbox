@@ -4,7 +4,6 @@ import { DashboardNavLink } from "./dashboard-nav-link";
 import { CurrentUserProfileMenu } from "@/components/dashboard/current-user-profile-menu";
 import { TeamNotificationCenter } from "@/components/dashboard/team-notification-center";
 import { DashboardNavigationLabel } from "@/components/dashboard/dashboard-navigation-label";
-import { GroupChatNavBadge } from "@/components/dashboard/group-chat-nav-badge";
 import { NavPermissionGate } from "@/components/dashboard/nav-permission-gate";
 import { WorkspaceSwitcher } from "@/components/dashboard/workspace-switcher";
 import { isCurrentUserTenhAdminIdentity } from "@/lib/admin/tenh-admin-auth";
@@ -16,7 +15,7 @@ type NavItem = {
 
 const normalNavigation: NavItem[] = [
   { label: "Inbox", href: "/dashboard/inbox" },
-  { label: "Group Chat", href: "/dashboard/group-chat" },
+  { label: "Tenh Bot", href: "/dashboard/tenh-bot" },
   { label: "Analytics", href: "/dashboard/analytics" },
   { label: "Subscription", href: "/dashboard/subscription" },
   { label: "Integrations", href: "/dashboard/integrations" },
@@ -40,7 +39,7 @@ export async function DashboardHeader() {
     : normalNavigation;
 
   return (
-    <header className="flex h-[72px] shrink-0 items-center border-b border-slate-200 bg-white px-5">
+    <header data-dashboard-header className="flex h-[72px] shrink-0 items-center border-b border-slate-200 bg-white px-5">
       <div className="flex w-full min-w-0 items-center">
         <a
           href="/dashboard/inbox"
@@ -72,15 +71,12 @@ export async function DashboardHeader() {
               <>
                 <DashboardNavigationLabel label={item.label} />
 
-                {item.href === "/dashboard/group-chat" ? (
-                  <GroupChatNavBadge />
-                ) : null}
               </>
             );
 
             const link = <DashboardNavLink key={item.href} href={item.href}>{linkContent}</DashboardNavLink>;
 
-            if (item.href === "/dashboard/integrations") {
+            if (item.href === "/dashboard/integrations" || item.href === "/dashboard/tenh-bot") {
               return (
                 <NavPermissionGate
                   key={item.href}

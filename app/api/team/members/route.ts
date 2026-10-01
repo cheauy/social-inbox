@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { loadActiveBusinessMembers } from "@/lib/team/team-chat-server";
+import { loadActiveBusinessMembers } from "@/lib/team/team-members-server";
 
 const MAX_NAME_LENGTH = 120;
 
