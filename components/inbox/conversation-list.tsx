@@ -7,7 +7,7 @@ import { DeferredInboxItem } from "@/components/inbox/deferred-inbox-item";
 import type { BulkReadResult, ReadTarget } from "@/lib/inbox/bulk-read";
 import { useConversationPages } from "@/lib/inbox/use-conversation-pages";
 import { useConversationListAnchor } from "@/lib/inbox/use-conversation-list-anchor";
-import { CONVERSATION_PAGE_SIZE, type ConversationPagingInitial } from "@/lib/inbox/conversation-page-contract";
+import { CONVERSATION_PAGE_SIZE, INBOX_PAGE_CHANGED_EVENT, type ConversationPagingInitial } from "@/lib/inbox/conversation-page-contract";
 
 import { CustomerAvatar } from "@/components/customer-avatar";
 
@@ -2030,7 +2030,7 @@ function ConversationListView({
   }
 
   const [
-    selectedViewKey,
+    localSelectedViewKey,
     setSelectedViewKey,
   ] =
     useState(
@@ -2042,6 +2042,14 @@ function ConversationListView({
         ),
     );
 
+  // Paging reads use one atomic URL scope. An optimistic view combined with
+  // the previous channel/workspace would start an unnecessary wrong-scope read.
+  const selectedViewKey = pagination ? viewKeyFromUrl(searchParams.get("view")) : localSelectedViewKey;
+  const urlStatus = searchParams.get("status");
+  const pageStatus: StatusFilter = pagination
+    ? urlStatus && ["open", "pending", "resolved", "closed", "spam"].includes(urlStatus) ? urlStatus as StatusFilter : "all"
+    : optimisticStatus;
+
   useEffect(() => {
     setSelectedViewKey(
       viewKeyFromUrl(
@@ -2050,9 +2058,12 @@ function ConversationListView({
         ),
       ),
     );
-  }, [
-    searchParams,
-  ]);
+    if (pagination) {
+      const status = searchParams.get("status");
+      setOptimisticStatus(status && ["open", "pending", "resolved", "closed", "spam"].includes(status)
+        ? status as StatusFilter : "all");
+    }
+  }, [searchParams, pagination]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2419,10 +2430,10 @@ function ConversationListView({
   const workspaceContextId =
     selectedWorkspaceId ?? currentBusinessId;
 
-  const pageRequest = useMemo(() => ({ status: optimisticStatus, view: selectedViewKey,
+  const pageRequest = useMemo(() => ({ status: pageStatus, view: selectedViewKey,
     search: deferredSearch.trim(), channelId: selectedChannelId, workspaceId: selectedWorkspaceId,
     workspaceContextId: workspaceContextId ?? null, cursor: null }),
-    [optimisticStatus, selectedViewKey, deferredSearch, selectedChannelId, selectedWorkspaceId, workspaceContextId]);
+    [pageStatus, selectedViewKey, deferredSearch, selectedChannelId, selectedWorkspaceId, workspaceContextId]);
   const pager = useConversationPages(pagination, pageRequest, conversations, onPageRows);
   const { enabled: pagingEnabled, loading: pagingLoading, error: pagingError, more: loadNextPage } = pager;
   const [snapshotLoading, setSnapshotLoading] = useState(false);
@@ -2898,7 +2909,10 @@ function ConversationListView({
   // Server paging owns complete search/view qualification. Apply the known
   // unread predicate immediately, rather than waiting for its debounced refresh.
   const filteredConversations = pager.enabled
-    ? pager.rows.filter(row => selectedViewKey !== "unread" || row.unread_count > 0)
+    ? pager.rows.filter(row => !["unread", "pinned", "comment"].includes(selectedViewKey) || matchesView({
+      conversation: row, key: selectedViewKey, savedViews, memberId, memberIdByBusiness,
+      workspaceContextId, channelDirectory,
+    }))
     : legacyFilteredConversations;
   const visibleConversations =
     useMemo(
@@ -3281,11 +3295,15 @@ function ConversationListView({
     const queryString =
       query.toString();
 
-    router.push(
-      queryString
-        ? `/dashboard/inbox?${queryString}`
-        : "/dashboard/inbox",
-    );
+    const href = queryString ? `/dashboard/inbox?${queryString}` : "/dashboard/inbox";
+    if (pager.enabled) {
+      // The page API owns paging-mode view qualification; avoid a second RSC
+      // request for the same view and preserve the selected chat/draft tree.
+      setOptimisticStatus("all");
+      window.history.pushState(null, "", href);
+    } else {
+      router.push(href);
+    }
   }
 
   function openCreateView() {
@@ -3486,6 +3504,7 @@ function ConversationListView({
         },
       );
 
+      if (pager.enabled) window.dispatchEvent(new CustomEvent(INBOX_PAGE_CHANGED_EVENT, { detail: { viewConfigurationChanged: true } }));
       const nextKey =
         `saved:${result.view.id}`;
 
@@ -3578,6 +3597,7 @@ function ConversationListView({
         );
       }
 
+      if (pager.enabled) window.dispatchEvent(new CustomEvent(INBOX_PAGE_CHANGED_EVENT, { detail: { viewConfigurationChanged: true } }));
       setDeleteViewTarget(
         null,
       );
@@ -4954,7 +4974,7 @@ function ConversationListView({
                 }{" "}
                 ·{" "}
                 {
-                  pager.enabled ? pager.page?.total ?? 0 : baseViewConversations.length
+                  pager.enabled ? pager.page?.total ?? "…" : baseViewConversations.length
                 }
               </span>
 

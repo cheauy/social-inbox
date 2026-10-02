@@ -7,17 +7,17 @@ const row=(n,extra={})=>({id:uuid(n),business_id:uuid(900),status:'open',is_pinn
 const counts={views:{all:1000,unread:1000,my:0,unassigned:1000,comment:0,open:1000,pinned:0},statusCounts:{all:1000,open:1000,pending:0,resolved:0,closed:0,spam:0},totalUnreadCount:1000,unreadConversationCount:1000};
 const page=rows=>({conversations:rows,updates:[],matchedKnownIds:[],total:1000,hasMore:true,cursor:rows.length?{id:rows.at(-1).id,pinned:false,lastMessageAt:rows.at(-1).last_message_at}:null,counts,readTargets:[]});
 function harness(initialRows=Array.from({length:30},(_,i)=>row(i+1))){
- const h=hooks(),events=new Map(),jobs=new Map(),calls=[];let timer=0,answer=body=>page(Array.from({length:30},(_,i)=>row(i+(body.cursor?31:1))));
+ const clock={now:Date.now()};const h=hooks(),events=new Map(),jobs=new Map(),calls=[];let timer=0,answer=body=>page(Array.from({length:30},(_,i)=>row(i+(body.cursor?31:1))));
  const doc={visibilityState:'visible',addEventListener:(n,fn)=>events.set(n,fn),removeEventListener:n=>events.delete(n)};
  const win={addEventListener:(n,fn)=>events.set(n,fn),removeEventListener:n=>events.delete(n),dispatchEvent:e=>events.get(e.type)?.(e)};
- const load=loader({react:h.React},{document:doc,window:win,AbortController,CustomEvent,
+ const load=loader({react:h.React},{document:doc,window:win,AbortController,CustomEvent,Date:class extends Date {static now(){return clock.now;}},
   setTimeout:fn=>{jobs.set(++timer,fn);return timer},clearTimeout:id=>jobs.delete(id),
-  fetch:async(_url,init)=>{const body=JSON.parse(init.body);calls.push(body);const result=await answer(body,init.signal);return Response.json({success:true,page:result});}});
+  fetch:async(_url,init)=>{const body=JSON.parse(init.body);calls.push(body);const result=await answer(body,init.signal);return result instanceof Response ? result : Response.json({success:true,page:result});}});
  const hook=load('lib/inbox/use-conversation-pages.ts').useConversationPages;
  const props={initial:{request:request(),page:{...page(initialRows),ids:initialRows.map(r=>r.id)}},request:request(),live:initialRows,onRows:()=>{}};
  const render=()=>h.render(()=>hook(props.initial,props.request,props.live,props.onRows),{});
  const flush=async()=>{const pending=[...jobs.values()];jobs.clear();for(const fn of pending)fn();await tick();return render()};
- return {h,props,render,flush,events,jobs,calls,doc,answer:fn=>answer=fn};
+ return {h,props,render,flush,events,jobs,calls,doc,advance:ms=>clock.now+=ms,answer:fn=>answer=fn};
 }
 test('request validation rejects arbitrary views, injected scope IDs, overlong search and unbounded known IDs',()=>{
  assert.equal(contract.CONVERSATION_PAGE_SIZE,30);
@@ -154,4 +154,30 @@ test('authoritative empty page stays empty during quiet refresh while a differen
  d.props.request={...request(),view:'pinned'};d.render();await tick();s=d.render();assert.equal(s.initialLoading,true);
  release({...page([]),hasMore:false});await tick();s=d.render();assert.equal(s.initialLoading,false);
  }finally{d.h.cleanup()}
+});
+test('new view over 1000 loaded conversations requests only one first page, not five qualification batches',async()=>{
+ const d=harness(Array.from({length:1000},(_,i)=>row(i+1)));try{d.render();await tick();d.props.request={...request(),view:'comment'};d.render();await tick();const s=d.render();assert.equal(d.calls.length,1);assert.equal(d.calls[0].knownIds,undefined);assert.equal(s.rows.length,30);assert.equal(s.page.total,1000);}finally{d.h.cleanup()}
+});
+test('repeat view renders bounded warm rows and its own total immediately, then revalidates once',async()=>{
+ const d=harness();let release;try{d.render();await tick();d.answer(()=>({...page([row(3)]),total:1}));d.props.request={...request(),view:'unread'};d.render();await tick();let s=d.render();assert.equal(s.page.total,1);
+ d.answer(()=>new Promise(r=>release=r));d.props.request=request();s=d.render();assert.equal(s.rows.length,30);assert.equal(s.page.total,1000);assert.equal(s.initialLoading,false);await tick();assert.equal(d.calls.length,2);assert.equal(d.calls[1].knownIds.length,30);
+ release({...page(Array.from({length:30},(_,i)=>row(i+1))),matchedKnownIds:Array.from({length:30},(_,i)=>uuid(i+1))});await tick();s=d.render();assert.equal(s.rows.length,30);assert.equal(d.calls.length,2);
+ }finally{d.h.cleanup()}
+});
+test('cold-view counts do not inherit previous-view totals, and errors permit retry without wrong rows',async()=>{
+ const d=harness();try{d.render();await tick();d.answer(()=>{throw Error('offline')});d.props.request={...request(),view:'pinned'};let s=d.render();assert.equal(s.page,undefined);assert.equal(s.rows.length,0);await tick();s=d.render();assert.match(s.error,/retry/i);assert.equal(s.initialLoading,false);assert.equal(s.page,undefined);d.answer(()=>({...page([]),total:0,hasMore:false}));s.retry();await tick();s=d.render();assert.equal(s.page.total,0);assert.equal(s.error,null);}finally{d.h.cleanup()}
+});
+test('activity invalidates inactive view cache before pin/read/comment re-entry',async()=>{
+ const d=harness();try{d.render();await tick();d.answer(()=>({...page([row(2)]),total:1}));d.props.request={...request(),view:'pinned'};d.render();await tick();d.props.live=d.props.live.map(r=>r.id===uuid(1)?{...r,unread_count:0,is_pinned:true}:r);d.render();await tick();d.props.request=request();const s=d.render();assert.equal(s.rows.length,0);assert.equal(s.initialLoading,true);}finally{d.h.cleanup()}
+});
+test('workspace context is part of cache key and revoked cached rows cannot be reused',async()=>{
+ const d=harness();try{d.render();await tick();d.answer(()=>({...page([]),total:0}));d.props.request={...request(),view:'unread'};d.render();await tick();d.props.live=[];d.props.request=request();let s=d.render();assert.equal(s.rows.length,0);d.props.request={...request(),workspaceContextId:uuid(999)};s=d.render();assert.equal(s.page,undefined);assert.equal(s.initialLoading,true);}finally{d.h.cleanup()}
+});
+test('view cache expires after 30 seconds and evicts beyond six keys',async()=>{
+ const d=harness();try{d.render();await tick();d.answer(()=>page([row(2)]));for(let n=1;n<=7;n++){d.props.request={...request(),search:'term '+n};d.render();await tick();d.render();}
+ d.props.request=request();let s=d.render();assert.equal(s.initialLoading,true);await tick();d.render();d.props.request={...request(),search:'term 7'};s=d.render();assert.equal(s.initialLoading,false);await tick();d.render();d.advance(30001);d.props.request=request();s=d.render();assert.equal(s.initialLoading,true);
+ }finally{d.h.cleanup()}
+});
+test('authorization denial clears warm cached rows and supplies an error without switching chats',async()=>{
+ const d=harness();try{d.render();await tick();d.answer(()=>({...page([row(2)]),total:1}));d.props.request={...request(),view:'unread'};d.render();await tick();d.answer(()=>Response.json({success:false,error:'Forbidden'},{status:403}));d.props.request=request();let s=d.render();assert.equal(s.rows.length,30);await tick();s=d.render();assert.equal(s.rows.length,0);assert.match(s.error,/Forbidden/);}finally{d.h.cleanup()}
 });

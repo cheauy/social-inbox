@@ -7,7 +7,9 @@ import { INBOX_SYNC_EVENT, SYNC_TIMEOUT_MS } from "@/lib/inbox/live-sync";
 import { isOlderConversationState } from "@/lib/inbox/live-sync";
 import { INBOX_PAGE_CHANGED_EVENT, mergeConversationPage, type ConversationPage, type ConversationPageRequest, type ConversationPagingInitial } from "./conversation-page-contract";
 
-type State = { key: string; countRows: InboxConversation[]; rows: InboxConversation[]; page: ConversationPagingInitial["page"]; loading: boolean; error: string | null };
+type State = { key: string; countRows: InboxConversation[]; rows: InboxConversation[]; page: ConversationPagingInitial["page"]; loading: boolean; error: string | null; errorKey?: string };
+const VIEW_CACHE_MAX = 6, VIEW_CACHE_MAX_ROWS = 90, VIEW_CACHE_TTL_MS = 30_000;
+type CachedView = { state: State; at: number };
 const requestKey = (request: ConversationPageRequest) => JSON.stringify({ ...request, cursor: null, knownIds: undefined });
 const visible = () => document.visibilityState !== "hidden";
 const rowVersion = (row: InboxConversation) => JSON.stringify([row.updated_at,row.last_message_at,row.last_message_text,
@@ -24,11 +26,16 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
       const row = liveRows.find(row => row.id === id); return row ? [row] : [];
     }), page: initial.page, loading: false, error: null,
   } : null);
+  const [viewCache, setViewCache] = useState(() => new Map<string, CachedView>(
+    state && state.rows.length <= VIEW_CACHE_MAX_ROWS ? [[state.key, { state, at: Date.now() }]] : []));
+  const viewCacheRef = useRef(viewCache);
+  useEffect(() => { viewCacheRef.current = viewCache; }, [viewCache]);
   const stateRef = useRef(state), requestRef = useRef(request), onRowsRef = useRef(onRows);
   const controllerRef = useRef<AbortController | null>(null);
   const generationRef = useRef(0);
   const dirtyRef = useRef(false);
   const pendingIdsRef = useRef(new Set<string>());
+  const recentChangesRef = useRef(new Map<string, number>());
   const catchUpRef = useRef(false);
   const liveRowsRef = useRef(liveRows);
   const versionsRef = useRef(new Map(liveRows.map(row => [row.id,rowVersion(row)])));
@@ -42,6 +49,9 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
       const version = rowVersion(row);
       if (versionsRef.current.get(row.id) !== version) {
         versionsRef.current.set(row.id,version);
+        recentChangesRef.current.delete(row.id);
+        recentChangesRef.current.set(row.id, Date.now());
+        while (recentChangesRef.current.size > 200) recentChangesRef.current.delete(recentChangesRef.current.keys().next().value!);
         window.dispatchEvent(new CustomEvent(INBOX_PAGE_CHANGED_EVENT, { detail: { conversationId: row.id } }));
       }
     }
@@ -53,25 +63,36 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
       signal: AbortSignal.any([signal, AbortSignal.timeout(SYNC_TIMEOUT_MS)]), body: JSON.stringify({ ...body, snapshot }),
     });
     const result = await response.json() as { success?: boolean; page?: ConversationPage; error?: string };
-    if (!response.ok || !result.success || !result.page || !Array.isArray(result.page.conversations)) throw new Error(result.error ?? "Unable to load conversations. Please retry.");
+    if (!response.ok || !result.success || !result.page || !Array.isArray(result.page.conversations)) throw Object.assign(new Error(result.error ?? "Unable to load conversations. Please retry."), { denied: response.status === 401 || response.status === 403 });
     return result.page;
   }, []);
 
   const run = useCallback(async (mode: "replace" | "more" | "refresh") => {
     if (!initial || !visible()) { dirtyRef.current = true; return; }
     if (controllerRef.current) { if (mode === "refresh") dirtyRef.current = true; return; }
-    const current = stateRef.current, activeRequest = requestRef.current, activeKey = requestKey(activeRequest);
-    if (current?.key !== activeKey) mode = "replace";
+    const activeRequest = requestRef.current, activeKey = requestKey(activeRequest);
+    const cached = viewCacheRef.current.get(activeKey);
+    const warm = cached && Date.now() - cached.at <= VIEW_CACHE_TTL_MS ? {
+      ...cached.state, rows: cached.state.rows.filter(row => liveRowsRef.current.some(live => live.id === row.id && live.business_id === row.business_id)),
+    } : null;
+    const current = stateRef.current?.key === activeKey ? stateRef.current : warm;
+    if (!current) mode = "replace";
+    else if (mode === "replace") mode = "refresh";
     if (mode === "more" && (!current || current.key !== activeKey || !current.page.hasMore)) return;
     const controller = new AbortController(); controllerRef.current = controller;
     const generation = ++generationRef.current;
     const finishForeground = mode === "refresh" ? () => {} : beginForegroundLoading();
-    setState(previous => previous ? { ...previous, loading: true, error: null } : null);
+    if (current) setState({ ...current, loading: true, error: null });
+    else setState(previous => previous ? { ...previous, error: null } : null);
     try {
       let rows = mode === "replace" ? [] : current?.rows ?? [];
       const known = [...new Set([
-        ...(mode === "replace" || mode === "refresh" && catchUpRef.current ? liveRowsRef.current.map(row => row.id) : []),
+        // A new view needs only its first server-qualified page. Re-entry
+        // validates its bounded visited window rather than every loaded view.
+        ...(mode === "refresh" && (catchUpRef.current || stateRef.current?.key !== activeKey)
+          ? (warm ? warm.rows : liveRowsRef.current).map(row => row.id) : []),
         ...pendingIdsRef.current,
+        ...(mode === "replace" ? [...recentChangesRef.current].filter(([,at]) => Date.now() - at <= VIEW_CACHE_TTL_MS).map(([id]) => id) : []),
       ])];
       pendingIdsRef.current.clear(); catchUpRef.current = false;
       // Resume validates every already visited row, in bounded batches, without fetching the entire inbox.
@@ -113,11 +134,22 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
         ids: rows.map(row => row.id) };
       const next = { key: activeKey, rows, countRows: rows.map(row => countVersions.get(row.id) ?? row), page, loading: false, error: null };
       stateRef.current = next; setState(next);
+      const cache = new Map(viewCacheRef.current);
+      cache.delete(activeKey);
+      if (next.rows.length <= VIEW_CACHE_MAX_ROWS) cache.set(activeKey, { state: next, at: Date.now() });
+      while (cache.size > VIEW_CACHE_MAX) cache.delete(cache.keys().next().value!);
+      viewCacheRef.current = cache; setViewCache(cache);
     } catch (error) {
       catchUpRef.current = true;
-      if (!controller.signal.aborted && generation === generationRef.current) setState(previous => previous ? {
-        ...previous, loading: false, error: error instanceof Error ? error.message : "Unable to load conversations. Please retry.",
-      } : null);
+      if (!controller.signal.aborted && generation === generationRef.current) {
+        const denied = Boolean(error && typeof error === "object" && "denied" in error && error.denied);
+        if (denied) { viewCacheRef.current = new Map(); setViewCache(new Map()); }
+        setState(previous => previous ? {
+          ...previous, ...(denied ? { rows: [], countRows: [] } : {}),
+          loading: false, errorKey: activeKey,
+          error: error instanceof Error ? error.message : "Unable to load conversations. Please retry.",
+        } : null);
+      }
     } finally {
       finishForeground();
       if (controllerRef.current === controller) controllerRef.current = null;
@@ -148,6 +180,9 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
       if (event instanceof CustomEvent && typeof event.detail?.conversationId === "string") pendingIdsRef.current.add(event.detail.conversationId);
       else catchUpRef.current = true;
       dirtyRef.current = true;
+      // Activity, permission/scope recovery and reconnect invalidate inactive
+      // snapshots. The active view remains visible during targeted refresh.
+      viewCacheRef.current = new Map(); setViewCache(new Map());
       if (document.visibilityState === "hidden" || controllerRef.current || timerRef.current) return;
       timerRef.current = setTimeout(() => {
         timerRef.current = null; dirtyRef.current = false; void run("refresh");
@@ -166,16 +201,22 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
     };
   }, [initial, run]);
 
+  const cachedView = viewCache.get(key);
+  const displayedState = state?.key === key ? state :
+    cachedView && Date.now() - cachedView.at <= VIEW_CACHE_TTL_MS ? cachedView.state : null;
   const rows = useMemo(() => {
-    if (state?.key !== key) return [];
+    if (!displayedState) return [];
     const live = new Map(liveRows.map(row => [row.id,row]));
-    return mergeConversationPage(state.rows, state.rows.flatMap(row => live.has(row.id) ? [live.get(row.id)!] : []));
-  }, [state, key, liveRows]);
+    const authorized = displayedState === state ? displayedState.rows :
+      displayedState.rows.filter(row => live.get(row.id)?.business_id === row.business_id);
+    return mergeConversationPage(authorized, authorized.flatMap(row => live.has(row.id) ? [live.get(row.id)!] : []));
+  }, [displayedState, state, liveRows]);
   const more = useCallback(() => { void run("more"); }, [run]);
   const retry = useCallback(() => { catchUpRef.current = true; void run(stateRef.current?.key === requestKey(requestRef.current) ? "refresh" : "replace"); }, [run]);
   const snapshot = useCallback(async () => (await read({ ...requestRef.current, cursor: null }, new AbortController().signal, true)).readTargets, [read]);
-  const displayedPage = useMemo(() => {
-    if (!state || state.key !== key) return state?.page;
+  const displayedPage = useMemo<ConversationPagingInitial["page"] | undefined>(() => {
+    const state = displayedState;
+    if (!state) return undefined;
     const live = new Map(liveRows.map(row => [row.id, row]));
     let messagesDelta = 0, chatsDelta = 0;
     for (const baseline of state.countRows) {
@@ -191,10 +232,12 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
       totalUnreadCount: Math.max(0, counts.totalUnreadCount + messagesDelta),
       unreadConversationCount: Math.max(0, counts.unreadConversationCount + chatsDelta),
     } };
-  }, [state, key, liveRows]);
-  return { enabled: Boolean(initial), rows, page: displayedPage, loading: Boolean(state?.loading || state?.key !== key && !state?.error),
+  }, [displayedState, liveRows]);
+  const error = state?.errorKey === key || state?.key === key ? state?.error : null;
+  return { enabled: Boolean(initial), rows, page: displayedPage,
+    loading: Boolean(state?.key === key ? state.loading : !displayedState && !error),
     // An authoritative empty page is still loaded. Quiet revalidation must not
     // replace its empty state with navigation skeletons after the last unread is read.
-    initialLoading: Boolean(initial && state?.key !== key && !state?.error),
-    error: state?.error, more, retry, snapshot };
+    initialLoading: Boolean(initial && !displayedState && !error),
+    error, more, retry, snapshot };
 }
