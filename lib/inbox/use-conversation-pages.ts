@@ -33,6 +33,7 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
   const stateRef = useRef(state), requestRef = useRef(request), onRowsRef = useRef(onRows);
   const controllerRef = useRef<AbortController | null>(null);
   const generationRef = useRef(0);
+  const requestedKeyRef = useRef(key);
   const dirtyRef = useRef(false);
   const pendingIdsRef = useRef(new Set<string>());
   const recentChangesRef = useRef(new Map<string, number>());
@@ -140,8 +141,8 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
       while (cache.size > VIEW_CACHE_MAX) cache.delete(cache.keys().next().value!);
       viewCacheRef.current = cache; setViewCache(cache);
     } catch (error) {
-      catchUpRef.current = true;
       if (!controller.signal.aborted && generation === generationRef.current) {
+        catchUpRef.current = true;
         const denied = Boolean(error && typeof error === "object" && "denied" in error && error.denied);
         if (denied) { viewCacheRef.current = new Map(); setViewCache(new Map()); }
         setState(previous => previous ? {
@@ -153,7 +154,9 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
     } finally {
       finishForeground();
       if (controllerRef.current === controller) controllerRef.current = null;
-      if (dirtyRef.current && visible()) {
+      // An old request's finally must not schedule or consume the new view's
+      // recovery work after navigation has transferred request ownership.
+      if (generation === generationRef.current && requestKey(requestRef.current) === activeKey && dirtyRef.current && visible()) {
         dirtyRef.current = false;
         timerRef.current = setTimeout(() => { timerRef.current = null; void run("refresh"); }, 300);
       }
@@ -163,9 +166,21 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
   useEffect(() => {
     if (!initial) return;
     requestRef.current = request;
-    if (stateRef.current?.key === key) return;
+    const navigated = requestedKeyRef.current !== key;
+    requestedKeyRef.current = key;
+    if (!navigated && stateRef.current?.key === key) return;
+    // Settled state can still belong to the destination while another view
+    // is loading (A -> B -> A). Cancel B before considering A already loaded.
     controllerRef.current?.abort(); controllerRef.current = null; generationRef.current++;
-    void run("replace");
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null; dirtyRef.current = false;
+    if (navigated && stateRef.current?.key === key) {
+      for (const row of stateRef.current.rows) pendingIdsRef.current.add(row.id);
+      for (const [id, at] of recentChangesRef.current) {
+        if (Date.now() - at <= VIEW_CACHE_TTL_MS) pendingIdsRef.current.add(id);
+      }
+    }
+    void run(stateRef.current?.key === key ? "refresh" : "replace");
   }, [key, initial, run, request]);
 
   useEffect(() => () => {

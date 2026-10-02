@@ -181,3 +181,20 @@ test('view cache expires after 30 seconds and evicts beyond six keys',async()=>{
 test('authorization denial clears warm cached rows and supplies an error without switching chats',async()=>{
  const d=harness();try{d.render();await tick();d.answer(()=>({...page([row(2)]),total:1}));d.props.request={...request(),view:'unread'};d.render();await tick();d.answer(()=>Response.json({success:false,error:'Forbidden'},{status:403}));d.props.request=request();let s=d.render();assert.equal(s.rows.length,30);await tick();s=d.render();assert.equal(s.rows.length,0);assert.match(s.error,/Forbidden/);}finally{d.h.cleanup()}
 });
+test('Back then Forward aborts a pending different-view request even when current settled state already matches Forward',async()=>{
+ const d=harness();let releasePinned,releaseAll;try{d.render();await tick();d.advance(33400);
+ d.answer((body,signal)=>new Promise(resolve=>{if(body.view==='pinned')releasePinned={resolve,signal};else releaseAll={resolve,signal};}));
+ d.props.request={...request(),view:'pinned'};d.render();await tick();assert.ok(releasePinned);
+ d.props.request=request();d.render();await tick();assert.equal(releasePinned.signal.aborted,true);assert.ok(releaseAll,'Forward must reconcile All, not leave Pinned running');
+ releasePinned.resolve({...page([]),total:0,hasMore:false});await tick();let s=d.render();assert.equal(s.rows.length,30);assert.equal(s.page.total,1000);
+ releaseAll.resolve(page(Array.from({length:30},(_,i)=>row(i+1))));await tick();s=d.render();assert.equal(s.rows.length,30);assert.equal(s.initialLoading,false);assert.equal(s.loading,false);assert.equal(d.calls.length,2);
+ }finally{d.h.cleanup()}
+});
+test('late aborted finally cannot schedule or consume recovery owned by the Forward request',async()=>{
+ const d=harness();let pinned,all;try{d.render();await tick();d.advance(33400);d.answer((body,signal)=>new Promise(resolve=>{if(body.view==='pinned')pinned={resolve,signal};else all={resolve,signal};}));d.props.request={...request(),view:'pinned'};d.render();await tick();d.props.request=request();d.render();await tick();
+ d.events.get(contract.INBOX_PAGE_CHANGED_EVENT)(new CustomEvent(contract.INBOX_PAGE_CHANGED_EVENT,{detail:{conversationId:uuid(2)}}));assert.equal(d.jobs.size,0);
+ pinned.resolve({...page([]),total:0,hasMore:false});await tick();d.render();assert.equal(d.jobs.size,0,'old finally must not enqueue the new view recovery');assert.equal(all.signal.aborted,false);
+ all.resolve({...page(Array.from({length:30},(_,i)=>row(i+1))),matchedKnownIds:Array.from({length:30},(_,i)=>uuid(i+1))});await tick();d.render();assert.equal(d.jobs.size,1,'new request retains its own pending event');
+ d.answer(body=>({...page(Array.from({length:30},(_,i)=>row(i+1))),matchedKnownIds:body.knownIds??[]}));const s=await d.flush();assert.equal(s.initialLoading,false);assert.equal(s.rows.length,30);assert.equal(d.calls.length,3);
+ }finally{d.h.cleanup()}
+});
