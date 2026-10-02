@@ -2560,7 +2560,7 @@ export function ReplyBox({
             role="menu"
             aria-label={isKhmer ? "ជម្រើសភ្ជាប់" : "Attachment options"}
             onKeyDown={navigateAttachmentMenu}
-            className="fixed bottom-28 left-1/2 z-50 max-h-[calc(100dvh-8rem)] w-[min(22rem,calc(100vw-1rem))] -translate-x-1/2 overflow-x-hidden overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl"
+            className="fixed bottom-28 left-1/2 z-50 max-h-[calc(100dvh-8rem)] w-fit min-w-[min(22rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] -translate-x-1/2 overflow-x-hidden overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl"
           >
             <button
               type="button"
@@ -2570,12 +2570,12 @@ export function ReplyBox({
                 clearToolbarPanel();
                 attachmentInputRef.current?.click();
               }}
-              className="grid min-h-11 w-full grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500 max-[359px]:grid-cols-[1.25rem_minmax(0,1fr)]"
+              className="grid min-h-11 w-full grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-x-2 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500"
             >
               <FileIcon />
-              <span className="min-w-0 font-medium leading-5">{isKhmer ? "ភ្ជាប់ដោយផ្ទាល់" : "Direct attach"}</span>
-              <span className="justify-self-end text-right text-xs leading-4 text-slate-400 max-[359px]:col-start-2 max-[359px]:row-start-2 max-[359px]:justify-self-start max-[359px]:text-left">
-                {isKhmer ? "ជ្រើសឯកសារ" : "Choose files"}
+              <span className="min-w-0 font-medium leading-5">{isKhmer ? "ភ្ជាប់ដោយផ្ទាល់" : "Image & Video & File"}</span>
+              <span className="col-start-2 min-w-0 text-xs leading-4 text-slate-400">
+                {isKhmer ? "ជ្រើសឯកសារ" : "Select files directly from your device"}
               </span>
             </button>
             <button
@@ -2590,23 +2590,23 @@ export function ReplyBox({
                 }
                 setStorageConversationId(conversationId);
               }}
-              className="grid min-h-11 w-full grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500 max-[359px]:grid-cols-[1.25rem_minmax(0,1fr)]"
+              className="grid min-h-11 w-full grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-x-2 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500"
             >
               <StorageIcon className="h-5 w-5" />
               <span className="min-w-0 font-medium leading-5">{isKhmer ? "ឃ្លាំងឯកសារ" : "Storage"}</span>
-              <span className="justify-self-end text-right text-xs leading-4 text-slate-400 max-[359px]:col-start-2 max-[359px]:row-start-2 max-[359px]:justify-self-start max-[359px]:text-left">
-                {isKhmer ? "ផ្ទុកឡើង ឬជ្រើស" : "Upload or choose"}
+              <span className="col-start-2 min-w-0 text-xs leading-4 text-slate-400">
+                {isKhmer ? "ផ្ទុកឡើង ឬជ្រើស" : "Select from storage"}
               </span>
             </button>
             <button
               type="button"
               role="menuitem"
               onClick={addLocation}
-              className="grid min-h-11 w-full grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500 max-[359px]:grid-cols-[1.25rem_minmax(0,1fr)]"
+              className="grid min-h-11 w-full grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-x-2 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500"
             >
               <LocationIcon />
               <span className="min-w-0 font-medium leading-5">{isKhmer ? "ផ្ញើទីតាំង" : "Send location"}</span>
-              <span className="justify-self-end text-right text-xs leading-4 text-slate-400 max-[359px]:col-start-2 max-[359px]:row-start-2 max-[359px]:justify-self-start max-[359px]:text-left">
+              <span className="col-start-2 min-w-0 text-xs leading-4 text-slate-400">
                 {isKhmer ? "ជ្រើសលើផែនទី" : "Choose on map"}
               </span>
             </button>

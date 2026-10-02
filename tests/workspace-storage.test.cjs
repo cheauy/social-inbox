@@ -9,7 +9,21 @@ const {
   isWorkspaceFilePathOwned,
   workspaceFileKind,
   workspaceFilePath,
+  workspaceFilesForView,
 } = loader({})('lib/storage/workspace-files.ts');
+
+test('recent, favorites and category views filter then sort newest first', () => {
+  const files = [
+    { id: 'old-favorite', createdAt: '2026-10-01T00:00:00Z', categoryId: 'one', favorite: true, deletedAt: null },
+    { id: 'new-other', createdAt: '2026-10-03T00:00:00Z', categoryId: 'two', favorite: false, deletedAt: null },
+    { id: 'new-favorite', createdAt: '2026-10-02T00:00:00Z', categoryId: 'one', favorite: true, deletedAt: null },
+    { id: 'deleted', createdAt: '2026-10-04T00:00:00Z', categoryId: 'one', favorite: true, deletedAt: '2026-10-05T00:00:00Z' },
+  ];
+  assert.deepEqual(Array.from(workspaceFilesForView(files, 'recent'), (file) => file.id), ['new-other', 'new-favorite', 'old-favorite']);
+  assert.deepEqual(Array.from(workspaceFilesForView(files, 'favorites'), (file) => file.id), ['new-favorite', 'old-favorite']);
+  assert.deepEqual(Array.from(workspaceFilesForView(files, 'category:one'), (file) => file.id), ['new-favorite', 'old-favorite']);
+  assert.deepEqual(Array.from(workspaceFilesForView(files, 'trash'), (file) => file.id), ['deleted']);
+});
 
 test('workspace Storage classifies only the supported reusable attachment types', () => {
   assert.equal(workspaceFileKind('photo.bin', 'image/webp'), 'image');
@@ -61,10 +75,22 @@ test('migration draft creates a private service-only workspace store without tou
   assert.doesNotMatch(privilegeFix, /storage\.objects|customer_files|anon|authenticated/);
   assert.match(checks, /\('TRUNCATE', false\), \('REFERENCES', false\), \('TRIGGER', false\),\s*\('MAINTAIN', false\)/);
   assert.match(checks, /has_table_privilege\(/);
+
+  const organization = fs.readFileSync('db/migrations/20261009_workspace_storage_organization.sql', 'utf8');
+  const organizationChecks = fs.readFileSync('docs/sql/workspace-storage-organization-review.sql', 'utf8');
+  assert.match(organization, /create table if not exists public\.workspace_file_categories/);
+  assert.match(organization, /create table if not exists public\.workspace_file_favorites/);
+  assert.match(organization, /primary key \(member_id, file_id\)/);
+  assert.match(organization, /on delete set null/);
+  assert.match(organization, /revoke all privileges on table public\.workspace_file_categories, public\.workspace_file_favorites\s+from service_role/);
+  assert.doesNotMatch(organization, /delete from public\.workspace_files|storage\.objects/);
+  assert.match(organizationChecks, /cross_workspace_category_mismatches/);
+  assert.match(organizationChecks, /cross_workspace_favorite_mismatches/);
+  assert.match(organizationChecks, /Preferred application rollback/);
 });
 
-function routeSetup({ businessId = 'shop-a', active = true, rows = [], stored = {} } = {}) {
-  const db = database({ workspace_files: rows });
+function routeSetup({ businessId = 'shop-a', active = true, canManage = true, rows = [], stored = {}, categories = [], favorites = [] } = {}) {
+  const db = database({ workspace_files: rows, workspace_file_categories: categories, workspace_file_favorites: favorites });
   const removed = [];
   db.storage = {
     from(bucket) {
@@ -86,6 +112,7 @@ function routeSetup({ businessId = 'shop-a', active = true, rows = [], stored = 
     '@/lib/media/signed-urls': {
       cachedSignedUrls: async (_bucket, paths) => paths.map((path) => ({ path, signedUrl: `https://preview.invalid/${path}` })),
     },
+    '@/lib/auth/require-permission': { memberHasPermission: async () => canManage },
     '@/lib/supabase/admin': { supabaseAdmin: db },
   });
   const route = load('app/api/workspace-storage/files/route.ts');
@@ -148,6 +175,73 @@ test('verified upload finalizes under the authenticated business', async () => {
   assert.equal(db.tables.workspace_files.length, 1);
   assert.equal(db.tables.workspace_files[0].business_id, 'shop-a');
   assert.equal(db.tables.workspace_files[0].uploaded_by_member_id, 'member-a');
+});
+
+test('favorite preference is member scoped and refuses a foreign workspace file', async () => {
+  const own = { id: 'own', business_id: 'shop-a', display_name: 'own.pdf', storage_path: 'shop-a/own.pdf', deleted_at: null };
+  const foreign = { ...own, id: 'foreign', business_id: 'shop-b', storage_path: 'shop-b/foreign.pdf' };
+  const { db, route, request } = routeSetup({ rows: [own, foreign] });
+  assert.equal((await route.POST(request({ action: 'toggle-favorite', fileId: 'foreign', favorite: true }))).status, 404);
+  assert.equal((await route.POST(request({ action: 'toggle-favorite', fileId: 'own', favorite: true }))).status, 200);
+  assert.deepEqual(db.tables.workspace_file_favorites, [{ member_id: 'member-a', file_id: 'own' }]);
+});
+
+test('bulk category and soft-delete mutations stay inside the authenticated workspace', async () => {
+  const own = { id: 'own', business_id: 'shop-a', category_id: null, deleted_at: null };
+  const foreign = { id: 'foreign', business_id: 'shop-b', category_id: null, deleted_at: null };
+  const categories = [{ id: 'category-a', business_id: 'shop-a', name: 'Products' }];
+  const { db, route, request } = routeSetup({ rows: [own, foreign], categories });
+  assert.equal((await route.POST(request({ action: 'set-category', fileIds: ['own', 'foreign'], categoryId: 'category-a' }))).status, 200);
+  assert.equal(db.tables.workspace_files[0].category_id, 'category-a');
+  assert.equal(db.tables.workspace_files[1].category_id, null);
+  assert.equal((await route.POST(request({ action: 'delete-files', fileIds: ['own', 'foreign'] }))).status, 200);
+  assert.equal(typeof db.tables.workspace_files[0].deleted_at, 'string');
+  assert.equal(db.tables.workspace_files[1].deleted_at, null);
+});
+
+test('shared file organization mutations require the existing content-management role', async () => {
+  const { route, request } = routeSetup({ canManage: false, rows: [
+    { id: 'own', business_id: 'shop-a', deleted_at: null },
+    { id: 'deleted', business_id: 'shop-a', deleted_at: '2026-10-04T00:00:00Z' },
+  ] });
+  assert.equal((await route.POST(request({ action: 'set-category', fileIds: ['own'], categoryId: null }))).status, 403);
+  assert.equal((await route.POST(request({ action: 'delete-files', fileIds: ['own'] }))).status, 403);
+  assert.equal((await route.POST(request({ action: 'restore-files', fileIds: ['own'] }))).status, 403);
+  const list = await (await route.GET()).json();
+  assert.equal(list.files.some((file) => file.id === 'deleted'), false);
+});
+
+test('Trash restore is tenant scoped and makes a soft-deleted file visible again', async () => {
+  const own = { id: 'own', business_id: 'shop-a', deleted_at: '2026-10-04T00:00:00Z' };
+  const foreign = { id: 'foreign', business_id: 'shop-b', deleted_at: '2026-10-04T00:00:00Z' };
+  const { db, route, request } = routeSetup({ rows: [own, foreign] });
+  assert.equal((await route.POST(request({ action: 'restore-files', fileIds: ['own', 'foreign'] }))).status, 200);
+  assert.equal(db.tables.workspace_files[0].deleted_at, null);
+  assert.equal(db.tables.workspace_files[1].deleted_at, '2026-10-04T00:00:00Z');
+});
+
+test('category API scopes edit/delete and migration preserves files on category delete', async () => {
+  const db = database({ workspace_file_categories: [
+    { id: 'own', business_id: 'shop-a', name: 'Own' },
+    { id: 'foreign', business_id: 'shop-b', name: 'Foreign' },
+  ] });
+  const route = loader({
+    '@/lib/auth/get-current-member': { getCurrentMember: async () => ({ success: true, member: { id: 'member-a', business_id: 'shop-a' } }) },
+    '@/lib/auth/require-permission': { memberHasPermission: async () => true },
+    '@/lib/supabase/admin': { supabaseAdmin: db },
+  })('app/api/workspace-storage/categories/route.ts');
+  const request = (body) => new Request('https://app.tenhchat.com/api/workspace-storage/categories', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  assert.equal((await route.POST(request({ action: 'add', name: 'Campaigns' }))).status, 200);
+  assert.equal(db.tables.workspace_file_categories.at(-1).business_id, 'shop-a');
+  assert.equal((await route.POST(request({ action: 'edit', categoryId: 'own', name: 'Renamed' }))).status, 200);
+  assert.equal(db.tables.workspace_file_categories[0].name, 'Renamed');
+  assert.equal((await route.POST(request({ action: 'edit', categoryId: 'foreign', name: 'Nope' }))).status, 404);
+  assert.equal((await route.POST(request({ action: 'delete', categoryId: 'foreign' }))).status, 404);
+  assert.equal((await route.POST(request({ action: 'delete', categoryId: 'own' }))).status, 200);
+  assert.equal(db.tables.workspace_file_categories.some((row) => row.id === 'own'), false);
+  assert.equal(db.tables.workspace_file_categories.some((row) => row.name === 'Campaigns'), true);
 });
 
 test('database finalize failure removes the uploaded object instead of leaving a partial file', async () => {

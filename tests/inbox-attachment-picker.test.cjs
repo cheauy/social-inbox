@@ -63,11 +63,13 @@ test('Telegram channel limits are applied before staging', () => {
   assert.match(result.rejected[1].reason, /MP4/);
 });
 
-test('composer exposes Direct attach and Storage without auto-sending selected files', () => {
+test('composer exposes direct device files and Storage without auto-sending selected files', () => {
   const source = fs.readFileSync('components/inbox/reply-box.tsx', 'utf8');
   assert.match(source, /accept=\{DIRECT_ATTACHMENT_ACCEPT\}[\s\S]*?multiple[\s\S]*?onChange=\{handleAttachmentChange\}/);
-  assert.match(source, /"Direct attach"/);
+  assert.match(source, /"Image & Video & File"/);
+  assert.match(source, /"Select files directly from your device"/);
   assert.match(source, /"Storage"/);
+  assert.match(source, /"Select from storage"/);
   assert.doesNotMatch(source, /"Add images"|"Add video"|"Add files"/);
   assert.match(source, /<WorkspaceStorageModal[\s\S]*?onSend=\{sendWorkspaceFiles\}/);
   assert.match(source, /async function sendWorkspaceFiles/);
@@ -86,22 +88,37 @@ test('Storage is workspace-shared, uploads multiple files, and sends only on exp
   assert.match(modal, /onClick=\{\(\) => void sendSelected\(\)\}/);
   assert.match(modal, /Sending\.\.\." : "Send"/);
   assert.doesNotMatch(modal, /customer_files|contactId|conversationId/);
+  assert.match(modal, /workspaceFilesForView\(files, view\)/);
+  assert.match(modal, /grid-cols-2 gap-2 min-\[390px\]:grid-cols-3 sm:grid-cols-4 md:grid-cols-5/);
+  assert.match(modal, /group-hover:opacity-100/);
+  assert.match(modal, /aria-label=\{`Preview \$\{file\.name\}`\}/);
+  assert.match(modal, /action: "delete-files"/);
+  assert.match(modal, /Files in this category are kept and become uncategorised/);
+  assert.match(modal, /action: "restore-files"/);
+  assert.match(modal, /Restore/);
+  assert.match(modal, /Trash is empty/);
+  assert.match(modal, /role="alert"/);
+  assert.match(modal, /role="status" aria-label="Loading workspace files"/);
+  assert.match(modal, /No favorite files yet/);
+  assert.match(modal, /event\.stopPropagation\(\); setCategoryForm\(null\)/);
 });
 
 test('attachment menu fits narrow viewports and remains keyboard accessible', () => {
   const source = fs.readFileSync('components/inbox/reply-box.tsx', 'utf8');
   assert.match(source, /role="menu"/);
   assert.equal((source.match(/\n\s+role="menuitem"/g) ?? []).length, 3);
-  assert.match(source, /w-\[min\(22rem,calc\(100vw-1rem\)\)\]/);
+  assert.match(source, /w-fit min-w-\[min\(22rem,calc\(100vw-1rem\)\)\] max-w-\[calc\(100vw-1rem\)\]/);
   assert.match(source, /max-h-\[calc\(100dvh-8rem\)\]/);
   assert.match(source, /overflow-x-hidden overflow-y-auto/);
   assert.equal((source.match(/min-h-11/g) ?? []).length, 3);
-  assert.equal((source.match(/max-\[359px\]:col-start-2/g) ?? []).length, 3);
+  assert.equal((source.match(/col-start-2 min-w-0/g) ?? []).length, 3);
   assert.match(source, /\["ArrowDown", "ArrowUp", "Home", "End"\]/);
   assert.match(source, /event\.key !== "Escape"/);
   assert.match(source, /attachmentTriggerRef\.current\?\.focus\(\)/);
-  assert.match(source, /"Direct attach"/);
+  assert.match(source, /"Image & Video & File"/);
+  assert.match(source, /"Select files directly from your device"/);
   assert.match(source, /"Storage"/);
+  assert.match(source, /"Select from storage"/);
   assert.match(source, /"Send location"/);
   assert.match(source, /"ភ្ជាប់ដោយផ្ទាល់"/);
   assert.match(source, /"ឃ្លាំងឯកសារ"/);

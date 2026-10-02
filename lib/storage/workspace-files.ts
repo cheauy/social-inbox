@@ -13,6 +13,29 @@ export type WorkspaceFileKind =
   | "audio"
   | "file";
 
+export type WorkspaceStorageView =
+  | "recent"
+  | "favorites"
+  | "trash"
+  | `category:${string}`;
+
+export function workspaceFilesForView<
+  T extends { createdAt: string; categoryId: string | null; favorite: boolean; deletedAt: string | null },
+>(files: T[], view: WorkspaceStorageView) {
+  const filtered = view === "trash"
+    ? files.filter((file) => file.deletedAt)
+    : view === "favorites"
+    ? files.filter((file) => file.favorite && !file.deletedAt)
+    : view.startsWith("category:")
+      ? files.filter((file) => !file.deletedAt && file.categoryId === view.slice("category:".length))
+      : files.filter((file) => !file.deletedAt);
+
+  return [...filtered].sort(
+    (left, right) =>
+      (Date.parse(right.createdAt) || 0) - (Date.parse(left.createdAt) || 0),
+  );
+}
+
 const FILE_EXTENSION =
   /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv|rtf|odt|ods|odp|zip|rar|7z|json|xml)$/i;
 
