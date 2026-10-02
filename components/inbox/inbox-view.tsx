@@ -29,7 +29,7 @@ import type { FormEvent, SetStateAction } from "react";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { INBOX_PAGE_CHANGED_EVENT, mergeConversationPage } from "@/lib/inbox/conversation-page-contract";
 import { matchesOptimisticMessage } from "@/lib/inbox/optimistic-message-match";
-import { confirmOutgoingMessage } from "@/lib/inbox/confirm-outgoing-message";
+import { confirmOutgoingMessage, withOptimisticRenderKey } from "@/lib/inbox/confirm-outgoing-message";
 import { normalizeMessages } from "@/lib/inbox/normalize-messages";
 import { retainLocalImagePreview } from "@/lib/inbox/local-image-preview";
 import { readMessagePageResponse } from "@/lib/inbox/read-message-page-response";
@@ -88,6 +88,7 @@ type OptimisticInboxMessage =
     __optimistic_created_at?:
       number;
     __optimistic_requires_review?: boolean;
+    __render_key?: string;
   };
 
 type PendingOptimisticSend = {
@@ -2413,6 +2414,7 @@ useInboxRealtime({
         if (cached) {
           let nextMessages =
             cached.messages;
+          let shouldSort = true;
 
           if (
             event.eventType ===
@@ -2451,13 +2453,30 @@ useInboxRealtime({
                       : message,
                 );
             } else {
-              nextMessages = [
-                ...cached.messages,
-                incoming,
-              ];
+              const optimisticIndex = cached.messages.findIndex((message) => {
+                const optimistic = message as OptimisticInboxMessage;
+                return Boolean(optimistic.__optimistic_status) && matchesOptimisticMessage(message, row);
+              });
+
+              if (optimisticIndex >= 0) {
+                const optimistic = cached.messages[optimisticIndex];
+                nextMessages = cached.messages.map(
+                  (message, index) => index === optimisticIndex
+                    ? retainLocalImagePreview(withOptimisticRenderKey(incoming, optimistic), optimistic)
+                    : message,
+                );
+                delete pendingSendsRef.current[optimistic.id];
+                delete pendingAttachmentSendsRef.current[optimistic.id];
+                shouldSort = false;
+              } else {
+                nextMessages = [
+                  ...cached.messages,
+                  incoming,
+                ];
+              }
             }
 
-            nextMessages =
+            if (shouldSort) nextMessages =
               [...nextMessages].sort(
                 (first, second) => {
                   const timeDifference =
@@ -2549,30 +2568,15 @@ useInboxRealtime({
                   ? optimisticMessage.attachment_url
                   : null;
 
-              const replacement = retainLocalImagePreview({
+              const replacement = retainLocalImagePreview(withOptimisticRenderKey({
                 ...row,
                 attachment_url:
                   row.attachment_url ??
                   localAttachmentUrl,
-              } as unknown as typeof current[number], optimisticMessage);
+              } as unknown as typeof current[number], optimisticMessage), optimisticMessage);
 
-              return [
-                ...current.filter(
-                  (
-                    _message,
-                    index,
-                  ) =>
-                    index !==
-                    optimisticIndex,
-                ),
-                replacement,
-              ].sort(
-                (
-                  first,
-                  second,
-                ) =>
-                  messageOrderMs(first) -
-              messageOrderMs(second),
+              return current.map((message, index) =>
+                index === optimisticIndex ? replacement : message,
               );
             }
 
@@ -4795,6 +4799,7 @@ useEffect(() => {
      * temporary bubble and the real row are both rendered.
      */
     const merged = [...current];
+    let needsSort = false;
 
     for (const serverMessage of serverMessages) {
       const existingIndex = merged.findIndex(
@@ -4846,20 +4851,21 @@ useEffect(() => {
           optimisticId
         ];
 
-        merged[optimisticIndex] = retainLocalImagePreview({
+        merged[optimisticIndex] = retainLocalImagePreview(withOptimisticRenderKey({
           ...serverMessage,
           attachment_url:
             serverMessage.attachment_url ??
             localAttachmentUrl,
-        } as InboxMessage, optimisticMessage);
+        } as InboxMessage, optimisticMessage), optimisticMessage);
 
         continue;
       }
 
       merged.push(serverMessage);
+      needsSort = true;
     }
 
-    return merged.sort(
+    return needsSort ? merged.sort(
       (first, second) => {
         const timeDifference =
           messageOrderMs(first) -
@@ -4869,7 +4875,7 @@ useEffect(() => {
           ? timeDifference
           : first.id.localeCompare(second.id);
       },
-    );
+    ) : merged;
   };
 
   async function syncNewestMessages() {
@@ -6677,7 +6683,8 @@ function createOptimisticMessage({
             reply_comment_id:
               tempId,
           }
-        : null,
+      : null,
+    __render_key: tempId,
     platform_created_at:
       now,
     created_at:
@@ -6833,6 +6840,7 @@ function createOptimisticAttachmentMessage({
         optimistic: true,
       },
     },
+    __render_key: tempId,
     platform_created_at:
       now,
     created_at:
@@ -7114,9 +7122,8 @@ async function performOptimisticSend(
      * message is drawn twice until a refresh replaces the list.
      *
      * The send response carries the real id, so the two can be matched on it
-     * instead. Nothing else needs to change: the matcher below prefers this
-     * when it is present and falls back to the old comparison for messages
-     * that arrive without one, such as a reply sent from Meta's own inbox.
+     * instead. If Realtime wins, the client request ID carried by the echo is
+     * the exact match; distinct messages with identical text are never merged.
      */
     if (result.messageId) {
       const platformId = result.messageId;
@@ -7369,8 +7376,8 @@ async function performOptimisticAttachmentSend(
  * resolves -- almost guaranteed with an album, where six INSERTs land in one
  * burst. Renaming the temporary bubble to the real id would then leave two
  * rows carrying the same id, which React reports as a duplicate key and
- * renders unpredictably. When the real row is already here, keep it and drop
- * the temporary one instead, carrying the local blob preview across so the
+ * renders unpredictably. Merge the stored row at the temporary row's position
+ * and retain its render key, carrying the local blob preview across so the
  * photo does not blink while the stored URL loads.
  */
 function reconcileOptimisticMessage(
@@ -7386,28 +7393,17 @@ function reconcileOptimisticMessage(
   );
 
   const original = current.find(message => message.id === tempId);
-  const reconciled = retainLocalImagePreview({
+  const reconciled = retainLocalImagePreview(withOptimisticRenderKey({
     ...savedMessage,
     attachment_url: savedMessage.message_type === "image" ? savedMessage.attachment_url || previewUrl : previewUrl,
     __optimistic_status: "sent",
     __optimistic_created_at: Date.now(),
-  } as unknown as InboxMessage, original ?? savedMessage);
+  } as unknown as InboxMessage, original ?? savedMessage), original ?? savedMessage);
 
   if (alreadyStored) {
-    return current.flatMap((message) => {
-      if (message.id === tempId) {
-        return [];
-      }
-
-      return message.id === savedMessage.id
-        ? [
-            {
-              ...message,
-              ...reconciled,
-            } as InboxMessage,
-          ]
-        : [message];
-    });
+    return current.flatMap((message) => message.id === tempId
+      ? [reconciled]
+      : message.id === savedMessage.id ? [] : [message]);
   }
 
   return current.map((message) =>
@@ -8226,6 +8222,7 @@ async function handleSendMessage(
                 .contact
                 .platform_user_id,
             message,
+            clientRequestId: tempId,
             ...(replyingToFacebookMessageId ? { replyToMessageId: replyingToFacebookMessageId } : {}),
           };
 

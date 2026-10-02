@@ -2,6 +2,7 @@
 
 import { MessageViewportFrame, MessageScrollSurface } from "./inbox-layout-surfaces";
 import { captureScrollAnchor, restoreScrollAnchor, type ScrollAnchor } from "@/lib/inbox/scroll-anchor";
+import { messageRenderKey } from "@/lib/inbox/confirm-outgoing-message";
 import { buildPhotoGroups, photoGroupCaption } from "@/lib/inbox/photo-groups";
 import { PhotoAlbumFrame } from "@/components/inbox/photo-album-frame";
 import { InboxPhotoImage } from "@/components/inbox/inbox-photo-image";
@@ -2557,7 +2558,7 @@ export function MessagePanel({
       ] ?? null;
 
     const latestMessageId =
-      latestMessage?.id ?? null;
+      latestMessage ? messageRenderKey(latestMessage) : null;
 
     /*
      * First committed message page for this conversation always opens at the
@@ -3097,7 +3098,7 @@ export function MessagePanel({
           {messages.map((message, messageIndex) => {
             const album = photoGroups.get(message.id);
             if (album && album.lastId !== message.id && !(messengerSources.before.get(message.id)?.length)) return null;
-            return <DeferredInboxItem key={message.id} enabled={messages.length > 100}
+            return <DeferredInboxItem key={messageRenderKey(message)} enabled={messages.length > 100}
               initiallyVisible={messageIndex >= messages.length - 40}
               forceVisible={jumpHighlightedMessageId === message.id}
               containerRef={messagesContainerRef}
@@ -4793,7 +4794,7 @@ export function MessagePanel({
               }
 
               return (
-                <Fragment key={message.id}>
+                <Fragment key={messageRenderKey(message)}>
                   {showMessageDay ? (
                     <div className="flex items-center gap-3 py-1">
                       <div className="h-px flex-1 bg-blue-200/70" />

@@ -37,6 +37,7 @@ type SendMessageBody = {
   conversationId?: string;
   recipientId?: string;
   message?: string;
+  clientRequestId?: string;
 
   /** Local row ID; the server resolves the native Messenger MID. */
   replyToMessageId?: string;
@@ -86,6 +87,10 @@ export async function POST(
     body.recipientId?.trim();
   const message =
     body.message?.trim();
+  const clientRequestId =
+    /^optimistic:[\w.-]{1,100}$/.test(body.clientRequestId ?? "")
+      ? body.clientRequestId!
+      : null;
 
   if (!conversationId) {
     return NextResponse.json(
@@ -290,6 +295,33 @@ export async function POST(
         status: 400,
       },
     );
+  }
+
+  if (clientRequestId) {
+    const { data: replay, error: replayError } = await supabaseAdmin
+      .from("messages")
+      .select("platform_message_id,message_text,recipient_platform_id")
+      .eq("business_id", currentMember.business_id)
+      .eq("conversation_id", conversation.id)
+      .contains("raw_payload", { tenh_client_request_id: clientRequestId })
+      .maybeSingle();
+
+    if (replayError) {
+      console.error("Unable to check Facebook send idempotency:", replayError);
+    } else if (replay) {
+      if (replay.message_text !== message || replay.recipient_platform_id !== recipientId) {
+        return NextResponse.json({
+          success: false,
+          error: "This send request ID was already used for a different message.",
+        }, { status: 409 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        messageId: replay.platform_message_id,
+        idempotentReplay: true,
+      });
+    }
   }
 
   const {
@@ -541,6 +573,7 @@ export async function POST(
           ...(replyContext ? { reply_to: replyContext.reply_to } : {}),
           message: {
             text: message,
+            ...(clientRequestId ? { metadata: clientRequestId } : {}),
           },
         }),
         cache: "no-store",
@@ -897,7 +930,14 @@ export async function POST(
         is_echo:
           false,
         raw_payload:
-          { ...facebookResult, ...(replyContext || {}) },
+          {
+            ...facebookResult,
+            ...(clientRequestId ? {
+              tenh_client_request_id: clientRequestId,
+              message: { metadata: clientRequestId },
+            } : {}),
+            ...(replyContext || {}),
+          },
         platform_created_at:
           now,
       });
@@ -951,7 +991,7 @@ export async function POST(
     }
   }
 
-  if (replyContext) {
+  if (replyContext || clientRequestId) {
     const { data: stored, error } = await supabaseAdmin.from("messages").select("id")
       .eq("business_id", currentMember.business_id).eq("conversation_id", conversation.id)
       .eq("platform_message_id", facebookMessageId).maybeSingle();
@@ -959,7 +999,11 @@ export async function POST(
       if (error || !stored) throw new Error("Reply reference row unavailable");
       await mutateMessageMetadata(supabaseAdmin, {
         businessId: currentMember.business_id, conversationId: conversation.id, messageId: stored.id,
-      }, (current) => ({ raw_payload: { ...(current.raw_payload ?? {}), ...replyContext } }));
+      }, (current) => ({ raw_payload: {
+        ...(current.raw_payload ?? {}),
+        ...(clientRequestId ? { tenh_client_request_id: clientRequestId } : {}),
+        ...(replyContext || {}),
+      } }));
     } catch {
       // The provider already sent the message: never invite a duplicate send.
       saveWarning = "Facebook sent your message, but TENH could not save its reply reference.";
