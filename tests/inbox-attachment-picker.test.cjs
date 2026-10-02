@@ -1,0 +1,89 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const { loader } = require('./tenh-seven/harness.cjs');
+
+const { DIRECT_ATTACHMENT_ACCEPT, selectAttachments } =
+  loader({}, { File })('lib/inbox/attachment-selection.ts');
+
+const file = (name, type, bytes = 1) =>
+  new File([new Uint8Array(bytes)], name, { type });
+
+test('one picker accepts one or multiple images, video, audio and supported documents', () => {
+  const files = [
+    file('one.jpg', 'image/jpeg'),
+    file('two.png', 'image/png'),
+    file('clip.mp4', 'video/mp4'),
+    file('voice.mp3', 'audio/mpeg'),
+    file('invoice.pdf', 'application/pdf'),
+  ];
+  const result = selectAttachments(files);
+  assert.deepEqual(Array.from(result.accepted, (item) => item.kind), [
+    'image', 'image', 'video', 'audio', 'file',
+  ]);
+  assert.equal(result.rejected.length, 0);
+  assert.match(DIRECT_ATTACHMENT_ACCEPT, /image\/\*/);
+  assert.match(DIRECT_ATTACHMENT_ACCEPT, /video\/\*/);
+  assert.match(DIRECT_ATTACHMENT_ACCEPT, /\.pdf/);
+});
+
+test('cancel is a no-op and choosing the same file again remains possible', () => {
+  const cancelled = selectAttachments(null);
+  assert.equal(cancelled.accepted.length, 0);
+  assert.equal(cancelled.rejected.length, 0);
+  const same = file('same.jpg', 'image/jpeg');
+  assert.equal(selectAttachments([same]).accepted.length, 1);
+  assert.equal(selectAttachments([same]).accepted.length, 1);
+});
+
+test('unsupported, oversized and extra videos are rejected with explicit reasons', () => {
+  const result = selectAttachments([
+    file('script.exe', 'application/octet-stream'),
+    file('huge.jpg', 'image/jpeg', 10 * 1024 * 1024 + 1),
+    file('first.mp4', 'video/mp4'),
+    file('second.mp4', 'video/mp4'),
+  ]);
+  assert.deepEqual(Array.from(result.accepted, (item) => item.file.name), ['first.mp4']);
+  assert.match(result.rejected[0].reason, /unsupported/);
+  assert.match(result.rejected[1].reason, /10 MB/);
+  assert.match(result.rejected[2].reason, /one video/);
+  assert.equal(selectAttachments([file('clip.mp4', 'video/mp4')], {
+    existingVideoCount: 1,
+  }).accepted.length, 0);
+});
+
+test('Telegram channel limits are applied before staging', () => {
+  const result = selectAttachments([
+    file('large.jpg', 'image/jpeg', 4 * 1024 * 1024 + 1),
+    file('clip.mov', 'video/quicktime'),
+    file('clip.mp4', 'video/mp4'),
+  ], { platform: 'telegram' });
+  assert.deepEqual(Array.from(result.accepted, (item) => item.file.name), ['clip.mp4']);
+  assert.match(result.rejected[0].reason, /4 MB/);
+  assert.match(result.rejected[1].reason, /MP4/);
+});
+
+test('composer exposes Direct attach and Storage without auto-sending selected files', () => {
+  const source = fs.readFileSync('components/inbox/reply-box.tsx', 'utf8');
+  assert.match(source, /accept=\{DIRECT_ATTACHMENT_ACCEPT\}[\s\S]*?multiple[\s\S]*?onChange=\{handleAttachmentChange\}/);
+  assert.match(source, /"Direct attach"/);
+  assert.match(source, /"Storage"/);
+  assert.doesNotMatch(source, /"Add images"|"Add video"|"Add files"/);
+  assert.match(source, /<WorkspaceStorageModal[\s\S]*?onSend=\{sendWorkspaceFiles\}/);
+  assert.match(source, /async function sendWorkspaceFiles/);
+  assert.doesNotMatch(source, /<CustomerFilesModal/);
+  assert.match(source, /event\.target\.value = ""/);
+});
+
+test('Storage is workspace-shared, uploads multiple files, and sends only on explicit click', () => {
+  const modal = fs.readFileSync('components/inbox/workspace-storage-modal.tsx', 'utf8');
+  assert.match(modal, /\/api\/workspace-storage\/files/);
+  assert.match(modal, /action: "prepare-upload"/);
+  assert.match(modal, /\.uploadToSignedUrl\(/);
+  assert.match(modal, /action: "finalize-upload"/);
+  assert.match(modal, /action: "get-file-url"/);
+  assert.match(modal, /multiple/);
+  assert.match(modal, /onClick=\{\(\) => void sendSelected\(\)\}/);
+  assert.match(modal, /Sending\.\.\." : "Send"/);
+  assert.doesNotMatch(modal, /customer_files|contactId|conversationId/);
+});
