@@ -1409,6 +1409,67 @@ async function openVerifiedConversation(context, control = null) {
 let navigationQueue = Promise.resolve();
 const pendingNavigations = new Map();
 const conversationNavigations = new Map();
+const SAFE_NAVIGATION_REASONS = new Set([
+  "facebook_customer_mismatch", "conversation_mismatch", "facebook_conversation_mismatch", "facebook_conversation_changed",
+  "facebook_chat_not_ready", "profile_customer_heading_missing", "profile_link_not_rendered", "profile_action_without_link",
+  "profile_link_format_unsupported", "profile_link_label_unrecognized", "ambiguous_profile", "facebook_customer_name_unavailable",
+  "facebook_provider_link_unavailable", "profile_conversation_link_unavailable", "facebook_bridge_unavailable", "facebook_navigation_guard_unavailable",
+  "facebook_sign_in_required", "facebook_inbox_load_failed", "facebook_no_contact_card", "facebook_tab_in_use", "facebook_tab_closed",
+  "facebook_tab_unavailable", "facebook_customer_selection_unverified", "conversation_context_mismatch", "conversation_context_incomplete",
+  "conversation_authorization_unavailable", "tenh_sign_in_required", "website_update_required", "extension_refresh_required",
+  "extension_request_failed", "extension_response_unavailable", "facebook_navigation_cancelled", "facebook_navigation_busy",
+  "untrusted_sender", "facebook_navigation_failed", "facebook_navigation_unverified",
+]);
+function navigationFailure(value, phase, opened = false) {
+  const reason = SAFE_NAVIGATION_REASONS.has(value?.reason) ? value.reason : "facebook_navigation_unverified";
+  return { opened, exactRequested: false, verified: false, reason, phase,
+    ...(SAFE_NAVIGATION_REASONS.has(value?.verificationReason) ? { verificationReason: value.verificationReason } : {}),
+    diagnostics: { dom: conversationDomDiagnostics(value?.diagnostics?.dom) } };
+}
+async function navigationInteraction(tabId, token, action) {
+  try {
+    const results = await chrome.scripting.executeScript({ target: { tabId }, args: [token, action],
+      func: (token, action) => {
+        const key = "__tenhNavigationInteraction";
+        if (action === "arm") {
+          globalThis[key]?.stop?.();
+          const state = { token, interacted: false, url: location.href };
+          const events = ["pointerdown", "keydown", "wheel", "touchstart"];
+          const touched = event => { if (event.isTrusted) state.interacted = true; };
+          for (const event of events) document.addEventListener(event, touched, { capture: true, passive: true });
+          state.stop = () => { for (const event of events) document.removeEventListener(event, touched, true); };
+          globalThis[key] = state;
+        }
+        const state = globalThis[key];
+        if (!state || state.token !== token) return { known: false };
+        const result = { known: true, interacted: state.interacted, unchangedUrl: state.url === location.href };
+        if (action === "clear") { state.stop(); delete globalThis[key]; }
+        return result;
+      } });
+    return results.find(result => result.frameId === 0)?.result || { known: false };
+  } catch { return { known: false }; }
+}
+async function recoverFailedNavigation(tabId, control, sender) {
+  const outcome = { focusReturned: false, temporaryTabClosed: false };
+  const tab = await tabById(tabId), source = await tabById(sender.tab.id);
+  const watch = await navigationInteraction(tabId, control.openToken, "read");
+  // Never close or redirect a cached/user tab. For our new tab, leave it alone
+  // after user input, document replacement, another foreground tab or TENH navigation.
+  if (!tab?.active || !source || source.url !== (sender.url || sender.tab.url) ||
+      !watch.known || watch.interacted) return outcome;
+  const active = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (active.length !== 1 || active[0].id !== tabId) return outcome;
+  await chrome.tabs.update(source.id, { active: true });
+  if (source.windowId) await chrome.windows.update(source.windowId, { focused: true });
+  outcome.focusReturned = true;
+  const after = await tabById(tabId), recheck = await navigationInteraction(tabId, control.openToken, "read");
+  // A changed route could be user navigation outside the document; preserve it.
+  if (after && !after.active && !after.pendingUrl && recheck.known && !recheck.interacted && recheck.unchangedUrl &&
+      profileInboxRoute(after.url, control.pageId)?.key === control.candidate.route) {
+    await chrome.tabs.remove(tabId); outcome.temporaryTabClosed = true;
+  }
+  return outcome;
+}
 function conversationContext(value) {
   return { businessId: value.businessId, conversationId: value.conversationId, pageId: value.pageId, threadId: value.threadId };
 }
@@ -1437,8 +1498,8 @@ function navigationControl(options, sender) {
 }
 async function prepareFacebookConversation(options, sender) {
   const binding = navigationControl(options, sender);
-  if (!binding || typeof options.businessId !== "string" || !options.businessId) return { opened: false, reason: "untrusted_sender" };
-  if (conversationNavigations.has(binding.key) || conversationNavigations.size >= 40) return { opened: false, reason: "facebook_navigation_busy" };
+  if (!binding || typeof options.businessId !== "string" || !options.businessId) return navigationFailure({ reason: "untrusted_sender" }, "prepare");
+  if (conversationNavigations.has(binding.key) || conversationNavigations.size >= 40) return navigationFailure({ reason: "facebook_navigation_busy" }, "prepare");
   const control = { ...binding, ...conversationContext(options), cancelled: false, expiresAt: Date.now() + 45000 };
   conversationNavigations.set(binding.key, control);
   const timer = setTimeout(() => {
@@ -1451,7 +1512,7 @@ async function prepareFacebookConversation(options, sender) {
     clearTimeout(timer); conversationNavigations.delete(binding.key);
     await disposeConversationNavigation(control);
   }
-  return result;
+  return result.prepared ? { ...result, phase: "prepare" } : navigationFailure(result, "prepare", result.opened === true);
 }
 async function cancelFacebookConversation(options, sender) {
   const binding = navigationControl(options, sender);
@@ -1464,7 +1525,9 @@ async function cancelFacebookConversation(options, sender) {
 async function commitFacebookConversation(options, sender) {
   const binding = navigationControl(options, sender);
   const control = binding && conversationNavigations.get(binding.key);
-  const failed = reason => ({ opened: false, exactRequested: false, verified: false, reason });
+  let activated = false, outcome = null;
+  const ownedTabId = control?.ownedTabId || null;
+  const failed = (reason, verification = {}) => outcome = navigationFailure({ reason, ...verification }, activated ? "after_activation" : "before_activation", activated);
   if (!control || !navigationLive(control) || control.consumed || !control.openToken || options.openToken !== control.openToken ||
       Object.keys(conversationContext(options)).some(key => options[key] !== control[key])) return failed("conversation_context_mismatch");
   control.consumed = true;
@@ -1483,23 +1546,42 @@ async function commitFacebookConversation(options, sender) {
     const checked = await readConversationTab(previous.tab.id, control.context, {
       allowActive: !control.ownedTabId, timeoutMs: 2000, expectedRoute: previous.route, control,
     });
-    if (!checked.verified || checked.identity !== previous.identity) return failed("facebook_conversation_changed");
+    if (!checked.verified || checked.identity !== previous.identity) return failed("facebook_conversation_changed", {
+      verificationReason: checked.reason, diagnostics: { dom: checked.diagnostics } });
     const tab = await tabById(previous.tab.id);
     if (!navigationLive(control) || !tab || tab.pendingUrl || tab.status !== "complete" ||
         profileInboxRoute(tab.url, control.pageId)?.key !== previous.route || (control.ownedTabId && tab.active)) return failed("facebook_conversation_changed");
+    if (ownedTabId) {
+      const guard = await navigationInteraction(tab.id, control.openToken, "arm");
+      const latest = await tabById(tab.id);
+      if (!guard.known) return failed("facebook_navigation_guard_unavailable");
+      if (guard.interacted) {
+        control.ownedTabId = null; // User input transfers ownership even if the tab is inactive again.
+        return failed("facebook_tab_in_use");
+      }
+      if (!navigationLive(control) || !latest || latest.active || latest.pendingUrl ||
+          profileInboxRoute(latest.url, control.pageId)?.key !== previous.route) return failed("facebook_conversation_changed");
+    }
     await chrome.tabs.update(tab.id, { active: true });
-    control.ownedTabId = null; // An activated tab belongs to the user from here.
+    activated = true;
+    control.ownedTabId = null; // Normal cleanup must preserve an activated tab; guarded failure recovery owns cleanup.
     if (navigationLive(control) && tab.windowId) await chrome.windows.update(tab.windowId, { focused: true });
     const final = await readConversationTab(tab.id, control.context, { allowActive: true, timeoutMs: 2000, expectedRoute: previous.route, control });
-    if (!navigationLive(control) || !final.verified || final.identity !== previous.identity) return failed("facebook_conversation_changed");
+    if (!navigationLive(control) || !final.verified || final.identity !== previous.identity) return failed("facebook_conversation_changed", {
+      verificationReason: final.reason, diagnostics: { dom: final.diagnostics } });
     const stored = await tenhStorage.session.get(VERIFIED_CONVERSATION_TABS);
     const cache = stored[VERIFIED_CONVERSATION_TABS] || {};
     cache[verifiedConversationKey(control.context)] = { tabId: tab.id, route: final.route, verifiedAt: Date.now() };
     await tenhStorage.session.set({ [VERIFIED_CONVERSATION_TABS]: Object.fromEntries(Object.entries(cache)
       .filter(([, entry]) => Date.now() - entry.verifiedAt < 7 * 24 * 60 * 60 * 1000).sort((a,b) => b[1].verifiedAt-a[1].verifiedAt).slice(0,40)) });
-    return { opened: true, exactRequested: true, verified: true, ...conversationContext(control), extensionVersion: VERSION };
+    return outcome = { opened: true, exactRequested: true, verified: true, ...conversationContext(control), extensionVersion: VERSION };
   } catch { return failed("facebook_navigation_failed"); }
   finally {
+    if (activated && ownedTabId && outcome?.verified !== true) {
+      try { Object.assign(outcome, await recoverFailedNavigation(ownedTabId, control, sender)); }
+      catch { /* Preserve tabs when ownership or foreground state cannot be checked. */ }
+    }
+    if (ownedTabId) await navigationInteraction(ownedTabId, control.openToken, "clear");
     clearTimeout(control.timer); conversationNavigations.delete(binding.key);
     await disposeConversationNavigation(control);
   }

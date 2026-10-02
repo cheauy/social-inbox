@@ -10,7 +10,7 @@ const reported=`https://business.facebook.com/latest/inbox/all?bpn_id=3520372145
 const provider=(patch={})=>({success:true,verified:true,...args,customerName:'Customer',linkSource:'meta_conversations_api',conversationLink:legacy,...patch});
 function extension(options={}) {
  let clock=Date.now(),nextId=100;class Clock extends Date {static now(){return clock;}}
- const tabs=structuredClone(options.tabs||[]),history=[],network=[],scripts=[];
+ const tabs=structuredClone(options.tabs||[]),history=[],network=[],scripts=[],watches=new Map();let focusedWindow=1;
  const initial={installationId:'test-install',token:'FAKE_DEVICE_TOKEN',...(options.state||{})};
  const state=localBuild ? new Proxy(Object.fromEntries(Object.entries(initial).map(([k,v])=>['tenh-localhost-3000:'+k,v])),{
   get:(obj,key)=>obj[String(key).startsWith('tenh-localhost-3000:')?key:'tenh-localhost-3000:'+String(key)],
@@ -20,14 +20,19 @@ function extension(options={}) {
  const event=()=>({addListener(){}});
  const storage={get:async keys=>Object.fromEntries((Array.isArray(keys)?keys:[keys]).map(k=>[k,state[k]])),set:async patch=>Object.assign(state,patch),remove:async keys=>{for(const k of(Array.isArray(keys)?keys:[keys]))delete state[k];}};
  const chrome={runtime:{id:'testextension',getManifest:()=>manifest,onMessage:event(),onConnect:event(),onInstalled:event(),onStartup:event()},storage:{local:storage,session:storage},alarms:{onAlarm:event(),create(){}},action:{setBadgeText:async()=>{}},
- tabs:{onUpdated:event(),onRemoved:event(),get:async id=>{const t=tabs.find(x=>x.id===id);if(!t)throw new Error('Missing');options.onGet?.(t);return {...t};},query:async()=>tabs.map(t=>({...t})),
-  update:async(id,patch)=>{history.push({action:'update',id,patch});const t=tabs.find(t=>t.id===id);Object.assign(t,patch);options.onUpdate?.(t,patch);return {...t};},
+ tabs:{onUpdated:event(),onRemoved:event(),get:async id=>{const t=tabs.find(x=>x.id===id);if(!t)throw new Error('Missing');options.onGet?.(t);return {...t};},query:async filter=>tabs.filter(t=>(!filter?.active||t.active)&&(!filter?.lastFocusedWindow||(t.windowId||1)===focusedWindow)).map(t=>({...t})),
+  update:async(id,patch)=>{history.push({action:'update',id,patch});const t=tabs.find(t=>t.id===id);if(patch.active)for(const other of tabs)if((other.windowId||1)===(t.windowId||1))other.active=false;Object.assign(t,patch);options.onUpdate?.(t,patch,tabs);return {...t};},
   create:async props=>{history.push({action:'create',props});const t={id:nextId++,windowId:1,status:'complete',...props};if(options.redirect && !props.active)t.url=options.redirect;
    if(options.loading){t.status='loading';t.pendingUrl=options.redirect||props.url;}
    options.onCreate?.(t);tabs.push(t);return {...t};},remove:async id=>{history.push({action:'remove',id});const i=tabs.findIndex(t=>t.id===id);if(i>=0)tabs.splice(i,1);},sendMessage:async()=>({})},
- windows:{update:async()=>{}},scripting:{executeScript:async request=>{
+ windows:{update:async(id)=>{focusedWindow=id;}},scripting:{executeScript:async request=>{
   scripts.push(request);if(request.files)return [];
   const tab=tabs.find(x=>x.id===request.target.tabId),context=request.args[0];
+  if(typeof context==='string' && ['arm','read','clear'].includes(request.args[1])) {
+   const action=request.args[1];if(action==='arm')watches.set(tab.id,{token:context,url:tab.url});
+   const watch=watches.get(tab.id),result={known:Boolean(watch&&watch.token===context&&!options.watchUnavailable),interacted:Boolean(options.interacted?.(tab,action)),unchangedUrl:watch?.url===tab.url};
+   if(action==='clear')watches.delete(tab.id);return [{frameId:0,result}];
+  }
   const result=typeof options.read==='function'?options.read(tab,context,request.args[1]):options.read||{
    found:true,pageId:context.pageId,matchedThreadId:context.threadId,
    selectedItemId:new URL(tab.url).searchParams.get('selected_item_id'),profileUrl:'https://www.facebook.com/profile.php?id=100073163121418'};
@@ -226,4 +231,70 @@ test('user navigation during prepare is preserved when its route changed',async(
  let reads=0;const e=extension({redirect:reported,read:tab=>{if(++reads===1)tab.url=suite('999999');return {reason:'facebook_customer_mismatch'};}});
  assert.equal((await e.api.prepareFacebookConversation(verifiedRequest,e.sender)).opened,false);
  assert.equal(e.tabs.length,1);assert.equal(e.tabs[0].url,suite('999999'));assert.equal(e.history.filter(x=>x.action==='update').length,0);
+});
+
+function sourceTab(){return {id:9,windowId:1,status:'complete',active:true,url:(localBuild?'http://localhost:3000':'https://app.tenhchat.com')+'/dashboard/inbox'};}
+function loadedRead(tab,ctx){return tab.active?{reason:'facebook_customer_mismatch',diagnostics:{composerFound:false,headerCandidates:1,matchingHeaders:0}}:
+ {found:true,pageId:ctx.pageId,matchedThreadId:ctx.threadId,selectedItemId:'61576318208827',profileUrl:'https://www.facebook.com/customer'};}
+async function preparedCommit(e){const p=await e.api.prepareFacebookConversation(verifiedRequest,e.sender);assert.equal(p.prepared,true);return e.api.commitFacebookConversation({...verifiedRequest,openToken:p.openToken},e.sender);}
+test('after-activation mismatch reports truth and returns focus, closing only its untouched temporary tab',async()=>{
+ const unrelated={id:44,windowId:1,status:'complete',active:false,url:suite('999999')};
+ const e=extension({tabs:[sourceTab(),unrelated],redirect:reported,read:loadedRead}),r=await preparedCommit(e);
+ assert.equal(r.opened,true);assert.equal(r.verified,false);assert.equal(r.phase,'after_activation');assert.equal(r.verificationReason,'facebook_customer_mismatch');
+ assert.equal(r.focusReturned,true);assert.equal(r.temporaryTabClosed,true);assert.equal(e.tabs.find(t=>t.id===9).active,true);
+ assert.equal(e.tabs.some(t=>t.id===44),true);assert.deepEqual(e.history.filter(x=>x.action==='remove').map(x=>x.id),[100]);
+ assert.equal(r.diagnostics.dom.composerFound,false);assert.equal(r.diagnostics.dom.matchingHeaders,0);
+});
+test('trusted user interaction after activation preserves their tab and foreground',async()=>{
+ const e=extension({tabs:[sourceTab()],redirect:reported,read:loadedRead,interacted:tab=>tab.active}),r=await preparedCommit(e);
+ assert.equal(r.opened,true);assert.equal(r.phase,'after_activation');assert.equal(r.focusReturned,false);assert.equal(r.temporaryTabClosed,false);
+ assert.equal(e.tabs.find(t=>t.id===100).active,true);assert.equal(e.history.some(x=>x.action==='remove'),false);
+});
+test('unavailable interaction guard prevents activation and cleans only the inactive temporary tab',async()=>{
+ const e=extension({tabs:[sourceTab()],redirect:reported,watchUnavailable:true}),r=await preparedCommit(e);
+ assert.equal(r.opened,false);assert.equal(r.phase,'before_activation');assert.equal(r.reason,'facebook_navigation_guard_unavailable');
+ assert.equal(e.history.some(x=>x.action==='update'),false);assert.equal(e.tabs.length,1);
+});
+test('replaced document after activation prevents focus recovery and closing',async()=>{
+ const options={tabs:[sourceTab()],redirect:reported,read:loadedRead,onUpdate:(tab,patch)=>{if(tab.id===100&&patch.active)options.watchUnavailable=true;}};
+ const e=extension(options),r=await preparedCommit(e);assert.equal(r.opened,true);assert.equal(r.focusReturned,false);assert.equal(r.temporaryTabClosed,false);assert.equal(e.tabs.length,2);
+});
+test('activation redirect returns focus but preserves the changed Facebook destination',async()=>{
+ const e=extension({tabs:[sourceTab()],redirect:reported,onUpdate:(tab,patch)=>{if(tab.id===100&&patch.active)tab.url=suite('999999');}}),r=await preparedCommit(e);
+ assert.equal(r.opened,true);assert.equal(r.phase,'after_activation');assert.equal(r.focusReturned,true);assert.equal(r.temporaryTabClosed,false);
+ assert.equal(e.tabs.find(t=>t.id===100).url,suite('999999'));assert.equal(e.history.some(x=>x.action==='remove'),false);
+});
+test('another user foreground tab prevents recovery from stealing focus',async()=>{
+ const other={id:44,windowId:1,status:'complete',active:false,url:'https://example.test/'};
+ let switched=false;const e=extension({tabs:[sourceTab(),other],redirect:reported,read:(tab,ctx)=>switched?{reason:'facebook_customer_mismatch'}:loadedRead(tab,ctx),onUpdate:(tab,patch,tabs)=>{if(tab.id===100&&patch.active){switched=true;tab.active=false;tabs.find(t=>t.id===44).active=true;}}}),r=await preparedCommit(e);
+ assert.equal(r.opened,true);assert.equal(r.focusReturned,false);assert.equal(r.temporaryTabClosed,false);assert.equal(e.tabs.find(t=>t.id===44).active,true);
+});
+test('cached verified tab is never closed or subject to owned-tab recovery on failure',async()=>{
+ let fail=false;const e=extension({tabs:[sourceTab()],redirect:reported,read:(tab,ctx)=>fail?loadedRead(tab,ctx):{found:true,pageId:ctx.pageId,matchedThreadId:ctx.threadId,selectedItemId:'61576318208827',profileUrl:'https://www.facebook.com/customer'}});
+ assert.equal((await preparedCommit(e)).verified,true);e.tabs.find(t=>t.id===100).active=false;e.tabs.find(t=>t.id===9).active=true;
+ fail=true;const r=await preparedCommit(e);assert.equal(r.opened,true);assert.equal(r.phase,'after_activation');assert.equal(r.focusReturned,undefined);
+ assert.equal(e.history.filter(x=>x.action==='create').length,1);assert.equal(e.history.some(x=>x.action==='remove'),false);
+});
+test('prepare failure exposes only whitelisted reason, phase and structural diagnostics',async()=>{
+ const secret='PRIVATE-CUSTOMER-URL-TOKEN';const e=extension({redirect:reported,read:{reason:'facebook_customer_mismatch',diagnostics:{composerFound:false,matchingHeaders:0,customerName:secret,html:secret}}});
+ const r=await e.api.prepareFacebookConversation(verifiedRequest,e.sender);
+ assert.equal(r.reason,'facebook_customer_mismatch');assert.equal(r.phase,'prepare');assert.equal(r.opened,false);assert.equal(r.diagnostics.dom.matchingHeaders,0);
+ assert.equal(JSON.stringify(r).includes(secret),false);for(const key of ['tabId','customerName','navigationId','threadId','conversationId'])assert.equal(key in r,false);
+});
+
+test('interaction watcher records trusted input as a boolean without reading event content and clears listeners',async()=>{
+ const e=extension({redirect:reported});await preparedCommit(e);
+ const request=e.scripts.find(s=>s.args?.[1]==='arm'),handlers=new Map();
+ const sandbox={location:{href:reported},document:{addEventListener:(type,fn)=>handlers.set(type,fn),removeEventListener:type=>handlers.delete(type)}};
+ const call=action=>vm.runInNewContext('('+request.func.toString()+')('+JSON.stringify('test-ticket')+','+JSON.stringify(action)+')',sandbox);
+ assert.equal(call('arm').interacted,false);assert.equal(handlers.size,4);
+ handlers.get('keydown')({isTrusted:false});assert.equal(call('read').interacted,false);
+ handlers.get('keydown')({isTrusted:true,get key(){throw Error('Must not read keystrokes');}});assert.equal(call('read').interacted,true);
+ assert.equal(Object.keys(sandbox.__tenhNavigationInteraction).includes('key'),false);call('clear');assert.equal(handlers.size,0);assert.equal(call('read').known,false);
+});
+
+test('user input detected before activation transfers ownership and preserves the temporary tab',async()=>{
+ const e=extension({tabs:[sourceTab()],redirect:reported,interacted:()=>true}),r=await preparedCommit(e);
+ assert.equal(r.opened,false);assert.equal(r.phase,'before_activation');assert.equal(r.reason,'facebook_tab_in_use');assert.equal(e.tabs.length,2);
+ assert.equal(e.history.some(x=>x.action==='remove'),false);assert.equal(e.history.some(x=>x.action==='update'),false);
 });

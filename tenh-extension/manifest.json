@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TENH Companion",
-  "version": "1.2.33",
+  "version": "1.2.34",
   "description": "TENH companion for app.tenhchat.com, with verified Facebook conversation navigation.",
   "minimum_chrome_version": "116",
   "permissions": [

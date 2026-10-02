@@ -1,15 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loader, hooks, tick } from './inbox-recovery-harness.cjs';
+import { loader, hooks, nodes, tick } from './inbox-recovery-harness.cjs';
 const context = { businessId:'b1', conversationId:'c1', pageId:'12345', threadId:'98765' };
 const origin = 'https://app.tenhchat.com';
 const { supportsVerifiedConversation, verifiedConversationOpened } = loader()('lib/extension/verified-conversation.ts');
-const handshake = { type:'TENH_EXTENSION_PONG', version:'1.2.33', connected:true, verifiedConversationNavigation:true, appOrigin:origin };
+const handshake = { type:'TENH_EXTENSION_PONG', version:'1.2.34', connected:true, verifiedConversationNavigation:true, appOrigin:origin };
 
 test('verified navigation requires a live supported version, capability, connection and exact app origin', () => {
   assert.equal(supportsVerifiedConversation(handshake, origin), true);
   assert.equal(supportsVerifiedConversation({...handshake,version:'1.10.0'}, origin), true);
-  for (const patch of [{version:'1.2.32'}, {version:'1.2.33-beta'}, {verifiedConversationNavigation:false},
+  for (const patch of [{version:'1.2.32'}, {version:'1.2.33'}, {version:'1.2.33-beta'}, {verifiedConversationNavigation:false},
     {verifiedConversationNavigation:undefined}, {connected:false}, {appOrigin:'http://localhost:3000'},
     {type:'TENH_EXTENSION_READY'}, {error:'invalidated'}, {requiresRefresh:true}]) assert.equal(supportsVerifiedConversation({...handshake,...patch}, origin), false);
 });
@@ -51,7 +51,7 @@ test('prepare must match the exact context before the hook sends commit', async 
   const f=companionFixture(),controller=new AbortController();try {
     const task=f.render().openVerifiedConversation(context,controller.signal,()=>true);
     f.reply('PREPARE_FACEBOOK_CONVERSATION',{...context,threadId:'other',prepared:true,opened:false,exactRequested:true,verified:true,openToken:'00000000-0000-4000-8000-000000000001'});
-    assert.equal(await task,null);assert.equal(f.messages.some(m=>m.type==='COMMIT_FACEBOOK_CONVERSATION'),false);
+    const failure=await task;assert.equal(failure.reason,'conversation_context_mismatch');assert.equal(failure.phase,'prepare');assert.equal(f.messages.some(m=>m.type==='COMMIT_FACEBOOK_CONVERSATION'),false);
     assert.equal(f.messages.at(-1).type,'CANCEL_FACEBOOK_CONVERSATION');
   } finally {f.h.cleanup();}
 });
@@ -85,14 +85,16 @@ test('valid prepare and exact verified commit use the same navigation request an
 const inbox='https://business.facebook.com/latest/inbox/all?asset_id=12345';
 const fallback={success:true,businessId:context.businessId,conversationId:context.conversationId,pageId:context.pageId,recipientId:context.threadId,
   navigationAvailable:false,pageInboxUrl:inbox,reason:'facebook_direct_link_required',providerLinkState:'retained',providerRouteKind:'legacy_page_inbox',directLinkRejectReason:'legacy_page_inbox_route'};
-function actionFixture(body=fallback, enabled=true, open=async()=>({...context,opened:true,exactRequested:true,verified:true})) {
-  const h=hooks(),popups=[],calls=[];h.React.createContext=()=>({Provider:'provider'});
-  const companion={verifiedConversationNavigation:enabled,openVerifiedConversation:(...args)=>{calls.push(args);return open(...args);}};
+function actionFixture(body=fallback, enabled=true, open=async()=>({...context,opened:true,exactRequested:true,verified:true}),metadata={}) {
+  const h=hooks(),popups=[],calls=[];let shared;h.React.useContext=()=>shared;h.React.createContext=()=>({Provider:'provider'});
+  const companion={...metadata,verifiedConversationNavigation:enabled,openVerifiedConversation:(...args)=>{calls.push(args);return open(...args);}};
   const window={open:()=>{const popup={closed:false,location:{href:'about:blank',replace(value){this.href=value;}},document:{createElement:()=>({style:{}}),body:{appendChild(){}}},close(){this.closed=true;}};popups.push(popup);return popup;}};
-  const Provider=loader({react:h.React,'react/jsx-runtime':h.jsx,'lucide-react':{ExternalLink:'icon'},'@/lib/extension/use-companion':{useCompanion:()=>companion}},
-    {window,AbortController,URLSearchParams,fetch:async()=>new Response(JSON.stringify(body))})('components/inbox/companion-facebook-action.tsx').FacebookConversationActionProvider;
-  const render=(props=context)=>h.render(Provider,{...props,navigationOnly:true}).props.value;
-  render();return {h,render,popups,calls};
+  const actions=loader({react:h.React,'react/jsx-runtime':h.jsx,'lucide-react':{ExternalLink:'icon'},'@/lib/extension/use-companion':{useCompanion:()=>companion}},
+    {window,AbortController,URLSearchParams,fetch:async()=>new Response(JSON.stringify(body))})('components/inbox/companion-facebook-action.tsx');
+  const Provider=actions.FacebookConversationActionProvider;
+  const render=(props=context)=>shared=h.render(Provider,{...props,navigationOnly:true}).props.value;
+  const button=()=>{const element=h.render(actions.CompanionFacebookAction,{...context,navigationOnly:true});return element.type(element.props);};
+  render();return {h,render,popups,calls,button};
 }
 test('explicit fallback is offered only for authorized legacy diagnostics and a capable extension', async () => {
   for(const [body,enabled,expected] of [[fallback,true,true],[fallback,false,false],
@@ -119,4 +121,47 @@ test('switching TENH customers aborts fallback and ignores a late exact success'
     resolve({...context,opened:true,exactRequested:true,verified:true});await task;
     const action=f.render(changed);assert.equal(action.notice,'');assert.equal(action.fallbackUrl,'');assert.equal(action.canVerifyWithExtension,false);
   }finally{f.h.cleanup();}
+});
+
+const failureApi=loader()('lib/extension/conversation-navigation-failure.ts');
+const privateValue='PRIVATE-NAME-ID-URL-MESSAGE-TOKEN';
+test('navigation failure sanitizer accepts fixed enums and bounded primitive DOM facts only',()=>{
+ const r=failureApi.readNavigationFailure({reason:'facebook_customer_mismatch',phase:'after_activation',opened:true,verificationReason:'facebook_chat_not_ready',customerName:privateValue,
+ diagnostics:{dom:{matchingHeaders:0,headerCandidates:999999,composerFound:false,visibility:{toString:()=> 'visible',secret:privateValue},routeKind:privateValue,html:privateValue}},token:privateValue},'prepare');
+ assert.equal(r.phase,'after_activation');assert.equal(r.opened,true);assert.equal(r.diagnostics.dom.headerCandidates,10000);assert.equal(r.diagnostics.dom.visibility,undefined);
+ assert.equal(JSON.stringify(r).includes(privateValue),false);assert.equal(failureApi.readNavigationFailure({reason:privateValue,phase:'__proto__'},'prepare').reason,'facebook_navigation_unverified');
+});
+test('hook preserves sanitized prepare failure without issuing commit',async()=>{
+ const f=companionFixture();try{
+  const task=f.render().openVerifiedConversation(context,new AbortController().signal,()=>true);
+  f.reply('PREPARE_FACEBOOK_CONVERSATION',{reason:'profile_customer_heading_missing',phase:'prepare',opened:false,diagnostics:{dom:{matchingHeaders:0,html:privateValue}},customerName:privateValue});
+  const r=await task;assert.equal(r.reason,'profile_customer_heading_missing');assert.equal(r.phase,'prepare');assert.equal(JSON.stringify(r).includes(privateValue),false);
+  assert.equal(f.messages.some(m=>m.type==='COMMIT_FACEBOOK_CONVERSATION'),false);
+ }finally{f.h.cleanup();}
+});
+test('hook preserves post-activation mismatch and recovery status without customer data',async()=>{
+ const f=companionFixture();try{
+  const task=f.render().openVerifiedConversation(context,new AbortController().signal,()=>true);
+  f.reply('PREPARE_FACEBOOK_CONVERSATION',{...context,prepared:true,opened:false,exactRequested:true,verified:true,openToken:'00000000-0000-4000-8000-000000000001'});
+  await tick();f.reply('COMMIT_FACEBOOK_CONVERSATION',{opened:true,verified:false,reason:'facebook_conversation_changed',verificationReason:'facebook_customer_mismatch',phase:'after_activation',focusReturned:true,temporaryTabClosed:true,url:privateValue});
+  const r=await task;assert.equal(r.opened,true);assert.equal(r.phase,'after_activation');assert.equal(r.verificationReason,'facebook_customer_mismatch');assert.equal(r.focusReturned,true);assert.equal(JSON.stringify(r).includes(privateValue),false);
+ }finally{f.h.cleanup();}
+});
+test('Show details preserves extension phase and mismatch, resets on selection change and reveals no customer content',async()=>{
+ const f=actionFixture(fallback,true,async()=>({opened:true,verified:false,reason:'facebook_conversation_changed',verificationReason:'facebook_customer_mismatch',phase:'after_activation',focusReturned:true,temporaryTabClosed:true,customerName:privateValue,diagnostics:{dom:{composerFound:false,matchingHeaders:0,html:privateValue}}}));
+ try{
+  await f.render().open();await f.render().verifyWithExtension();const action=f.render(),tree=f.button();
+  assert.match(action.notice,/Facebook opened/);assert.match(action.notice,/different customer/);
+  const details=nodes(tree,n=>n.type==='details')[0],labels=nodes(details,n=>n.type==='dd').map(n=>n.props.children);
+  assert.ok(labels.includes('After bringing Facebook forward'));assert.ok(labels.includes('Facebook is showing a different customer.'));assert.ok(labels.includes('Returned to TENH'));assert.ok(labels.includes('Temporary tab closed after verification failed'));
+  assert.equal(JSON.stringify(tree).includes(privateValue),false);
+  const changed={...context,conversationId:'other'};f.render(changed);assert.equal(f.render(changed).extensionFailure,null);
+ }finally{f.h.cleanup();}
+});
+
+test('an installed pre-repair extension is gated with a specific update hint',async()=>{
+ const f=actionFixture(fallback,false,undefined,{installed:true,version:'1.2.33'});try{
+  await f.render().open();const action=f.render();assert.equal(action.canVerifyWithExtension,false);assert.equal(action.needsExtensionUpdate,true);
+  const paragraphs=nodes(f.button(),n=>n.type==='p').map(n=>[].concat(n.props.children).join('')).join(' ');assert.match(paragraphs,/Update TENH Extension to 1\.2\.34/);
+ }finally{f.h.cleanup();}
 });

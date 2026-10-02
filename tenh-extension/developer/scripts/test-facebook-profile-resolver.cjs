@@ -209,3 +209,20 @@ test('missing-heading diagnostics distinguish an empty render from a known wrong
  r=h.w.TenhFacebookProfileResolver.readConversation(opts);assert.equal(r.reason,'facebook_customer_mismatch');
  assert.equal(r.diagnostics.matchingHeaders,0);assert.equal(r.diagnostics.headerCandidates,1);h.close();
 });
+
+const redirectedOpts={...opts,conversationLink:'https://www.facebook.com/123456/inbox/888888/?section=messages',loadedConversationLink:base};
+test('a conflicting current header overrides a matching stale card even without a composer',()=>{
+ for(const options of [opts,redirectedOpts]){
+  const h=load(fixture()+'<header><h2>Different Customer</h2></header>');
+  const r=h.w.TenhFacebookProfileResolver.readConversation(options);
+  assert.equal(r.found,false);assert.equal(r.canReveal,false);assert.equal(r.profileUrl,undefined);assert.equal(r.reason,'facebook_customer_mismatch');h.close();
+ }
+});
+test('a legacy redirect card requires a single matching current header and visible composer',()=>{
+ for(const html of [fixture(),fixture()+'<header><h2>Test Customer</h2></header>',fixture()+replyComposer]){
+  const h=load(html),r=h.w.TenhFacebookProfileResolver.readConversation(redirectedOpts);
+  assert.equal(r.found,false);assert.equal(r.reason,'facebook_chat_not_ready');h.close();
+ }
+ const h=load(fixture()+'<header><h2>Test Customer</h2></header>'+replyComposer),r=h.w.TenhFacebookProfileResolver.readConversation(redirectedOpts);
+ assert.equal(r.found,true);assert.equal(r.profileUrl,profile);h.close();
+});

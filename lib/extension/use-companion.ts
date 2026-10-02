@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { awaitCompanionAnswer } from "./companion-response";
-import { matchesConversationContext, supportsVerifiedConversation, type ConversationContext } from "./verified-conversation";
+import { matchesConversationContext, supportsVerifiedConversation, verifiedConversationOpened, type ConversationContext } from "./verified-conversation";
+import { readNavigationFailure } from "./conversation-navigation-failure";
 
 /*
  * Asking the browser whether TENH Companion is there, and asking it for things.
@@ -55,13 +56,17 @@ export type FacebookConversationOpenResult = {
   pageId?: string;
   threadId?: string;
   extensionVersion?: string;
+  phase?: string;
+  verificationReason?: string;
+  focusReturned?: boolean;
+  temporaryTabClosed?: boolean;
   opened?: boolean;
   exactRequested?: boolean;
   verified?: boolean;
   diagnostics?: {
     extensionVersion?: string; pageId?: string; recipientId?: string; conversationId?: string;
     expectedCustomerName?: string; reason?: string; observedNavigationId?: string | null;
-    phase?: string; cacheUsed?: boolean;
+    phase?: string; cacheUsed?: boolean; dom?: Record<string, unknown>;
   };
   reason?: string;
 };
@@ -158,11 +163,21 @@ export function useCompanion() {
     try {
       const preparedId = post("PREPARE_FACEBOOK_CONVERSATION", { ...context, navigationRequestId });
       const prepared = await awaitCompanionAnswer<FacebookConversationOpenResult>("PREPARE_FACEBOOK_CONVERSATION_RESULT", preparedId, 30000, window, signal);
-      if (signal.aborted || !isCurrent() || !prepared || prepared.prepared !== true || prepared.opened !== false ||
-          prepared.exactRequested !== true || prepared.verified !== true || !matchesConversationContext(prepared, context) ||
-          typeof prepared.openToken !== "string" || !/^[a-f0-9-]{36}$/.test(prepared.openToken)) return null;
+      if (signal.aborted || !isCurrent()) return null;
+      if (!prepared) return readNavigationFailure(null, "prepare", "extension_response_unavailable");
+      if (prepared.prepared !== true || prepared.verified !== true) return readNavigationFailure(prepared, "prepare");
+      if (prepared.opened !== false || prepared.exactRequested !== true || !matchesConversationContext(prepared, context) ||
+          typeof prepared.openToken !== "string" || !/^[a-f0-9-]{36}$/.test(prepared.openToken)) {
+        return readNavigationFailure({ reason: "conversation_context_mismatch", opened: prepared.opened === true }, "prepare");
+      }
       const commitId = post("COMMIT_FACEBOOK_CONVERSATION", { ...context, navigationRequestId, openToken: prepared.openToken });
-      return await awaitCompanionAnswer<FacebookConversationOpenResult>("COMMIT_FACEBOOK_CONVERSATION_RESULT", commitId, 15000, window, signal);
+      const committed = await awaitCompanionAnswer<FacebookConversationOpenResult>("COMMIT_FACEBOOK_CONVERSATION_RESULT", commitId, 15000, window, signal);
+      if (signal.aborted || !isCurrent()) return null;
+      if (!committed) return readNavigationFailure(null, "commit", "extension_response_unavailable");
+      if (verifiedConversationOpened(committed, context)) return committed;
+      if (committed.verified === true || committed.exactRequested === true) return readNavigationFailure({
+        reason: "conversation_context_mismatch", opened: committed.opened === true, phase: committed.phase }, "commit");
+      return readNavigationFailure(committed, "commit");
     } finally {
       signal.removeEventListener("abort", cancel);
       cancel();
