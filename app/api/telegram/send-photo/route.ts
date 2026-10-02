@@ -215,6 +215,24 @@ export async function POST(
   const albumFiles =
     albumValues.length > 0 ? albumValues : [file];
 
+  const requestIdValues = albumFiles.length > 1
+    ? formData.getAll("clientRequestIds")
+    : [formData.get("clientRequestId")].filter(value => value !== null);
+  const clientRequestIds = requestIdValues.filter(
+    (value): value is string => typeof value === "string",
+  );
+  if (
+    requestIdValues.some(value => typeof value !== "string") ||
+    (clientRequestIds.length > 0 && clientRequestIds.length !== albumFiles.length) ||
+    clientRequestIds.some(value => !/^optimistic:attachment:[\w.-]{1,100}$/.test(value)) ||
+    new Set(clientRequestIds).size !== clientRequestIds.length
+  ) {
+    return NextResponse.json(
+      { success: false, error: "Invalid per-file send identity." },
+      { status: 400 },
+    );
+  }
+
   const clientMediaGroupId = formData.get("clientMediaGroupId");
   if (clientMediaGroupId !== null && (typeof clientMediaGroupId !== "string" ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientMediaGroupId))) {
@@ -582,6 +600,7 @@ export async function POST(
     const sentMessage = telegramMessages[index];
     const sentFile =
       albumFiles[index] ?? albumFiles[0];
+    const clientRequestId = clientRequestIds[index] ?? null;
 
     if (!Number.isFinite(sentMessage.message_id)) {
       continue;
@@ -632,7 +651,8 @@ export async function POST(
 
     const rawPayload = {
       ...sentMessage,
-      ...(albumGroupId ? {tenh_media_group:{provider:"telegram",id:albumGroupId}} : {}),
+      ...(clientRequestId ? { tenh_client_request_id: clientRequestId } : {}),
+      ...(albumGroupId ? {tenh_media_group:{provider:"telegram",id:albumGroupId,position:index}} : {}),
       tenh_attachment: {
         type: "image",
         name:

@@ -1,4 +1,8 @@
-type StableRenderMessage = { id: string; __render_key?: string };
+type StableRenderMessage = {
+  id: string;
+  __render_key?: string;
+  platform_created_at?: string | null;
+};
 
 /** Keep React identity stable while the temporary row becomes the stored row. */
 export function messageRenderKey(message: StableRenderMessage) {
@@ -6,7 +10,13 @@ export function messageRenderKey(message: StableRenderMessage) {
 }
 
 export function withOptimisticRenderKey<T extends { id: string }>(server: T, optimistic: StableRenderMessage): T {
-  return { ...server, __render_key: messageRenderKey(optimistic) };
+  return {
+    ...server,
+    ...(messageRenderKey(optimistic).startsWith("optimistic:") && optimistic.platform_created_at
+      ? { platform_created_at: optimistic.platform_created_at }
+      : {}),
+    __render_key: messageRenderKey(optimistic),
+  };
 }
 
 // The webhook can arrive before the send response. Prefer the stored row,

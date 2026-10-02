@@ -30,6 +30,7 @@ import { ConversationList } from "@/components/inbox/conversation-list";
 import { INBOX_PAGE_CHANGED_EVENT, mergeConversationPage } from "@/lib/inbox/conversation-page-contract";
 import { matchesOptimisticMessage } from "@/lib/inbox/optimistic-message-match";
 import { confirmOutgoingMessage, withOptimisticRenderKey } from "@/lib/inbox/confirm-outgoing-message";
+import { correlateTelegramAlbumMessages } from "@/lib/inbox/telegram-album-correlation";
 import { normalizeMessages } from "@/lib/inbox/normalize-messages";
 import { retainLocalImagePreview } from "@/lib/inbox/local-image-preview";
 import { readMessagePageResponse } from "@/lib/inbox/read-message-page-response";
@@ -111,6 +112,7 @@ type PendingOptimisticAttachmentSend = {
   albumFiles?: File[];
   albumPreviewUrls?: string[];
   albumGroupId?: string;
+  albumPosition?: number;
   tempId: string;
   conversationId: string;
   recipientId: string;
@@ -7239,6 +7241,8 @@ async function performOptimisticAttachmentSend(
     if (pending.endpoint === "/api/facebook/send-attachment") {
       formData.set("clientRequestId", pending.tempId);
       if (pending.replyToMessageId) formData.set("replyToMessageId", pending.replyToMessageId);
+    } else if (pending.endpoint.startsWith("/api/telegram/")) {
+      formData.set("clientRequestId", pending.tempId);
     }
 
     /*
@@ -7398,13 +7402,11 @@ function reconcileOptimisticMessage(
   savedMessage: InboxMessage,
   previewUrl: string,
 ): InboxMessage[] {
-  const alreadyStored = current.some(
-    (message) =>
-      message.id === savedMessage.id &&
-      message.id !== tempId,
+  const original = current.find(message =>
+    message.id === tempId ||
+    (message as OptimisticInboxMessage).__render_key === tempId,
   );
-
-  const original = current.find(message => message.id === tempId);
+  if (!original) return current;
   const reconciled = retainLocalImagePreview(withOptimisticRenderKey({
     ...savedMessage,
     attachment_url: savedMessage.message_type === "image" ? savedMessage.attachment_url || previewUrl : previewUrl,
@@ -7412,17 +7414,9 @@ function reconcileOptimisticMessage(
     __optimistic_created_at: Date.now(),
   } as unknown as InboxMessage, original ?? savedMessage), original ?? savedMessage);
 
-  if (alreadyStored) {
-    return current.flatMap((message) => message.id === tempId
-      ? [reconciled]
-      : message.id === savedMessage.id ? [] : [message]);
-  }
-
-  return current.map((message) =>
-    message.id === tempId
-      ? reconciled
-      : message,
-  );
+  return current.flatMap(message => message === original
+    ? [reconciled]
+    : message.id === savedMessage.id ? [] : [message]);
 }
 
 /*
@@ -7439,10 +7433,21 @@ async function performOptimisticAlbumSend(
   caption?: string,
 ): Promise<boolean> {
   const albumGroupId = pendings[0].albumGroupId ?? crypto.randomUUID();
-  for (const pending of pendings) pending.albumGroupId = albumGroupId;
-  setLiveMessages(current => current.map(message => pendings.some(p => p.tempId === message.id)
-    ? { ...message, raw_payload: { ...message.raw_payload, tenh_media_group: { provider: "telegram", id: albumGroupId } } }
-    : message));
+  const pendingById = new Map(pendings.map((pending, position) => {
+    pending.albumGroupId = albumGroupId;
+    pending.albumPosition = position;
+    return [pending.tempId, pending] as const;
+  }));
+  setLiveMessages(current => current.map(message => {
+    const pending = pendingById.get(message.id);
+    return pending
+      ? { ...message, raw_payload: {
+          ...message.raw_payload,
+          tenh_client_request_id: pending.tempId,
+          tenh_media_group: { provider: "telegram", id: albumGroupId, position: pending.albumPosition },
+        } }
+      : message;
+  }));
   for (const pending of pendings) {
     setOptimisticSendStatus(
       pending.tempId,
@@ -7481,6 +7486,7 @@ async function performOptimisticAlbumSend(
         pending.file,
         pending.file.name,
       );
+      formData.append("clientRequestIds", pending.tempId);
     }
 
     const response = await fetch(
@@ -7525,9 +7531,13 @@ async function performOptimisticAlbumSend(
     }
 
     const saved = result.messages ?? [];
+    const correlated = correlateTelegramAlbumMessages(
+      pendings.map(pending => pending.tempId),
+      saved,
+    );
 
     pendings.forEach((pending, index) => {
-      const savedMessage = saved[index];
+      const savedMessage = correlated[index];
 
       if (savedMessage) {
         setLiveMessages((current) =>
