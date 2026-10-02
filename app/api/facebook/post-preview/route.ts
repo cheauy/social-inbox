@@ -42,7 +42,15 @@ export async function GET(request: NextRequest) {
       const source = sources.findLast(item => item.message_id === message.platform_message_id && item.post_id);
       const pageId = text(account.platform_account_id);
       if (!source?.post_id || !pageId) return json({ success: true, preview: null, available: false });
-      const fresh = await getFacebookPostPreview(source.post_id, pageId, { refresh: params.get("refresh") === "1" });
+      const postIds = /^\d+$/.test(source.post_id) && /^\d+$/.test(pageId)
+        ? [`${pageId}_${source.post_id}`, source.post_id]
+        : [source.post_id];
+      const options = { refresh: params.get("refresh") === "1" };
+      let fresh = await getFacebookPostPreview(postIds[0], pageId, options);
+      if (!fresh?.full_picture && postIds[1]) {
+        const fallback = await getFacebookPostPreview(postIds[1], pageId, options);
+        fresh = fallback?.full_picture ? fallback : fresh ?? fallback;
+      }
       // Source IDs come only from this authorized message's exact referral.
       return json({ success: true, preview: fresh, available: !!fresh?.full_picture });
     }
