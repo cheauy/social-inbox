@@ -903,11 +903,13 @@ function stopAndResetCompactAudio(audio: HTMLAudioElement) {
 
 function CompactAudioPlayer({
   src,
+  recoverySrc,
   label,
   isVoice,
   isOutgoing = false,
 }: {
   src: string;
+  recoverySrc?: string;
   label: string;
   isVoice: boolean;
   isOutgoing?: boolean;
@@ -916,20 +918,34 @@ function CompactAudioPlayer({
   const playbackOwnerRef = useRef<CompactAudioOwner | null>(null);
   const wantsPlayRef = useRef(false);
   const playRequestRef = useRef(0);
+  const mountedRef = useRef(true);
+  const sourceIdentityRef = useRef(src);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playError, setPlayError] = useState("");
+  const [sourceState, setSourceState] = useState({ identity: src, url: src, attempted: false });
+  const currentSource = sourceState.identity === src
+    ? sourceState
+    : { identity: src, url: src, attempted: false };
 
-  useEffect(() => () => {
-    const owner = playbackOwnerRef.current;
-    playbackOwnerRef.current = null;
-    if (!owner) return;
-    wantsPlayRef.current = false;
-    playRequestRef.current += 1;
-    if (activeCompactAudioOwner === owner) activeCompactAudioOwner = null;
-    stopAndResetCompactAudio(owner.audio);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const owner = playbackOwnerRef.current;
+      playbackOwnerRef.current = null;
+      if (!owner) return;
+      wantsPlayRef.current = false;
+      playRequestRef.current += 1;
+      if (activeCompactAudioOwner === owner) activeCompactAudioOwner = null;
+      stopAndResetCompactAudio(owner.audio);
+    };
   }, []);
+
+  useEffect(() => {
+    sourceIdentityRef.current = src;
+  }, [src]);
 
   async function togglePlayback() {
     const audio = audioRef.current;
@@ -1005,6 +1021,23 @@ function CompactAudioPlayer({
     setPlaying(false);
   }
 
+  function handleAudioError() {
+    if (!mountedRef.current || sourceIdentityRef.current !== src) return;
+    const owner = playbackOwnerRef.current;
+    playbackOwnerRef.current = null;
+    if (owner && activeCompactAudioOwner === owner) activeCompactAudioOwner = null;
+    finishPlayback();
+    if (owner) stopAndResetCompactAudio(owner.audio);
+    setCurrentTime(0);
+    setDuration(0);
+    if (recoverySrc && !currentSource.attempted && currentSource.url !== recoverySrc) {
+      setPlayError("");
+      setSourceState({ identity: src, url: recoverySrc, attempted: true });
+      return;
+    }
+    setPlayError("Audio is unavailable.");
+  }
+
   function seek(value: number) {
     const audio = audioRef.current;
 
@@ -1037,7 +1070,7 @@ function CompactAudioPlayer({
       <div className="flex min-w-0 items-center gap-[10.2px] py-[3.4px]">
       <audio
         ref={audioRef}
-        src={src}
+        src={currentSource.url}
         preload="metadata"
         onPlay={handlePlay}
         onPause={() => {
@@ -1053,7 +1086,7 @@ function CompactAudioPlayer({
           setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)
         }
         onDurationChange={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
-        onError={() => { finishPlayback(); setPlayError("Audio is unavailable."); }}
+        onError={handleAudioError}
         className="hidden"
       />
 
@@ -5359,6 +5392,7 @@ export function MessagePanel({
                             <CompactAudioPlayer
                               key={attachmentUrl}
                               src={attachmentUrl}
+                              recoverySrc={`/api/inbox/message-audio?conversationId=${encodeURIComponent(message.conversation_id)}&messageId=${encodeURIComponent(message.id)}`}
                               label={attachmentName}
                               isVoice={isVoiceMessage || (isAudioMessage && isOutgoing)}
                               isOutgoing={isOutgoing}

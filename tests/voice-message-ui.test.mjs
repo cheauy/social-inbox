@@ -34,7 +34,7 @@ function players() {
     },
   });
   vm.runInContext(code, context);
-  return isOutgoing => {
+  return (isOutgoing, options = {}) => {
     const instance = { state: [], refs: [], effects: [], nodes: [], index: 0, refIndex: 0, effectIndex: 0 };
     let rejectPlay = false, playCalls = 0;
     const pending = [];
@@ -54,7 +54,13 @@ function players() {
       current = instance;
       instance.index = instance.refIndex = instance.effectIndex = 0;
       instance.nodes = [];
-      context.CompactAudioPlayer({ src: '/voice.mp3', label: '', isVoice: true, isOutgoing });
+      context.CompactAudioPlayer({
+        src: options.src ?? '/voice.mp3',
+        recoverySrc: options.recoverySrc,
+        label: '',
+        isVoice: true,
+        isOutgoing,
+      });
     };
     const button = () => instance.nodes.find(node => node.type === 'button');
     const range = () => instance.nodes.find(node => node.type === 'input');
@@ -239,6 +245,32 @@ test('unavailable or rejected audio stays stopped and reports an accessible erro
   ui.media().props.onError();
   ui.render();
   assert.equal(ui.nodes().find(node => node.props.role === 'alert').props.children, 'Audio is unavailable.');
+});
+
+test('an expired source switches to the exact recovery URL once and a failed refresh stops', () => {
+  const ui = players()(true, {
+    src: 'https://lookaside.fbsbx.com/expired',
+    recoverySrc: '/api/inbox/message-audio?conversationId=c1&messageId=m1',
+  });
+  assert.equal(ui.media().props.src, 'https://lookaside.fbsbx.com/expired');
+  ui.media().props.onError();
+  ui.render();
+  assert.equal(ui.media().props.src, '/api/inbox/message-audio?conversationId=c1&messageId=m1');
+  assert.ok(!ui.nodes().some(node => node.props.role === 'alert'));
+  ui.media().props.onError();
+  ui.render();
+  assert.equal(ui.media().props.src, '/api/inbox/message-audio?conversationId=c1&messageId=m1');
+  assert.equal(ui.nodes().find(node => node.props.role === 'alert').props.children, 'Audio is unavailable.');
+});
+
+test('a removed player ignores a late source error', () => {
+  const ui = players()(false, { recoverySrc: '/api/inbox/message-audio?conversationId=c1&messageId=m1' });
+  const staleError = ui.media().props.onError;
+  ui.unmount();
+  staleError();
+  ui.render();
+  assert.equal(ui.media().props.src, '/voice.mp3');
+  assert.ok(!ui.nodes().some(node => node.props.role === 'alert'));
 });
 
 test('voice animation respects reduced motion and both message directions use the same player', () => {

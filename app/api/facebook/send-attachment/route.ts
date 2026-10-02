@@ -1164,70 +1164,60 @@ export async function POST(
 
     savedMessage =
       insertedMessage;
+  }
 
-    /*
-     * Keep the bytes we just sent.
-     *
-     * Meta gives back an attachment id, not a URL, and its echo of our own
-     * message -- which does carry a CDN link -- only arrives on a Page whose
-     * webhook TENH actually holds. Where another app holds it, every photo,
-     * video, voice note and file this workspace sent was a bubble that said
-     * "Sent a photo" and showed nothing, for ever.
-     *
-     * So the file goes into the same private bucket the Telegram media uses,
-     * under the same scheme, and the row points at the route that serves it.
-     * Best effort: a storage hiccup must not fail a message Meta has already
-     * delivered, it just leaves the bubble as it was before this existed.
-     */
-    if (insertedMessage?.id) {
-      try {
-        const storagePath = telegramMessageMediaStoragePath({
-          businessId: currentMember.business_id,
-          messageId: insertedMessage.id as string,
-          mediaKind:
-            kind === "image"
-              ? "photo"
-              : kind === "video"
-                ? "video"
-                : kind === "audio"
-                  ? "audio"
-                  : "file",
-        });
+  /*
+   * Keep the bytes we just sent even when Meta's echo won the insert race.
+   * The echo URL expires; this private copy is the stable TENH source.
+   */
+  if (savedMessage?.id) {
+    try {
+      const storagePath = telegramMessageMediaStoragePath({
+        businessId: currentMember.business_id,
+        messageId: savedMessage.id as string,
+        mediaKind:
+          kind === "image"
+            ? "photo"
+            : kind === "video"
+              ? "video"
+              : kind === "audio"
+                ? "audio"
+                : "file",
+      });
 
-        const { error: storeError } = await supabaseAdmin.storage
-          .from(TELEGRAM_MESSAGE_MEDIA_BUCKET)
-          .upload(
-            storagePath,
-            new Uint8Array(await file.arrayBuffer()),
-            {
-              contentType: file.type || "application/octet-stream",
-              upsert: true,
-            },
-          );
-
-        if (!storeError) {
-          const { data: withMedia } = await supabaseAdmin
-            .from("messages")
-            .update({
-              attachment_url: telegramMessageMediaUrl(
-                insertedMessage.id as string,
-              ),
-            })
-            .eq("id", insertedMessage.id as string)
-            .eq("business_id", currentMember.business_id)
-            .select("*")
-            .single();
-
-          if (withMedia) {
-            savedMessage = withMedia;
-          }
-        }
-      } catch (storeError) {
-        console.error(
-          "[TENH attachments] Unable to keep a copy of an outgoing file:",
-          storeError instanceof Error ? storeError.message : storeError,
+      const { error: storeError } = await supabaseAdmin.storage
+        .from(TELEGRAM_MESSAGE_MEDIA_BUCKET)
+        .upload(
+          storagePath,
+          new Uint8Array(await file.arrayBuffer()),
+          {
+            contentType: file.type || "application/octet-stream",
+            upsert: true,
+          },
         );
+
+      if (!storeError) {
+        const { data: withMedia } = await supabaseAdmin
+          .from("messages")
+          .update({
+            attachment_url: telegramMessageMediaUrl(
+              savedMessage.id as string,
+            ),
+          })
+          .eq("id", savedMessage.id as string)
+          .eq("business_id", currentMember.business_id)
+          .select("*")
+          .single();
+
+        if (withMedia) {
+          savedMessage = withMedia;
+        }
       }
+    } catch (storeError) {
+      console.error(
+        "[TENH attachments] Unable to keep a copy of an outgoing file:",
+        storeError instanceof Error ? storeError.message : storeError,
+      );
     }
   }
 
