@@ -24,10 +24,10 @@ import { PinnedMessageHeader } from "@/components/inbox/pinned-message-header";
 import { usePinnedMessages } from "@/lib/inbox/use-pinned-messages";
 import { getMessageActions, getMessageSummary, getDeletedMessageText, isMessagePinned, isMessageDeleted,
   resolvePhotoReplyTarget,
-  getMessageImageUrl, getReplyImageReference, inboxImageEndpoint, type ReplyImageReference,
+  getMessageImageUrl, getReplyImageReference, getReplyVideoReference, inboxImageEndpoint, type ReplyImageReference,
 } from "@/lib/inbox/message-actions";
 import { ImageCopyButton } from "@/components/inbox/image-copy-button";
-import { ReplyImageThumbnail } from "@/components/inbox/reply-image-thumbnail";
+import { ReplyImageThumbnail, ReplyVideoThumbnail } from "@/components/inbox/reply-image-thumbnail";
 
 import { isCommentReplyBlocked } from "@/components/inbox/comment-reply-access";
 
@@ -692,24 +692,24 @@ function telegramReplyPreviewFromMessage(
 ): TelegramReplyPreview | null {
   if (!source) return null;
 
+  const caption =
+    typeof source.caption === "string"
+      ? source.caption.trim()
+      : "";
+  if (Array.isArray(source.photo))
+    return { text: caption || "Photo", kind: "Photo" };
+  if (source.video)
+    return { text: caption || "Video", kind: "Video" };
+  if (source.animation)
+    return { text: caption || "Animation", kind: "GIF" };
+
   const text =
     typeof source.text === "string"
       ? source.text.trim()
       : "";
   if (text) return { text, kind: "Text" };
 
-  const caption =
-    typeof source.caption === "string"
-      ? source.caption.trim()
-      : "";
   if (caption) return { text: caption, kind: "Caption" };
-
-  if (Array.isArray(source.photo))
-    return { text: "Photo", kind: "Photo" };
-  if (source.video)
-    return { text: "Video", kind: "Video" };
-  if (source.animation)
-    return { text: "Animation", kind: "GIF" };
   if (source.voice)
     return { text: "Voice message", kind: "Voice" };
   if (source.audio)
@@ -1608,6 +1608,9 @@ export function MessagePanel({
     replyingToFacebookMessageId ?? replyingToTelegramMessageId, activeConversation?.id);
   const quotedReplyImage = quotedReplyTarget && getMessageImageUrl(quotedReplyTarget)
     ? { conversationId: quotedReplyTarget.conversation_id, messageId: quotedReplyTarget.id, url: getMessageImageUrl(quotedReplyTarget) }
+    : null;
+  const quotedReplyVideo = quotedReplyTarget?.message_type === "video" && !isMessageDeleted(quotedReplyTarget)
+    ? { conversationId: quotedReplyTarget.conversation_id, messageId: quotedReplyTarget.id, url: quotedReplyTarget.attachment_url }
     : null;
   const photoElementRefs = useRef(new Map<string, HTMLDivElement>());
   const deferredMessageRefs = useRef(new Map<string, HTMLDivElement>());
@@ -3409,6 +3412,7 @@ export function MessagePanel({
                 null;
 
               const replyImageReference = getReplyImageReference(message, messages);
+              const replyVideoReference = getReplyVideoReference(message, messages);
               const nativeFacebookQuote = facebookNativeReply(message, messages);
               const telegramReplyPreview =
                 (nativeFacebookQuote ? { text: nativeFacebookQuote.text, kind: nativeFacebookQuote.kind } : null) ??
@@ -4930,7 +4934,8 @@ export function MessagePanel({
                                 : undefined
                             }
                           >
-                            {replyImageReference ? <ReplyImageThumbnail key={`${inboxImageEndpoint(replyImageReference, true)}:${replyImageReference.url ?? ""}`} reference={replyImageReference} /> : null}
+                            {replyImageReference ? <ReplyImageThumbnail key={`${inboxImageEndpoint(replyImageReference, true)}:${replyImageReference.url ?? ""}`} reference={replyImageReference} /> :
+                              replyVideoReference ? <ReplyVideoThumbnail key={`${replyVideoReference.messageId ?? replyVideoReference.platformMessageId}:${replyVideoReference.url ?? ""}`} reference={replyVideoReference} /> : null}
                             <span className="min-w-0 flex-1">
                             {/*
                               The quote sits inside the bubble, so it has to
@@ -4948,7 +4953,7 @@ export function MessagePanel({
                               <span>
                                 {rawPayload?.tenh_reply?.scope === "tenh" && !nativeFacebookQuote
                                   ? "Reply reference · TENH"
-                                  : `Reply to ${replyImageReference ? "Photo" : telegramReplyPreview.kind}`}
+                                  : `Reply to ${replyImageReference ? "Photo" : replyVideoReference ? "Video" : telegramReplyPreview.kind}`}
                               </span>
                             </span>
                             {!(replyImageReference && /^\[(image|photo)\]$/i.test(telegramReplyPreview.text.trim())) ? (
@@ -5958,7 +5963,8 @@ export function MessagePanel({
 
       {quotedReplyTarget && !editingTelegramMessageId ? (
         <div className="flex shrink-0 items-center gap-3 border-t border-sky-100 bg-white px-4 py-2">
-          {quotedReplyImage ? <ReplyImageThumbnail key={quotedReplyTarget.id} reference={quotedReplyImage} /> : null}
+          {quotedReplyImage ? <ReplyImageThumbnail key={quotedReplyTarget.id} reference={quotedReplyImage} /> :
+            quotedReplyVideo ? <ReplyVideoThumbnail key={quotedReplyTarget.id} reference={quotedReplyVideo} /> : null}
           <div className="min-w-0 flex-1 border-l-2 border-sky-400 pl-3">
             <p className="text-xs font-semibold text-sky-700">Replying to {quotedReplyTarget.direction === "outgoing" ? "your message" : activeConversation.contact?.full_name || "customer"}</p>
             <p className="truncate text-sm text-slate-600">{getMessageSummary(quotedReplyTarget)}</p>
