@@ -98,6 +98,7 @@ async function readLatestSubscriptions(businessIds: string[]) {
 
 export type InboxConversationScope = {
   currentBusinessId: string;
+  currentMemberId: string;
   accessibleBusinessIds: string[];
 };
 
@@ -213,6 +214,8 @@ export async function getInboxConversationScope(): Promise<
   return {
     currentBusinessId:
       authResult.member.business_id,
+    currentMemberId:
+      authResult.member.id,
     accessibleBusinessIds,
   };
 }

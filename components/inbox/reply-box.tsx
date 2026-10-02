@@ -18,6 +18,8 @@ import {
   selectAttachments,
 } from "@/lib/inbox/attachment-selection";
 import { WorkspaceStorageModal } from "./workspace-storage-modal";
+import { createClient } from "@/lib/supabase/client";
+import { clearWorkspaceStorageCache, workspaceStorageCacheKey } from "@/lib/storage/workspace-storage-cache";
 import { TenhStickerPicker } from "./tenh-sticker-picker";
 import type { TelegramStickerChoice } from "@/lib/telegram/sticker-catalog";
 import type { InboxStickerChoice } from "@/lib/stickers/catalog";
@@ -57,6 +59,8 @@ export type ReplyAttachment = {
 };
 
 type ReplyBoxProps = {
+  storageBusinessId: string;
+  storageMemberId: string;
   platform?: string;
   onSendSticker?: (sticker: InboxStickerChoice) => Promise<boolean>;
   reply: string;
@@ -252,6 +256,8 @@ function formatVoiceDuration(seconds: number) {
 }
 
 export function ReplyBox({
+  storageBusinessId,
+  storageMemberId,
   platform, onSendSticker,
   reply,
   sending,
@@ -276,6 +282,13 @@ export function ReplyBox({
   onStatusChange,
 }: ReplyBoxProps) {
   const isKhmer = useWorkspaceLanguageId() === "km";
+  useEffect(() => {
+    workspaceStorageCacheKey(storageBusinessId, storageMemberId);
+    const { data: { subscription } } = createClient().auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") clearWorkspaceStorageCache();
+    });
+    return () => subscription.unsubscribe();
+  }, [storageBusinessId, storageMemberId]);
   const [nativeSticker, setNativeSticker] = useState<TelegramStickerChoice | null>(null);
   const [stickerSending, setStickerSending] = useState(false);
   const [stickerNotice, setStickerNotice] = useState<string | null>(null);
@@ -2582,6 +2595,9 @@ export function ReplyBox({
 
       {storageOpen ? (
         <WorkspaceStorageModal
+          key={`${storageBusinessId}:${storageMemberId}`}
+          businessId={storageBusinessId}
+          memberId={storageMemberId}
           onClose={() => setStorageConversationId(null)}
           onSend={sendWorkspaceFiles}
           onDraft={draftWorkspaceFiles}

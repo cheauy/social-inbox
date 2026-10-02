@@ -9,6 +9,7 @@ const mutations = [];
 const alerts = [];
 window.alert = message => alerts.push(String(message));
 let sendCalls = 0;
+let listRequests = 0;
 let categories = [
   { id: "campaigns", name: "Campaigns", created_at: "2026-10-01", updated_at: "2026-10-01" },
   { id: "products", name: "Products", created_at: "2026-10-01", updated_at: "2026-10-01" },
@@ -31,6 +32,8 @@ const json = (value, status = 200) => Response.json(value, { status });
 window.fetch = async (url, options = {}) => {
   const target = new URL(url, location.href);
   if (target.pathname === "/api/workspace-storage/files" && (!options.method || options.method === "GET")) {
+    listRequests += 1;
+    await new Promise(resolve => setTimeout(resolve, 80));
     return json({ success: true, canManage: true, organizationAvailable: true, categories, files });
   }
   const body = options.body ? JSON.parse(options.body) : {};
@@ -57,6 +60,8 @@ window.fetch = async (url, options = {}) => {
 function App() {
   const [reply, setReply] = React.useState("Keep this typed text");
   return h("div", { className: "fixed inset-x-0 bottom-0 p-3" }, h(ReplyBox, {
+    storageBusinessId: "fixture-business",
+    storageMemberId: "fixture-member",
     platform: "telegram",
     reply,
     conversationId: "fixture-conversation",
@@ -94,7 +99,11 @@ createRoot(document.getElementById("root")).render(h(App));
     const storageMenuItem = [...menu.querySelectorAll("button")].find(button => button.textContent.includes("Storage"));
     check("Storage menu item is actionable", Boolean(storageMenuItem));
     storageMenuItem.click();
-    await pause(260);
+    await pause(20);
+
+    const coldStorage = document.querySelector('[role="dialog"][aria-label="Workspace Storage"]');
+    check("cold open waits for authenticated data", Boolean(coldStorage?.querySelector('[role="status"][aria-label="Loading workspace files"]')) && !coldStorage?.querySelector('button[aria-label="Select Photo 1"]'));
+    await pause(240);
 
     const storage = document.querySelector('[role="dialog"][aria-label="Workspace Storage"]');
     check("Storage dialog opens", Boolean(storage));
@@ -156,7 +165,9 @@ createRoot(document.getElementById("root")).render(h(App));
     document.querySelector('button[aria-label="Attach content"]').click();
     await pause(40);
     [...document.querySelector('[role="menu"]').querySelectorAll("button")].find(button => button.textContent.includes("Storage")).click();
-    await pause(180);
+    await pause(10);
+    check("warm reopen paints cached files immediately", Boolean(document.querySelector('button[aria-label="Select Photo 1"]')));
+    await pause(170);
     const reopened = document.querySelector('[role="dialog"][aria-label="Workspace Storage"]');
     reopened.querySelector('button[aria-label="Select Photo 3"]').click();
     await pause(30);
@@ -184,8 +195,9 @@ createRoot(document.getElementById("root")).render(h(App));
     check("Draft preserves typed text", document.querySelector("textarea").value === "Keep this typed text");
     check("Draft stages both selected files", document.querySelector('button[aria-label="Attach content"]').textContent.includes("2"));
 
-    document.getElementById("result").textContent = JSON.stringify({ passed: true, width: innerWidth, columns, checks, alerts, sendCalls, mutations: mutations.map(item => item.action) });
+    check("each open has one background refresh", listRequests === 3, String(listRequests));
+    document.getElementById("result").textContent = JSON.stringify({ passed: true, width: innerWidth, columns, checks, alerts, listRequests, sendCalls, mutations: mutations.map(item => item.action) });
   } catch (error) {
-    document.getElementById("result").textContent = JSON.stringify({ passed: false, width: innerWidth, error: error.message, checks, alerts, mutations, sendCalls, body: document.body.innerText.slice(0, 1200) });
+    document.getElementById("result").textContent = JSON.stringify({ passed: false, width: innerWidth, error: error.message, checks, alerts, listRequests, mutations, sendCalls, body: document.body.innerText.slice(0, 1200) });
   }
 })();

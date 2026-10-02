@@ -499,6 +499,7 @@ export function InboxView({
   statusCounts,
   teamMembers,
   currentBusinessId,
+  currentMemberId,
   accessibleBusinessIds,
 }: InboxViewProps) {
 
@@ -8845,6 +8846,8 @@ return (
   activeConversation={
     activeConversation
   }
+  storageBusinessId={currentBusinessId}
+  storageMemberId={currentMemberId}
   messages={liveMessages}
   replyingToFacebookMessageId={replyingToFacebookMessageId}
   onReplyToFacebookMessage={handleReplyToFacebookMessage}

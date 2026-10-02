@@ -3,6 +3,9 @@ const React = require("react");
 
 module.exports = {
   createClient: () => ({
+    auth: {
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+    },
     storage: {
       from: () => ({
         uploadToSignedUrl: async () => ({ error: null }),

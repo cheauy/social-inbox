@@ -19,5 +19,6 @@ export type InboxViewProps = {
   statusCounts: StatusCounts;
   teamMembers: TeamMember[];
   currentBusinessId: string;
+  currentMemberId: string;
   accessibleBusinessIds: string[];
 };

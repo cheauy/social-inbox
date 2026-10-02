@@ -207,6 +207,9 @@ export default async function InboxPage({
           currentBusinessId={
             inboxScope.currentBusinessId
           }
+          currentMemberId={
+            inboxScope.currentMemberId
+          }
           accessibleBusinessIds={
             inboxScope.accessibleBusinessIds
           }

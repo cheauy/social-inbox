@@ -72,6 +72,7 @@ test('composer exposes direct device files and Storage without auto-sending sele
   assert.match(source, /"Select from storage"/);
   assert.doesNotMatch(source, /"Add images"|"Add video"|"Add files"/);
   assert.match(source, /<WorkspaceStorageModal[\s\S]*?onSend=\{sendWorkspaceFiles\}[\s\S]*?onDraft=\{draftWorkspaceFiles\}/);
+  assert.match(source, /businessId=\{storageBusinessId\}[\s\S]*?memberId=\{storageMemberId\}/);
   assert.match(source, /async function sendWorkspaceFiles/);
   assert.match(source, /async function draftWorkspaceFiles/);
   assert.doesNotMatch(source, /<CustomerFilesModal/);
@@ -92,6 +93,10 @@ test('Storage is workspace-shared, uploads multiple files, and offers explicit D
   assert.match(modal, /"Send Now"/);
   assert.doesNotMatch(modal, /customer_files|contactId|conversationId/);
   assert.match(modal, /workspaceFilesForView\(files, view\)/);
+  assert.match(modal, /readWorkspaceStorageCache\(cacheKey\)/);
+  assert.match(modal, /refreshWorkspaceStorageCache\(cacheKey/);
+  assert.match(modal, /setSelected\(failed\)/);
+  assert.doesNotMatch(modal, /localStorage|sessionStorage/);
   assert.match(modal, /grid-cols-2 gap-2 min-\[390px\]:grid-cols-3 sm:grid-cols-4 md:grid-cols-5/);
   assert.match(modal, /group-hover:opacity-100/);
   assert.match(modal, /aria-label=\{`Preview \$\{file\.name\}`\}/);

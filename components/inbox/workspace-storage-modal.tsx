@@ -9,16 +9,22 @@ import { Eye, FileText, Folder, FolderPlus, Heart, Images, MoreHorizontal, Penci
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { WORKSPACE_FILE_ACCEPT, WORKSPACE_FILE_MAX_BYTES, workspaceFileKind, workspaceFilesForView, type WorkspaceStorageView } from "@/lib/storage/workspace-files";
+import {
+  beginWorkspaceStorageMutation,
+  clearWorkspaceStorageCache,
+  commitWorkspaceStorageMutation,
+  dropWorkspaceStorageCache,
+  readWorkspaceStorageCache,
+  refreshWorkspaceStorageCache,
+  workspaceStorageCacheKey,
+  type WorkspaceStorageCategory,
+  type WorkspaceStorageFile,
+  type WorkspaceStorageSnapshot,
+} from "@/lib/storage/workspace-storage-cache";
 
-type WorkspaceFile = {
-  id: string; name: string; mimeType: string; sizeBytes: number;
-  kind: "image" | "video" | "audio" | "file";
-  createdAt: string; previewUrl: string | null; categoryId: string | null; favorite: boolean;
-};
-type StorageCategory = { id: string; name: string; created_at: string; updated_at: string };
 type ApiResponse = {
-  success?: boolean; error?: string; files?: WorkspaceFile[]; categories?: StorageCategory[];
-  category?: StorageCategory; signedUrl?: string; upload?: { bucket: string; path: string; token: string };
+  success?: boolean; error?: string; files?: WorkspaceStorageFile[]; categories?: WorkspaceStorageCategory[];
+  category?: WorkspaceStorageCategory; signedUrl?: string; upload?: { bucket: string; path: string; token: string };
   canManage?: boolean; organizationAvailable?: boolean;
   deletedIds?: string[]; failedIds?: string[];
 };
@@ -30,12 +36,16 @@ function fileSize(bytes: number) {
 }
 function mimeType(file: File) { return file.type.trim().toLowerCase() || "application/octet-stream"; }
 
-async function storageApi(body?: object): Promise<ApiResponse> {
+class StorageApiError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
+async function storageApi(body?: object, signal?: AbortSignal): Promise<ApiResponse> {
   const response = await fetch("/api/workspace-storage/files", body ? {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-  } : { cache: "no-store" });
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal,
+  } : { cache: "no-store", signal });
   const result = await response.json().catch(() => ({})) as ApiResponse;
-  if (!response.ok || !result.success) throw new Error(result.error || "Workspace Storage request failed.");
+  if (!response.ok || !result.success) throw new StorageApiError(result.error || "Workspace Storage request failed.", response.status);
   return result;
 }
 async function categoryApi(body: object): Promise<ApiResponse> {
@@ -58,7 +68,7 @@ async function deleteFilesApi(fileIds: string[]): Promise<ApiResponse> {
   return result;
 }
 
-function Preview({ file, onClose }: { file: WorkspaceFile; onClose: () => void }) {
+function Preview({ file, onClose }: { file: WorkspaceStorageFile; onClose: () => void }) {
   const closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -83,7 +93,9 @@ function Preview({ file, onClose }: { file: WorkspaceFile; onClose: () => void }
   </div>;
 }
 
-export function WorkspaceStorageModal({ onClose, onSend, onDraft }: {
+export function WorkspaceStorageModal({ businessId, memberId, onClose, onSend, onDraft }: {
+  businessId: string;
+  memberId: string;
   onClose: () => void;
   onSend: (files: File[]) => Promise<boolean>;
   onDraft: (files: File[]) => Promise<boolean>;
@@ -93,44 +105,67 @@ export function WorkspaceStorageModal({ onClose, onSend, onDraft }: {
   const active = useRef(true);
   const close = useRef(onClose);
   const actionRef = useRef<"send" | "draft" | null>(null);
-  const [files, setFiles] = useState<WorkspaceFile[]>([]);
-  const [categories, setCategories] = useState<StorageCategory[]>([]);
-  const [canManage, setCanManage] = useState(false);
-  const [organizationAvailable, setOrganizationAvailable] = useState(false);
+  const cacheKey = workspaceStorageCacheKey(businessId, memberId);
+  const initialSnapshot = readWorkspaceStorageCache(cacheKey);
+  const [warmStart] = useState(Boolean(initialSnapshot));
+  const [files, setFiles] = useState<WorkspaceStorageFile[]>(() => initialSnapshot?.files ?? []);
+  const [categories, setCategories] = useState<WorkspaceStorageCategory[]>(() => initialSnapshot?.categories ?? []);
+  const [canManage, setCanManage] = useState(() => initialSnapshot?.canManage ?? false);
+  const [organizationAvailable, setOrganizationAvailable] = useState(() => initialSnapshot?.organizationAvailable ?? false);
   const [view, setView] = useState<WorkspaceStorageView>("recent");
   const [fileFilter, setFileFilter] = useState<"media" | "files">("media");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [preview, setPreview] = useState<WorkspaceFile | null>(null);
+  const [preview, setPreview] = useState<WorkspaceStorageFile | null>(null);
   const [categoryForm, setCategoryForm] = useState<{ id: string | null; name: string } | null>(null);
   const [categoryMenuId, setCategoryMenuId] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{ kind: "files" } | { kind: "category"; category: StorageCategory } | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [confirm, setConfirm] = useState<{ kind: "files" } | { kind: "category"; category: WorkspaceStorageCategory } | null>(null);
+  const [loading, setLoading] = useState(!initialSnapshot);
   const [uploading, setUploading] = useState(false);
   const [action, setAction] = useState<"send" | "draft" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
+  const applySnapshot = useCallback((snapshot: WorkspaceStorageSnapshot) => {
+    setFiles(snapshot.files);
+    setCategories(snapshot.categories);
+    setCanManage(snapshot.canManage);
+    setOrganizationAvailable(snapshot.organizationAvailable);
+    if (!snapshot.organizationAvailable) {
+      setView((current) => current === "favorites" || current.startsWith("category:") ? "recent" : current);
+    }
+  }, []);
+
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    setError(null);
     try {
-      const result = await storageApi();
-      if (active.current) {
-        const organization = result.organizationAvailable === true;
-        setFiles(result.files ?? []); setCategories(result.categories ?? []); setCanManage(result.canManage === true);
-        setOrganizationAvailable(organization);
-        if (!organization) setView((current) => current === "favorites" || current.startsWith("category:") ? "recent" : current);
-      }
+      const result = await refreshWorkspaceStorageCache(cacheKey, async (signal) => {
+        const response = await storageApi(undefined, signal);
+        return {
+          files: response.files ?? [],
+          categories: response.categories ?? [],
+          canManage: response.canManage === true,
+          organizationAvailable: response.organizationAvailable === true,
+        };
+      });
+      if (active.current && result.current) applySnapshot(result.snapshot);
     } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      if (cause instanceof StorageApiError && (cause.status === 401 || cause.status === 403)) {
+        if (cause.status === 401) clearWorkspaceStorageCache();
+        else dropWorkspaceStorageCache(cacheKey);
+        if (active.current) applySnapshot({ files: [], categories: [], canManage: false, organizationAvailable: false });
+      }
       if (active.current) setError(cause instanceof Error ? cause.message : "Unable to load Workspace Storage.");
     } finally { if (active.current) setLoading(false); }
-  }, []);
+  }, [applySnapshot, cacheKey]);
 
   useEffect(() => { close.current = onClose; }, [onClose]);
   useEffect(() => {
     active.current = true;
-    const initialLoad = window.requestAnimationFrame(() => void load());
+    const initialLoad = window.requestAnimationFrame(() => void load(!warmStart));
     return () => { active.current = false; window.cancelAnimationFrame(initialLoad); };
-  }, [load]);
+  }, [load, warmStart]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -152,6 +187,7 @@ export function WorkspaceStorageModal({ onClose, onSend, onDraft }: {
   async function uploadFiles(event: ChangeEvent<HTMLInputElement>) {
     const chosen = Array.from(event.target.files ?? []); event.target.value = "";
     if (!chosen.length) return;
+    dropWorkspaceStorageCache(cacheKey);
     setUploading(true); setError(null);
     const failures: string[] = [];
     for (const file of chosen) {
@@ -171,13 +207,21 @@ export function WorkspaceStorageModal({ onClose, onSend, onDraft }: {
     if (!active.current) return;
     setUploading(false);
     if (failures.length) setError(`Some files were not uploaded:\n${failures.join("\n")}`);
+    dropWorkspaceStorageCache(cacheKey);
     await load();
   }
 
-  async function toggleFavorite(file: WorkspaceFile) {
+  async function toggleFavorite(file: WorkspaceStorageFile) {
     const favorite = !file.favorite;
+    const owner = beginWorkspaceStorageMutation(cacheKey);
     setFiles((current) => current.map((item) => item.id === file.id ? { ...item, favorite } : item));
-    try { await storageApi({ action: "toggle-favorite", fileId: file.id, favorite }); }
+    try {
+      await storageApi({ action: "toggle-favorite", fileId: file.id, favorite });
+      commitWorkspaceStorageMutation(cacheKey, owner, (snapshot) => ({
+        ...snapshot,
+        files: snapshot.files.map((item) => item.id === file.id ? { ...item, favorite } : item),
+      }));
+    }
     catch (cause) {
       setFiles((current) => current.map((item) => item.id === file.id ? { ...item, favorite: !favorite } : item));
       setError(cause instanceof Error ? cause.message : "Unable to update that favorite.");
@@ -186,9 +230,11 @@ export function WorkspaceStorageModal({ onClose, onSend, onDraft }: {
 
   async function saveCategory() {
     const name = categoryForm?.name.trim() ?? ""; if (!name || busy) return;
+    dropWorkspaceStorageCache(cacheKey);
     setBusy(true); setError(null);
     try {
       await categoryApi(categoryForm?.id ? { action: "edit", categoryId: categoryForm.id, name } : { action: "add", name });
+      dropWorkspaceStorageCache(cacheKey);
       setCategoryForm(null); await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save that category."); }
     finally { if (active.current) setBusy(false); }
@@ -199,16 +245,23 @@ export function WorkspaceStorageModal({ onClose, onSend, onDraft }: {
     setBusy(true); setError(null);
     try {
       if (confirm.kind === "category") {
+        dropWorkspaceStorageCache(cacheKey);
         await categoryApi({ action: "delete", categoryId: confirm.category.id });
+        beginWorkspaceStorageMutation(cacheKey);
         if (view === `category:${confirm.category.id}`) setView("recent");
         setConfirm(null); await load();
       } else {
         const requested = [...selected];
+        const owner = beginWorkspaceStorageMutation(cacheKey);
         const result = await deleteFilesApi(requested);
         const deleted = new Set(result.deletedIds ?? (result.success ? requested : []));
         const failed = new Set(result.failedIds ?? requested.filter((id) => !deleted.has(id)));
         setFiles((current) => current.filter((file) => !deleted.has(file.id)));
         setSelected(failed);
+        commitWorkspaceStorageMutation(cacheKey, owner, (snapshot) => ({
+          ...snapshot,
+          files: snapshot.files.filter((file) => !deleted.has(file.id)),
+        }));
         if (!result.success) {
           setError(result.error || "Some selected files could not be deleted.");
           return;
@@ -221,10 +274,16 @@ export function WorkspaceStorageModal({ onClose, onSend, onDraft }: {
 
   async function moveSelected(categoryId: string | null) {
     if (!selected.size || busy) return;
+    const moving = new Set(selected);
+    const owner = beginWorkspaceStorageMutation(cacheKey);
     setBusy(true); setError(null);
     try {
-      await storageApi({ action: "set-category", fileIds: [...selected], categoryId });
-      setFiles((current) => current.map((file) => selected.has(file.id) ? { ...file, categoryId } : file));
+      await storageApi({ action: "set-category", fileIds: [...moving], categoryId });
+      setFiles((current) => current.map((file) => moving.has(file.id) ? { ...file, categoryId } : file));
+      commitWorkspaceStorageMutation(cacheKey, owner, (snapshot) => ({
+        ...snapshot,
+        files: snapshot.files.map((file) => moving.has(file.id) ? { ...file, categoryId } : file),
+      }));
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to move the selected files."); }
     finally { if (active.current) setBusy(false); }
   }
@@ -237,7 +296,7 @@ export function WorkspaceStorageModal({ onClose, onSend, onDraft }: {
     if (actionRef.current) return;
     const chosen = [...selected]
       .map((id) => files.find((file) => file.id === id))
-      .filter((file): file is WorkspaceFile => Boolean(file));
+      .filter((file): file is WorkspaceStorageFile => Boolean(file));
     if (!chosen.length) return;
     actionRef.current = mode; setAction(mode); setError(null);
     try {
@@ -310,7 +369,7 @@ export function WorkspaceStorageModal({ onClose, onSend, onDraft }: {
           <button type="button" aria-pressed={fileFilter === "files"} onClick={() => setFileFilter("files")} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0089CC] ${fileFilter === "files" ? "bg-[#EAF7FF] text-[#0089CC]" : "bg-[#F6F8FC] text-[#6D7E91] hover:bg-slate-100"}`}><FileText size={18} /> Files <span className="text-xs">{documents.length}</span></button>
         </div>
         {loading ? <div className="grid grid-cols-2 gap-2 min-[390px]:grid-cols-3 sm:grid-cols-4 md:grid-cols-5" role="status" aria-label="Loading workspace files">{Array.from({ length: 10 }, (_, index) => <div key={index} className="aspect-square animate-pulse rounded-xl bg-[#E3EAF2]" />)}</div> : null}
-        {!loading && (fileFilter === "media" ? media : documents).length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-center text-[#6D7E91]"><Folder size={34} /><p className="text-sm">{view === "favorites" ? `No favorite ${fileFilter === "media" ? "photos or videos" : "files"} yet.` : `No ${fileFilter === "media" ? "photos or videos" : "files"} in this category yet.`}</p></div> : null}
+        {!loading && !error && (fileFilter === "media" ? media : documents).length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-center text-[#6D7E91]"><Folder size={34} /><p className="text-sm">{view === "favorites" ? `No favorite ${fileFilter === "media" ? "photos or videos" : "files"} yet.` : `No ${fileFilter === "media" ? "photos or videos" : "files"} in this category yet.`}</p></div> : null}
         {!loading && fileFilter === "media" && media.length ? <section>
           <div className="grid grid-cols-2 gap-2 min-[390px]:grid-cols-3 sm:grid-cols-4 md:grid-cols-5">
             {media.map((file) => {

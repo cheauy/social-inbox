@@ -323,6 +323,8 @@ function readStoredChatBackgroundSrc() {
 }
 
 type MessagePanelProps = {
+  storageBusinessId: string;
+  storageMemberId: string;
   onSendSticker?: (sticker: InboxStickerChoice) => Promise<boolean>;
   activeConversation:
     | InboxConversation
@@ -1503,6 +1505,8 @@ function HydrationSafeMessageDay({
 }
 
 export function MessagePanel({
+  storageBusinessId,
+  storageMemberId,
   activeConversation,
   messages: incomingMessages,
   loadingConversationMessages,
@@ -6103,6 +6107,8 @@ export function MessagePanel({
          * comment switches only that send into a targeted comment reply.
          */
         <ReplyBox
+          storageBusinessId={storageBusinessId}
+          storageMemberId={storageMemberId}
           conversationId={
             activeConversation.id
           }
