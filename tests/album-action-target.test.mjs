@@ -14,7 +14,7 @@ const row = (id, conversation_id = 'c1') => ({ id, conversation_id, direction: '
 const anchor = row('base');
 const photos = [row('base:photo:0'), row('base:photo:1'), row('base:photo:2')];
 
-test('hovered/focused/tapped photo retains its exact Copy/Reply identity and stored reaction row', () => {
+test('explicitly selected photo retains its exact Copy/Reply identity and stored reaction row', () => {
   for (const photo of photos) {
     const target = getAlbumActionTarget(photos, [anchor], anchor, { conversationId: 'c1', photoId: photo.id }, null);
     assert.equal(target.photo, photo);
@@ -69,13 +69,14 @@ async function mountAlbum(t, platform, direction, count) {
     if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(ast) === 'MessengerMessageActions' && node.getText(ast).includes('copyControl=')) snippets.actions = node.getText(ast);
     if (ts.isVariableDeclaration(node) && ['albumActionTarget', 'replyActionId'].includes(node.name.getText(ast))) snippets[node.name.getText(ast)] = `const ${node.getText(ast)};`;
     if (ts.isFunctionDeclaration(node) && node.name?.text === 'activateAlbumPhoto') snippets.activate = node.getText(ast);
+    if (ts.isFunctionDeclaration(node) && node.name?.text === 'ReplyIcon') snippets.replyIcon = node.getText(ast);
     ts.forEachChild(node, visit);
   }
   visit(ast);
-  assert.equal(Object.keys(snippets).length, 5);
+  assert.equal(Object.keys(snippets).length, 6);
   const message = { ...anchor, direction, platform_message_id: platform === 'telegram' ? 'telegram:base' : 'mid.base', raw_payload: {} };
   const members = Array.from({ length: count }, (_, index) => ({ ...message, id: platform === 'telegram' ? `tg-${index}` : `base:photo:${index}`, attachment_url: `/synthetic/${index}` }));
-  const code = ts.transpileModule(`export function Fixture() {
+  const code = ts.transpileModule(`${snippets.replyIcon}\nexport function Fixture() {
     const [activeAlbumPhoto,setActiveAlbumPhoto]=useState(null),[replyingToFacebookMessageId,setFb]=useState(null),[replyingToTelegramMessageId,setTg]=useState(null);
     const photoGroup={members},photoGroups=new Map([[message.id,photoGroup]]),messages=platform==='telegram'?members:[message],isImageMessage=true,isOutgoing=direction==='outgoing',isTelegramMessage=platform==='telegram',activeConversation={social_account:{platform}},telegramReplyPreview=null,jumpHighlightedMessageId=null,photoElementRefs=useRef(new Map());
     const localImagePreview=()=>undefined,setImagePreview=value=>events.push({type:'open',...value.reference}),pinnedMessages={pins:[],pendingIds:new Set()},messageActions=getMessageActions(message,platform),isTelegramReplyTarget=false;
@@ -95,37 +96,66 @@ async function mountAlbum(t, platform, direction, count) {
 }
 
 for (const direction of ['incoming', 'outgoing']) {
-  test(`${direction} real album has one footer and routes hover/touch/focus/context-menu Copy and Reply`, async t => {
+  test(`${direction} explicit photo actions stay selected while the pointer crosses other photos`, async t => {
     const { events, members } = await mountAlbum(t, 'facebook', direction, 12);
     const album = document.querySelector('[data-photo-layout="album"]');
     assert.equal(document.querySelectorAll('[role="group"]').length, 1);
-    assert.equal(album.querySelector('[role="group"], [aria-label="Copy image"]'), null);
+    assert.equal(album.querySelector('[role="group"]'), null);
+    assert.equal(album.querySelectorAll('[aria-label^="Copy photo "]').length, 12);
     const copy = () => document.querySelector('[aria-label="Copy image"]');
     const reply = () => [...document.querySelectorAll('[role="group"] button')].find(button => /^(?:Cancel reply|Reply)$/.test(button.textContent));
-    for (const [index, event] of [[11, 'pointerover'], [0, 'pointerdown'], [8, 'focus'], [4, 'contextmenu'], [1, 'pointerover']]) {
+    for (const [index, event] of [[11, 'copy'], [0, 'reply'], [8, 'copy'], [4, 'contextmenu'], [1, 'open']]) {
       const tile = document.querySelectorAll('[data-album-photo-id]')[index];
-      await act(async () => { if (event === 'focus') tile.querySelector('button').focus(); else tile.dispatchEvent(new window.MouseEvent(event, { bubbles: true })); });
+      const before = events.length;
+      await act(async () => {
+        if (event === 'contextmenu') tile.dispatchEvent(new window.MouseEvent(event, { bubbles: true }));
+        else if (event === 'copy') tile.querySelector('[aria-label^="Copy photo "]').click();
+        else if (event === 'reply') tile.querySelector('[aria-label^="Reply to photo "]').click();
+        else tile.querySelector('button').click();
+      });
+      if (event === 'copy' || event === 'reply') assert.equal(events.slice(before).some(item => item.type === 'open'), false);
+      const lower = document.querySelectorAll('[data-album-photo-id]')[10];
+      await act(async () => {
+        lower.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+        lower.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+        lower.querySelector('button').focus();
+      });
+      assert.equal(tile.getAttribute('data-album-action-target'), 'true');
+      assert.equal(lower.getAttribute('data-album-action-target'), null);
       assert.equal(copy().textContent.trim(), 'Copy');
       await act(async () => copy().click());
       assert.equal(events.at(-1).messageId, members[index].id);
       assert.equal(events.at(-1).conversationId, 'c1');
       assert.equal(copy().textContent.trim(), 'Copied');
+      if (reply().textContent === 'Cancel reply') await act(async () => reply().click());
       await act(async () => reply().click());
       assert.equal(events.at(-1).id, members[index].id);
       assert.match(tile.className, /ring-blue-500/);
       await act(async () => reply().click());
       assert.equal(reply().textContent, 'Reply');
+      assert.match(document.querySelector('[role="group"]').parentElement.className, /opacity-100/);
     }
   });
 }
 
 test('Telegram album retains group pin/delete while replying to the selected photo', async t => {
   const { events, members } = await mountAlbum(t, 'telegram', 'outgoing', 3);
-  await act(async () => document.querySelectorAll('[data-album-photo-id]')[2].querySelector('button').focus());
+  await act(async () => document.querySelector('[aria-label="Copy photo 3"]').click());
   for (const label of ['Reply', 'Pin', 'Delete']) {
     await act(async () => [...document.querySelectorAll('[role="group"] button')].find(button => button.textContent === label).click());
   }
   assert.equal(events.find(event => event.type === 'reply').id, members[2].id);
   assert.equal(events.find(event => event.type === 'pin').id, 'base');
   assert.deepEqual(Array.from(events.find(event => event.type === 'delete').ids), members.map(member => member.id));
+});
+
+test('icon-only Copy keeps copied feedback accessible without a growing text pill', async t => {
+  const { events } = await mountAlbum(t, 'facebook', 'incoming', 3);
+  const button = document.querySelector('[aria-label="Copy photo 1"]');
+  await act(async () => button.click());
+  assert.equal(events.at(-1).messageId, 'base:photo:0');
+  assert.equal(button.title, 'Copied');
+  assert.equal(button.querySelector('[aria-live="polite"]').textContent, 'Copied');
+  assert.equal(button.querySelector('[aria-live="polite"]').className, 'sr-only');
+  assert.equal(document.querySelector('[data-album-photo-id] [role="group"]'), null);
 });

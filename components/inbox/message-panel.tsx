@@ -5202,9 +5202,10 @@ export function MessagePanel({
                            * too, since every cell is on a fixed aspect ratio.
                            */
                           <PhotoAlbumFrame count={photoGroup.members.length} hasReplyPreview={Boolean(telegramReplyPreview)}>
-                            {photoGroup.members.map((photo: InboxMessage) => {
+                            {photoGroup.members.map((photo: InboxMessage, photoIndex: number) => {
                               const photoUrl = photo.attachment_url;
                               const photoSelected = (replyingToFacebookMessageId ?? replyingToTelegramMessageId) === photo.id;
+                              const canReplyToPhoto = getMessageActions(photo, activeConversation.social_account?.platform).reply;
                               const photoReference = { conversationId: photo.conversation_id, messageId: photo.id };
 
                               if (!photoUrl) {
@@ -5228,11 +5229,9 @@ export function MessagePanel({
                                   if (node) photoElementRefs.current.set(photo.id, node);
                                   else photoElementRefs.current.delete(photo.id);
                                 }} data-album-photo-id={photo.id}
-                                  onPointerEnter={() => activateAlbumPhoto(photo)}
-                                  onPointerDown={() => activateAlbumPhoto(photo)}
-                                  onFocusCapture={() => activateAlbumPhoto(photo)}
                                   onContextMenuCapture={() => activateAlbumPhoto(photo)}
-                                  className={`group/photo relative ${photoSelected || jumpHighlightedMessageId === photo.id ? "z-10 ring-2 ring-inset ring-blue-500" : ""}`}>
+                                  data-album-action-target={albumActionTarget?.photo.id === photo.id || undefined}
+                                  className={`group/photo relative ${photoSelected || jumpHighlightedMessageId === photo.id ? "z-10 ring-2 ring-inset ring-blue-500" : albumActionTarget?.photo.id === photo.id ? "ring-1 ring-inset ring-blue-400" : ""}`}>
                                 <div
                                   className={`group/media block w-full cursor-zoom-in overflow-hidden bg-slate-100 ${
                                     photoGroup.members
@@ -5245,14 +5244,37 @@ export function MessagePanel({
                                     reference={photoReference}
                                     src={photoUrl}
                                     previewSrc={localImagePreview(photo)}
-                                    onOpen={() => setImagePreview({ src: localImagePreview(photo) || photoUrl,
-                                      alt: getMessageSummary(photo), reference: photoReference })}
+                                    onOpen={() => {
+                                      activateAlbumPhoto(photo);
+                                      setImagePreview({ src: localImagePreview(photo) || photoUrl,
+                                        alt: getMessageSummary(photo), reference: photoReference });
+                                    }}
                                     alt={
                                       photo.message_text ||
                                       "Photo"
                                     }
                                     className="h-full w-full object-cover transition duration-200 group-hover/media:scale-[1.02]"
                                   />
+                                </div>
+                                <div className="absolute inset-x-1 top-1 flex items-center justify-between gap-1 opacity-0 transition-opacity group-hover/photo:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+                                  <div onClickCapture={() => activateAlbumPhoto(photo)}>
+                                    <ImageCopyButton src={photoUrl} reference={photoReference} iconOnly label={`Copy photo ${photoIndex + 1}`} />
+                                  </div>
+                                  {canReplyToPhoto ? <button type="button"
+                                    aria-label={`${photoSelected ? "Cancel reply to" : "Reply to"} photo ${photoIndex + 1}`}
+                                    title={photoSelected ? "Cancel reply" : "Reply to this photo"}
+                                    onClick={event => {
+                                      event.stopPropagation();
+                                      activateAlbumPhoto(photo);
+                                      if (isTelegramMessage) {
+                                        if (photoSelected) onCancelTelegramReply(); else onReplyToTelegramMessage(photo.id);
+                                      } else {
+                                        if (photoSelected) onCancelFacebookReply(); else onReplyToFacebookMessage(photo.id);
+                                      }
+                                    }}
+                                    className="touch-manipulation flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-600 shadow-sm hover:bg-white hover:text-blue-600 focus-visible:outline-2 focus-visible:outline-blue-500">
+                                    <ReplyIcon />
+                                  </button> : null}
                                 </div>
                                 </div>
                               );
@@ -5647,6 +5669,9 @@ export function MessagePanel({
                       {/* Facebook Comment Actions */}
                     </div>
 
+                    {albumActionTarget && photoGroup ? <p className={`mt-1 px-1 text-[10px] font-medium text-slate-500 ${isOutgoing ? "text-right" : ""}`}>
+                      Photo {photoGroup.members.findIndex(photo => photo.id === albumActionTarget.photo.id) + 1}
+                    </p> : null}
                     <MessengerMessageActions
                       key={albumActionTarget?.message.id ?? message.id}
                       message={albumActionTarget?.message ?? message}
@@ -5659,6 +5684,7 @@ export function MessagePanel({
                       platform={activeConversation.social_account?.platform}
                       onMessagePatched={onMessagePatched}
                       outgoing={isOutgoing}
+                      keepVisible={Boolean(albumActionTarget)}
                       actions={albumActionTarget ? { ...messageActions, reply: getMessageActions(albumActionTarget.photo, activeConversation.social_account?.platform).reply } : messageActions}
                       replying={albumActionTarget ? (replyingToFacebookMessageId ?? replyingToTelegramMessageId) === replyActionId : isTelegramReplyTarget}
                       pinned={pinnedMessages.pins.some((item) => item.id === message.id) || isMessagePinned(message)}
