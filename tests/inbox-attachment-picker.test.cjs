@@ -87,3 +87,23 @@ test('Storage is workspace-shared, uploads multiple files, and sends only on exp
   assert.match(modal, /Sending\.\.\." : "Send"/);
   assert.doesNotMatch(modal, /customer_files|contactId|conversationId/);
 });
+
+test('attachment menu fits narrow viewports and remains keyboard accessible', () => {
+  const source = fs.readFileSync('components/inbox/reply-box.tsx', 'utf8');
+  assert.match(source, /role="menu"/);
+  assert.equal((source.match(/\n\s+role="menuitem"/g) ?? []).length, 3);
+  assert.match(source, /w-\[min\(22rem,calc\(100vw-1rem\)\)\]/);
+  assert.match(source, /max-h-\[calc\(100dvh-8rem\)\]/);
+  assert.match(source, /overflow-x-hidden overflow-y-auto/);
+  assert.equal((source.match(/min-h-11/g) ?? []).length, 3);
+  assert.equal((source.match(/max-\[359px\]:col-start-2/g) ?? []).length, 3);
+  assert.match(source, /\["ArrowDown", "ArrowUp", "Home", "End"\]/);
+  assert.match(source, /event\.key !== "Escape"/);
+  assert.match(source, /attachmentTriggerRef\.current\?\.focus\(\)/);
+  assert.match(source, /"Direct attach"/);
+  assert.match(source, /"Storage"/);
+  assert.match(source, /"Send location"/);
+  assert.match(source, /"ភ្ជាប់ដោយផ្ទាល់"/);
+  assert.match(source, /"ឃ្លាំងឯកសារ"/);
+  assert.match(source, /"ផ្ញើទីតាំង"/);
+});

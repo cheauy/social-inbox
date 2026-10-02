@@ -7,6 +7,7 @@ import {
   type ChangeEvent,
   type ClipboardEvent,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
 
@@ -346,8 +347,17 @@ export function ReplyBox({
     attachmentsBlockedReason,
   );
 
+  const [moreOpen, setMoreOpen] =
+    useState(false);
+
   const attachmentInputRef =
     useRef<HTMLInputElement | null>(null);
+
+  const attachmentTriggerRef =
+    useRef<HTMLButtonElement | null>(null);
+
+  const attachmentMenuRef =
+    useRef<HTMLDivElement | null>(null);
 
   const replyInputRef =
     useRef<HTMLTextAreaElement | null>(null);
@@ -361,6 +371,47 @@ export function ReplyBox({
 
   const attachmentConversationRef =
     useRef(conversationId);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      attachmentMenuRef.current
+        ?.querySelector<HTMLButtonElement>('[role="menuitem"]')
+        ?.focus();
+    });
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setMoreOpen(false);
+      setActiveToolbarPanel(null);
+      attachmentTriggerRef.current?.focus();
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [moreOpen]);
+
+  function navigateAttachmentMenu(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const items = Array.from(
+      attachmentMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [],
+    );
+    if (!items.length) return;
+    event.preventDefault();
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    const next = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? items.length - 1
+        : event.key === "ArrowUp"
+          ? (current <= 0 ? items.length - 1 : current - 1)
+          : (current + 1) % items.length;
+    items[next]?.focus();
+  }
 
   useEffect(() => {
     if (attachmentConversationRef.current === conversationId) return;
@@ -526,10 +577,6 @@ export function ReplyBox({
       );
     }
   }
-
-
-  const [moreOpen, setMoreOpen] =
-    useState(false);
 
   const [locationPickerOpen, setLocationPickerOpen] =
     useState(false);
@@ -2351,6 +2398,7 @@ export function ReplyBox({
           <div className="order-first min-w-0 flex-[1_0_100%] pl-1 sm:order-none sm:flex-[1_1_320px]">
             <div className="flex min-h-12 min-w-0 items-center rounded-2xl border border-slate-200 bg-white pl-1.5 pr-1 transition focus-within:border-violet-300 focus-within:ring-2 focus-within:ring-violet-100">
               <button
+                ref={attachmentTriggerRef}
                 type="button"
                 disabled={isComposerDisabled || !allowAttachments}
                 onClick={() => {
@@ -2376,6 +2424,8 @@ export function ReplyBox({
                     : "Attach content")
                 }
                 aria-expanded={moreOpen}
+                aria-controls="inbox-attachment-menu"
+                aria-haspopup="menu"
               >
                 <span className="relative">
                   <AttachIcon />
@@ -2504,24 +2554,33 @@ export function ReplyBox({
             className="fixed inset-0 z-40 cursor-default bg-slate-950/5"
             aria-label="Close content menu"
           />
-          <div className="fixed bottom-28 left-1/2 z-50 w-64 -translate-x-1/2 overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-2xl">
+          <div
+            ref={attachmentMenuRef}
+            id="inbox-attachment-menu"
+            role="menu"
+            aria-label={isKhmer ? "ជម្រើសភ្ជាប់" : "Attachment options"}
+            onKeyDown={navigateAttachmentMenu}
+            className="fixed bottom-28 left-1/2 z-50 max-h-[calc(100dvh-8rem)] w-[min(22rem,calc(100vw-1rem))] -translate-x-1/2 overflow-x-hidden overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl"
+          >
             <button
               type="button"
+              role="menuitem"
               onClick={() => {
                 setMoreOpen(false);
                 clearToolbarPanel();
                 attachmentInputRef.current?.click();
               }}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+              className="grid min-h-11 w-full grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500 max-[359px]:grid-cols-[1.25rem_minmax(0,1fr)]"
             >
               <FileIcon />
-              <span>{isKhmer ? "ភ្ជាប់ដោយផ្ទាល់" : "Direct attach"}</span>
-              <span className="ml-auto text-xs text-slate-400">
+              <span className="min-w-0 font-medium leading-5">{isKhmer ? "ភ្ជាប់ដោយផ្ទាល់" : "Direct attach"}</span>
+              <span className="justify-self-end text-right text-xs leading-4 text-slate-400 max-[359px]:col-start-2 max-[359px]:row-start-2 max-[359px]:justify-self-start max-[359px]:text-left">
                 {isKhmer ? "ជ្រើសឯកសារ" : "Choose files"}
               </span>
             </button>
             <button
               type="button"
+              role="menuitem"
               onClick={() => {
                 setMoreOpen(false);
                 clearToolbarPanel();
@@ -2531,22 +2590,23 @@ export function ReplyBox({
                 }
                 setStorageConversationId(conversationId);
               }}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+              className="grid min-h-11 w-full grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500 max-[359px]:grid-cols-[1.25rem_minmax(0,1fr)]"
             >
-              <StorageIcon />
-              <span>{isKhmer ? "ឃ្លាំងឯកសារ" : "Storage"}</span>
-              <span className="ml-auto text-xs text-slate-400">
+              <StorageIcon className="h-5 w-5" />
+              <span className="min-w-0 font-medium leading-5">{isKhmer ? "ឃ្លាំងឯកសារ" : "Storage"}</span>
+              <span className="justify-self-end text-right text-xs leading-4 text-slate-400 max-[359px]:col-start-2 max-[359px]:row-start-2 max-[359px]:justify-self-start max-[359px]:text-left">
                 {isKhmer ? "ផ្ទុកឡើង ឬជ្រើស" : "Upload or choose"}
               </span>
             </button>
             <button
               type="button"
+              role="menuitem"
               onClick={addLocation}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+              className="grid min-h-11 w-full grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500 max-[359px]:grid-cols-[1.25rem_minmax(0,1fr)]"
             >
               <LocationIcon />
-              <span>{isKhmer ? "ផ្ញើទីតាំង" : "Send location"}</span>
-              <span className="ml-auto text-xs text-slate-400">
+              <span className="min-w-0 font-medium leading-5">{isKhmer ? "ផ្ញើទីតាំង" : "Send location"}</span>
+              <span className="justify-self-end text-right text-xs leading-4 text-slate-400 max-[359px]:col-start-2 max-[359px]:row-start-2 max-[359px]:justify-self-start max-[359px]:text-left">
                 {isKhmer ? "ជ្រើសលើផែនទី" : "Choose on map"}
               </span>
             </button>
