@@ -364,6 +364,8 @@ export function ReplyBox({
 
   const [attachments, setAttachments] =
     useState<ReplyAttachment[]>([]);
+  const attachmentsRef = useRef(attachments);
+  attachmentsRef.current = attachments;
 
   const [storageConversationId, setStorageConversationId] =
     useState<string | null>(null);
@@ -1413,6 +1415,49 @@ export function ReplyBox({
       for (const attachment of outgoing) URL.revokeObjectURL(attachment.previewUrl);
       setSendingContent(false);
     }
+  }
+
+  async function draftWorkspaceFiles(files: File[]) {
+    if (attachmentConversationRef.current !== conversationId) {
+      window.alert("The conversation changed while Storage files were loading. Please select them again.");
+      return false;
+    }
+    if (
+      !files.length ||
+      isComposerDisabled ||
+      !allowAttachments ||
+      attachmentsBlocked
+    ) {
+      window.alert(blockedReason || attachmentsBlockedReason || "Attachments are unavailable in this conversation.");
+      return false;
+    }
+
+    const currentAttachments = attachmentsRef.current;
+    const { accepted, rejected } = selectAttachments(files, {
+      platform,
+      existingVideoCount: currentAttachments.filter(
+        (attachment) => attachment.kind === "video",
+      ).length,
+    });
+    if (rejected.length || accepted.length !== files.length) {
+      window.alert(
+        `The selected Storage files cannot be added to this draft:\n${rejected
+          .map(({ file, reason }) => `- ${file.name}: ${reason}`)
+          .join("\n")}`,
+      );
+      return false;
+    }
+
+    const staged: ReplyAttachment[] = accepted.map(({ file, kind }) => ({
+      id: createId(),
+      file,
+      previewUrl: URL.createObjectURL(file),
+      kind,
+    }));
+    setAttachments((current) => [...current, ...staged]);
+    setMoreOpen(false);
+    clearToolbarPanel();
+    return true;
   }
 
   function handleImagePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
@@ -2539,6 +2584,7 @@ export function ReplyBox({
         <WorkspaceStorageModal
           onClose={() => setStorageConversationId(null)}
           onSend={sendWorkspaceFiles}
+          onDraft={draftWorkspaceFiles}
         />
       ) : null}
 

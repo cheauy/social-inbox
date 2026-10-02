@@ -16,19 +16,16 @@ export type WorkspaceFileKind =
 export type WorkspaceStorageView =
   | "recent"
   | "favorites"
-  | "trash"
   | `category:${string}`;
 
 export function workspaceFilesForView<
-  T extends { createdAt: string; categoryId: string | null; favorite: boolean; deletedAt: string | null },
+  T extends { createdAt: string; categoryId: string | null; favorite: boolean },
 >(files: T[], view: WorkspaceStorageView) {
-  const filtered = view === "trash"
-    ? files.filter((file) => file.deletedAt)
-    : view === "favorites"
-    ? files.filter((file) => file.favorite && !file.deletedAt)
+  const filtered = view === "favorites"
+    ? files.filter((file) => file.favorite)
     : view.startsWith("category:")
-      ? files.filter((file) => !file.deletedAt && file.categoryId === view.slice("category:".length))
-      : files.filter((file) => !file.deletedAt);
+      ? files.filter((file) => file.categoryId === view.slice("category:".length))
+      : files;
 
   return [...filtered].sort(
     (left, right) =>

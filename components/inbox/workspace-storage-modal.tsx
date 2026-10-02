@@ -4,7 +4,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { Eye, FileText, Folder, FolderPlus, Heart, Images, Pencil, Play, RotateCcw, Send, Trash2, Upload, X } from "lucide-react";
+import { Eye, FileText, Folder, FolderPlus, Heart, Images, MoreHorizontal, Pencil, Play, Send, Trash2, Upload, X } from "lucide-react";
 
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { createClient } from "@/lib/supabase/client";
@@ -13,13 +13,14 @@ import { WORKSPACE_FILE_ACCEPT, WORKSPACE_FILE_MAX_BYTES, workspaceFileKind, wor
 type WorkspaceFile = {
   id: string; name: string; mimeType: string; sizeBytes: number;
   kind: "image" | "video" | "audio" | "file";
-  createdAt: string; previewUrl: string | null; categoryId: string | null; favorite: boolean; deletedAt: string | null;
+  createdAt: string; previewUrl: string | null; categoryId: string | null; favorite: boolean;
 };
 type StorageCategory = { id: string; name: string; created_at: string; updated_at: string };
 type ApiResponse = {
   success?: boolean; error?: string; files?: WorkspaceFile[]; categories?: StorageCategory[];
   category?: StorageCategory; signedUrl?: string; upload?: { bucket: string; path: string; token: string };
   canManage?: boolean; organizationAvailable?: boolean;
+  deletedIds?: string[]; failedIds?: string[];
 };
 
 function fileSize(bytes: number) {
@@ -43,6 +44,17 @@ async function categoryApi(body: object): Promise<ApiResponse> {
   });
   const result = await response.json().catch(() => ({})) as ApiResponse;
   if (!response.ok || !result.success) throw new Error(result.error || "Storage category request failed.");
+  return result;
+}
+
+async function deleteFilesApi(fileIds: string[]): Promise<ApiResponse> {
+  const response = await fetch("/api/workspace-storage/files", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "delete-files", fileIds }),
+  });
+  const result = await response.json().catch(() => ({})) as ApiResponse;
+  if (!response.ok && response.status !== 207) throw new Error(result.error || "Unable to delete the selected files.");
   return result;
 }
 
@@ -71,23 +83,30 @@ function Preview({ file, onClose }: { file: WorkspaceFile; onClose: () => void }
   </div>;
 }
 
-export function WorkspaceStorageModal({ onClose, onSend }: { onClose: () => void; onSend: (files: File[]) => Promise<boolean> }) {
+export function WorkspaceStorageModal({ onClose, onSend, onDraft }: {
+  onClose: () => void;
+  onSend: (files: File[]) => Promise<boolean>;
+  onDraft: (files: File[]) => Promise<boolean>;
+}) {
   const supabase = useMemo(() => createClient(), []);
   const uploadInput = useRef<HTMLInputElement>(null);
   const active = useRef(true);
   const close = useRef(onClose);
+  const actionRef = useRef<"send" | "draft" | null>(null);
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
   const [categories, setCategories] = useState<StorageCategory[]>([]);
   const [canManage, setCanManage] = useState(false);
   const [organizationAvailable, setOrganizationAvailable] = useState(false);
   const [view, setView] = useState<WorkspaceStorageView>("recent");
+  const [fileFilter, setFileFilter] = useState<"media" | "files">("media");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [preview, setPreview] = useState<WorkspaceFile | null>(null);
   const [categoryForm, setCategoryForm] = useState<{ id: string | null; name: string } | null>(null);
+  const [categoryMenuId, setCategoryMenuId] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ kind: "files" } | { kind: "category"; category: StorageCategory } | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [sending, setSending] = useState(false);
+  const [action, setAction] = useState<"send" | "draft" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -113,10 +132,14 @@ export function WorkspaceStorageModal({ onClose, onSend }: { onClose: () => void
     return () => { active.current = false; window.cancelAnimationFrame(initialLoad); };
   }, [load]);
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !preview && !confirm) close.current(); };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (categoryMenuId) { setCategoryMenuId(null); return; }
+      if (!preview && !confirm) close.current();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [confirm, preview]);
+  }, [categoryMenuId, confirm, preview]);
 
   const shown = useMemo(() => workspaceFilesForView(files, view), [files, view]);
   const media = shown.filter((file) => file.kind === "image" || file.kind === "video");
@@ -178,10 +201,20 @@ export function WorkspaceStorageModal({ onClose, onSend }: { onClose: () => void
       if (confirm.kind === "category") {
         await categoryApi({ action: "delete", categoryId: confirm.category.id });
         if (view === `category:${confirm.category.id}`) setView("recent");
+        setConfirm(null); await load();
       } else {
-        await storageApi({ action: "delete-files", fileIds: [...selected] }); setSelected(new Set());
+        const requested = [...selected];
+        const result = await deleteFilesApi(requested);
+        const deleted = new Set(result.deletedIds ?? (result.success ? requested : []));
+        const failed = new Set(result.failedIds ?? requested.filter((id) => !deleted.has(id)));
+        setFiles((current) => current.filter((file) => !deleted.has(file.id)));
+        setSelected(failed);
+        if (!result.success) {
+          setError(result.error || "Some selected files could not be deleted.");
+          return;
+        }
+        setConfirm(null);
       }
-      setConfirm(null); await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to delete the selected item."); }
     finally { if (active.current) setBusy(false); }
   }
@@ -196,24 +229,17 @@ export function WorkspaceStorageModal({ onClose, onSend }: { onClose: () => void
     finally { if (active.current) setBusy(false); }
   }
 
-  async function restoreSelected() {
-    if (!selected.size || busy) return;
-    setBusy(true); setError(null);
-    try {
-      await storageApi({ action: "restore-files", fileIds: [...selected] });
-      setSelected(new Set()); await load();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to restore the selected files."); }
-    finally { if (active.current) setBusy(false); }
-  }
-
   function changeView(next: WorkspaceStorageView) {
-    if (view === "trash" || next === "trash") setSelected(new Set());
     setView(next);
   }
 
-  async function sendSelected() {
-    const chosen = files.filter((file) => selected.has(file.id)); if (!chosen.length) return;
-    setSending(true); setError(null);
+  async function applySelectedFiles(mode: "send" | "draft") {
+    if (actionRef.current) return;
+    const chosen = [...selected]
+      .map((id) => files.find((file) => file.id === id))
+      .filter((file): file is WorkspaceFile => Boolean(file));
+    if (!chosen.length) return;
+    actionRef.current = mode; setAction(mode); setError(null);
     try {
       const downloaded = await Promise.all(chosen.map(async (file) => {
         const result = await storageApi({ action: "get-file-url", fileId: file.id });
@@ -222,9 +248,10 @@ export function WorkspaceStorageModal({ onClose, onSend }: { onClose: () => void
         if (!response.ok) throw new Error(`Unable to download ${file.name}.`);
         return new File([await response.blob()], file.name, { type: file.mimeType });
       }));
-      if (active.current && await onSend(downloaded)) close.current();
-    } catch (cause) { if (active.current) setError(cause instanceof Error ? cause.message : "Unable to send the selected files."); }
-    finally { if (active.current) setSending(false); }
+      const apply = mode === "send" ? onSend : onDraft;
+      if (active.current && await apply(downloaded)) close.current();
+    } catch (cause) { if (active.current) setError(cause instanceof Error ? cause.message : `Unable to ${mode === "send" ? "send" : "stage"} the selected files.`); }
+    finally { actionRef.current = null; if (active.current) setAction(null); }
   }
 
   const viewButton = (candidate: WorkspaceStorageView) => `shrink-0 rounded-full px-3 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0089CC] ${view === candidate ? "bg-[#0089CC] text-white" : "bg-[#F1F5F9] text-[#526579] hover:bg-[#E3EAF2]"}`;
@@ -233,8 +260,7 @@ export function WorkspaceStorageModal({ onClose, onSend }: { onClose: () => void
     <div className="flex h-[90dvh] w-full max-w-5xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
       <header className="flex flex-wrap items-center gap-2 border-b border-[#E3EAF2] px-4 py-3 sm:px-5">
         <div className="min-w-48 flex-1"><h2 className="font-bold text-[#102238]">Storage</h2><p className="text-xs text-[#6D7E91]">Shared with everyone in this workspace</p></div>
-        {selected.size && canManage && view === "trash" ? <button type="button" disabled={busy} onClick={() => void restoreSelected()} className="flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-bold text-[#0089CC] hover:bg-[#EAF7FF] disabled:opacity-50"><RotateCcw size={17} /> Restore</button> : null}
-        {selected.size && canManage && view !== "trash" ? <>
+        {selected.size && canManage ? <>
           {organizationAvailable ? <><label className="sr-only" htmlFor="storage-move-category">Move selected files to category</label>
           <select id="storage-move-category" defaultValue="" disabled={busy} onChange={(event) => { if (!event.target.value) return; void moveSelected(event.target.value === "uncategorized" ? null : event.target.value); event.target.value = ""; }} className="h-10 max-w-48 rounded-xl border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-700">
             <option value="">Move {selected.size} selected...</option><option value="uncategorized">Uncategorised</option>
@@ -243,22 +269,32 @@ export function WorkspaceStorageModal({ onClose, onSend }: { onClose: () => void
           <button type="button" disabled={busy} onClick={() => setConfirm({ kind: "files" })} className="flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"><Trash2 size={17} /> Delete</button>
         </> : null}
         <input ref={uploadInput} type="file" multiple accept={WORKSPACE_FILE_ACCEPT} onChange={uploadFiles} className="hidden" />
-        <button type="button" disabled={uploading || sending} onClick={() => uploadInput.current?.click()} className="flex h-10 items-center gap-2 rounded-xl bg-[#EAF7FF] px-3 text-sm font-bold text-[#0089CC] disabled:opacity-50"><Upload size={17} />{uploading ? "Uploading..." : "Upload"}</button>
+        <button type="button" disabled={uploading || Boolean(action)} onClick={() => uploadInput.current?.click()} className="flex h-10 items-center gap-2 rounded-xl bg-[#EAF7FF] px-3 text-sm font-bold text-[#0089CC] disabled:opacity-50"><Upload size={17} />{uploading ? "Uploading..." : "Upload"}</button>
         <button type="button" onClick={onClose} aria-label="Close Storage" className="rounded-full p-2 text-[#6D7E91] hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0089CC]"><X size={20} /></button>
       </header>
       {error ? <p className="whitespace-pre-line border-b border-red-100 bg-red-50 px-5 py-2 text-xs text-red-700" role="alert">{error}</p> : null}
 
       <div className="border-b border-[#E3EAF2] px-4 py-3 sm:px-5">
-        <div className="flex items-center gap-2 overflow-x-auto pb-1" aria-label="Storage categories">
-          <button type="button" aria-pressed={view === "recent"} onClick={() => changeView("recent")} className={viewButton("recent")}>Recent</button>
-          {organizationAvailable ? <button type="button" aria-pressed={view === "favorites"} onClick={() => changeView("favorites")} className={viewButton("favorites")}><span className="inline-flex items-center gap-1"><Heart size={15} /> Favorites</span></button> : null}
-          {organizationAvailable ? categories.map((category) => <div key={category.id} className="flex shrink-0 items-center rounded-full bg-[#F1F5F9]">
-            <button type="button" aria-pressed={view === `category:${category.id}`} onClick={() => changeView(`category:${category.id}`)} className={viewButton(`category:${category.id}`)}>{category.name}</button>
-            {canManage ? <><button type="button" aria-label={`Rename ${category.name}`} onClick={() => setCategoryForm({ id: category.id, name: category.name })} className="rounded-full p-2 text-slate-500 hover:bg-white focus-visible:outline-2 focus-visible:outline-[#0089CC]"><Pencil size={14} /></button>
-            <button type="button" aria-label={`Delete ${category.name}`} onClick={() => setConfirm({ kind: "category", category })} className="mr-1 rounded-full p-2 text-slate-500 hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-red-500"><Trash2 size={14} /></button></> : null}
-          </div>) : null}
+        <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1" aria-label="Storage categories">
+            <button type="button" aria-pressed={view === "recent"} onClick={() => changeView("recent")} className={viewButton("recent")}>Recent</button>
+            {organizationAvailable ? <button type="button" aria-pressed={view === "favorites"} onClick={() => changeView("favorites")} className={viewButton("favorites")}><span className="inline-flex items-center gap-1"><Heart size={15} /> Favorites</span></button> : null}
+            {organizationAvailable ? categories.map((category) => <div key={category.id} className="group/category relative flex shrink-0 items-center rounded-full bg-[#F1F5F9]">
+              <button type="button" aria-pressed={view === `category:${category.id}`} onClick={() => changeView(`category:${category.id}`)} className={viewButton(`category:${category.id}`)}>{category.name}</button>
+              {canManage ? <>
+                <span className="mr-1 hidden items-center opacity-0 transition focus-within:opacity-100 group-hover/category:opacity-100 sm:flex">
+                  <button type="button" aria-label={`Rename ${category.name}`} onClick={() => setCategoryForm({ id: category.id, name: category.name })} className="rounded-full p-2 text-slate-500 hover:bg-white focus-visible:outline-2 focus-visible:outline-[#0089CC]"><Pencil size={14} /></button>
+                  <button type="button" aria-label={`Delete ${category.name}`} onClick={() => setConfirm({ kind: "category", category })} className="rounded-full p-2 text-slate-500 hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-red-500"><Trash2 size={14} /></button>
+                </span>
+                <button type="button" aria-label={`Manage ${category.name}`} aria-expanded={categoryMenuId === category.id} onClick={() => setCategoryMenuId((current) => current === category.id ? null : category.id)} className="mr-1 rounded-full p-2 text-slate-500 hover:bg-white focus-visible:outline-2 focus-visible:outline-[#0089CC] sm:hidden"><MoreHorizontal size={16} /></button>
+                {categoryMenuId === category.id ? <div role="menu" aria-label={`Manage ${category.name}`} className="absolute right-0 top-full z-20 mt-1 min-w-32 rounded-xl border border-slate-200 bg-white p-1 shadow-xl sm:hidden">
+                  <button type="button" role="menuitem" onClick={() => { setCategoryMenuId(null); setCategoryForm({ id: category.id, name: category.name }); }} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Pencil size={15} /> Edit</button>
+                  <button type="button" role="menuitem" onClick={() => { setCategoryMenuId(null); setConfirm({ kind: "category", category }); }} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-sm font-semibold text-red-600 hover:bg-red-50"><Trash2 size={15} /> Delete</button>
+                </div> : null}
+              </> : null}
+            </div>) : null}
+          </div>
           {canManage && organizationAvailable ? <button type="button" onClick={() => setCategoryForm({ id: null, name: "" })} className="flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-sm font-bold text-[#0089CC] hover:bg-[#EAF7FF] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0089CC]"><FolderPlus size={16} /> Add category</button> : null}
-          {canManage ? <button type="button" aria-pressed={view === "trash"} onClick={() => changeView("trash")} className={viewButton("trash")}><span className="inline-flex items-center gap-1"><Trash2 size={15} /> Trash</span></button> : null}
         </div>
         {organizationAvailable && categoryForm ? <form onSubmit={(event) => { event.preventDefault(); void saveCategory(); }} className="mt-3 flex max-w-md gap-2">
           <label className="sr-only" htmlFor="storage-category-name">Category name</label>
@@ -269,10 +305,13 @@ export function WorkspaceStorageModal({ onClose, onSend }: { onClose: () => void
       </div>
 
       <main className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5" aria-busy={loading}>
+        <div className="mb-4 grid grid-cols-2 gap-2" aria-label="Storage file types">
+          <button type="button" aria-pressed={fileFilter === "media"} onClick={() => setFileFilter("media")} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0089CC] ${fileFilter === "media" ? "bg-[#EAF7FF] text-[#0089CC]" : "bg-[#F6F8FC] text-[#6D7E91] hover:bg-slate-100"}`}><Images size={18} /> Photos & videos <span className="text-xs">{media.length}</span></button>
+          <button type="button" aria-pressed={fileFilter === "files"} onClick={() => setFileFilter("files")} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0089CC] ${fileFilter === "files" ? "bg-[#EAF7FF] text-[#0089CC]" : "bg-[#F6F8FC] text-[#6D7E91] hover:bg-slate-100"}`}><FileText size={18} /> Files <span className="text-xs">{documents.length}</span></button>
+        </div>
         {loading ? <div className="grid grid-cols-2 gap-2 min-[390px]:grid-cols-3 sm:grid-cols-4 md:grid-cols-5" role="status" aria-label="Loading workspace files">{Array.from({ length: 10 }, (_, index) => <div key={index} className="aspect-square animate-pulse rounded-xl bg-[#E3EAF2]" />)}</div> : null}
-        {!loading && shown.length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-center text-[#6D7E91]"><Folder size={34} /><p className="text-sm">{view === "favorites" ? "No favorite files yet." : view === "trash" ? "Trash is empty." : "No files in this category yet."}</p></div> : null}
-        {!loading && media.length ? <section>
-          <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-[#6D7E91]"><Images size={16} /> Photos & videos</h3>
+        {!loading && (fileFilter === "media" ? media : documents).length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-center text-[#6D7E91]"><Folder size={34} /><p className="text-sm">{view === "favorites" ? `No favorite ${fileFilter === "media" ? "photos or videos" : "files"} yet.` : `No ${fileFilter === "media" ? "photos or videos" : "files"} in this category yet.`}</p></div> : null}
+        {!loading && fileFilter === "media" && media.length ? <section>
           <div className="grid grid-cols-2 gap-2 min-[390px]:grid-cols-3 sm:grid-cols-4 md:grid-cols-5">
             {media.map((file) => {
               const isSelected = selected.has(file.id);
@@ -283,33 +322,35 @@ export function WorkspaceStorageModal({ onClose, onSend }: { onClose: () => void
                   <span className={`absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border-2 text-xs font-black ${isSelected ? "border-[#0089CC] bg-[#0089CC] text-white" : "border-white bg-black/35 text-transparent"}`}>✓</span>
                 </button>
                 <div className="absolute inset-x-1 bottom-1 flex justify-end gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-                  {organizationAvailable && view !== "trash" ? <button type="button" aria-pressed={file.favorite} aria-label={`${file.favorite ? "Remove from" : "Add to"} favorites: ${file.name}`} onClick={() => void toggleFavorite(file)} className="rounded-lg bg-black/65 p-2 text-white hover:bg-black/80 focus-visible:outline-2 focus-visible:outline-white"><Heart size={16} fill={file.favorite ? "currentColor" : "none"} /></button> : null}
+                  {organizationAvailable ? <button type="button" aria-pressed={file.favorite} aria-label={`${file.favorite ? "Remove from" : "Add to"} favorites: ${file.name}`} onClick={() => void toggleFavorite(file)} className="rounded-lg bg-black/65 p-2 text-white hover:bg-black/80 focus-visible:outline-2 focus-visible:outline-white"><Heart size={16} fill={file.favorite ? "currentColor" : "none"} /></button> : null}
                   <button type="button" disabled={!file.previewUrl} aria-label={`Preview ${file.name}`} onClick={() => setPreview(file)} className="rounded-lg bg-black/65 p-2 text-white hover:bg-black/80 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"><Eye size={16} /></button>
                 </div>
               </article>;
             })}
           </div>
         </section> : null}
-        {!loading && documents.length ? <section className={media.length ? "mt-6" : ""}>
-          <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-[#6D7E91]"><FileText size={16} /> Files</h3>
+        {!loading && fileFilter === "files" && documents.length ? <section>
           <div className="divide-y divide-[#E3EAF2] overflow-hidden rounded-2xl border border-[#E3EAF2]">
             {documents.map((file) => <article key={file.id} className={`flex items-center gap-2 p-2 sm:p-3 ${selected.has(file.id) ? "bg-[#EAF7FF]" : "bg-white"}`}>
               <button type="button" aria-pressed={selected.has(file.id)} onClick={() => toggleSelected(file.id)} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-2 text-left focus-visible:outline-2 focus-visible:outline-[#0089CC]">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-[#0089CC]"><FileText size={21} /></span>
                 <span className="min-w-0"><span className="block truncate text-sm font-semibold text-[#102238]">{file.name}</span><span className="block text-xs text-[#6D7E91]">{fileSize(file.sizeBytes)}</span></span>
               </button>
-              {organizationAvailable && view !== "trash" ? <button type="button" aria-pressed={file.favorite} aria-label={`${file.favorite ? "Remove from" : "Add to"} favorites: ${file.name}`} onClick={() => void toggleFavorite(file)} className="rounded-xl p-3 text-[#0089CC] hover:bg-white focus-visible:outline-2 focus-visible:outline-[#0089CC]"><Heart size={18} fill={file.favorite ? "currentColor" : "none"} /></button> : null}
+              {organizationAvailable ? <button type="button" aria-pressed={file.favorite} aria-label={`${file.favorite ? "Remove from" : "Add to"} favorites: ${file.name}`} onClick={() => void toggleFavorite(file)} className="rounded-xl p-3 text-[#0089CC] hover:bg-white focus-visible:outline-2 focus-visible:outline-[#0089CC]"><Heart size={18} fill={file.favorite ? "currentColor" : "none"} /></button> : null}
             </article>)}
           </div>
         </section> : null}
       </main>
 
-      <footer className="flex items-center justify-between border-t border-[#E3EAF2] px-4 py-3 sm:px-5 sm:py-4">
+      <footer className="flex flex-wrap items-center gap-2 border-t border-[#E3EAF2] px-4 py-3 sm:px-5 sm:py-4">
         <span className="text-sm text-[#6D7E91]" aria-live="polite">{selected.size} selected</span>
-        {view !== "trash" ? <button type="button" disabled={!selected.size || sending || uploading || busy} onClick={() => void sendSelected()} className="flex min-h-11 items-center gap-2 rounded-xl bg-[#0089CC] px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50"><Send size={17} />{sending ? "Sending..." : "Send"}</button> : null}
+        <div className="ml-auto flex items-center gap-2">
+          <button type="button" disabled={!selected.size || Boolean(action) || uploading || busy} onClick={() => void applySelectedFiles("draft")} className="min-h-11 rounded-xl border border-[#0089CC] bg-white px-5 py-2.5 text-sm font-bold text-[#0089CC] disabled:opacity-50">{action === "draft" ? "Staging..." : "Draft"}</button>
+          <button type="button" disabled={!selected.size || Boolean(action) || uploading || busy} onClick={() => void applySelectedFiles("send")} className="flex min-h-11 items-center gap-2 rounded-xl bg-[#0089CC] px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50"><Send size={17} />{action === "send" ? "Sending..." : "Send Now"}</button>
+        </div>
       </footer>
     </div>
     {preview ? <Preview file={preview} onClose={() => setPreview(null)} /> : null}
-    <ConfirmActionDialog open={Boolean(confirm)} title={confirm?.kind === "category" ? `Delete “${confirm.category.name}”?` : `Delete ${selected.size} selected file${selected.size === 1 ? "" : "s"}?`} description={confirm?.kind === "category" ? "The category will be removed from shared Storage." : "The selected files will move to Storage Trash."} note={confirm?.kind === "category" ? "Files in this category are kept and become uncategorised." : "A workspace content manager can restore them later from Trash."} confirmLabel="Delete" loadingLabel="Deleting..." loading={busy} icon="trash" error={error} onCancel={() => { if (!busy) setConfirm(null); }} onConfirm={() => void deleteConfirmed()} />
+    <ConfirmActionDialog open={Boolean(confirm)} title={confirm?.kind === "category" ? `Delete "${confirm.category.name}"?` : `Permanently delete ${selected.size} selected file${selected.size === 1 ? "" : "s"}?`} description={confirm?.kind === "category" ? "The category will be removed from shared Storage." : "The selected files and their private Storage objects will be permanently deleted."} note={confirm?.kind === "category" ? "Files in this category are kept and become uncategorised." : "This cannot be undone. Already-sent customer messages keep their separate channel copies."} confirmLabel={confirm?.kind === "category" ? "Delete category" : "Delete permanently"} loadingLabel="Deleting..." loading={busy} icon="trash" error={error} onCancel={() => { if (!busy) setConfirm(null); }} onConfirm={() => void deleteConfirmed()} />
   </div>;
 }

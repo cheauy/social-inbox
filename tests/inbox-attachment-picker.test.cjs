@@ -71,13 +71,14 @@ test('composer exposes direct device files and Storage without auto-sending sele
   assert.match(source, /"Storage"/);
   assert.match(source, /"Select from storage"/);
   assert.doesNotMatch(source, /"Add images"|"Add video"|"Add files"/);
-  assert.match(source, /<WorkspaceStorageModal[\s\S]*?onSend=\{sendWorkspaceFiles\}/);
+  assert.match(source, /<WorkspaceStorageModal[\s\S]*?onSend=\{sendWorkspaceFiles\}[\s\S]*?onDraft=\{draftWorkspaceFiles\}/);
   assert.match(source, /async function sendWorkspaceFiles/);
+  assert.match(source, /async function draftWorkspaceFiles/);
   assert.doesNotMatch(source, /<CustomerFilesModal/);
   assert.match(source, /event\.target\.value = ""/);
 });
 
-test('Storage is workspace-shared, uploads multiple files, and sends only on explicit click', () => {
+test('Storage is workspace-shared, uploads multiple files, and offers explicit Draft or Send Now actions', () => {
   const modal = fs.readFileSync('components/inbox/workspace-storage-modal.tsx', 'utf8');
   assert.match(modal, /\/api\/workspace-storage\/files/);
   assert.match(modal, /action: "prepare-upload"/);
@@ -85,8 +86,10 @@ test('Storage is workspace-shared, uploads multiple files, and sends only on exp
   assert.match(modal, /action: "finalize-upload"/);
   assert.match(modal, /action: "get-file-url"/);
   assert.match(modal, /multiple/);
-  assert.match(modal, /onClick=\{\(\) => void sendSelected\(\)\}/);
-  assert.match(modal, /Sending\.\.\." : "Send"/);
+  assert.match(modal, /applySelectedFiles\("draft"\)/);
+  assert.match(modal, /applySelectedFiles\("send"\)/);
+  assert.match(modal, /"Draft"/);
+  assert.match(modal, /"Send Now"/);
   assert.doesNotMatch(modal, /customer_files|contactId|conversationId/);
   assert.match(modal, /workspaceFilesForView\(files, view\)/);
   assert.match(modal, /grid-cols-2 gap-2 min-\[390px\]:grid-cols-3 sm:grid-cols-4 md:grid-cols-5/);
@@ -94,12 +97,11 @@ test('Storage is workspace-shared, uploads multiple files, and sends only on exp
   assert.match(modal, /aria-label=\{`Preview \$\{file\.name\}`\}/);
   assert.match(modal, /action: "delete-files"/);
   assert.match(modal, /Files in this category are kept and become uncategorised/);
-  assert.match(modal, /action: "restore-files"/);
-  assert.match(modal, /Restore/);
-  assert.match(modal, /Trash is empty/);
+  assert.doesNotMatch(modal, /action: "restore-files"|Trash is empty/);
+  assert.match(modal, /cannot be undone/);
   assert.match(modal, /role="alert"/);
   assert.match(modal, /role="status" aria-label="Loading workspace files"/);
-  assert.match(modal, /No favorite files yet/);
+  assert.match(modal, /No favorite/);
   assert.match(modal, /event\.stopPropagation\(\); setCategoryForm\(null\)/);
 });
 

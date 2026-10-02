@@ -17,12 +17,10 @@ test('recent, favorites and category views filter then sort newest first', () =>
     { id: 'old-favorite', createdAt: '2026-10-01T00:00:00Z', categoryId: 'one', favorite: true, deletedAt: null },
     { id: 'new-other', createdAt: '2026-10-03T00:00:00Z', categoryId: 'two', favorite: false, deletedAt: null },
     { id: 'new-favorite', createdAt: '2026-10-02T00:00:00Z', categoryId: 'one', favorite: true, deletedAt: null },
-    { id: 'deleted', createdAt: '2026-10-04T00:00:00Z', categoryId: 'one', favorite: true, deletedAt: '2026-10-05T00:00:00Z' },
   ];
   assert.deepEqual(Array.from(workspaceFilesForView(files, 'recent'), (file) => file.id), ['new-other', 'new-favorite', 'old-favorite']);
   assert.deepEqual(Array.from(workspaceFilesForView(files, 'favorites'), (file) => file.id), ['new-favorite', 'old-favorite']);
   assert.deepEqual(Array.from(workspaceFilesForView(files, 'category:one'), (file) => file.id), ['new-favorite', 'old-favorite']);
-  assert.deepEqual(Array.from(workspaceFilesForView(files, 'trash'), (file) => file.id), ['deleted']);
 });
 
 test('workspace Storage classifies only the supported reusable attachment types', () => {
@@ -89,7 +87,7 @@ test('migration draft creates a private service-only workspace store without tou
   assert.match(organizationChecks, /Preferred application rollback/);
 });
 
-function routeSetup({ businessId = 'shop-a', active = true, canManage = true, rows = [], stored = {}, categories = [], favorites = [], organizationInstalled = true } = {}) {
+function routeSetup({ businessId = 'shop-a', active = true, canManage = true, rows = [], stored = {}, removeFailures = {}, categories = [], favorites = [], organizationInstalled = true } = {}) {
   const db = database({ workspace_files: rows, ...(organizationInstalled ? { workspace_file_categories: categories, workspace_file_favorites: favorites } : {}) });
   const removed = [];
   db.storage = {
@@ -99,7 +97,13 @@ function routeSetup({ businessId = 'shop-a', active = true, canManage = true, ro
         async createSignedUploadUrl(path) { return { data: { token: 'upload-token', path }, error: null }; },
         async createSignedUrl(path) { return { data: { signedUrl: `https://signed.invalid/${path}` }, error: null }; },
         async info(path) { return stored[path] ? { data: stored[path], error: null } : { data: null, error: { message: 'missing' } }; },
-        async remove(paths) { removed.push(...paths); return { data: paths, error: null }; },
+        async remove(paths) {
+          removed.push(...paths);
+          const failure = removeFailures[paths[0]];
+          if (failure) return { data: null, error: { message: failure } };
+          for (const path of paths) delete stored[path];
+          return { data: paths, error: null };
+        },
       };
     },
   };
@@ -199,38 +203,41 @@ test('favorite preference is member scoped and refuses a foreign workspace file'
   assert.deepEqual(db.tables.workspace_file_favorites, [{ member_id: 'member-a', file_id: 'own' }]);
 });
 
-test('bulk category and soft-delete mutations stay inside the authenticated workspace', async () => {
-  const own = { id: 'own', business_id: 'shop-a', category_id: null, deleted_at: null };
-  const foreign = { id: 'foreign', business_id: 'shop-b', category_id: null, deleted_at: null };
+test('bulk category and permanent-delete mutations stay inside the authenticated workspace', async () => {
+  const own = { id: 'own', business_id: 'shop-a', category_id: null, deleted_at: null, storage_bucket: WORKSPACE_FILE_BUCKET, storage_path: 'shop-a/own.pdf' };
+  const foreign = { id: 'foreign', business_id: 'shop-b', category_id: null, deleted_at: null, storage_bucket: WORKSPACE_FILE_BUCKET, storage_path: 'shop-b/foreign.pdf' };
   const categories = [{ id: 'category-a', business_id: 'shop-a', name: 'Products' }];
-  const { db, route, request } = routeSetup({ rows: [own, foreign], categories });
+  const { db, removed, route, request } = routeSetup({ rows: [own, foreign], stored: { 'shop-a/own.pdf': { size: 3 } }, categories });
   assert.equal((await route.POST(request({ action: 'set-category', fileIds: ['own', 'foreign'], categoryId: 'category-a' }))).status, 200);
   assert.equal(db.tables.workspace_files[0].category_id, 'category-a');
   assert.equal(db.tables.workspace_files[1].category_id, null);
   assert.equal((await route.POST(request({ action: 'delete-files', fileIds: ['own', 'foreign'] }))).status, 200);
-  assert.equal(typeof db.tables.workspace_files[0].deleted_at, 'string');
-  assert.equal(db.tables.workspace_files[1].deleted_at, null);
+  assert.deepEqual(removed, ['shop-a/own.pdf']);
+  assert.deepEqual(db.tables.workspace_files.map(row => row.id), ['foreign']);
+  assert.equal((await route.POST(request({ action: 'delete-files', fileIds: ['own'] }))).status, 200, 'repeat delete is idempotent');
 });
 
 test('shared file organization mutations require the existing content-management role', async () => {
   const { route, request } = routeSetup({ canManage: false, rows: [
-    { id: 'own', business_id: 'shop-a', deleted_at: null },
-    { id: 'deleted', business_id: 'shop-a', deleted_at: '2026-10-04T00:00:00Z' },
+    { id: 'own', business_id: 'shop-a', deleted_at: null, storage_bucket: WORKSPACE_FILE_BUCKET, storage_path: 'shop-a/own.pdf' },
+    { id: 'deleted', business_id: 'shop-a', deleted_at: '2026-10-04T00:00:00Z', storage_bucket: WORKSPACE_FILE_BUCKET, storage_path: 'shop-a/deleted.pdf' },
   ] });
   assert.equal((await route.POST(request({ action: 'set-category', fileIds: ['own'], categoryId: null }))).status, 403);
   assert.equal((await route.POST(request({ action: 'delete-files', fileIds: ['own'] }))).status, 403);
-  assert.equal((await route.POST(request({ action: 'restore-files', fileIds: ['own'] }))).status, 403);
   const list = await (await route.GET()).json();
   assert.equal(list.files.some((file) => file.id === 'deleted'), false);
 });
 
-test('Trash restore is tenant scoped and makes a soft-deleted file visible again', async () => {
-  const own = { id: 'own', business_id: 'shop-a', deleted_at: '2026-10-04T00:00:00Z' };
-  const foreign = { id: 'foreign', business_id: 'shop-b', deleted_at: '2026-10-04T00:00:00Z' };
-  const { db, route, request } = routeSetup({ rows: [own, foreign] });
-  assert.equal((await route.POST(request({ action: 'restore-files', fileIds: ['own', 'foreign'] }))).status, 200);
+test('permanent delete reports a recoverable partial failure and restores visible metadata when the object remains', async () => {
+  const path = 'shop-a/blocked.pdf';
+  const own = { id: 'own', business_id: 'shop-a', deleted_at: null, storage_bucket: WORKSPACE_FILE_BUCKET, storage_path: path };
+  const { db, route, request } = routeSetup({ rows: [own], stored: { [path]: { size: 3 } }, removeFailures: { [path]: 'storage unavailable' } });
+  const response = await route.POST(request({ action: 'delete-files', fileIds: ['own'] }));
+  const result = await response.json();
+  assert.equal(response.status, 207);
+  assert.deepEqual(Array.from(result.deletedIds), []);
+  assert.deepEqual(Array.from(result.failedIds), ['own']);
   assert.equal(db.tables.workspace_files[0].deleted_at, null);
-  assert.equal(db.tables.workspace_files[1].deleted_at, '2026-10-04T00:00:00Z');
 });
 
 test('category API scopes edit/delete and migration preserves files on category delete', async () => {

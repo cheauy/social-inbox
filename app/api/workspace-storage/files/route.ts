@@ -24,8 +24,7 @@ type ActionBody = {
     | "get-file-url"
     | "toggle-favorite"
     | "set-category"
-    | "delete-files"
-    | "restore-files";
+    | "delete-files";
   fileId?: string;
   fileIds?: string[];
   favorite?: boolean;
@@ -58,6 +57,13 @@ type StorageQueryResult = {
 
 function organizationSchemaMissing(error: { code?: string | null } | null | undefined) {
   return ["42P01", "42703", "PGRST204"].includes(error?.code ?? "");
+}
+
+function storageObjectMissing(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const value = error as { status?: number | string; statusCode?: number | string; message?: string };
+  const status = Number(value.statusCode ?? value.status);
+  return status === 404 || /not found|does not exist/i.test(value.message ?? "");
 }
 
 function fail(error: string, status: number, hint?: string) {
@@ -93,24 +99,22 @@ export async function GET() {
   if (!auth.success) return fail(auth.error, auth.status);
   const canManage = await memberHasPermission(auth.member, "tags_quick_replies", "manage");
 
-  const loadFiles = async (deleted: boolean, includeCategory: boolean, limit: number) => {
-    let query = supabaseAdmin
+  const loadFiles = async (includeCategory: boolean, limit: number) => {
+    const query = supabaseAdmin
       .from("workspace_files")
       .select(`${WORKSPACE_FILE_SELECT}${includeCategory ? ",category_id" : ""}`)
-      .eq("business_id", auth.member.business_id);
-    query = deleted
-      ? query.not("deleted_at", "is", null)
-      : query.is("deleted_at", null);
+      .eq("business_id", auth.member.business_id)
+      .is("deleted_at", null);
     return await query
-      .order(deleted ? "deleted_at" : "created_at", { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(limit) as unknown as StorageQueryResult;
   };
 
   let organizationAvailable = true;
-  let activeResult = await loadFiles(false, true, 200);
+  let activeResult = await loadFiles(true, 200);
   if (organizationSchemaMissing(activeResult.error)) {
     organizationAvailable = false;
-    activeResult = await loadFiles(false, false, 200);
+    activeResult = await loadFiles(false, 200);
   }
   const { data, error } = activeResult;
 
@@ -120,17 +124,6 @@ export async function GET() {
       503,
       "Review and apply db/migrations/20261008_workspace_storage.sql.",
     );
-  }
-
-  let deletedRows: typeof data = [];
-  if (canManage) {
-    let deleted = await loadFiles(true, organizationAvailable, 100);
-    if (organizationAvailable && organizationSchemaMissing(deleted.error)) {
-      organizationAvailable = false;
-      deleted = await loadFiles(true, false, 100);
-    }
-    if (deleted.error) return fail("Unable to load deleted workspace files.", 500);
-    deletedRows = deleted.data ?? [];
   }
 
   let categoryRows: Array<{ id: string; name: string; created_at: string; updated_at: string }> = [];
@@ -157,7 +150,7 @@ export async function GET() {
     }
   }
 
-  const rows = [...(data ?? []), ...(deletedRows ?? [])];
+  const rows = data ?? [];
   const signed = rows.length
     ? await cachedSignedUrls(
         WORKSPACE_FILE_BUCKET,
@@ -345,7 +338,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, favorite });
   }
 
-  if (body.action === "set-category" || body.action === "delete-files" || body.action === "restore-files") {
+  if (body.action === "set-category" || body.action === "delete-files") {
     if (!(await memberHasPermission(auth.member, "tags_quick_replies", "manage"))) {
       return fail("You do not have permission to change shared Storage files.", 403);
     }
@@ -356,17 +349,6 @@ export async function POST(request: NextRequest) {
         .filter(Boolean),
     )).slice(0, 200);
     if (!fileIds.length) return fail("Choose at least one workspace file.", 400);
-
-    if (body.action === "restore-files") {
-      const { error } = await supabaseAdmin
-        .from("workspace_files")
-        .update({ deleted_at: null })
-        .eq("business_id", auth.member.business_id)
-        .in("id", fileIds)
-        .not("deleted_at", "is", null);
-      if (error) return fail("Unable to restore the selected files.", 500);
-      return NextResponse.json({ success: true });
-    }
 
     if (body.action === "set-category") {
       const categoryId = body.categoryId?.trim() || null;
@@ -389,14 +371,88 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    const { error } = await supabaseAdmin
+    const { data: rows, error: loadError } = await supabaseAdmin
       .from("workspace_files")
-      .update({ deleted_at: new Date().toISOString() })
+      .select("id,storage_bucket,storage_path,deleted_at")
       .eq("business_id", auth.member.business_id)
-      .in("id", fileIds)
-      .is("deleted_at", null);
-    if (error) return fail("Unable to delete the selected files.", 500);
-    return NextResponse.json({ success: true });
+      .in("id", fileIds);
+    if (loadError) return fail("Unable to load the selected files for deletion.", 500);
+
+    const owned = new Map((rows ?? []).map((row) => [row.id, row]));
+    const deletedIds = fileIds.filter((id) => !owned.has(id));
+    const failedIds: string[] = [];
+
+    for (const row of owned.values()) {
+      if (
+        row.storage_bucket !== WORKSPACE_FILE_BUCKET ||
+        !isWorkspaceFilePathOwned(row.storage_path, auth.member.business_id)
+      ) {
+        failedIds.push(row.id);
+        continue;
+      }
+
+      const wasPending = Boolean(row.deleted_at);
+      if (!wasPending) {
+        const staged = await supabaseAdmin
+          .from("workspace_files")
+          .update({ deleted_at: new Date().toISOString() })
+          .eq("id", row.id)
+          .eq("business_id", auth.member.business_id)
+          .is("deleted_at", null);
+        if (staged.error) {
+          failedIds.push(row.id);
+          continue;
+        }
+      }
+
+      const removed = await supabaseAdmin.storage
+        .from(WORKSPACE_FILE_BUCKET)
+        .remove([row.storage_path]);
+
+      if (removed.error) {
+        const check = await supabaseAdmin.storage
+          .from(WORKSPACE_FILE_BUCKET)
+          .info(row.storage_path);
+        if (!check.error && check.data) {
+          if (!wasPending) {
+            await supabaseAdmin
+              .from("workspace_files")
+              .update({ deleted_at: null })
+              .eq("id", row.id)
+              .eq("business_id", auth.member.business_id);
+          }
+          failedIds.push(row.id);
+          continue;
+        }
+        if (!storageObjectMissing(check.error)) {
+          failedIds.push(row.id);
+          continue;
+        }
+      }
+
+      const metadata = await supabaseAdmin
+        .from("workspace_files")
+        .delete()
+        .eq("id", row.id)
+        .eq("business_id", auth.member.business_id)
+        .eq("storage_path", row.storage_path);
+      if (metadata.error) {
+        failedIds.push(row.id);
+        continue;
+      }
+      deletedIds.push(row.id);
+    }
+
+    if (failedIds.length) {
+      return NextResponse.json({
+        success: false,
+        error: `${deletedIds.length} file${deletedIds.length === 1 ? " was" : "s were"} deleted, but ${failedIds.length} could not be fully deleted. Retry the remaining selection.`,
+        deletedIds,
+        failedIds,
+      }, { status: 207 });
+    }
+
+    return NextResponse.json({ success: true, deletedIds, failedIds });
   }
 
   return fail("Unsupported workspace Storage action.", 400);

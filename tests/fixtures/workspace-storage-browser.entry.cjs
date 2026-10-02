@@ -6,6 +6,8 @@ const { ReplyBox } = require("../../components/inbox/reply-box.tsx");
 const h = React.createElement;
 const checks = [];
 const mutations = [];
+const alerts = [];
+window.alert = message => alerts.push(String(message));
 let sendCalls = 0;
 let categories = [
   { id: "campaigns", name: "Campaigns", created_at: "2026-10-01", updated_at: "2026-10-01" },
@@ -14,7 +16,7 @@ let categories = [
 let files = Array.from({ length: 7 }, (_, index) => ({
   id: `photo-${index + 1}`,
   name: `Photo ${index + 1}`,
-  mimeType: "image/svg+xml",
+  mimeType: "image/jpeg",
   sizeBytes: 1200 + index,
   kind: "image",
   createdAt: new Date(Date.UTC(2026, 9, 8, 0, 0, index)).toISOString(),
@@ -39,24 +41,31 @@ window.fetch = async (url, options = {}) => {
     if (body.action === "delete") { categories = categories.filter(item => item.id !== body.categoryId); files = files.map(file => file.categoryId === body.categoryId ? { ...file, categoryId: null } : file); }
     return json({ success: true });
   }
+  if (body.action === "get-file-url") {
+    const file = files.find(item => item.id === body.fileId);
+    return file ? json({ success: true, signedUrl: file.previewUrl || "data:application/pdf,fixture" }) : json({ success: false, error: "Not found" }, 404);
+  }
   if (body.action === "toggle-favorite") files = files.map(file => file.id === body.fileId ? { ...file, favorite: body.favorite } : file);
   if (body.action === "set-category") files = files.map(file => body.fileIds.includes(file.id) ? { ...file, categoryId: body.categoryId } : file);
-  if (body.action === "delete-files") files = files.map(file => body.fileIds.includes(file.id) ? { ...file, deletedAt: "2026-10-09T00:00:00Z" } : file);
-  if (body.action === "restore-files") files = files.map(file => body.fileIds.includes(file.id) ? { ...file, deletedAt: null } : file);
+  if (body.action === "delete-files") {
+    files = files.filter(file => !body.fileIds.includes(file.id));
+    return json({ success: true, deletedIds: body.fileIds, failedIds: [] });
+  }
   return json({ success: true, favorite: body.favorite });
 };
 
 function App() {
+  const [reply, setReply] = React.useState("Keep this typed text");
   return h("div", { className: "fixed inset-x-0 bottom-0 p-3" }, h(ReplyBox, {
     platform: "telegram",
-    reply: "",
+    reply,
     conversationId: "fixture-conversation",
     sending: false,
     error: null,
     contactId: "fixture-contact",
     businessId: "fixture-business",
     initialTags: [],
-    onReplyChange: () => {},
+    onReplyChange: setReply,
     onSubmit: () => {},
     onSendAttachments: async () => { sendCalls += 1; return true; },
   }));
@@ -97,9 +106,28 @@ createRoot(document.getElementById("root")).render(h(App));
     const columns = getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean).length;
     const expectedColumns = innerWidth >= 768 ? 5 : innerWidth >= 640 ? 4 : innerWidth >= 390 ? 3 : 2;
     check("responsive Storage column count", columns === expectedColumns, `${columns}/${expectedColumns}`);
-    check("manager category and Trash controls render", Boolean(buttonText("Add category") && buttonText("Trash") && buttonText("Campaigns")));
+    check("manager categories render without Trash", Boolean(buttonText("Add category") && buttonText("Campaigns") && !buttonText("Trash")));
+    const addCategory = buttonText("Add category").getBoundingClientRect();
+    const recent = buttonText("Recent").getBoundingClientRect();
+    check("Add category stays on the right", addCategory.left > recent.left, `${addCategory.left}/${recent.left}`);
+    const renameCampaigns = storage.querySelector('button[aria-label="Rename Campaigns"]');
+    const manageCampaigns = storage.querySelector('button[aria-label="Manage Campaigns"]');
+    if (innerWidth >= 640) {
+      renameCampaigns.focus();
+      await pause(220);
+      check("desktop category controls appear on keyboard focus", getComputedStyle(renameCampaigns.parentElement).opacity === "1");
+    } else {
+      check("touch category ellipsis is available", getComputedStyle(manageCampaigns).display !== "none");
+    }
 
-    firstSelect.click();
+    [...storage.querySelectorAll("button")].find(button => button.textContent.includes("Files")).click();
+    await pause(30);
+    check("Files filter exposes documents", Boolean(storage.querySelector('button[aria-pressed="false"], button[aria-pressed="true"]') && storage.textContent.includes("Price list.pdf")));
+    const mediaFilter = [...storage.querySelectorAll("button")].find(button => button.textContent.includes("Photos & videos"));
+    mediaFilter.click();
+    await pause(30);
+
+    storage.querySelector('button[aria-label="Select Photo 1"]').click();
     storage.querySelector('button[aria-label="Select Photo 2"]').click();
     await pause(40);
     check("multi-selection count is stable", selectedText(2));
@@ -121,26 +149,43 @@ createRoot(document.getElementById("root")).render(h(App));
     await pause(80);
     check("category move keeps exact multi-selection", mutations.some(item => item.action === "set-category" && item.categoryId === "products" && item.fileIds.length === 2) && selectedText(2));
 
+    buttonText("Send Now").click();
+    await pause(180);
+    check("Send Now uses provider send explicitly", !document.querySelector('[role="dialog"][aria-label="Workspace Storage"]') && sendCalls === 1, String(sendCalls));
+
+    document.querySelector('button[aria-label="Attach content"]').click();
+    await pause(40);
+    [...document.querySelector('[role="menu"]').querySelectorAll("button")].find(button => button.textContent.includes("Storage")).click();
+    await pause(180);
+    const reopened = document.querySelector('[role="dialog"][aria-label="Workspace Storage"]');
+    reopened.querySelector('button[aria-label="Select Photo 3"]').click();
+    await pause(30);
     buttonText("Delete").click();
     await pause(40);
     const confirmation = document.querySelector('[role="alertdialog"]');
-    [...confirmation.querySelectorAll("button")].find(button => button.textContent.trim() === "Delete").click();
+    check("permanent delete confirmation names exact count", confirmation.textContent.includes("Permanently delete 1 selected file?") && confirmation.textContent.includes("cannot be undone"));
+    [...confirmation.querySelectorAll("button")].find(button => button.textContent.trim() === "Delete permanently").click();
     await pause(240);
-    check("delete is soft-delete mutation and clears selection", mutations.some(item => item.action === "delete-files" && item.fileIds.length === 2) && selectedText(0));
+    check("delete permanently removes exact selection", mutations.some(item => item.action === "delete-files" && item.fileIds.length === 1 && item.fileIds[0] === "photo-3") && selectedText(0));
+    document.querySelector('button[aria-label="Close Storage"]').click();
+    await pause(40);
 
-    buttonText("Trash").click();
-    await pause(60);
-    const trashSelect = document.querySelector('button[aria-label="Select Photo 1"]');
-    check("Trash exposes deleted files to manager", Boolean(trashSelect));
-    trashSelect.click();
+    document.querySelector('button[aria-label="Attach content"]').click();
+    await pause(40);
+    [...document.querySelector('[role="menu"]').querySelectorAll("button")].find(button => button.textContent.includes("Storage")).click();
+    await pause(180);
+    const draftStorage = document.querySelector('[role="dialog"][aria-label="Workspace Storage"]');
+    draftStorage.querySelector('button[aria-label="Select Photo 4"]').click();
+    draftStorage.querySelector('button[aria-label="Select Photo 5"]').click();
     await pause(30);
-    buttonText("Restore").click();
-    await pause(220);
-    check("Trash restore uses explicit manager mutation", mutations.some(item => item.action === "restore-files" && item.fileIds.includes("photo-1")));
-    check("organization actions never send a customer attachment", sendCalls === 0, String(sendCalls));
+    buttonText("Draft").click();
+    await pause(180);
+    check("Draft closes Storage without another provider send", !document.querySelector('[role="dialog"][aria-label="Workspace Storage"]') && sendCalls === 1, String(sendCalls));
+    check("Draft preserves typed text", document.querySelector("textarea").value === "Keep this typed text");
+    check("Draft stages both selected files", document.querySelector('button[aria-label="Attach content"]').textContent.includes("2"));
 
-    document.getElementById("result").textContent = JSON.stringify({ passed: true, width: innerWidth, columns, checks, mutations: mutations.map(item => item.action) });
+    document.getElementById("result").textContent = JSON.stringify({ passed: true, width: innerWidth, columns, checks, alerts, sendCalls, mutations: mutations.map(item => item.action) });
   } catch (error) {
-    document.getElementById("result").textContent = JSON.stringify({ passed: false, width: innerWidth, error: error.message, checks, mutations, sendCalls, body: document.body.innerText.slice(0, 1200) });
+    document.getElementById("result").textContent = JSON.stringify({ passed: false, width: innerWidth, error: error.message, checks, alerts, mutations, sendCalls, body: document.body.innerText.slice(0, 1200) });
   }
 })();
