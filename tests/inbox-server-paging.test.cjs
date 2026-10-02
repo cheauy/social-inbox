@@ -135,3 +135,23 @@ test('page metadata preserves manual unread, acknowledged reads and optimistic t
  context.persistedManualUnreadCountsRef.current.clear();context.manualUnreadConversationIdsRef.current.clear();context.readBarrierMessageTimeRef.current.set(uuid(1),Date.parse(current[0].last_message_at));context.readRowVersionRef.current.set(uuid(1),Date.parse(current[0].updated_at));
  context.applyPage([row(1,{unread_count:2,contact:{id:'ct',tags:[]}})]);assert.equal(current[0].unread_count,0);assert.equal(current[0].contact.tags[0].id,'vip');
 });
+test('optimistic reads immediately reconcile complete unread aggregates without changing other counts',async()=>{
+ const d=harness([row(1,{unread_count:3}),row(2,{unread_count:2}),row(3)]);try{
+ d.render();await tick();d.props.live=d.props.live.map(r=>r.id===uuid(1)?{...r,unread_count:0}:r);
+ let s=d.render();assert.equal(s.rows.find(r=>r.id===uuid(1)).unread_count,0);
+ assert.equal(s.page.counts.views.unread,999);assert.equal(s.page.counts.totalUnreadCount,997);
+ assert.equal(s.page.counts.views.all,1000);assert.equal(d.calls.length,0);
+ d.props.live=d.props.live.map(r=>r.id===uuid(2)?{...r,unread_count:0}:r);s=d.render();assert.equal(s.page.counts.views.unread,998);
+ // Failed server read restores the local row; new incoming activity does likewise.
+ d.props.live=d.props.live.map(r=>r.id===uuid(1)?{...r,unread_count:3}:r);s=d.render();assert.equal(s.page.counts.views.unread,999);
+ d.props.live=d.props.live.map(r=>r.id===uuid(2)?{...r,unread_count:1}:r);s=d.render();assert.equal(s.page.counts.views.unread,1000);
+ }finally{d.h.cleanup()}
+});
+test('authoritative empty page stays empty during quiet refresh while a different view shows initial loading',async()=>{
+ const d=harness([]);let release;try{d.render();await tick();d.answer(()=>new Promise(r=>release=r));
+ d.events.get('focus')();void d.flush();await tick();let s=d.render();assert.equal(s.loading,true);assert.equal(s.initialLoading,false);
+ release({...page([]),hasMore:false});await tick();s=d.render();assert.equal(s.initialLoading,false);
+ d.props.request={...request(),view:'pinned'};d.render();await tick();s=d.render();assert.equal(s.initialLoading,true);
+ release({...page([]),hasMore:false});await tick();s=d.render();assert.equal(s.initialLoading,false);
+ }finally{d.h.cleanup()}
+});

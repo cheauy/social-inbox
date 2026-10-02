@@ -1174,6 +1174,7 @@ const previousActiveConversationIdRef =
    * left to do.
    */
   const pendingReadIdsRef = useRef<Set<string>>(new Set());
+  const pendingReadCountsRef = useRef(new Map<string, number>());
 
   const readInFlightRef =
     useRef<Set<string>>(
@@ -1550,6 +1551,8 @@ async function markConversationReadRealtime(
         conversationId,
     );
 
+  const unreadBeforeRead = pendingReadCountsRef.current.get(conversationId) ?? readConversation?.unread_count ?? 0;
+
   const readMessageTime =
     readConversation?.last_message_at
       ? new Date(
@@ -1664,6 +1667,13 @@ async function markConversationReadRealtime(
       conversationId,
     );
 
+    // Restore only this failed read's optimistic badge. A newer incoming
+    // message or an explicit manual-unread update wins without moving selection.
+    setLiveConversations(current => current.map(row =>
+      row.id === conversationId && row.unread_count === 0 &&
+      rowTime(row.last_message_at) <= readMessageTime
+        ? { ...row, unread_count: Math.max(0, unreadBeforeRead) } : row));
+
     console.error(
       "Unable to mark realtime conversation read:",
       error,
@@ -1680,6 +1690,7 @@ async function markConversationReadRealtime(
     pendingReadIdsRef.current.delete(
       conversationId,
     );
+    pendingReadCountsRef.current.delete(conversationId);
   }
 }
 
@@ -4304,6 +4315,7 @@ const selectConversationSmoothly =
         ) &&
         (targetConversation.unread_count ?? 0) > 0
       ) {
+        pendingReadCountsRef.current.set(conversationId, targetConversation.unread_count);
         pendingReadIdsRef.current.add(conversationId);
 
         setLiveConversations((current) =>

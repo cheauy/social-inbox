@@ -2895,7 +2895,11 @@ function ConversationListView({
       messageMatchIds,
     ]);
 
-  const filteredConversations = pager.enabled ? pager.rows : legacyFilteredConversations;
+  // Server paging owns complete search/view qualification. Apply the known
+  // unread predicate immediately, rather than waiting for its debounced refresh.
+  const filteredConversations = pager.enabled
+    ? pager.rows.filter(row => selectedViewKey !== "unread" || row.unread_count > 0)
+    : legacyFilteredConversations;
   const visibleConversations =
     useMemo(
       () =>
@@ -5012,7 +5016,7 @@ function ConversationListView({
             status with no conversations gets the same transition as one with
             plenty rather than snapping straight to "none found".
           */}
-          {statusSwitching || channelSwitching || (pager.enabled && pager.loading && !pager.rows.length) ? (
+          {statusSwitching || channelSwitching || (pager.enabled && pager.initialLoading) ? (
             <ConversationListSkeleton />
           ) : filteredConversations.length ===
             0 ? (

@@ -7,7 +7,7 @@ import { INBOX_SYNC_EVENT, SYNC_TIMEOUT_MS } from "@/lib/inbox/live-sync";
 import { isOlderConversationState } from "@/lib/inbox/live-sync";
 import { INBOX_PAGE_CHANGED_EVENT, mergeConversationPage, type ConversationPage, type ConversationPageRequest, type ConversationPagingInitial } from "./conversation-page-contract";
 
-type State = { key: string; rows: InboxConversation[]; page: ConversationPagingInitial["page"]; loading: boolean; error: string | null };
+type State = { key: string; countRows: InboxConversation[]; rows: InboxConversation[]; page: ConversationPagingInitial["page"]; loading: boolean; error: string | null };
 const requestKey = (request: ConversationPageRequest) => JSON.stringify({ ...request, cursor: null, knownIds: undefined });
 const visible = () => document.visibilityState !== "hidden";
 const rowVersion = (row: InboxConversation) => JSON.stringify([row.updated_at,row.last_message_at,row.last_message_text,
@@ -18,7 +18,9 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
   liveRows: InboxConversation[], onRows?: (rows: InboxConversation[]) => void) {
   const key = requestKey(request);
   const [state, setState] = useState<State | null>(() => initial ? {
-    key: requestKey(initial.request), rows: initial.page.ids.flatMap(id => {
+    key: requestKey(initial.request), countRows: initial.page.ids.flatMap(id => {
+      const row = liveRows.find(row => row.id === id); return row ? [row] : [];
+    }), rows: initial.page.ids.flatMap(id => {
       const row = liveRows.find(row => row.id === id); return row ? [row] : [];
     }), page: initial.page, loading: false, error: null,
   } : null);
@@ -75,12 +77,14 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
       // Resume validates every already visited row, in bounded batches, without fetching the entire inbox.
       const batches = Math.max(1, Math.ceil(known.length / 200));
       let latest: ConversationPage | null = null;
+      const countVersions = new Map<string, InboxConversation>();
       for (let offset = 0; offset < batches; offset++) {
         const ids = known.slice(offset * 200, (offset + 1) * 200);
         const before = new Map(liveRowsRef.current.map(row => [row.id, rowVersion(row)]));
         const page = await read({ ...activeRequest, cursor: mode === "more" ? current!.page.cursor : null,
           ...(ids.length ? { knownIds: ids } : {}) }, controller.signal);
         if (generation !== generationRef.current || controller.signal.aborted) return;
+        for (const row of [...page.conversations, ...page.updates]) countVersions.set(row.id, row);
         const live = new Map(liveRowsRef.current.map(row => [row.id,row]));
         if ([...page.conversations, ...page.updates].some(row => live.has(row.id) && live.get(row.id)!.business_id !== row.business_id)) {
           throw new Error("The conversation page returned a mismatched workspace. Please retry.");
@@ -107,7 +111,7 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
         cursor: mode === "refresh" ? current?.page.cursor ?? latest.cursor : latest.cursor,
         hasMore: mode === "refresh" ? current?.page.hasMore ?? latest.hasMore : latest.hasMore,
         ids: rows.map(row => row.id) };
-      const next = { key: activeKey, rows, page, loading: false, error: null };
+      const next = { key: activeKey, rows, countRows: rows.map(row => countVersions.get(row.id) ?? row), page, loading: false, error: null };
       stateRef.current = next; setState(next);
     } catch (error) {
       catchUpRef.current = true;
@@ -170,6 +174,27 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
   const more = useCallback(() => { void run("more"); }, [run]);
   const retry = useCallback(() => { catchUpRef.current = true; void run(stateRef.current?.key === requestKey(requestRef.current) ? "refresh" : "replace"); }, [run]);
   const snapshot = useCallback(async () => (await read({ ...requestRef.current, cursor: null }, new AbortController().signal, true)).readTargets, [read]);
-  return { enabled: Boolean(initial), rows, page: state?.page, loading: Boolean(state?.loading || state?.key !== key && !state?.error),
+  const displayedPage = useMemo(() => {
+    if (!state || state.key !== key) return state?.page;
+    const live = new Map(liveRows.map(row => [row.id, row]));
+    let messagesDelta = 0, chatsDelta = 0;
+    for (const baseline of state.countRows) {
+      const row = live.get(baseline.id);
+      if (!row || row.business_id !== baseline.business_id || row.status !== baseline.status) continue;
+      const before = Math.max(0, baseline.unread_count ?? 0), after = Math.max(0, row.unread_count ?? 0);
+      messagesDelta += after - before;
+      chatsDelta += Number(after > 0) - Number(before > 0);
+    }
+    const counts = state.page.counts;
+    return { ...state.page, counts: { ...counts,
+      views: { ...counts.views, unread: Math.max(0, counts.views.unread + chatsDelta) },
+      totalUnreadCount: Math.max(0, counts.totalUnreadCount + messagesDelta),
+      unreadConversationCount: Math.max(0, counts.unreadConversationCount + chatsDelta),
+    } };
+  }, [state, key, liveRows]);
+  return { enabled: Boolean(initial), rows, page: displayedPage, loading: Boolean(state?.loading || state?.key !== key && !state?.error),
+    // An authoritative empty page is still loaded. Quiet revalidation must not
+    // replace its empty state with navigation skeletons after the last unread is read.
+    initialLoading: Boolean(initial && state?.key !== key && !state?.error),
     error: state?.error, more, retry, snapshot };
 }
