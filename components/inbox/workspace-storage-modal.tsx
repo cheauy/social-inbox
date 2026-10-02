@@ -19,7 +19,7 @@ type StorageCategory = { id: string; name: string; created_at: string; updated_a
 type ApiResponse = {
   success?: boolean; error?: string; files?: WorkspaceFile[]; categories?: StorageCategory[];
   category?: StorageCategory; signedUrl?: string; upload?: { bucket: string; path: string; token: string };
-  canManage?: boolean;
+  canManage?: boolean; organizationAvailable?: boolean;
 };
 
 function fileSize(bytes: number) {
@@ -79,6 +79,7 @@ export function WorkspaceStorageModal({ onClose, onSend }: { onClose: () => void
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
   const [categories, setCategories] = useState<StorageCategory[]>([]);
   const [canManage, setCanManage] = useState(false);
+  const [organizationAvailable, setOrganizationAvailable] = useState(false);
   const [view, setView] = useState<WorkspaceStorageView>("recent");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [preview, setPreview] = useState<WorkspaceFile | null>(null);
@@ -94,7 +95,12 @@ export function WorkspaceStorageModal({ onClose, onSend }: { onClose: () => void
     setLoading(true); setError(null);
     try {
       const result = await storageApi();
-      if (active.current) { setFiles(result.files ?? []); setCategories(result.categories ?? []); setCanManage(result.canManage === true); }
+      if (active.current) {
+        const organization = result.organizationAvailable === true;
+        setFiles(result.files ?? []); setCategories(result.categories ?? []); setCanManage(result.canManage === true);
+        setOrganizationAvailable(organization);
+        if (!organization) setView((current) => current === "favorites" || current.startsWith("category:") ? "recent" : current);
+      }
     } catch (cause) {
       if (active.current) setError(cause instanceof Error ? cause.message : "Unable to load Workspace Storage.");
     } finally { if (active.current) setLoading(false); }
@@ -229,11 +235,11 @@ export function WorkspaceStorageModal({ onClose, onSend }: { onClose: () => void
         <div className="min-w-48 flex-1"><h2 className="font-bold text-[#102238]">Storage</h2><p className="text-xs text-[#6D7E91]">Shared with everyone in this workspace</p></div>
         {selected.size && canManage && view === "trash" ? <button type="button" disabled={busy} onClick={() => void restoreSelected()} className="flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-bold text-[#0089CC] hover:bg-[#EAF7FF] disabled:opacity-50"><RotateCcw size={17} /> Restore</button> : null}
         {selected.size && canManage && view !== "trash" ? <>
-          <label className="sr-only" htmlFor="storage-move-category">Move selected files to category</label>
+          {organizationAvailable ? <><label className="sr-only" htmlFor="storage-move-category">Move selected files to category</label>
           <select id="storage-move-category" defaultValue="" disabled={busy} onChange={(event) => { if (!event.target.value) return; void moveSelected(event.target.value === "uncategorized" ? null : event.target.value); event.target.value = ""; }} className="h-10 max-w-48 rounded-xl border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-700">
             <option value="">Move {selected.size} selected...</option><option value="uncategorized">Uncategorised</option>
             {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-          </select>
+          </select></> : null}
           <button type="button" disabled={busy} onClick={() => setConfirm({ kind: "files" })} className="flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"><Trash2 size={17} /> Delete</button>
         </> : null}
         <input ref={uploadInput} type="file" multiple accept={WORKSPACE_FILE_ACCEPT} onChange={uploadFiles} className="hidden" />
@@ -245,16 +251,16 @@ export function WorkspaceStorageModal({ onClose, onSend }: { onClose: () => void
       <div className="border-b border-[#E3EAF2] px-4 py-3 sm:px-5">
         <div className="flex items-center gap-2 overflow-x-auto pb-1" aria-label="Storage categories">
           <button type="button" aria-pressed={view === "recent"} onClick={() => changeView("recent")} className={viewButton("recent")}>Recent</button>
-          <button type="button" aria-pressed={view === "favorites"} onClick={() => changeView("favorites")} className={viewButton("favorites")}><span className="inline-flex items-center gap-1"><Heart size={15} /> Favorites</span></button>
-          {categories.map((category) => <div key={category.id} className="flex shrink-0 items-center rounded-full bg-[#F1F5F9]">
+          {organizationAvailable ? <button type="button" aria-pressed={view === "favorites"} onClick={() => changeView("favorites")} className={viewButton("favorites")}><span className="inline-flex items-center gap-1"><Heart size={15} /> Favorites</span></button> : null}
+          {organizationAvailable ? categories.map((category) => <div key={category.id} className="flex shrink-0 items-center rounded-full bg-[#F1F5F9]">
             <button type="button" aria-pressed={view === `category:${category.id}`} onClick={() => changeView(`category:${category.id}`)} className={viewButton(`category:${category.id}`)}>{category.name}</button>
             {canManage ? <><button type="button" aria-label={`Rename ${category.name}`} onClick={() => setCategoryForm({ id: category.id, name: category.name })} className="rounded-full p-2 text-slate-500 hover:bg-white focus-visible:outline-2 focus-visible:outline-[#0089CC]"><Pencil size={14} /></button>
             <button type="button" aria-label={`Delete ${category.name}`} onClick={() => setConfirm({ kind: "category", category })} className="mr-1 rounded-full p-2 text-slate-500 hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-red-500"><Trash2 size={14} /></button></> : null}
-          </div>)}
-          {canManage ? <button type="button" onClick={() => setCategoryForm({ id: null, name: "" })} className="flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-sm font-bold text-[#0089CC] hover:bg-[#EAF7FF] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0089CC]"><FolderPlus size={16} /> Add category</button> : null}
+          </div>) : null}
+          {canManage && organizationAvailable ? <button type="button" onClick={() => setCategoryForm({ id: null, name: "" })} className="flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-sm font-bold text-[#0089CC] hover:bg-[#EAF7FF] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0089CC]"><FolderPlus size={16} /> Add category</button> : null}
           {canManage ? <button type="button" aria-pressed={view === "trash"} onClick={() => changeView("trash")} className={viewButton("trash")}><span className="inline-flex items-center gap-1"><Trash2 size={15} /> Trash</span></button> : null}
         </div>
-        {categoryForm ? <form onSubmit={(event) => { event.preventDefault(); void saveCategory(); }} className="mt-3 flex max-w-md gap-2">
+        {organizationAvailable && categoryForm ? <form onSubmit={(event) => { event.preventDefault(); void saveCategory(); }} className="mt-3 flex max-w-md gap-2">
           <label className="sr-only" htmlFor="storage-category-name">Category name</label>
           <input id="storage-category-name" autoFocus maxLength={80} value={categoryForm.name} disabled={busy} onChange={(event) => setCategoryForm({ ...categoryForm, name: event.target.value })} onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); setCategoryForm(null); } }} placeholder="Category name" className="h-10 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-[#0089CC] focus:ring-2 focus:ring-[#EAF7FF]" />
           <button type="submit" disabled={busy || !categoryForm.name.trim()} className="rounded-xl bg-[#0089CC] px-4 text-sm font-bold text-white disabled:opacity-50">{categoryForm.id ? "Save" : "Add"}</button>
@@ -277,7 +283,7 @@ export function WorkspaceStorageModal({ onClose, onSend }: { onClose: () => void
                   <span className={`absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border-2 text-xs font-black ${isSelected ? "border-[#0089CC] bg-[#0089CC] text-white" : "border-white bg-black/35 text-transparent"}`}>✓</span>
                 </button>
                 <div className="absolute inset-x-1 bottom-1 flex justify-end gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-                  {view !== "trash" ? <button type="button" aria-pressed={file.favorite} aria-label={`${file.favorite ? "Remove from" : "Add to"} favorites: ${file.name}`} onClick={() => void toggleFavorite(file)} className="rounded-lg bg-black/65 p-2 text-white hover:bg-black/80 focus-visible:outline-2 focus-visible:outline-white"><Heart size={16} fill={file.favorite ? "currentColor" : "none"} /></button> : null}
+                  {organizationAvailable && view !== "trash" ? <button type="button" aria-pressed={file.favorite} aria-label={`${file.favorite ? "Remove from" : "Add to"} favorites: ${file.name}`} onClick={() => void toggleFavorite(file)} className="rounded-lg bg-black/65 p-2 text-white hover:bg-black/80 focus-visible:outline-2 focus-visible:outline-white"><Heart size={16} fill={file.favorite ? "currentColor" : "none"} /></button> : null}
                   <button type="button" disabled={!file.previewUrl} aria-label={`Preview ${file.name}`} onClick={() => setPreview(file)} className="rounded-lg bg-black/65 p-2 text-white hover:bg-black/80 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"><Eye size={16} /></button>
                 </div>
               </article>;
@@ -292,7 +298,7 @@ export function WorkspaceStorageModal({ onClose, onSend }: { onClose: () => void
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-[#0089CC]"><FileText size={21} /></span>
                 <span className="min-w-0"><span className="block truncate text-sm font-semibold text-[#102238]">{file.name}</span><span className="block text-xs text-[#6D7E91]">{fileSize(file.sizeBytes)}</span></span>
               </button>
-              {view !== "trash" ? <button type="button" aria-pressed={file.favorite} aria-label={`${file.favorite ? "Remove from" : "Add to"} favorites: ${file.name}`} onClick={() => void toggleFavorite(file)} className="rounded-xl p-3 text-[#0089CC] hover:bg-white focus-visible:outline-2 focus-visible:outline-[#0089CC]"><Heart size={18} fill={file.favorite ? "currentColor" : "none"} /></button> : null}
+              {organizationAvailable && view !== "trash" ? <button type="button" aria-pressed={file.favorite} aria-label={`${file.favorite ? "Remove from" : "Add to"} favorites: ${file.name}`} onClick={() => void toggleFavorite(file)} className="rounded-xl p-3 text-[#0089CC] hover:bg-white focus-visible:outline-2 focus-visible:outline-[#0089CC]"><Heart size={18} fill={file.favorite ? "currentColor" : "none"} /></button> : null}
             </article>)}
           </div>
         </section> : null}

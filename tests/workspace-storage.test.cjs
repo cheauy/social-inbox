@@ -89,8 +89,8 @@ test('migration draft creates a private service-only workspace store without tou
   assert.match(organizationChecks, /Preferred application rollback/);
 });
 
-function routeSetup({ businessId = 'shop-a', active = true, canManage = true, rows = [], stored = {}, categories = [], favorites = [] } = {}) {
-  const db = database({ workspace_files: rows, workspace_file_categories: categories, workspace_file_favorites: favorites });
+function routeSetup({ businessId = 'shop-a', active = true, canManage = true, rows = [], stored = {}, categories = [], favorites = [], organizationInstalled = true } = {}) {
+  const db = database({ workspace_files: rows, ...(organizationInstalled ? { workspace_file_categories: categories, workspace_file_favorites: favorites } : {}) });
   const removed = [];
   db.storage = {
     from(bucket) {
@@ -131,6 +131,19 @@ test('list and download never expose another business file', async () => {
   assert.equal((await route.POST(request({ action: 'get-file-url', fileId: 'foreign' }))).status, 404);
   const ownDownload = await route.POST(request({ action: 'get-file-url', fileId: 'own' }));
   assert.equal(ownDownload.status, 200);
+});
+
+test('basic Storage remains available before the optional organization migration', async () => {
+  const own = { id: 'own', business_id: 'shop-a', display_name: 'own.pdf', mime_type: 'application/pdf', size_bytes: 3, file_kind: 'file', storage_path: 'shop-a/own.pdf', created_at: '2026-10-02', deleted_at: null };
+  const { route } = routeSetup({ rows: [own], organizationInstalled: false });
+  const response = await route.GET();
+  const result = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(result.organizationAvailable, false);
+  assert.deepEqual(Array.from(result.categories), []);
+  assert.equal(result.files[0].id, 'own');
+  assert.equal(result.files[0].categoryId, null);
+  assert.equal(result.files[0].favorite, false);
 });
 
 test('revoked membership blocks list, upload preparation, finalize and download', async () => {
