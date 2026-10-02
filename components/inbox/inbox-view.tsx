@@ -7,6 +7,7 @@ import { INBOX_SYNC_EVENT, SYNC_TIMEOUT_MS, takeSyncBatch, isOlderConversationSt
 import { snapshotUnread, receiptStillApplies, type ReadReceipt, type ReadTarget, type BulkReadResult } from "@/lib/inbox/bulk-read";
 import { stableConversationOrder } from "@/lib/inbox/stable-conversation-order";
 import { retainKnownConversationRows } from "@/lib/inbox/retain-known-conversation-rows";
+import { telegramOptimisticAttachmentKind } from "@/lib/telegram/telegram-optimistic-media";
 
 import { isCommentReplyBlocked } from "@/components/inbox/comment-reply-access";
 
@@ -7755,6 +7756,14 @@ async function handleSendAttachments(
         attachment.file,
       );
 
+    const optimisticKind =
+      conversationPlatform === "telegram"
+        ? telegramOptimisticAttachmentKind({
+            file: attachment.file,
+            requestedKind: attachment.kind,
+          })
+        : attachment.kind;
+
     const messageText =
       conversationPlatform ===
           "telegram" &&
@@ -7763,7 +7772,7 @@ async function handleSendAttachments(
         )
         ? "Sent an animation"
         : getAttachmentMessageText(
-            attachment.kind,
+            optimisticKind,
             attachment.file.name,
           );
 
@@ -7802,7 +7811,7 @@ async function handleSendAttachments(
           activeConversation.contact
             .platform_user_id,
         file: attachment.file,
-        kind: attachment.kind,
+        kind: optimisticKind,
         previewUrl,
         messageText,
         endpoint:
@@ -7827,7 +7836,7 @@ async function handleSendAttachments(
         recipientPlatformId:
           activeConversation.contact
             .platform_user_id,
-        kind: attachment.kind,
+        kind: optimisticKind,
         file: attachment.file,
         previewUrl,
         messageText,

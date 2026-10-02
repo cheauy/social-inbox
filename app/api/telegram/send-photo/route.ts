@@ -26,11 +26,14 @@ import {
 import {
   sendTelegramMediaGroup,
   sendTelegramPhoto,
+  sendTelegramVideo,
 } from "@/lib/telegram/telegram-api";
 import {
   deleteTelegramMessageMedia,
   inferTelegramPhotoContentType,
+  inferTelegramVideoContentType,
   saveTelegramMessageMedia,
+  type TelegramStoredMediaKind,
   TENH_TELEGRAM_OUTGOING_PHOTO_MAX_BYTES,
 } from "@/lib/telegram/telegram-message-media";
 
@@ -526,15 +529,25 @@ export async function POST(
             files: albumFiles,
             caption,
           })
-        : [
-            await sendTelegramPhoto({
-              token: botToken,
-              chatId,
-              photo: file,
-              fileName:
-                file.name || "tenh-photo.jpg",
-            }),
-          ];
+        : isSupportedAlbumVideoType(fileType)
+          ? [
+              await sendTelegramVideo({
+                token: botToken,
+                chatId,
+                video: file,
+                fileName:
+                  file.name || "tenh-video.mp4",
+              }),
+            ]
+          : [
+              await sendTelegramPhoto({
+                token: botToken,
+                chatId,
+                photo: file,
+                fileName:
+                  file.name || "tenh-photo.jpg",
+              }),
+            ];
   } catch (error) {
     console.error(
       "[Tenh Telegram] Outgoing photo send failed:",
@@ -601,6 +614,14 @@ export async function POST(
     const sentFile =
       albumFiles[index] ?? albumFiles[0];
     const clientRequestId = clientRequestIds[index] ?? null;
+    const sentFileType = sentFile.type
+      .split(";")[0]
+      .trim()
+      .toLowerCase();
+    const isVideo =
+      isSupportedAlbumVideoType(sentFileType);
+    const mediaKind: TelegramStoredMediaKind =
+      isVideo ? "video" : "photo";
 
     if (!Number.isFinite(sentMessage.message_id)) {
       continue;
@@ -620,14 +641,15 @@ export async function POST(
         await sentFile.arrayBuffer(),
       );
 
-      const contentType =
-        inferTelegramPhotoContentType({
-          providedContentType: sentFile.type
-            .split(";")[0]
-            .trim()
-            .toLowerCase(),
-          filePath: sentFile.name,
-        });
+      const contentType = isVideo
+        ? inferTelegramVideoContentType({
+            providedContentType: sentFileType,
+            filePath: sentFile.name,
+          })
+        : inferTelegramPhotoContentType({
+            providedContentType: sentFileType,
+            filePath: sentFile.name,
+          });
 
       const savedMedia =
         await saveTelegramMessageMedia({
@@ -635,18 +657,19 @@ export async function POST(
           messageId: localMessageId,
           bytes: fileBytes,
           contentType,
+          mediaKind,
         });
 
       attachmentUrl = savedMedia.attachmentUrl;
       mediaSaved = true;
     } catch (mediaError) {
       console.error(
-        "[Tenh Telegram] Photo sent but TENH media storage failed:",
+        "[Tenh Telegram] Media sent but TENH media storage failed:",
         mediaError,
       );
 
       saveWarning =
-        "Telegram received the photo, but TENH could not save a persistent local image copy.";
+        "Telegram received the media, but TENH could not save a persistent local copy.";
     }
 
     const rawPayload = {
@@ -654,13 +677,13 @@ export async function POST(
       ...(clientRequestId ? { tenh_client_request_id: clientRequestId } : {}),
       ...(albumGroupId ? {tenh_media_group:{provider:"telegram",id:albumGroupId,position:index}} : {}),
       tenh_attachment: {
-        type: "image",
+        type: isVideo ? "video" : "image",
         name:
-          sentFile.name || "Telegram photo",
-        mime_type: sentFile.type
-          .split(";")[0]
-          .trim()
-          .toLowerCase(),
+          sentFile.name ||
+          (isVideo
+            ? "Telegram video"
+            : "Telegram photo"),
+        mime_type: sentFileType,
         size: sentFile.size,
       },
     };
@@ -682,11 +705,8 @@ export async function POST(
          * Per file, not per request: an album can hold both now, and a video
          * saved as an image renders with the wrong player in the thread.
          */
-        message_type: sentFile.type
-          .toLowerCase()
-          .startsWith("video/")
-          ? "video"
-          : "image",
+        message_type:
+          isVideo ? "video" : "image",
 
         /*
          * The caption belongs to the first item, the way Telegram displays it.
@@ -696,9 +716,7 @@ export async function POST(
         message_text:
           index === 0 && caption
             ? caption
-            : sentFile.type
-                  .toLowerCase()
-                  .startsWith("video/")
+            : isVideo
               ? "Sent a video"
               : "Sent a photo",
         sent_by_member_id: currentMember.id,
@@ -715,7 +733,7 @@ export async function POST(
 
     if (insertError) {
       console.error(
-        "[Tenh Telegram] Photo was sent but local message save failed:",
+        "[Tenh Telegram] Media was sent but local message save failed:",
         insertError,
       );
 
@@ -723,11 +741,12 @@ export async function POST(
         await deleteTelegramMessageMedia({
           businessId: currentMember.business_id,
           messageId: localMessageId,
+          mediaKind,
         });
       }
 
       saveWarning =
-        "Telegram received the photo, but TENH could not save the local message row.";
+        "Telegram received the media, but TENH could not save the local message row.";
       continue;
     }
 
@@ -738,6 +757,27 @@ export async function POST(
     }
   }
 
+  const lastSentFile =
+    albumFiles[
+      Math.min(
+        Math.max(telegramMessages.length - 1, 0),
+        albumFiles.length - 1,
+      )
+    ] ?? albumFiles[0];
+  const lastMessageIsVideo =
+    isSupportedAlbumVideoType(
+      lastSentFile.type
+        .split(";")[0]
+        .trim()
+        .toLowerCase(),
+    );
+  const lastMessageType =
+    lastMessageIsVideo ? "video" : "image";
+  const lastMessageText =
+    lastMessageIsVideo
+      ? "Sent a video"
+      : "Sent a photo";
+
   const {
     error: conversationUpdateError,
   } =
@@ -747,8 +787,8 @@ export async function POST(
         last_message_text:
           getConversationMessagePreview({
             direction: "outgoing",
-            messageType: "image",
-            messageText: "Sent a photo",
+            messageType: lastMessageType,
+            messageText: lastMessageText,
           }),
         last_message_at:
           sentAt,
@@ -766,17 +806,17 @@ export async function POST(
 
   if (conversationUpdateError) {
     console.error(
-      "[Tenh Telegram] Photo was sent but conversation preview update failed:",
+      "[Tenh Telegram] Media was sent but conversation preview update failed:",
       conversationUpdateError,
     );
 
     saveWarning =
       saveWarning ??
-      "Telegram received the photo, but TENH could not update the conversation preview.";
+      "Telegram received the media, but TENH could not update the conversation preview.";
   }
 
   console.info(
-    "[Tenh Telegram] Outgoing photo sent.",
+    "[Tenh Telegram] Outgoing media sent.",
     {
       conversationId:
         conversation.id,
