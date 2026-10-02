@@ -92,6 +92,21 @@ cross join lateral aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a
 where n.nspname = 'public' and c.relname = 'workspace_files'
 order by grantee, acl.privilege_type;
 
+-- Effective service_role privileges after the follow-up migration must match
+-- this matrix. has_table_privilege also detects access inherited via roles.
+with expected(privilege_type, expected) as (
+  values
+    ('SELECT', true), ('INSERT', true), ('UPDATE', true), ('DELETE', true),
+    ('TRUNCATE', false), ('REFERENCES', false), ('TRIGGER', false),
+    ('MAINTAIN', false)
+)
+select e.privilege_type, e.expected,
+       has_table_privilege(
+         'service_role', 'public.workspace_files', e.privilege_type
+       ) as actual
+from expected e
+order by e.privilege_type;
+
 -- No direct table policies are expected; server routes authenticate an active
 -- member and use service_role with an explicit business_id filter.
 select policyname, permissive, roles, cmd, qual, with_check

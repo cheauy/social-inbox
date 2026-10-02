@@ -43,6 +43,7 @@ test('workspace API enforces membership tenant filters and verifies uploaded byt
 
 test('migration draft creates a private service-only workspace store without touching customer files', () => {
   const sql = fs.readFileSync('db/migrations/20261008_workspace_storage.sql', 'utf8');
+  const privilegeFix = fs.readFileSync('db/migrations/20261008_workspace_storage_service_privileges.sql', 'utf8');
   const checks = fs.readFileSync('docs/sql/workspace-storage-readonly-checks.sql', 'utf8');
   assert.match(sql, /create table if not exists public\.workspace_files/);
   assert.match(sql, /storage_path like business_id::text \|\| '\/%'/);
@@ -55,6 +56,11 @@ test('migration draft creates a private service-only workspace store without tou
   assert.match(checks, /values \('businesses', 'id', 'uuid'\), \('team_members', 'id', 'uuid'\)/);
   assert.match(checks, /where schemaname = 'storage' and tablename = 'objects'\s*order by policyname/);
   assert.match(checks, /aclexplode\(coalesce\(c\.relacl, acldefault\('r', c\.relowner\)\)\)/);
+  assert.match(privilegeFix, /revoke all privileges on table public\.workspace_files from service_role/);
+  assert.match(privilegeFix, /grant select, insert, update, delete on table public\.workspace_files to service_role/);
+  assert.doesNotMatch(privilegeFix, /storage\.objects|customer_files|anon|authenticated/);
+  assert.match(checks, /\('TRUNCATE', false\), \('REFERENCES', false\), \('TRIGGER', false\),\s*\('MAINTAIN', false\)/);
+  assert.match(checks, /has_table_privilege\(/);
 });
 
 function routeSetup({ businessId = 'shop-a', active = true, rows = [], stored = {} } = {}) {
