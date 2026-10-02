@@ -5685,6 +5685,11 @@ export function MessagePanel({
                       onMessagePatched={onMessagePatched}
                       outgoing={isOutgoing}
                       keepVisible={Boolean(albumActionTarget)}
+                      reserveActions={albumActionTarget && isOutgoing && !isDeletedMessage && !isFacebookCommentMessage && ["facebook", "messenger", "telegram"].includes(activeConversation.social_account?.platform ?? "") ? {
+                        reply: true, pin: true, edit: false,
+                        delete: activeConversation.social_account?.platform === "telegram" || isTelegramMessage,
+                      } : undefined}
+                      reserveReaction={Boolean(albumActionTarget && isOutgoing && !isDeletedMessage && !isFacebookCommentMessage && ["facebook", "messenger"].includes(activeConversation.social_account?.platform ?? ""))}
                       actions={albumActionTarget ? { ...messageActions, reply: getMessageActions(albumActionTarget.photo, activeConversation.social_account?.platform).reply } : messageActions}
                       replying={albumActionTarget ? (replyingToFacebookMessageId ?? replyingToTelegramMessageId) === replyActionId : isTelegramReplyTarget}
                       pinned={pinnedMessages.pins.some((item) => item.id === message.id) || isMessagePinned(message)}

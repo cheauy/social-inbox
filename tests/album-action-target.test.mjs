@@ -48,7 +48,7 @@ test('same IDs in foreign rows cannot become the reaction owner', () => {
 });
 
 // Execute the real MessagePanel album and footer JSX so event routing is covered.
-async function mountAlbum(t, platform, direction, count) {
+async function mountAlbum(t, platform, direction, count, pending = false) {
   const { JSDOM } = require('jsdom');
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://local.test' });
   const previous = new Map();
@@ -74,11 +74,11 @@ async function mountAlbum(t, platform, direction, count) {
   }
   visit(ast);
   assert.equal(Object.keys(snippets).length, 6);
-  const message = { ...anchor, direction, platform_message_id: platform === 'telegram' ? 'telegram:base' : 'mid.base', raw_payload: {} };
-  const members = Array.from({ length: count }, (_, index) => ({ ...message, id: platform === 'telegram' ? `tg-${index}` : `base:photo:${index}`, attachment_url: `/synthetic/${index}` }));
+  const message = { ...anchor, id: pending ? 'optimistic:base' : anchor.id, direction, platform_message_id: pending ? 'optimistic:base' : platform === 'telegram' ? 'telegram:base' : 'mid.base', raw_payload: {} };
+  const members = Array.from({ length: count }, (_, index) => ({ ...message, id: pending ? `optimistic:photo:${index}` : platform === 'telegram' ? `tg-${index}` : `base:photo:${index}`, attachment_url: `/synthetic/${index}` }));
   const code = ts.transpileModule(`${snippets.replyIcon}\nexport function Fixture() {
     const [activeAlbumPhoto,setActiveAlbumPhoto]=useState(null),[replyingToFacebookMessageId,setFb]=useState(null),[replyingToTelegramMessageId,setTg]=useState(null);
-    const photoGroup={members},photoGroups=new Map([[message.id,photoGroup]]),messages=platform==='telegram'?members:[message],isImageMessage=true,isOutgoing=direction==='outgoing',isTelegramMessage=platform==='telegram',activeConversation={social_account:{platform}},telegramReplyPreview=null,jumpHighlightedMessageId=null,photoElementRefs=useRef(new Map());
+    const photoGroup={members},photoGroups=new Map([[message.id,photoGroup]]),messages=platform==='telegram'?members:[message],isImageMessage=true,isDeletedMessage=false,isFacebookCommentMessage=false,isOutgoing=direction==='outgoing',isTelegramMessage=platform==='telegram',activeConversation={social_account:{platform}},telegramReplyPreview=null,jumpHighlightedMessageId=null,photoElementRefs=useRef(new Map());
     const localImagePreview=()=>undefined,setImagePreview=value=>events.push({type:'open',...value.reference}),pinnedMessages={pins:[],pendingIds:new Set()},messageActions=getMessageActions(message,platform),isTelegramReplyTarget=false;
     const onMessagePatched=()=>{},onReplyToFacebookMessage=id=>{setFb(id);events.push({type:'reply',id});},onReplyToTelegramMessage=id=>{setTg(id);events.push({type:'reply',id});},onCancelFacebookReply=()=>setFb(null),onCancelTelegramReply=()=>setTg(null),toggleMessagePin=target=>events.push({type:'pin',id:target.id}),onEditTelegramMessage=()=>{},setTelegramDeleteTarget=ids=>events.push({type:'delete',ids});
     ${snippets.activate} ${snippets.albumActionTarget} ${snippets.replyActionId}
@@ -158,4 +158,33 @@ test('icon-only Copy keeps copied feedback accessible without a growing text pil
   assert.equal(button.querySelector('[aria-live="polite"]').textContent, 'Copied');
   assert.equal(button.querySelector('[aria-live="polite"]').className, 'sr-only');
   assert.equal(document.querySelector('[data-album-photo-id] [role="group"]'), null);
+});
+
+test('Sending Telegram album reserves the future toolbar without enabling unavailable actions', async t => {
+  const { events } = await mountAlbum(t, 'telegram', 'outgoing', 3, true);
+  const buttons = [...document.querySelectorAll('[role="group"] button')];
+  const reserved = buttons.filter(button => button.getAttribute('aria-hidden') === 'true');
+  assert.deepEqual(reserved.map(button => button.textContent), ['Reply', 'Pin', 'Delete']);
+  for (const button of reserved) {
+    assert.equal(button.disabled, true);
+    assert.equal(button.tabIndex, -1);
+    assert.equal(button.style.visibility, 'hidden');
+    assert.equal(button.style.pointerEvents, 'none');
+    await act(async () => button.click());
+  }
+  assert.equal(events.length, 0);
+  assert.equal(buttons.find(button => button.getAttribute('aria-label') === 'Copy image').disabled, false);
+});
+
+test('Sending Facebook album reserves Reply/Pin and reaction space without inventing Delete', async t => {
+  await mountAlbum(t, 'facebook', 'outgoing', 3, true);
+  const group = document.querySelector('[role="group"]');
+  assert.deepEqual([...group.querySelectorAll('button[aria-hidden="true"]')].map(button => button.textContent), ['Reply', 'Pin']);
+  assert.ok(group.querySelector(':scope > span[aria-hidden="true"]'));
+  assert.equal(group.querySelector('[aria-label="React to message"]'), null);
+});
+
+test('incoming album does not inherit outgoing Sending reservations', async t => {
+  await mountAlbum(t, 'telegram', 'incoming', 3, true);
+  assert.equal(document.querySelector('[role="group"] button[aria-hidden="true"]'), null);
 });
