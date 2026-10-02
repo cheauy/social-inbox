@@ -885,6 +885,22 @@ function formatAudioTime(value: number) {
   return `${minutes}:${String(remainder).padStart(2, "0")}`;
 }
 
+type CompactAudioOwner = {
+  audio: HTMLAudioElement;
+  reset: () => void;
+};
+
+let activeCompactAudioOwner: CompactAudioOwner | null = null;
+
+function stopAndResetCompactAudio(audio: HTMLAudioElement) {
+  audio.pause();
+  try {
+    audio.currentTime = 0;
+  } catch {
+    // A source without metadata may not yet accept a seek.
+  }
+}
+
 function CompactAudioPlayer({
   src,
   label,
@@ -897,10 +913,23 @@ function CompactAudioPlayer({
   isOutgoing?: boolean;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playbackOwnerRef = useRef<CompactAudioOwner | null>(null);
+  const wantsPlayRef = useRef(false);
+  const playRequestRef = useRef(0);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playError, setPlayError] = useState("");
+
+  useEffect(() => () => {
+    const owner = playbackOwnerRef.current;
+    playbackOwnerRef.current = null;
+    if (!owner) return;
+    wantsPlayRef.current = false;
+    playRequestRef.current += 1;
+    if (activeCompactAudioOwner === owner) activeCompactAudioOwner = null;
+    stopAndResetCompactAudio(owner.audio);
+  }, []);
 
   async function togglePlayback() {
     const audio = audioRef.current;
@@ -909,18 +938,71 @@ function CompactAudioPlayer({
       return;
     }
 
-    if (audio.paused) {
+    let owner = playbackOwnerRef.current;
+    if (!owner) {
+      const newOwner: CompactAudioOwner = {
+        audio,
+        reset: () => {
+          wantsPlayRef.current = false;
+          playRequestRef.current += 1;
+          stopAndResetCompactAudio(audio);
+          setPlaying(false);
+          setCurrentTime(0);
+        },
+      };
+      owner = newOwner;
+      playbackOwnerRef.current = owner;
+    }
+
+    if (audio.paused && !wantsPlayRef.current) {
+      const previous = activeCompactAudioOwner;
+      activeCompactAudioOwner = owner;
+      if (previous && previous !== owner) previous.reset();
+      wantsPlayRef.current = true;
+      const request = ++playRequestRef.current;
       setPlayError("");
       try {
         await audio.play();
+        if (playbackOwnerRef.current !== owner || activeCompactAudioOwner !== owner) {
+          stopAndResetCompactAudio(audio);
+        } else if (!wantsPlayRef.current) {
+          audio.pause();
+        }
       } catch {
+        if (playbackOwnerRef.current !== owner || activeCompactAudioOwner !== owner || playRequestRef.current !== request || !wantsPlayRef.current) return;
+        wantsPlayRef.current = false;
+        activeCompactAudioOwner = null;
         setPlaying(false);
         setPlayError("Audio couldn’t be played. Try again.");
       }
       return;
     }
 
+    wantsPlayRef.current = false;
+    playRequestRef.current += 1;
     audio.pause();
+    setPlaying(false);
+  }
+
+  function handlePlay() {
+    const owner = playbackOwnerRef.current;
+    if (owner && activeCompactAudioOwner === owner && wantsPlayRef.current) {
+      setPlaying(true);
+    } else if (owner && activeCompactAudioOwner !== owner) {
+      owner.reset();
+    } else {
+      audioRef.current?.pause();
+    }
+  }
+
+  function finishPlayback() {
+    const owner = playbackOwnerRef.current;
+    wantsPlayRef.current = false;
+    playRequestRef.current += 1;
+    if (owner) {
+      if (activeCompactAudioOwner === owner) activeCompactAudioOwner = null;
+    }
+    setPlaying(false);
   }
 
   function seek(value: number) {
@@ -951,15 +1033,19 @@ function CompactAudioPlayer({
    * controls that inherit the bubble they sit in.
    */
   return (
-    <div className="w-[300px] max-w-full">
-      <div className="flex min-w-0 items-center gap-3 py-1">
+    <div className="w-[255px] max-w-full">
+      <div className="flex min-w-0 items-center gap-[10.2px] py-[3.4px]">
       <audio
         ref={audioRef}
         src={src}
         preload="metadata"
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onEnded={() => setPlaying(false)}
+        onPlay={handlePlay}
+        onPause={() => {
+          const owner = playbackOwnerRef.current;
+          if (owner?.audio.paused) wantsPlayRef.current = false;
+          setPlaying(false);
+        }}
+        onEnded={finishPlayback}
         onTimeUpdate={(event) =>
           setCurrentTime(event.currentTarget.currentTime)
         }
@@ -967,35 +1053,39 @@ function CompactAudioPlayer({
           setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)
         }
         onDurationChange={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
-        onError={() => { setPlaying(false); setPlayError("Audio is unavailable."); }}
+        onError={() => { finishPlayback(); setPlayError("Audio is unavailable."); }}
         className="hidden"
       />
 
+      <div className="relative h-[40.8px] w-[40.8px] shrink-0">
       <button
         type="button"
         onClick={() => void togglePlayback()}
         suppressHydrationWarning
-        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full shadow-sm transition active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 [&_svg]:h-6 [&_svg]:w-6 ${
+        className={`group/audio absolute -inset-[1.6px] flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 [&_svg]:h-[20.4px] [&_svg]:w-[20.4px] ${
           isOutgoing
-            ? "bg-white text-[var(--tenh-primary,#2563EB)] hover:bg-white/90 focus-visible:outline-white"
-            : "bg-sky-50 text-sky-600 hover:bg-sky-100 focus-visible:outline-sky-600"
+            ? "text-[var(--tenh-primary,#2563EB)] focus-visible:outline-white"
+            : "text-sky-600 focus-visible:outline-sky-600"
         }`}
         aria-label={playing ? "Pause audio" : "Play audio"}
       >
-        <PlayIcon paused={!playing} />
+        <span className={`flex h-[40.8px] w-[40.8px] items-center justify-center rounded-full shadow-sm transition group-active/audio:scale-95 ${isOutgoing ? "bg-white group-hover/audio:bg-white/90" : "bg-sky-50 group-hover/audio:bg-sky-100"}`}>
+          <PlayIcon paused={!playing} />
+        </span>
       </button>
+      </div>
 
-      <div className="relative min-w-0 flex-1 rounded-md focus-within:ring-2 focus-within:ring-current">
-        <div aria-hidden="true" className="flex h-12 items-center justify-between gap-[2px] overflow-hidden">
+      <div className="relative min-w-0 flex-1 rounded-[5.1px] focus-within:ring-2 focus-within:ring-current">
+        <div aria-hidden="true" className="flex h-[40.8px] items-center justify-between gap-[1.7px] overflow-hidden">
           {bars.map((height, index) => (
             <span key={index} className={`min-w-0 flex-1 rounded-full transition-colors ${playing ? "tenh-recording-bar" : ""} ${
               (index + 1) / bars.length <= progress
                 ? isOutgoing ? "bg-white" : "bg-sky-600"
                 : isOutgoing ? "bg-white/40" : "bg-slate-300"
-            }`} style={{ height, maxWidth: 3, animationDelay: `${-index * 0.13}s`, animationDuration: `${0.7 + (index % 5) * 0.12}s` }} />
+            }`} style={{ height: height * 0.85, maxWidth: 2.55, animationDelay: `${-index * 0.13}s`, animationDuration: `${0.7 + (index % 5) * 0.12}s` }} />
           ))}
         </div>
-        <span aria-hidden="true" className={`pointer-events-none absolute top-1/2 h-6 w-2.5 -translate-y-1/2 rounded-full shadow-sm ${isOutgoing ? "bg-white" : "bg-sky-600"}`} style={{ left: `calc(${progress * 100}% - ${progress * 10}px)` }} />
+        <span aria-hidden="true" className={`pointer-events-none absolute top-1/2 h-[20.4px] w-[8.5px] -translate-y-1/2 rounded-full shadow-sm ${isOutgoing ? "bg-white" : "bg-sky-600"}`} style={{ left: `calc(${progress * 100}% - ${progress * 8.5}px)` }} />
         <input
         type="range"
         min={0}
@@ -1006,7 +1096,7 @@ function CompactAudioPlayer({
         onChange={(event) =>
           seek(Number(event.target.value))
         }
-        className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-default"
+        className="absolute left-0 top-1/2 h-11 w-full -translate-y-1/2 cursor-pointer opacity-0 disabled:cursor-default"
         aria-label={isVoice ? "Voice message progress" : label || "Audio progress"}
         aria-valuetext={`${formatAudioTime(currentTime)} of ${formatAudioTime(duration)}`}
       />
@@ -1014,14 +1104,14 @@ function CompactAudioPlayer({
 
       {/* Counts down while playing, like every other voice note. */}
       <span
-        className={`min-w-[36px] shrink-0 text-right text-sm tabular-nums ${
+        className={`min-w-[30.6px] shrink-0 text-right text-[11.9px] leading-[17px] tabular-nums ${
           isOutgoing ? "text-white/80" : "text-slate-500"
         }`}
       >
         {formatAudioTime(playing || currentTime > 0 ? remaining : duration)}
       </span>
       </div>
-      {playError ? <p role="alert" className={`mt-1 text-xs ${isOutgoing ? "text-white" : "text-red-600"}`}>{playError}</p> : null}
+      {playError ? <p role="alert" className={`mt-[3.4px] text-xs ${isOutgoing ? "text-white" : "text-red-600"}`}>{playError}</p> : null}
     </div>
   );
 }
@@ -4704,7 +4794,7 @@ export function MessagePanel({
                       : "justify-start"
                   }`}
                 >
-                  <div className={`group max-w-[84%] sm:max-w-[74%] xl:max-w-[62%] ${isVideoMessage ? "w-[512px]" : ""}`}>
+                  <div className={`group ${isAudioMessage || isVoiceMessage ? "max-w-[71.4%] sm:max-w-[62.9%] xl:max-w-[52.7%]" : "max-w-[84%] sm:max-w-[74%] xl:max-w-[62%]"} ${isVideoMessage ? "w-[512px]" : ""}`}>
                     <div
                       className={`text-sm transition ${
                         isBareSticker
@@ -4722,8 +4812,8 @@ export function MessagePanel({
                               }`
                             : `overflow-hidden border shadow-[0_2px_8px_rgba(15,23,42,0.06)] ${
                               isOutgoing
-                                ? `${isAudioMessage || isVoiceMessage ? "rounded-[24px]" : "rounded-[18px] rounded-br-[5px]"} text-white`
-                                : `${isAudioMessage || isVoiceMessage ? "rounded-[24px]" : "rounded-[18px] rounded-bl-[5px]"} border-slate-200/90 bg-white text-slate-900`
+                                ? `${isAudioMessage || isVoiceMessage ? "rounded-[20.4px]" : "rounded-[18px] rounded-br-[5px]"} text-white`
+                                : `${isAudioMessage || isVoiceMessage ? "rounded-[20.4px]" : "rounded-[18px] rounded-bl-[5px]"} border-slate-200/90 bg-white text-slate-900`
                             }`
                       } ${
                         isJumpHighlighted
@@ -4751,6 +4841,8 @@ export function MessagePanel({
                         className={
                           isBareSticker
                             ? ""
+                            : isAudioMessage || isVoiceMessage
+                              ? "px-[13.6px] pb-[6.8px] pt-[10.2px]"
                             : "px-4 pb-2 pt-3"
                         }
                       >
@@ -5272,7 +5364,7 @@ export function MessagePanel({
                               isOutgoing={isOutgoing}
                             />
                           ) : (
-                            <div className="flex w-[290px] max-w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 p-3">
+                            <div className="flex w-[246.5px] max-w-full items-center gap-[10.2px] rounded-[13.6px] border border-slate-200 bg-white/90 p-[10.2px]">
                               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sky-600">
                                 <VoiceIcon />
                               </span>
