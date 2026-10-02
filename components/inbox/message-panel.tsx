@@ -4,6 +4,7 @@ import { MessageViewportFrame, MessageScrollSurface } from "./inbox-layout-surfa
 import { captureScrollAnchor, restoreScrollAnchor, type ScrollAnchor } from "@/lib/inbox/scroll-anchor";
 import { messageRenderKey } from "@/lib/inbox/confirm-outgoing-message";
 import { buildPhotoGroups, photoGroupCaption } from "@/lib/inbox/photo-groups";
+import { getAlbumActionTarget, type AlbumPhotoSelection } from "@/lib/inbox/album-action-target";
 import { PhotoAlbumFrame } from "@/components/inbox/photo-album-frame";
 import { InboxPhotoImage } from "@/components/inbox/inbox-photo-image";
 import { localImagePreview } from "@/lib/inbox/local-image-preview";
@@ -22,7 +23,7 @@ import { MessengerMessageActions } from "@/components/inbox/messenger-message-ac
 import { PinnedMessageHeader } from "@/components/inbox/pinned-message-header";
 import { usePinnedMessages } from "@/lib/inbox/use-pinned-messages";
 import { getMessageActions, getMessageSummary, getDeletedMessageText, isMessagePinned, isMessageDeleted,
-  resolvePhotoReplyTarget, parsePhotoReplyId,
+  resolvePhotoReplyTarget,
   getMessageImageUrl, getReplyImageReference, inboxImageEndpoint, type ReplyImageReference,
 } from "@/lib/inbox/message-actions";
 import { ImageCopyButton } from "@/components/inbox/image-copy-button";
@@ -1972,6 +1973,11 @@ export function MessagePanel({
     useRef(false);
 
   const photoGroups = useMemo(() => buildPhotoGroups(messages), [messages]);
+  const [activeAlbumPhoto, setActiveAlbumPhoto] = useState<AlbumPhotoSelection | null>(null);
+  function activateAlbumPhoto(photo: InboxMessage) {
+    setActiveAlbumPhoto(current => current?.conversationId === photo.conversation_id && current.photoId === photo.id
+      ? current : { conversationId: photo.conversation_id, photoId: photo.id });
+  }
 
   const scrollToNewest =
     useCallback(
@@ -3655,6 +3661,10 @@ export function MessagePanel({
               const isTelegramReplyTarget =
                 replyingToTelegramMessageId === message.id ||
                 replyingToFacebookMessageId === message.id;
+              const albumActionTarget = isImageMessage && photoGroup && photoGroup.members.length > 1
+                ? getAlbumActionTarget(photoGroup.members, messages, message, activeAlbumPhoto, replyingToFacebookMessageId ?? replyingToTelegramMessageId)
+                : null;
+              const replyActionId = albumActionTarget?.photo.id ?? message.id;
 
               /*
                * V3.11.30.1 — comment actions belong to the individual
@@ -5189,8 +5199,6 @@ export function MessagePanel({
                           <PhotoAlbumFrame count={photoGroup.members.length} hasReplyPreview={Boolean(telegramReplyPreview)}>
                             {photoGroup.members.map((photo: InboxMessage) => {
                               const photoUrl = photo.attachment_url;
-                              const basePhoto = messages.find(item => item.id === parsePhotoReplyId(photo.id).messageId) ?? message;
-                              const photoActions = getMessageActions(photo, activeConversation.social_account?.platform);
                               const photoSelected = (replyingToFacebookMessageId ?? replyingToTelegramMessageId) === photo.id;
                               const photoReference = { conversationId: photo.conversation_id, messageId: photo.id };
 
@@ -5215,6 +5223,10 @@ export function MessagePanel({
                                   if (node) photoElementRefs.current.set(photo.id, node);
                                   else photoElementRefs.current.delete(photo.id);
                                 }} data-album-photo-id={photo.id}
+                                  onPointerEnter={() => activateAlbumPhoto(photo)}
+                                  onPointerDown={() => activateAlbumPhoto(photo)}
+                                  onFocusCapture={() => activateAlbumPhoto(photo)}
+                                  onContextMenuCapture={() => activateAlbumPhoto(photo)}
                                   className={`group/photo relative ${photoSelected || jumpHighlightedMessageId === photo.id ? "z-10 ring-2 ring-inset ring-blue-500" : ""}`}>
                                 <div
                                   className={`group/media block w-full cursor-zoom-in overflow-hidden bg-slate-100 ${
@@ -5235,26 +5247,6 @@ export function MessagePanel({
                                       "Photo"
                                     }
                                     className="h-full w-full object-cover transition duration-200 group-hover/media:scale-[1.02]"
-                                  />
-                                </div>
-                                <ImageCopyButton src={photoUrl} reference={photoReference}
-                                  className="absolute right-1 top-1 opacity-0 transition-opacity group-hover/photo:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100" />
-                                <div className="absolute bottom-1 left-1">
-                                  <MessengerMessageActions
-                                    message={basePhoto}
-                                    platform={activeConversation.social_account?.platform}
-                                    onMessagePatched={onMessagePatched}
-                                    photoHover outgoing={false}
-                                    actions={{ reply: photoActions.reply, pin: false, edit: false, delete: false }}
-                                    replying={photoSelected} pinned={false}
-                                    onReply={() => {
-                                      if (activeConversation.social_account?.platform === "telegram") {
-                                        if (photoSelected) onCancelTelegramReply(); else onReplyToTelegramMessage(photo.id);
-                                      } else {
-                                        if (photoSelected) onCancelFacebookReply(); else onReplyToFacebookMessage(photo.id);
-                                      }
-                                    }}
-                                    onPin={() => {}} onEdit={() => {}} onDelete={() => {}}
                                   />
                                 </div>
                                 </div>
@@ -5651,22 +5643,28 @@ export function MessagePanel({
                     </div>
 
                     <MessengerMessageActions
-                      message={message}
-                      hideReaction={isImageMessage && Boolean(photoGroup && photoGroup.members.length > 1)}
+                      key={albumActionTarget?.message.id ?? message.id}
+                      message={albumActionTarget?.message ?? message}
+                      copyControl={albumActionTarget?.photo.attachment_url ? <ImageCopyButton
+                        key={albumActionTarget.photo.id}
+                        src={albumActionTarget.photo.attachment_url}
+                        reference={{ conversationId: albumActionTarget.photo.conversation_id, messageId: albumActionTarget.photo.id }}
+                        className="max-w-full"
+                      /> : undefined}
                       platform={activeConversation.social_account?.platform}
                       onMessagePatched={onMessagePatched}
                       outgoing={isOutgoing}
-                      actions={messageActions}
-                      replying={isTelegramReplyTarget}
+                      actions={albumActionTarget ? { ...messageActions, reply: getMessageActions(albumActionTarget.photo, activeConversation.social_account?.platform).reply } : messageActions}
+                      replying={albumActionTarget ? (replyingToFacebookMessageId ?? replyingToTelegramMessageId) === replyActionId : isTelegramReplyTarget}
                       pinned={pinnedMessages.pins.some((item) => item.id === message.id) || isMessagePinned(message)}
                       pinPending={pinnedMessages.pendingIds.has(message.id)}
                       onReply={() => {
                         if (isTelegramMessage) {
-                          if (replyingToTelegramMessageId === message.id) onCancelTelegramReply();
-                          else onReplyToTelegramMessage(message.id);
+                          if (replyingToTelegramMessageId === replyActionId) onCancelTelegramReply();
+                          else onReplyToTelegramMessage(replyActionId);
                         } else {
-                          if (replyingToFacebookMessageId === message.id) onCancelFacebookReply();
-                          else onReplyToFacebookMessage(message.id);
+                          if (replyingToFacebookMessageId === replyActionId) onCancelFacebookReply();
+                          else onReplyToFacebookMessage(replyActionId);
                         }
                       }}
                       onPin={() => void toggleMessagePin(message, !(pinnedMessages.pins.some((item) => item.id === message.id) || isMessagePinned(message)))}
