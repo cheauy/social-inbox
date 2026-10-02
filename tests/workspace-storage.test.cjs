@@ -43,12 +43,18 @@ test('workspace API enforces membership tenant filters and verifies uploaded byt
 
 test('migration draft creates a private service-only workspace store without touching customer files', () => {
   const sql = fs.readFileSync('db/migrations/20261008_workspace_storage.sql', 'utf8');
+  const checks = fs.readFileSync('docs/sql/workspace-storage-readonly-checks.sql', 'utf8');
   assert.match(sql, /create table if not exists public\.workspace_files/);
   assert.match(sql, /storage_path like business_id::text \|\| '\/%'/);
   assert.match(sql, /revoke all on table public\.workspace_files from public, anon, authenticated/);
   assert.match(sql, /grant select, insert, update, delete on table public\.workspace_files to service_role/);
   assert.match(sql, /'tenh-workspace-files', 'tenh-workspace-files', false/);
   assert.doesNotMatch(sql, /alter table public\.customer_files|update public\.customer_files/);
+  assert.match(checks, /select grantee, privilege_type, is_grantable/);
+  assert.doesNotMatch(checks, /select role_name/);
+  assert.match(checks, /values \('businesses', 'id', 'uuid'\), \('team_members', 'id', 'uuid'\)/);
+  assert.match(checks, /where schemaname = 'storage' and tablename = 'objects'\s*order by policyname/);
+  assert.match(checks, /aclexplode\(coalesce\(c\.relacl, acldefault\('r', c\.relowner\)\)\)/);
 });
 
 function routeSetup({ businessId = 'shop-a', active = true, rows = [], stored = {} } = {}) {
