@@ -319,7 +319,8 @@ function updateViewInUrl(
   );
 
   window.history.replaceState(
-    window.history.state,
+    // Passing Next's __NA-marked state skips its URL synchronization wrapper.
+    null,
     "",
     `${url.pathname}${url.search}${url.hash}`,
   );
