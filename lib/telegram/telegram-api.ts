@@ -470,11 +470,13 @@ export async function sendTelegramPhoto({
   chatId,
   photo,
   fileName,
+  caption,
 }: {
   token: string;
   chatId: string | number;
   photo: Blob;
   fileName: string;
+  caption?: string;
 }) {
   const formData =
     new FormData();
@@ -490,6 +492,9 @@ export async function sendTelegramPhoto({
     fileName ||
       "tenh-telegram-photo.jpg",
   );
+
+  const text = caption?.trim().slice(0, 1024);
+  if (text) formData.set("caption", text);
 
   const response = await fetch(
     `${TELEGRAM_API_BASE}/bot${token}/sendPhoto`,
@@ -548,6 +553,7 @@ async function sendTelegramBinaryMedia({
   field,
   file,
   fileName,
+  caption,
 }: {
   token: string;
   chatId: string | number;
@@ -555,6 +561,7 @@ async function sendTelegramBinaryMedia({
   field: TelegramBinaryField;
   file: Blob;
   fileName: string;
+  caption?: string;
 }) {
   const formData =
     new FormData();
@@ -570,6 +577,9 @@ async function sendTelegramBinaryMedia({
     fileName ||
       `tenh-${field}`,
   );
+
+  const text = caption?.trim().slice(0, 1024);
+  if (text) formData.set("caption", text);
 
   const response = await fetch(
     `${TELEGRAM_API_BASE}/bot${token}/${method}`,
@@ -675,17 +685,20 @@ export async function sendTelegramVideo({
   chatId,
   video,
   fileName,
+  caption,
 }: {
   token: string;
   chatId: string | number;
   video: Blob;
   fileName: string;
+  caption?: string;
 }) {
   return sendTelegramBinaryMedia({
     token,
     chatId,
     method: "sendVideo",
     field: "video",
+    caption,
     file: video,
     fileName:
       fileName ||

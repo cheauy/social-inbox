@@ -535,6 +535,7 @@ export async function POST(
                 token: botToken,
                 chatId,
                 video: file,
+                caption,
                 fileName:
                   file.name || "tenh-video.mp4",
               }),
@@ -544,6 +545,7 @@ export async function POST(
                 token: botToken,
                 chatId,
                 photo: file,
+                caption,
                 fileName:
                   file.name || "tenh-photo.jpg",
               }),
