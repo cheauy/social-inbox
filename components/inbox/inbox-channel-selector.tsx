@@ -1,4 +1,5 @@
 "use client";
+import { readInboxChannels } from "@/lib/inbox/read-channels";
 
 import {
   useRouter,
@@ -225,13 +226,7 @@ export function InboxChannelSelector({
       setError(null);
 
       try {
-        const response = await fetch(
-          "/api/inbox/channels",
-          {
-            method: "GET",
-            cache: "no-store",
-          },
-        );
+        const response = await readInboxChannels();
 
         const result =
           (await response.json()) as ChannelsResponse;
