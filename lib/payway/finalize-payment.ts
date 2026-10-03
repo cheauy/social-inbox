@@ -22,12 +22,23 @@ function cleanStatus(value: unknown) {
 }
 
 function normalizeNumber(value: unknown): number | null {
+  if ((typeof value !== "number" && typeof value !== "string") || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function isTerminalFailure(status: string) {
-  return ["DECLINED", "FAILED", "CANCELLED", "CANCELED"].includes(status);
+function usdAmountToCents(value: unknown): number | null {
+  const amount = normalizeNumber(value);
+
+  if (amount === null || amount < 0) {
+    return null;
+  }
+
+  const cents = Math.round(amount * 100);
+
+  return Math.abs(amount * 100 - cents) < 0.000001
+    ? cents
+    : null;
 }
 
 export async function verifyAndFinalizePayWayTransaction(
@@ -101,6 +112,10 @@ export async function verifyAndFinalizePayWayTransaction(
   const provider = check.response;
   const providerData = provider.data ?? {};
   const providerStatusCode = String(provider.status?.code ?? "");
+  const providerTransactionId =
+    typeof provider.status?.tran_id === "string"
+      ? provider.status.tran_id.trim()
+      : "";
   const paymentStatus = cleanStatus(providerData.payment_status);
   const paymentStatusCode = normalizeNumber(providerData.payment_status_code);
   const originalAmount = normalizeNumber(providerData.original_amount);
@@ -119,6 +134,7 @@ export async function verifyAndFinalizePayWayTransaction(
       checked_at: new Date().toISOString(),
       request_time: check.reqTime,
       provider_status_code: providerStatusCode || null,
+      provider_transaction_id: providerTransactionId || null,
       provider_message: provider.status?.message ?? null,
       payment_status: paymentStatus || null,
       payment_status_code: paymentStatusCode,
@@ -135,37 +151,40 @@ export async function verifyAndFinalizePayWayTransaction(
     paymentStatus === "APPROVED";
 
   if (!isApproved) {
-    const mappedStatus = isTerminalFailure(paymentStatus)
-      ? paymentStatus === "CANCELLED" || paymentStatus === "CANCELED"
-        ? "cancelled"
-        : paymentStatus === "DECLINED"
-          ? "declined"
-          : "failed"
-      : "pending";
-
-    const { error: observeError } = await supabaseAdmin
-      .from("billing_transactions")
-      .update({
-        status: mappedStatus,
-        provider_status_code: providerStatusCode || null,
-        provider_status: paymentStatus || provider.status?.message || null,
-        provider_approval_code: approvalCode,
-        provider_original_amount: originalAmount,
-        provider_payment_amount: paymentAmount,
-        provider_payment_currency: paymentCurrency,
-        metadata,
-      })
-      .eq("id", billingTransaction.id)
-      .neq("status", "approved");
+    const conflictReason = providerStatusCode !== "00"
+      ? "PROVIDER_INQUIRY_NOT_VERIFIED"
+      : providerTransactionId !== transactionId
+        ? "PROVIDER_INQUIRY_TRANSACTION_ID_MISMATCH"
+        : paymentStatus === "APPROVED"
+          ? "PROVIDER_APPROVAL_STATUS_INCOMPLETE"
+          : !["PENDING", "PROCESSING", "DECLINED", "FAILED", "CANCELLED", "CANCELED"].includes(paymentStatus)
+            ? "PROVIDER_PAYMENT_STATUS_UNKNOWN"
+            : null;
+    const { data: observation, error: observeError } = await supabaseAdmin.rpc(
+      "tenh_observe_payway_verification",
+      {
+        p_provider_transaction_id: transactionId,
+        p_observation: { ...metadata.payway_last_verification,
+          ...(conflictReason ? { conflict_reason: conflictReason } : {}) },
+        p_callback_received: source === "callback",
+      },
+    );
 
     if (observeError) {
       throw new Error(observeError.message);
+    }
+
+    const mappedStatus = observation?.payment_state;
+    if (!["pending", "approved", "declined", "cancelled", "failed", "recovery_required"].includes(mappedStatus)) {
+      throw new Error("PayWay observation did not return a saved payment state.");
     }
 
     return {
       found: true as const,
       paymentState: mappedStatus as
         | "pending"
+        | "approved"
+        | "recovery_required"
         | "declined"
         | "cancelled"
         | "failed",
@@ -176,10 +195,46 @@ export async function verifyAndFinalizePayWayTransaction(
     };
   }
 
+  const expectedAmountCents = usdAmountToCents(billingTransaction.amount);
+  const approvedAmountCents = usdAmountToCents(originalAmount);
+  let conflictReason: string | null = null;
   if (originalAmount === null) {
-    throw new Error(
-      "PayWay approved the transaction but did not return original_amount for verification.",
-    );
+    conflictReason = "PROVIDER_APPROVED_AMOUNT_MISSING";
+  } else if (providerTransactionId !== transactionId) {
+    conflictReason = "PROVIDER_APPROVED_TRANSACTION_ID_MISMATCH";
+  } else if (
+    expectedAmountCents === null ||
+    approvedAmountCents === null ||
+    approvedAmountCents !== expectedAmountCents
+  ) {
+    conflictReason = "PROVIDER_APPROVED_AMOUNT_MISMATCH";
+  }
+
+  /*
+   * Check Transaction exposes payment_currency, which can describe the
+   * customer's settlement currency rather than the original signed Purchase
+   * currency. Do not reject a valid cross-currency KHQR payment by comparing
+   * those two fields. TENH currently creates USD-only PayWay purchases, so
+   * fail closed if the trusted local billing row is anything else.
+   */
+  if (billingTransaction.currency.trim().toUpperCase() !== "USD") {
+    conflictReason = "SIGNED_BILLING_CURRENCY_MISMATCH";
+  }
+
+  if (conflictReason) {
+    const { data: recovery, error: recoveryError } = await supabaseAdmin.rpc(
+      "tenh_observe_payway_verification", {
+        p_provider_transaction_id: transactionId,
+        p_observation: { ...metadata.payway_last_verification,
+          approval_code: approvalCode, conflict_reason: conflictReason },
+        p_callback_received: source === "callback",
+      });
+    if (recoveryError) throw new Error("Unable to preserve conflicting PayWay approval evidence.");
+    if (recovery?.payment_state !== "recovery_required") throw new Error("PayWay conflict was not recorded for billing recovery.");
+    return { found: true as const, paymentState: "recovery_required" as const,
+      transactionId, businessId: billingTransaction.business_id,
+      providerStatus: "Conflicting payment evidence requires billing review. Your subscription has not been changed.",
+      providerStatusCode };
   }
 
   const { data: activation, error: activationError } =
@@ -202,6 +257,27 @@ export async function verifyAndFinalizePayWayTransaction(
   const activationRow = Array.isArray(activation)
     ? activation[0] ?? null
     : activation;
+
+  if (activationRow?.subscription_status === "recovery_required") {
+    return {
+      found: true as const,
+      paymentState: "recovery_required" as const,
+      transactionId,
+      businessId: billingTransaction.business_id,
+      providerStatus: "Payment requires billing review. Your subscription has not been changed.",
+      providerStatusCode,
+    };
+  }
+
+  if (
+    !activationRow ||
+    activationRow.plan_code !== billingTransaction.plan_code ||
+    activationRow.subscription_status !== "active"
+  ) {
+    throw new Error(
+      "PayWay activation did not return the expected active TENH subscription.",
+    );
+  }
 
   return {
     found: true as const,

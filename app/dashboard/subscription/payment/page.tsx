@@ -24,6 +24,7 @@ type PaymentPageProps = {
   searchParams: Promise<{
     plan?: string | string[];
     cycle?: string | string[];
+    extension?: string | string[];
     connections?: string | string[];
     users?: string | string[];
     renew?: string | string[];
@@ -45,12 +46,89 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
   const cycle = getBillingCycleDefinition(billingCycle);
   const renewSame = single(params.renew).trim() === "same";
   const customUpgrade = single(params.upgrade).trim() === "custom";
+  const extensionBillingCycle = single(params.extension).trim() || "none";
   const purchaseBusinessId = single(params.purchase_business).trim();
-
-  if (!cycle) redirect("/dashboard/subscription");
 
   const authResult = await getCurrentMember();
   if (!authResult.success) redirect("/login");
+
+  const returnTransactionId = single(params.tran_id).trim();
+  if (returnTransactionId) {
+    const { data: transaction, error: transactionError } = await supabaseAdmin
+      .from("billing_transactions")
+      .select("business_id,plan_code,billing_cycle,amount,currency,target_channel_limit,target_member_limit,pricing_snapshot,renew_same")
+      .eq("provider", "payway")
+      .eq("provider_transaction_id", returnTransactionId)
+      .maybeSingle();
+
+    if (transactionError || !transaction) redirect("/dashboard/subscription?payment_return=unavailable");
+
+    const { data: transactionMember, error: memberError } = await supabaseAdmin
+      .from("team_members")
+      .select("id,role")
+      .eq("business_id", transaction.business_id)
+      .eq("user_id", authResult.user.id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (memberError || !transactionMember ||
+        !(await memberHasPermission(transactionMember, "billing", "manage"))) {
+      redirect("/dashboard/subscription?plan_change_blocked=billing-permission");
+    }
+
+    const savedCycle = getBillingCycleDefinition(transaction.billing_cycle);
+    const savedAmount = Number(transaction.amount);
+    const savedTotalCents = Math.round(savedAmount * 100);
+    const savedPlan = transaction.plan_code;
+    const snapshot = transaction.pricing_snapshot &&
+      typeof transaction.pricing_snapshot === "object" &&
+      !Array.isArray(transaction.pricing_snapshot)
+      ? transaction.pricing_snapshot as Record<string, unknown>
+      : {};
+    const snapshotNumber = (key: string) =>
+      typeof snapshot[key] === "number" ? snapshot[key] as number : null;
+    const snapshotString = (key: string) =>
+      typeof snapshot[key] === "string" ? snapshot[key] as string : null;
+    if (!savedCycle || (savedPlan !== "custom" && !isPaidPlan(savedPlan)) || transaction.currency !== "USD" ||
+        !Number.isFinite(savedAmount) || savedAmount <= 0 ||
+        Math.abs(savedAmount * 100 - savedTotalCents) > 0.000001 ||
+        (savedPlan === "custom" && !normalizeCustomCapacity(
+          transaction.target_channel_limit, transaction.target_member_limit))) {
+      redirect("/dashboard/subscription?payment_return=unavailable");
+    }
+
+    // Render the authorized saved purchase before all new-checkout eligibility,
+    // lifecycle synchronization and quoting. The status endpoint separately
+    // verifies the payment; browser return parameters never grant approval.
+    return (
+      <div className="h-full overflow-y-auto">
+        <SubscriptionPaymentView
+          planCode={savedPlan as PlanCode}
+          billingCycle={savedCycle.id as BillingCycle}
+          initialTransactionId={returnTransactionId}
+          initialPayWayReturn="returned"
+          savedTransactionTotalCents={savedTotalCents}
+          transactionReturnOnly
+          purchaseBusinessId={transaction.business_id}
+          customConnections={transaction.target_channel_limit}
+          customUsers={transaction.target_member_limit}
+          renewSame={transaction.renew_same === true}
+          customUpgrade={snapshot.purchase_type === "custom-upgrade"}
+          customUpgradeCurrentConnections={snapshotNumber("current_channel_limit")}
+          customUpgradeCurrentUsers={snapshotNumber("current_member_limit")}
+          customUpgradeCurrentBillingCycle={snapshotString("current_billing_cycle")}
+          customUpgradeRemainingDays={snapshotNumber("remaining_days")}
+          customUpgradeExtensionMonths={snapshotNumber("extension_months")}
+          customUpgradeExtensionBillingCycle={snapshotString("extension_billing_cycle")}
+          customUpgradeCurrentPeriodEnd={snapshotString("current_period_end")}
+          customUpgradeNewPeriodEnd={snapshotString("new_period_end")}
+        />
+      </div>
+    );
+  }
+
+  if (!cycle) redirect("/dashboard/subscription");
 
   const member = authResult.member;
   const targetBusinessId = purchaseBusinessId || member.business_id;
@@ -167,7 +245,7 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
 
     const { data: subscription, error } = await supabaseAdmin
       .from("business_subscriptions")
-      .select("status,plan_code,billing_cycle,member_limit,channel_limit,current_period_start,current_period_end,pricing_snapshot")
+      .select("status,plan_code,billing_cycle,member_limit,channel_limit,current_period_start,current_period_end,pricing_snapshot,cancel_at_period_end,pending_plan_change_type")
       .eq("business_id", targetBusinessId)
       .maybeSingle();
 
@@ -177,38 +255,42 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
     }
 
     if (customUpgrade) {
+      let quote;
       try {
-        const quote = buildCustomUpgradeQuote({
+        quote = buildCustomUpgradeQuote({
           subscription,
           targetConnections: capacity.connections,
           targetUsers: capacity.users,
           targetBillingCycle: cycle.id,
+          extensionBillingCycle,
         });
-        return (
-          <div className="h-full overflow-y-auto">
-            <SubscriptionPaymentView
-              planCode="custom"
-              billingCycle={cycle.id as BillingCycle}
-              customConnections={capacity.connections}
-              customUsers={capacity.users}
-              customUpgrade
-              customUpgradeTotalCents={quote.totalCents}
-              customUpgradeCurrentConnections={quote.currentConnections}
-              customUpgradeCurrentUsers={quote.currentUsers}
-              customUpgradeCurrentBillingCycle={quote.currentBillingCycle}
-              customUpgradeRemainingDays={quote.remainingDays}
-              customUpgradeExtensionMonths={quote.extensionMonths}
-              customUpgradeCurrentPeriodEnd={quote.currentPeriodEnd}
-              customUpgradeNewPeriodEnd={quote.newPeriodEnd}
-              initialPayWayReturn={single(params.payway).trim() || null}
-              initialTransactionId={single(params.tran_id).trim() || null}
-                purchaseBusinessId={purchaseBusinessId || null}
-            />
-          </div>
-        );
       } catch {
         redirect("/dashboard/subscription?plan_change_blocked=invalid-custom-upgrade");
       }
+
+      return (
+        <div className="h-full overflow-y-auto">
+          <SubscriptionPaymentView
+            planCode="custom"
+            billingCycle={cycle.id as BillingCycle}
+            customConnections={capacity.connections}
+            customUsers={capacity.users}
+            customUpgrade
+            customUpgradeTotalCents={quote.totalCents}
+            customUpgradeCurrentConnections={quote.currentConnections}
+            customUpgradeCurrentUsers={quote.currentUsers}
+            customUpgradeCurrentBillingCycle={quote.currentBillingCycle}
+            customUpgradeRemainingDays={quote.remainingDays}
+            customUpgradeExtensionMonths={quote.extensionMonths}
+            customUpgradeExtensionBillingCycle={quote.extensionBillingCycle}
+            customUpgradeCurrentPeriodEnd={quote.currentPeriodEnd}
+            customUpgradeNewPeriodEnd={quote.newPeriodEnd}
+            initialPayWayReturn={single(params.payway).trim() || null}
+            initialTransactionId={single(params.tran_id).trim() || null}
+            purchaseBusinessId={purchaseBusinessId || null}
+          />
+        </div>
+      );
     }
 
     // Subscription & billing = Manage grants upgrade access only. It never

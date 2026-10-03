@@ -2,7 +2,6 @@ import "server-only";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-const RECENT_PENDING_MS = 15 * 60 * 1000;
 const RECENT_APPROVED_MS = 48 * 60 * 60 * 1000;
 
 type ManualPaymentTarget = {
@@ -71,9 +70,8 @@ function timestamp(value: string | null | undefined) {
  * This does not trust a screenshot/receipt as proof that money was sent by a
  * different payment method. It checks TENH's own PayWay transaction records.
  * A matching approved ABA/PayWay payment from the recent purchase window blocks
- * a second manual payment. A matching PayWay checkout that is still recent and
- * pending also blocks manual submission temporarily while PayWay verification
- * is still expected to complete.
+ * a second manual payment. Every unresolved PayWay checkout blocks manual
+ * submission or approval, regardless of age or the requested target quote.
  *
  * Old historical PayWay purchases do not permanently block later legitimate
  * renewals: approved matching is limited to a recent window unless another
@@ -82,6 +80,23 @@ function timestamp(value: string | null | undefined) {
 export async function getManualPaymentPayWaySafety(
   target: ManualPaymentTarget,
 ): Promise<ManualPaymentPayWaySafety> {
+  const { data: unresolved, error: unresolvedError } = await supabaseAdmin
+    .from("billing_transactions")
+    .select("id,provider_transaction_id,status,plan_code,billing_cycle,amount,currency,created_at,verified_at")
+    .eq("business_id", target.businessId)
+    .eq("provider", "payway")
+    .eq("status", "pending")
+    .limit(1)
+    .maybeSingle();
+  if (unresolvedError) throw new Error("Unable to verify unresolved ABA PayWay payments.");
+  if (unresolved) {
+    return { blocked: true, kind: "pending",
+      message: "An unresolved ABA PayWay checkout requires billing review before another payment can be submitted or approved.",
+      transaction: { id: unresolved.id, transactionId: unresolved.provider_transaction_id,
+        status: unresolved.status, planCode: unresolved.plan_code, billingCycle: unresolved.billing_cycle,
+        amount: Number(unresolved.amount), currency: unresolved.currency,
+        createdAt: unresolved.created_at, verifiedAt: unresolved.verified_at } };
+  }
   const { data, error } = await supabaseAdmin
     .from("billing_transactions")
     .select(
@@ -190,18 +205,14 @@ export async function getManualPaymentPayWaySafety(
     };
   }
 
-  const pending = matching.find((row) => {
-    if (row.status !== "pending") return false;
-    const createdAt = timestamp(row.created_at);
-    return createdAt !== null && now - createdAt <= RECENT_PENDING_MS;
-  });
+  const pending = rows.find((row) => row.status === "pending");
 
   if (pending) {
     return {
       blocked: true,
       kind: "pending",
       message:
-        "A matching ABA PayWay checkout was started recently and may still be verifying. Wait for it to finish or cancel it before using manual payment.",
+        "An unresolved ABA PayWay checkout requires billing review before another payment can be submitted or approved.",
       transaction: {
         id: pending.id,
         transactionId: pending.provider_transaction_id,

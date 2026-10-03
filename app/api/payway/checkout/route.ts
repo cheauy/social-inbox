@@ -27,6 +27,7 @@ import {
   getTrustedSubscriptionQuote,
 } from "@/lib/subscription/plan-catalog";
 import { closePayWayTransaction } from "@/lib/payway/close-transaction";
+import { getPendingCheckoutBlocker, MAX_SUPERSEDED_PAYWAY_CHECKOUTS } from "@/lib/payway/pending-checkout-policy";
 import { verifyAndFinalizePayWayTransaction } from "@/lib/payway/finalize-payment";
 import {
   supabaseAdmin,
@@ -45,6 +46,7 @@ type CheckoutBody = {
   users?: unknown;
   renewSame?: unknown;
   customUpgrade?: unknown;
+  extensionBillingCycle?: unknown;
   purchaseBusinessId?: unknown;
 };
 
@@ -191,13 +193,15 @@ export async function POST(
 ) {
   try {
     const authResult =
-      await getCurrentMember();
+      await getCurrentMember(true);
 
     if (!authResult.success) {
       return NextResponse.json(
         {
           success: false,
           error: authResult.error,
+          code: authResult.code,
+          businessId: authResult.businessId,
         },
         {
           status: authResult.status,
@@ -249,6 +253,21 @@ export async function POST(
       );
     }
 
+    const { data: unresolvedManual, error: unresolvedManualError } = await supabaseAdmin
+      .from("manual_payment_requests")
+      .select("id")
+      .eq("business_id", billingMember.business_id)
+      .in("status", ["draft", "pending", "submitted"])
+      .limit(1);
+    if (unresolvedManualError) {
+      throw new Error("Unable to verify unresolved manual payments.");
+    }
+    if (unresolvedManual?.length) {
+      return NextResponse.json({ success: false,
+        code: "TENH_BILLING_PURCHASE_PENDING",
+        error: "An unresolved manual payment requires billing review before another checkout." }, { status: 409 });
+    }
+
     try {
       await syncBusinessSubscriptionLifecycle(billingMember.business_id);
     } catch (error) {
@@ -293,7 +312,7 @@ export async function POST(
     } = await supabaseAdmin
       .from("business_subscriptions")
       .select(
-        "id,business_id,status,plan_code,billing_cycle,last_paid_amount,last_paid_currency,member_limit,channel_limit,pricing_version,pricing_snapshot,current_period_start,current_period_end",
+        "id,business_id,status,plan_code,billing_cycle,last_paid_amount,last_paid_currency,member_limit,channel_limit,pricing_version,pricing_snapshot,current_period_start,current_period_end,cancel_at_period_end,pending_plan_change_type",
       )
       .eq(
         "business_id",
@@ -380,6 +399,9 @@ export async function POST(
           targetConnections: body.connections,
           targetUsers: body.users,
           targetBillingCycle: billingCycle,
+          extensionBillingCycle: cleanString(
+            body.extensionBillingCycle,
+          ),
         });
       } catch (reason) {
         return NextResponse.json({ success: false, error: reason instanceof Error ? reason.message : "Unable to calculate Custom Upgrade." }, { status: 409 });
@@ -595,12 +617,12 @@ export async function POST(
     const { data: openTransactions, error: openTransactionsError } =
       await supabaseAdmin
         .from("billing_transactions")
-        .select("id,provider_transaction_id,created_at")
+        .select("id,provider_transaction_id,created_at,metadata")
         .eq("provider", "payway")
         .eq("business_id", billingMember.business_id)
         .eq("status", "pending")
         .order("created_at", { ascending: false })
-        .limit(20);
+        .limit(MAX_SUPERSEDED_PAYWAY_CHECKOUTS + 1);
 
     if (openTransactionsError) {
       console.error(
@@ -615,6 +637,21 @@ export async function POST(
             "Unable to verify existing payments before starting a new one.",
         },
         { status: 500 },
+      );
+    }
+
+    const pendingBlocker = getPendingCheckoutBlocker(openTransactions ?? []);
+    if (pendingBlocker) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: pendingBlocker.code,
+          error: "An earlier saved ABA PayWay checkout is still unresolved. Open that payment or review its status before starting another.",
+          ...(pendingBlocker.transactionId
+            ? { transactionId: pendingBlocker.transactionId }
+            : {}),
+        },
+        { status: 409 },
       );
     }
 
@@ -636,6 +673,12 @@ export async function POST(
           openTransactionId,
           "browser-status",
         );
+
+        if (verification.paymentState === "recovery_required") {
+          return NextResponse.json({ success: false,
+            code: "TENH_BILLING_RECOVERY_REQUIRED",
+            error: "The existing payment requires billing review before another checkout." }, { status: 409 });
+        }
 
         if (verification.paymentState === "approved") {
           return NextResponse.json(
@@ -659,25 +702,92 @@ export async function POST(
           "[TENH PayWay] Could not verify an open transaction before checkout:",
           error,
         );
+        return NextResponse.json({ success: false,
+          code: "TENH_BILLING_RECOVERY_REQUIRED",
+          error: "The existing payment could not be verified. Billing review is required before another checkout." }, { status: 409 });
       }
 
+      let closeResult: Awaited<
+        ReturnType<
+          typeof closePayWayTransaction
+        >
+      >;
+
       try {
-        await closePayWayTransaction(openTransactionId);
+        closeResult = await closePayWayTransaction(openTransactionId);
       } catch (error) {
         console.warn(
           "[TENH PayWay] Could not close a previous open transaction:",
           error,
         );
+
+        return NextResponse.json(
+          {
+            success: false,
+            code: "TENH_PAYWAY_PREVIOUS_CHECKOUT_OPEN",
+            error:
+              "TENH could not safely close the previous ABA PayWay checkout. Retry after its status is confirmed.",
+            transactionId: openTransactionId,
+          },
+          { status: 503 },
+        );
       }
 
-      await supabaseAdmin
+      if (!closeResult.closed) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: "TENH_PAYWAY_PREVIOUS_CHECKOUT_OPEN",
+            error:
+              "The previous ABA PayWay checkout could not be confirmed closed. Check its payment status before trying again.",
+            transactionId: openTransactionId,
+          },
+          { status: 409 },
+        );
+      }
+
+      const {
+        data: cancelledPrevious,
+        error: cancelPreviousError,
+      } = await supabaseAdmin
         .from("billing_transactions")
         .update({
           status: "cancelled",
           provider_status: "SUPERSEDED_BY_NEW_CHECKOUT",
         })
         .eq("id", open.id)
-        .eq("status", "pending");
+        .eq("status", "pending")
+        .select("id")
+        .maybeSingle();
+
+      if (cancelPreviousError) {
+        console.error(
+          "[TENH PayWay] Provider transaction closed but local cancellation failed:",
+          cancelPreviousError,
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "The previous ABA PayWay checkout was closed, but TENH could not save its state. Retry after the payment status is refreshed.",
+          },
+          { status: 500 },
+        );
+      }
+
+      if (!cancelledPrevious) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: "TENH_PAYWAY_PREVIOUS_CHECKOUT_CHANGED",
+            error:
+              "The previous ABA PayWay checkout changed while TENH was closing it. Refresh its payment status before trying again.",
+            transactionId: openTransactionId,
+          },
+          { status: 409 },
+        );
+      }
     }
 
     const reqTime =
@@ -736,6 +846,7 @@ export async function POST(
       successParams.set("users", String(quote.users));
       if (requestedCustomUpgrade) {
         successParams.set("upgrade", "custom");
+        successParams.set("extension", customUpgradeQuote?.extensionBillingCycle ?? "none");
       }
     }
 
@@ -831,8 +942,22 @@ export async function POST(
           renewal_total_cents: renewalTotalCents ?? quote.totalCents,
           purchase_type: purchaseType,
           custom_upgrade: requestedCustomUpgrade,
+          custom_upgrade_version: customUpgradeQuote ? 2 : null,
+          quoted_at: customUpgradeQuote?.quotedAt ?? null,
+          paid_term_basis_version: customUpgradeQuote ? 1 : null,
+          paid_term_segments: customUpgradeQuote?.paidTermSegments ?? null,
           current_billing_cycle: customUpgradeQuote?.currentBillingCycle ?? null,
+          current_plan_code:
+            customUpgradeQuote ? subscription.plan_code : null,
+          current_member_limit:
+            customUpgradeQuote ? subscription.member_limit : null,
+          current_channel_limit:
+            customUpgradeQuote ? subscription.channel_limit : null,
+          current_period_start:
+            customUpgradeQuote ? subscription.current_period_start : null,
           target_billing_cycle: customUpgradeQuote?.targetBillingCycle ?? null,
+          extension_billing_cycle:
+            customUpgradeQuote?.extensionBillingCycle ?? null,
           remaining_days: customUpgradeQuote?.remainingDays ?? null,
           capacity_proration_cents: customUpgradeQuote?.capacityProrationCents ?? null,
           extension_months: customUpgradeQuote?.extensionMonths ?? null,
@@ -857,6 +982,7 @@ export async function POST(
           billingMember.id,
         request_time: reqTime,
         metadata: {
+          checkout_contract_version: 2,
           environment:
             config.environment,
           callback_url:
@@ -881,8 +1007,22 @@ export async function POST(
           renewal_total_cents: renewalTotalCents ?? quote.totalCents,
           purchase_type: purchaseType,
           custom_upgrade: requestedCustomUpgrade,
+          custom_upgrade_version: customUpgradeQuote ? 2 : null,
+          quoted_at: customUpgradeQuote?.quotedAt ?? null,
+          paid_term_basis_version: customUpgradeQuote ? 1 : null,
+          paid_term_segments: customUpgradeQuote?.paidTermSegments ?? null,
           current_billing_cycle: customUpgradeQuote?.currentBillingCycle ?? null,
+          current_plan_code:
+            customUpgradeQuote ? subscription.plan_code : null,
+          current_member_limit:
+            customUpgradeQuote ? subscription.member_limit : null,
+          current_channel_limit:
+            customUpgradeQuote ? subscription.channel_limit : null,
+          current_period_start:
+            customUpgradeQuote ? subscription.current_period_start : null,
           target_billing_cycle: customUpgradeQuote?.targetBillingCycle ?? null,
+          extension_billing_cycle:
+            customUpgradeQuote?.extensionBillingCycle ?? null,
           remaining_days: customUpgradeQuote?.remainingDays ?? null,
           capacity_proration_cents: customUpgradeQuote?.capacityProrationCents ?? null,
           extension_months: customUpgradeQuote?.extensionMonths ?? null,
@@ -903,16 +1043,29 @@ export async function POST(
         transactionError,
       );
 
+      const duplicateOpenCheckout =
+        transactionError.code === "23505";
+
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Unable to create the TENH billing transaction.",
+          ...(duplicateOpenCheckout
+            ? {
+                code: "TENH_PAYWAY_CHECKOUT_IN_PROGRESS",
+                error:
+                  "Another ABA PayWay checkout is already being prepared for this workspace.",
+              }
+            : {
+                error:
+                  "Unable to create the TENH billing transaction.",
+              }),
           details:
             transactionError.message,
         },
         {
-          status: 500,
+          status: duplicateOpenCheckout
+            ? 409
+            : 500,
         },
       );
     }

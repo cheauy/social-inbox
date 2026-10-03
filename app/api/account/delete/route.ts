@@ -878,6 +878,30 @@ async function cleanupPersonalAccountData(
   }
 }
 
+async function accountDeletionBillingHold(userId: string) {
+  // Immutable enrollment survives payment resolution. Check before ownership,
+  // membership or Auth changes; an unavailable check must also stop deletion.
+  const { data, error } = await supabaseAdmin.rpc(
+    "tenh_get_account_deletion_billing_hold",
+    { p_user_id: userId },
+  );
+  if (error || !data || typeof data.held !== "boolean") {
+    return NextResponse.json(
+      { success: false, code: "TENH_BILLING_HOLD_CHECK_UNAVAILABLE",
+        error: "TENH could not verify billing record retention. Your account has not been changed. Try again after support verifies billing recovery." },
+      { status: 503, headers: NO_STORE_HEADERS },
+    );
+  }
+  if (data.held) {
+    return NextResponse.json(
+      { success: false, code: "TENH_BILLING_RECOVERY_REQUIRED",
+        error: "This account is linked to retained payment history. Permanent account deletion requires a separate billing retention review. Resolving a payment does not automatically release this hold. Your account has not been changed." },
+      { status: 409, headers: NO_STORE_HEADERS },
+    );
+  }
+  return null;
+}
+
 export async function GET() {
   try {
     const user = await getAuthenticatedUser();
@@ -895,6 +919,8 @@ export async function GET() {
       );
     }
 
+    const billingHold = await accountDeletionBillingHold(user.id);
+    if (billingHold) return billingHold;
     const impact = await loadAccountDeletionImpact(user.id);
 
     return NextResponse.json(
@@ -975,6 +1001,8 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    const billingHold = await accountDeletionBillingHold(user.id);
+    if (billingHold) return billingHold;
     // Server-authoritative recheck immediately before any destructive change.
     const impact = await loadAccountDeletionImpact(user.id);
 

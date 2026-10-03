@@ -10,10 +10,10 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const auth = await getCurrentMember();
+  const auth = await getCurrentMember(true);
   if (!auth.success) {
     return NextResponse.json(
-      { success: false, error: auth.error },
+      { success: false, error: auth.error, code: auth.code, businessId: auth.businessId },
       { status: auth.status },
     );
   }
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
   const { data: subscription, error } = await supabaseAdmin
     .from("business_subscriptions")
     .select(
-      "status,plan_code,billing_cycle,member_limit,channel_limit,current_period_start,current_period_end,pricing_snapshot",
+      "status,plan_code,billing_cycle,member_limit,channel_limit,current_period_start,current_period_end,pricing_snapshot,cancel_at_period_end,pending_plan_change_type",
     )
     .eq("business_id", targetBusinessId)
     .maybeSingle();
@@ -79,6 +79,8 @@ export async function GET(request: Request) {
       targetConnections: Number(url.searchParams.get("connections")),
       targetUsers: Number(url.searchParams.get("users")),
       targetBillingCycle: url.searchParams.get("cycle") ?? "",
+      extensionBillingCycle:
+        url.searchParams.get("extension") ?? "none",
     });
 
     return NextResponse.json({ success: true, quote });
