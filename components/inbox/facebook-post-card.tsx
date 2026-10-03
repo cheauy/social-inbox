@@ -14,11 +14,12 @@ type Props = {
   parentId?: string | null;
   savedParent?: FacebookCommentParent | null;
   showPost?: boolean;
+  showParentContext?: boolean;
 };
 
 /** Missing metadata and expired images are repaired on demand, not by the
  * message-page polling loop. Failures leave the comment and saved text visible. */
-export function FacebookPostCard({ conversationId, messageId, postId, savedPreview, accountName, isKhmer, onOpenImage, parentId, savedParent, showPost = true }: Props) {
+export function FacebookPostCard({ conversationId, messageId, postId, savedPreview, accountName, isKhmer, onOpenImage, parentId, savedParent, showPost = true, showParentContext = true }: Props) {
   const [fresh, setFresh] = useState<PostPreviewData | null>(null);
   const [freshParent, setFreshParent] = useState<FacebookCommentParent | null>(null);
   const [resolvedParentId, setResolvedParentId] = useState<string | null | undefined>(undefined);
@@ -97,6 +98,8 @@ export function FacebookPostCard({ conversationId, messageId, postId, savedPrevi
     }
   }, [failedImages, loading, load]);
 
+  if (!showPost && !showParentContext) return null;
+
   return (
     <div className={showPost ? "max-w-[860px] p-1 sm:p-2" : "my-2 max-w-[620px]"}>
       {showPost ? <div className="flex min-w-0 items-stretch gap-3 rounded-[18px] border border-slate-200 bg-white p-3 shadow-[0_3px_14px_rgba(15,23,42,0.04)] sm:gap-4" aria-busy={loading}>
@@ -131,7 +134,7 @@ export function FacebookPostCard({ conversationId, messageId, postId, savedPrevi
           </div>
         </div>
       </div> : null}
-      {effectiveParentId || parent ? <div className="mt-2 rounded-xl border-l-[3px] border-blue-400 bg-slate-50 px-3 py-2 text-xs text-slate-600" aria-busy={loading}>
+      {showParentContext && (effectiveParentId || parent) ? <div className="mt-2 rounded-xl border-l-[3px] border-blue-400 bg-slate-50 px-3 py-2 text-xs text-slate-600" aria-busy={loading}>
         <div className="font-semibold">{parent?.status === "deleted" ? "Reply to deleted comment" : parent?.author ? `Reply to ${parent.author}` : parent?.status === "available" || parent?.status === "media" ? "Reply to comment · author unavailable" : "Reply to unavailable comment"}</div>
         <div className="mt-1 whitespace-pre-wrap">{parent?.status === "deleted" ? "Parent comment was deleted" : parent?.text ?? (parent?.image && parent.image !== failedParentImage ? "Photo reply · no text" : parent?.status === "media" ? "Media reply · preview unavailable" : loading ? "Loading parent context…" : "Parent comment is unavailable")}</div>
         {parent?.image && parent.image !== failedParentImage && parent.status !== "deleted" ? <button type="button" className="mt-2" aria-label="Open parent reply image" onClick={() => onOpenImage({ src: parent.image!, alt: "Parent reply" })}>

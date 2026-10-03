@@ -62,6 +62,25 @@ test('fixture reproduces customer reply to Page reply with exact immediate autho
   const parent = context.facebookCommentParentPreview(customer, [root, staff, customer], 'Page staff'); assert.equal(parent.id, 'staff'); assert.equal(parent.author, 'Page staff'); assert.equal(parent.text, 'Size M is available');
   const h = card({ parentId: 'staff', savedParent: parent, showPost: false }), tree = h.render(); assert.match(copy(tree), /Reply to Page staff/); assert.match(copy(tree), /Size M is available/); assert.ok(links(tree).includes(preview.permalink_url)); h.rt.cleanup();
 });
+
+test('outbound Page reply omits the entire redundant parent quote without an empty card', () => {
+  const parent = { id: 'customer', author: 'Customer', text: '$?', image: photo('parent').src, permalink_url: 'https://www.facebook.com/provider/customer', status: 'available' };
+  const h = card({ parentId: parent.id, savedParent: parent, showPost: false, showParentContext: false });
+  try { assert.equal(h.render(), null); } finally { h.rt.cleanup(); }
+});
+
+test('hiding an outbound parent quote preserves the original album and post link', () => {
+  const parent = { id: 'customer', author: 'Customer', text: '$?', image: photo('parent').src, permalink_url: 'https://www.facebook.com/provider/customer', status: 'available' };
+  const h = card({ parentId: parent.id, savedParent: parent, showParentContext: false });
+  try {
+    const tree = h.render();
+    assert.doesNotMatch(copy(tree), /Reply to|\$\?|View Reply/);
+    assert.deepEqual(nodes(tree, n => n.type === 'img').map(n => n.props.src), [photo('a').src, photo('b').src]);
+    assert.match(copy(tree), /Original album caption/);
+    assert.ok(links(tree).includes(preview.permalink_url));
+    assert.ok(!links(tree).includes(parent.permalink_url));
+  } finally { h.rt.cleanup(); }
+});
 test('deeper nesting preserves immediate parent rather than flattening quoted context to root', () => {
   const chain = [message('root'), message('staff', 'root', { direction: 'outgoing' }), message('customer', 'staff'), message('staff2', 'customer', { direction: 'outgoing' }), message('customer2', 'staff2')];
   assert.equal(context.facebookCommentParentPreview(chain[4], chain, 'Page').id, 'staff2'); assert.equal(context.facebookCommentRenderRoot(chain[4], chain).id, 'root');

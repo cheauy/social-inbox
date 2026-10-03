@@ -4066,6 +4066,7 @@ export function MessagePanel({
                           conversationId={activeConversation.id} messageId={message.id}
                           postId={postId} savedPreview={postPreview}
                           parentId={facebookReplyParentId} savedParent={facebookParentPreview}
+                          showParentContext={!isOutgoing}
                           accountName={headerChannelAccountName} isKhmer={isKhmer}
                           onOpenImage={setImagePreview} />
                       ) : null}
@@ -4557,7 +4558,7 @@ export function MessagePanel({
                                           postId={facebookCommentIdentity(reply).postId} savedPreview={(reply.raw_payload as { post_preview?: unknown } | null)?.post_preview}
                                           parentId={facebookCommentIdentity(reply).parentId}
                                           savedParent={facebookCommentParentPreview(reply, messages, headerChannelAccountName, optimisticCommentState)}
-                                          showPost={false} accountName={headerChannelAccountName} isKhmer={isKhmer} onOpenImage={setImagePreview} />
+                                          showPost={false} showParentContext={!replyIsOutgoing} accountName={headerChannelAccountName} isKhmer={isKhmer} onOpenImage={setImagePreview} />
                                         {reply.message_text ??
                                           "Facebook comment reply"}
                                       </div>
