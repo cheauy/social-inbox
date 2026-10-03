@@ -64,6 +64,7 @@ type ReplyBoxProps = {
   platform?: string;
   onSendSticker?: (sticker: InboxStickerChoice) => Promise<boolean>;
   reply: string;
+  composerReady?: boolean;
   conversationId: string;
   sending: boolean;
   error: string | null;
@@ -272,6 +273,7 @@ export function ReplyBox({
   typingAgents = [],
   onTagsChange,
   conversationId,
+  composerReady = true,
   allowAttachments = true,
   onReplyChange,
   onSubmit,
@@ -328,7 +330,7 @@ export function ReplyBox({
    * Only a genuinely blocked channel disables it now.
    */
   const isComposerDisabled =
-    isComposerBlocked;
+    isComposerBlocked || !composerReady;
 
   /*
    * Only the send is held while a quick reply's media loads -- the agent can
@@ -379,6 +381,14 @@ export function ReplyBox({
     useState<ReplyAttachment[]>([]);
   const attachmentsRef = useRef(attachments);
   attachmentsRef.current = attachments;
+  const composerMountedRef = useRef(true);
+  useEffect(() => {
+    composerMountedRef.current = true;
+    return () => {
+      composerMountedRef.current = false;
+      for (const attachment of attachmentsRef.current) URL.revokeObjectURL(attachment.previewUrl);
+    };
+  }, []);
 
   const [storageConversationId, setStorageConversationId] =
     useState<string | null>(null);
@@ -459,7 +469,7 @@ export function ReplyBox({
   async function loadSavedReplyAttachments(
     savedAttachments: SavedReplyAttachment[],
   ) {
-    if (savedAttachments.length === 0) {
+    if (!composerReady || !composerMountedRef.current || savedAttachments.length === 0) {
       return;
     }
 
@@ -552,6 +562,11 @@ export function ReplyBox({
       (item): item is ReplyAttachment =>
         item !== null,
     );
+
+    if (!composerMountedRef.current) {
+      for (const attachment of loaded) URL.revokeObjectURL(attachment.previewUrl);
+      return;
+    }
 
     if (loaded.length > 0) {
       setAttachments((current) => [
@@ -673,6 +688,7 @@ export function ReplyBox({
 
   const mediaStreamRef =
     useRef<MediaStream | null>(null);
+  const recordingStartPendingRef = useRef(false);
 
   const recordedChunksRef =
     useRef<BlobPart[]>([]);
@@ -848,6 +864,7 @@ export function ReplyBox({
   }
 
   async function startVoiceRecording() {
+    if (!composerMountedRef.current || recordingStartPendingRef.current) return;
     if (!allowAttachments) {
       setRecordingError(
         "Voice messages are available for Messenger conversations only.",
@@ -871,12 +888,14 @@ export function ReplyBox({
 
     if (
       recordingVoice ||
-      isComposerDisabled
+      isComposerDisabled ||
+      (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive")
     ) {
       return;
     }
 
 
+    recordingStartPendingRef.current = true;
     setMoreOpen(false);
 
     clearToolbarPanel();
@@ -896,6 +915,17 @@ export function ReplyBox({
           },
         );
 
+      // Permission/device acquisition can resolve after this keyed composer
+      // retired. Its cleanup ran before these tracks existed, so release them
+      // here before constructing a recorder or scheduling a timer.
+      if (!composerMountedRef.current) {
+        for (const track of stream.getTracks()) track.stop();
+        return;
+      }
+      // Own the stream before recorder construction so initialization failures
+      // also release every acquired track through the existing catch cleanup.
+      mediaStreamRef.current = stream;
+
       const mimeType =
         supportedRecordingMimeType();
 
@@ -913,8 +943,6 @@ export function ReplyBox({
               stream,
             );
 
-      mediaStreamRef.current =
-        stream;
       mediaRecorderRef.current =
         recorder;
       recordedChunksRef.current =
@@ -1074,6 +1102,7 @@ export function ReplyBox({
         }, 1000);
     } catch (recordError) {
       stopRecordingTracks();
+      if (!composerMountedRef.current) return;
 
       const errorName =
         recordError instanceof
@@ -1087,6 +1116,8 @@ export function ReplyBox({
           ? "Microphone permission was denied. Allow microphone access in the browser and try again."
           : "Unable to start the microphone.",
       );
+    } finally {
+      recordingStartPendingRef.current = false;
     }
   }
 
@@ -1662,7 +1693,7 @@ export function ReplyBox({
       | null = null,
   ) {
     if (
-      isComposerBlocked ||
+      isComposerDisabled ||
       !onSendAttachments ||
       attachments.length === 0
     ) {

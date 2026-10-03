@@ -562,7 +562,20 @@ const requestedConversationId =
     setConversationMessagesError,
   ] = useState<string | null>(null);
 
-  const [reply, setReplyState] = useState("");
+  const [composerState, setComposerState] = useState<{ reply: string; conversationKey: string | null }>({ reply: "", conversationKey: null });
+  const reply = composerState.reply;
+  const setReplyState = useCallback((value: string) => {
+    setComposerState(current => ({ ...current, reply: value }));
+  }, []);
+  const composerSelectionEpochRef = useRef(0);
+  const composerRenderEpoch = composerSelectionEpochRef.current;
+  const retireComposerSubmissionScope = useCallback(() => {
+    composerSelectionEpochRef.current++;
+    // Also rerender when a batched A -> B -> A returns to the same state ID.
+    setComposerState(current => ({ ...current }));
+  }, []);
+  const accessibleBusinessIdsRef = useRef(accessibleBusinessIds);
+  accessibleBusinessIdsRef.current = accessibleBusinessIds;
   const [replyingToFacebookMessageId, setFacebookReplyState] = useState<string | null>(null);
   const composerDraftRef = useRef({ reply: "", quote: null as string | null, revision: 0 });
   const textSubmissionsRef = useRef(new Set<string>());
@@ -573,7 +586,7 @@ const requestedConversationId =
     if (next !== current.reply) current.revision++;
     current.reply = next;
     setReplyState(next);
-  }, []);
+  }, [setReplyState]);
   const setReplyingToFacebookMessageId = useCallback((value: SetStateAction<string | null>) => {
     const current = composerDraftRef.current;
     const next = typeof value === "function" ? value(current.quote) : value;
@@ -1418,6 +1431,7 @@ useEffect(() => {
   if (nextKey) drafts.delete(nextKey);
   while (drafts.size > MESSAGE_CACHE_MAX_CONVERSATIONS) drafts.delete(drafts.keys().next().value!);
   composerConversationKeyRef.current = nextKey;
+  composerSelectionEpochRef.current++;
   setEditingTelegramMessageId(
     null,
   );
@@ -1427,9 +1441,34 @@ useEffect(() => {
   setReplyingToFacebookMessageId(null);
   // Keep text only in this mounted Inbox. Attachments and quotes still reset.
   setReply(restoredReply);
+  // Text and its tenant/conversation owner commit together. A destination
+  // render cannot submit the previous owner's text before this effect runs.
+  setComposerState({ reply: restoredReply, conversationKey: nextKey });
   setSendError(null);
   setReplyingToCommentId(null);
-}, [resolvedActiveConversationId, accessibleBusinessIds, editingTelegramMessageId, setReply, setReplyingToFacebookMessageId]);
+}, [resolvedActiveConversationId, activeConversation?.business_id, accessibleBusinessIds, editingTelegramMessageId, setReply, setReplyingToFacebookMessageId]);
+
+function isComposerSubmissionCurrent(owner: { conversationKey: string; epoch: number }) {
+  const current = activeConversationRef.current;
+  return Boolean(current && desiredConversationIdRef.current === current.id &&
+    accessibleBusinessIdsRef.current.includes(current.business_id) &&
+    `${current.business_id}:${current.id}` === owner.conversationKey &&
+    composerConversationKeyRef.current === owner.conversationKey &&
+    composerSelectionEpochRef.current === owner.epoch);
+}
+
+function captureComposerSubmissionOwner() {
+  if (!activeConversation) return null;
+  const conversationKey = `${activeConversation.business_id}:${activeConversation.id}`;
+  const owner = { conversationKey, epoch: composerRenderEpoch };
+  return composerState.conversationKey === conversationKey && isComposerSubmissionCurrent(owner) ? owner : null;
+}
+
+const composerReady = Boolean(captureComposerSubmissionOwner());
+
+function handleComposerReplyChange(value: string) {
+  if (captureComposerSubmissionOwner()) setReply(value);
+}
 
 const realtimeBusinessIds =
   useMemo(
@@ -4343,6 +4382,7 @@ const selectConversationSmoothly =
         conversationId,
       );
 
+      retireComposerSubmissionScope();
       desiredConversationIdRef.current =
         conversationId;
       setClientSelectedConversationId(
@@ -4604,6 +4644,7 @@ const selectConversationSmoothly =
       setCachedConversationPage,
       activeBusinessId,
       searchParams,
+      retireComposerSubmissionScope,
     ],
   );
 
@@ -4644,6 +4685,7 @@ const clearConversationSelection =
     }
 
     abortConversationRequestsExcept(null);
+    retireComposerSubmissionScope();
     desiredConversationIdRef.current = null;
     setClientSelectedConversationId(null);
     setLiveMessages([]);
@@ -4670,6 +4712,7 @@ const clearConversationSelection =
     loadingConversationMessages,
     resolvedActiveConversationId,
     setCachedConversationPage,
+    retireComposerSubmissionScope,
   ]);
 
 const selectSearchConversation = useCallback((conversationId: string, match?: InboxSearchMatch) => {
@@ -5443,6 +5486,7 @@ useEffect(() => {
         requestedConversationId,
     )
   ) {
+    retireComposerSubmissionScope();
     desiredConversationIdRef.current =
       null;
     setClientSelectedConversationId(
@@ -5477,6 +5521,7 @@ useEffect(() => {
 }, [
   liveConversations,
   requestedConversationId,
+  retireComposerSubmissionScope,
 ]);
 
 useEffect(() => {
@@ -7649,6 +7694,8 @@ async function handleSendAttachments(
   attachments: ReplyAttachment[],
   caption?: string,
 ): Promise<boolean> {
+  const submissionOwner = captureComposerSubmissionOwner();
+  if (!submissionOwner) return false;
   if (editingTelegramMessageId) {
     setSendError(
       "Finish or cancel Telegram editing before sending an attachment.",
@@ -7669,6 +7716,7 @@ async function handleSendAttachments(
           activeConversation,
         );
     } catch (error) {
+      if (!isComposerSubmissionCurrent(submissionOwner)) return false;
       setSendError(
         error instanceof Error
           ? error.message
@@ -7677,6 +7725,7 @@ async function handleSendAttachments(
       return false;
     }
 
+    if (!isComposerSubmissionCurrent(submissionOwner)) return false;
     if (replyPlatform === "telegram") {
       setSendError(
         "Telegram Reply supports text only. Cancel Reply before sending media.",
@@ -7708,6 +7757,7 @@ async function handleSendAttachments(
         activeConversation,
       );
   } catch (error) {
+    if (!isComposerSubmissionCurrent(submissionOwner)) return false;
     setSendError(
       error instanceof Error
         ? error.message
@@ -7716,6 +7766,7 @@ async function handleSendAttachments(
     return false;
   }
 
+  if (!isComposerSubmissionCurrent(submissionOwner)) return false;
   if (
     conversationPlatform ===
     "telegram"
@@ -8002,7 +8053,7 @@ async function handleSendAttachments(
     }
   }
 
-  if (allSucceeded && facebookReplyTarget && activeConversationRef.current?.id === activeConversation.id) {
+  if (allSucceeded && facebookReplyTarget && isComposerSubmissionCurrent(submissionOwner)) {
     setReplyingToFacebookMessageId(current => current === facebookReplyTarget.id ? null : current);
   }
   return allSucceeded;
@@ -8048,6 +8099,9 @@ async function handleSendMessage(
 ) {
   event.preventDefault();
 
+  const submissionOwner = captureComposerSubmissionOwner();
+  if (!submissionOwner) return;
+
   const message =
     (capturedMessage ?? reply).trim();
 
@@ -8087,6 +8141,7 @@ async function handleSendMessage(
           activeConversation,
         );
     } catch (error) {
+      if (!isComposerSubmissionCurrent(submissionOwner)) return;
       setSendError(
         error instanceof Error
           ? error.message
@@ -8096,7 +8151,7 @@ async function handleSendMessage(
     }
   }
 
-  if (desiredConversationIdRef.current !== activeConversation.id) return;
+  if (!isComposerSubmissionCurrent(submissionOwner)) return;
   const selectedReplyId = conversationPlatform === "telegram" ? replyingToTelegramMessageId : replyingToFacebookMessageId;
   if (selectedReplyId && !isCommentReply) {
     const selectedReply = resolvePhotoReplyTarget(liveMessagesRef.current, selectedReplyId, activeConversation.id);
@@ -8217,13 +8272,13 @@ async function handleSendMessage(
           ),
       );
 
-      if (desiredConversationIdRef.current === activeConversation.id) {
+      if (isComposerSubmissionCurrent(submissionOwner)) {
         setReply((current) => current === message ? "" : current);
         setEditingTelegramMessageId((current) => current === editedMessageId ? null : current);
         showTelegramActionNotice("Telegram message edited successfully");
       }
     } catch (error) {
-      if (desiredConversationIdRef.current === activeConversation.id) setSendError(
+      if (isComposerSubmissionCurrent(submissionOwner)) setSendError(
         error instanceof Error
           ? error.message
           : "Unable to edit Telegram message.",
@@ -8402,7 +8457,7 @@ async function handleSendMessage(
   finally { textSubmissionsRef.current.delete(submissionKey); }
   if (!sent && recoverFacebookQuote) {
     const current = composerDraftRef.current;
-    const canRestore = capturedMessage === undefined && desiredConversationIdRef.current === activeConversation.id &&
+    const canRestore = capturedMessage === undefined && isComposerSubmissionCurrent(submissionOwner) &&
       submission === latestTextSubmissionRef.current && current.revision === clearedRevision && !current.reply && !current.quote;
     if (canRestore) {
       setReply(reply);
@@ -8428,6 +8483,7 @@ async function handleSendMessage(
 }
 
   async function handleSendSticker(sticker: InboxStickerChoice): Promise<boolean> {
+    if (!captureComposerSubmissionOwner()) return false;
     const conversation = activeConversationRef.current;
     if (isMetaSticker(sticker)) {
       if (!conversation?.contact || conversation.social_account?.platform !== "facebook") throw new Error("Open a Facebook conversation before sending this sticker.");
@@ -8942,7 +8998,8 @@ return (
   typingAgents={typingAgents}
   teamPresence={teamPresence}
   agentPresenceStatus={agentPresenceStatus}
-  reply={reply}
+  reply={composerReady ? reply : ""}
+  composerReady={composerReady}
   sending={sending}
   sendError={sendError}
   updatingStatus={updatingStatus}
@@ -8954,7 +9011,7 @@ return (
     customerPanelVisible
   }
 
-  onReplyChange={setReply}
+  onReplyChange={handleComposerReplyChange}
 
   onContactTagsChange={handleContactTagsChange}
 

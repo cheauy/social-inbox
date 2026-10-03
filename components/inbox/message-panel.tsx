@@ -367,6 +367,7 @@ type MessagePanelProps = {
     AgentPresenceStatus;
 
   reply: string;
+  composerReady?: boolean;
 
   sending: boolean;
 
@@ -1485,6 +1486,7 @@ export function MessagePanel({
   teamPresence,
   agentPresenceStatus,
   reply,
+  composerReady = true,
   sending,
   sendError,
   updatingStatus,
@@ -6045,6 +6047,8 @@ export function MessagePanel({
          * comment switches only that send into a targeted comment reply.
          */
         <ReplyBox
+          key={`${activeConversation.business_id}:${activeConversation.id}`}
+          composerReady={composerReady}
           storageBusinessId={storageBusinessId}
           storageMemberId={storageMemberId}
           conversationId={

@@ -13,6 +13,7 @@ function fixture() {
     liveConversationsRef: { current: [{ id: 'telegram', business_id: 'a' }, { id: 'messenger', business_id: 'b' }] }, resolvedActiveConversationId: null, accessibleBusinessIds: ['a', 'b'], MESSAGE_CACHE_MAX_CONVERSATIONS: 25,
     editingTelegramMessageId: null,
     window: { requestAnimationFrame: fn => fn() }, document: { querySelector: () => ({ focus() {} }) },
+    composerSelectionEpochRef: { current: 0 }, setComposerState() {},
     setReplyState() {}, setEditingTelegramMessageId: value => { context.editingTelegramMessageId = value; }, setReplyingToTelegramMessageId() {}, setReplyingToFacebookMessageId: () => { context.composerDraftRef.current.quote = null; }, setSendError() {}, setReplyingToCommentId() {}, };
   vm.createContext(context); vm.runInContext(ts.transpileModule('globalThis.setReply = ' + setReply + ';globalThis.sync = ' + effect + ';' + edit + ';' + cancelEdit + ';globalThis.edit = handleEditTelegramMessage;globalThis.cancelEdit = handleCancelTelegramEdit;', { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
   context.select = id => { context.resolvedActiveConversationId = id; context.sync(); };
