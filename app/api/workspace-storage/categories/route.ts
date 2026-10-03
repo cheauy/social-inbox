@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getCurrentMember } from "@/lib/auth/get-current-member";
+import { getWorkspaceStorageAccess } from "@/lib/storage/workspace-storage-access";
 import { memberHasPermission } from "@/lib/auth/require-permission";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -22,7 +22,7 @@ function categoryName(value: unknown) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await getCurrentMember();
+  const auth = await getWorkspaceStorageAccess();
   if (!auth.success) return fail(auth.error, auth.status);
   if (!(await memberHasPermission(auth.member, "tags_quick_replies", "manage"))) {
     return fail("You do not have permission to manage Storage categories.", 403);

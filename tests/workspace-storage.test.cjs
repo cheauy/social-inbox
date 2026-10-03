@@ -44,7 +44,8 @@ test('workspace object paths are tenant-prefixed, flat, and sanitize traversal',
 
 test('workspace API enforces membership tenant filters and verifies uploaded bytes before insert', () => {
   const source = fs.readFileSync('app/api/workspace-storage/files/route.ts', 'utf8');
-  assert.match(source, /getCurrentMember\(\)/);
+  assert.match(source, /getWorkspaceStorageAccess\(\)/);
+  assert.match(fs.readFileSync('lib/storage/workspace-storage-access.ts', 'utf8'), /getCurrentMember\(true\)/);
   assert.ok((source.match(/\.eq\("business_id", auth\.member\.business_id\)/g) ?? []).length >= 2);
   assert.match(source, /isWorkspaceFilePathOwned\(path, auth\.member\.business_id\)/);
   assert.match(source, /\.info\(path\)/);
@@ -88,7 +89,7 @@ test('migration draft creates a private service-only workspace store without tou
 });
 
 function routeSetup({ businessId = 'shop-a', active = true, canManage = true, rows = [], stored = {}, removeFailures = {}, categories = [], favorites = [], organizationInstalled = true } = {}) {
-  const db = database({ workspace_files: rows, ...(organizationInstalled ? { workspace_file_categories: categories, workspace_file_favorites: favorites } : {}) });
+  const db = database({ business_subscriptions: [], workspace_files: rows.map(row => ({storage_bucket:WORKSPACE_FILE_BUCKET,...row})), ...(organizationInstalled ? { workspace_file_categories: categories, workspace_file_favorites: favorites } : {}) });
   const removed = [];
   db.storage = {
     from(bucket) {
@@ -241,7 +242,7 @@ test('permanent delete reports a recoverable partial failure and restores visibl
 });
 
 test('category API scopes edit/delete and migration preserves files on category delete', async () => {
-  const db = database({ workspace_file_categories: [
+  const db = database({ business_subscriptions: [], workspace_file_categories: [
     { id: 'own', business_id: 'shop-a', name: 'Own' },
     { id: 'foreign', business_id: 'shop-b', name: 'Foreign' },
   ] });

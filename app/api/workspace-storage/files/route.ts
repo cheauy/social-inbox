@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { getCurrentMember } from "@/lib/auth/get-current-member";
+import { getWorkspaceStorageAccess } from "@/lib/storage/workspace-storage-access";
+import { parseWorkspaceStorageQuery, storageSearchPattern, workspaceStorageCursor, workspaceStorageQueryKey } from "@/lib/storage/workspace-storage-query";
 import { memberHasPermission } from "@/lib/auth/require-permission";
 import { cachedSignedUrls } from "@/lib/media/signed-urls";
 import {
@@ -56,7 +57,7 @@ type StorageQueryResult = {
 };
 
 function organizationSchemaMissing(error: { code?: string | null } | null | undefined) {
-  return ["42P01", "42703", "PGRST204"].includes(error?.code ?? "");
+  return ["42P01", "42703", "PGRST200", "PGRST204", "PGRST205"].includes(error?.code ?? "");
 }
 
 function storageObjectMissing(error: unknown) {
@@ -94,27 +95,40 @@ function validFile(body: ActionBody) {
   return { fileName, mimeType, sizeBytes: Math.trunc(sizeBytes), kind } as const;
 }
 
-export async function GET() {
-  const auth = await getCurrentMember();
+export async function GET(request: NextRequest) {
+  const auth = await getWorkspaceStorageAccess();
   if (!auth.success) return fail(auth.error, auth.status);
+  let options;
+  try { options = parseWorkspaceStorageQuery(new URL(request?.url ?? "https://app.tenhchat.com/api/workspace-storage/files").searchParams); }
+  catch (cause) { return fail(cause instanceof Error ? cause.message : "Invalid Storage filters.", 400); }
+  const queryKey = workspaceStorageQueryKey(auth.member.business_id, auth.member.id, options);
+  if (options.cursor && options.cursor.key !== queryKey) return fail("This Storage cursor belongs to another workspace, membership or filter. Reload Storage.", 400);
   const canManage = await memberHasPermission(auth.member, "tags_quick_replies", "manage");
 
-  const loadFiles = async (includeCategory: boolean, limit: number) => {
+  const loadFiles = async (includeCategory: boolean) => {
     const query = supabaseAdmin
       .from("workspace_files")
-      .select(`${WORKSPACE_FILE_SELECT}${includeCategory ? ",category_id" : ""}`)
+      .select(`${WORKSPACE_FILE_SELECT}${includeCategory ? ",category_id" : ""}${options.view === "favorites" ? ",workspace_file_favorites!inner(member_id)" : ""}`)
       .eq("business_id", auth.member.business_id)
+      .eq("storage_bucket", WORKSPACE_FILE_BUCKET)
       .is("deleted_at", null);
+    if (options.view.startsWith("category:")) query.eq("category_id", options.view.slice(9));
+    if (options.view === "favorites") query.eq("workspace_file_favorites.member_id", auth.member.id);
+    if (options.kind !== "all") query.in("file_kind", options.kind === "media" ? ["image", "video"] : ["audio", "file"]);
+    if (options.search) query.ilike("display_name", storageSearchPattern(options.search));
+    if (options.cursor) query.or(`created_at.lt.${options.cursor.createdAt},and(created_at.eq.${options.cursor.createdAt},id.lt.${options.cursor.id})`);
     return await query
       .order("created_at", { ascending: false })
-      .limit(limit) as unknown as StorageQueryResult;
+      .order("id", { ascending: false })
+      .limit(options.limit + (options.paged ? 1 : 0)) as unknown as StorageQueryResult;
   };
 
   let organizationAvailable = true;
-  let activeResult = await loadFiles(true, 200);
+  let activeResult = await loadFiles(true);
   if (organizationSchemaMissing(activeResult.error)) {
+    if (options.view !== "recent") return fail("Storage categories and favorites are not available yet. Reload Recent files.", 503);
     organizationAvailable = false;
-    activeResult = await loadFiles(false, 200);
+    activeResult = await loadFiles(false);
   }
   const { data, error } = activeResult;
 
@@ -126,6 +140,10 @@ export async function GET() {
     );
   }
 
+  const fetched = data ?? [];
+  const hasMore = options.paged && fetched.length > options.limit;
+  const rows = fetched.slice(0, options.limit);
+  if (rows.some(row => !isWorkspaceFilePathOwned(row.storage_path, auth.member.business_id))) return fail("Workspace Storage contains invalid file metadata. Contact the workspace Owner.", 500);
   let categoryRows: Array<{ id: string; name: string; created_at: string; updated_at: string }> = [];
   let favoriteRows: Array<{ file_id: string }> = [];
   if (organizationAvailable) {
@@ -135,12 +153,14 @@ export async function GET() {
         .select("id,name,created_at,updated_at")
         .eq("business_id", auth.member.business_id)
         .order("name", { ascending: true }),
-      supabaseAdmin
+      rows.length ? supabaseAdmin
         .from("workspace_file_favorites")
         .select("file_id")
-        .eq("member_id", auth.member.id),
+        .eq("member_id", auth.member.id)
+        .in("file_id", rows.map(row => row.id)) : Promise.resolve({ data: [], error: null }),
     ]);
     if (organizationSchemaMissing(categoryResult.error) || organizationSchemaMissing(favoriteResult.error)) {
+      if (options.view !== "recent") return fail("Storage categories and favorites are not available yet. Reload Recent files.", 503);
       organizationAvailable = false;
     } else if (categoryResult.error || favoriteResult.error) {
       return fail("Unable to load workspace Storage organization.", 500);
@@ -150,7 +170,6 @@ export async function GET() {
     }
   }
 
-  const rows = data ?? [];
   const signed = rows.length
     ? await cachedSignedUrls(
         WORKSPACE_FILE_BUCKET,
@@ -164,6 +183,9 @@ export async function GET() {
   const favorites = new Set((favoriteRows ?? []).map((row) => row.file_id));
   return NextResponse.json({
     success: true,
+    businessId: auth.member.business_id,
+    memberId: auth.member.id,
+    ...(options.paged ? { hasMore, nextCursor: hasMore && rows.length ? workspaceStorageCursor(rows[rows.length - 1], queryKey) : null } : {}),
     canManage,
     organizationAvailable,
     categories: categoryRows,
@@ -183,7 +205,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await getCurrentMember();
+  const auth = await getWorkspaceStorageAccess();
   if (!auth.success) return fail(auth.error, auth.status);
 
   let body: ActionBody;
@@ -291,13 +313,13 @@ export async function POST(request: NextRequest) {
 
     const { data: file, error } = await supabaseAdmin
       .from("workspace_files")
-      .select("display_name,storage_path")
+      .select("display_name,storage_path,storage_bucket")
       .eq("id", fileId)
       .eq("business_id", auth.member.business_id)
       .is("deleted_at", null)
       .maybeSingle();
 
-    if (error || !file) return fail("Workspace file was not found.", 404);
+    if (error || !file || file.storage_bucket !== WORKSPACE_FILE_BUCKET || !isWorkspaceFilePathOwned(file.storage_path, auth.member.business_id)) return fail("Workspace file was not found.", 404);
 
     const signed = await supabaseAdmin.storage
       .from(WORKSPACE_FILE_BUCKET)

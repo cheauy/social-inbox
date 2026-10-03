@@ -367,7 +367,7 @@ async function provisionMetaReviewer(user: User): Promise<AuthenticatedMember | 
   return createdMember as AuthenticatedMember;
 }
 
-async function readCurrentMember(): Promise<GetCurrentMemberResult> {
+async function readCurrentMember(strictWorkspace = false): Promise<GetCurrentMemberResult> {
   const supabase = await createClient();
   const { data: { user }, error: userError } = await supabase.auth.getUser();
 
@@ -436,6 +436,18 @@ async function readCurrentMember(): Promise<GetCurrentMemberResult> {
       };
     }
 
+    // A mutation must never retarget an explicitly selected workspace.
+    // Reads retain stale-cookie recovery for an account using another browser.
+    if (strictWorkspace) {
+      return {
+        success: false,
+        status: 403,
+        code: "WORKSPACE_ACCESS_REMOVED",
+        businessId: requestedBusinessId,
+        error: "Your selected workspace is no longer available. Select an active workspace before making changes.",
+      };
+    }
+
     // No membership row exists for the saved workspace. Treat this as a
     // stale selection (for example another account previously used this
     // browser), not as proof that an Owner removed access. Continue below
@@ -483,8 +495,8 @@ async function readCurrentMember(): Promise<GetCurrentMemberResult> {
 }
 
 // React deduplicates server renders; requestMemo also covers wrapped API handlers.
-export const getCurrentMember = cache(() => requestMemo("current-member", async () => {
-  const result = await readCurrentMember();
+export const getCurrentMember = cache((strictWorkspace = false) => requestMemo(strictWorkspace ? "current-member-mutation" : "current-member", async () => {
+  const result = await readCurrentMember(strictWorkspace);
   if (result.success) attributeUsage(result.member.business_id);
   return result;
 }));
