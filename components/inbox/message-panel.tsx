@@ -12,6 +12,8 @@ import { useForegroundLoading } from "@/lib/display/foreground-loading";
 import { InboxEmptyState } from "@/components/inbox/inbox-empty-state";
 import { DeferredInboxItem } from "@/components/inbox/deferred-inbox-item";
 import { FacebookPostCard } from "@/components/inbox/facebook-post-card";
+import { facebookCommentIdentity, facebookCommentParentPreview, facebookCommentRenderRoot } from "@/lib/facebook/comment-context-data";
+import { safePostLink } from "@/lib/facebook/post-preview-data";
 import { MessengerSourceCard } from "@/components/inbox/messenger-source-card";
 import { messengerSourceTimeline } from "@/lib/facebook/messenger-source";
 import { rememberMetaStickerMessages } from "@/lib/stickers/meta-sticker-recents";
@@ -1300,54 +1302,10 @@ function HydrationSafeMessageTime({
   );
 }
 
-type FacebookCommentGroupPayload = {
-  item?: string;
-  source?: string;
-  tenh_source?: string;
-  post_id?: string;
-  post?: { id?: string } | null;
-  post_preview?: { id?: string } | null;
-  comment_id?: string;
-  parent_id?: string;
-  parent_comment_id?: string;
-  reply_comment_id?: string;
-};
-
 function getSafeFacebookCommentGroupInfo(
   message: InboxMessage,
 ) {
-  const payload =
-    message.raw_payload as FacebookCommentGroupPayload | null;
-
-  const postId =
-    payload?.post_id?.trim() ||
-    payload?.post?.id?.trim() ||
-    payload?.post_preview?.id?.trim() ||
-    null;
-
-  const isFacebookComment = Boolean(
-    payload?.comment_id ||
-      payload?.post_id ||
-      payload?.item === "comment" ||
-      payload?.source === "facebook_comment_reply" ||
-      payload?.tenh_source === "facebook_page_reply" ||
-      payload?.parent_comment_id ||
-      payload?.reply_comment_id,
-  );
-
-  const rawParentId =
-    typeof payload?.parent_comment_id === "string"
-      ? payload.parent_comment_id.trim()
-      : typeof payload?.parent_id === "string"
-        ? payload.parent_id.trim()
-        : null;
-
-  // Meta may set parent_id to the post itself for a top-level comment.
-  // Only a different ID is a real nested comment parent.
-  const parentCommentId =
-    rawParentId && rawParentId !== postId
-      ? rawParentId
-      : null;
+  const { postId, parentId: parentCommentId, isComment: isFacebookComment, sourceKey } = facebookCommentIdentity(message);
 
   const senderId =
     typeof message.sender_platform_id === "string"
@@ -1374,10 +1332,11 @@ function getSafeFacebookCommentGroupInfo(
     isFacebookComment &&
     message.direction === "incoming" &&
     postId &&
+    sourceKey &&
     senderId &&
     !parentCommentId &&
     !isDeleted
-      ? `${postId}::${senderId}`
+      ? `${postId}::${senderId}::${sourceKey}`
       : null;
 
   return {
@@ -1397,13 +1356,15 @@ type FacebookThreadReply = {
 function collectFacebookCommentDescendants(
   messages: InboxMessage[],
   rootPlatformMessageId: string,
+  states: Record<string, { deleted?: boolean }> = {},
 ): FacebookThreadReply[] {
   const childrenByParent = new Map<string, InboxMessage[]>();
 
   for (const candidate of messages) {
     const info = getSafeFacebookCommentGroupInfo(candidate);
 
-    if (!info.isFacebookComment || !info.parentCommentId) {
+    if (!info.isFacebookComment || !info.parentCommentId || candidate.platform_message_id === rootPlatformMessageId ||
+      facebookCommentRenderRoot(candidate, messages, states).platform_message_id !== rootPlatformMessageId) {
       continue;
     }
 
@@ -3652,11 +3613,7 @@ export function MessagePanel({
                           : "File");
 
               const postUrl =
-                postPreview
-                  ?.permalink_url ??
-                (postId
-                  ? `https://facebook.com/${postId}`
-                  : null);
+                safePostLink(postPreview?.permalink_url);
 
               const serverState = {
                 liked:
@@ -3726,36 +3683,7 @@ export function MessagePanel({
                * This is UI-only and lets replies already saved before the
                * metadata normalization render inside their parent card too.
                */
-              const rawFacebookReplyParentId =
-                typeof rawPayload?.parent_comment_id ===
-                "string"
-                  ? rawPayload.parent_comment_id.trim()
-                  : typeof rawPayload?.parent_id ===
-                      "string"
-                    ? rawPayload.parent_id.trim()
-                    : null;
-
-              /*
-               * Meta can send parent_id for both real comment replies and
-               * top-level comments (where it may equal the post ID). Only a
-               * different ID is a real nested comment parent. This keeps old
-               * customer replies nested without hiding the post card from a
-               * new top-level customer comment.
-               */
-              const facebookReplyParentId =
-                rawFacebookReplyParentId &&
-                rawFacebookReplyParentId !== postId
-                  ? rawFacebookReplyParentId
-                  : null;
-
-              const facebookReplyParentMessage =
-                facebookReplyParentId
-                  ? messages.find(
-                      (candidate) =>
-                        candidate.platform_message_id ===
-                        facebookReplyParentId,
-                    ) ?? null
-                  : null;
+              const facebookReplyParentId = facebookCommentIdentity(message).parentId;
 
               const safeFacebookGroupInfo =
                 getSafeFacebookCommentGroupInfo(message);
@@ -3792,7 +3720,7 @@ export function MessagePanel({
               // compact nested card directly beneath the parent comment.
               // This does not change reply IDs, actions, API calls, or data.
               const isNestedFacebookCommentReply = Boolean(
-                facebookReplyParentId && facebookReplyParentMessage,
+                facebookReplyParentId && facebookCommentRenderRoot(message, messages, optimisticCommentState).id !== message.id,
               );
 
               // UI only: collect the full Facebook reply tree beneath this
@@ -3800,22 +3728,16 @@ export function MessagePanel({
               // replies, and replies-to-replies. Exact Meta parent IDs drive
               // the tree; no customer/post guessing is used here.
               const facebookChildReplies =
-                !facebookReplyParentId &&
+                !isNestedFacebookCommentReply &&
                 message.platform_message_id
                   ? collectFacebookCommentDescendants(
                       messages,
                       message.platform_message_id,
+                      optimisticCommentState,
                     )
                   : [];
 
-              const facebookReplyPreviewText =
-                facebookReplyParentMessage
-                  ?.comment_is_deleted
-                  ? "Message deleted by commenter or Page"
-                  : facebookReplyParentMessage
-                      ?.message_text
-                      ?.trim() ||
-                    "Comment";
+              const facebookParentPreview = facebookCommentParentPreview(message, messages, headerChannelAccountName, optimisticCommentState);
 
               const showCommentActions =
                 isFacebookCommentMessage &&
@@ -3916,7 +3838,7 @@ export function MessagePanel({
               const showFacebookPostPreview =
                 Boolean(
                   isFacebookCommentMessage &&
-                    !facebookReplyParentId &&
+                    !isNestedFacebookCommentReply &&
                     !isFacebookPostGroupContinuation &&
                     !commentState.deleted,
                 );
@@ -4143,6 +4065,7 @@ export function MessagePanel({
                         <FacebookPostCard key={`${activeConversation.id}:${message.id}`}
                           conversationId={activeConversation.id} messageId={message.id}
                           postId={postId} savedPreview={postPreview}
+                          parentId={facebookReplyParentId} savedParent={facebookParentPreview}
                           accountName={headerChannelAccountName} isKhmer={isKhmer}
                           onOpenImage={setImagePreview} />
                       ) : null}
@@ -4236,24 +4159,6 @@ export function MessagePanel({
                           {isOutgoing && rawPayload?.tenh_reply_fallback?.reason === "original_unavailable" ? (
                           <div className="mb-2 text-[11px] text-white/80" title="The original Telegram message was unavailable; this message was sent normally.">Sent without quote · original unavailable</div>
                         ) : null}
-
-                        {facebookReplyParentId &&
-                          !isNestedFacebookCommentReply &&
-                          !commentState.deleted ? (
-                            <div className="mt-3 max-w-[560px] rounded-xl border-l-[3px] border-blue-400 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                              <div className="flex items-center gap-1.5 font-semibold text-slate-600">
-                                <ReplyIcon />
-                                <span>
-                                  {isKhmer
-                                    ? "ឆ្លើយតបទៅមតិយោបល់"
-                                    : "Reply to comment"}
-                                </span>
-                              </div>
-                              <div className="mt-1 truncate">
-                                {facebookReplyPreviewText}
-                              </div>
-                            </div>
-                          ) : null}
 
                           {commentState.deleted ? (
                             <div className="mt-3 inline-flex items-center gap-2 rounded-[14px] bg-slate-50 px-3.5 py-2.5 text-sm italic text-slate-400">
@@ -4647,6 +4552,12 @@ export function MessagePanel({
                                       </div>
 
                                       <div className="mt-0.5 max-w-[620px] whitespace-pre-wrap text-[15px] leading-5 text-slate-900">
+                                        <FacebookPostCard key={`${activeConversation.id}:${reply.id}:parent`}
+                                          conversationId={activeConversation.id} messageId={reply.id}
+                                          postId={facebookCommentIdentity(reply).postId} savedPreview={(reply.raw_payload as { post_preview?: unknown } | null)?.post_preview}
+                                          parentId={facebookCommentIdentity(reply).parentId}
+                                          savedParent={facebookCommentParentPreview(reply, messages, headerChannelAccountName, optimisticCommentState)}
+                                          showPost={false} accountName={headerChannelAccountName} isKhmer={isKhmer} onOpenImage={setImagePreview} />
                                         {reply.message_text ??
                                           "Facebook comment reply"}
                                       </div>
@@ -5019,7 +4930,7 @@ export function MessagePanel({
                             >
                               <ReplyIcon />
                               <span>
-                                Reply to comment
+                                {facebookParentPreview?.author ? `Reply to ${facebookParentPreview.author}` : "Reply to unavailable comment"}
                               </span>
                             </span>
                             <span
@@ -5029,7 +4940,7 @@ export function MessagePanel({
                                   : "text-slate-500"
                               }`}
                             >
-                              {facebookReplyPreviewText}
+                              {facebookParentPreview?.status === "deleted" ? "Parent comment was deleted" : facebookParentPreview?.text ?? (facebookParentPreview?.image ? "Media-only parent reply" : "Parent comment is unavailable")}
                             </span>
                           </div>
                         ) : null}

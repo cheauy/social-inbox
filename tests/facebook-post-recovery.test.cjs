@@ -3,7 +3,7 @@ const {loader,base,uuid,setup,hooks,nodes,tick}=require('./inbox-recovery-harnes
 const helper=loader()('lib/facebook/post-preview-data.ts');
 test('failed/partial post lookup never erases saved text or an existing image',()=>{
  const old={id:'p_1',message:'Saved Khmer caption',full_picture:'https://scontent.fbcdn.net/old.jpg'};
- const data=helper.mergePostPreview(old,{message:null,full_picture:null},'p_1');assert.equal(data.message,old.message);assert.equal(data.full_picture,old.full_picture);assert.match(data.permalink_url,/facebook.com/);
+ const data=helper.mergePostPreview(old,{message:null,full_picture:null},'p_1');assert.equal(data.message,old.message);assert.equal(data.full_picture,old.full_picture);assert.equal(data.permalink_url,null);
 });
 test('fresh post image replaces the saved URL while preserving existing text',()=>{
  const data=helper.mergePostPreview({message:'Caption',full_picture:'https://scontent.fbcdn.net/old.jpg'},{full_picture:'https://scontent.fbcdn.net/new.jpg'},'p_1');assert.equal(data.message,'Caption');assert.equal(data.full_picture,'https://scontent.fbcdn.net/new.jpg');
@@ -50,7 +50,7 @@ for(const payload of [{item:'comment',comment_id:'c'},{source:'facebook_comment_
  const h=previewSetup({payload,resolvedPost:'page1_post1'}),r=await call(h);assert.equal(r.status,200);assert.equal(h.previewCalls.length,1);
 });
 test('missing post ID is recovered through the authorized comment only',async()=>{
- const h=previewSetup({payload:{item:'comment',comment_id:'c123'},resolvedPost:'p_123'}),r=await call(h);assert.equal(r.status,200);assert.equal(h.lookupCalls[0][0],'c123');assert.equal(h.lookupCalls[0][1],'page1');assert.equal(r.preview.id,'p_123');
+ const h=previewSetup({payload:{item:'comment',comment_id:'c123'},resolvedPost:'page1_123'}),r=await call(h);assert.equal(r.status,200);assert.equal(h.lookupCalls[0][0],'c123');assert.equal(h.lookupCalls[0][1],'page1');assert.equal(r.preview.id,'page1_123');
 });
 test('transient Graph absence returns saved content; endpoint never writes raw_payload',async()=>{
  const h=previewSetup(),r=await call(h);assert.equal(r.preview.message,'Saved caption');assert.equal(r.available,false);assert.equal(h.db.history.some(q=>q.op==='update'),false);
@@ -65,7 +65,7 @@ test('database/provider exceptions fail the preview only with retryable JSON',as
  const h=previewSetup({previewThrow:true}),r=await call(h);assert.equal(r.status,503);assert.equal(h.db.history.some(q=>q.op==='update'),false);
 });
 function graph(results){let calls=[],clock=Date.now();class FakeDate extends Date{static now(){return clock;}}
- const load=loader({'@/lib/facebook/get-facebook-page-access-token':{getFacebookPageAccessToken:async()=> 'TOKEN',isFacebookAccessTokenError:e=>e?.code===190,refreshFacebookPageAccessToken:async()=> 'REFRESH'}},{Date:FakeDate,console:{...console,warn(){}},fetch:async(url,init)=>{calls.push({url,init});const value=results.shift();if(value instanceof Error)throw value;return new Response(JSON.stringify(value??{}),{status:value?.error?400:200});}});
+ const load=loader({'@/lib/facebook/get-facebook-page-access-token':{getFacebookPageAccessToken:async()=> 'TOKEN',isFacebookAccessTokenError:e=>e?.code===190,refreshFacebookPageAccessToken:async()=> 'REFRESH'}},{Date:FakeDate,console:{...console,warn(){}},fetch:async(url,init)=>{calls.push({url,init});const value=results.shift();if(value instanceof Error)throw value;if(value?.full_picture && !value.attachments)value.attachments={data:[]};return new Response(JSON.stringify(value??{}),{status:value?.error?400:200});}});
  return {api:load('lib/facebook/get-post-preview.ts'),calls,advance:ms=>clock+=ms};
 }
 test('concurrent same-post lookups coalesce, cached lookups avoid repeat Graph requests',async()=>{
@@ -82,7 +82,7 @@ test('attachment fallback finds album images and never mistakes video source for
  const video=graph([{}, {attachments:{data:[{media:{source:'https://video.fbcdn.net/video.mp4'}}]}}]);assert.equal((await video.api.getFacebookPostPreview('p','page')).full_picture,null);
 });
 test('cache keys separate Page accounts',async()=>{const h=graph([{full_picture:'https://scontent.fbcdn.net/a.jpg'},{full_picture:'https://scontent.fbcdn.net/b.jpg'}]);await h.api.getFacebookPostPreview('p','pageA');await h.api.getFacebookPostPreview('p','pageB');assert.equal(h.calls.length,2);});
-function card(fetch){const rt=hooks(),calls=[],opened=[];const load=loader({react:rt.React,'react/jsx-runtime':rt.jsx},{AbortController,URLSearchParams,fetch:async(url,init)=>{calls.push({url,init});return fetch(url,init);}});const {FacebookPostCard}=load('components/inbox/facebook-post-card.tsx');const props={conversationId:uuid(1),messageId:uuid(11),postId:'p_1',savedPreview:{id:'p_1',message:'Saved caption',full_picture:'https://scontent.fbcdn.net/old.jpg'},accountName:'Melody Clothing',isKhmer:false,onOpenImage:i=>opened.push(i)};return {rt,calls,opened,props,render:changes=>rt.render(FacebookPostCard,{...props,...changes})};}
+function card(fetch){const rt=hooks(),calls=[],opened=[];const load=loader({react:rt.React,'react/jsx-runtime':rt.jsx},{AbortController,URLSearchParams,fetch:async(url,init)=>{calls.push({url,init});return fetch(url,init);}});const {FacebookPostCard}=load('components/inbox/facebook-post-card.tsx');const props={conversationId:uuid(1),messageId:uuid(11),postId:'p_1',savedPreview:{id:'p_1',message:'Saved caption',full_picture:'https://scontent.fbcdn.net/old.jpg',attachments_complete:true,comment_object_id:'p_1',permalink_url:'https://www.facebook.com/verified/post'},accountName:'Melody Clothing',isKhmer:false,onOpenImage:i=>opened.push(i)};return {rt,calls,opened,props,render:changes=>rt.render(FacebookPostCard,{...props,...changes})};}
 test('complete saved card does not fetch until image fails; broken image is removed and repaired',async()=>{
  const h=card(async()=>Response.json({success:true,preview:{full_picture:'https://scontent.fbcdn.net/new.jpg'}}));let tree=h.render();assert.equal(h.calls.length,0);nodes(tree,n=>n.type==='img')[0].props.onError();tree=h.render();assert.equal(nodes(tree,n=>n.type==='img').length,0);await tick();tree=h.render();assert.equal(h.calls.length,1);assert.match(nodes(tree,n=>n.type==='img')[0].props.src,/new.jpg/);assert.match(h.calls[0].url,/refresh=1/);h.rt.cleanup();
 });
