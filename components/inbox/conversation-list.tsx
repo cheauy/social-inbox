@@ -3703,7 +3703,7 @@ function ConversationListView({
          * Views do; the filter panel opens beside the list.
          */}
         <div className="px-2 pb-1.5">
-          <InboxChannelSelector variant="rail" onSwitchingChange={setChannelSwitching} />
+          <InboxChannelSelector variant="rail" onSwitchingChange={setChannelSwitching} pagingEnabled={pager.enabled} pageLoading={pager.initialLoading} />
         </div>
 
         <div className="mx-3 mb-2 mt-0.5 border-t border-slate-100 dark:border-slate-800/60" />

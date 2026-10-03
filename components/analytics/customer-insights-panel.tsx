@@ -1,4 +1,5 @@
 "use client";
+import { useAnalyticsRequest, useAnalyticsResume } from "@/lib/analytics/use-analytics-request";
 import { useForegroundLoading } from "@/lib/display/foreground-loading";
 
 import Link from "next/link";
@@ -295,11 +296,13 @@ export function CustomerInsightsPanel() {
       > | null
     >(null);
 
+  const requests = useAnalyticsRequest();
+
   const loadInsights =
     useCallback(
-      async (
-        silent = false,
-      ) => {
+      async function loadInsights(silent = false): Promise<void> {
+        const request = requests.start(period, silent, () => { void loadInsights(true); });
+        if (!request) return;
         if (silent) {
           setRefreshing(true);
         } else {
@@ -325,12 +328,14 @@ export function CustomerInsightsPanel() {
               {
                 cache:
                   "no-store",
+                signal: request.signal,
               },
             );
 
           const result =
             (await response.json()) as
               CustomerInsightsResponse;
+          if (!request.current()) return;
 
           if (
             !response.ok ||
@@ -379,6 +384,7 @@ export function CustomerInsightsPanel() {
         } catch (
           loadError
         ) {
+          if (!request.current()) return;
           setError(
             loadError instanceof
               Error
@@ -386,11 +392,14 @@ export function CustomerInsightsPanel() {
               : "Unable to load customer insights.",
           );
         } finally {
-          setLoading(false);
-          setRefreshing(false);
+          if (request.current()) {
+            setLoading(false);
+            setRefreshing(false);
+          }
+          request.finish();
         }
       },
-      [period],
+      [period, requests],
     );
 
   const scheduleRefresh =
@@ -413,7 +422,9 @@ export function CustomerInsightsPanel() {
 
   useEffect(() => {
     void loadInsights();
-  }, [loadInsights]);
+    return () => requests.cancel();
+  }, [loadInsights, requests]);
+  useAnalyticsResume(loadInsights);
 
   useEffect(() => {
     return () => {

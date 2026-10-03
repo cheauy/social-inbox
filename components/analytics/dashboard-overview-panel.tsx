@@ -1,4 +1,5 @@
 "use client";
+import { useAnalyticsRequest, useAnalyticsResume } from "@/lib/analytics/use-analytics-request";
 import { beginForegroundLoading, useForegroundLoading } from "@/lib/display/foreground-loading";
 
 import Link from "next/link";
@@ -232,6 +233,7 @@ async function readJson<T>(
 
 async function requestJson<T>(
   url: string,
+  signal: AbortSignal,
 ): Promise<{
   ok: boolean;
   data: T | null;
@@ -244,6 +246,7 @@ async function requestJson<T>(
         {
           cache:
             "no-store",
+          signal,
         },
       );
 
@@ -921,7 +924,11 @@ export function DashboardOverviewPanel({
   const mountedRef = useRef(true);
   const requestVersionRef = useRef(0);
 
-  const loadOverview = useCallback(async (silent = false) => {
+  const requests = useAnalyticsRequest();
+
+  const loadOverview = useCallback(async function loadOverview(silent = false): Promise<void> {
+    const request = requests.start(JSON.stringify([effectivePeriod, slaMinutes]), silent, () => { void loadOverview(true); });
+    if (!request) return;
     const requestVersion = ++requestVersionRef.current;
     if (silent) {
       setRefreshing(true);
@@ -932,14 +939,16 @@ export function DashboardOverviewPanel({
     const tzOffsetMinutes = new Date().getTimezoneOffset();
 
     const [customerResult, conversationResult, agentResult] = await Promise.all([
-      requestJson<CustomerResponse>(`/api/analytics/customers?period=${effectivePeriod}&tzOffsetMinutes=${tzOffsetMinutes}`),
-      requestJson<ConversationResponse>(`/api/analytics/conversations?period=${effectivePeriod}&slaMinutes=${slaMinutes}&tzOffsetMinutes=${tzOffsetMinutes}`),
+      requestJson<CustomerResponse>(`/api/analytics/customers?period=${effectivePeriod}&tzOffsetMinutes=${tzOffsetMinutes}`, request.signal),
+      requestJson<ConversationResponse>(`/api/analytics/conversations?period=${effectivePeriod}&slaMinutes=${slaMinutes}&tzOffsetMinutes=${tzOffsetMinutes}`, request.signal),
       // Previously hardcoded to period=7d, so a "Today" dashboard showed
       // 7 days of agent data beside 1 day of conversation data.
-      requestJson<AgentResponse>(`/api/analytics/agents?period=${effectivePeriod}&slaMinutes=${slaMinutes}&tzOffsetMinutes=${tzOffsetMinutes}`),
+      requestJson<AgentResponse>(`/api/analytics/agents?period=${effectivePeriod}&slaMinutes=${slaMinutes}&tzOffsetMinutes=${tzOffsetMinutes}`, request.signal),
     ]);
 
-    if (!mountedRef.current || requestVersion !== requestVersionRef.current) {
+    const current = request.current();
+    request.finish();
+    if (!current || !mountedRef.current || requestVersion !== requestVersionRef.current) {
       return;
     }
 
@@ -981,7 +990,7 @@ export function DashboardOverviewPanel({
     setWarnings(nextWarnings);
     setLoading(false);
     setRefreshing(false);
-  }, [effectivePeriod, slaMinutes]);
+  }, [effectivePeriod, slaMinutes, requests]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -991,25 +1000,21 @@ export function DashboardOverviewPanel({
       window.clearTimeout(timer);
       mountedRef.current = false;
       version.current++;
+      requests.cancel();
     };
-  }, [loadOverview]);
+  }, [loadOverview, requests]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
       void loadOverview(true);
     }, 30_000);
 
-    function onFocus() {
-      void loadOverview(true);
-    }
-
-    window.addEventListener("focus", onFocus);
-
     return () => {
       window.clearInterval(interval);
-      window.removeEventListener("focus", onFocus);
     };
   }, [loadOverview]);
+
+  useAnalyticsResume(loadOverview);
 
   const periodLabel = { today: "Today", yesterday: "Yesterday", "7d": "Last 7 days", "30d": "Last 30 days" }[effectivePeriod];
 
@@ -1130,34 +1135,8 @@ export function DashboardOverviewPanel({
     width: clampPercent((item.value / channelTotal) * 100),
   }));
 
-  if (loading) {
-    return (
-      <div className="space-y-5">
-        <div className="flex animate-pulse flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-2">
-            <div className="h-3 w-20 rounded bg-slate-200" />
-            <div className="h-8 w-44 rounded bg-slate-200" />
-            <div className="h-4 w-96 max-w-full rounded bg-slate-200" />
-          </div>
-          <div className="h-10 w-[440px] max-w-full rounded-xl bg-slate-200" />
-        </div>
-        <div className="h-24 animate-pulse rounded-2xl border border-slate-200 bg-white" />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {[0, 1, 2, 3].map((item) => (
-            <div key={item} className="h-[188px] animate-pulse rounded-2xl border border-slate-200 bg-white" />
-          ))}
-        </div>
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_360px]">
-          <div className="h-[430px] animate-pulse rounded-2xl border border-slate-200 bg-white" />
-          <div className="h-[430px] animate-pulse rounded-2xl border border-slate-200 bg-white" />
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6" data-current-member-role={currentMemberRole ?? undefined}>
-      <header className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+  const dashboardHeader = (
+    <header className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-xl">
           <p className="text-xs font-semibold text-blue-600">Analytics</p>
           <h1 className="mt-1 text-[28px] font-bold leading-tight tracking-[-0.02em] text-slate-950">Dashboard</h1>
@@ -1207,7 +1186,7 @@ export function DashboardOverviewPanel({
           <button
             type="button"
             onClick={() => { const finish = beginForegroundLoading(); void loadOverview(true).finally(finish); }}
-            disabled={refreshing}
+            disabled={loading || refreshing}
             className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-50"
           >
             <DashboardIcon name="refresh" className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
@@ -1215,6 +1194,30 @@ export function DashboardOverviewPanel({
           </button>
         </div>
       </header>
+  );
+
+  if (loading) {
+    return (
+      <div className="space-y-5">
+        {dashboardHeader}
+        <p role="status" className="sr-only">Loading dashboard for {periodLabel}.</p>
+        <div className="h-24 animate-pulse rounded-2xl border border-slate-200 bg-white" />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((item) => (
+            <div key={item} className="h-[188px] animate-pulse rounded-2xl border border-slate-200 bg-white" />
+          ))}
+        </div>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_360px]">
+          <div className="h-[430px] animate-pulse rounded-2xl border border-slate-200 bg-white" />
+          <div className="h-[430px] animate-pulse rounded-2xl border border-slate-200 bg-white" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6" data-current-member-role={currentMemberRole ?? undefined}>
+      {dashboardHeader}
 
       {warnings.length > 0 ? (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">

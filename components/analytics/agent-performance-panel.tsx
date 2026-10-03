@@ -1,4 +1,5 @@
 "use client";
+import { useAnalyticsRequest, useAnalyticsResume } from "@/lib/analytics/use-analytics-request";
 import { useForegroundLoading } from "@/lib/display/foreground-loading";
 
 import {
@@ -310,8 +311,12 @@ export function AgentPerformancePanel() {
 
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const requests = useAnalyticsRequest();
+
   const loadAnalytics = useCallback(
-    async (silent = false) => {
+    async function loadAnalytics(silent = false): Promise<void> {
+      const request = requests.start(JSON.stringify([period, slaMinutes]), silent, () => { void loadAnalytics(true); });
+      if (!request) return;
       if (silent) {
         setRefreshing(true);
       } else {
@@ -324,12 +329,14 @@ export function AgentPerformancePanel() {
         const params = new URLSearchParams({
           period,
           slaMinutes: String(slaMinutes),
+          tzOffsetMinutes: String(new Date().getTimezoneOffset()),
         });
 
         const response = await fetch(
           `/api/analytics/agents?${params.toString()}`,
           {
             cache: "no-store",
+            signal: request.signal,
           },
         );
 
@@ -344,6 +351,7 @@ export function AgentPerformancePanel() {
             throw new Error("Agent analytics API returned invalid JSON.");
           }
         }
+        if (!request.current()) return;
 
         if (!response.ok || !result?.success) {
           throw new Error(
@@ -358,22 +366,28 @@ export function AgentPerformancePanel() {
         setAgents(result.analytics?.agents ?? []);
         setBusinessId(result.businessId ?? null);
       } catch (loadError) {
+        if (!request.current()) return;
         setError(
           loadError instanceof Error
             ? loadError.message
             : "Unable to load agent performance.",
         );
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (request.current()) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+        request.finish();
       }
     },
-    [period, slaMinutes],
+    [period, slaMinutes, requests],
   );
 
   useEffect(() => {
     void loadAnalytics(false);
-  }, [loadAnalytics]);
+    return () => requests.cancel();
+  }, [loadAnalytics, requests]);
+  useAnalyticsResume(loadAnalytics);
 
   useEffect(() => {
     if (!businessId) {

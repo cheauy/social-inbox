@@ -1381,7 +1381,34 @@ const customerProfileConversation =
         ) ?? null
     : null);
 
+const conversationTextDraftsRef = useRef(new Map<string, string>());
+const composerConversationKeyRef = useRef<string | null>(null);
+useEffect(() => () => {
+  conversationTextDraftsRef.current.clear();
+  composerConversationKeyRef.current = null;
+}, []);
+
 useEffect(() => {
+  const drafts = conversationTextDraftsRef.current;
+  const conversation = liveConversationsRef.current.find(row => row.id === resolvedActiveConversationId);
+  const nextKey = conversation && accessibleBusinessIds.includes(conversation.business_id)
+    ? `${conversation.business_id}:${conversation.id}` : null;
+  const previousKey = composerConversationKeyRef.current;
+  if (previousKey !== nextKey && previousKey) {
+    drafts.delete(previousKey);
+    // Edited sent text must never return under ordinary new-message Send mode.
+    if (!editingTelegramMessageId && composerDraftRef.current.reply) drafts.set(previousKey, composerDraftRef.current.reply);
+  }
+  for (const key of drafts.keys()) {
+    if (!accessibleBusinessIds.includes(key.split(":")[0])) drafts.delete(key);
+  }
+  if (previousKey === nextKey) return;
+  const restoredReply = nextKey ? drafts.get(nextKey) ?? "" : "";
+  // The active composer owns this text. Remove it before bounding inactive drafts
+  // so selecting the oldest cached destination cannot evict it before restore.
+  if (nextKey) drafts.delete(nextKey);
+  while (drafts.size > MESSAGE_CACHE_MAX_CONVERSATIONS) drafts.delete(drafts.keys().next().value!);
+  composerConversationKeyRef.current = nextKey;
   setEditingTelegramMessageId(
     null,
   );
@@ -1389,10 +1416,11 @@ useEffect(() => {
     null,
   );
   setReplyingToFacebookMessageId(null);
-  setReply("");
+  // Keep text only in this mounted Inbox. Attachments and quotes still reset.
+  setReply(restoredReply);
   setSendError(null);
   setReplyingToCommentId(null);
-}, [resolvedActiveConversationId, setReply, setReplyingToFacebookMessageId]);
+}, [resolvedActiveConversationId, accessibleBusinessIds, editingTelegramMessageId, setReply, setReplyingToFacebookMessageId]);
 
 const realtimeBusinessIds =
   useMemo(
@@ -4072,11 +4100,14 @@ const loadConversationMessagePage =
             cache: "no-store",
             headers: { Accept: "application/json" },
             signal:
-              controller.signal,
+              AbortSignal.any([controller.signal, AbortSignal.timeout(SYNC_TIMEOUT_MS)]),
           },
         );
 
         const result = await readMessagePageResponse(response);
+
+        // An ignored abort must not repopulate a retired thread's page cache.
+        controller.signal.throwIfAborted();
 
         const nextMessages =
           (Array.isArray(

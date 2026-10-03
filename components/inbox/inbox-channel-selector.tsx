@@ -170,9 +170,13 @@ function SwitchingSpinner({
 export function InboxChannelSelector({
   variant = "bar",
   onSwitchingChange,
+  pagingEnabled = false,
+  pageLoading = false,
 }: {
   variant?: InboxChannelSelectorVariant;
   onSwitchingChange?: (switching: boolean) => void;
+  pagingEnabled?: boolean;
+  pageLoading?: boolean;
 } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -187,23 +191,11 @@ export function InboxChannelSelector({
   const [switchingChannelId, setSwitchingChannelId] =
     useState<string | null>(null);
 
-  /*
-   * The switch is a server navigation, so the only honest source of "still
-   * loading" is React's own transition.
-   *
-   * switchingChannelId used to be cleared in a finally block one line after
-   * router.push. push does not return a promise you can wait on -- it starts
-   * the navigation and returns -- so the finally ran immediately and the
-   * "Opening..." label was set and unset within the same tick. Nothing was
-   * ever drawn, which is why switching a channel looked like nothing had
-   * happened until the new page appeared.
-   *
-   * Inside startSwitching, isSwitching stays true until the new server payload
-   * has arrived and rendered. switchingChannelId now only says which row was
-   * clicked; isSwitching says whether it is still going.
-   */
-  const [isSwitching, startSwitching] =
+  // Legacy loading follows its RSC transition. Paging loading follows the
+  // authenticated first-page read, while warm cached re-entry stays usable.
+  const [routePending, startSwitching] =
     useTransition();
+  const isSwitching = routePending || (pagingEnabled && pageLoading);
 
   useEffect(() => {
     onSwitchingChange?.(isSwitching);
@@ -401,6 +393,16 @@ export function InboxChannelSelector({
     return `${CHANNEL_DISABLED_TITLE} ${CHANNEL_DISABLED_DETAIL}`;
   }
 
+  function navigateInbox(href: string) {
+    if (pagingEnabled) {
+      // The authenticated page API already owns channel/workspace filtering.
+      // Keep its bounded cache and selected thread; avoid a duplicate RSC read.
+      window.history.pushState(null, "", href);
+    } else {
+      startSwitching(() => router.push(href));
+    }
+  }
+
   async function selectChannel(channel: InboxChannel) {
     setError(null);
 
@@ -417,21 +419,9 @@ export function InboxChannelSelector({
 
     try {
       setOpen(false);
-      /*
-       * router.refresh() used to follow the push. The push already renders
-       * this route on the server with the new channel, and the inbox page is
-       * dynamic, so nothing stale can be served from the client cache -- the
-       * refresh was a second full render of the same page, every switch, on a
-       * page that loads every conversation the member can see. Dropping it
-       * halves the server work behind a switch.
-       */
-      startSwitching(() => {
-        router.push(
-          buildInboxUrl({
-            channelId: channel.id,
-          }),
-        );
-      });
+      navigateInbox(
+        buildInboxUrl({ channelId: channel.id }),
+      );
     } catch (selectError) {
       setError(
         selectError instanceof Error
@@ -464,13 +454,9 @@ export function InboxChannelSelector({
 
     try {
       setOpen(false);
-      startSwitching(() => {
-        router.push(
-          buildInboxUrl({
-            workspaceId: group.businessId,
-          }),
-        );
-      });
+      navigateInbox(
+        buildInboxUrl({ workspaceId: group.businessId }),
+      );
     } catch (selectError) {
       setError(
         selectError instanceof Error
@@ -492,14 +478,9 @@ export function InboxChannelSelector({
       isKhmer ? "ឆានែលទាំងអស់" : "All Channels",
     );
 
-    startSwitching(() => {
-      router.push(
-        buildInboxUrl({
-          channelId: null,
-          workspaceId: null,
-        }),
-      );
-    });
+    navigateInbox(
+      buildInboxUrl({ channelId: null, workspaceId: null }),
+    );
   }
 
   const selectedWorkspaceGroup =

@@ -1,4 +1,5 @@
 "use client";
+import { useAnalyticsRequest, useAnalyticsResume } from "@/lib/analytics/use-analytics-request";
 import { useForegroundLoading } from "@/lib/display/foreground-loading";
 
 import Link from "next/link";
@@ -364,8 +365,12 @@ export function SlaAnalyticsPanel() {
       null,
     );
 
+  const requests = useAnalyticsRequest();
+
   const loadAnalytics = useCallback(
-    async (silent = false) => {
+    async function loadAnalytics(silent = false): Promise<void> {
+      const request = requests.start(JSON.stringify([period, slaMinutes]), silent, () => { void loadAnalytics(true); });
+      if (!request) return;
       if (silent) {
         setRefreshing(true);
       } else {
@@ -387,6 +392,7 @@ export function SlaAnalyticsPanel() {
           `/api/analytics/sla?${params.toString()}`,
           {
             cache: "no-store",
+            signal: request.signal,
           },
         );
 
@@ -404,6 +410,7 @@ export function SlaAnalyticsPanel() {
             );
           }
         }
+        if (!request.current()) return;
 
         if (
           !response.ok ||
@@ -432,22 +439,28 @@ export function SlaAnalyticsPanel() {
           result.businessId ?? null,
         );
       } catch (loadError) {
+        if (!request.current()) return;
         setError(
           loadError instanceof Error
             ? loadError.message
             : "Unable to load SLA analytics.",
         );
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (request.current()) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+        request.finish();
       }
     },
-    [period, slaMinutes],
+    [period, slaMinutes, requests],
   );
 
   useEffect(() => {
     void loadAnalytics(false);
-  }, [loadAnalytics]);
+    return () => requests.cancel();
+  }, [loadAnalytics, requests]);
+  useAnalyticsResume(loadAnalytics);
 
   useEffect(() => {
     if (!businessId) {
@@ -719,6 +732,7 @@ export function SlaAnalyticsPanel() {
   // A workspace with no conversations has no SLA rate. Showing a
   // green 100% for "nothing happened" reads as a perfect score.
   const hasSlaRate =
+    summary.slaMet + summary.slaMissed > 0 &&
     typeof summary.slaRate === "number";
 
   const slaRateLabel = hasSlaRate

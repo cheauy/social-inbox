@@ -19,6 +19,18 @@ function harness(initialRows=Array.from({length:30},(_,i)=>row(i+1))){
  const flush=async()=>{const pending=[...jobs.values()];jobs.clear();for(const fn of pending)fn();await tick();return render()};
  return {h,props,render,flush,events,jobs,calls,doc,advance:ms=>clock.now+=ms,answer:fn=>answer=fn};
 }
+
+test('channel A-B-A keeps scoped warm rows and issues one requalification per switch', async () => {
+ const channelA=uuid(700),channelB=uuid(701),rowsA=Array.from({length:30},(_,i)=>row(i+1,{social_account:{id:channelA}}));
+ const d=harness(rowsA);try {
+  d.props.initial.request={...request(),channelId:channelA};d.props.request={...request(),channelId:channelA};
+  d.props.onRows=rows=>{d.props.live=contract.mergeConversationPage(d.props.live,rows);};d.render();await tick();assert.equal(d.calls.length,0);
+  d.answer(body=>({...page(body.channelId===channelB?[row(101,{social_account:{id:channelB}})]:rowsA),matchedKnownIds:body.knownIds??[],total:body.channelId===channelB?1:30}));
+  d.props.request={...request(),channelId:channelB};let state=d.render();assert.equal(state.initialLoading,true);await tick();state=d.render();assert.equal(state.rows.length,1);assert.equal(state.rows[0].social_account.id,channelB);assert.equal(d.calls.length,1);
+  d.props.request={...request(),channelId:channelA};state=d.render();assert.equal(state.initialLoading,false);assert.equal(state.rows.length,30);assert.ok(state.rows.every(row=>row.social_account.id===channelA));
+  await tick();state=d.render();assert.equal(d.calls.length,2);assert.equal(d.calls[1].channelId,channelA);assert.equal(d.calls[1].knownIds.length,30);assert.equal(state.rows.length,30);
+ } finally {d.h.cleanup();}
+});
 test('request validation rejects arbitrary views, injected scope IDs, overlong search and unbounded known IDs',()=>{
  assert.equal(contract.CONVERSATION_PAGE_SIZE,30);
  for(const body of [{view:'admin'},{workspaceId:'bad'},{search:'a'.repeat(501)},{knownIds:Array(201).fill(uuid(1))},{cursor:{id:uuid(1),pinned:false,lastMessageAt:'bad'}}])assert.throws(()=>contract.parseConversationPageRequest(body));
