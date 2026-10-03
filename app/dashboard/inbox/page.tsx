@@ -202,7 +202,7 @@ export default async function InboxPage({
           messages={messages}
           activeStatus={activeStatus}
           statusCounts={initialPage?.counts.statusCounts ?? statusCounts}
-          pagination={initialPage ? { request: pageRequest, page: { total: initialPage.total, hasMore: initialPage.hasMore, cursor: initialPage.cursor, counts: initialPage.counts, ids: initialPage.conversations.map(row => row.id) } } : undefined}
+          pagination={initialPage ? { request: pageRequest, page: { searchMatches: initialPage.searchMatches, total: initialPage.total, hasMore: initialPage.hasMore, cursor: initialPage.cursor, counts: initialPage.counts, ids: initialPage.conversations.map(row => row.id) } } : undefined}
           teamMembers={teamMembers}
           currentBusinessId={
             inboxScope.currentBusinessId

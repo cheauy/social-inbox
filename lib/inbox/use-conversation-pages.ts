@@ -98,6 +98,7 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
       pendingIdsRef.current.clear(); catchUpRef.current = false;
       // Resume validates every already visited row, in bounded batches, without fetching the entire inbox.
       const batches = Math.max(1, Math.ceil(known.length / 200));
+      const searchMatches = { ...(mode === "replace" ? {} : current?.page.searchMatches) };
       let latest: ConversationPage | null = null;
       const countVersions = new Map<string, InboxConversation>();
       for (let offset = 0; offset < batches; offset++) {
@@ -106,7 +107,8 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
         const page = await read({ ...activeRequest, cursor: mode === "more" ? current!.page.cursor : null,
           ...(ids.length ? { knownIds: ids } : {}) }, controller.signal);
         if (generation !== generationRef.current || controller.signal.aborted) return;
-        for (const row of [...page.conversations, ...page.updates]) countVersions.set(row.id, row);
+        for (const row of [...page.conversations, ...page.updates]) { countVersions.set(row.id, row); delete searchMatches[row.id]; }
+        Object.assign(searchMatches, page.searchMatches);
         const live = new Map(liveRowsRef.current.map(row => [row.id,row]));
         if ([...page.conversations, ...page.updates].some(row => live.has(row.id) && live.get(row.id)!.business_id !== row.business_id)) {
           throw new Error("The conversation page returned a mismatched workspace. Please retry.");
@@ -128,7 +130,7 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
         latest = page;
       }
       if (!latest) return;
-      const page = { total: latest.total, counts: latest.counts,
+      const page = { total: latest.total, counts: latest.counts, searchMatches,
         // A refresh keeps the oldest visited cursor; resetting it would reload already visited history.
         cursor: mode === "refresh" ? current?.page.cursor ?? latest.cursor : latest.cursor,
         hasMore: mode === "refresh" ? current?.page.hasMore ?? latest.hasMore : latest.hasMore,

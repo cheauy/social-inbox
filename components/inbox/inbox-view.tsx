@@ -1,4 +1,5 @@
 "use client";
+import type { InboxSearchMatch } from "@/lib/inbox/search-match";
 import { FacebookConversationActionProvider } from "./companion-facebook-action";
 import { isMetaSticker, type InboxStickerChoice } from "@/lib/stickers/catalog";
 
@@ -1043,8 +1044,7 @@ const previousActiveConversationIdRef =
     null,
   );
 
-  const loadOlderInFlightRef =
-    useRef(false);
+  const olderMessageFlightRef = useRef(new Map<string, { promise: Promise<boolean> }>());
 
   /*
    * V2.5.2 — browser/desktop notifications.
@@ -4198,6 +4198,8 @@ const prefetchConversation =
     ],
   );
 
+const [searchJump, setSearchJump] = useState<{ conversationId: string; messageId: string; nonce: number } | null>(null);
+
 const selectConversationSmoothly =
   useCallback(
     async (
@@ -4335,8 +4337,6 @@ const selectConversationSmoothly =
         null,
       );
       setLoadingOlderMessages(false);
-      loadOlderInFlightRef.current =
-        false;
 
       const cached =
         getCachedConversationPage(
@@ -4631,6 +4631,11 @@ const clearConversationSelection =
     resolvedActiveConversationId,
     setCachedConversationPage,
   ]);
+
+const selectSearchConversation = useCallback((conversationId: string, match?: InboxSearchMatch) => {
+  setSearchJump(match ? { conversationId, messageId: match.messageId, nonce: Date.now() } : null);
+  void selectConversationSmoothly(conversationId);
+}, [selectConversationSmoothly]);
 
 const retryConversationMessages =
   useCallback(() => {
@@ -5188,14 +5193,23 @@ useEffect(() => {
 ]);
 
 async function handleLoadOlderMessages(): Promise<boolean> {
+  const conversationId = resolvedActiveConversationId;
+  if (!conversationId) return false;
+  const pending = olderMessageFlightRef.current.get(conversationId);
+  if (pending) { setLoadingOlderMessages(true); return pending.promise; }
+  const flight = { promise: loadOlderMessagePage() };
+  olderMessageFlightRef.current.set(conversationId, flight);
+  try { return await flight.promise; }
+  finally { if (olderMessageFlightRef.current.get(conversationId) === flight) olderMessageFlightRef.current.delete(conversationId); }
+}
+
+async function loadOlderMessagePage(): Promise<boolean> {
   const conversationId =
     resolvedActiveConversationId;
 
   if (
     !conversationId ||
-    !hasMoreOlderMessages ||
-    loadingOlderMessages ||
-    loadOlderInFlightRef.current
+    !hasMoreOlderMessages
   ) {
     return false;
   }
@@ -5208,6 +5222,7 @@ async function handleLoadOlderMessages(): Promise<boolean> {
   const oldestPersistedMessage =
     liveMessages.find(
       (message) =>
+        message.conversation_id === conversationId &&
         !message.id.startsWith(
           "optimistic:",
         ) &&
@@ -5223,8 +5238,6 @@ async function handleLoadOlderMessages(): Promise<boolean> {
     return false;
   }
 
-  loadOlderInFlightRef.current =
-    true;
   setLoadingOlderMessages(true);
   setOlderMessagesError(null);
 
@@ -5232,8 +5245,7 @@ async function handleLoadOlderMessages(): Promise<boolean> {
     const searchParams =
       new URLSearchParams({
         beforeCreatedAt:
-          oldestPersistedMessage
-            .created_at,
+          oldestPersistedMessage.platform_created_at ?? oldestPersistedMessage.created_at,
         beforeId:
           oldestPersistedMessage.id,
         limit:
@@ -5258,7 +5270,7 @@ async function handleLoadOlderMessages(): Promise<boolean> {
       Array.isArray(
         result.messages,
       )
-        ? result.messages
+        ? result.messages.filter(message => message.conversation_id === conversationId)
         : [];
 
     /*
@@ -5287,6 +5299,7 @@ async function handleLoadOlderMessages(): Promise<boolean> {
 
     setLiveMessages(
       (current) => {
+        if (desiredConversationIdRef.current !== conversationId) return current;
         const merged =
           new Map<
             string,
@@ -5360,6 +5373,7 @@ async function handleLoadOlderMessages(): Promise<boolean> {
 
     return true;
   } catch (error) {
+    if (desiredConversationIdRef.current !== conversationId) return false;
     const message =
       error instanceof Error
         ? error.message
@@ -5376,11 +5390,7 @@ async function handleLoadOlderMessages(): Promise<boolean> {
 
     return false;
   } finally {
-    loadOlderInFlightRef.current =
-      false;
-    setLoadingOlderMessages(
-      false,
-    );
+    if (desiredConversationIdRef.current === conversationId) setLoadingOlderMessages(false);
   }
 }
 
@@ -8828,7 +8838,7 @@ return (
         activeStatus={activeStatus}
         statusCounts={statusCounts}
         onSelectConversation={
-          selectConversationSmoothly
+          selectSearchConversation
         }
         onPrefetchConversation={
           prefetchConversation
@@ -8849,6 +8859,7 @@ return (
   storageBusinessId={currentBusinessId}
   storageMemberId={currentMemberId}
   messages={liveMessages}
+  searchJump={searchJump}
   replyingToFacebookMessageId={replyingToFacebookMessageId}
   onReplyToFacebookMessage={handleReplyToFacebookMessage}
   onCancelFacebookReply={() => setReplyingToFacebookMessageId(null)}

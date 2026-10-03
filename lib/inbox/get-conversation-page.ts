@@ -1,3 +1,4 @@
+import { getSearchMatches } from "./get-search-matches";
 import "server-only";
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -42,5 +43,6 @@ export async function getConversationPage(request: ConversationPageRequest, snap
   const hydrateIds = [...new Set([...result.ids,...matchedKnownIds])];
   const hydrated = hydrateIds.length ? await getConversations(scope.accessibleBusinessIds,{ conversationIds: hydrateIds }) : [];
   const rows = new Map(hydrated.map(row => [row.id,row]));
-  return { ...result, matchedKnownIds, updates: matchedKnownIds.flatMap(id => rows.has(id) ? [rows.get(id)!] : []), conversations: result.ids.flatMap(id => rows.has(id) ? [rows.get(id)!] : []) };
+  const searchMatches = await getSearchMatches(request.search, hydrated);
+  return { ...result, searchMatches, matchedKnownIds, updates: matchedKnownIds.flatMap(id => rows.has(id) ? [rows.get(id)!] : []), conversations: result.ids.flatMap(id => rows.has(id) ? [rows.get(id)!] : []) };
 }

@@ -323,6 +323,7 @@ function readStoredChatBackgroundSrc() {
 }
 
 type MessagePanelProps = {
+  searchJump?: { conversationId: string; messageId: string; nonce: number } | null;
   storageBusinessId: string;
   storageMemberId: string;
   onSendSticker?: (sticker: InboxStickerChoice) => Promise<boolean>;
@@ -1505,6 +1506,7 @@ function HydrationSafeMessageDay({
 }
 
 export function MessagePanel({
+  searchJump,
   storageBusinessId,
   storageMemberId,
   activeConversation,
@@ -2385,12 +2387,18 @@ export function MessagePanel({
    * Restore the viewport by adding the new content height so the
    * agent does not jump to a different message.
    */
+  const loadOlderForJumpRef = useRef(onLoadOlderMessages);
+  useEffect(() => { loadOlderForJumpRef.current = onLoadOlderMessages; });
   const jumpToTelegramReplyTarget =
     useCallback(
       async ({
         localMessageId,
         platformMessageId,
+        search = false,
+        signal,
       }: {
+        search?: boolean;
+        signal?: AbortSignal;
         localMessageId:
           | string
           | null;
@@ -2437,13 +2445,21 @@ export function MessagePanel({
         while (
           !targetMessage &&
           hasMoreOlderMessagesRef.current &&
-          attempts < 12 &&
+          (search || attempts < 12) &&
+          !signal?.aborted &&
           jumpConversationRef.current === scopedConversationId
         ) {
           attempts += 1;
 
-          const loaded =
-            await onLoadOlderMessages();
+          let onAbort: (() => void) | undefined;
+          const loaded = await Promise.race([
+            loadOlderForJumpRef.current(),
+            ...(signal ? [new Promise<boolean>(resolve => {
+              onAbort = () => resolve(false);
+              if (signal.aborted) onAbort();
+              else signal.addEventListener("abort", onAbort, { once: true });
+            })] : []),
+          ]).finally(() => { if (signal && onAbort) signal.removeEventListener("abort", onAbort); });
 
           if (!loaded) {
             break;
@@ -2466,6 +2482,7 @@ export function MessagePanel({
             findTarget();
         }
 
+        if (signal?.aborted) return;
         if (!targetMessage || jumpConversationRef.current !== scopedConversationId) {
           if (jumpConversationRef.current === scopedConversationId) showActionNotice("Original message is older than the loaded history. Scroll up and try again.");
           return;
@@ -2500,7 +2517,7 @@ export function MessagePanel({
           );
         }, 1800);
       },
-      [onLoadOlderMessages, photoGroups],
+      [photoGroups],
     );
 
   useLayoutEffect(() => {
@@ -2639,6 +2656,15 @@ export function MessagePanel({
     );
     messageElementRefs.current.clear();
   }, [activeConversation?.id]);
+
+  const searchJumpHandlerRef = useRef(jumpToTelegramReplyTarget);
+  useEffect(() => { searchJumpHandlerRef.current = jumpToTelegramReplyTarget; });
+  useEffect(() => {
+    if (!searchJump || loadingConversationMessages || activeConversation?.id !== searchJump.conversationId) return;
+    const controller = new AbortController();
+    void searchJumpHandlerRef.current({ localMessageId: searchJump.messageId, platformMessageId: null, search: true, signal: controller.signal });
+    return () => controller.abort();
+  }, [searchJump, loadingConversationMessages, activeConversation?.id]);
 
   if (!activeConversation) return <InboxEmptyState />;
 

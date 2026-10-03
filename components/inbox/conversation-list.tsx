@@ -9,6 +9,8 @@ import { useConversationPages } from "@/lib/inbox/use-conversation-pages";
 import { useConversationListAnchor } from "@/lib/inbox/use-conversation-list-anchor";
 import { CONVERSATION_PAGE_SIZE, INBOX_PAGE_CHANGED_EVENT, type ConversationPagingInitial } from "@/lib/inbox/conversation-page-contract";
 
+import { searchRowSubtitle, type InboxSearchMatch } from "@/lib/inbox/search-match";
+
 import { CustomerAvatar } from "@/components/customer-avatar";
 
 import { ConversationBookmark, ConversationTag } from "./conversation-visuals";
@@ -101,9 +103,11 @@ type ConversationListProps = {
     StatusCounts;
   onSelectConversation: (
     conversationId: string,
+    match?: InboxSearchMatch,
   ) => void;
   onPrefetchConversation?: (
     conversationId: string,
+    match?: InboxSearchMatch,
   ) => void;
   onClearConversationSelection?: () => void;
 };
@@ -1325,6 +1329,9 @@ function ConversationListSkeleton() {
  */
 type ConversationRowProps = {
   conversation: InboxConversation;
+  searchMatch?: InboxSearchMatch;
+  searchQuery: string;
+  searchPending: boolean;
   isActive: boolean;
   isKhmer: boolean;
   channelDirectory: ChannelDirectory;
@@ -1337,14 +1344,19 @@ type ConversationRowProps = {
   hydrated: boolean;
   onSelectConversation: (
     conversationId: string,
+    match?: InboxSearchMatch,
   ) => void;
   onPrefetchConversation?: (
     conversationId: string,
+    match?: InboxSearchMatch,
   ) => void;
 };
 
 const ConversationRow = memo(function ConversationRow({
   conversation,
+  searchMatch,
+  searchQuery,
+  searchPending,
   isActive,
   isKhmer,
   channelDirectory,
@@ -1381,9 +1393,11 @@ const ConversationRow = memo(function ConversationRow({
                       conversation.id
                     }
                     type="button"
+                    disabled={searchPending}
                     onClick={() => {
                       onSelectConversation(
                         conversation.id,
+                        searchMatch,
                       );
                     }}
                     onMouseEnter={() =>
@@ -1514,7 +1528,7 @@ const ConversationRow = memo(function ConversationRow({
                           }}
                         >
                           {normalizeLegacyConversationPreview(
-                            conversation.last_message_text,
+                            searchRowSubtitle(searchQuery, searchMatch, conversation.contact?.phone, conversation.last_message_text),
                           )}
                         </p>
 
@@ -1641,9 +1655,10 @@ function ConversationListView({
   });
 
   const stableSelectConversation = useCallback(
-    (conversationId: string) => {
+    (conversationId: string, match?: InboxSearchMatch) => {
       selectConversationRef.current(
         conversationId,
+        match,
       );
     },
     [],
@@ -1694,8 +1709,12 @@ function ConversationListView({
    * Telegram username/identity. Email, message preview, and Messenger
    * platform identity are excluded by product decision.
    */
-  const deferredSearch =
-    useDeferredValue(search);
+  const [settledSearch, setSettledSearch] = useState(search);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledSearch(search), 150);
+    return () => clearTimeout(timer);
+  }, [search]);
+  const deferredSearch = useDeferredValue(settledSearch);
 
   // Hydration-safe localized timestamps.
   // The server and browser can resolve locale/timezone differently,
@@ -2796,6 +2815,7 @@ function ConversationListView({
    * when the query moves on: a fast typist would otherwise have several
    * searches in flight and the slowest could land last.
    */
+  const [historyMatches, setHistoryMatches] = useState<{ query: string; matches: Record<string, InboxSearchMatch> }>({ query: "", matches: {} });
   const [messageMatchIds, setMessageMatchIds] =
     useState<Set<string>>(
       () => new Set(),
@@ -2848,12 +2868,15 @@ function ConversationListView({
         const result = (await response.json()) as {
           success?: boolean;
           conversationIds?: string[];
+          matches?: Record<string, InboxSearchMatch>;
         };
 
         if (!result.success) {
           return;
         }
 
+        if (controller.signal.aborted) return;
+        setHistoryMatches({ query: keyword, matches: result.matches ?? {} });
         setMessageMatchIds(
           new Set(result.conversationIds ?? []),
         );
@@ -2895,15 +2918,14 @@ function ConversationListView({
               keyword,
             ) ??
             false) ||
-          messageMatchIds.has(
-            conversation.id,
-          ),
+          (historyMatches.query.toLowerCase() === keyword && messageMatchIds.has(conversation.id)),
       );
     }, [
       baseViewConversations,
       conversationSearchIndex,
       deferredSearch,
       messageMatchIds,
+      historyMatches.query,
     ]);
 
   // Server paging owns complete search/view qualification. Apply the known
@@ -5036,7 +5058,7 @@ function ConversationListView({
             status with no conversations gets the same transition as one with
             plenty rather than snapping straight to "none found".
           */}
-          {statusSwitching || channelSwitching || (pager.enabled && pager.initialLoading) ? (
+          {(pager.enabled ? pager.initialLoading : statusSwitching || channelSwitching) ? (
             <ConversationListSkeleton />
           ) : filteredConversations.length ===
             0 ? (
@@ -5064,6 +5086,9 @@ function ConversationListView({
                   {() => <ConversationRow
                     key={conversation.id}
                     conversation={conversation}
+                    searchPending={search.trim() !== deferredSearch.trim()}
+                    searchQuery={deferredSearch.trim()}
+                    searchMatch={pager.enabled ? pager.page?.searchMatches?.[conversation.id] : historyMatches.query === deferredSearch.trim().replace(/^@/, "") ? historyMatches.matches[conversation.id] : undefined}
                     isActive={
                       conversation.id ===
                       activeConversationId
