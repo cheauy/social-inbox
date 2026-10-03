@@ -1383,9 +1383,11 @@ const customerProfileConversation =
 
 const conversationTextDraftsRef = useRef(new Map<string, string>());
 const composerConversationKeyRef = useRef<string | null>(null);
+const telegramEditTextDraftRef = useRef<{ conversationKey: string; reply: string } | null>(null);
 useEffect(() => () => {
   conversationTextDraftsRef.current.clear();
   composerConversationKeyRef.current = null;
+  telegramEditTextDraftRef.current = null;
 }, []);
 
 useEffect(() => {
@@ -1396,13 +1398,20 @@ useEffect(() => {
   const previousKey = composerConversationKeyRef.current;
   if (previousKey !== nextKey && previousKey) {
     drafts.delete(previousKey);
-    // Edited sent text must never return under ordinary new-message Send mode.
-    if (!editingTelegramMessageId && composerDraftRef.current.reply) drafts.set(previousKey, composerDraftRef.current.reply);
+    // Keep the ordinary text displaced by Edit, never the edited sent text.
+    const ordinaryReply = editingTelegramMessageId
+      ? (telegramEditTextDraftRef.current?.conversationKey === previousKey ? telegramEditTextDraftRef.current.reply : "")
+      : composerDraftRef.current.reply;
+    if (ordinaryReply) drafts.set(previousKey, ordinaryReply);
   }
   for (const key of drafts.keys()) {
     if (!accessibleBusinessIds.includes(key.split(":")[0])) drafts.delete(key);
   }
-  if (previousKey === nextKey) return;
+  if (previousKey === nextKey) {
+    if (!editingTelegramMessageId) telegramEditTextDraftRef.current = null;
+    return;
+  }
+  telegramEditTextDraftRef.current = null;
   const restoredReply = nextKey ? drafts.get(nextKey) ?? "" : "";
   // The active composer owns this text. Remove it before bounding inactive drafts
   // so selecting the oldest cached destination cannot evict it before restore.
@@ -5894,10 +5903,15 @@ function showTelegramActionNotice(
 }
 
 function handleCancelTelegramEdit() {
+  const previousDraft = telegramEditTextDraftRef.current;
+  const conversationKey = composerConversationKeyRef.current;
+  if (!previousDraft || previousDraft.conversationKey !== conversationKey ||
+    !accessibleBusinessIds.includes(previousDraft.conversationKey.split(":")[0])) return;
+  telegramEditTextDraftRef.current = null;
   setEditingTelegramMessageId(
     null,
   );
-  setReply("");
+  setReply(previousDraft.reply);
   setSendError(null);
 }
 
@@ -5930,6 +5944,13 @@ async function handleEditTelegramMessage(
     return;
   }
 
+  const conversation = liveConversationsRef.current.find(row => row.id === resolvedActiveConversationId);
+  const conversationKey = conversation && accessibleBusinessIds.includes(conversation.business_id)
+    ? `${conversation.business_id}:${conversation.id}` : null;
+  if (!conversationKey || conversationKey !== composerConversationKeyRef.current) return;
+  if (telegramEditTextDraftRef.current?.conversationKey !== conversationKey) {
+    telegramEditTextDraftRef.current = { conversationKey, reply: composerDraftRef.current.reply };
+  }
   setReplyingToFacebookMessageId(null);
   setEditingTelegramMessageId(
     messageId,
