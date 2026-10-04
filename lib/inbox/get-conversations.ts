@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { requestMemo } from "@/lib/server/request-scope";
 
 import {
@@ -62,9 +63,24 @@ function isOperationalSubscription(subscription: SubscriptionStateRow | null) {
 }
 
 function loadLatestSubscriptions(businessIds: string[]) {
-  const ids = [...new Set(businessIds)].sort();
-  return requestMemo(`inbox-subscriptions:${ids.join(",")}`, () => readLatestSubscriptions(ids));
+  return subscriptionsForScope(JSON.stringify([...new Set(businessIds)].sort()));
 }
+
+// React shares only this server render; requestMemo covers wrapped API reads.
+// Canonical keys keep different tenant sets separate. Nothing survives a request.
+const subscriptionsForScope = cache((scopeKey: string) => requestMemo(`inbox-subscriptions:${scopeKey}`,
+  () => readLatestSubscriptions(JSON.parse(scopeKey) as string[])));
+
+const activeChannelsForScope = cache((scopeKey: string) => requestMemo(`inbox-active-channels:${scopeKey}`, async () => {
+  const { data, error } = await supabaseAdmin.from("social_accounts")
+    .select("id,platform,facebook_token_status,telegram_token_status")
+    .in("business_id", JSON.parse(scopeKey) as string[]).eq("is_active", true);
+  if (error) {
+    console.error("Unable to load active Inbox channels:", error);
+    throw new Error("Unable to load active TENH channels.");
+  }
+  return data ?? [];
+}));
 
 async function readLatestSubscriptions(businessIds: string[]) {
   if (businessIds.length === 0) {
@@ -158,7 +174,7 @@ function sortConversations(
  * channels may remain visible in the selector as a red access notice, but
  * their conversations must never be returned by All Channels.
  */
-export async function getInboxConversationScope(): Promise<
+async function readInboxConversationScope(): Promise<
   InboxConversationScope
 > {
   const authResult =
@@ -219,6 +235,8 @@ export async function getInboxConversationScope(): Promise<
     accessibleBusinessIds,
   };
 }
+
+export const getInboxConversationScope = cache(() => requestMemo("inbox-conversation-scope", readInboxConversationScope));
 
 /*
  * Which slice of the inbox to load.
@@ -296,28 +314,7 @@ export async function getConversations(
    * or All Channels. Resolve the currently enabled social_account ids first
    * and scope the conversation query to those ids only.
    */
-  const {
-    data: activeChannelData,
-    error: activeChannelError,
-  } = await supabaseAdmin
-    .from("social_accounts")
-    .select("id,platform,facebook_token_status,telegram_token_status")
-    .in(
-      "business_id",
-      scopedBusinessIds,
-    )
-    .eq("is_active", true);
-
-  if (activeChannelError) {
-    console.error(
-      "Unable to load active Inbox channels:",
-      activeChannelError,
-    );
-
-    throw new Error(
-      "Unable to load active TENH channels.",
-    );
-  }
+  const activeChannelData = await activeChannelsForScope(JSON.stringify([...scopedBusinessIds].sort()));
 
   const activeChannelIds =
     (activeChannelData ?? [])

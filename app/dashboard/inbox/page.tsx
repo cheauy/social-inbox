@@ -96,55 +96,37 @@ export default async function InboxPage({
     channelId: selectedChannelId, workspaceId: selectedWorkspaceId && inboxScope.accessibleBusinessIds.includes(selectedWorkspaceId) ? selectedWorkspaceId : null,
     workspaceContextId: selectedWorkspaceId && inboxScope.accessibleBusinessIds.includes(selectedWorkspaceId) ? selectedWorkspaceId : inboxScope.accessibleBusinessIds.includes(inboxScope.currentBusinessId) ? inboxScope.currentBusinessId : null,
   });
-  let initialPage;
-  try { initialPage = await getConversationPage(pageRequest); }
-  catch (error) {
-    // Safe rollout: only an absent read RPC retains the complete legacy dataset.
-    // Other errors must not masquerade as complete or empty results.
-    if (!(error instanceof ConversationPagingUnavailable)) throw error;
-  }
-  const [
-    channelConversations,
-    teamMembers,
-  ] = await Promise.all([
-    initialPage ? Promise.resolve([...initialPage.conversations]) : getConversations(
-      inboxScope.accessibleBusinessIds,
-      { channelId: selectedChannelId, workspaceId: selectedWorkspaceId },
-    ),
-    getTeamMembers(
-      inboxScope.accessibleBusinessIds,
-    ),
-  ]);
-
-  // An explicitly selected conversation is independently authorized even
-  // when it falls outside the visible page. Keep it out of the page cursor.
-  const requestedConversationId =
-    getSingleSearchParam(
-      params.conversation,
+  async function loadInboxData() {
+    let initialPage;
+    try { initialPage = await getConversationPage(pageRequest); }
+    catch (error) {
+      // Only an absent read RPC permits the complete legacy dataset fallback.
+      if (!(error instanceof ConversationPagingUnavailable)) throw error;
+    }
+    const channelConversations = initialPage ? [...initialPage.conversations] : await getConversations(
+      inboxScope.accessibleBusinessIds, { channelId: selectedChannelId, workspaceId: selectedWorkspaceId },
     );
 
-  let requestedConversation = requestedConversationId
-    ? channelConversations.find(row => row.id === requestedConversationId) ?? null : null;
-  if (initialPage && requestedConversationId && !requestedConversation) {
-    const selected = await getConversations(inboxScope.accessibleBusinessIds, { conversationIds: [requestedConversationId], channelId: selectedChannelId, workspaceId: selectedWorkspaceId });
-    requestedConversation = selected[0] ?? null;
-    if (requestedConversation) channelConversations.push(requestedConversation);
+    // Authorize an off-page selection before reading its messages, and keep
+    // it out of the page cursor. Assignment-team data is independent of this.
+    const requestedConversationId = getSingleSearchParam(params.conversation);
+    let requestedConversation = requestedConversationId
+      ? channelConversations.find(row => row.id === requestedConversationId) ?? null : null;
+    if (initialPage && requestedConversationId && !requestedConversation) {
+      const selected = await getConversations(inboxScope.accessibleBusinessIds, {
+        conversationIds: [requestedConversationId], channelId: selectedChannelId, workspaceId: selectedWorkspaceId,
+      });
+      requestedConversation = selected[0] ?? null;
+      if (requestedConversation) channelConversations.push(requestedConversation);
+    }
+    const activeConversationId = requestedConversation?.id ?? null;
+    const messages = activeConversationId ? await getMessages(activeConversationId) : [];
+    return { initialPage, channelConversations, activeConversationId, messages };
   }
 
-  /*
-   * This exact ID controls both the header
-   * and the loaded messages.
-   */
-  const activeConversationId =
-    requestedConversation?.id ??
-    null;
-
-  const messages =
-    activeConversationId
-      ? await getMessages(
-          activeConversationId,
-        )
-      : [];
+  const [{ initialPage, channelConversations, activeConversationId, messages }, teamMembers] = await Promise.all([
+    loadInboxData(), getTeamMembers(inboxScope.accessibleBusinessIds),
+  ]);
 
   const statusCounts = {
     all: channelConversations.length,
