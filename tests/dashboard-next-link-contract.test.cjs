@@ -7,7 +7,7 @@ const { loader } = require('./tenh-seven/harness.cjs');
 
 test('return to Inbox uses the installed Next click contract; modified clicks remain native', () => {
   const jsx = (type, props) => ({ type, props });
-  const load = loader({ 'react/jsx-runtime': { jsx, jsxs: jsx },
+  const load = loader({ './inbox-return-context': { useInboxReturnHref: () => '/dashboard/inbox' }, 'react/jsx-runtime': { jsx, jsxs: jsx },
     'next/link': { __esModule: true, default: 'Link' },
     'next/navigation': { usePathname: () => '/dashboard/analytics' } });
   const node = load('components/dashboard/dashboard-nav-link.tsx').DashboardNavLink({ href: '/dashboard/inbox', children: 'Inbox' });

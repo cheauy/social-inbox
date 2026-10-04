@@ -29,6 +29,7 @@ import {
 import type { FormEvent, SetStateAction } from "react";
 
 import { ConversationList } from "@/components/inbox/conversation-list";
+import { useRememberInboxReturn } from "@/components/dashboard/inbox-return-context";
 import { INBOX_PAGE_CHANGED_EVENT, mergeConversationPage } from "@/lib/inbox/conversation-page-contract";
 import { matchesOptimisticMessage } from "@/lib/inbox/optimistic-message-match";
 import { confirmOutgoingMessage, withOptimisticRenderKey } from "@/lib/inbox/confirm-outgoing-message";
@@ -1298,6 +1299,10 @@ const activeConversation =
 
 const activeConversationRef = useRef(activeConversation);
 activeConversationRef.current = activeConversation;
+
+useRememberInboxReturn({ businessId: currentBusinessId, memberId: currentMemberId, accessibleBusinessIds,
+  query: searchParams.toString(), selected: activeConversation ? { id: activeConversation.id,
+    businessId: activeConversation.business_id, channelId: activeConversation.social_account?.id ?? null } : null });
 
 useEffect(() => {
   if (!resolvedActiveConversationId) return;

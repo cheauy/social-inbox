@@ -6,6 +6,7 @@ import { DashboardUtilityNavigation, DashboardUtilityNavigationProvider } from "
 import { isCurrentUserTenhAdminIdentity } from "@/lib/admin/tenh-admin-auth";
 
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { InboxReturnContextProvider } from "@/components/dashboard/inbox-return-context";
 import { PendingInvitationsBanner } from "@/components/dashboard/pending-invitations-banner";
 import { FacebookConnectionAttentionBanner } from "@/components/dashboard/facebook-connection-attention-banner";
 import { WorkspacePermissionsProvider } from "@/lib/auth/use-workspace-permissions";
@@ -140,6 +141,8 @@ export default async function DashboardLayout({
 
   return (
     <DashboardUtilityNavigationProvider isAdmin={isAdmin}>
+      <InboxReturnContextProvider key={`${authResult.user.id}:${authResult.member.business_id}:${authResult.member.id}`}
+        userId={authResult.user.id} businessId={authResult.member.business_id} memberId={authResult.member.id}>
       <WorkspacePermissionsProvider>
         <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100">
           <DashboardHeader />
@@ -160,6 +163,7 @@ export default async function DashboardLayout({
           </div>
         </div>
       </WorkspacePermissionsProvider>
+      </InboxReturnContextProvider>
     </DashboardUtilityNavigationProvider>
   );
 }
