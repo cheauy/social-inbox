@@ -20,6 +20,64 @@ function harness(initialRows=Array.from({length:30},(_,i)=>row(i+1))){
  return {h,props,render,flush,events,jobs,calls,doc,advance:ms=>clock.now+=ms,answer:fn=>answer=fn};
 }
 
+test('targeted activity in B retains warm A, while B still requalifies once after navigation',async()=>{
+ const a=uuid(700),b=uuid(701),rowsA=[row(1,{social_account:{id:a}})],rowsB=[row(101,{social_account:{id:b}})],d=harness(rowsA);
+ try{d.props.initial.request={...request(),channelId:a};d.props.request={...request(),channelId:a};d.props.onRows=rows=>d.props.live=contract.mergeConversationPage(d.props.live,rows);d.render();
+ d.answer(body=>({...page(body.channelId===b?rowsB:rowsA),matchedKnownIds:body.knownIds??[]}));d.props.request={...request(),channelId:b};d.render();await tick();d.render();
+ d.events.get(contract.INBOX_PAGE_CHANGED_EVENT)(new CustomEvent('live',{detail:{conversationId:uuid(101)}}));d.render();
+ d.props.request={...request(),channelId:a};const start=performance.now();const state=d.render();const renderMs=performance.now()-start;
+ assert.equal(state.initialLoading,false);assert.equal(state.rows[0].social_account.id,a);await tick();assert.equal(d.calls.length,2);
+ console.log(JSON.stringify({warmUnrelatedChannel:{renderMs,rows:state.rows.length,initialLoading:state.initialLoading,pageReads:d.calls.length,productionLatency:false}}));
+ }finally{d.h.cleanup()}
+});
+test('targeted activity in a different workspace retains only disjoint cached scope',async()=>{
+ const businessA=uuid(900),businessB=uuid(901),d=harness([row(1)]);
+ try{d.props.initial.request={...request(),workspaceId:businessA};d.props.request={...request(),workspaceId:businessA};d.props.onRows=rows=>d.props.live=contract.mergeConversationPage(d.props.live,rows);d.render();
+ d.answer(body=>({...page(body.workspaceId===businessB?[row(2,{business_id:businessB})]:[row(1)]),matchedKnownIds:body.knownIds??[]}));d.props.request={...request(),workspaceId:businessB};d.render();await tick();d.render();
+ d.events.get(contract.INBOX_PAGE_CHANGED_EVENT)(new CustomEvent('live',{detail:{conversationId:uuid(2)}}));d.render();d.props.request={...request(),workspaceId:businessA};const s=d.render();assert.equal(s.initialLoading,false);assert.ok(s.rows.every(r=>r.business_id===businessA));await tick();assert.equal(d.calls.length,2);
+ }finally{d.h.cleanup()}
+});
+test('unknown and permission recovery events still invalidate every inactive snapshot',async()=>{
+ for(const event of [new CustomEvent('live',{detail:{conversationId:uuid(999)}}),new Event('focus')]){
+ const a=uuid(700),b=uuid(701),d=harness([row(1,{social_account:{id:a}})]);try{d.props.initial.request={...request(),channelId:a};d.props.request={...request(),channelId:a};d.props.onRows=rows=>d.props.live=contract.mergeConversationPage(d.props.live,rows);d.render();d.answer(()=>page([row(2,{social_account:{id:b}})]));d.props.request={...request(),channelId:b};d.render();await tick();d.render();
+ const fn=event.type==='focus'?d.events.get('focus'):d.events.get(contract.INBOX_PAGE_CHANGED_EVENT);fn(event);d.render();d.props.request={...request(),channelId:a};assert.equal(d.render().initialLoading,true);
+ }finally{d.h.cleanup()}}
+});
+
+test('a row moving to B invalidates A even though its latest channel differs',async()=>{
+ const a=uuid(700),b=uuid(701),d=harness([row(1,{social_account:{id:a}})]);
+ try{d.props.initial.request={...request(),channelId:a};d.props.request={...request(),channelId:a};d.render();
+ d.answer(()=>page([row(2,{social_account:{id:b}})]));d.props.request={...request(),channelId:b};d.render();await tick();d.render();
+ d.props.live=[row(1,{social_account:{id:b}}),row(2,{social_account:{id:b}})];d.render();
+ d.events.get(contract.INBOX_PAGE_CHANGED_EVENT)(new CustomEvent('live',{detail:{conversationId:uuid(1)}}));
+ d.props.request={...request(),channelId:a};assert.equal(d.render().initialLoading,true);
+ }finally{d.h.cleanup()}
+});
+
+test('warm snapshots are local to each mounted pager, including a new user mount',async()=>{
+ const first=harness();try{first.render();await tick();first.answer(()=>page([row(2)]));first.props.request={...request(),channelId:uuid(700)};first.render();await tick();first.render();}finally{first.h.cleanup()}
+ const second=harness([row(900)]);try{second.render();await tick();second.props.request={...request(),channelId:uuid(700)};const state=second.render();assert.equal(state.initialLoading,true);assert.equal(state.rows.length,0);}finally{second.h.cleanup()}
+});
+
+test('an off-page row moving channels invalidates cached counts for its previous channel',async()=>{
+ const a=uuid(700),b=uuid(701),d=harness([row(1,{social_account:{id:a}})]);
+ try{d.props.initial.request={...request(),channelId:a};d.props.request={...request(),channelId:a};
+ d.props.live=[...d.props.live,row(31,{social_account:{id:a}})];d.render();await tick();
+ d.answer(()=>page([row(2,{social_account:{id:b}})]));d.props.request={...request(),channelId:b};d.render();await tick();d.render();
+ d.props.live=d.props.live.map(r=>r.id===uuid(31)?{...r,social_account:{id:b}}:r);d.render();
+ d.props.request={...request(),channelId:a};assert.equal(d.render().initialLoading,true);
+ }finally{d.h.cleanup()}
+});
+
+test('a server-qualified scope move invalidates old counts even when its version was already recorded',async()=>{
+ const a=uuid(700),b=uuid(701),d=harness([row(1,{social_account:{id:a}})]);
+ try{d.props.initial.request={...request(),channelId:a};d.props.request={...request(),channelId:a};d.props.live.push(row(31,{social_account:{id:a}}));d.render();await tick();
+ d.props.onRows=rows=>d.props.live=[row(1,{social_account:{id:a}}),...rows];
+ d.answer(()=>page([row(31,{social_account:{id:b}})]));d.props.request={...request(),channelId:b};d.render();await tick();d.render();
+ d.props.request={...request(),channelId:a};assert.equal(d.render().initialLoading,true);
+ }finally{d.h.cleanup()}
+});
+
 test('channel A-B-A keeps scoped warm rows and issues one requalification per switch', async () => {
  const channelA=uuid(700),channelB=uuid(701),rowsA=Array.from({length:30},(_,i)=>row(i+1,{social_account:{id:channelA}}));
  const d=harness(rowsA);try {

@@ -9,10 +9,11 @@ import { INBOX_PAGE_CHANGED_EVENT, mergeConversationPage, type ConversationPage,
 
 type State = { key: string; countRows: InboxConversation[]; rows: InboxConversation[]; page: ConversationPagingInitial["page"]; loading: boolean; error: string | null; errorKey?: string };
 const VIEW_CACHE_MAX = 6, VIEW_CACHE_MAX_ROWS = 90, VIEW_CACHE_TTL_MS = 30_000;
-type CachedView = { state: State; at: number };
+type CachedView = { state: State; at: number; channelId: string | null; workspaceId: string | null };
 const requestKey = (request: ConversationPageRequest) => JSON.stringify({ ...request, cursor: null, knownIds: undefined });
 const visible = () => document.visibilityState !== "hidden";
-const rowVersion = (row: InboxConversation) => JSON.stringify([row.updated_at,row.last_message_at,row.last_message_text,
+const rowScope = (row: InboxConversation) => JSON.stringify([row.business_id, row.social_account?.id]);
+const rowVersion = (row: InboxConversation) => JSON.stringify([rowScope(row),row.updated_at,row.last_message_at,row.last_message_text,
   row.unread_count,row.status,row.is_pinned,row.assigned_to,row.contact]);
 
 /** No interval: page reads follow navigation, explicit history loading or coalesced live/resume events. */
@@ -27,7 +28,8 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
     }), page: initial.page, loading: false, error: null,
   } : null);
   const [viewCache, setViewCache] = useState(() => new Map<string, CachedView>(
-    state && state.rows.length <= VIEW_CACHE_MAX_ROWS ? [[state.key, { state, at: Date.now() }]] : []));
+    state && initial && state.rows.length <= VIEW_CACHE_MAX_ROWS ? [[state.key, { state, at: Date.now(),
+      channelId: initial.request.channelId, workspaceId: initial.request.workspaceId }]] : []));
   const viewCacheRef = useRef(viewCache);
   useEffect(() => { viewCacheRef.current = viewCache; }, [viewCache]);
   const stateRef = useRef(state), requestRef = useRef(request), onRowsRef = useRef(onRows);
@@ -40,6 +42,7 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
   const catchUpRef = useRef(false);
   const liveRowsRef = useRef(liveRows);
   const versionsRef = useRef(new Map(liveRows.map(row => [row.id,rowVersion(row)])));
+  const scopesRef = useRef(new Map(liveRows.map(row => [row.id,rowScope(row)])));
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => { stateRef.current = state; requestRef.current = request; onRowsRef.current = onRows; liveRowsRef.current = liveRows; });
   useEffect(() => {
@@ -47,13 +50,20 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
     // Existing bounded live-state recovery can discover messages missed while
     // disconnected. Qualify those rows too, including off-page search/view matches.
     for (const row of liveRows) {
+      const previousScope = scopesRef.current.get(row.id), scope = rowScope(row);
+      scopesRef.current.set(row.id, scope);
+      const scopeChanged = previousScope !== undefined && previousScope !== scope;
       const version = rowVersion(row);
-      if (versionsRef.current.get(row.id) !== version) {
+      if (versionsRef.current.get(row.id) !== version || scopeChanged) {
         versionsRef.current.set(row.id,version);
         recentChangesRef.current.delete(row.id);
         recentChangesRef.current.set(row.id, Date.now());
         while (recentChangesRef.current.size > 200) recentChangesRef.current.delete(recentChangesRef.current.keys().next().value!);
-        window.dispatchEvent(new CustomEvent(INBOX_PAGE_CHANGED_EVENT, { detail: { conversationId: row.id } }));
+        // A move can change counts in its previous scope even when that row
+        // was outside a cached page. Its latest scope alone is insufficient.
+        window.dispatchEvent(scopeChanged
+          ? new CustomEvent(INBOX_PAGE_CHANGED_EVENT)
+          : new CustomEvent(INBOX_PAGE_CHANGED_EVENT, { detail: { conversationId: row.id } }));
       }
     }
   }, [initial, liveRows]);
@@ -139,7 +149,8 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
       stateRef.current = next; setState(next);
       const cache = new Map(viewCacheRef.current);
       cache.delete(activeKey);
-      if (next.rows.length <= VIEW_CACHE_MAX_ROWS) cache.set(activeKey, { state: next, at: Date.now() });
+      if (next.rows.length <= VIEW_CACHE_MAX_ROWS) cache.set(activeKey, { state: next, at: Date.now(),
+        channelId: activeRequest.channelId, workspaceId: activeRequest.workspaceId });
       while (cache.size > VIEW_CACHE_MAX) cache.delete(cache.keys().next().value!);
       viewCacheRef.current = cache; setViewCache(cache);
     } catch (error) {
@@ -197,9 +208,19 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
       if (event instanceof CustomEvent && typeof event.detail?.conversationId === "string") pendingIdsRef.current.add(event.detail.conversationId);
       else catchUpRef.current = true;
       dirtyRef.current = true;
-      // Activity, permission/scope recovery and reconnect invalidate inactive
-      // snapshots. The active view remains visible during targeted refresh.
-      viewCacheRef.current = new Map(); setViewCache(new Map());
+      // A known row cannot change a disjoint channel/workspace snapshot. Keep
+      // those bounded warm views; navigation still authenticates/requalifies.
+      // Unknown, permission/scope and reconnect events remain full invalidations.
+      const changedId = event instanceof CustomEvent && typeof event.detail?.conversationId === "string"
+        ? event.detail.conversationId : null;
+      const changed = changedId ? liveRowsRef.current.find(row => row.id === changedId) : null;
+      const cache = new Map([...viewCacheRef.current].filter(([,entry]) => {
+        if (!changed || entry.state.rows.some(row => row.id === changed.id)) return false;
+        const channelId = changed.social_account?.id;
+        return Boolean(entry.channelId && channelId && entry.channelId !== channelId ||
+          entry.workspaceId && entry.workspaceId !== changed.business_id);
+      }));
+      viewCacheRef.current = cache; setViewCache(cache);
       if (document.visibilityState === "hidden" || controllerRef.current || timerRef.current) return;
       timerRef.current = setTimeout(() => {
         timerRef.current = null; dirtyRef.current = false; void run("refresh");

@@ -24,13 +24,14 @@ type PagedQuery<Row> = {
 
 export async function fetchAllRows<Row>(
   buildQuery: () => PagedQuery<Row>,
-  options?: { maxRows?: number },
+  options?: { maxRows?: number; requireComplete?: boolean; signal?: AbortSignal },
 ): Promise<{ data: Row[]; error: { message: string } | null }> {
   const maxRows = options?.maxRows ?? 200_000;
   const rows: Row[] = [];
   let from = 0;
 
   while (from < maxRows) {
+    if (options?.signal?.aborted) return { data: rows, error: { message: "Read cancelled." } };
     const to = Math.min(from + PAGE_SIZE, maxRows) - 1;
     const { data, error } = await buildQuery().range(from, to);
 
@@ -42,10 +43,17 @@ export async function fetchAllRows<Row>(
     rows.push(...page);
 
     if (page.length < to - from + 1) {
-      break;
+      return { data: rows, error: null };
     }
 
     from = to + 1;
+  }
+
+  if (options?.requireComplete) {
+    if (options.signal?.aborted) return { data: rows, error: { message: "Read cancelled." } };
+    const tail = await buildQuery().range(maxRows, maxRows);
+    if (tail.error) return { data: rows, error: tail.error };
+    if (tail.data?.length) return { data: rows, error: { message: "Result exceeds the supported row limit." } };
   }
 
   return { data: rows, error: null };
