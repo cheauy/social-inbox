@@ -50,7 +50,7 @@ grant execute on function auth.uid() to anon, authenticated, service_role;
 -- (2026-10-05 preflight). Only what the Telegram Personal SQL touches.
 create table public.contacts (
   id uuid primary key default gen_random_uuid(), business_id uuid not null references public.businesses(id) on delete cascade,
-  platform text not null, platform_user_id text not null, full_name text, phone text, email text,
+  platform text not null, platform_user_id text not null, full_name text, phone text, email text, profile_picture_url text,
   last_contact_at timestamptz, created_at timestamptz default now(), updated_at timestamptz default now(),
   constraint contacts_platform_check check ((platform = ANY (ARRAY['facebook'::text, 'instagram'::text, 'telegram'::text]))),
   constraint contacts_business_id_platform_platform_user_id_key unique (business_id, platform, platform_user_id));

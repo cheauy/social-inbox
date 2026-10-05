@@ -35,6 +35,10 @@ psql -q -v ON_ERROR_STOP=1 -d "${db}_u" -f db/proposals/20261023_telegram_person
 psql -q -v ON_ERROR_STOP=1 -d "${db}_u" -f db/proposals/20261023_telegram_personal_auto_share.sql >/dev/null # idempotent
 psql -q -v ON_ERROR_STOP=1 -d "${db}_u" -f tests/sql/telegram-personal-auto-share.test.sql | grep -q 'all assertions passed'
 echo "PASS auto-share assertions (installed twice)"
+psql -q -v ON_ERROR_STOP=1 -d "${db}_u" -f db/proposals/20261024_telegram_personal_media.sql >/dev/null
+psql -q -v ON_ERROR_STOP=1 -d "${db}_u" -f db/proposals/20261024_telegram_personal_media.sql >/dev/null # idempotent
+psql -q -v ON_ERROR_STOP=1 -d "${db}_u" -f tests/sql/telegram-personal-media.test.sql | grep -q 'all assertions passed'
+echo "PASS media assertions (installed twice)"
 # Refuses to patch a tenh_inbox_page that differs from the reviewed live version.
 dropdb --if-exists "${db}_ug" >/dev/null; createdb "${db}_ug"
 for f in tests/sql/telegram-personal-stub-schema.sql db/proposals/20261020_telegram_personal_draft.sql \
@@ -56,13 +60,14 @@ if psql -q -v ON_ERROR_STOP=1 -d "${db}_uk" -f db/proposals/20261022_telegram_pe
 dropdb --if-exists "${db}_uk" >/dev/null
 
 # Both files must also survive an editor that splits on statements.
-for f in db/proposals/20261020_telegram_personal_draft.sql db/proposals/20261021_telegram_personal_d1.sql db/proposals/20261022_telegram_personal_unified_inbox.sql db/proposals/20261023_telegram_personal_auto_share.sql; do
+for f in db/proposals/20261020_telegram_personal_draft.sql db/proposals/20261021_telegram_personal_d1.sql db/proposals/20261022_telegram_personal_unified_inbox.sql db/proposals/20261023_telegram_personal_auto_share.sql db/proposals/20261024_telegram_personal_media.sql; do
   chunks="$(mktemp -d)"
   python3 tests/sql/tools/split-like-editor.py "$f" "$chunks" >/dev/null
   dropdb --if-exists "${db}_split" >/dev/null; createdb "${db}_split"
   psql -q -d "${db}_split" -f tests/sql/telegram-personal-stub-schema.sql
   [ "$f" != db/proposals/20261020_telegram_personal_draft.sql ] && psql -q -d "${db}_split" -f db/proposals/20261020_telegram_personal_draft.sql
   [ "$f" = db/proposals/20261022_telegram_personal_unified_inbox.sql ] && psql -q -d "${db}_split" -f db/proposals/20261021_telegram_personal_d1.sql -f tests/sql/live-inbox-functions-20261005.sql >/dev/null
+  [ "$f" = db/proposals/20261024_telegram_personal_media.sql ] && psql -q -d "${db}_split" -f db/proposals/20261021_telegram_personal_d1.sql -f tests/sql/live-inbox-functions-20261005.sql -f db/proposals/20261022_telegram_personal_unified_inbox.sql -f db/proposals/20261023_telegram_personal_auto_share.sql >/dev/null 2>&1
   [ "$f" = db/proposals/20261023_telegram_personal_auto_share.sql ] && psql -q -d "${db}_split" -f db/proposals/20261021_telegram_personal_d1.sql -f tests/sql/live-inbox-functions-20261005.sql -f db/proposals/20261022_telegram_personal_unified_inbox.sql >/dev/null 2>&1
   cat "$chunks"/*.sql | psql -q -v ON_ERROR_STOP=1 -d "${db}_split" >/dev/null
   rm -rf "$chunks"
