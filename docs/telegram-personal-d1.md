@@ -1,6 +1,9 @@
 # Telegram Personal — D1 (shared chats, receive-only)
 
-Status: **tested draft, not yet installed or piloted.** Built after the owner
+Status: **installed and piloted (receive) on 2026-10-05.** The owner installed the
+D1 SQL and confirmed shared chats and incoming messages appear in the Personal
+inbox (read-only, as designed). Remaining owner checks: waiting-chat count,
+teammate visibility, stop sharing. Built after the owner
 approved D1 on 2026-10-05 (history none by default with optional last 50, a
 count for new unshared chats, media as placeholders) and chose **separate
 tables** for Personal chats.
