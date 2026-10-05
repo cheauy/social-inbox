@@ -16,6 +16,27 @@
 
 begin;
 
+-- 0. Install guard: ingest relies on these unique keys (ON CONFLICT). Refuse otherwise.
+do $keys$
+declare k record;
+begin
+  for k in select * from (values
+      ('contacts', array['business_id','platform','platform_user_id']),
+      ('conversations', array['social_account_id','contact_id']),
+      ('messages', array['business_id','platform_message_id'])) as t(tbl, cols) loop
+    if not exists (
+      select 1 from pg_index i
+       where i.indrelid = format('public.%I', k.tbl)::regclass and i.indisunique and i.indpred is null
+         and (select array_agg(a.attname::text order by a.attname)
+                from unnest(i.indkey) as u(attnum)
+                join pg_attribute a on a.attrelid = i.indrelid and a.attnum = u.attnum)
+             = (select array_agg(c order by c) from unnest(k.cols) as c)) then
+      raise exception 'Missing unique key on %(%). Review before installing.', k.tbl, array_to_string(k.cols, ',');
+    end if;
+  end loop;
+end
+$keys$;
+
 -- 1. Allow the platform on contacts and conversations (exact live definitions only) ----
 do $platforms$
 declare v_def text; t text;

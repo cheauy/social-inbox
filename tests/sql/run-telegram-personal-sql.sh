@@ -40,6 +40,16 @@ done
 psql -q -d "${db}_ug" -c "create or replace function public.tenh_inbox_page(p_user_id uuid, p_business_ids uuid[], p_request jsonb, p_views jsonb default '[]'::jsonb, p_snapshot boolean default false) returns jsonb language sql as 'select ''{}''::jsonb'"
 if psql -q -v ON_ERROR_STOP=1 -d "${db}_ug" -f db/proposals/20261022_telegram_personal_unified_inbox.sql >/dev/null 2>&1; then echo "FAIL inbox guard"; exit 1; fi
 [ "$(psql -qtA -d "${db}_ug" -c "select count(*) from pg_proc where proname='tgp_enqueue_send'")" = "0" ] && echo "PASS unified install refuses an unreviewed tenh_inbox_page (nothing applied)"
+# Refuses when a unique key that ingest relies on (ON CONFLICT) is missing.
+dropdb --if-exists "${db}_uk" >/dev/null; createdb "${db}_uk"
+for f in tests/sql/telegram-personal-stub-schema.sql db/proposals/20261020_telegram_personal_draft.sql \
+         db/proposals/20261021_telegram_personal_d1.sql tests/sql/live-inbox-functions-20261005.sql; do
+  psql -q -v ON_ERROR_STOP=1 -d "${db}_uk" -f "$f" >/dev/null
+done
+psql -q -d "${db}_uk" -c "alter table public.messages drop constraint messages_business_id_platform_message_id_key"
+if psql -q -v ON_ERROR_STOP=1 -d "${db}_uk" -f db/proposals/20261022_telegram_personal_unified_inbox.sql >/dev/null 2>&1; then echo "FAIL unique key guard"; exit 1; fi
+[ "$(psql -qtA -d "${db}_uk" -c "select count(*) from pg_proc where proname='tgp_enqueue_send'")" = "0" ] && echo "PASS unified install refuses without the unique keys (nothing applied)"
+dropdb --if-exists "${db}_uk" >/dev/null
 
 # Both files must also survive an editor that splits on statements.
 for f in db/proposals/20261020_telegram_personal_draft.sql db/proposals/20261021_telegram_personal_d1.sql db/proposals/20261022_telegram_personal_unified_inbox.sql; do

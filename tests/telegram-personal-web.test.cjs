@@ -13,6 +13,7 @@ const ENABLED_ENV = {
   TENH_TELEGRAM_PERSONAL_ENABLED: "true",
   TENH_TELEGRAM_PERSONAL_BUSINESS_IDS: B1,
 };
+const SEND_ENV = { ...ENABLED_ENV, TENH_TELEGRAM_PERSONAL_SEND_ENABLED: "true" };
 
 function workerKeys() {
   const crypto = loader({}, { Buffer })("workers/telegram-personal/src/crypto.ts");
@@ -283,7 +284,7 @@ const CONV = "55555555-5555-4555-8555-555555555555";
 const REQ = "66666666-6666-4666-8666-666666666666";
 
 /** The D2 send route, with the shared inbox gate replaced by a fixed answer. */
-function sendRoute({ db, userId = HOLDER, role = "owner", env = ENABLED_ENV, visible = true, platform = "telegram_personal", permission = true }) {
+function sendRoute({ db, userId = HOLDER, role = "owner", env = SEND_ENV, visible = true, platform = "telegram_personal", permission = true }) {
   const member = { id: `m-${userId.slice(-2)}`, user_id: userId, business_id: B1, role };
   return loader({
     "next/server": {
@@ -320,6 +321,17 @@ test("send: reply status is holder only; teammates who can see the chat read onl
   assert.equal(noPermission.reason, "NO_PERMISSION");
   db.tables.telegram_personal_sessions[0].status = "paused";
   assert.equal((await (await sendRoute({ db }).GET(getReq(`conversationId=${CONV}`))).json()).reason, "NOT_CONNECTED");
+});
+
+test("send: off by default (separate switch); receiving stays read only until it is turned on", async () => {
+  const db = sendDb();
+  const route = sendRoute({ db, env: ENABLED_ENV });
+  const status = await (await route.GET(getReq(`conversationId=${CONV}`))).json();
+  assert.deepEqual([status.canReply, status.reason], [false, "SEND_DISABLED"]);
+  const refused = await route.POST(sendReq({ conversationId: CONV, clientRequestId: REQ, text: "hi" }));
+  assert.equal(refused.status, 403);
+  assert.equal((await refused.json()).code, "SEND_DISABLED");
+  assert.equal(db.rpcCalls.filter((c) => c.name === "tgp_enqueue_send").length, 0);
 });
 
 test("send: hidden, non-Personal or flag-off conversations are 404 and never reach the queue", async () => {

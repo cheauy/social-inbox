@@ -16,6 +16,18 @@ export function isTelegramPersonalEnabled(
   return allowed.includes("*") || allowed.includes(businessId);
 }
 
+/**
+ * D2 replies are a separate switch, off by default: receiving can be piloted
+ * without enabling any real send. TENH_TELEGRAM_PERSONAL_SEND_ENABLED=true
+ * turns sending on for the workspaces where Telegram Personal is enabled.
+ */
+export function isTelegramPersonalSendEnabled(
+  env: Record<string, string | undefined>,
+  businessId: string | null | undefined,
+) {
+  return isTelegramPersonalEnabled(env, businessId) && env.TENH_TELEGRAM_PERSONAL_SEND_ENABLED === "true";
+}
+
 /** The worker's X25519 public key; without it no login input can be accepted. */
 export function telegramPersonalSealPublicKey(env: Record<string, string | undefined>) {
   const value = env.TELEGRAM_PERSONAL_SEAL_PUBLIC_KEY?.trim();

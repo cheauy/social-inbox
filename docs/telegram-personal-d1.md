@@ -1,5 +1,9 @@
 # Telegram Personal — D1 (shared chats, receive-only)
 
+> **Superseded by [the unified inbox + D2 draft](telegram-personal-unified-d2.md)** once
+> `20261022_telegram_personal_unified_inbox.sql` is installed: Personal chats move into the main
+> TENH Inbox and the separate Personal inbox page below is removed.
+
 Status: **installed and piloted (receive) on 2026-10-05.** The owner installed the
 D1 SQL and confirmed shared chats and incoming messages appear in the Personal
 inbox (read-only, as designed). Remaining owner checks: waiting-chat count,

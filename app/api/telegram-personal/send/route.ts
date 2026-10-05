@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { memberHasPermission } from "@/lib/auth/require-permission";
 import { getInboxConversationAccess } from "@/lib/inbox/get-inbox-resource-access";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { isTelegramPersonalSendEnabled } from "@/lib/telegram-personal/feature-flag";
 import { featureGate, jsonError } from "@/lib/telegram-personal/server";
 import { PERSONAL_PLATFORM } from "@/lib/telegram-personal/visibility";
 
@@ -109,7 +110,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, ...present(state) }, { headers: NO_STORE });
     }
     const allowed = await memberHasPermission(access.member, "conversations", "manage");
-    const status = allowed
+    const status = !isTelegramPersonalSendEnabled(process.env, access.conversation.business_id)
+      ? { canReply: false, reason: "SEND_DISABLED" }
+      : allowed
       ? await replyStatus(access.conversation.id, access.conversation.social_account_id, access.user.id)
       : { canReply: false, reason: "NO_PERMISSION" };
     return NextResponse.json({ success: true, ...status }, { headers: NO_STORE });
@@ -144,6 +147,10 @@ export async function POST(request: NextRequest) {
   const result = await authorize(conversationId);
   if ("response" in result) return result.response;
   const { access } = result;
+
+  if (!isTelegramPersonalSendEnabled(process.env, access.conversation.business_id)) {
+    return jsonError("Replies from TENH are not switched on for Telegram Personal yet.", 403, "SEND_DISABLED");
+  }
 
   const clientRequestId = typeof body.clientRequestId === "string" ? body.clientRequestId : "";
   const text = typeof body.text === "string" ? body.text : "";

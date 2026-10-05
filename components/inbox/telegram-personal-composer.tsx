@@ -29,6 +29,7 @@ const REASONS: Record<string, string> = {
   NOT_CONNECTED: "This Telegram account is not connected right now, so replies are paused.",
   CHAT_NOT_SHARED: "This chat is no longer shared into TENH.",
   NO_PERMISSION: "You do not have permission to reply in this workspace.",
+  SEND_DISABLED: "Read only for now. Replying from TENH is not switched on yet; reply in Telegram.",
 };
 
 function newRequestId() {
