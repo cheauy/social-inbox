@@ -385,6 +385,23 @@ test("Supervisor respects maxSessions; sessions stay pinned to their worker", as
   }
 });
 
+test("Database auth failures back off instead of retrying every poll", async () => {
+  const h = makeHarness();
+  let calls = 0;
+  h.store.claimSessions = async () => {
+    calls += 1;
+    throw new Error("(ECIRCUITBREAKER) too many authentication failures");
+  };
+  try {
+    for (let i = 0; i < 20; i += 1) await h.supervisor.tick();
+    assert.equal(calls, 1, "one failed attempt, then a long backoff");
+    assert.ok(h.logs.some((line) => line.includes("worker_database_auth_failed")));
+    assert.ok(!h.logs.join("\n").includes("postgresql://"));
+  } finally {
+    await h.cleanup();
+  }
+});
+
 test("Directory lock refuses a second live owner and recovers a stale lock", () => {
   const h = makeHarness();
   const id = "33333333-3333-4333-8333-333333333333";

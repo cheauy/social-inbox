@@ -21,6 +21,8 @@ export class Supervisor {
   private unlisten: (() => Promise<void>) | null = null;
   private claiming = false;
   private draining = false;
+  private claimFailures = 0;
+  private claimBlockedUntil = 0;
 
   constructor(options: { store: Store; factory: TdClientFactory; config: SupervisorConfig; log: Logger }) {
     this.store = options.store;
@@ -54,7 +56,7 @@ export class Supervisor {
   }
 
   async tick() {
-    if (this.draining || this.claiming) return;
+    if (this.draining || this.claiming || Date.now() < this.claimBlockedUntil) return;
     const capacity = this.config.maxSessions - this.runners.size;
     if (capacity <= 0) return;
     this.claiming = true;
@@ -80,8 +82,20 @@ export class Supervisor {
           void runner.stop().finally(() => this.done(session.id, "retry"));
         });
       }
+      this.claimFailures = 0;
     } catch (error) {
-      this.log("warn", "worker_claim_failed", { error });
+      // Back off so a bad DATABASE_URL or a database outage does not hammer the
+      // server (Supabase blocks clients after repeated authentication failures).
+      this.claimFailures += 1;
+      const message = error instanceof Error ? error.message : String(error);
+      const auth = /authentication|password|ECIRCUITBREAKER|28P01|tenant or user/i.test(message);
+      const delay = Math.min(auth ? 300_000 : 60_000, (auth ? 30_000 : 2_000) * 2 ** Math.min(this.claimFailures - 1, 6));
+      this.claimBlockedUntil = Date.now() + delay;
+      this.log(auth ? "error" : "warn", auth ? "worker_database_auth_failed" : "worker_claim_failed", {
+        error,
+        reason: auth ? "Check TELEGRAM_PERSONAL_DATABASE_URL (user, password, pooler host)." : "database unavailable",
+        durationMs: delay,
+      });
     } finally {
       this.claiming = false;
     }
