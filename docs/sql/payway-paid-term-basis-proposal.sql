@@ -1,0 +1,33 @@
+-- IMPLEMENTED DRAFT DATA CONTRACT, NOT EXECUTABLE SQL.
+-- Policy approved 2026-10-02: preserve per-purchased-term prices/discounts/dates;
+-- require explicit clearing of scheduled cancellation/downgrade before purchase.
+-- Existing billing_cycle becomes the future renewal preference only.
+-- pricing_snapshot.paid_term_basis_version=1 and paid_term_segments retain
+-- start_at/end_at, months, discount_basis_points, source_type/source_payment_id.
+-- Capacity/pricing version remain authoritative payment/subscription columns.
+-- Extension source IDs are set by SQL from NEW.id, never invented by the app.
+-- A subsequent capacity increase prices each remaining segment separately:
+-- round(monthly capacity delta * purchased months * discount multiplier
+--       * remaining segment duration / original full segment duration).
+-- Sum the rounded segment charges. Added months create a new segment at the
+-- selected duration discount, beginning at the old authoritative expiry.
+-- Capacity-only changes retain every segment's dates and discount basis.
+-- SQL derives segments from the locked subscription, validates exact cents,
+-- then stores the resulting segments in the payment snapshot. Both existing
+-- atomic activation RPCs copy that trusted snapshot into the subscription.
+-- Approval guards compare baseline dates/capacity/cycle and original segments.
+-- Example annual + monthly extension retains 12-month/20%-off and 1-month/0%-off
+-- segments, rather than pricing the whole 13-month span as one monthly term.
+-- Do not infer historical segments from the overwritten current billing_cycle.
+-- A single original recorded subscription period with valid start/end/cycle
+-- initializes one segment using its duration discount. It is identified as
+-- 'subscription-period' with source_payment_id=null: no payment provenance is
+-- fabricated. Current/target capacity prices use today's published anchors,
+-- matching the existing quote policy. Missing dates or mixed legacy extensions
+-- without saved segments fail closed for verified recovery review. No backfill.
+-- Proration rounds the full segment capacity difference, then its remaining
+-- fraction to cents, and sums the per-segment charges (same existing rounding).
+-- Scheduled changes are checked at quote and activation; customers clear them
+-- explicitly before purchase. If introduced after payment, activation fails
+-- for review rather than silently clearing a scheduled customer decision.
+-- Rollback refuses unresolved new payments and active multi-segment terms.

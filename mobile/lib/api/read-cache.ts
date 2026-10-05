@@ -5,11 +5,35 @@ const MAX_BYTES = 4 * 1024 * 1024;
 const MAX_AGE = 5 * 60_000;
 let generation = 0;
 
+export const readCacheGeneration = () => generation;
+
+// A synchronous, session-only preview never replaces protected revalidation.
+export function peekReadCache<T>(key: string): T | undefined {
+  const entry = entries.get(key);
+  const age = entry ? Date.now() - entry.at : MAX_AGE;
+  if (!entry || age < 0 || age >= MAX_AGE) { entries.delete(key); return undefined; }
+  entries.delete(key); entries.set(key, entry);
+  return entry.value as T;
+}
+
+export function storeReadCache<T>(key: string, value: T, epoch = generation) {
+  if (epoch !== generation) return;
+  const bytes = JSON.stringify(value).length * 2;
+  if (bytes > MAX_BYTES) return;
+  entries.delete(key); entries.set(key, { value, at: Date.now(), bytes });
+  let total = [...entries.values()].reduce((sum, item) => sum + item.bytes, 0);
+  for (const [oldKey, item] of entries) {
+    if (entries.size <= 100 && total <= MAX_BYTES) break;
+    entries.delete(oldKey); total -= item.bytes;
+  }
+}
+
 export function clearReadCache(matches?: (key: string) => boolean) {
   generation++;
-  if (matches) { for (const key of entries.keys()) if (matches(key)) entries.delete(key); }
-  else entries.clear();
-  pending.clear();
+  if (matches) {
+    for (const key of entries.keys()) if (matches(key)) entries.delete(key);
+    for (const key of pending.keys()) if (matches(key)) pending.delete(key);
+  } else { entries.clear(); pending.clear(); }
 }
 
 export function invalidateReadCache(userId: string, workspaceId: string | null | undefined, path: string) {
@@ -44,17 +68,7 @@ export async function cachedRead<T>(
   const epoch = generation;
   const work = load().then(value => {
     if (epoch === generation) {
-      const bytes = JSON.stringify(value).length * 2;
-      if (bytes <= MAX_BYTES) {
-        entries.delete(key);
-        entries.set(key, { value, at: Date.now(), bytes });
-        let total = [...entries.values()].reduce((sum, item) => sum + item.bytes, 0);
-        for (const [oldKey, item] of entries) {
-          if (entries.size <= 100 && total <= MAX_BYTES) break;
-          entries.delete(oldKey);
-          total -= item.bytes;
-        }
-      }
+      storeReadCache(key, value, epoch);
     }
     return value;
   }).finally(() => { if (pending.get(key) === work) pending.delete(key); });

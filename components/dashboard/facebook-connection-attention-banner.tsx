@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
+import { useForegroundResume } from "@/lib/display/use-foreground-resume";
 
 type AttentionPage = {
   id: string;
@@ -30,6 +31,7 @@ export function FacebookConnectionAttentionBanner() {
   const [canManageChannels, setCanManageChannels] = useState(false);
 
   const load = useCallback(async () => {
+    if (document.visibilityState === "hidden") return;
     try {
       const response = await fetch("/api/facebook/connection-attention", {
         cache: "no-store",
@@ -45,6 +47,8 @@ export function FacebookConnectionAttentionBanner() {
     }
   }, []);
 
+  useForegroundResume(load);
+
   useEffect(() => {
     void load();
 
@@ -52,15 +56,8 @@ export function FacebookConnectionAttentionBanner() {
       void load();
     }, POLL_INTERVAL_MS);
 
-    function handleFocus() {
-      void load();
-    }
-
-    window.addEventListener("focus", handleFocus);
-
     return () => {
       window.clearInterval(timer);
-      window.removeEventListener("focus", handleFocus);
     };
   }, [load]);
 

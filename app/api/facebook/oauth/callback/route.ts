@@ -10,6 +10,7 @@ import {
   getCurrentMember,
 } from "@/lib/auth/get-current-member";
 import {
+  decodeFacebookOAuthState,
   encodeFacebookOAuthSession,
   FACEBOOK_OAUTH_SESSION_COOKIE,
   FACEBOOK_OAUTH_STATE_COOKIE,
@@ -18,6 +19,7 @@ import {
   FACEBOOK_COOKIE_DOMAIN,
   getFacebookAppOrigin,
 } from "@/lib/facebook/facebook-origin";
+import { memberHasPermission } from "@/lib/auth/require-permission";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,6 +63,7 @@ async function readJson<T>(
 function redirectWithError(
   request: NextRequest,
   message: string,
+  clearState = true,
 ) {
   const url = new URL(
     "/dashboard/integrations",
@@ -70,24 +73,36 @@ function redirectWithError(
   url.searchParams.set("facebook", "error");
   url.searchParams.set("message", message);
 
-  return NextResponse.redirect(url);
+  const response = NextResponse.redirect(url);
+  // After authentication, success/refusal consumes the browser attempt.
+  if (clearState) response.cookies.set(FACEBOOK_OAUTH_STATE_COOKIE, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    domain: FACEBOOK_COOKIE_DOMAIN,
+    maxAge: 0,
+  });
+  return response;
 }
 
 export async function GET(
   request: NextRequest,
 ) {
-  const authResult = await getCurrentMember();
+  const authResult = await getCurrentMember(true);
 
   if (!authResult.success) {
+    // No attempt was accepted. Its identity binding and expiry remain intact.
     return redirectWithError(
       request,
       authResult.error,
+      false,
     );
   }
 
   const currentMember = authResult.member;
   const cookieStore = await cookies();
-  const expectedState = cookieStore.get(
+  const encryptedState = cookieStore.get(
     FACEBOOK_OAUTH_STATE_COOKIE,
   )?.value;
 
@@ -105,22 +120,31 @@ export async function GET(
       "error_description",
     );
 
-  if (oauthError) {
+  let attempt: ReturnType<typeof decodeFacebookOAuthState>;
+  try {
+    if (!encryptedState) throw new Error("Missing state.");
+    attempt = decodeFacebookOAuthState(encryptedState);
+  } catch {
     return redirectWithError(
       request,
-      oauthError,
+      "Invalid or expired Facebook OAuth state. Start the connection again from Integrations.",
     );
   }
 
-  if (
-    !state ||
-    !expectedState ||
-    state !== expectedState
-  ) {
-    return redirectWithError(
-      request,
-      "Invalid Facebook OAuth state. Start the connection again from Integrations.",
-    );
+  // A stale callback must not consume a newer attempt in this cookie jar.
+  if (!state || state !== attempt.state) {
+    return redirectWithError(request, "Invalid or expired Facebook OAuth state. Start the connection again from Integrations.", false);
+  }
+  if (attempt.userId !== authResult.user.id ||
+      attempt.businessId !== currentMember.business_id ||
+      attempt.memberId !== currentMember.id) {
+    return redirectWithError(request, "This Facebook authorization belongs to a different TENH workspace or member. Start again from the intended workspace.");
+  }
+  if (oauthError) {
+    return redirectWithError(request, oauthError);
+  }
+  if (!(await memberHasPermission(currentMember, "channels", "manage"))) {
+    return redirectWithError(request, "You no longer have permission to connect channels in this workspace.");
   }
 
   if (!code) {

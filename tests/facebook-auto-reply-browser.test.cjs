@@ -149,7 +149,7 @@ test("isolated browser exercises real Tenh Bot page, CRUD and permission guards"
     const load = loader({
       "@/lib/supabase/admin": { supabaseAdmin: transport(pg) },
       "@/lib/auth/get-current-member": { getCurrentMember: async () => mode() === "signedout" ? { success: false, status: 401, error: "Fixture signed out." }
-        : mode() === "none" ? { success: false, status: 403, code: "WORKSPACE_ACCESS_REMOVED", error: "Fixture workspace access removed." } : ({ success: true, member: {
+        : mode() === "none" ? { success: false, status: 403, code: "WORKSPACE_ACCESS_REMOVED", error: "Fixture workspace access removed." } : ({ success: true, user: { id: "fixture-user" }, member: {
         id: fixtureTenant, business_id: fixtureTenant, role: mode() === "manage" ? "owner" : "member",
       } }) },
       "@/lib/facebook/get-facebook-page-access-token": { resolveStoredFacebookPageAccessToken: () => { if(preview) throw new Error("Token access forbidden in preview."); return "offline-fixture-token"; } },

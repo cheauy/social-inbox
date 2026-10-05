@@ -18,14 +18,15 @@ component.require = createRequire(filename);
 component._compile(compiled.outputText, filename);
 const { CustomerFileLibrary } = component.exports;
 const items = [
-  { id: "photo", kind: "image", name: "receipt-photo", url: "/photo.jpg", createdAt: "2026-08-01", detail: "", savedId: "s1" },
+  { id: "photo", kind: "image", name: "receipt-photo", url: "/photo.jpg", createdAt: "2026-08-01", detail: "", savedId: "s1", selectableId: "s1" },
   { id: "clip", kind: "video", name: "product-clip", url: "/clip.mp4", createdAt: "2026-09-01", detail: "", conversationId: "c1" },
   { id: "doc", kind: "file", name: "invoice.pdf", url: "/doc.pdf", createdAt: "2026-09-01", detail: "PDF", savedId: "s2" },
   { id: "voice", kind: "audio", name: "voice-message", url: "/voice.mp3", createdAt: "2026-09-01", detail: "Team" },
   { id: "link", kind: "link", name: "shop-link", url: "https://example.com/full/path", createdAt: "2026-09-01", detail: "", savedId: "s3" },
 ];
-const render = (tab, loading = false) => renderToStaticMarkup(React.createElement(CustomerFileLibrary, {
+const render = (tab, loading = false, selection = null) => renderToStaticMarkup(React.createElement(CustomerFileLibrary, {
   items, tab, onTab() {}, loading, deletingId: null, onDelete() {}, onDownload() {},
+  ...(selection ? { selectedIds: selection, onToggleSelect() {} } : {}),
 }));
 
 test("media combines saved photos and conversation clips, newest month first", () => {
@@ -52,4 +53,12 @@ test("loading shows skeletons instead of stale files", () => {
   assert.match(html, /aria-busy="true"/);
   assert.match(html, /Loading customer files/);
   assert.ok(!html.includes('receipt-photo'));
+});
+test("composer storage mode exposes multi-select only for stored files", () => {
+  const media = render("media", false, new Set(["s1"]));
+  assert.match(media, /aria-pressed="true"/);
+  assert.match(media, /Selected/);
+  assert.ok((media.match(/Select/g) ?? []).length >= 1);
+  const links = render("links", false, new Set());
+  assert.doesNotMatch(links, />Select(?:ed)?<\/button>/);
 });

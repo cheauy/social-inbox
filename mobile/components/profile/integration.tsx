@@ -18,6 +18,8 @@ import { SlidePanel } from "../slide-panel";
 import { Sheet, Avatar, IconName, PlatformMark, colors, styles } from "../ui";
 import { api } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
+import { canManageWorkspacePermission } from "../../lib/workspace-permissions";
+import { useRequestOwner } from "../../lib/use-request-owner";
 import { useLanguage } from "../../lib/language-provider";
 
 /*
@@ -84,7 +86,7 @@ const COMING: { key: string; name: string; icon: IconName; tone: string; detail:
 export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
   const [messengerOpen, setMessengerOpen] = useState(false);
-  const { workspace, settingsRevision, loadWorkspaces, permissions } = useInbox();
+  const { workspace, settingsRevision, loadWorkspaces, permissions, member } = useInbox();
 
   /*
    * Connecting, reconnecting and disconnecting all sit behind the same
@@ -93,7 +95,7 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
    * waits for a browser to open, signs into Facebook, picks a Page and is
    * then told no. Better to say so before any of that.
    */
-  const canManageChannels = permissions.channels === "manage";
+  const canManageChannels = canManageWorkspacePermission(workspace, member, permissions, "channels");
   const { t } = useLanguage();
 
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -109,8 +111,19 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
   const [token, setToken] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState("");
+  const scope = JSON.stringify([workspace?.businessId, workspace?.memberId]);
+  const beginRequest = useRequestOwner(scope);
+  const mutationLock = useRef(false);
+  const beginMutation = useRequestOwner(scope);
+  useEffect(() => {
+    mutationLock.current = false;
+    setChannels([]); setAttention([]); setError(""); setConnected("");
+    setMessengerOpen(false); setPickerOpen(false); setBotOpen(false); setToken(""); setConnecting(false);
+  }, [scope]);
 
   const load = useCallback(async () => {
+    const ownsResponse = beginRequest();
+    if (!ownsResponse()) return;
     if (!workspace) {
       setLoading(false);
       return;
@@ -128,6 +141,7 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
         ).catch(() => ({ pages: [] })),
       ]);
 
+      if (!ownsResponse()) return;
       setChannels(
         (live.channels ?? []).filter(
           (channel) => channel.businessId === workspace.businessId,
@@ -137,15 +151,16 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
       setAttention(health.pages ?? []);
       setError("");
     } catch (loadError) {
+      if (!ownsResponse()) return;
       setError(
         loadError instanceof Error
           ? loadError.message
           : "Unable to load your connections.",
       );
     } finally {
-      setLoading(false);
+      if (ownsResponse()) setLoading(false);
     }
-  }, [workspace?.businessId]);
+  }, [workspace?.businessId, beginRequest]);
 
   useEffect(() => {
     setLoading(true);
@@ -172,7 +187,7 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
    * somebody looks at it.
    */
   async function connectFacebook() {
-    setMessengerOpen(true);
+    if (canManageChannels) setMessengerOpen(true);
   }
 
   /*
@@ -183,14 +198,18 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
    * a channel that exists and never receives anything.
    */
   async function connectTelegram() {
+    if (mutationLock.current) return;
+    const ownsResponse = beginMutation();
+    if (!ownsResponse()) return;
     const value = token.trim();
 
-    if (!value || connecting || !workspace) return;
+    if (!value || connecting || !workspace || !canManageChannels) return;
 
     setConnecting(true);
     setError("");
     setConnected("");
 
+    mutationLock.current = true;
     try {
       const result = await api<{ message?: string }>(
         "/api/telegram/connection",
@@ -198,18 +217,21 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
         { method: "POST", body: { token: value } },
       );
 
+      if (!ownsResponse()) return;
       setToken("");
       setBotOpen(false);
       setConnected(result.message ?? "Telegram bot connected.");
       await load();
     } catch (connectError) {
+      if (!ownsResponse()) return;
       setError(
         connectError instanceof Error
           ? connectError.message
           : "Unable to connect that bot.",
       );
     } finally {
-      setConnecting(false);
+      if (ownsResponse()) mutationLock.current = false;
+      if (ownsResponse()) setConnecting(false);
     }
   }
 
@@ -231,10 +253,14 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
   }
 
   async function disconnect(channel: Channel) {
-    if (!workspace) return;
+    if (mutationLock.current) return;
+    const ownsResponse = beginMutation();
+    if (!ownsResponse()) return;
+    if (!workspace || !canManageChannels || channel.businessId !== workspace.businessId) return;
 
     setError("");
 
+    mutationLock.current = true;
     try {
       /*
        * Two shapes, because the two routes are two shapes: Telegram takes the
@@ -256,13 +282,17 @@ export function IntegrationPanel({ open, onClose }: { open: boolean; onClose: ()
         );
       }
 
+      if (!ownsResponse()) return;
       await load();
     } catch (disconnectError) {
+      if (!ownsResponse()) return;
       setError(
         disconnectError instanceof Error
           ? disconnectError.message
           : "Unable to disconnect that channel.",
       );
+    } finally {
+      if (ownsResponse()) mutationLock.current = false;
     }
   }
 

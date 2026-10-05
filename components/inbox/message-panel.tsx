@@ -2,7 +2,9 @@
 
 import { MessageViewportFrame, MessageScrollSurface } from "./inbox-layout-surfaces";
 import { captureScrollAnchor, restoreScrollAnchor, type ScrollAnchor } from "@/lib/inbox/scroll-anchor";
+import { messageRenderKey } from "@/lib/inbox/confirm-outgoing-message";
 import { buildPhotoGroups, photoGroupCaption } from "@/lib/inbox/photo-groups";
+import { getAlbumActionTarget, type AlbumPhotoSelection } from "@/lib/inbox/album-action-target";
 import { PhotoAlbumFrame } from "@/components/inbox/photo-album-frame";
 import { InboxPhotoImage } from "@/components/inbox/inbox-photo-image";
 import { localImagePreview } from "@/lib/inbox/local-image-preview";
@@ -10,6 +12,8 @@ import { useForegroundLoading } from "@/lib/display/foreground-loading";
 import { InboxEmptyState } from "@/components/inbox/inbox-empty-state";
 import { DeferredInboxItem } from "@/components/inbox/deferred-inbox-item";
 import { FacebookPostCard } from "@/components/inbox/facebook-post-card";
+import { facebookCommentIdentity, facebookCommentParentPreview, facebookCommentRenderRoot } from "@/lib/facebook/comment-context-data";
+import { safePostLink } from "@/lib/facebook/post-preview-data";
 import { MessengerSourceCard } from "@/components/inbox/messenger-source-card";
 import { messengerSourceTimeline } from "@/lib/facebook/messenger-source";
 import { rememberMetaStickerMessages } from "@/lib/stickers/meta-sticker-recents";
@@ -21,11 +25,11 @@ import { MessengerMessageActions } from "@/components/inbox/messenger-message-ac
 import { PinnedMessageHeader } from "@/components/inbox/pinned-message-header";
 import { usePinnedMessages } from "@/lib/inbox/use-pinned-messages";
 import { getMessageActions, getMessageSummary, getDeletedMessageText, isMessagePinned, isMessageDeleted,
-  resolvePhotoReplyTarget, parsePhotoReplyId,
-  getMessageImageUrl, getReplyImageReference, inboxImageEndpoint, type ReplyImageReference,
+  resolvePhotoReplyTarget,
+  getMessageImageUrl, getReplyImageReference, getReplyVideoReference, inboxImageEndpoint, type ReplyImageReference,
 } from "@/lib/inbox/message-actions";
 import { ImageCopyButton } from "@/components/inbox/image-copy-button";
-import { ReplyImageThumbnail } from "@/components/inbox/reply-image-thumbnail";
+import { ReplyImageThumbnail, ReplyVideoThumbnail } from "@/components/inbox/reply-image-thumbnail";
 
 import { isCommentReplyBlocked } from "@/components/inbox/comment-reply-access";
 
@@ -321,6 +325,9 @@ function readStoredChatBackgroundSrc() {
 }
 
 type MessagePanelProps = {
+  searchJump?: { conversationId: string; messageId: string; nonce: number } | null;
+  storageBusinessId: string;
+  storageMemberId: string;
   onSendSticker?: (sticker: InboxStickerChoice) => Promise<boolean>;
   activeConversation:
     | InboxConversation
@@ -360,6 +367,7 @@ type MessagePanelProps = {
     AgentPresenceStatus;
 
   reply: string;
+  composerReady?: boolean;
 
   sending: boolean;
 
@@ -690,24 +698,24 @@ function telegramReplyPreviewFromMessage(
 ): TelegramReplyPreview | null {
   if (!source) return null;
 
+  const caption =
+    typeof source.caption === "string"
+      ? source.caption.trim()
+      : "";
+  if (Array.isArray(source.photo))
+    return { text: caption || "Photo", kind: "Photo" };
+  if (source.video)
+    return { text: caption || "Video", kind: "Video" };
+  if (source.animation)
+    return { text: caption || "Animation", kind: "GIF" };
+
   const text =
     typeof source.text === "string"
       ? source.text.trim()
       : "";
   if (text) return { text, kind: "Text" };
 
-  const caption =
-    typeof source.caption === "string"
-      ? source.caption.trim()
-      : "";
   if (caption) return { text: caption, kind: "Caption" };
-
-  if (Array.isArray(source.photo))
-    return { text: "Photo", kind: "Photo" };
-  if (source.video)
-    return { text: "Video", kind: "Video" };
-  if (source.animation)
-    return { text: "Animation", kind: "GIF" };
   if (source.voice)
     return { text: "Voice message", kind: "Voice" };
   if (source.audio)
@@ -885,35 +893,157 @@ function formatAudioTime(value: number) {
   return `${minutes}:${String(remainder).padStart(2, "0")}`;
 }
 
+type CompactAudioOwner = {
+  audio: HTMLAudioElement;
+  reset: () => void;
+};
+
+let activeCompactAudioOwner: CompactAudioOwner | null = null;
+
+function stopAndResetCompactAudio(audio: HTMLAudioElement) {
+  audio.pause();
+  try {
+    audio.currentTime = 0;
+  } catch {
+    // A source without metadata may not yet accept a seek.
+  }
+}
+
 function CompactAudioPlayer({
   src,
+  recoverySrc,
   label,
   isVoice,
   isOutgoing = false,
 }: {
   src: string;
+  recoverySrc?: string;
   label: string;
   isVoice: boolean;
   isOutgoing?: boolean;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playbackOwnerRef = useRef<CompactAudioOwner | null>(null);
+  const wantsPlayRef = useRef(false);
+  const playRequestRef = useRef(0);
+  const mountedRef = useRef(true);
+  const sourceIdentityRef = useRef(src);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [playError, setPlayError] = useState("");
+  const [sourceState, setSourceState] = useState({ identity: src, url: src, attempted: false });
+  const currentSource = sourceState.identity === src
+    ? sourceState
+    : { identity: src, url: src, attempted: false };
 
-  function togglePlayback() {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const owner = playbackOwnerRef.current;
+      playbackOwnerRef.current = null;
+      if (!owner) return;
+      wantsPlayRef.current = false;
+      playRequestRef.current += 1;
+      if (activeCompactAudioOwner === owner) activeCompactAudioOwner = null;
+      stopAndResetCompactAudio(owner.audio);
+    };
+  }, []);
+
+  useEffect(() => {
+    sourceIdentityRef.current = src;
+  }, [src]);
+
+  async function togglePlayback() {
     const audio = audioRef.current;
 
     if (!audio) {
       return;
     }
 
-    if (audio.paused) {
-      void audio.play();
+    let owner = playbackOwnerRef.current;
+    if (!owner) {
+      const newOwner: CompactAudioOwner = {
+        audio,
+        reset: () => {
+          wantsPlayRef.current = false;
+          playRequestRef.current += 1;
+          stopAndResetCompactAudio(audio);
+          setPlaying(false);
+          setCurrentTime(0);
+        },
+      };
+      owner = newOwner;
+      playbackOwnerRef.current = owner;
+    }
+
+    if (audio.paused && !wantsPlayRef.current) {
+      const previous = activeCompactAudioOwner;
+      activeCompactAudioOwner = owner;
+      if (previous && previous !== owner) previous.reset();
+      wantsPlayRef.current = true;
+      const request = ++playRequestRef.current;
+      setPlayError("");
+      try {
+        await audio.play();
+        if (playbackOwnerRef.current !== owner || activeCompactAudioOwner !== owner) {
+          stopAndResetCompactAudio(audio);
+        } else if (!wantsPlayRef.current) {
+          audio.pause();
+        }
+      } catch {
+        if (playbackOwnerRef.current !== owner || activeCompactAudioOwner !== owner || playRequestRef.current !== request || !wantsPlayRef.current) return;
+        wantsPlayRef.current = false;
+        activeCompactAudioOwner = null;
+        setPlaying(false);
+        setPlayError("Audio couldn’t be played. Try again.");
+      }
       return;
     }
 
+    wantsPlayRef.current = false;
+    playRequestRef.current += 1;
     audio.pause();
+    setPlaying(false);
+  }
+
+  function handlePlay() {
+    const owner = playbackOwnerRef.current;
+    if (owner && activeCompactAudioOwner === owner && wantsPlayRef.current) {
+      setPlaying(true);
+    } else if (owner && activeCompactAudioOwner !== owner) {
+      owner.reset();
+    } else {
+      audioRef.current?.pause();
+    }
+  }
+
+  function finishPlayback() {
+    const owner = playbackOwnerRef.current;
+    wantsPlayRef.current = false;
+    playRequestRef.current += 1;
+    if (owner) {
+      if (activeCompactAudioOwner === owner) activeCompactAudioOwner = null;
+    }
+    setPlaying(false);
+  }
+
+  function handleAudioError() {
+    if (!mountedRef.current || sourceIdentityRef.current !== src) return;
+    const owner = playbackOwnerRef.current;
+    playbackOwnerRef.current = null;
+    if (owner && activeCompactAudioOwner === owner) activeCompactAudioOwner = null;
+    finishPlayback();
+    if (owner) stopAndResetCompactAudio(owner.audio);
+    setCurrentTime(0);
+    setDuration(0);
+    if (recoverySrc && !currentSource.attempted && currentSource.url !== recoverySrc) {
+      setPlayError("");
+      setSourceState({ identity: src, url: recoverySrc, attempted: true });
+      return;
+    }
+    setPlayError("Audio is unavailable.");
   }
 
   function seek(value: number) {
@@ -933,6 +1063,9 @@ function CompactAudioPlayer({
   }
 
   const remaining = Math.max(0, duration - currentTime);
+  const progress = duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0;
+  // ponytail: decorative waveform; decode audio samples if amplitude accuracy is needed.
+  const bars = [8, 14, 22, 30, 40, 32, 24, 18, 28, 14, 8, 20, 12, 25, 16, 9, 18, 30, 36, 25, 14, 9, 12, 8, 15, 22, 29, 20, 12, 16, 10, 8];
 
   /*
    * No card of its own. The message bubble is already a container, so a
@@ -941,60 +1074,85 @@ function CompactAudioPlayer({
    * controls that inherit the bubble they sit in.
    */
   return (
-    <div className="flex w-[218px] max-w-full items-center gap-2.5">
+    <div className="w-[255px] max-w-full">
+      <div className="flex min-w-0 items-center gap-[10.2px] py-[3.4px]">
       <audio
         ref={audioRef}
-        src={src}
-        preload="none"
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onEnded={() => setPlaying(false)}
+        src={currentSource.url}
+        preload="metadata"
+        onPlay={handlePlay}
+        onPause={() => {
+          const owner = playbackOwnerRef.current;
+          if (owner?.audio.paused) wantsPlayRef.current = false;
+          setPlaying(false);
+        }}
+        onEnded={finishPlayback}
         onTimeUpdate={(event) =>
           setCurrentTime(event.currentTarget.currentTime)
         }
         onLoadedMetadata={(event) =>
-          setDuration(event.currentTarget.duration || 0)
+          setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)
         }
+        onDurationChange={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
+        onError={handleAudioError}
         className="hidden"
       />
 
+      <div className="relative h-[40.8px] w-[40.8px] shrink-0">
       <button
         type="button"
-        onClick={togglePlayback}
+        onClick={() => void togglePlayback()}
         suppressHydrationWarning
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition active:scale-95 ${
+        className={`group/audio absolute -inset-[1.6px] flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 [&_svg]:h-[20.4px] [&_svg]:w-[20.4px] ${
           isOutgoing
-            ? "bg-white/25 text-white hover:bg-white/35"
-            : "bg-sky-600 text-white hover:bg-sky-700"
+            ? "text-[var(--tenh-primary,#2563EB)] focus-visible:outline-white"
+            : "text-sky-600 focus-visible:outline-sky-600"
         }`}
         aria-label={playing ? "Pause audio" : "Play audio"}
       >
-        <PlayIcon paused={!playing} />
+        <span className={`flex h-[40.8px] w-[40.8px] items-center justify-center rounded-full shadow-sm transition group-active/audio:scale-95 ${isOutgoing ? "bg-white group-hover/audio:bg-white/90" : "bg-sky-50 group-hover/audio:bg-sky-100"}`}>
+          <PlayIcon paused={!playing} />
+        </span>
       </button>
+      </div>
 
-      <input
+      <div className="relative min-w-0 flex-1 rounded-[5.1px] focus-within:ring-2 focus-within:ring-current">
+        <div aria-hidden="true" className="flex h-[40.8px] items-center justify-between gap-[1.7px] overflow-hidden">
+          {bars.map((height, index) => (
+            <span key={index} className={`min-w-0 flex-1 rounded-full transition-colors ${playing ? "tenh-recording-bar" : ""} ${
+              (index + 1) / bars.length <= progress
+                ? isOutgoing ? "bg-white" : "bg-sky-600"
+                : isOutgoing ? "bg-white/40" : "bg-slate-300"
+            }`} style={{ height: height * 0.85, maxWidth: 2.55, animationDelay: `${-index * 0.13}s`, animationDuration: `${0.7 + (index % 5) * 0.12}s` }} />
+          ))}
+        </div>
+        <span aria-hidden="true" className={`pointer-events-none absolute top-1/2 h-[20.4px] w-[8.5px] -translate-y-1/2 rounded-full shadow-sm ${isOutgoing ? "bg-white" : "bg-sky-600"}`} style={{ left: `calc(${progress * 100}% - ${progress * 8.5}px)` }} />
+        <input
         type="range"
         min={0}
         max={duration > 0 ? duration : 1}
         step={0.01}
-        value={Math.min(currentTime, duration > 0 ? duration : 1)}
+        value={Math.min(currentTime, duration > 0 ? duration : 0)}
+        disabled={duration <= 0}
         onChange={(event) =>
           seek(Number(event.target.value))
         }
-        className={`h-1 min-w-0 flex-1 cursor-pointer ${
-          isOutgoing ? "accent-white" : "accent-sky-600"
-        }`}
+        className="absolute left-0 top-1/2 h-11 w-full -translate-y-1/2 cursor-pointer opacity-0 disabled:cursor-default"
         aria-label={isVoice ? "Voice message progress" : label || "Audio progress"}
+        aria-valuetext={`${formatAudioTime(currentTime)} of ${formatAudioTime(duration)}`}
       />
+      </div>
 
       {/* Counts down while playing, like every other voice note. */}
       <span
-        className={`shrink-0 text-right text-[11px] tabular-nums ${
+        className={`min-w-[30.6px] shrink-0 text-right text-[11.9px] leading-[17px] tabular-nums ${
           isOutgoing ? "text-white/80" : "text-slate-500"
         }`}
       >
         {formatAudioTime(playing || currentTime > 0 ? remaining : duration)}
       </span>
+      </div>
+      {playError ? <p role="alert" className={`mt-[3.4px] text-xs ${isOutgoing ? "text-white" : "text-red-600"}`}>{playError}</p> : null}
     </div>
   );
 }
@@ -1145,54 +1303,10 @@ function HydrationSafeMessageTime({
   );
 }
 
-type FacebookCommentGroupPayload = {
-  item?: string;
-  source?: string;
-  tenh_source?: string;
-  post_id?: string;
-  post?: { id?: string } | null;
-  post_preview?: { id?: string } | null;
-  comment_id?: string;
-  parent_id?: string;
-  parent_comment_id?: string;
-  reply_comment_id?: string;
-};
-
 function getSafeFacebookCommentGroupInfo(
   message: InboxMessage,
 ) {
-  const payload =
-    message.raw_payload as FacebookCommentGroupPayload | null;
-
-  const postId =
-    payload?.post_id?.trim() ||
-    payload?.post?.id?.trim() ||
-    payload?.post_preview?.id?.trim() ||
-    null;
-
-  const isFacebookComment = Boolean(
-    payload?.comment_id ||
-      payload?.post_id ||
-      payload?.item === "comment" ||
-      payload?.source === "facebook_comment_reply" ||
-      payload?.tenh_source === "facebook_page_reply" ||
-      payload?.parent_comment_id ||
-      payload?.reply_comment_id,
-  );
-
-  const rawParentId =
-    typeof payload?.parent_comment_id === "string"
-      ? payload.parent_comment_id.trim()
-      : typeof payload?.parent_id === "string"
-        ? payload.parent_id.trim()
-        : null;
-
-  // Meta may set parent_id to the post itself for a top-level comment.
-  // Only a different ID is a real nested comment parent.
-  const parentCommentId =
-    rawParentId && rawParentId !== postId
-      ? rawParentId
-      : null;
+  const { postId, parentId: parentCommentId, isComment: isFacebookComment, sourceKey } = facebookCommentIdentity(message);
 
   const senderId =
     typeof message.sender_platform_id === "string"
@@ -1219,10 +1333,11 @@ function getSafeFacebookCommentGroupInfo(
     isFacebookComment &&
     message.direction === "incoming" &&
     postId &&
+    sourceKey &&
     senderId &&
     !parentCommentId &&
     !isDeleted
-      ? `${postId}::${senderId}`
+      ? `${postId}::${senderId}::${sourceKey}`
       : null;
 
   return {
@@ -1242,13 +1357,15 @@ type FacebookThreadReply = {
 function collectFacebookCommentDescendants(
   messages: InboxMessage[],
   rootPlatformMessageId: string,
+  states: Record<string, { deleted?: boolean }> = {},
 ): FacebookThreadReply[] {
   const childrenByParent = new Map<string, InboxMessage[]>();
 
   for (const candidate of messages) {
     const info = getSafeFacebookCommentGroupInfo(candidate);
 
-    if (!info.isFacebookComment || !info.parentCommentId) {
+    if (!info.isFacebookComment || !info.parentCommentId || candidate.platform_message_id === rootPlatformMessageId ||
+      facebookCommentRenderRoot(candidate, messages, states).platform_message_id !== rootPlatformMessageId) {
       continue;
     }
 
@@ -1351,6 +1468,9 @@ function HydrationSafeMessageDay({
 }
 
 export function MessagePanel({
+  searchJump,
+  storageBusinessId,
+  storageMemberId,
   activeConversation,
   messages: incomingMessages,
   loadingConversationMessages,
@@ -1366,6 +1486,7 @@ export function MessagePanel({
   teamPresence,
   agentPresenceStatus,
   reply,
+  composerReady = true,
   sending,
   sendError,
   updatingStatus,
@@ -1456,6 +1577,9 @@ export function MessagePanel({
     replyingToFacebookMessageId ?? replyingToTelegramMessageId, activeConversation?.id);
   const quotedReplyImage = quotedReplyTarget && getMessageImageUrl(quotedReplyTarget)
     ? { conversationId: quotedReplyTarget.conversation_id, messageId: quotedReplyTarget.id, url: getMessageImageUrl(quotedReplyTarget) }
+    : null;
+  const quotedReplyVideo = quotedReplyTarget?.message_type === "video" && !isMessageDeleted(quotedReplyTarget)
+    ? { conversationId: quotedReplyTarget.conversation_id, messageId: quotedReplyTarget.id, url: quotedReplyTarget.attachment_url }
     : null;
   const photoElementRefs = useRef(new Map<string, HTMLDivElement>());
   const deferredMessageRefs = useRef(new Map<string, HTMLDivElement>());
@@ -1821,6 +1945,11 @@ export function MessagePanel({
     useRef(false);
 
   const photoGroups = useMemo(() => buildPhotoGroups(messages), [messages]);
+  const [activeAlbumPhoto, setActiveAlbumPhoto] = useState<AlbumPhotoSelection | null>(null);
+  function activateAlbumPhoto(photo: InboxMessage) {
+    setActiveAlbumPhoto(current => current?.conversationId === photo.conversation_id && current.photoId === photo.id
+      ? current : { conversationId: photo.conversation_id, photoId: photo.id });
+  }
 
   const scrollToNewest =
     useCallback(
@@ -2221,12 +2350,18 @@ export function MessagePanel({
    * Restore the viewport by adding the new content height so the
    * agent does not jump to a different message.
    */
+  const loadOlderForJumpRef = useRef(onLoadOlderMessages);
+  useEffect(() => { loadOlderForJumpRef.current = onLoadOlderMessages; });
   const jumpToTelegramReplyTarget =
     useCallback(
       async ({
         localMessageId,
         platformMessageId,
+        search = false,
+        signal,
       }: {
+        search?: boolean;
+        signal?: AbortSignal;
         localMessageId:
           | string
           | null;
@@ -2273,13 +2408,21 @@ export function MessagePanel({
         while (
           !targetMessage &&
           hasMoreOlderMessagesRef.current &&
-          attempts < 12 &&
+          (search || attempts < 12) &&
+          !signal?.aborted &&
           jumpConversationRef.current === scopedConversationId
         ) {
           attempts += 1;
 
-          const loaded =
-            await onLoadOlderMessages();
+          let onAbort: (() => void) | undefined;
+          const loaded = await Promise.race([
+            loadOlderForJumpRef.current(),
+            ...(signal ? [new Promise<boolean>(resolve => {
+              onAbort = () => resolve(false);
+              if (signal.aborted) onAbort();
+              else signal.addEventListener("abort", onAbort, { once: true });
+            })] : []),
+          ]).finally(() => { if (signal && onAbort) signal.removeEventListener("abort", onAbort); });
 
           if (!loaded) {
             break;
@@ -2302,6 +2445,7 @@ export function MessagePanel({
             findTarget();
         }
 
+        if (signal?.aborted) return;
         if (!targetMessage || jumpConversationRef.current !== scopedConversationId) {
           if (jumpConversationRef.current === scopedConversationId) showActionNotice("Original message is older than the loaded history. Scroll up and try again.");
           return;
@@ -2336,7 +2480,7 @@ export function MessagePanel({
           );
         }, 1800);
       },
-      [onLoadOlderMessages, photoGroups],
+      [photoGroups],
     );
 
   useLayoutEffect(() => {
@@ -2407,7 +2551,7 @@ export function MessagePanel({
       ] ?? null;
 
     const latestMessageId =
-      latestMessage?.id ?? null;
+      latestMessage ? messageRenderKey(latestMessage) : null;
 
     /*
      * First committed message page for this conversation always opens at the
@@ -2475,6 +2619,15 @@ export function MessagePanel({
     );
     messageElementRefs.current.clear();
   }, [activeConversation?.id]);
+
+  const searchJumpHandlerRef = useRef(jumpToTelegramReplyTarget);
+  useEffect(() => { searchJumpHandlerRef.current = jumpToTelegramReplyTarget; });
+  useEffect(() => {
+    if (!searchJump || loadingConversationMessages || activeConversation?.id !== searchJump.conversationId) return;
+    const controller = new AbortController();
+    void searchJumpHandlerRef.current({ localMessageId: searchJump.messageId, platformMessageId: null, search: true, signal: controller.signal });
+    return () => controller.abort();
+  }, [searchJump, loadingConversationMessages, activeConversation?.id]);
 
   if (!activeConversation) return <InboxEmptyState />;
 
@@ -2947,7 +3100,7 @@ export function MessagePanel({
           {messages.map((message, messageIndex) => {
             const album = photoGroups.get(message.id);
             if (album && album.lastId !== message.id && !(messengerSources.before.get(message.id)?.length)) return null;
-            return <DeferredInboxItem key={message.id} enabled={messages.length > 100}
+            return <DeferredInboxItem key={messageRenderKey(message)} enabled={messages.length > 100}
               initiallyVisible={messageIndex >= messages.length - 40}
               forceVisible={jumpHighlightedMessageId === message.id}
               containerRef={messagesContainerRef}
@@ -3252,6 +3405,7 @@ export function MessagePanel({
                 null;
 
               const replyImageReference = getReplyImageReference(message, messages);
+              const replyVideoReference = getReplyVideoReference(message, messages);
               const nativeFacebookQuote = facebookNativeReply(message, messages);
               const telegramReplyPreview =
                 (nativeFacebookQuote ? { text: nativeFacebookQuote.text, kind: nativeFacebookQuote.kind } : null) ??
@@ -3461,11 +3615,7 @@ export function MessagePanel({
                           : "File");
 
               const postUrl =
-                postPreview
-                  ?.permalink_url ??
-                (postId
-                  ? `https://facebook.com/${postId}`
-                  : null);
+                safePostLink(postPreview?.permalink_url);
 
               const serverState = {
                 liked:
@@ -3504,6 +3654,10 @@ export function MessagePanel({
               const isTelegramReplyTarget =
                 replyingToTelegramMessageId === message.id ||
                 replyingToFacebookMessageId === message.id;
+              const albumActionTarget = isImageMessage && photoGroup && photoGroup.members.length > 1
+                ? getAlbumActionTarget(photoGroup.members, messages, message, activeAlbumPhoto, replyingToFacebookMessageId ?? replyingToTelegramMessageId)
+                : null;
+              const replyActionId = albumActionTarget?.photo.id ?? message.id;
 
               /*
                * V3.11.30.1 — comment actions belong to the individual
@@ -3531,36 +3685,7 @@ export function MessagePanel({
                * This is UI-only and lets replies already saved before the
                * metadata normalization render inside their parent card too.
                */
-              const rawFacebookReplyParentId =
-                typeof rawPayload?.parent_comment_id ===
-                "string"
-                  ? rawPayload.parent_comment_id.trim()
-                  : typeof rawPayload?.parent_id ===
-                      "string"
-                    ? rawPayload.parent_id.trim()
-                    : null;
-
-              /*
-               * Meta can send parent_id for both real comment replies and
-               * top-level comments (where it may equal the post ID). Only a
-               * different ID is a real nested comment parent. This keeps old
-               * customer replies nested without hiding the post card from a
-               * new top-level customer comment.
-               */
-              const facebookReplyParentId =
-                rawFacebookReplyParentId &&
-                rawFacebookReplyParentId !== postId
-                  ? rawFacebookReplyParentId
-                  : null;
-
-              const facebookReplyParentMessage =
-                facebookReplyParentId
-                  ? messages.find(
-                      (candidate) =>
-                        candidate.platform_message_id ===
-                        facebookReplyParentId,
-                    ) ?? null
-                  : null;
+              const facebookReplyParentId = facebookCommentIdentity(message).parentId;
 
               const safeFacebookGroupInfo =
                 getSafeFacebookCommentGroupInfo(message);
@@ -3597,7 +3722,7 @@ export function MessagePanel({
               // compact nested card directly beneath the parent comment.
               // This does not change reply IDs, actions, API calls, or data.
               const isNestedFacebookCommentReply = Boolean(
-                facebookReplyParentId && facebookReplyParentMessage,
+                facebookReplyParentId && facebookCommentRenderRoot(message, messages, optimisticCommentState).id !== message.id,
               );
 
               // UI only: collect the full Facebook reply tree beneath this
@@ -3605,22 +3730,16 @@ export function MessagePanel({
               // replies, and replies-to-replies. Exact Meta parent IDs drive
               // the tree; no customer/post guessing is used here.
               const facebookChildReplies =
-                !facebookReplyParentId &&
+                !isNestedFacebookCommentReply &&
                 message.platform_message_id
                   ? collectFacebookCommentDescendants(
                       messages,
                       message.platform_message_id,
+                      optimisticCommentState,
                     )
                   : [];
 
-              const facebookReplyPreviewText =
-                facebookReplyParentMessage
-                  ?.comment_is_deleted
-                  ? "Message deleted by commenter or Page"
-                  : facebookReplyParentMessage
-                      ?.message_text
-                      ?.trim() ||
-                    "Comment";
+              const facebookParentPreview = facebookCommentParentPreview(message, messages, headerChannelAccountName, optimisticCommentState);
 
               const showCommentActions =
                 isFacebookCommentMessage &&
@@ -3721,7 +3840,7 @@ export function MessagePanel({
               const showFacebookPostPreview =
                 Boolean(
                   isFacebookCommentMessage &&
-                    !facebookReplyParentId &&
+                    !isNestedFacebookCommentReply &&
                     !isFacebookPostGroupContinuation &&
                     !commentState.deleted,
                 );
@@ -3948,6 +4067,8 @@ export function MessagePanel({
                         <FacebookPostCard key={`${activeConversation.id}:${message.id}`}
                           conversationId={activeConversation.id} messageId={message.id}
                           postId={postId} savedPreview={postPreview}
+                          parentId={facebookReplyParentId} savedParent={facebookParentPreview}
+                          showParentContext={!isOutgoing}
                           accountName={headerChannelAccountName} isKhmer={isKhmer}
                           onOpenImage={setImagePreview} />
                       ) : null}
@@ -4041,24 +4162,6 @@ export function MessagePanel({
                           {isOutgoing && rawPayload?.tenh_reply_fallback?.reason === "original_unavailable" ? (
                           <div className="mb-2 text-[11px] text-white/80" title="The original Telegram message was unavailable; this message was sent normally.">Sent without quote · original unavailable</div>
                         ) : null}
-
-                        {facebookReplyParentId &&
-                          !isNestedFacebookCommentReply &&
-                          !commentState.deleted ? (
-                            <div className="mt-3 max-w-[560px] rounded-xl border-l-[3px] border-blue-400 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                              <div className="flex items-center gap-1.5 font-semibold text-slate-600">
-                                <ReplyIcon />
-                                <span>
-                                  {isKhmer
-                                    ? "ឆ្លើយតបទៅមតិយោបល់"
-                                    : "Reply to comment"}
-                                </span>
-                              </div>
-                              <div className="mt-1 truncate">
-                                {facebookReplyPreviewText}
-                              </div>
-                            </div>
-                          ) : null}
 
                           {commentState.deleted ? (
                             <div className="mt-3 inline-flex items-center gap-2 rounded-[14px] bg-slate-50 px-3.5 py-2.5 text-sm italic text-slate-400">
@@ -4452,6 +4555,12 @@ export function MessagePanel({
                                       </div>
 
                                       <div className="mt-0.5 max-w-[620px] whitespace-pre-wrap text-[15px] leading-5 text-slate-900">
+                                        <FacebookPostCard key={`${activeConversation.id}:${reply.id}:parent`}
+                                          conversationId={activeConversation.id} messageId={reply.id}
+                                          postId={facebookCommentIdentity(reply).postId} savedPreview={(reply.raw_payload as { post_preview?: unknown } | null)?.post_preview}
+                                          parentId={facebookCommentIdentity(reply).parentId}
+                                          savedParent={facebookCommentParentPreview(reply, messages, headerChannelAccountName, optimisticCommentState)}
+                                          showPost={false} showParentContext={!replyIsOutgoing} accountName={headerChannelAccountName} isKhmer={isKhmer} onOpenImage={setImagePreview} />
                                         {reply.message_text ??
                                           "Facebook comment reply"}
                                       </div>
@@ -4643,7 +4752,7 @@ export function MessagePanel({
               }
 
               return (
-                <Fragment key={message.id}>
+                <Fragment key={messageRenderKey(message)}>
                   {showMessageDay ? (
                     <div className="flex items-center gap-3 py-1">
                       <div className="h-px flex-1 bg-blue-200/70" />
@@ -4677,7 +4786,7 @@ export function MessagePanel({
                       : "justify-start"
                   }`}
                 >
-                  <div className={`group max-w-[84%] sm:max-w-[74%] xl:max-w-[62%] ${isVideoMessage ? "w-[512px]" : ""}`}>
+                  <div className={`group ${isAudioMessage || isVoiceMessage ? "max-w-[71.4%] sm:max-w-[62.9%] xl:max-w-[52.7%]" : "max-w-[84%] sm:max-w-[74%] xl:max-w-[62%]"} ${isVideoMessage ? "w-[512px]" : ""}`}>
                     <div
                       className={`text-sm transition ${
                         isBareSticker
@@ -4695,8 +4804,8 @@ export function MessagePanel({
                               }`
                             : `overflow-hidden border shadow-[0_2px_8px_rgba(15,23,42,0.06)] ${
                               isOutgoing
-                                ? "rounded-[18px] rounded-br-[5px] text-white"
-                                : "rounded-[18px] rounded-bl-[5px] border-slate-200/90 bg-white text-slate-900"
+                                ? `${isAudioMessage || isVoiceMessage ? "rounded-[20.4px]" : "rounded-[18px] rounded-br-[5px]"} text-white`
+                                : `${isAudioMessage || isVoiceMessage ? "rounded-[20.4px]" : "rounded-[18px] rounded-bl-[5px]"} border-slate-200/90 bg-white text-slate-900`
                             }`
                       } ${
                         isJumpHighlighted
@@ -4724,6 +4833,8 @@ export function MessagePanel({
                         className={
                           isBareSticker
                             ? ""
+                            : isAudioMessage || isVoiceMessage
+                              ? "px-[13.6px] pb-[6.8px] pt-[10.2px]"
                             : "px-4 pb-2 pt-3"
                         }
                       >
@@ -4767,7 +4878,8 @@ export function MessagePanel({
                                 : undefined
                             }
                           >
-                            {replyImageReference ? <ReplyImageThumbnail key={`${inboxImageEndpoint(replyImageReference, true)}:${replyImageReference.url ?? ""}`} reference={replyImageReference} /> : null}
+                            {replyImageReference ? <ReplyImageThumbnail key={`${inboxImageEndpoint(replyImageReference, true)}:${replyImageReference.url ?? ""}`} reference={replyImageReference} /> :
+                              replyVideoReference ? <ReplyVideoThumbnail key={`${replyVideoReference.messageId ?? replyVideoReference.platformMessageId}:${replyVideoReference.url ?? ""}`} reference={replyVideoReference} /> : null}
                             <span className="min-w-0 flex-1">
                             {/*
                               The quote sits inside the bubble, so it has to
@@ -4785,7 +4897,7 @@ export function MessagePanel({
                               <span>
                                 {rawPayload?.tenh_reply?.scope === "tenh" && !nativeFacebookQuote
                                   ? "Reply reference · TENH"
-                                  : `Reply to ${replyImageReference ? "Photo" : telegramReplyPreview.kind}`}
+                                  : `Reply to ${replyImageReference ? "Photo" : replyVideoReference ? "Video" : telegramReplyPreview.kind}`}
                               </span>
                             </span>
                             {!(replyImageReference && /^\[(image|photo)\]$/i.test(telegramReplyPreview.text.trim())) ? (
@@ -4821,7 +4933,7 @@ export function MessagePanel({
                             >
                               <ReplyIcon />
                               <span>
-                                Reply to comment
+                                {facebookParentPreview?.author ? `Reply to ${facebookParentPreview.author}` : "Reply to unavailable comment"}
                               </span>
                             </span>
                             <span
@@ -4831,7 +4943,7 @@ export function MessagePanel({
                                   : "text-slate-500"
                               }`}
                             >
-                              {facebookReplyPreviewText}
+                              {facebookParentPreview?.status === "deleted" ? "Parent comment was deleted" : facebookParentPreview?.text ?? (facebookParentPreview?.image ? "Media-only parent reply" : "Parent comment is unavailable")}
                             </span>
                           </div>
                         ) : null}
@@ -5034,11 +5146,10 @@ export function MessagePanel({
                            * too, since every cell is on a fixed aspect ratio.
                            */
                           <PhotoAlbumFrame count={photoGroup.members.length} hasReplyPreview={Boolean(telegramReplyPreview)}>
-                            {photoGroup.members.map((photo: InboxMessage) => {
+                            {photoGroup.members.map((photo: InboxMessage, photoIndex: number) => {
                               const photoUrl = photo.attachment_url;
-                              const basePhoto = messages.find(item => item.id === parsePhotoReplyId(photo.id).messageId) ?? message;
-                              const photoActions = getMessageActions(photo, activeConversation.social_account?.platform);
                               const photoSelected = (replyingToFacebookMessageId ?? replyingToTelegramMessageId) === photo.id;
+                              const canReplyToPhoto = getMessageActions(photo, activeConversation.social_account?.platform).reply;
                               const photoReference = { conversationId: photo.conversation_id, messageId: photo.id };
 
                               if (!photoUrl) {
@@ -5062,7 +5173,9 @@ export function MessagePanel({
                                   if (node) photoElementRefs.current.set(photo.id, node);
                                   else photoElementRefs.current.delete(photo.id);
                                 }} data-album-photo-id={photo.id}
-                                  className={`group/photo relative ${photoSelected || jumpHighlightedMessageId === photo.id ? "z-10 ring-2 ring-inset ring-blue-500" : ""}`}>
+                                  onContextMenuCapture={() => activateAlbumPhoto(photo)}
+                                  data-album-action-target={albumActionTarget?.photo.id === photo.id || undefined}
+                                  className={`group/photo relative ${photoSelected || jumpHighlightedMessageId === photo.id ? "z-10 ring-2 ring-inset ring-blue-500" : albumActionTarget?.photo.id === photo.id ? "ring-1 ring-inset ring-blue-400" : ""}`}>
                                 <div
                                   className={`group/media block w-full cursor-zoom-in overflow-hidden bg-slate-100 ${
                                     photoGroup.members
@@ -5075,8 +5188,11 @@ export function MessagePanel({
                                     reference={photoReference}
                                     src={photoUrl}
                                     previewSrc={localImagePreview(photo)}
-                                    onOpen={() => setImagePreview({ src: localImagePreview(photo) || photoUrl,
-                                      alt: getMessageSummary(photo), reference: photoReference })}
+                                    onOpen={() => {
+                                      activateAlbumPhoto(photo);
+                                      setImagePreview({ src: localImagePreview(photo) || photoUrl,
+                                        alt: getMessageSummary(photo), reference: photoReference });
+                                    }}
                                     alt={
                                       photo.message_text ||
                                       "Photo"
@@ -5084,25 +5200,25 @@ export function MessagePanel({
                                     className="h-full w-full object-cover transition duration-200 group-hover/media:scale-[1.02]"
                                   />
                                 </div>
-                                <ImageCopyButton src={photoUrl} reference={photoReference}
-                                  className="absolute right-1 top-1 opacity-0 transition-opacity group-hover/photo:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100" />
-                                <div className="absolute bottom-1 left-1">
-                                  <MessengerMessageActions
-                                    message={basePhoto}
-                                    platform={activeConversation.social_account?.platform}
-                                    onMessagePatched={onMessagePatched}
-                                    photoHover outgoing={false}
-                                    actions={{ reply: photoActions.reply, pin: false, edit: false, delete: false }}
-                                    replying={photoSelected} pinned={false}
-                                    onReply={() => {
-                                      if (activeConversation.social_account?.platform === "telegram") {
+                                <div className="absolute inset-x-1 top-1 flex items-center justify-between gap-1 opacity-0 transition-opacity group-hover/photo:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+                                  <div onClickCapture={() => activateAlbumPhoto(photo)}>
+                                    <ImageCopyButton src={photoUrl} reference={photoReference} iconOnly label={`Copy photo ${photoIndex + 1}`} />
+                                  </div>
+                                  {canReplyToPhoto ? <button type="button"
+                                    aria-label={`${photoSelected ? "Cancel reply to" : "Reply to"} photo ${photoIndex + 1}`}
+                                    title={photoSelected ? "Cancel reply" : "Reply to this photo"}
+                                    onClick={event => {
+                                      event.stopPropagation();
+                                      activateAlbumPhoto(photo);
+                                      if (isTelegramMessage) {
                                         if (photoSelected) onCancelTelegramReply(); else onReplyToTelegramMessage(photo.id);
                                       } else {
                                         if (photoSelected) onCancelFacebookReply(); else onReplyToFacebookMessage(photo.id);
                                       }
                                     }}
-                                    onPin={() => {}} onEdit={() => {}} onDelete={() => {}}
-                                  />
+                                    className="touch-manipulation flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-600 shadow-sm hover:bg-white hover:text-blue-600 focus-visible:outline-2 focus-visible:outline-blue-500">
+                                    <ReplyIcon />
+                                  </button> : null}
                                 </div>
                                 </div>
                               );
@@ -5238,13 +5354,15 @@ export function MessagePanel({
                           isVoiceMessage ? (
                           attachmentUrl ? (
                             <CompactAudioPlayer
+                              key={attachmentUrl}
                               src={attachmentUrl}
+                              recoverySrc={`/api/inbox/message-audio?conversationId=${encodeURIComponent(message.conversation_id)}&messageId=${encodeURIComponent(message.id)}`}
                               label={attachmentName}
                               isVoice={isVoiceMessage || (isAudioMessage && isOutgoing)}
                               isOutgoing={isOutgoing}
                             />
                           ) : (
-                            <div className="flex w-[290px] max-w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 p-3">
+                            <div className="flex w-[246.5px] max-w-full items-center gap-[10.2px] rounded-[13.6px] border border-slate-200 bg-white/90 p-[10.2px]">
                               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sky-600">
                                 <VoiceIcon />
                               </span>
@@ -5495,23 +5613,38 @@ export function MessagePanel({
                       {/* Facebook Comment Actions */}
                     </div>
 
+                    {albumActionTarget && photoGroup ? <p className={`mt-1 px-1 text-[10px] font-medium text-slate-500 ${isOutgoing ? "text-right" : ""}`}>
+                      Photo {photoGroup.members.findIndex(photo => photo.id === albumActionTarget.photo.id) + 1}
+                    </p> : null}
                     <MessengerMessageActions
-                      message={message}
-                      hideReaction={isImageMessage && Boolean(photoGroup && photoGroup.members.length > 1)}
+                      key={albumActionTarget?.message.id ?? message.id}
+                      message={albumActionTarget?.message ?? message}
+                      copyControl={albumActionTarget?.photo.attachment_url ? <ImageCopyButton
+                        key={albumActionTarget.photo.id}
+                        src={albumActionTarget.photo.attachment_url}
+                        reference={{ conversationId: albumActionTarget.photo.conversation_id, messageId: albumActionTarget.photo.id }}
+                        className="max-w-full"
+                      /> : undefined}
                       platform={activeConversation.social_account?.platform}
                       onMessagePatched={onMessagePatched}
                       outgoing={isOutgoing}
-                      actions={messageActions}
-                      replying={isTelegramReplyTarget}
+                      keepVisible={Boolean(albumActionTarget)}
+                      reserveActions={albumActionTarget && isOutgoing && !isDeletedMessage && !isFacebookCommentMessage && ["facebook", "messenger", "telegram"].includes(activeConversation.social_account?.platform ?? "") ? {
+                        reply: true, pin: true, edit: false,
+                        delete: activeConversation.social_account?.platform === "telegram" || isTelegramMessage,
+                      } : undefined}
+                      reserveReaction={Boolean(albumActionTarget && isOutgoing && !isDeletedMessage && !isFacebookCommentMessage && ["facebook", "messenger"].includes(activeConversation.social_account?.platform ?? ""))}
+                      actions={albumActionTarget ? { ...messageActions, reply: getMessageActions(albumActionTarget.photo, activeConversation.social_account?.platform).reply } : messageActions}
+                      replying={albumActionTarget ? (replyingToFacebookMessageId ?? replyingToTelegramMessageId) === replyActionId : isTelegramReplyTarget}
                       pinned={pinnedMessages.pins.some((item) => item.id === message.id) || isMessagePinned(message)}
                       pinPending={pinnedMessages.pendingIds.has(message.id)}
                       onReply={() => {
                         if (isTelegramMessage) {
-                          if (replyingToTelegramMessageId === message.id) onCancelTelegramReply();
-                          else onReplyToTelegramMessage(message.id);
+                          if (replyingToTelegramMessageId === replyActionId) onCancelTelegramReply();
+                          else onReplyToTelegramMessage(replyActionId);
                         } else {
-                          if (replyingToFacebookMessageId === message.id) onCancelFacebookReply();
-                          else onReplyToFacebookMessage(message.id);
+                          if (replyingToFacebookMessageId === replyActionId) onCancelFacebookReply();
+                          else onReplyToFacebookMessage(replyActionId);
                         }
                       }}
                       onPin={() => void toggleMessagePin(message, !(pinnedMessages.pins.some((item) => item.id === message.id) || isMessagePinned(message)))}
@@ -5805,7 +5938,8 @@ export function MessagePanel({
 
       {quotedReplyTarget && !editingTelegramMessageId ? (
         <div className="flex shrink-0 items-center gap-3 border-t border-sky-100 bg-white px-4 py-2">
-          {quotedReplyImage ? <ReplyImageThumbnail key={quotedReplyTarget.id} reference={quotedReplyImage} /> : null}
+          {quotedReplyImage ? <ReplyImageThumbnail key={quotedReplyTarget.id} reference={quotedReplyImage} /> :
+            quotedReplyVideo ? <ReplyVideoThumbnail key={quotedReplyTarget.id} reference={quotedReplyVideo} /> : null}
           <div className="min-w-0 flex-1 border-l-2 border-sky-400 pl-3">
             <p className="text-xs font-semibold text-sky-700">Replying to {quotedReplyTarget.direction === "outgoing" ? "your message" : activeConversation.contact?.full_name || "customer"}</p>
             <p className="truncate text-sm text-slate-600">{getMessageSummary(quotedReplyTarget)}</p>
@@ -5913,6 +6047,10 @@ export function MessagePanel({
          * comment switches only that send into a targeted comment reply.
          */
         <ReplyBox
+          key={`${activeConversation.business_id}:${activeConversation.id}`}
+          composerReady={composerReady}
+          storageBusinessId={storageBusinessId}
+          storageMemberId={storageMemberId}
           conversationId={
             activeConversation.id
           }

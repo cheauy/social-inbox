@@ -1,3 +1,4 @@
+import type { InboxSearchMatch } from "./search-match";
 import type { InboxConversation } from "@/types/inbox";
 import type { ReadTarget } from "@/lib/inbox/bulk-read";
 import { uuidPattern, isOlderConversationState } from "@/lib/inbox/live-sync";
@@ -17,6 +18,7 @@ export type ConversationPageCounts = {
   totalUnreadCount: number; unreadConversationCount: number;
 };
 export type ConversationPage = {
+  searchMatches?: Record<string, InboxSearchMatch>;
   conversations: InboxConversation[]; total: number; hasMore: boolean;
   cursor: ConversationCursor | null; counts: ConversationPageCounts;
   readTargets: ReadTarget[];

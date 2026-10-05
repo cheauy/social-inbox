@@ -14,15 +14,19 @@ export type UpgradeSubscriptionSnapshot = {
   current_period_start?: string | null;
   current_period_end: string | null;
   pricing_snapshot: unknown;
+  cancel_at_period_end?: boolean | null;
+  pending_plan_change_type?: string | null;
 };
 
 export type CustomUpgradeQuote = {
+  quotedAt: string;
   currentConnections: number;
   currentUsers: number;
   targetConnections: number;
   targetUsers: number;
   currentBillingCycle: string;
   targetBillingCycle: string;
+  extensionBillingCycle: string | null;
   currentMonths: number;
   targetMonths: number;
   remainingDays: number;
@@ -36,6 +40,16 @@ export type CustomUpgradeQuote = {
   renewalTotalCents: number;
   currentPeriodEnd: string;
   newPeriodEnd: string;
+  paidTermSegments: PaidTermSegment[];
+};
+
+export type PaidTermSegment = {
+  start_at: string;
+  end_at: string;
+  months: number;
+  discount_basis_points: number;
+  source_type: string;
+  source_payment_id: string | null;
 };
 
 function addUtcMonths(value: string, months: number) {
@@ -58,10 +72,23 @@ export function buildCustomUpgradeQuote(args: {
   targetConnections: unknown;
   targetUsers: unknown;
   targetBillingCycle: string;
+  extensionBillingCycle?: string | null;
   now?: Date;
 }): CustomUpgradeQuote {
   const { subscription } = args;
   const now = args.now ?? new Date();
+  const savedPricing = subscription.pricing_snapshot &&
+    typeof subscription.pricing_snapshot === "object" &&
+    !Array.isArray(subscription.pricing_snapshot)
+    ? subscription.pricing_snapshot as Record<string, unknown>
+    : {};
+  if (subscription.cancel_at_period_end || subscription.pending_plan_change_type) {
+    throw new Error("Resolve the scheduled subscription change before starting a Custom Upgrade.");
+  }
+  if (savedPricing.paid_term_basis_version !== 1 &&
+      savedPricing.purchase_type === "custom-upgrade") {
+    throw new Error("This subscription has combined paid terms. TENH must verify its paid-term pricing before another upgrade.");
+  }
   const end = subscription.current_period_end ? new Date(subscription.current_period_end) : null;
   if (subscription.status !== "active" || !end || !Number.isFinite(end.getTime()) || end.getTime() <= now.getTime()) {
     throw new Error("Only an active subscription with remaining paid time can be upgraded.");
@@ -69,8 +96,16 @@ export function buildCustomUpgradeQuote(args: {
 
   const currentCycle = getBillingCycleDefinition(subscription.billing_cycle ?? "");
   const targetCycle = getBillingCycleDefinition(args.targetBillingCycle);
-  if (!currentCycle || !targetCycle) throw new Error("Billing duration is not available for this upgrade.");
-  if (targetCycle.months < currentCycle.months) throw new Error("Upgrade duration cannot be shorter than the current subscription duration.");
+  const extensionCode = (args.extensionBillingCycle ?? "").trim().toLowerCase();
+  const extensionCycle = extensionCode && extensionCode !== "none"
+    ? getBillingCycleDefinition(extensionCode)
+    : null;
+  if (!currentCycle || !targetCycle || (extensionCode && extensionCode !== "none" && !extensionCycle)) {
+    throw new Error("Billing duration is not available for this upgrade.");
+  }
+  if (targetCycle.id !== (extensionCycle?.id ?? currentCycle.id)) {
+    throw new Error("Renewal duration must match the selected extension or current duration.");
+  }
 
   const currentConnections = Number(subscription.channel_limit);
   const currentUsers = Number(subscription.member_limit);
@@ -116,48 +151,89 @@ export function buildCustomUpgradeQuote(args: {
   const remainingMilliseconds = Math.max(1, end.getTime() - now.getTime());
   const remainingDays = Math.max(1, Math.ceil(remainingMilliseconds / 86_400_000));
 
-  // Capacity upgrades inherit the discount of the customer's current paid
-  // duration. Prorate against the actual paid period when its start date is
-  // available so a full remaining 1-year term charges exactly the discounted
-  // annual difference (for example $5/month -> $48/year at 20% off).
-  const currentDiscountMultiplier =
-    (10_000 - currentCycle.discountBasisPoints) / 10_000;
-  const currentCycleCapacityCents = Math.round(
-    addedMonthlyCents * currentCycle.months * currentDiscountMultiplier,
-  );
+  // Each original/added paid term retains its duration discount and actual
+  // dates. The renewal preference must never replace the paid pricing basis.
   const periodStart = subscription.current_period_start
     ? new Date(subscription.current_period_start)
     : null;
-  const actualPeriodMilliseconds =
-    periodStart &&
-    Number.isFinite(periodStart.getTime()) &&
-    periodStart.getTime() < end.getTime()
-      ? end.getTime() - periodStart.getTime()
-      : Math.round(
-          currentCycle.months * (365.2425 / 12) * 86_400_000,
-        );
-  const capacityProrationCents = Math.round(
-    currentCycleCapacityCents *
-      Math.min(1, remainingMilliseconds / actualPeriodMilliseconds),
-  );
+  if (!periodStart || !Number.isFinite(periodStart.getTime()) || periodStart >= end) {
+    throw new Error("TENH must verify the original paid period before this upgrade.");
+  }
+  let paidTermSegments: PaidTermSegment[];
+  if (savedPricing.paid_term_basis_version === 1) {
+    if (!Array.isArray(savedPricing.paid_term_segments) || savedPricing.paid_term_segments.length === 0) {
+      throw new Error("TENH must verify the paid-term pricing basis before this upgrade.");
+    }
+    let expectedStart = periodStart.toISOString();
+    paidTermSegments = savedPricing.paid_term_segments.map((value: unknown) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new Error("TENH must verify the paid-term pricing basis before this upgrade.");
+      }
+      const segment = value as PaidTermSegment;
+      const start = new Date(segment.start_at);
+      const finish = new Date(segment.end_at);
+      const segmentCycle = ["monthly", "3-months", "6-months", "12-months"]
+        .map(getBillingCycleDefinition)
+        .find((item) => item?.months === segment.months);
+      if (!Number.isFinite(start.getTime()) || !Number.isFinite(finish.getTime()) ||
+          start >= finish || start.toISOString() !== expectedStart ||
+          !segmentCycle || segment.discount_basis_points !== segmentCycle.discountBasisPoints ||
+          typeof segment.source_type !== "string" ||
+          (segment.source_payment_id !== null && typeof segment.source_payment_id !== "string")) {
+        throw new Error("TENH must verify the paid-term pricing basis before this upgrade.");
+      }
+      expectedStart = finish.toISOString();
+      return { ...segment, start_at: start.toISOString(), end_at: finish.toISOString() };
+    });
+    if (expectedStart !== end.toISOString()) {
+      throw new Error("TENH must verify the paid-term pricing basis before this upgrade.");
+    }
+  } else {
+    // Only a single authoritative recorded subscription period can initialize
+    // the basis. Mixed historical periods require verified payment recovery.
+    paidTermSegments = [{
+      start_at: periodStart.toISOString(), end_at: end.toISOString(),
+      months: currentCycle.months, discount_basis_points: currentCycle.discountBasisPoints,
+      source_type: "subscription-period", source_payment_id: null,
+    }];
+  }
+  const capacityProrationCents = paidTermSegments.reduce((total, segment) => {
+    const start = Date.parse(segment.start_at);
+    const finish = Date.parse(segment.end_at);
+    const remaining = Math.max(0, finish - Math.max(now.getTime(), start));
+    const segmentCapacityCents = Math.round(
+      addedMonthlyCents * segment.months * (10_000 - segment.discount_basis_points) / 10_000,
+    );
+    return total + Math.round(segmentCapacityCents * remaining / (finish - start));
+  }, 0);
 
-  const extensionMonths = targetCycle.months - currentCycle.months;
-  const discountMultiplier = (10_000 - targetCycle.discountBasisPoints) / 10_000;
+  const extensionMonths = extensionCycle?.months ?? 0;
+  const discountMultiplier = (10_000 - (extensionCycle?.discountBasisPoints ?? 0)) / 10_000;
   const durationExtensionCents = Math.round(targetMonthlyCents * extensionMonths * discountMultiplier);
+  const newPeriodEnd = addUtcMonths(end.toISOString(), extensionMonths);
+  if (extensionCycle) paidTermSegments.push({
+    start_at: end.toISOString(), end_at: newPeriodEnd,
+    months: extensionCycle.months, discount_basis_points: extensionCycle.discountBasisPoints,
+    source_type: "extension", source_payment_id: null,
+  });
   const totalCents = capacityProrationCents + durationExtensionCents;
   if (totalCents <= 0) throw new Error("Increase connections, team users, or billing duration to upgrade.");
 
   const renewalTotalCents = Math.round(
-    targetMonthlyCents * targetCycle.months * discountMultiplier,
+    targetMonthlyCents *
+      targetCycle.months *
+      ((10_000 - targetCycle.discountBasisPoints) / 10_000),
   );
 
   return {
+    quotedAt: now.toISOString(),
     currentConnections,
     currentUsers,
     targetConnections,
     targetUsers,
     currentBillingCycle: currentCycle.id,
     targetBillingCycle: targetCycle.id,
+    extensionBillingCycle: extensionCycle?.id ?? null,
     currentMonths: currentCycle.months,
     targetMonths: targetCycle.months,
     remainingDays,
@@ -170,6 +246,7 @@ export function buildCustomUpgradeQuote(args: {
     totalCents,
     renewalTotalCents,
     currentPeriodEnd: end.toISOString(),
-    newPeriodEnd: addUtcMonths(end.toISOString(), extensionMonths),
+    newPeriodEnd,
+    paidTermSegments,
   };
 }

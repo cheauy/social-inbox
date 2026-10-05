@@ -1250,9 +1250,7 @@ export default function Inbox() {
   const [smartView, setSmartView] = useState<SmartView>("all");
   const [status, setStatus] = useState<StatusKey>("all");
   const [statusOpen, setStatusOpen] = useState(false);
-  const [messageMatches, setMessageMatches] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [messageMatchSnapshot, setMessageMatchSnapshot] = useState<{ owner: string; ids: Set<string> } | null>(null);
 
   /* Keep relative timestamps moving from Now -> 1 min ago -> 1 hr ago. */
   const [, setClockTick] = useState(0);
@@ -1294,6 +1292,19 @@ export default function Inbox() {
     [merged, workspace?.businessId],
   );
 
+  const filterScope = [...scope].sort().join(",");
+  const messageSearchOwner = JSON.stringify([session?.user.id, search.trim(),
+    [...scope].sort().map(businessId => [businessId, workspaces.find(row => row.businessId === businessId)?.memberId])]);
+  const messageSearchContext = useRef({ owner: messageSearchOwner, epoch: 0 });
+  if (messageSearchContext.current.owner !== messageSearchOwner) {
+    messageSearchContext.current = { owner: messageSearchOwner, epoch: messageSearchContext.current.epoch + 1 };
+  }
+  const messageMatches = messageMatchSnapshot?.owner === messageSearchOwner ? messageMatchSnapshot.ids : new Set<string>();
+  useEffect(() => {
+    setTagIds([]);
+    setChannelId(null);
+  }, [filterScope]);
+
   const activeSmart = SMART_VIEWS.find((option) => option.key === smartView);
   const activeStatus = STATUSES.find((option) => option.key === status);
   const filtering = smartView !== "all" || status !== "all";
@@ -1311,48 +1322,28 @@ export default function Inbox() {
    * have the slowest of several searches land last.
    */
   useEffect(() => {
-    const keyword = search.trim();
-
-    if (keyword.length < 3 || !workspace) {
-      setMessageMatches((current) =>
-        current.size === 0 ? current : new Set(),
-      );
-
+    const keyword = search.trim(), epoch = messageSearchContext.current.epoch;
+    if (keyword.length < 3 || !workspace || !session?.user.id || scope.length === 0) {
+      setMessageMatchSnapshot(null);
       return;
     }
-
     const controller = new AbortController();
+    const owns = () => !controller.signal.aborted && messageSearchContext.current.owner === messageSearchOwner &&
+      messageSearchContext.current.epoch === epoch;
     const timer = setTimeout(() => {
-      /*
-       * One search per open workspace, unioned. The endpoint answers for the
-       * workspace the request carries, so a merged list searching only the
-       * active one would find a phone number in one shop's history and
-       * silently miss the identical one in the other's.
-       */
-      void Promise.all(
-        scope.map((businessId) =>
-          api<{ conversationIds?: string[] }>(
-            `/api/inbox/search-messages?q=${encodeURIComponent(keyword)}`,
-            businessId,
-            { signal: controller.signal },
-          ).then((result) => result.conversationIds ?? []),
-        ),
-      )
-        .then((lists) => setMessageMatches(new Set(lists.flat())))
-        .catch(() => {
-          /*
-           * An aborted request is the normal case, and a failed one must not
-           * empty what is already on screen: name and preview matches stand
-           * on their own.
-           */
-        });
+      if (!owns()) return;
+      // Keep one debounced search per open workspace and union the scoped IDs.
+      void Promise.all(scope.map(businessId =>
+        api<{ conversationIds?: string[] }>(
+          `/api/inbox/search-messages?q=${encodeURIComponent(keyword)}`, businessId,
+          { signal: controller.signal, expectedUserId: session.user.id },
+        ).then(result => result.conversationIds ?? []),
+      )).then(lists => {
+        if (owns()) setMessageMatchSnapshot({ owner: messageSearchOwner, ids: new Set(lists.flat()) });
+      }).catch(() => { /* Local name, phone and preview matching remains available. */ });
     }, 300);
-
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [search, scope]);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [messageSearchOwner, scope, workspace?.businessId, session?.user.id]);
 
   const { data: channelData } = useWorkspaceResource<{ channels: Channel[] }>(
     workspace ? "/api/inbox/channels" : null,
@@ -1382,21 +1373,31 @@ export default function Inbox() {
    * "VIP" it is about and the count beside it can only ever count that
    * workspace's customers.
    */
-  const [tags, setTags] = useState<ScopedTag[]>([]);
+  const filterMetadataOwner = JSON.stringify([session?.user.id,
+    [...scope].sort().map(businessId => [businessId, workspaces.find(row => row.businessId === businessId)?.memberId])]);
+  const tagMetadataContext = useRef({ owner: filterMetadataOwner, revision, epoch: 0 });
+  if (tagMetadataContext.current.owner !== filterMetadataOwner || tagMetadataContext.current.revision !== revision) {
+    tagMetadataContext.current = { owner: filterMetadataOwner, revision, epoch: tagMetadataContext.current.epoch + 1 };
+  }
+  const [tagSnapshot, setTagSnapshot] = useState<{ owner: string; rows: ScopedTag[] } | null>(null);
+  const tags = tagSnapshot?.owner === filterMetadataOwner ? tagSnapshot.rows : [];
 
   useEffect(() => {
-    if (scope.length === 0) {
-      setTags([]);
+    if (scope.length === 0 || !session?.user.id) {
+      setTagSnapshot(null);
       return;
     }
 
-    let alive = true;
+    const controller = new AbortController(), epoch = tagMetadataContext.current.epoch;
+    const owns = () => !controller.signal.aborted && tagMetadataContext.current.owner === filterMetadataOwner &&
+      tagMetadataContext.current.epoch === epoch;
 
     void Promise.all(
       scope.map((businessId) =>
         api<{ tags: Tag[] }>(
           `/api/tags?activeOnly=true&businessId=${encodeURIComponent(businessId)}`,
           businessId,
+          { signal: controller.signal, expectedUserId: session.user.id },
         )
           .then((data) =>
             (data.tags ?? []).map((tag) => ({ ...tag, businessId })),
@@ -1405,18 +1406,20 @@ export default function Inbox() {
           .catch(() => [] as ScopedTag[]),
       ),
     ).then((lists) => {
-      if (alive) setTags(lists.flat());
+      if (owns()) setTagSnapshot({ owner: filterMetadataOwner, rows: lists.flat() });
     });
 
     return () => {
-      alive = false;
+      controller.abort();
     };
-  }, [scope, revision]);
+  }, [scope, revision, filterMetadataOwner, session?.user.id]);
 
   const selectedChannel =
     channels.find((item) => item.id === channelId) ?? null;
   const selectedTags = useMemo(
-    () => tags.filter((item) => tagIds.includes(item.id)),
+    () => tagIds.map((id) => tags.find((item) => item.id === id) ?? {
+      id, name: "Unavailable tag", color: null, businessId: "",
+    }),
     [tags, tagIds],
   );
 
@@ -1475,7 +1478,7 @@ export default function Inbox() {
     [
       channelId,
       conversations,
-      memberId,
+      memberIdFor,
       messageMatches,
       deferredSearch,
       smartView,

@@ -24,6 +24,8 @@ import {
 } from "../../components/ui";
 import { api } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
+import { useRequestOwner } from "../../lib/use-request-owner";
+import { canManageWorkspacePermission } from "../../lib/workspace-permissions";
 import { useLanguage } from "../../lib/language-provider";
 import type { Member } from "../../lib/types";
 
@@ -71,7 +73,8 @@ type Channel = {
 
 export default function People() {
   const insets = useSafeAreaInsets();
-  const { workspace, canManageRooms, settingsRevision } = useInbox();
+  const { workspace, member, permissions, settingsRevision } = useInbox();
+  const canManageChannels = canManageWorkspacePermission(workspace, member, permissions, "channels");
   const { t } = useLanguage();
 
   const [members, setMembers] = useState<Member[]>([]);
@@ -88,7 +91,19 @@ export default function People() {
   const [inviteError, setInviteError] = useState("");
   const [releasing, setReleasing] = useState<string | null>(null);
 
+  const scope = JSON.stringify([workspace?.businessId, workspace?.memberId]);
+  const beginRequest = useRequestOwner(scope);
+  const mutationLock = useRef(false);
+  const beginMutation = useRequestOwner(scope);
+  useEffect(() => {
+    mutationLock.current = false;
+    setMembers([]); setChannels([]); setInvitations([]); setCanInvite(false);
+    setInviting(false); setEmail(""); setSending(false); setReleasing(null); setError(""); setInviteError("");
+  }, [scope]);
+
   const load = useCallback(async () => {
+    const ownsResponse = beginRequest();
+    if (!ownsResponse()) return;
     if (!workspace) {
       setLoading(false);
       return;
@@ -112,6 +127,7 @@ export default function People() {
         ).catch(() => ({ canManage: false, invitations: [] })),
       ]);
 
+      if (!ownsResponse()) return;
       setMembers(team.members ?? []);
       setInvitations(invited.invitations ?? []);
       setCanInvite(invited.canManage === true);
@@ -129,15 +145,16 @@ export default function People() {
 
       setError("");
     } catch (loadError) {
+      if (!ownsResponse()) return;
       setError(
         loadError instanceof Error
           ? loadError.message
           : "Unable to load the team.",
       );
     } finally {
-      setLoading(false);
+      if (ownsResponse()) setLoading(false);
     }
-  }, [workspace?.businessId]);
+  }, [workspace?.businessId, beginRequest]);
 
   useEffect(() => {
     setLoading(true);
@@ -152,7 +169,10 @@ export default function People() {
   }, [settingsRevision, load]);
 
   async function invite() {
-    if (!workspace) return;
+    if (mutationLock.current) return;
+    const ownsResponse = beginMutation();
+    if (!ownsResponse()) return;
+    if (!workspace || !canInvite || sending) return;
 
     const address = email.trim().toLowerCase();
 
@@ -166,42 +186,55 @@ export default function People() {
     setSending(true);
     setInviteError("");
 
+    mutationLock.current = true;
     try {
       await api("/api/team/invitations", workspace.businessId, {
         method: "POST",
         body: { email: address, role },
       });
 
+      if (!ownsResponse()) return;
       setEmail("");
       setInviting(false);
+      if (!ownsResponse()) return;
       await load();
     } catch (sendError) {
+      if (!ownsResponse()) return;
       setInviteError(
         sendError instanceof Error
           ? sendError.message
           : "Unable to send that invitation.",
       );
     } finally {
-      setSending(false);
+      if (ownsResponse()) mutationLock.current = false;
+      if (ownsResponse()) setSending(false);
     }
   }
 
   async function act(invitation: Invitation, action: "resend" | "cancel") {
-    if (!workspace) return;
+    if (mutationLock.current) return;
+    const ownsResponse = beginMutation();
+    if (!ownsResponse()) return;
+    if (!workspace || !canInvite) return;
 
+    mutationLock.current = true;
     try {
       await api("/api/team/invitations/" + invitation.id, workspace.businessId, {
         method: "PATCH",
         body: { action },
       });
 
+      if (!ownsResponse()) return;
       await load();
     } catch (actError) {
+      if (!ownsResponse()) return;
       setError(
         actError instanceof Error
           ? actError.message
           : "Unable to update that invitation.",
       );
+    } finally {
+      if (ownsResponse()) mutationLock.current = false;
     }
   }
 
@@ -236,11 +269,15 @@ export default function People() {
   }
 
   async function disconnect(channel: Channel) {
-    if (!workspace) return;
+    if (mutationLock.current) return;
+    const ownsResponse = beginMutation();
+    if (!ownsResponse()) return;
+    if (!workspace || !canManageChannels || releasing || channel.businessId !== workspace.businessId) return;
 
     setReleasing(channel.id);
     setError("");
 
+    mutationLock.current = true;
     try {
       /*
        * Each platform releases its own way -- Meta wants the webhook
@@ -265,15 +302,18 @@ export default function People() {
         );
       }
 
+      if (!ownsResponse()) return;
       await load();
     } catch (disconnectError) {
+      if (!ownsResponse()) return;
       setError(
         disconnectError instanceof Error
           ? disconnectError.message
           : "Unable to disconnect that channel.",
       );
     } finally {
-      setReleasing(null);
+      if (ownsResponse()) mutationLock.current = false;
+      if (ownsResponse()) setReleasing(null);
     }
   }
 
@@ -464,7 +504,7 @@ export default function People() {
                 apply. Gating this on the invitation permission instead would
                 hide it from an admin the API would have let through.
               */}
-              {canManageRooms ? (
+              {canManageChannels ? (
                 releasing === channel.id ? (
                   <ActivityIndicator color={colors.red} />
                 ) : (

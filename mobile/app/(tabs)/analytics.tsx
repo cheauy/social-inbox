@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useState } from "react";
+import { useRequestOwner } from "../../lib/use-request-owner";
 import {
   Animated,
   Pressable,
@@ -60,6 +61,7 @@ type BusyHourRow = {
 
 type ChannelRow = {
   key: string;
+  socialAccountId?: string | null;
   platform: string;
   sourceType: string;
   accountName: string;
@@ -441,13 +443,22 @@ function formatHour(hour: number) {
   return normalized < 12 ? `${normalized} AM` : `${normalized - 12} PM`;
 }
 
-function BusyHoursChart({ rows }: { rows: BusyHourRow[] }) {
-  const values = Array.from({ length: 24 }, (_, hour) => {
-    const match = rows.find((row) => Number(row.hour) === hour);
-    return match ? Math.max(0, Number(match.conversations) || 0) : 0;
-  });
-  const peakCount = Math.max(...values, 0);
-  const peakHour = peakCount > 0 ? values.indexOf(peakCount) : null;
+function BusyHoursChart({ rows, timezoneLabel }: {
+  rows: BusyHourRow[];
+  timezoneLabel: string;
+}) {
+  // The report returns only its six busiest bins; omitted hours are unknown.
+  const values = rows.map((row) => ({
+    hour: Number(row.hour),
+    conversations: Number(row.conversations),
+  })).filter((row) =>
+    Number.isInteger(row.hour) && row.hour >= 0 && row.hour < 24 &&
+    Number.isFinite(row.conversations) && row.conversations >= 0,
+  ).sort((a, b) => a.hour - b.hour);
+  const peakCount = Math.max(...values.map((row) => row.conversations), 0);
+  const peakHour = peakCount > 0
+    ? values.find((row) => row.conversations === peakCount)?.hour ?? null
+    : null;
 
   return (
     <Card>
@@ -462,10 +473,10 @@ function BusyHoursChart({ rows }: { rows: BusyHourRow[] }) {
         >
           <View style={{ flex: 1, gap: 3 }}>
             <Text style={{ fontSize: 17, fontWeight: "800", color: colors.ink }}>
-              Busiest hours
+              Busiest reported hours
             </Text>
             <Text style={{ fontSize: 12.5, color: colors.muted }}>
-              When customers first message
+              First incoming per conversation in this period · {timezoneLabel}
             </Text>
           </View>
 
@@ -487,6 +498,11 @@ function BusyHoursChart({ rows }: { rows: BusyHourRow[] }) {
           ) : null}
         </View>
 
+        <Text style={{ marginTop: 12, fontSize: 12, lineHeight: 18, color: colors.muted }}>
+          Up to 6 busiest hours are returned. Other hours are not reported.
+          Includes message and comment conversations.
+        </Text>
+
         {peakHour === null ? (
           <View
             style={{
@@ -499,7 +515,7 @@ function BusyHoursChart({ rows }: { rows: BusyHourRow[] }) {
           >
             <Ionicons name="bar-chart-outline" size={26} color={colors.muted} />
             <Text style={{ marginTop: 8, fontSize: 13, color: colors.muted }}>
-              No first-message activity in this period.
+              No busy-hour activity reported for this period.
             </Text>
           </View>
         ) : (
@@ -528,7 +544,7 @@ function BusyHoursChart({ rows }: { rows: BusyHourRow[] }) {
                   paddingTop: 4,
                 }}
               >
-                {values.map((value, hour) => {
+                {values.map(({ hour, conversations: value }) => {
                   const peak = hour === peakHour;
                   const height =
                     value === 0
@@ -539,7 +555,7 @@ function BusyHoursChart({ rows }: { rows: BusyHourRow[] }) {
                     <View
                       key={hour}
                       accessible
-                      accessibilityLabel={`${formatHour(hour)}: ${value} first ${value === 1 ? "message" : "messages"}`}
+                      accessibilityLabel={`${formatHour(hour)}: ${value} conversations`}
                       style={{ flex: 1, height: 136, justifyContent: "flex-end" }}
                     >
                       <View
@@ -564,16 +580,11 @@ function BusyHoursChart({ rows }: { rows: BusyHourRow[] }) {
                 marginTop: 8,
               }}
             >
-              {["12 AM", "6 AM", "12 PM", "6 PM", "12 AM"].map(
-                (label, index) => (
-                  <Text
-                    key={`${label}-${index}`}
-                    style={{ fontSize: 10.5, color: colors.muted }}
-                  >
-                    {label}
-                  </Text>
-                ),
-              )}
+              {values.map(({ hour, conversations: value }) => (
+                <Text key={hour} style={{ flex: 1, textAlign: "center", fontSize: 10.5, color: colors.muted }}>
+                  {formatHour(hour)}{"\n"}{value}
+                </Text>
+              ))}
             </View>
 
             <Text
@@ -587,7 +598,7 @@ function BusyHoursChart({ rows }: { rows: BusyHourRow[] }) {
               <Text style={{ fontWeight: "800", color: colors.blue }}>
                 {formatHour(peakHour)}
               </Text>{" "}
-              is the peak with {peakCount} first {peakCount === 1 ? "message" : "messages"}.
+              is the reported peak with {peakCount} {peakCount === 1 ? "conversation" : "conversations"}.
             </Text>
           </>
         )}
@@ -596,16 +607,9 @@ function BusyHoursChart({ rows }: { rows: BusyHourRow[] }) {
   );
 }
 
-/*
- * One row per Page, not one per channel.
- *
- * The endpoint keys its rows by account AND source type, so a Facebook Page
- * that takes both DMs and comments came back as two rows with the same name --
- * the same shop listed twice, its traffic split across two lines that had to
- * be added up by eye. Grouping by name puts the question and the answer on one
- * row: this Page got this many messages and this many comments.
- */
+/* One row per connected account. Display names are not unique identities. */
 type PageRow = {
+  key: string;
   name: string;
   platform: string;
   messages: number;
@@ -621,7 +625,12 @@ function byPage(channels: ChannelRow[]): PageRow[] {
 
   for (const channel of channels) {
     const name = channel.accountName || "Unnamed";
-    const page = pages.get(name) ?? {
+    const key = JSON.stringify([
+      channel.platform,
+      channel.socialAccountId ?? channel.key.replace(/:(message|comment)$/, ""),
+    ]);
+    const page = pages.get(key) ?? {
+      key,
       name,
       platform: channel.platform,
       messages: 0,
@@ -654,7 +663,7 @@ function byPage(channels: ChannelRow[]): PageRow[] {
       page.answered += channel.answered;
     }
 
-    pages.set(name, page);
+    pages.set(key, page);
   }
 
   return [...pages.values()]
@@ -662,7 +671,7 @@ function byPage(channels: ChannelRow[]): PageRow[] {
       ...page,
       firstReplySeconds: page.answered > 0 ? weighted / page.answered : null,
     }))
-    .sort((a, b) => b.messages + b.comments - (a.messages + a.comments));
+    .sort((a, b) => b.chats - a.chats);
 }
 
 function pageAppearance(platform: string): {
@@ -727,17 +736,21 @@ function ChannelPerformance({
 
   const totalTraffic = Math.max(
     1,
-    pages.reduce((sum, page) => sum + page.messages + page.comments, 0),
+    pages.reduce((sum, page) => sum + page.chats, 0),
   );
 
   return (
     <View style={{ gap: 10 }}>
+      <Text style={{ fontSize: 12, color: colors.muted, lineHeight: 18 }}>
+        Threads started during {periodLabel.toLowerCase()}. Incoming messages
+        and comments count their full history, including activity outside this period.
+      </Text>
       {!top ? (
         <Card>
           <View style={{ alignItems: "center", padding: 28 }}>
             <Ionicons name="git-network-outline" size={27} color={colors.muted} />
             <Text style={{ marginTop: 8, fontSize: 13, color: colors.muted }}>
-              No page activity in this period.
+              No threads started in this period.
             </Text>
           </View>
         </Card>
@@ -791,10 +804,10 @@ function ChannelPerformance({
               <Text
                 style={{ fontSize: 26, fontWeight: "800", color: colors.blue }}
               >
-                {top.messages + top.comments}
+                {top.chats}
               </Text>
               <Text style={{ fontSize: 10.5, color: colors.muted }}>
-                received
+                threads started
               </Text>
             </View>
           </View>
@@ -804,13 +817,13 @@ function ChannelPerformance({
               icon="mail"
               tone="#2563EB"
               value={top.messages}
-              label="Messages"
+              label="Incoming messages"
             />
             <Tally
               icon="chatbubble-ellipses"
               tone="#EB6834"
               value={top.comments}
-              label="Comments"
+              label="Incoming comments"
             />
             <View
               style={{
@@ -845,11 +858,11 @@ function ChannelPerformance({
         <Card>
           {pages.map((page, index) => {
             const appearance = pageAppearance(page.platform);
-            const traffic = page.messages + page.comments;
+            const traffic = page.chats;
             const share = Math.round((traffic / totalTraffic) * 100);
 
             return (
-              <View key={page.name}>
+              <View key={page.key}>
                 {index > 0 ? (
                   <View style={{ height: 1, backgroundColor: colors.border }} />
                 ) : null}
@@ -887,7 +900,7 @@ function ChannelPerformance({
                         {page.name}
                       </Text>
                       <Text style={{ fontSize: 11.5, color: colors.muted }}>
-                        {appearance.label} · {share}% of everything received
+                        {appearance.label} · {share}% of threads started
                       </Text>
                     </View>
 
@@ -898,7 +911,7 @@ function ChannelPerformance({
                         {traffic}
                       </Text>
                       <Text style={{ fontSize: 10.5, color: colors.muted }}>
-                        received
+                        threads started
                       </Text>
                     </View>
                   </View>
@@ -914,19 +927,19 @@ function ChannelPerformance({
                       icon="mail"
                       tone="#2563EB"
                       value={page.messages}
-                      label="Messages"
+                      label="Incoming messages"
                     />
                     <Tally
                       icon="chatbubble-ellipses"
                       tone="#EB6834"
                       value={page.comments}
-                      label="Comments"
+                      label="Incoming comments"
                     />
                     <Tally
                       icon="chatbubbles-outline"
                       tone={colors.muted}
                       value={page.chats}
-                      label="Conversations"
+                      label="Threads started"
                     />
                   </View>
 
@@ -971,14 +984,20 @@ export default function Analytics() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  /*
-   * The server buckets by local day, and without an offset it would use UTC
-   * -- which in Cambodia moves everything before 07:00 into the previous day.
-   * The same value the web sends.
-   */
-  const offset = -new Date().getTimezoneOffset();
+  // The API and website use UTC minus local time: Cambodia sends -420.
+  const offset = new Date().getTimezoneOffset();
+  const timezoneLabel = `${Intl.DateTimeFormat().resolvedOptions().timeZone} (UTC${
+    offset <= 0 ? "+" : "-"
+  }${String(Math.floor(Math.abs(offset) / 60)).padStart(2, "0")}:${String(
+    Math.abs(offset) % 60,
+  ).padStart(2, "0")})`;
+  const workspaceScope = JSON.stringify([workspace?.businessId, workspace?.memberId]);
+  const beginRequest = useRequestOwner(JSON.stringify([workspaceScope, period, offset]));
+  useEffect(() => { setData(EMPTY); setError(""); }, [workspaceScope]);
 
   const load = useCallback(async () => {
+    const ownsResponse = beginRequest();
+    if (!ownsResponse()) return;
     if (!workspace) {
       setLoading(false);
       return;
@@ -1021,6 +1040,7 @@ export default function Analytics() {
           ),
         ]);
 
+      if (!ownsResponse()) return;
       const channelRows = channelReport.channels ?? [];
 
       setData({
@@ -1045,15 +1065,16 @@ export default function Analytics() {
 
       setError((conversations.warnings ?? []).join(" "));
     } catch (loadError) {
+      if (!ownsResponse()) return;
       setError(
         loadError instanceof Error
           ? loadError.message
           : "Unable to load the dashboard.",
       );
     } finally {
-      setLoading(false);
+      if (ownsResponse()) setLoading(false);
     }
-  }, [workspace?.businessId, period, offset]);
+  }, [workspace?.businessId, period, offset, beginRequest]);
 
   useEffect(() => {
     setLoading(true);
@@ -1125,6 +1146,9 @@ export default function Analytics() {
             );
           })}
         </ScrollView>
+        <Text style={{ fontSize: 12, lineHeight: 18, color: colors.muted }}>
+          Date and workspace selection only. Channel, status and tag filters are not supported here.
+        </Text>
       </View>
 
       <Heading>Needs attention</Heading>
@@ -1185,7 +1209,7 @@ export default function Analytics() {
           icon="mail-outline"
           label="Messages"
           value={String(conversations.totalMessages)}
-          helper={`across ${conversations.receivedConversations} conversations`}
+          helper="Incoming + outgoing in the conversation report"
         />
 
         <View style={{ height: 1, backgroundColor: colors.border }} />
@@ -1224,7 +1248,16 @@ export default function Analytics() {
           icon="people-outline"
           label="New customers"
           value={String(customers.newCustomers)}
-          helper={`${customers.returningCustomers} returning`}
+          helper="Profiles created during this period"
+        />
+
+        <View style={{ height: 1, backgroundColor: colors.border }} />
+
+        <Glance
+          icon="people-outline"
+          label="Returning customers"
+          value={String(customers.returningCustomers)}
+          helper="Existing customers active during this period"
         />
       </Card>
 
@@ -1235,12 +1268,16 @@ export default function Analytics() {
         periodLabel={periodLabel}
       />
 
-      <BusyHoursChart rows={data.busyHours} />
+      <BusyHoursChart rows={data.busyHours} timezoneLabel={timezoneLabel} />
 
       <Text
         style={[styles.muted, { fontSize: 12, paddingHorizontal: 2, lineHeight: 18 }]}
       >
-        All cards follow the selected period. Assignment and unread counts use
+        Dates and hours use this device's current UTC offset: {timezoneLabel}.
+        Today and yesterday use midnight calculated with this offset. Historical
+        daylight-saving changes are not adjusted. 7, 30, and 90 days are rolling durations.
+        Channel performance uses the separate thread-start cohort described above.
+        Assignment and unread counts use
         current status for conversations with incoming messages in that period.
         SLA is measured at the period’s end; overdue means unfinished follow-ups
         due during the period.

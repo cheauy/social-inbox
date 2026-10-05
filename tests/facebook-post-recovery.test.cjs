@@ -3,7 +3,7 @@ const {loader,base,uuid,setup,hooks,nodes,tick}=require('./inbox-recovery-harnes
 const helper=loader()('lib/facebook/post-preview-data.ts');
 test('failed/partial post lookup never erases saved text or an existing image',()=>{
  const old={id:'p_1',message:'Saved Khmer caption',full_picture:'https://scontent.fbcdn.net/old.jpg'};
- const data=helper.mergePostPreview(old,{message:null,full_picture:null},'p_1');assert.equal(data.message,old.message);assert.equal(data.full_picture,old.full_picture);assert.match(data.permalink_url,/facebook.com/);
+ const data=helper.mergePostPreview(old,{message:null,full_picture:null},'p_1');assert.equal(data.message,old.message);assert.equal(data.full_picture,old.full_picture);assert.equal(data.permalink_url,null);
 });
 test('fresh post image replaces the saved URL while preserving existing text',()=>{
  const data=helper.mergePostPreview({message:'Caption',full_picture:'https://scontent.fbcdn.net/old.jpg'},{full_picture:'https://scontent.fbcdn.net/new.jpg'},'p_1');assert.equal(data.message,'Caption');assert.equal(data.full_picture,'https://scontent.fbcdn.net/new.jpg');
@@ -19,11 +19,38 @@ test('post preview resolves context from authorized message and cannot be redire
  const h=previewSetup({preview:{id:'page1_post1',full_picture:'https://scontent.fbcdn.net/new.jpg'}}),result=await call(h,{postId:'OTHER',url:'http://127.0.0.1/private',refresh:'1'});
  assert.equal(result.status,200);assert.equal(result.preview.message,'Saved caption');assert.equal(h.previewCalls[0][0],'page1_post1');assert.equal(h.previewCalls[0][1],'page1');assert.equal(h.previewCalls[0][2].refresh,true);assert.equal(h.db.history.some(q=>q.op!=='read'),false);
 });
+test('source preview uses only the exact stored referral and authorized Page',async()=>{
+ const postId='12222254824457313',pageId='61567211404153',mid='m_video_referral';
+ const payload={message:{mid,referral:{source:'ADS',ad_id:'120253033046470092',ads_context_data:{post_id:postId,ad_title:'Melody_Group_1'}}}};
+ const h=previewSetup({payload,messagePatch:{platform_message_id:mid,direction:'incoming'},accountPatch:{platform_account_id:pageId},preview:{id:`${pageId}_${postId}`,full_picture:'https://scontent.fbcdn.net/video-thumbnail.jpg'}});
+ h.db.tables.conversations[0].facebook_messenger_sources=[{key:'source',kind:'ad',occurred_at:'2026-10-02T05:33:06.000Z',message_id:mid,ad_id:'120253033046470092',post_id:postId,title:'Melody_Group_1',image_url:null,post_url:`https://www.facebook.com/${pageId}/posts/${postId}`}];
+ const result=await call(h,{source:'1',refresh:'1',postId:'999',url:'http://127.0.0.1/private'});
+ assert.equal(result.status,200);assert.equal(result.available,true);assert.equal(h.previewCalls[0][0],`${pageId}_${postId}`);assert.equal(h.previewCalls[0][1],pageId);assert.equal(h.previewCalls[0][2].refresh,true);assert.equal(h.previewCalls.length,1);assert.equal(h.db.history.some(q=>q.op!=='read'),false);
+});
+test('source preview does not double-prefix composite IDs',async()=>{
+ const pageId='61567211404153',postId=`${pageId}_12222254824457313`,mid='m_composite';
+ const payload={message:{mid,referral:{source:'ADS',ads_context_data:{post_id:postId}}}};
+ const h=previewSetup({payload,messagePatch:{platform_message_id:mid,direction:'incoming'},accountPatch:{platform_account_id:pageId},preview:{id:postId,full_picture:'https://scontent.fbcdn.net/video-thumbnail.jpg'}});
+ const result=await call(h,{source:'1'});assert.equal(result.status,200);assert.equal(h.previewCalls[0][0],postId);assert.equal(h.previewCalls.length,1);
+});
+test('source preview has one bounded bare-ID fallback and keeps video attachment recovery in the provider helper',async()=>{
+ const pageId='61567211404153',postId='12222254824457313',mid='m_video_fallback';
+ const payload={message:{mid,referral:{source:'ADS',ads_context_data:{post_id:postId}}}};
+ const h=previewSetup({payload,messagePatch:{platform_message_id:mid,direction:'incoming'},accountPatch:{platform_account_id:pageId},preview:id=>id===postId?{id,full_picture:'https://scontent.fbcdn.net/video-thumbnail.jpg'}:null});
+ const result=await call(h,{source:'1',refresh:'1'});assert.equal(result.available,true);assert.deepEqual(h.previewCalls.map(call=>call[0]),[`${pageId}_${postId}`,postId]);
+ const failed=previewSetup({payload,messagePatch:{platform_message_id:mid,direction:'incoming'},accountPatch:{platform_account_id:pageId},preview:id=>id===`${pageId}_${postId}`?{id,message:'video post',full_picture:null}:null});const partial=await call(failed,{source:'1',refresh:'1'});assert.equal(failed.previewCalls.length,2);assert.equal(partial.preview.id,`${pageId}_${postId}`);assert.equal(partial.available,false);
+});
+test('source preview keeps workspace, permission and direction boundaries',async()=>{
+ for(const options of [{permissionDenied:true},{messagePatch:{business_id:'b2'}},{messagePatch:{conversation_id:uuid(2)}},{messagePatch:{direction:'outgoing'}}]){
+  const h=previewSetup(options),result=await call(h,{source:'1',postId:'12222254824457313'});
+  assert.ok([400,403,404].includes(result.status));assert.equal(h.previewCalls.length,0);
+ }
+});
 for(const payload of [{item:'comment',comment_id:'c'},{source:'facebook_comment_reply',reply_comment_id:'c'},{tenh_source:'facebook_page_reply',parent_comment_id:'c'},{post_id:'page1_post1'},{source:'facebook_comment',comment_id:'c'}])test('recognizes stored comment shape '+JSON.stringify(payload),async()=>{
  const h=previewSetup({payload,resolvedPost:'page1_post1'}),r=await call(h);assert.equal(r.status,200);assert.equal(h.previewCalls.length,1);
 });
 test('missing post ID is recovered through the authorized comment only',async()=>{
- const h=previewSetup({payload:{item:'comment',comment_id:'c123'},resolvedPost:'p_123'}),r=await call(h);assert.equal(r.status,200);assert.equal(h.lookupCalls[0][0],'c123');assert.equal(h.lookupCalls[0][1],'page1');assert.equal(r.preview.id,'p_123');
+ const h=previewSetup({payload:{item:'comment',comment_id:'c123'},resolvedPost:'page1_123'}),r=await call(h);assert.equal(r.status,200);assert.equal(h.lookupCalls[0][0],'c123');assert.equal(h.lookupCalls[0][1],'page1');assert.equal(r.preview.id,'page1_123');
 });
 test('transient Graph absence returns saved content; endpoint never writes raw_payload',async()=>{
  const h=previewSetup(),r=await call(h);assert.equal(r.preview.message,'Saved caption');assert.equal(r.available,false);assert.equal(h.db.history.some(q=>q.op==='update'),false);
@@ -38,7 +65,7 @@ test('database/provider exceptions fail the preview only with retryable JSON',as
  const h=previewSetup({previewThrow:true}),r=await call(h);assert.equal(r.status,503);assert.equal(h.db.history.some(q=>q.op==='update'),false);
 });
 function graph(results){let calls=[],clock=Date.now();class FakeDate extends Date{static now(){return clock;}}
- const load=loader({'@/lib/facebook/get-facebook-page-access-token':{getFacebookPageAccessToken:async()=> 'TOKEN',isFacebookAccessTokenError:e=>e?.code===190,refreshFacebookPageAccessToken:async()=> 'REFRESH'}},{Date:FakeDate,console:{...console,warn(){}},fetch:async(url,init)=>{calls.push({url,init});const value=results.shift();if(value instanceof Error)throw value;return new Response(JSON.stringify(value??{}),{status:value?.error?400:200});}});
+ const load=loader({'@/lib/facebook/get-facebook-page-access-token':{getFacebookPageAccessToken:async()=> 'TOKEN',isFacebookAccessTokenError:e=>e?.code===190,refreshFacebookPageAccessToken:async()=> 'REFRESH'}},{Date:FakeDate,console:{...console,warn(){}},fetch:async(url,init)=>{calls.push({url,init});const value=results.shift();if(value instanceof Error)throw value;if(value?.full_picture && !value.attachments)value.attachments={data:[]};return new Response(JSON.stringify(value??{}),{status:value?.error?400:200});}});
  return {api:load('lib/facebook/get-post-preview.ts'),calls,advance:ms=>clock+=ms};
 }
 test('concurrent same-post lookups coalesce, cached lookups avoid repeat Graph requests',async()=>{
@@ -55,7 +82,7 @@ test('attachment fallback finds album images and never mistakes video source for
  const video=graph([{}, {attachments:{data:[{media:{source:'https://video.fbcdn.net/video.mp4'}}]}}]);assert.equal((await video.api.getFacebookPostPreview('p','page')).full_picture,null);
 });
 test('cache keys separate Page accounts',async()=>{const h=graph([{full_picture:'https://scontent.fbcdn.net/a.jpg'},{full_picture:'https://scontent.fbcdn.net/b.jpg'}]);await h.api.getFacebookPostPreview('p','pageA');await h.api.getFacebookPostPreview('p','pageB');assert.equal(h.calls.length,2);});
-function card(fetch){const rt=hooks(),calls=[],opened=[];const load=loader({react:rt.React,'react/jsx-runtime':rt.jsx},{AbortController,URLSearchParams,fetch:async(url,init)=>{calls.push({url,init});return fetch(url,init);}});const {FacebookPostCard}=load('components/inbox/facebook-post-card.tsx');const props={conversationId:uuid(1),messageId:uuid(11),postId:'p_1',savedPreview:{id:'p_1',message:'Saved caption',full_picture:'https://scontent.fbcdn.net/old.jpg'},accountName:'Melody Clothing',isKhmer:false,onOpenImage:i=>opened.push(i)};return {rt,calls,opened,props,render:changes=>rt.render(FacebookPostCard,{...props,...changes})};}
+function card(fetch){const rt=hooks(),calls=[],opened=[];const load=loader({react:rt.React,'react/jsx-runtime':rt.jsx},{AbortController,URLSearchParams,fetch:async(url,init)=>{calls.push({url,init});return fetch(url,init);}});const {FacebookPostCard}=load('components/inbox/facebook-post-card.tsx');const props={conversationId:uuid(1),messageId:uuid(11),postId:'p_1',savedPreview:{id:'p_1',message:'Saved caption',full_picture:'https://scontent.fbcdn.net/old.jpg',attachments_complete:true,comment_object_id:'p_1',permalink_url:'https://www.facebook.com/verified/post'},accountName:'Melody Clothing',isKhmer:false,onOpenImage:i=>opened.push(i)};return {rt,calls,opened,props,render:changes=>rt.render(FacebookPostCard,{...props,...changes})};}
 test('complete saved card does not fetch until image fails; broken image is removed and repaired',async()=>{
  const h=card(async()=>Response.json({success:true,preview:{full_picture:'https://scontent.fbcdn.net/new.jpg'}}));let tree=h.render();assert.equal(h.calls.length,0);nodes(tree,n=>n.type==='img')[0].props.onError();tree=h.render();assert.equal(nodes(tree,n=>n.type==='img').length,0);await tick();tree=h.render();assert.equal(h.calls.length,1);assert.match(nodes(tree,n=>n.type==='img')[0].props.src,/new.jpg/);assert.match(h.calls[0].url,/refresh=1/);h.rt.cleanup();
 });

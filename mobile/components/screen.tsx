@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Empty, ErrorNotice, colors, styles } from "./ui";
 import { api } from "../lib/api/client";
 import { useInbox } from "../lib/inbox-provider";
+import { useRequestOwner } from "../lib/use-request-owner";
 
 /*
  * The shell every tab except Inbox shares.
@@ -26,26 +27,35 @@ export function useWorkspaceResource<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const scope = JSON.stringify([workspace?.businessId, workspace?.memberId, path]);
+  const beginRequest = useRequestOwner(scope);
+
+  useEffect(() => { setData(null); setError(""); setLoading(Boolean(workspace && path)); }, [scope]);
 
   const load = useCallback(async () => {
+    const ownsResponse = beginRequest();
+    if (!ownsResponse()) return;
     if (!workspace || !path) {
       setLoading(false);
       return;
     }
 
     try {
-      setData(await api<T>(path, workspace.businessId));
+      const result = await api<T>(path, workspace.businessId);
+      if (!ownsResponse()) return;
+      setData(result);
       setError("");
     } catch (loadError) {
+      if (!ownsResponse()) return;
       setError(
         loadError instanceof Error
           ? loadError.message
           : "Unable to load this page.",
       );
     } finally {
-      setLoading(false);
+      if (ownsResponse()) setLoading(false);
     }
-  }, [path, workspace?.businessId]);
+  }, [path, workspace?.businessId, beginRequest]);
 
   // Refresh only for workspace/settings changes. Incoming chat messages have
   // their own revision and must not repeatedly reload Settings screens.

@@ -1,9 +1,9 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
+
 import {
-  useEffect,
   useMemo,
-  useState,
 } from "react";
 
 import { DashboardPanelFrame, dashboardPanelSurfaceClassName } from "@/components/dashboard/dashboard-panel-frame";
@@ -292,7 +292,9 @@ function isAnalyticsView(
     value ===
       "customer-insights" ||
     value ===
-      "conversation-reports"
+      "conversation-reports" ||
+    value ===
+      "channel-performance"
   );
 }
 
@@ -317,46 +319,17 @@ function updateViewInUrl(
   );
 
   window.history.replaceState(
-    window.history.state,
+    // Passing Next's __NA-marked state skips its URL synchronization wrapper.
+    null,
     "",
     `${url.pathname}${url.search}${url.hash}`,
   );
 }
 
 export function AnalyticsWorkspace() {
-  const [
-    activeView,
-    setActiveView,
-  ] =
-    useState<AnalyticsView>(
-      "dashboard",
-    );
-
-  useEffect(() => {
-    if (
-      typeof window ===
-      "undefined"
-    ) {
-      return;
-    }
-
-    const requestedView =
-      new URL(
-        window.location.href,
-      ).searchParams.get(
-        "view",
-      );
-
-    if (
-      isAnalyticsView(
-        requestedView,
-      )
-    ) {
-      setActiveView(
-        requestedView,
-      );
-    }
-  }, []);
+  const searchParams = useSearchParams();
+  const requestedView = searchParams.get("view");
+  const activeView: AnalyticsView = isAnalyticsView(requestedView) ? requestedView : "dashboard";
 
   const pageCopy =
     useMemo(() => {
@@ -458,9 +431,6 @@ export function AnalyticsWorkspace() {
     view:
       AnalyticsView,
   ) {
-    setActiveView(
-      view,
-    );
     updateViewInUrl(
       view,
     );

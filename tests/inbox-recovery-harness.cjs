@@ -18,7 +18,7 @@ function database(seed) {
  class Query {
   constructor(table){this.table=table;this.op='read';this.filters=[];this.orders=[];this.columns='';this.max=Infinity;this.body=null;this.singleton=false;}
   select(columns=''){this.columns=columns;return this;}
-  eq(k,v){this.filters.push(r=>r[k]===v);return this;}
+  eq(k,v){this.filters.push(r=>k.startsWith('conversation.') ? tables.conversations.find(c=>c.id===r.conversation_id)?.[k.slice(13)]===v : r[k]===v);return this;}
   gt(k,v){this.filters.push(r=>r[k]>v);return this;}
   gte(k,v){this.filters.push(r=>r[k]>=v);return this;}
   in(k,v){this.filters.push(r=>v.includes(r[k]));return this;}
@@ -49,7 +49,7 @@ function setup(opts={}){
   '@/lib/inbox/get-conversations':{getInboxConversationScope:async()=>{if(opts.signedOut)throw Error('sign in');return scope;},getConversations:async(businesses,filter)=>{hydrateCalls.push({businesses,filter});return db.tables.conversations.filter(r=>businesses.includes(r.business_id)&&filter.conversationIds.includes(r.id)&&(!filter.workspaceId||r.business_id===filter.workspaceId)&&(!filter.channelId||r.social_account_id===filter.channelId)).map(r=>({...r,contact:{full_name:'Customer '+r.id,tags:[]},social_account:db.tables.social_accounts.find(c=>c.id===r.social_account_id)}));}},
   '@/lib/inbox/get-inbox-resource-access':{getInboxConversationAccess:access,authorizeInboxBusinessAccess:async()=>access(uuid(1))},
   '@/lib/auth/require-permission':{memberHasPermission:async()=>!opts.permissionDenied},
-  '@/lib/facebook/get-post-preview':{getFacebookPostPreview:async(...args)=>{previewCalls.push(args);if(opts.previewThrow)throw Error('upstream');return opts.preview??null;},getFacebookPostIdForComment:async(...args)=>{lookupCalls.push(args);return opts.resolvedPost??null;}},
+  '@/lib/facebook/get-post-preview':{getFacebookPostPreview:async(...args)=>{previewCalls.push(args);if(opts.previewThrow)throw Error('upstream');return typeof opts.preview==='function'?opts.preview(...args):opts.preview??null;},getFacebookPostIdForComment:async(...args)=>{lookupCalls.push(args);return opts.resolvedPost??null;},getFacebookCommentContext:async(...args)=>typeof opts.commentContext==='function'?opts.commentContext(...args):opts.commentContext??null,getFacebookPhotoContext:async(...args)=>typeof opts.photoContext==='function'?opts.photoContext(...args):opts.photoContext??null},
  },{URLSearchParams,AbortController,Event,CustomEvent,console:{...console,warn(){},error(){}},...opts.globals});
  const request=body=>new Request('https://app.tenhchat.com/api/test',{method:'POST',body:JSON.stringify(body),headers:{'Content-Type':'application/json'}});
  const getRequest=params=>({nextUrl:new URL('https://app.tenhchat.com/api/facebook/post-preview?'+new URLSearchParams(params))});

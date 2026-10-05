@@ -1,3 +1,4 @@
+import { getSearchMatches } from "./get-search-matches";
 import "server-only";
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -5,10 +6,12 @@ import { getConversations, getInboxConversationScope } from "@/lib/inbox/get-con
 import { sanitizeFilters, restrictFiltersToBusinesses } from "@/lib/inbox/page-filter-normalization";
 import { CONVERSATION_PAGE_SIZE, type ConversationPage, type ConversationPageRequest } from "@/lib/inbox/conversation-page-contract";
 import { uuidPattern } from "@/lib/inbox/live-sync";
+import type { InboxConversation } from "@/types/inbox";
 
 export class ConversationPagingUnavailable extends Error {}
 
-export async function getConversationPage(request: ConversationPageRequest, snapshot = false): Promise<ConversationPage> {
+export async function getConversationPage(request: ConversationPageRequest, snapshot = false,
+  onAuthorizedRows?: (rows: InboxConversation[]) => void): Promise<ConversationPage> {
   const auth = await getCurrentMember();
   if (!auth.success) throw new Error("Unauthorized.");
   const scope = await getInboxConversationScope();
@@ -40,7 +43,8 @@ export async function getConversationPage(request: ConversationPageRequest, snap
   const matchedKnownIds = result.matchedKnownIds ?? [];
   if (!Array.isArray(matchedKnownIds) || matchedKnownIds.length > 200 || matchedKnownIds.some(id => !request.knownIds?.includes(id))) throw new Error("Invalid targeted Inbox response.");
   const hydrateIds = [...new Set([...result.ids,...matchedKnownIds])];
-  const hydrated = hydrateIds.length ? await getConversations(scope.accessibleBusinessIds,{ conversationIds: hydrateIds }) : [];
+  const hydrated = hydrateIds.length ? await getConversations(scope.accessibleBusinessIds,{ conversationIds: hydrateIds, onAuthorizedRows }) : [];
   const rows = new Map(hydrated.map(row => [row.id,row]));
-  return { ...result, matchedKnownIds, updates: matchedKnownIds.flatMap(id => rows.has(id) ? [rows.get(id)!] : []), conversations: result.ids.flatMap(id => rows.has(id) ? [rows.get(id)!] : []) };
+  const searchMatches = await getSearchMatches(request.search, hydrated);
+  return { ...result, searchMatches, matchedKnownIds, updates: matchedKnownIds.flatMap(id => rows.has(id) ? [rows.get(id)!] : []), conversations: result.ids.flatMap(id => rows.has(id) ? [rows.get(id)!] : []) };
 }

@@ -7,11 +7,19 @@ import {
   type ChangeEvent,
   type ClipboardEvent,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
 
-import { Send } from "lucide-react";
+import { Database as StorageIcon, Send } from "lucide-react";
 import { clipboardImageFiles } from "@/lib/inbox/image-clipboard";
+import {
+  DIRECT_ATTACHMENT_ACCEPT,
+  selectAttachments,
+} from "@/lib/inbox/attachment-selection";
+import { WorkspaceStorageModal } from "./workspace-storage-modal";
+import { createClient } from "@/lib/supabase/client";
+import { clearWorkspaceStorageCache, workspaceStorageCacheKey } from "@/lib/storage/workspace-storage-cache";
 import { TenhStickerPicker } from "./tenh-sticker-picker";
 import type { TelegramStickerChoice } from "@/lib/telegram/sticker-catalog";
 import type { InboxStickerChoice } from "@/lib/stickers/catalog";
@@ -51,9 +59,12 @@ export type ReplyAttachment = {
 };
 
 type ReplyBoxProps = {
+  storageBusinessId: string;
+  storageMemberId: string;
   platform?: string;
   onSendSticker?: (sticker: InboxStickerChoice) => Promise<boolean>;
   reply: string;
+  composerReady?: boolean;
   conversationId: string;
   sending: boolean;
   error: string | null;
@@ -132,63 +143,6 @@ function createId() {
   }
 
   return `${Date.now()}-${Math.random()}`;
-}
-
-function ImageIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="h-5 w-5"
-      aria-hidden="true"
-    >
-      <rect
-        x="3"
-        y="4"
-        width="18"
-        height="16"
-        rx="2"
-      />
-      <circle
-        cx="8.5"
-        cy="9"
-        r="1.5"
-      />
-      <path
-        d="m4 17 4.5-4.5 3.5 3 2.5-2.5L20 18"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function VideoIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="h-5 w-5"
-      aria-hidden="true"
-    >
-      <rect
-        x="3"
-        y="5"
-        width="14"
-        height="14"
-        rx="2"
-      />
-      <path
-        d="m17 10 4-2v8l-4-2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 function AudioIcon() {
@@ -303,6 +257,8 @@ function formatVoiceDuration(seconds: number) {
 }
 
 export function ReplyBox({
+  storageBusinessId,
+  storageMemberId,
   platform, onSendSticker,
   reply,
   sending,
@@ -317,6 +273,7 @@ export function ReplyBox({
   typingAgents = [],
   onTagsChange,
   conversationId,
+  composerReady = true,
   allowAttachments = true,
   onReplyChange,
   onSubmit,
@@ -327,6 +284,13 @@ export function ReplyBox({
   onStatusChange,
 }: ReplyBoxProps) {
   const isKhmer = useWorkspaceLanguageId() === "km";
+  useEffect(() => {
+    workspaceStorageCacheKey(storageBusinessId, storageMemberId);
+    const { data: { subscription } } = createClient().auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") clearWorkspaceStorageCache();
+    });
+    return () => subscription.unsubscribe();
+  }, [storageBusinessId, storageMemberId]);
   const [nativeSticker, setNativeSticker] = useState<TelegramStickerChoice | null>(null);
   const [stickerSending, setStickerSending] = useState(false);
   const [stickerNotice, setStickerNotice] = useState<string | null>(null);
@@ -366,7 +330,7 @@ export function ReplyBox({
    * Only a genuinely blocked channel disables it now.
    */
   const isComposerDisabled =
-    isComposerBlocked;
+    isComposerBlocked || !composerReady;
 
   /*
    * Only the send is held while a quick reply's media loads -- the agent can
@@ -398,21 +362,96 @@ export function ReplyBox({
     attachmentsBlockedReason,
   );
 
-  const imageInputRef =
+  const [moreOpen, setMoreOpen] =
+    useState(false);
+
+  const attachmentInputRef =
     useRef<HTMLInputElement | null>(null);
 
-  const videoInputRef =
-    useRef<HTMLInputElement | null>(null);
+  const attachmentTriggerRef =
+    useRef<HTMLButtonElement | null>(null);
 
-
-  const fileInputRef =
-    useRef<HTMLInputElement | null>(null);
+  const attachmentMenuRef =
+    useRef<HTMLDivElement | null>(null);
 
   const replyInputRef =
     useRef<HTMLTextAreaElement | null>(null);
 
   const [attachments, setAttachments] =
     useState<ReplyAttachment[]>([]);
+  const attachmentsRef = useRef(attachments);
+  attachmentsRef.current = attachments;
+  const composerMountedRef = useRef(true);
+  useEffect(() => {
+    composerMountedRef.current = true;
+    return () => {
+      composerMountedRef.current = false;
+      for (const attachment of attachmentsRef.current) URL.revokeObjectURL(attachment.previewUrl);
+    };
+  }, []);
+
+  const [storageConversationId, setStorageConversationId] =
+    useState<string | null>(null);
+  const storageOpen = storageConversationId === conversationId;
+
+  const attachmentConversationRef =
+    useRef(conversationId);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      attachmentMenuRef.current
+        ?.querySelector<HTMLButtonElement>('[role="menuitem"]')
+        ?.focus();
+    });
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setMoreOpen(false);
+      setActiveToolbarPanel(null);
+      attachmentTriggerRef.current?.focus();
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [moreOpen]);
+
+  function navigateAttachmentMenu(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const items = Array.from(
+      attachmentMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [],
+    );
+    if (!items.length) return;
+    event.preventDefault();
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    const next = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? items.length - 1
+        : event.key === "ArrowUp"
+          ? (current <= 0 ? items.length - 1 : current - 1)
+          : (current + 1) % items.length;
+    items[next]?.focus();
+  }
+
+  useEffect(() => {
+    if (attachmentConversationRef.current === conversationId) return;
+    attachmentConversationRef.current = conversationId;
+    const reset = window.requestAnimationFrame(() => {
+      setStorageConversationId(null);
+      setAttachments((current) => {
+        for (const attachment of current) {
+          URL.revokeObjectURL(attachment.previewUrl);
+        }
+        return [];
+      });
+    });
+    return () => window.cancelAnimationFrame(reset);
+  }, [conversationId]);
 
   /*
    * Bring a quick reply's media into the composer as ordinary attachments.
@@ -430,7 +469,7 @@ export function ReplyBox({
   async function loadSavedReplyAttachments(
     savedAttachments: SavedReplyAttachment[],
   ) {
-    if (savedAttachments.length === 0) {
+    if (!composerReady || !composerMountedRef.current || savedAttachments.length === 0) {
       return;
     }
 
@@ -524,6 +563,11 @@ export function ReplyBox({
         item !== null,
     );
 
+    if (!composerMountedRef.current) {
+      for (const attachment of loaded) URL.revokeObjectURL(attachment.previewUrl);
+      return;
+    }
+
     if (loaded.length > 0) {
       setAttachments((current) => [
         ...current,
@@ -563,10 +607,6 @@ export function ReplyBox({
       );
     }
   }
-
-
-  const [moreOpen, setMoreOpen] =
-    useState(false);
 
   const [locationPickerOpen, setLocationPickerOpen] =
     useState(false);
@@ -648,6 +688,7 @@ export function ReplyBox({
 
   const mediaStreamRef =
     useRef<MediaStream | null>(null);
+  const recordingStartPendingRef = useRef(false);
 
   const recordedChunksRef =
     useRef<BlobPart[]>([]);
@@ -823,6 +864,7 @@ export function ReplyBox({
   }
 
   async function startVoiceRecording() {
+    if (!composerMountedRef.current || recordingStartPendingRef.current) return;
     if (!allowAttachments) {
       setRecordingError(
         "Voice messages are available for Messenger conversations only.",
@@ -846,12 +888,14 @@ export function ReplyBox({
 
     if (
       recordingVoice ||
-      isComposerDisabled
+      isComposerDisabled ||
+      (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive")
     ) {
       return;
     }
 
 
+    recordingStartPendingRef.current = true;
     setMoreOpen(false);
 
     clearToolbarPanel();
@@ -871,6 +915,17 @@ export function ReplyBox({
           },
         );
 
+      // Permission/device acquisition can resolve after this keyed composer
+      // retired. Its cleanup ran before these tracks existed, so release them
+      // here before constructing a recorder or scheduling a timer.
+      if (!composerMountedRef.current) {
+        for (const track of stream.getTracks()) track.stop();
+        return;
+      }
+      // Own the stream before recorder construction so initialization failures
+      // also release every acquired track through the existing catch cleanup.
+      mediaStreamRef.current = stream;
+
       const mimeType =
         supportedRecordingMimeType();
 
@@ -888,8 +943,6 @@ export function ReplyBox({
               stream,
             );
 
-      mediaStreamRef.current =
-        stream;
       mediaRecorderRef.current =
         recorder;
       recordedChunksRef.current =
@@ -1049,6 +1102,7 @@ export function ReplyBox({
         }, 1000);
     } catch (recordError) {
       stopRecordingTracks();
+      if (!composerMountedRef.current) return;
 
       const errorName =
         recordError instanceof
@@ -1062,6 +1116,8 @@ export function ReplyBox({
           ? "Microphone permission was denied. Allow microphone access in the browser and try again."
           : "Unable to start the microphone.",
       );
+    } finally {
+      recordingStartPendingRef.current = false;
     }
   }
 
@@ -1312,7 +1368,7 @@ export function ReplyBox({
 
   function addAttachments(
     files: FileList | File[] | null,
-    kind: ReplyAttachmentKind,
+    imagesOnly = false,
   ) {
     if (!files?.length) {
       return;
@@ -1323,72 +1379,29 @@ export function ReplyBox({
       return;
     }
 
-    if (kind === "video" && attachments.some((attachment) => attachment.kind === "video")) {
-      window.alert("Only one video can be added. Remove the current video before choosing another.");
-      return;
-    }
+    const { accepted, rejected } = selectAttachments(files, {
+      platform,
+      imagesOnly,
+      existingVideoCount: attachments.filter(
+        (attachment) => attachment.kind === "video",
+      ).length,
+    });
 
-    const selectedFiles =
-      kind === "video" ? Array.from(files).slice(0, 1) : Array.from(files);
-
-    const maximumSize =
-      TENH_ATTACHMENT_LIMITS[kind];
-
-    const validFiles =
-      selectedFiles.filter((file) => {
-        const validType =
-          kind === "image"
-            ? file.type.startsWith(
-                "image/",
-              )
-            : kind === "video"
-              ? file.type.startsWith(
-                  "video/",
-                )
-              : kind === "audio"
-                ? file.type.startsWith(
-                    "audio/",
-                  ) ||
-                  /\.(mp3|m4a|aac|wav|ogg|opus)$/i.test(
-                    file.name,
-                  )
-                : !file.type.startsWith(
-                      "image/",
-                    ) &&
-                  !file.type.startsWith(
-                    "video/",
-                  ) &&
-                  (!file.type.startsWith("audio/") || /\.(mp3|wav)$/i.test(file.name));
-
-        return (
-          validType &&
-          file.size <= maximumSize
-        );
-      });
-
-    if (
-      validFiles.length !==
-      selectedFiles.length
-    ) {
-      const limitLabel =
-        kind === "image"
-          ? "10 MB"
-          : kind === "video"
-            ? "50 MB"
-            : "25 MB";
-
+    if (rejected.length > 0) {
       window.alert(
-        `Some ${kind} files were rejected. Each selected ${kind} must be ${limitLabel} or smaller.`,
+        `Some files could not be attached:\n${rejected
+          .map(({ file, reason }) => `- ${file.name}: ${reason}`)
+          .join("\n")}`,
       );
     }
 
     const newAttachments =
-      validFiles.map((file) => ({
+      accepted.map(({ file, kind }) => ({
         id: createId(),
         file,
         previewUrl:
           URL.createObjectURL(file),
-        kind: kind === "file" && /\.(mp3|wav)$/i.test(file.name) ? "audio" as const : kind,
+        kind,
       }));
 
     setAttachments((current) => [
@@ -1400,42 +1413,110 @@ export function ReplyBox({
     clearToolbarPanel();
   }
 
+  async function sendWorkspaceFiles(files: File[]) {
+    if (attachments.length > 0) {
+      window.alert("Send or remove the current attachments before sending from Storage.");
+      return false;
+    }
+    if (
+      !files.length ||
+      isSendDisabled ||
+      !allowAttachments ||
+      attachmentsBlocked ||
+      !onSendAttachments
+    ) {
+      window.alert(blockedReason || attachmentsBlockedReason || "Attachments are unavailable in this conversation.");
+      return false;
+    }
+
+    const { accepted, rejected } = selectAttachments(files, {
+      platform,
+      existingVideoCount: 0,
+    });
+    if (rejected.length || accepted.length !== files.length) {
+      window.alert(
+        `The selected Storage files cannot be sent together:\n${rejected
+          .map(({ file, reason }) => `- ${file.name}: ${reason}`)
+          .join("\n")}`,
+      );
+      return false;
+    }
+
+    const outgoing: ReplyAttachment[] = accepted.map(({ file, kind }) => ({
+      id: createId(),
+      file,
+      previewUrl: URL.createObjectURL(file),
+      kind,
+    }));
+
+    setSendingContent(true);
+    try {
+      return await onSendAttachments(outgoing);
+    } catch {
+      window.alert("Unable to send the selected Storage files. Please try again.");
+      return false;
+    } finally {
+      for (const attachment of outgoing) URL.revokeObjectURL(attachment.previewUrl);
+      setSendingContent(false);
+    }
+  }
+
+  async function draftWorkspaceFiles(files: File[]) {
+    if (attachmentConversationRef.current !== conversationId) {
+      window.alert("The conversation changed while Storage files were loading. Please select them again.");
+      return false;
+    }
+    if (
+      !files.length ||
+      isComposerDisabled ||
+      !allowAttachments ||
+      attachmentsBlocked
+    ) {
+      window.alert(blockedReason || attachmentsBlockedReason || "Attachments are unavailable in this conversation.");
+      return false;
+    }
+
+    const currentAttachments = attachmentsRef.current;
+    const { accepted, rejected } = selectAttachments(files, {
+      platform,
+      existingVideoCount: currentAttachments.filter(
+        (attachment) => attachment.kind === "video",
+      ).length,
+    });
+    if (rejected.length || accepted.length !== files.length) {
+      window.alert(
+        `The selected Storage files cannot be added to this draft:\n${rejected
+          .map(({ file, reason }) => `- ${file.name}: ${reason}`)
+          .join("\n")}`,
+      );
+      return false;
+    }
+
+    const staged: ReplyAttachment[] = accepted.map(({ file, kind }) => ({
+      id: createId(),
+      file,
+      previewUrl: URL.createObjectURL(file),
+      kind,
+    }));
+    setAttachments((current) => [...current, ...staged]);
+    setMoreOpen(false);
+    clearToolbarPanel();
+    return true;
+  }
+
   function handleImagePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     const files = clipboardImageFiles(event.clipboardData);
     if (!files.length) return; // Keep ordinary text/link paste completely native.
     event.preventDefault();
     // Reuse picker validation, size limits, previews and the existing send path.
     // Pasting attaches only; it never sends a message automatically.
-    addAttachments(files, "image");
+    addAttachments(files, true);
   }
 
-  function handleImageChange(
+  function handleAttachmentChange(
     event: ChangeEvent<HTMLInputElement>,
   ) {
-    addAttachments(
-      event.target.files,
-      "image",
-    );
-    event.target.value = "";
-  }
-
-  function handleVideoChange(
-    event: ChangeEvent<HTMLInputElement>,
-  ) {
-    addAttachments(
-      event.target.files,
-      "video",
-    );
-    event.target.value = "";
-  }
-
-  function handleFileChange(
-    event: ChangeEvent<HTMLInputElement>,
-  ) {
-    addAttachments(
-      event.target.files,
-      "file",
-    );
+    addAttachments(event.target.files);
     event.target.value = "";
   }
 
@@ -1612,7 +1693,7 @@ export function ReplyBox({
       | null = null,
   ) {
     if (
-      isComposerBlocked ||
+      isComposerDisabled ||
       !onSendAttachments ||
       attachments.length === 0
     ) {
@@ -2395,32 +2476,18 @@ export function ReplyBox({
           />
 
           <input
-            ref={imageInputRef}
+            ref={attachmentInputRef}
             type="file"
-            accept="image/*"
+            accept={DIRECT_ATTACHMENT_ACCEPT}
             multiple
-            onChange={handleImageChange}
-            className="hidden"
-          />
-          <input
-            ref={videoInputRef}
-            type="file"
-            accept="video/*"
-            onChange={handleVideoChange}
-            className="hidden"
-          />
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.rtf,.odt,.ods,.odp,.zip,.rar,.7z,.json,.xml,.mp3,.wav"
-            multiple
-            onChange={handleFileChange}
+            onChange={handleAttachmentChange}
             className="hidden"
           />
 
           <div className="order-first min-w-0 flex-[1_0_100%] pl-1 sm:order-none sm:flex-[1_1_320px]">
             <div className="flex min-h-12 min-w-0 items-center rounded-2xl border border-slate-200 bg-white pl-1.5 pr-1 transition focus-within:border-violet-300 focus-within:ring-2 focus-within:ring-violet-100">
               <button
+                ref={attachmentTriggerRef}
                 type="button"
                 disabled={isComposerDisabled || !allowAttachments}
                 onClick={() => {
@@ -2446,6 +2513,8 @@ export function ReplyBox({
                     : "Attach content")
                 }
                 aria-expanded={moreOpen}
+                aria-controls="inbox-attachment-menu"
+                aria-haspopup="menu"
               >
                 <span className="relative">
                   <AttachIcon />
@@ -2555,6 +2624,17 @@ export function ReplyBox({
         onConfirm={confirmPickedLocation}
       />
 
+      {storageOpen ? (
+        <WorkspaceStorageModal
+          key={`${storageBusinessId}:${storageMemberId}`}
+          businessId={storageBusinessId}
+          memberId={storageMemberId}
+          onClose={() => setStorageConversationId(null)}
+          onSend={sendWorkspaceFiles}
+          onDraft={draftWorkspaceFiles}
+        />
+      ) : null}
+
       {/* Existing, functional Plus/content menu */}
       {moreOpen ? (
         <>
@@ -2567,57 +2647,59 @@ export function ReplyBox({
             className="fixed inset-0 z-40 cursor-default bg-slate-950/5"
             aria-label="Close content menu"
           />
-          <div className="fixed bottom-28 left-1/2 z-50 w-64 -translate-x-1/2 overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-2xl">
+          <div
+            ref={attachmentMenuRef}
+            id="inbox-attachment-menu"
+            role="menu"
+            aria-label={isKhmer ? "ជម្រើសភ្ជាប់" : "Attachment options"}
+            onKeyDown={navigateAttachmentMenu}
+            className="fixed bottom-28 left-1/2 z-50 max-h-[calc(100dvh-8rem)] w-fit min-w-[min(22rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] -translate-x-1/2 overflow-x-hidden overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl"
+          >
             <button
               type="button"
+              role="menuitem"
               onClick={() => {
                 setMoreOpen(false);
-                imageInputRef.current?.click();
+                clearToolbarPanel();
+                attachmentInputRef.current?.click();
               }}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
-            >
-              <ImageIcon />
-              <span>{isKhmer ? "បន្ថែមរូបភាព" : "Add images"}</span>
-              <span className="ml-auto text-xs text-slate-400">
-                {isKhmer ? "ច្រើន" : "Multiple"}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMoreOpen(false);
-                videoInputRef.current?.click();
-              }}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
-            >
-              <VideoIcon />
-              <span>{isKhmer ? "បន្ថែមវីដេអូ" : "Add video"}</span>
-              <span className="ml-auto text-xs text-slate-400">
-                {isKhmer ? "តែមួយ" : "Single"}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMoreOpen(false);
-                fileInputRef.current?.click();
-              }}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+              className="grid min-h-11 w-full grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-x-2 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500"
             >
               <FileIcon />
-              <span>{isKhmer ? "បន្ថែមឯកសារ" : "Add files"}</span>
-              <span className="ml-auto text-xs text-slate-400">
-                {isKhmer ? "ច្រើន" : "Multiple"}
+              <span className="min-w-0 font-medium leading-5">{isKhmer ? "ភ្ជាប់ដោយផ្ទាល់" : "Image & Video & File"}</span>
+              <span className="col-start-2 min-w-0 text-xs leading-4 text-slate-400">
+                {isKhmer ? "ជ្រើសឯកសារ" : "Select files directly from your device"}
               </span>
             </button>
             <button
               type="button"
+              role="menuitem"
+              onClick={() => {
+                setMoreOpen(false);
+                clearToolbarPanel();
+                if (attachments.length) {
+                  window.alert("Send or remove the current attachments before sending from Storage.");
+                  return;
+                }
+                setStorageConversationId(conversationId);
+              }}
+              className="grid min-h-11 w-full grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-x-2 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500"
+            >
+              <StorageIcon className="h-5 w-5" />
+              <span className="min-w-0 font-medium leading-5">{isKhmer ? "ឃ្លាំងឯកសារ" : "Storage"}</span>
+              <span className="col-start-2 min-w-0 text-xs leading-4 text-slate-400">
+                {isKhmer ? "ផ្ទុកឡើង ឬជ្រើស" : "Select from storage"}
+              </span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
               onClick={addLocation}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+              className="grid min-h-11 w-full grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-x-2 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500"
             >
               <LocationIcon />
-              <span>{isKhmer ? "ផ្ញើទីតាំង" : "Send location"}</span>
-              <span className="ml-auto text-xs text-slate-400">
+              <span className="min-w-0 font-medium leading-5">{isKhmer ? "ផ្ញើទីតាំង" : "Send location"}</span>
+              <span className="col-start-2 min-w-0 text-xs leading-4 text-slate-400">
                 {isKhmer ? "ជ្រើសលើផែនទី" : "Choose on map"}
               </span>
             </button>

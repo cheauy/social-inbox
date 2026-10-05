@@ -235,7 +235,7 @@ export function ChannelBadge({ conversation }: { conversation: InboxConversation
  * quick replies, tags, the customer -- so the shell lives here and each one
  * only writes its own contents.
  */
-export function Sheet({ open, title, detail, onClose, children, floating = false, fullHeight = false, half = false, heightPercent }: { open: boolean; title: string; detail: string; onClose: () => void; children: React.ReactNode; floating?: boolean; fullHeight?: boolean; half?: boolean; heightPercent?: number }) {
+export function Sheet({ open, title, detail, onClose, onDismiss, children, floating = false, fullHeight = false, half = false, heightPercent }: { open: boolean; title: string; detail: string; onClose: () => void; onDismiss?: () => void; children: React.ReactNode; floating?: boolean; fullHeight?: boolean; half?: boolean; heightPercent?: number }) {
   const insets = useSafeAreaInsets();
 
   /*
@@ -266,7 +266,7 @@ export function Sheet({ open, title, detail, onClose, children, floating = false
   }, [open]);
 
   return (
-    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose} onDismiss={onDismiss}>
       <Pressable accessibilityLabel={`Close ${title.toLowerCase()}`} onPress={onClose} style={{ flex: 1, backgroundColor: "rgba(16,34,56,0.35)" }} />
 
       <View

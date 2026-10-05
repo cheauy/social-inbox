@@ -275,7 +275,7 @@ export async function POST(
   request: NextRequest,
 ) {
   const authResult =
-    await getCurrentMember();
+    await getCurrentMember(true);
 
   if (!authResult.success) {
     return jsonError(
@@ -482,7 +482,7 @@ export async function POST(
 
 export async function DELETE(request: NextRequest) {
   const authResult =
-    await getCurrentMember();
+    await getCurrentMember(true);
 
   if (!authResult.success) {
     return jsonError(

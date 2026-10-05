@@ -6,11 +6,12 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from "expo-audio";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
   PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -36,6 +37,8 @@ export type Pending = {
   name: string;
   mimeType: string;
   kind: "image" | "video" | "file" | "audio";
+  error?: string;
+  deliveryUnknown?: boolean;
 };
 
 function clock(millis: number) {
@@ -145,9 +148,9 @@ export function Composer({
   onRemovePending,
   sending,
   bottomInset,
-  onPickImages,
-  onPickVideo,
+  onPickMedia,
   onPickFile,
+  onStorage,
   onSendLocation,
   onQuickReplies,
   onStickers,
@@ -156,6 +159,7 @@ export function Composer({
   fromQuickReply,
   onClearAll,
   attachmentsDisabled = false,
+  sendBlockedReason = "",
 }: {
   draft: string;
   onDraftChange: (next: string) => void;
@@ -163,9 +167,9 @@ export function Composer({
   onRemovePending: (key: string) => void;
   sending: boolean;
   bottomInset: number;
-  onPickImages: () => void;
-  onPickVideo: () => void;
+  onPickMedia: () => void;
   onPickFile: () => void;
+  onStorage?: () => void;
   onSendLocation: () => void;
   onQuickReplies: () => void;
   onStickers?: () => void;
@@ -175,8 +179,24 @@ export function Composer({
   fromQuickReply: boolean;
   onClearAll: () => void;
   attachmentsDisabled?: boolean;
+  sendBlockedReason?: string;
 }) {
   const [attachOpen, setAttachOpen] = useState(false);
+  const pendingDocumentPicker = useRef<(() => void) | null>(null);
+  useEffect(() => () => { pendingDocumentPicker.current = null; }, []);
+
+  function chooseDocuments() {
+    setAttachOpen(false);
+    // UIKit must finish dismissing Attach before presenting its file picker.
+    if (Platform.OS === "ios") pendingDocumentPicker.current = onPickFile;
+    else onPickFile();
+  }
+
+  function openDocumentsAfterDismiss() {
+    const pick = pendingDocumentPicker.current;
+    pendingDocumentPicker.current = null;
+    pick?.();
+  }
   const [finishing, setFinishing] = useState(false);
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -508,6 +528,10 @@ export function Composer({
         </ScrollView>
       ) : null}
 
+      {pending.filter(file => file.error).map(file => <Text key={`error:${file.key}`} accessibilityRole="alert" style={{ paddingHorizontal: 12, paddingTop: 6, color: colors.red, fontSize: 12 }}>
+        {file.name}: {file.error}
+      </Text>)}
+      {sendBlockedReason ? <Text accessibilityRole="alert" style={{ paddingHorizontal: 12, paddingTop: 6, color: colors.red, fontSize: 12 }}>{sendBlockedReason}</Text> : null}
       <View
         style={{
           flexDirection: "row",
@@ -620,16 +644,9 @@ export function Composer({
               icon="attach-outline"
               label="Attach a photo, video, file or location"
               disabled={attachmentsDisabled}
-              onPress={() => setAttachOpen(true)}
+              onPress={() => { pendingDocumentPicker.current = null; setAttachOpen(true); }}
             />
 
-            {/*
-              A bolt in a speech bubble, at the same weight as the paperclip
-              beside it. The message-with-a-bolt glyph was drawn heavier and
-              a couple of points larger than everything else on the row, so it
-              read as the loudest control in a composer where the send button
-              is meant to be.
-            */}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Quick replies"
@@ -643,7 +660,7 @@ export function Composer({
                 backgroundColor: pressed ? colors.pale : "transparent",
               })}
             >
-              <Ionicons name="flash-outline" size={21} color={colors.blue} />
+              <Ionicons name="chatbox-ellipses-outline" size={21} color={colors.blue} />
             </Pressable>
             {onStickers ? <Pressable accessibilityRole="button" accessibilityLabel="Stickers" disabled={sending}
               onPress={onStickers} style={{ width: ROW, height: ROW, alignItems: "center", justifyContent: "center" }}>
@@ -733,7 +750,7 @@ export function Composer({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Send"
-                disabled={sending}
+                disabled={sending || !!sendBlockedReason}
                 onPress={onSend}
                 style={({ pressed }) => ({
                   width: ROW,
@@ -785,38 +802,23 @@ export function Composer({
         open={attachOpen}
         title="Attach"
         detail="Added to the box, sent with your next message."
-        onClose={() => setAttachOpen(false)}
+        onClose={() => { pendingDocumentPicker.current = null; setAttachOpen(false); }}
+        onDismiss={openDocumentsAfterDismiss}
       >
         <Choice
           icon="images-outline"
-          label="Photos"
-          detail="Pick as many as you like."
-          onPress={() => {
-            setAttachOpen(false);
-            onPickImages();
-          }}
+          label="Image/Videos"
+          detail="Choose photos and videos together, up to 30 items."
+          onPress={() => { setAttachOpen(false); onPickMedia(); }}
         />
-
-        <Choice
-          icon="videocam-outline"
-          label="Video"
-          detail="One clip from this phone."
-          onPress={() => {
-            setAttachOpen(false);
-            onPickVideo();
-          }}
-        />
-
         <Choice
           icon="document-outline"
-          label="File"
-          detail="A document, PDF or anything else."
-          onPress={() => {
-            setAttachOpen(false);
-            onPickFile();
-          }}
+          label="Documents"
+          detail="A document, PDF or another file."
+          onPress={chooseDocuments}
         />
 
+        {onStorage ? <Choice icon="folder-outline" label="Storage" detail="Choose shared workspace files for this draft." onPress={() => { setAttachOpen(false); onStorage(); }} /> : null}
         <Choice
           icon="location-outline"
           label="Send location"

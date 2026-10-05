@@ -1,5 +1,6 @@
 import type { InboxMessage } from "@/types/inbox";
 import { expandAlbumPhotos, isMessageDeleted } from "./message-actions";
+import { telegramAlbumPosition } from "./telegram-album-correlation";
 const record = (v:unknown):Record<string,unknown> => v && typeof v==="object" && !Array.isArray(v)?v as Record<string,unknown>:{};
 const text = (v:unknown) => typeof v==="string" && v.trim()?v.trim():null;
 export type PhotoGroup = {lastId:string;members:InboxMessage[]};
@@ -37,6 +38,8 @@ export function buildPhotoGroups(messages:readonly InboxMessage[]):Map<string,Ph
   for(const batch of batches.values()){
     // Input follows thread chronology; retain that order and existing last-row anchor.
     const seen=new Set<string>(),members=batch.filter(m=>{const id=m.platform_message_id||m.id;if(seen.has(id))return false;seen.add(id);return true;}).sort((a,b)=>{
+      const ap=telegramAlbumPosition(a),bp=telegramAlbumPosition(b);
+      if(ap!==null&&bp!==null&&ap!==bp)return ap-bp;
       const at=Date.parse(a.platform_created_at??a.created_at),bt=Date.parse(b.platform_created_at??b.created_at);
       if(Number.isFinite(at)&&Number.isFinite(bt)&&at!==bt)return at-bt;
       const ai=Number(a.platform_message_id?.split(":").at(-1)),bi=Number(b.platform_message_id?.split(":").at(-1));

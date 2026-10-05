@@ -1,6 +1,7 @@
 import { requestAbaPaymentLink } from "../../lib/aba-payment";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
+import * as SecureStore from "expo-secure-store";
 import { File as FileSystemFile } from "expo-file-system";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -27,8 +28,16 @@ import { matchesUpgradeQuote, renewalSelection, type UpgradeQuote } from "../../
 type FixedPlanCode = "mini" | "standard" | "pro";
 type PlanCode = FixedPlanCode | "custom";
 type BillingCycle = "monthly" | "3-months" | "6-months" | "12-months";
+type Extension = "none" | BillingCycle;
+type BoundUpgradeQuote = UpgradeQuote & {
+  currentConnections: number;
+  currentUsers: number;
+  currentBillingCycle: string;
+  extensionBillingCycle: string | null;
+  currentPeriodEnd: string;
+};
 type PaymentMethod = "payway" | "manual";
-type PaymentState = "idle" | "waiting" | "approved" | "pending" | "declined" | "cancelled" | "failed";
+type PaymentState = "idle" | "waiting" | "approved" | "pending" | "declined" | "cancelled" | "failed" | "recovery_required";
 type Plan = {
   id: FixedPlanCode;
   name: string;
@@ -235,7 +244,9 @@ function CapacityChoice({
   );
 }
 export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payment" }) {
-  const params = useLocalSearchParams<{ intent?: string; businessId?: string; plan?: string; cycle?: string; connections?: string; users?: string }>();
+  const params = useLocalSearchParams<{ intent?: string; businessId?: string; plan?: string; cycle?: string; extension?: string; connections?: string; users?: string; payway?: string; tran_id?: string }>();
+  // Return links can preserve a review hold, but can never assert approval.
+  const resumedReview = params.payway === "recovery_required" && Boolean(params.businessId && params.tran_id);
   const intent = params.intent === "upgrade" || params.intent === "reactivate" || params.intent === "subscribe" ? params.intent : "buy-new";
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -247,13 +258,23 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
     settingsRevision,
   } = useInbox();
   // Capture the billing target at entry; do not follow the global inbox selection.
-  const [billingId, setBillingId] = useState<string | null>(params.businessId || workspace?.businessId || null);
+  const [billingId, setBillingId] = useState<string | null>(params.businessId || workspace?.businessId || (page === "overview" && workspaces.length === 1 ? workspaces[0].businessId : null));
+  // Expired memberships are still billing targets even when Inbox has no active selection.
+  useEffect(() => {
+    if (page === "overview" && !billingId && !params.businessId && workspaces.length === 1) {
+      setBillingId(workspaces[0].businessId);
+    }
+  }, [page, billingId, params.businessId, workspaces]);
   const billingWorkspace = workspaces.find((one) => one.businessId === billingId);
-  const [quote, setQuote] = useState<UpgradeQuote | null>(null);
+  const [fetchedQuote, setQuote] = useState<{ quote: BoundUpgradeQuote; requestKey: string } | null>(null);
   const [quoteError, setQuoteError] = useState("");
   const [quoteLoading, setQuoteLoading] = useState(false);
   const operation = useRef(false);
-  const paymentPending = useRef(false);
+  const navigating = useRef(false);
+  const paymentPending = useRef(resumedReview);
+  const reviewRequired = useRef(resumedReview);
+  const reviewStorageKey = useRef<string | null>(null);
+  const [reviewSaved, setReviewSaved] = useState(false);
   const loadVersion = useRef(0);
   const loadedOnce = useRef(false);
   const [loadError, setLoadError] = useState("");
@@ -263,6 +284,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
   const [manualRequest, setManualRequest] = useState<ManualRequest | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<PlanCode>(intent === "upgrade" ? "custom" : ["mini", "standard", "pro", "custom"].includes(params.plan || "") ? params.plan as PlanCode : "mini");
   const [selectedCycle, setSelectedCycle] = useState<BillingCycle>(["monthly", "3-months", "6-months", "12-months"].includes(params.cycle || "") ? params.cycle as BillingCycle : "monthly");
+  const [extension, setExtension] = useState<Extension>(["monthly", "3-months", "6-months", "12-months"].includes(params.extension || "") ? params.extension as BillingCycle : "none");
   const [customConnections, setCustomConnections] = useState(Math.max(3, Math.min(30, Number(params.connections) || 3)));
   const [customUsers, setCustomUsers] = useState(Math.max(1, Math.min(100, Number(params.users) || 1)));
   const [method, setMethod] = useState<PaymentMethod>("payway");
@@ -271,20 +293,64 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
   const [abaLink, setAbaLink] = useState<string | null>(null);
   const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [checkout, setCheckout] = useState<Checkout | null>(null);
-  const [transactionId, setTransactionId] = useState<string | null>(null);
-  const [purchaseBusinessId, setPurchaseBusinessId] = useState<string | null>(null);
-  const [paymentState, setPaymentState] = useState<PaymentState>("idle");
+  const [transactionId, setTransactionId] = useState<string | null>(resumedReview ? params.tran_id! : null);
+  const [purchaseBusinessId, setPurchaseBusinessId] = useState<string | null>(resumedReview ? params.businessId! : null);
+  const [paymentState, setPaymentState] = useState<PaymentState>(resumedReview ? "recovery_required" : "idle");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const approved = useRef(false);
   const submittedManualId = useRef<string | null>(null);
   const initializedSelection = useRef(page === "payment");
+  async function persistReview(target: string, transaction: string) {
+    const { data, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !data.session) throw new Error("Sign in again to preserve this payment for billing review.");
+    const key = `tenh.billing.review.v1.${data.session.user.id}.${target}`;
+    await SecureStore.setItemAsync(key, JSON.stringify({ businessId: target, transactionId: transaction }));
+    reviewStorageKey.current = key;
+    setReviewSaved(true);
+  }
+  async function holdForReview(target: string, transaction: string) {
+    reviewRequired.current = true;
+    paymentPending.current = true;
+    setPaymentState("recovery_required");
+    setPurchaseBusinessId(target);
+    setTransactionId(transaction);
+    setCheckout(null);
+    setCheckoutVisible(false);
+    setAbaLink(null);
+    router.setParams({ businessId: target, tran_id: transaction, payway: "recovery_required" });
+    try { await persistReview(target, transaction); }
+    catch { setError("Payment needs billing review. Keep this screen open and save the transaction reference; this device could not preserve the review hold."); }
+  }
   const load = useCallback(async (quiet = false) => {
-    if (page === "payment" && (approved.current || paymentPending.current || operation.current)) return;
+    if (page === "payment" && loadedOnce.current && (approved.current || paymentPending.current || operation.current)) return;
     const version = ++loadVersion.current;
     if (!quiet) setLoading(true);
     try {
+      if (billingId) {
+        const { data, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !data.session) throw new Error("Sign in again to load billing.");
+        const key = `tenh.billing.review.v1.${data.session.user.id}.${billingId}`;
+        const saved = await SecureStore.getItemAsync(key);
+        if (version !== loadVersion.current) return;
+        reviewStorageKey.current = key;
+        if (saved) {
+          const held = JSON.parse(saved) as { businessId?: string; transactionId?: string };
+          if (held.businessId !== billingId || typeof held.transactionId !== "string" || !held.transactionId || held.transactionId.length > 20) {
+            throw new Error("This device's payment review reference needs support before another payment.");
+          }
+          reviewRequired.current = true;
+          paymentPending.current = true;
+          setTransactionId(held.transactionId);
+          setPurchaseBusinessId(billingId);
+          setPaymentState("recovery_required");
+          setReviewSaved(true);
+        } else if (reviewRequired.current && transactionId) {
+          await persistReview(billingId, transactionId);
+          if (version !== loadVersion.current) return;
+        }
+      }
       const planCatalog = await api<Catalog>("/api/subscription/catalog", billingId);
       if (version !== loadVersion.current) return;
       setCatalog(planCatalog);
@@ -323,7 +389,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
       if (version === loadVersion.current) { loadedOnce.current = true; setLoading(false); }
     }
   }, [billingId, intent, page]);
-  useFocusEffect(useCallback(() => { void load(loadedOnce.current); }, [load]));
+  useFocusEffect(useCallback(() => { navigating.current = false; void load(loadedOnce.current); }, [load]));
   const seenRevision = useRef(settingsRevision);
   useEffect(() => {
     if (seenRevision.current === settingsRevision) return;
@@ -331,6 +397,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
     void load(true);
   }, [settingsRevision, load]);
   useEffect(() => {
+    if (reviewRequired.current) return;
     if (manualRequest?.status === "submitted") submittedManualId.current = manualRequest.id;
     if (manualRequest?.status === "approved" && submittedManualId.current === manualRequest.id) {
       const target = purchaseBusinessId ?? billingId;
@@ -338,7 +405,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
     }
   }, [manualRequest, purchaseBusinessId, billingId]);
   useEffect(() => {
-    if (manualRequest?.status !== "submitted") return;
+    if (manualRequest?.status !== "submitted" || reviewRequired.current) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
@@ -365,9 +432,12 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
   }, [manualRequest?.status, purchaseBusinessId, billingId]);
   async function completePurchase(targetBusinessId: string) {
     if (approved.current) return;
+    if (reviewRequired.current && reviewStorageKey.current) await SecureStore.deleteItemAsync(reviewStorageKey.current);
     approved.current = true;
+    reviewRequired.current = false;
     setPurchaseBusinessId(targetBusinessId);
     setPaymentState("approved");
+    router.setParams({ payway: "", tran_id: "" });
     setCheckout(null);
     await Promise.allSettled([loadWorkspaces(), refreshAlerts()]);
     // Keep the receipt visible; switching into a new workspace is an explicit action.
@@ -384,6 +454,10 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
           purchaseBusinessId,
         );
         if (stopped) return;
+        if (result.paymentState === "recovery_required") {
+          await holdForReview(purchaseBusinessId, transactionId);
+          return;
+        }
         setPaymentState(result.paymentState);
         if (result.paymentState === "approved") {
           await completePurchase(purchaseBusinessId);
@@ -399,7 +473,11 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
     return () => { stopped = true; clearTimeout(timer); };
   }, [transactionId, purchaseBusinessId, paymentState]);
   const plan = catalog?.plans.find((one) => one.id === selectedPlan) ?? null;
-  const cycle = catalog?.cycles.find((one) => one.id === selectedCycle) ?? null;
+  const subscription = current?.subscription ?? null;
+  const billingCycle = intent === "upgrade"
+    ? extension === "none" ? subscription?.billing_cycle ?? selectedCycle : extension
+    : selectedCycle;
+  const cycle = catalog?.cycles.find((one) => one.id === billingCycle) ?? null;
   const customMonthlyCents = catalog
     ? customMonthly(customConnections, customUsers, catalog)
     : 0;
@@ -410,14 +488,25 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
         ? total(plan, cycle)
         : 0
     : 0;
-  const subscription = current?.subscription ?? null;
   const renewal = renewalSelection(subscription, security?.isOwner ?? false);
   const renewalAmount = renewal?.amount ?? 0;
   const expired = Boolean(subscription && (["expired", "past_due", "cancelled"].includes(subscription.status) || (subscription.status === "active" && subscription.current_period_end && Date.parse(subscription.current_period_end) <= Date.now())));
   const canReactivate = Boolean(renewal);
   const matchingRenewal = Boolean(renewal && selectedPlan === renewal.planCode && selectedCycle === renewal.billingCycle
     && (selectedPlan !== "custom" || (customConnections === renewal.connections && customUsers === renewal.users)));
-  const quoteMatches = matchesUpgradeQuote(quote, customConnections, customUsers, selectedCycle);
+  const quoteRequestKey = JSON.stringify([billingId, customConnections, customUsers, extension,
+    subscription?.id, subscription?.plan_code, subscription?.status, subscription?.channel_limit,
+    subscription?.member_limit, subscription?.billing_cycle, subscription?.current_period_start,
+    subscription?.current_period_end, subscription?.pricing_snapshot]);
+  const candidateQuote = fetchedQuote?.requestKey === quoteRequestKey ? fetchedQuote.quote : null;
+  const quote = candidateQuote && matchesUpgradeQuote(candidateQuote, customConnections, customUsers, billingCycle)
+    && candidateQuote.currentConnections === subscription?.channel_limit
+    && candidateQuote.currentUsers === subscription?.member_limit
+    && candidateQuote.currentBillingCycle === subscription?.billing_cycle
+    && candidateQuote.extensionBillingCycle === (extension === "none" ? null : extension)
+    && Date.parse(candidateQuote.currentPeriodEnd) === Date.parse(subscription?.current_period_end ?? "")
+    ? candidateQuote : null;
+  const quoteMatches = Boolean(quote);
   const capacityFits = !current || (current.usage.channels <= (selectedPlan === "custom" ? customConnections : plan?.channels ?? 0)
     && current.usage.members <= (selectedPlan === "custom" ? customUsers : plan?.users ?? 0));
   const action = intent === "buy-new" ? "buy-new"
@@ -429,22 +518,27 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
   const amount = intent === "reactivate" ? renewalAmount : intent === "upgrade" ? quote?.totalCents ?? 0 : fullAmount;
   const selectedName = selectedPlan === "custom" ? "Custom" : plan?.name ?? "TENH";
   const selectionBody = {
-    planCode: intent === "upgrade" ? "custom" : selectedPlan, billingCycle: selectedCycle,
+    planCode: intent === "upgrade" ? "custom" : selectedPlan, billingCycle,
     ...(selectedPlan === "custom" ? { connections: customConnections, users: customUsers } : {}),
-    ...(intent === "upgrade" ? { customUpgrade: true } : {}),
+    ...(intent === "upgrade" ? { customUpgrade: true, extensionBillingCycle: extension } : {}),
     ...(intent === "reactivate" ? { renewSame: true } : {}),
   };
   useEffect(() => {
-    if (intent !== "upgrade" || !billingId || !catalog || loading) return;
+    if (intent !== "upgrade" || !billingId || !catalog || loading || loadError || action !== "upgrade" || !subscription) {
+      setQuote(null);
+      setQuoteLoading(false);
+      setQuoteError("");
+      return;
+    }
     const controller = new AbortController();
     setQuote(null);
     setQuoteLoading(true);
     setQuoteError("");
     const timer = setTimeout(async () => {
       try {
-        const query = new URLSearchParams({ business_id: billingId, connections: String(customConnections), users: String(customUsers), cycle: selectedCycle });
-        const result = await api<{ quote: UpgradeQuote }>(`/api/subscription/custom-upgrade/quote?${query}`, billingId, { signal: controller.signal });
-        if (!controller.signal.aborted) setQuote(result.quote);
+        const query = new URLSearchParams({ business_id: billingId, connections: String(customConnections), users: String(customUsers), cycle: billingCycle, extension });
+        const result = await api<{ quote: BoundUpgradeQuote }>(`/api/subscription/custom-upgrade/quote?${query}`, billingId, { signal: controller.signal });
+        if (!controller.signal.aborted) setQuote({ quote: result.quote, requestKey: quoteRequestKey });
       } catch (reason) {
         if (!controller.signal.aborted) setQuoteError(reason instanceof Error ? reason.message : "Unable to quote upgrade.");
       } finally {
@@ -452,18 +546,22 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
       }
     }, 200);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [intent, billingId, catalog, loading, customConnections, customUsers, selectedCycle]);
+  }, [intent, billingId, catalog, loading, loadError, action, customConnections, customUsers, billingCycle, extension, quoteRequestKey]);
   function openPlans(nextIntent: "buy-new" | "upgrade" | "subscribe") {
+    if (reviewRequired.current || paymentPending.current) return;
     router.push({ pathname: "/settings/subscription-plans", params: { intent: nextIntent, businessId: billingId || "" } });
   }
   function continuePayment(reactivate = false) {
+    if (navigating.current || reviewRequired.current || paymentPending.current) return;
     if (loading || loadError || (reactivate ? !canReactivate : Boolean(selectionError) || action === "blocked" || (intent === "upgrade" && (!quoteMatches || quoteLoading)))) return;
     if (!catalog || (!reactivate && intent === "upgrade" && (!quote || quoteLoading))) return;
+    navigating.current = true;
     router.push({ pathname: "/settings/subscription-payment", params: {
       intent: reactivate ? "reactivate" : intent,
       businessId: billingId || "",
       plan: reactivate ? subscription!.plan_code! : selectedPlan,
-      cycle: reactivate ? subscription!.billing_cycle! : selectedCycle,
+      cycle: reactivate ? subscription!.billing_cycle! : billingCycle,
+      ...(intent === "upgrade" && !reactivate ? { extension } : {}),
       connections: String(reactivate ? subscription!.channel_limit : customConnections),
       users: String(reactivate ? subscription!.member_limit : customUsers),
     } });
@@ -487,7 +585,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
   }
   async function startPayWay() {
     if (purchaseDisabled || (!plan && selectedPlan !== "custom") || !cycle) return;
-    if (operation.current) return;
+    if (operation.current || paymentPending.current || reviewRequired.current || approved.current) return;
     operation.current = true;
     setBusy(true);
     setError("");
@@ -506,6 +604,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
           purchaseBusinessId: target,
         },
       });
+      paymentPending.current = true;
       setPurchaseBusinessId(target);
       setTransactionId(result.transactionId);
       setPaymentState("waiting");
@@ -554,7 +653,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
   }
   async function submitManual() {
     if (purchaseDisabled || !catalog?.manualPayment.enabled || (!plan && selectedPlan !== "custom") || !cycle || !proof) return;
-    if (operation.current) return;
+    if (operation.current || paymentPending.current || reviewRequired.current || approved.current) return;
     operation.current = true;
     setBusy(true);
     setError("");
@@ -594,6 +693,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
           customerNote: note.trim(),
         },
       });
+      paymentPending.current = finalized.request.status === "submitted";
       setPurchaseBusinessId(target);
       setManualRequest(finalized.request);
       setProof(null);
@@ -606,7 +706,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
     }
   }
   async function cancelPayment() {
-    if (!transactionId || !purchaseBusinessId || busy || operation.current) return;
+    if (!transactionId || !purchaseBusinessId || busy || operation.current || reviewRequired.current || approved.current) return;
     operation.current = true;
     setError("");
     setBusy(true);
@@ -617,6 +717,10 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
         purchaseBusinessId,
         { method: "POST", body: { transactionId } },
       );
+      if (result.paymentState === "recovery_required") {
+        await holdForReview(purchaseBusinessId, transactionId);
+        return;
+      }
       setPaymentState(result.paymentState);
       setCheckout(null);
       if (result.paymentState === "approved") await completePurchase(purchaseBusinessId);
@@ -628,13 +732,34 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
       setBusy(false);
     }
   }
+  async function checkReviewStatus() {
+    if (!reviewRequired.current || !transactionId || !purchaseBusinessId || operation.current) return;
+    operation.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api<{ paymentState: PaymentState }>(
+        `/api/payway/status?tran_id=${encodeURIComponent(transactionId)}`, purchaseBusinessId,
+      );
+      // Pending/failed/cancelled does not resolve earlier conflicting evidence.
+      // Only verified approval clears this device hold; other outcomes need review.
+      if (result.paymentState === "approved") await completePurchase(purchaseBusinessId);
+      else {
+        await persistReview(purchaseBusinessId, transactionId);
+        setError("This payment still needs billing review. Contact TENH support with the transaction reference. Do not pay again.");
+      }
+    } catch {
+      setError("Unable to confirm the billing review result. Keep the transaction reference and contact TENH support. Do not pay again.");
+    } finally { operation.current = false; setBusy(false); }
+  }
   const buttonTitle = `Pay ${money(amount)}`;
   const ends = subscription?.status === "trialing"
     ? subscription.trial_ends_at ?? subscription.current_period_end
     : subscription?.current_period_end ?? null;
   const pendingPurchase =
     manualRequest?.status === "submitted" ||
-    (Boolean(transactionId) && ["waiting", "pending"].includes(paymentState));
+    reviewRequired.current ||
+    (Boolean(transactionId) && ["waiting", "pending", "recovery_required"].includes(paymentState));
   paymentPending.current = pendingPurchase;
   const purchaseDisabled =
     busy || loading || Boolean(loadError) || Boolean(selectionError) || amount <= 0 || paymentState === "approved" ||
@@ -642,8 +767,8 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
     pendingPurchase ||
     action === "blocked" ||
     (method === "manual" && (!proof || !catalog?.manualPayment.enabled));
-  usePreventRemove(page === "payment" && (busy || (Boolean(transactionId) && ["waiting", "pending"].includes(paymentState))), () => {
-    Alert.alert("Payment in progress", busy ? "Please wait while the payment request finishes." : "Wait for verification or cancel the pending ABA payment before returning to plans.");
+  usePreventRemove(page === "payment" && (busy || (paymentState === "recovery_required" && !reviewSaved) || (Boolean(transactionId) && ["waiting", "pending"].includes(paymentState))), () => {
+    Alert.alert("Payment in progress", paymentState === "recovery_required" ? "Keep this screen open until the review reference is preserved. Contact TENH support and do not pay again." : busy ? "Please wait while the payment request finishes." : "Wait for verification or cancel the pending ABA payment before returning to plans.");
   });
   return (
     <SettingsScreen
@@ -655,6 +780,16 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
       onRetry={() => { setError(""); void load(); }}
       skeleton={[3, 3, 4]}
     >
+      {paymentState === "recovery_required" ? <View style={{ padding: 14, borderRadius: 14, backgroundColor: "#FFF7E6", gap: 8 }}>
+        <Text style={{ color: colors.ink, fontWeight: "800" }}>Payment requires billing review</Text>
+        <Text style={styles.muted}>Your subscription has not been changed. Do not pay again or cancel this payment. Contact TENH support with this reference.</Text>
+        <Text style={styles.muted}>Workspace: {purchaseBusinessId}</Text>
+        <Text selectable style={styles.muted}>Transaction: {transactionId}</Text>
+        <Pressable disabled={busy} onPress={() => void checkReviewStatus()}><Text style={{ color: colors.blue, fontWeight: "700" }}>Check review status</Text></Pressable>
+        {page === "payment" ? <Pressable disabled={busy || !reviewSaved} onPress={() => router.replace({ pathname: "/settings/subscription", params: {
+          businessId: purchaseBusinessId || billingId || "", tran_id: transactionId || "", payway: "recovery_required",
+        } })}><Text style={{ color: colors.blue, fontWeight: "700" }}>Return to subscription</Text></Pressable> : null}
+      </View> : null}
       {page === "overview" ? <>
       {subscription ? (
         <SettingsGroup title="Current subscription">
@@ -673,7 +808,6 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
               </View>
             </View>
             <Text style={styles.muted}>Started {formatDate(subscription.current_period_start ?? subscription.trial_started_at)}</Text>
-            <Text style={{ color: expired ? colors.red : colors.ink, fontWeight: "700" }}>Expires {formatDate(ends)}</Text>
             <Text style={styles.muted}>Payment: {subscription.payment_provider ?? "—"}</Text>
             <Text style={styles.muted}>
               {current?.usage.channels ?? 0} of {subscription.channel_limit ?? "∞"} channels · {current?.usage.members ?? 0} of {subscription.member_limit ?? "∞"} members
@@ -682,8 +816,8 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
         </SettingsGroup>
       ) : null}
       {!subscription ? <Text style={styles.muted}>No current subscription. Choose a plan to get started.</Text> : null}
-      {workspaces.length > 1 ? <SettingsGroup title="Your subscriptions"><View style={{ padding: 12, gap: 8 }}>
-        {workspaces.map((one) => <Choice key={one.businessId} selected={billingId === one.businessId} title={one.businessName} detail={one.subscriptionOperational ? "Active" : "Expired or awaiting payment"} onPress={() => {
+      {workspaces.length > 1 && !reviewRequired.current ? <SettingsGroup title="Your workspaces"><View style={{ padding: 12, gap: 8 }}>
+        {workspaces.map((one) => <Choice key={one.businessId} selected={billingId === one.businessId} title={one.businessName} detail={one.subscription === null ? "No subscription" : one.subscriptionOperational ? one.subscription ? "Active" : "Workspace available" : "Expired or awaiting payment"} onPress={() => {
           if (billingId === one.businessId) return;
           initializedSelection.current = false;
           loadedOnce.current = false;
@@ -698,30 +832,32 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
           setBillingId(one.businessId);
         }} />)}
       </View></SettingsGroup> : null}
-      {security?.canManage && security.mode === "active-paid" ? <Choice selected={false} title="Upgrade subscription" detail="Add connections, team members or time" onPress={() => openPlans("upgrade")} /> : null}
-      {canReactivate ? <Choice selected={false} title="Reactivate Same Subscription" detail={`${money(renewalAmount)} · Keep your previous plan and limits`} onPress={() => continuePayment(true)} /> : null}
-      {security?.isOwner && security.mode === "subscribe" && !canReactivate ? <Choice selected={false} title="Activate this workspace" onPress={() => openPlans("subscribe")} /> : null}
+      {security?.canManage && security.mode === "active-paid" && !reviewRequired.current ? <Choice selected={false} title="Upgrade subscription" detail="Add connections, team members or time" onPress={() => openPlans("upgrade")} /> : null}
+      {canReactivate && !reviewRequired.current ? <Choice selected={false} title="Reactivate Same Subscription" detail={`${money(renewalAmount)} · Keep your previous plan and limits`} onPress={() => continuePayment(true)} /> : null}
+      {security?.isOwner && security.mode === "subscribe" && !canReactivate && !reviewRequired.current ? <Choice selected={false} title="Activate this workspace" onPress={() => openPlans("subscribe")} /> : null}
       {manualRequest?.status === "submitted" ? <View style={{ padding: 14, borderRadius: 14, backgroundColor: "#FFF7E6", gap: 5 }}><Text style={{ color: colors.ink, fontWeight: "800" }}>Bank transfer under review</Text><Text style={styles.muted}>Your subscription updates after approval.</Text></View> : null}
-      <Choice selected title="Buy Subscription" detail="Choose a plan for a new workspace" onPress={() => openPlans("buy-new")} />
+      {!reviewRequired.current ? <Choice selected title="Buy Subscription" detail="Choose a plan for a new workspace" onPress={() => openPlans("buy-new")} /> : null}
       </> : null}
       {page === "plans" ? <>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
         <Image source={require("../../assets/tenh-logo.png")} style={{ width: 44, height: 44 }} resizeMode="contain" />
         <View style={{ flex: 1 }}><Text style={[styles.heading, { fontSize: 21 }]}>A plan for your team</Text><Text style={styles.muted}>Choose your capacity and billing duration.</Text></View>
       </View>
-      <SettingsGroup title="Billing period">
+      <SettingsGroup title={intent === "upgrade" ? "Add duration" : "Billing period"}>
         <View style={{ padding: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          {(catalog?.cycles ?? []).filter((one) => intent !== "upgrade" || one.months >= (catalog?.cycles.find((item) => item.id === subscription?.billing_cycle)?.months ?? 1)).map((one) => (
+          {intent === "upgrade" ? <Choice selected={extension === "none"} title="Keep expiry" detail={formatDate(subscription?.current_period_end ?? null)} onPress={() => setExtension("none")} /> : null}
+          {(catalog?.cycles ?? []).map((one) => (
             <Choice
               key={one.id}
-              selected={selectedCycle === one.id}
-              title={one.label}
+              selected={intent === "upgrade" ? extension === one.id : selectedCycle === one.id}
+              title={intent === "upgrade" ? `Add ${one.months} ${one.months === 1 ? "month" : "months"}` : one.label}
               detail={one.discount > 0 ? `Save ${Math.round(one.discount * 100)}%` : undefined}
-              onPress={() => setSelectedCycle(one.id)}
+              onPress={() => intent === "upgrade" ? setExtension(one.id) : setSelectedCycle(one.id)}
             />
           ))}
         </View>
       </SettingsGroup>
+      {intent === "upgrade" ? <Text style={styles.muted}>Connections and team members are charged only for the remaining paid time. Added months begin after your current expiry.</Text> : null}
       <View style={{ gap: 10 }}>
         <Text style={{ paddingLeft: 4, fontSize: 11, fontWeight: "800", letterSpacing: 0.7, textTransform: "uppercase", color: colors.muted }}>
           Choose a plan
@@ -780,7 +916,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
                 <Text style={[styles.muted, { fontSize: 12.5, lineHeight: 18 }]}>Choose your own connection and team limits.</Text>
               </View>
               <Text style={{ color: colors.blue, fontSize: 17, fontWeight: "900" }}>
-                {money(cycle ? Math.round(customMonthlyCents * cycle.months * (1 - cycle.discount)) : customMonthlyCents)}
+                {intent === "upgrade" ? quote ? money(quote.totalCents) : "Calculating" : money(cycle ? Math.round(customMonthlyCents * cycle.months * (1 - cycle.discount)) : customMonthlyCents)}
               </Text>
             </View>
             {selectedPlan === "custom" ? (
@@ -807,7 +943,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
       </View>
       <ErrorNotice message={quoteError || selectionError} />
       {intent === "upgrade" ? <Text style={styles.muted}>{quoteLoading ? "Calculating upgrade…" : quote ? `Due today ${money(quote.totalCents)} · New expiry ${formatDate(quote.newPeriodEnd)}` : "Increase capacity or duration to continue."}</Text> : null}
-      <Pressable disabled={loading || Boolean(loadError) || Boolean(selectionError) || action === "blocked" || (intent === "upgrade" && (!quoteMatches || quoteLoading))} onPress={() => continuePayment()} style={{ backgroundColor: colors.blue, padding: 16, borderRadius: 14, alignItems: "center", opacity: intent === "upgrade" && (!quoteMatches || quoteLoading) ? 0.5 : 1 }}>
+      <Pressable disabled={reviewRequired.current || loading || Boolean(loadError) || Boolean(selectionError) || action === "blocked" || (intent === "upgrade" && (!quoteMatches || quoteLoading))} onPress={() => continuePayment()} style={{ backgroundColor: colors.blue, padding: 16, borderRadius: 14, alignItems: "center", opacity: intent === "upgrade" && (!quoteMatches || quoteLoading) ? 0.5 : 1 }}>
         <Text style={{ color: "white", fontWeight: "800", fontSize: 16 }}>Continue payment</Text>
       </Pressable>
       </> : null}
@@ -821,7 +957,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
           ["Workspace", intent === "buy-new" ? "New workspace" : billingWorkspace?.businessName ?? billingId ?? "—"],
           ["Connections", String(intent === "reactivate" ? renewal?.connections ?? "—" : selectedPlan === "custom" ? customConnections : plan?.channels ?? "—")],
           ["Team members", String(intent === "reactivate" ? renewal?.users ?? "—" : selectedPlan === "custom" ? customUsers : plan?.users ?? "—")],
-          ["Billing duration", cycle?.label ?? selectedCycle],
+          [intent === "upgrade" ? "Duration choice" : "Billing duration", intent === "upgrade" ? extension === "none" ? "Keep expiry" : `Add ${cycle?.months ?? "-"} months` : cycle?.label ?? selectedCycle],
           ...(quote ? [["Capacity upgrade", money(quote.capacityProrationCents)], ["Added duration", money(quote.durationExtensionCents)], ["Next renewal", money(quote.renewalTotalCents)], ["Expiry", formatDate(quote.newPeriodEnd)], ["Remaining paid time", `${quote.remainingDays} days`]] : []),
         ].map(([label, value]) => <View key={label} style={{ flexDirection: "row", justifyContent: "space-between", gap: 16 }}><Text style={{ color: "#ADC7EF" }}>{label}</Text><Text style={{ color: "white", fontWeight: "700", flex: 1, textAlign: "right" }}>{value}</Text></View>)}
         <Text style={{ color: "#ADC7EF", fontSize: 12, lineHeight: 18 }}>One-time payment for this period. Activation follows verified payment approval.</Text>
@@ -871,7 +1007,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
           ) : null}
           {paymentState !== "idle" ? (
             <View style={{ padding: 11, borderRadius: 12, backgroundColor: paymentState === "approved" ? "#E7F6EE" : paymentState === "waiting" || paymentState === "pending" ? "#FFF7E6" : "#FFF1EF" }}>
-              <Text style={{ color: colors.ink, fontWeight: "800" }}>{manualRequest?.status === "approved" ? "Subscription" : "ABA PayWay"}: {paymentState}</Text>
+              <Text style={{ color: colors.ink, fontWeight: "800" }}>{manualRequest?.status === "approved" ? "Subscription" : "ABA PayWay"}: {paymentState === "recovery_required" ? "Billing review required" : paymentState}</Text>
               {transactionId ? <Text style={[styles.muted, { marginTop: 3 }]}>Transaction {transactionId}</Text> : null}
             </View>
           ) : null}
@@ -891,7 +1027,7 @@ export function SubscriptionFlow({ page }: { page: "overview" | "plans" | "payme
               <ActivityIndicator color="white" />
             ) : (
               <Text style={{ color: "white", fontSize: 15, fontWeight: "800" }}>
-                {pendingPurchase
+                {paymentState === "recovery_required" ? "Billing review required" : pendingPurchase
                   ? manualRequest?.status === "submitted"
                     ? "Waiting for payment review"
                     : "Verifying ABA PayWay payment"

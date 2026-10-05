@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
+import { useForegroundResume } from "@/lib/display/use-foreground-resume";
 
 type PendingInvitation = {
   id: string;
@@ -45,6 +46,7 @@ export function PendingInvitationsBanner() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (document.visibilityState === "hidden") return;
     try {
       const response = await fetch("/api/invitations/pending", {
         cache: "no-store",
@@ -59,6 +61,8 @@ export function PendingInvitationsBanner() {
       /* A missing banner is better than a broken dashboard. */
     }
   }, []);
+
+  useForegroundResume(load);
 
   useEffect(() => {
     void load();

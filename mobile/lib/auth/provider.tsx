@@ -1,5 +1,6 @@
 import { clearStickerRecents } from "../sticker-recents";
 import { clearMediaCache } from "../media-cache";
+import { clearMessageDownloads, pruneMessageDownloads } from "../message-download-cache";
 import { clearReadCache } from "../api/read-cache";
 import { clearInboxCache } from "../inbox-cache";
 import React, { createContext, useContext, useEffect, useState } from "react";
@@ -15,14 +16,17 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
   useEffect(() => {
     if (!configured) { setReady(true); return; }
     let alive = true;
+    const sweepDownloads = () => { try { pruneMessageDownloads(); } catch { /* Refuse new admission if cache cannot be inspected. */ } };
+    sweepDownloads();
+    const downloadCleanup = setInterval(() => { if (AppState.currentState === "active") sweepDownloads(); }, 5 * 60 * 1000);
     supabase.auth.getSession().then(({ data, error }) => {
       if (!alive) return;
       setSession(data.session); setError(error?.message || ""); setReady(true);
     }).catch(() => { if (alive) { setError("Unable to restore your session. Please sign in."); setReady(true); } });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => { if (_event === "SIGNED_OUT") { clearMediaCache(); clearReadCache(); void clearInboxCache(); void clearStickerRecents(); } if (alive) { setSession(next); setReady(true); } });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => { if (_event === "SIGNED_OUT") { clearMediaCache(); try { clearMessageDownloads(); } catch { /* Retry safe cleanup later. */ } clearReadCache(); void clearInboxCache(); void clearStickerRecents(); } if (alive) { setSession(next); setReady(true); } });
     if (AppState.currentState === "active") supabase.auth.startAutoRefresh();
-    const state = AppState.addEventListener("change", value => value === "active" ? supabase.auth.startAutoRefresh() : supabase.auth.stopAutoRefresh());
-    return () => { alive = false; listener.subscription.unsubscribe(); state.remove(); supabase.auth.stopAutoRefresh(); };
+    const state = AppState.addEventListener("change", value => { if (value === "active") { sweepDownloads(); supabase.auth.startAutoRefresh(); } else supabase.auth.stopAutoRefresh(); });
+    return () => { alive = false; clearInterval(downloadCleanup); listener.subscription.unsubscribe(); state.remove(); supabase.auth.stopAutoRefresh(); };
   }, []);
   return <AuthContext.Provider value={{ session, ready, error }}>{children}</AuthContext.Provider>;
 }

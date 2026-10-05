@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { awaitCompanionAnswer } from "./companion-response";
+import { matchesConversationContext, supportsVerifiedConversation, verifiedConversationOpened, type ConversationContext } from "./verified-conversation";
+import { readNavigationFailure } from "./conversation-navigation-failure";
 
 /*
  * Asking the browser whether TENH Companion is there, and asking it for things.
@@ -47,13 +49,24 @@ export type ReplyAvailability = {
 };
 
 export type FacebookConversationOpenResult = {
+  prepared?: boolean;
+  openToken?: string;
+  businessId?: string;
+  conversationId?: string;
+  pageId?: string;
+  threadId?: string;
+  extensionVersion?: string;
+  phase?: string;
+  verificationReason?: string;
+  focusReturned?: boolean;
+  temporaryTabClosed?: boolean;
   opened?: boolean;
   exactRequested?: boolean;
   verified?: boolean;
   diagnostics?: {
     extensionVersion?: string; pageId?: string; recipientId?: string; conversationId?: string;
     expectedCustomerName?: string; reason?: string; observedNavigationId?: string | null;
-    phase?: string; cacheUsed?: boolean;
+    phase?: string; cacheUsed?: boolean; dom?: Record<string, unknown>;
   };
   reason?: string;
 };
@@ -72,20 +85,30 @@ function post(type: string, payload: Record<string, unknown> = {}) {
 export function useCompanion() {
   const [installed, setInstalled] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
+  const [verifiedConversationNavigation, setVerifiedConversationNavigation] = useState(false);
   useEffect(() => {
-    const detect = () => { post("TENH_EXTENSION_PING"); };
+    let ping: string | null = null, expiry: number | undefined;
+    const detect = () => {
+      window.clearTimeout(expiry);
+      ping = post("TENH_EXTENSION_PING");
+      expiry = window.setTimeout(() => setVerifiedConversationNavigation(false), 3000);
+    };
     const receive = (event: MessageEvent) => {
       if (event.source !== window || event.origin !== window.location.origin) return;
       const data = event.data;
       if (!data || data.source !== "TENH_EXTENSION") return;
       if (data.type === "TENH_EXTENSION_CONTEXT_INVALIDATED" || data.requiresRefresh || data.error === "extension_unavailable") {
-        setInstalled(false); setVersion(null); return;
+        setInstalled(false); setVersion(null); setVerifiedConversationNavigation(false); return;
       }
       if (!["TENH_EXTENSION_PONG", "TENH_EXTENSION_READY"].includes(data.type)) return;
       // Invalidated scripts can still answer after a reload. Only live replies count.
       if (data.error || data.requiresRefresh || typeof data.version !== "string") return;
       setInstalled(true);
       setVersion(data.version);
+      if (data.type === "TENH_EXTENSION_PONG" && data.requestId === ping) {
+        window.clearTimeout(expiry);
+        setVerifiedConversationNavigation(supportsVerifiedConversation(data, window.location.origin));
+      }
     };
     window.addEventListener("message", receive);
     window.addEventListener("focus", detect);
@@ -95,6 +118,7 @@ export function useCompanion() {
       window.removeEventListener("message", receive);
       window.removeEventListener("focus", detect);
       window.clearInterval(timer);
+      window.clearTimeout(expiry);
     };
   }, []);
 
@@ -130,6 +154,35 @@ export function useCompanion() {
     },
     [],
   );
+
+  const openVerifiedConversation = useCallback(async (context: ConversationContext, signal: AbortSignal, isCurrent: () => boolean) => {
+    if (!verifiedConversationNavigation || signal.aborted || !isCurrent()) return null;
+    const navigationRequestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const cancel = () => { post("CANCEL_FACEBOOK_CONVERSATION", { navigationRequestId }); };
+    signal.addEventListener("abort", cancel, { once: true });
+    try {
+      const preparedId = post("PREPARE_FACEBOOK_CONVERSATION", { ...context, navigationRequestId });
+      const prepared = await awaitCompanionAnswer<FacebookConversationOpenResult>("PREPARE_FACEBOOK_CONVERSATION_RESULT", preparedId, 30000, window, signal);
+      if (signal.aborted || !isCurrent()) return null;
+      if (!prepared) return readNavigationFailure(null, "prepare", "extension_response_unavailable");
+      if (prepared.prepared !== true || prepared.verified !== true) return readNavigationFailure(prepared, "prepare");
+      if (prepared.opened !== false || prepared.exactRequested !== true || !matchesConversationContext(prepared, context) ||
+          typeof prepared.openToken !== "string" || !/^[a-f0-9-]{36}$/.test(prepared.openToken)) {
+        return readNavigationFailure({ reason: "conversation_context_mismatch", opened: prepared.opened === true }, "prepare");
+      }
+      const commitId = post("COMMIT_FACEBOOK_CONVERSATION", { ...context, navigationRequestId, openToken: prepared.openToken });
+      const committed = await awaitCompanionAnswer<FacebookConversationOpenResult>("COMMIT_FACEBOOK_CONVERSATION_RESULT", commitId, 15000, window, signal);
+      if (signal.aborted || !isCurrent()) return null;
+      if (!committed) return readNavigationFailure(null, "commit", "extension_response_unavailable");
+      if (verifiedConversationOpened(committed, context)) return committed;
+      if (committed.verified === true || committed.exactRequested === true) return readNavigationFailure({
+        reason: "conversation_context_mismatch", opened: committed.opened === true, phase: committed.phase }, "commit");
+      return readNavigationFailure(committed, "commit");
+    } finally {
+      signal.removeEventListener("abort", cancel);
+      cancel();
+    }
+  }, [verifiedConversationNavigation]);
 
   /**
    * Open the real Facebook profile link that Facebook itself exposes for the
@@ -199,5 +252,5 @@ export function useCompanion() {
     [],
   );
 
-  return { installed, version, openInFacebook, openFacebookProfile, openResolvedFacebookProfile, checkReplyAvailability };
+  return { installed, version, verifiedConversationNavigation, openVerifiedConversation, openInFacebook, openFacebookProfile, openResolvedFacebookProfile, checkReplyAvailability };
 }

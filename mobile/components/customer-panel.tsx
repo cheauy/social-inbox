@@ -24,6 +24,7 @@ import {
   Avatar,
   Dialog,
   Empty,
+  ErrorNotice,
   IconName,
   STATUS_TONE,
   TagChip,
@@ -36,6 +37,7 @@ import { VideoView, useVideoPlayer } from "expo-video";
 
 import type { ConversationStatus } from "../lib/types";
 import { FileLibrary } from "./file-library";
+import { useOwnedPanelRead } from "../lib/use-owned-panel-read";
 import type { CustomerFile } from "./file-library";
 
 export type { CustomerFile } from "./file-library";
@@ -603,6 +605,9 @@ function CopyButton({ value, label }: { value: string; label: string }) {
  * to scroll.
  */
 function Information({
+  editorOwner,
+  editorActive,
+  isCurrent,
   phone,
   note,
   busy,
@@ -610,6 +615,9 @@ function Information({
   onEditing,
   onSaveField,
 }: {
+  editorOwner?: string;
+  editorActive?: boolean;
+  isCurrent?: () => boolean;
   phone: string | null;
   note: string | null;
   busy: string | null;
@@ -620,6 +628,15 @@ function Information({
   const [phoneDraft, setPhoneDraft] = useState(phone ?? "");
   const [noteDraft, setNoteDraft] = useState(note ?? "");
   const [saving, setSaving] = useState(false);
+  const editorFlight = useRef<object | null>(null);
+  const editorContext = useRef({ key: "", epoch: 0, mounted: true });
+  const editorKey = JSON.stringify([editorOwner, editorActive, editing]);
+  if (editorContext.current.key !== editorKey) {
+    editorContext.current = { key: editorKey, epoch: editorContext.current.epoch + 1, mounted: true };
+  }
+  const editorEpoch = editorContext.current.epoch;
+  useEffect(() => { editorContext.current.mounted = true; return () => { editorContext.current.mounted = false; editorContext.current.epoch++; }; }, []);
+  useEffect(() => { editorFlight.current = null; setSaving(false); }, [editorKey]);
 
   /* The drafts follow the record while it is being read, never while it is
      being written -- a realtime update mid-edit would wipe what was typed. */
@@ -635,8 +652,11 @@ function Information({
     noteDraft.trim() !== (note ?? "").trim();
 
   async function save() {
-    if (saving) return;
-
+    const epoch = editorEpoch;
+    const owns = () => editorContext.current.mounted && editorContext.current.epoch === epoch &&
+      editorContext.current.key === editorKey && editing && editorActive !== false && (!isCurrent || isCurrent());
+    if (saving || editorFlight.current || !owns()) return;
+    const flight = {}; editorFlight.current = flight;
     setSaving(true);
 
     try {
@@ -645,17 +665,19 @@ function Information({
        * on the server, and sending an unchanged note back would overwrite
        * whatever somebody at the desk wrote in the meantime.
        */
+      if (!owns()) return;
       if (phoneDraft.trim() !== (phone ?? "").trim()) {
-        if (!(await onSaveField("phone", phoneDraft.trim()))) return;
+        if (!(await onSaveField("phone", phoneDraft.trim())) || !owns()) return;
       }
 
+      if (!owns()) return;
       if (noteDraft.trim() !== (note ?? "").trim()) {
-        if (!(await onSaveField("customerNote", noteDraft.trim()))) return;
+        if (!(await onSaveField("customerNote", noteDraft.trim())) || !owns()) return;
       }
 
-      onEditing(false);
+      if (owns()) onEditing(false);
     } finally {
-      setSaving(false);
+      if (editorFlight.current === flight && owns()) { editorFlight.current = null; setSaving(false); }
     }
   }
 
@@ -1072,6 +1094,8 @@ function ChoiceRow({
 }
 
 export function CustomerPanel({
+  readOwner,
+  readActive,
   open,
   detail,
   loading,
@@ -1083,6 +1107,8 @@ export function CustomerPanel({
   assignedTo,
   members,
   membersLoading,
+  onTeamRetry,
+  isCurrent,
   currentMemberId,
   busy,
   onStatus,
@@ -1096,6 +1122,8 @@ export function CustomerPanel({
   onClose,
   error,
 }: {
+  readOwner: string;
+  readActive: boolean;
   open: boolean;
   detail: CustomerDetail | null;
   loading: boolean;
@@ -1107,6 +1135,8 @@ export function CustomerPanel({
   assignedTo: string | null;
   members: TeamMember[];
   membersLoading: boolean;
+  onTeamRetry?: () => void;
+  isCurrent?: () => boolean;
   currentMemberId: string | null;
   busy: string | null;
   onStatus: (next: ConversationStatus) => void;
@@ -1117,8 +1147,8 @@ export function CustomerPanel({
   /* Both answered by the conversation screen, which owns the workspace the
      requests have to be made in. */
   onRemind: (note: string, remindAt: string) => Promise<boolean>;
-  onHistory: () => Promise<TimelineItem[]>;
-  onFiles: () => Promise<CustomerFile[]>;
+  onHistory: (signal: AbortSignal) => Promise<TimelineItem[]>;
+  onFiles: (signal: AbortSignal) => Promise<CustomerFile[]>;
   onClose: () => void;
   error: string;
 }) {
@@ -1156,16 +1186,22 @@ export function CustomerPanel({
   const [picking, setPicking] = useState<"date" | "time" | null>(null);
   const [reminding, setReminding] = useState(false);
   const [reminded, setReminded] = useState("");
+  const reminderFlight = useRef<object | null>(null);
+  const reminderDialog = useRef({ key: "", epoch: 0, mounted: true, owner: readOwner });
+  const reminderKey = JSON.stringify([readOwner, readActive, open, remindOpen, remindNote, remindWhen, remindAt.getTime()]);
+  if (reminderDialog.current.key !== reminderKey) reminderDialog.current = { key: reminderKey, epoch: reminderDialog.current.epoch + 1, mounted: true, owner: readOwner };
+  useEffect(() => () => { reminderDialog.current.mounted = false; reminderDialog.current.epoch++; }, []);
+  useEffect(() => { reminderFlight.current = null; setReminding(false); }, [readOwner]);
 
   const [infoEditing, setInfoEditing] = useState(false);
 
   const [filesOpen, setFilesOpen] = useState(false);
-  const [files, setFiles] = useState<CustomerFile[] | null>(null);
-  const [filesLoading, setFilesLoading] = useState(false);
+  const { rows: files, loading: filesLoading, error: filesError, retry: retryFiles } =
+    useOwnedPanelRead(readOwner, readActive, open && filesOpen, onFiles, undefined, isCurrent);
 
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [history, setHistory] = useState<TimelineItem[] | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const { rows: history, loading: historyLoading, error: historyError, retry: retryHistory } =
+    useOwnedPanelRead(readOwner, readActive, open && historyOpen, onHistory, undefined, isCurrent);
 
   /* A time already gone is a reminder that never arrives. */
   const remindReady =
@@ -1174,12 +1210,17 @@ export function CustomerPanel({
   async function saveReminder() {
     const note = remindNote.trim();
 
-    if (!note || !remindReady || reminding) return;
+    if (!note || !remindReady || reminding || reminderFlight.current || !readActive || (isCurrent && !isCurrent())) return;
+    const flight = {}; reminderFlight.current = flight;
+    const epoch = reminderDialog.current.epoch;
+    const ownsOperation = () => reminderFlight.current === flight && (!isCurrent || isCurrent()) &&
+      reminderDialog.current.mounted && reminderDialog.current.owner === readOwner;
+    const owns = () => ownsOperation() && reminderDialog.current.epoch === epoch && reminderDialog.current.key === reminderKey;
 
     setReminding(true);
 
     try {
-      if (await onRemind(note, whenToStamp(remindWhen, remindAt))) {
+      if (await onRemind(note, whenToStamp(remindWhen, remindAt)) && owns()) {
         setRemindNote("");
         setRemindOpen(false);
         setReminded(
@@ -1189,7 +1230,7 @@ export function CustomerPanel({
         );
       }
     } finally {
-      setReminding(false);
+      if (ownsOperation()) { reminderFlight.current = null; setReminding(false); }
     }
   }
 
@@ -1225,37 +1266,9 @@ export function CustomerPanel({
     );
   }
 
-  async function openFiles() {
-    setFilesOpen(true);
+  function openFiles() { setFilesOpen(true); }
 
-    if (files !== null || filesLoading) return;
-
-    setFilesLoading(true);
-
-    try {
-      setFiles(await onFiles());
-    } finally {
-      setFilesLoading(false);
-    }
-  }
-
-  async function openHistory() {
-    const next = !historyOpen;
-
-    setHistoryOpen(next);
-
-    /* Loaded the first time it is opened and kept, because a timeline of a
-       customer's whole history does not change while the panel is open. */
-    if (!next || history !== null || historyLoading) return;
-
-    setHistoryLoading(true);
-
-    try {
-      setHistory(await onHistory());
-    } finally {
-      setHistoryLoading(false);
-    }
-  }
+  function openHistory() { setHistoryOpen(current => !current); }
 
   useEffect(() => {
     if (open) {
@@ -1386,6 +1399,7 @@ export function CustomerPanel({
             <Text style={{ color: colors.red, fontSize: 13, lineHeight: 19 }}>
               {error}
             </Text>
+            {onTeamRetry ? <Pressable accessibilityLabel="Retry team members" disabled={membersLoading} onPress={onTeamRetry}><Text style={{ color: colors.red, fontWeight: "700", paddingTop: 8 }}>Retry team</Text></Pressable> : null}
           </View>
         ) : null}
 
@@ -1722,6 +1736,9 @@ export function CustomerPanel({
                 }
               >
                 <Information
+              editorOwner={readOwner}
+              editorActive={open && readActive}
+              isCurrent={isCurrent}
                   phone={customer.phone}
                   note={customer.customerNote}
                   busy={busy}
@@ -2154,7 +2171,9 @@ export function CustomerPanel({
             detail={detail ? detail.customer.fullName : ""}
             onClose={() => setFilesOpen(false)}
           >
-            {filesLoading ? <LibrarySkeleton /> : <FileLibrary files={files ?? []} />}
+            <ErrorNotice message={filesError} onRetry={filesLoading ? undefined : retryFiles} />
+            {files === null && !filesError ? <LibrarySkeleton /> : files !== null ? <FileLibrary key={readOwner} files={files} /> : null}
+            {filesLoading && files !== null ? <ActivityIndicator accessibilityLabel="Refreshing files" color={colors.blue} /> : null}
           </Dialog>
 
           <Dialog
@@ -2163,9 +2182,11 @@ export function CustomerPanel({
             detail={detail ? detail.customer.fullName : ""}
             onClose={() => setHistoryOpen(false)}
           >
-            {historyLoading ? (
+            <ErrorNotice message={historyError} onRetry={historyLoading ? undefined : retryHistory} />
+            {historyLoading && history !== null ? <ActivityIndicator accessibilityLabel="Refreshing history" color={colors.blue} /> : null}
+            {history === null && historyError ? null : history === null ? (
               <HistorySkeleton />
-            ) : !history || history.length === 0 ? (
+            ) : history.length === 0 ? (
               <View style={{ alignItems: "center", padding: 34, gap: 8 }}>
                 <Ionicons name="time-outline" size={26} color={colors.muted} />
 

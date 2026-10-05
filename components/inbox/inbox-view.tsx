@@ -1,4 +1,5 @@
 "use client";
+import type { InboxSearchMatch } from "@/lib/inbox/search-match";
 import { FacebookConversationActionProvider } from "./companion-facebook-action";
 import { isMetaSticker, type InboxStickerChoice } from "@/lib/stickers/catalog";
 
@@ -7,6 +8,7 @@ import { INBOX_SYNC_EVENT, SYNC_TIMEOUT_MS, takeSyncBatch, isOlderConversationSt
 import { snapshotUnread, receiptStillApplies, type ReadReceipt, type ReadTarget, type BulkReadResult } from "@/lib/inbox/bulk-read";
 import { stableConversationOrder } from "@/lib/inbox/stable-conversation-order";
 import { retainKnownConversationRows } from "@/lib/inbox/retain-known-conversation-rows";
+import { telegramOptimisticAttachmentKind } from "@/lib/telegram/telegram-optimistic-media";
 
 import { isCommentReplyBlocked } from "@/components/inbox/comment-reply-access";
 
@@ -27,9 +29,11 @@ import {
 import type { FormEvent, SetStateAction } from "react";
 
 import { ConversationList } from "@/components/inbox/conversation-list";
+import { useRememberInboxReturn } from "@/components/dashboard/inbox-return-context";
 import { INBOX_PAGE_CHANGED_EVENT, mergeConversationPage } from "@/lib/inbox/conversation-page-contract";
 import { matchesOptimisticMessage } from "@/lib/inbox/optimistic-message-match";
-import { confirmOutgoingMessage } from "@/lib/inbox/confirm-outgoing-message";
+import { confirmOutgoingMessage, withOptimisticRenderKey } from "@/lib/inbox/confirm-outgoing-message";
+import { correlateTelegramAlbumMessages } from "@/lib/inbox/telegram-album-correlation";
 import { normalizeMessages } from "@/lib/inbox/normalize-messages";
 import { retainLocalImagePreview } from "@/lib/inbox/local-image-preview";
 import { readMessagePageResponse } from "@/lib/inbox/read-message-page-response";
@@ -88,6 +92,7 @@ type OptimisticInboxMessage =
     __optimistic_created_at?:
       number;
     __optimistic_requires_review?: boolean;
+    __render_key?: string;
   };
 
 type PendingOptimisticSend = {
@@ -110,6 +115,7 @@ type PendingOptimisticAttachmentSend = {
   albumFiles?: File[];
   albumPreviewUrls?: string[];
   albumGroupId?: string;
+  albumPosition?: number;
   tempId: string;
   conversationId: string;
   recipientId: string;
@@ -495,6 +501,7 @@ export function InboxView({
   statusCounts,
   teamMembers,
   currentBusinessId,
+  currentMemberId,
   accessibleBusinessIds,
 }: InboxViewProps) {
 
@@ -556,7 +563,20 @@ const requestedConversationId =
     setConversationMessagesError,
   ] = useState<string | null>(null);
 
-  const [reply, setReplyState] = useState("");
+  const [composerState, setComposerState] = useState<{ reply: string; conversationKey: string | null }>({ reply: "", conversationKey: null });
+  const reply = composerState.reply;
+  const setReplyState = useCallback((value: string) => {
+    setComposerState(current => ({ ...current, reply: value }));
+  }, []);
+  const composerSelectionEpochRef = useRef(0);
+  const composerRenderEpoch = composerSelectionEpochRef.current;
+  const retireComposerSubmissionScope = useCallback(() => {
+    composerSelectionEpochRef.current++;
+    // Also rerender when a batched A -> B -> A returns to the same state ID.
+    setComposerState(current => ({ ...current }));
+  }, []);
+  const accessibleBusinessIdsRef = useRef(accessibleBusinessIds);
+  accessibleBusinessIdsRef.current = accessibleBusinessIds;
   const [replyingToFacebookMessageId, setFacebookReplyState] = useState<string | null>(null);
   const composerDraftRef = useRef({ reply: "", quote: null as string | null, revision: 0 });
   const textSubmissionsRef = useRef(new Set<string>());
@@ -567,7 +587,7 @@ const requestedConversationId =
     if (next !== current.reply) current.revision++;
     current.reply = next;
     setReplyState(next);
-  }, []);
+  }, [setReplyState]);
   const setReplyingToFacebookMessageId = useCallback((value: SetStateAction<string | null>) => {
     const current = composerDraftRef.current;
     const next = typeof value === "function" ? value(current.quote) : value;
@@ -1038,8 +1058,7 @@ const previousActiveConversationIdRef =
     null,
   );
 
-  const loadOlderInFlightRef =
-    useRef(false);
+  const olderMessageFlightRef = useRef(new Map<string, { promise: Promise<boolean> }>());
 
   /*
    * V2.5.2 — browser/desktop notifications.
@@ -1173,6 +1192,7 @@ const previousActiveConversationIdRef =
    * left to do.
    */
   const pendingReadIdsRef = useRef<Set<string>>(new Set());
+  const pendingReadCountsRef = useRef(new Map<string, number>());
 
   const readInFlightRef =
     useRef<Set<string>>(
@@ -1280,6 +1300,10 @@ const activeConversation =
 const activeConversationRef = useRef(activeConversation);
 activeConversationRef.current = activeConversation;
 
+useRememberInboxReturn({ businessId: currentBusinessId, memberId: currentMemberId, accessibleBusinessIds,
+  query: searchParams.toString(), selected: activeConversation ? { id: activeConversation.id,
+    businessId: activeConversation.business_id, channelId: activeConversation.social_account?.id ?? null } : null });
+
 useEffect(() => {
   if (!resolvedActiveConversationId) return;
   const source = latestCustomerChannel(liveMessages, resolvedActiveConversationId);
@@ -1375,7 +1399,44 @@ const customerProfileConversation =
         ) ?? null
     : null);
 
+const conversationTextDraftsRef = useRef(new Map<string, string>());
+const composerConversationKeyRef = useRef<string | null>(null);
+const telegramEditTextDraftRef = useRef<{ conversationKey: string; reply: string } | null>(null);
+useEffect(() => () => {
+  conversationTextDraftsRef.current.clear();
+  composerConversationKeyRef.current = null;
+  telegramEditTextDraftRef.current = null;
+}, []);
+
 useEffect(() => {
+  const drafts = conversationTextDraftsRef.current;
+  const conversation = liveConversationsRef.current.find(row => row.id === resolvedActiveConversationId);
+  const nextKey = conversation && accessibleBusinessIds.includes(conversation.business_id)
+    ? `${conversation.business_id}:${conversation.id}` : null;
+  const previousKey = composerConversationKeyRef.current;
+  if (previousKey !== nextKey && previousKey) {
+    drafts.delete(previousKey);
+    // Keep the ordinary text displaced by Edit, never the edited sent text.
+    const ordinaryReply = editingTelegramMessageId
+      ? (telegramEditTextDraftRef.current?.conversationKey === previousKey ? telegramEditTextDraftRef.current.reply : "")
+      : composerDraftRef.current.reply;
+    if (ordinaryReply) drafts.set(previousKey, ordinaryReply);
+  }
+  for (const key of drafts.keys()) {
+    if (!accessibleBusinessIds.includes(key.split(":")[0])) drafts.delete(key);
+  }
+  if (previousKey === nextKey) {
+    if (!editingTelegramMessageId) telegramEditTextDraftRef.current = null;
+    return;
+  }
+  telegramEditTextDraftRef.current = null;
+  const restoredReply = nextKey ? drafts.get(nextKey) ?? "" : "";
+  // The active composer owns this text. Remove it before bounding inactive drafts
+  // so selecting the oldest cached destination cannot evict it before restore.
+  if (nextKey) drafts.delete(nextKey);
+  while (drafts.size > MESSAGE_CACHE_MAX_CONVERSATIONS) drafts.delete(drafts.keys().next().value!);
+  composerConversationKeyRef.current = nextKey;
+  composerSelectionEpochRef.current++;
   setEditingTelegramMessageId(
     null,
   );
@@ -1383,10 +1444,36 @@ useEffect(() => {
     null,
   );
   setReplyingToFacebookMessageId(null);
-  setReply("");
+  // Keep text only in this mounted Inbox. Attachments and quotes still reset.
+  setReply(restoredReply);
+  // Text and its tenant/conversation owner commit together. A destination
+  // render cannot submit the previous owner's text before this effect runs.
+  setComposerState({ reply: restoredReply, conversationKey: nextKey });
   setSendError(null);
   setReplyingToCommentId(null);
-}, [resolvedActiveConversationId, setReply, setReplyingToFacebookMessageId]);
+}, [resolvedActiveConversationId, activeConversation?.business_id, accessibleBusinessIds, editingTelegramMessageId, setReply, setReplyingToFacebookMessageId]);
+
+function isComposerSubmissionCurrent(owner: { conversationKey: string; epoch: number }) {
+  const current = activeConversationRef.current;
+  return Boolean(current && desiredConversationIdRef.current === current.id &&
+    accessibleBusinessIdsRef.current.includes(current.business_id) &&
+    `${current.business_id}:${current.id}` === owner.conversationKey &&
+    composerConversationKeyRef.current === owner.conversationKey &&
+    composerSelectionEpochRef.current === owner.epoch);
+}
+
+function captureComposerSubmissionOwner() {
+  if (!activeConversation) return null;
+  const conversationKey = `${activeConversation.business_id}:${activeConversation.id}`;
+  const owner = { conversationKey, epoch: composerRenderEpoch };
+  return composerState.conversationKey === conversationKey && isComposerSubmissionCurrent(owner) ? owner : null;
+}
+
+const composerReady = Boolean(captureComposerSubmissionOwner());
+
+function handleComposerReplyChange(value: string) {
+  if (captureComposerSubmissionOwner()) setReply(value);
+}
 
 const realtimeBusinessIds =
   useMemo(
@@ -1549,6 +1636,8 @@ async function markConversationReadRealtime(
         conversationId,
     );
 
+  const unreadBeforeRead = pendingReadCountsRef.current.get(conversationId) ?? readConversation?.unread_count ?? 0;
+
   const readMessageTime =
     readConversation?.last_message_at
       ? new Date(
@@ -1663,6 +1752,13 @@ async function markConversationReadRealtime(
       conversationId,
     );
 
+    // Restore only this failed read's optimistic badge. A newer incoming
+    // message or an explicit manual-unread update wins without moving selection.
+    setLiveConversations(current => current.map(row =>
+      row.id === conversationId && row.unread_count === 0 &&
+      rowTime(row.last_message_at) <= readMessageTime
+        ? { ...row, unread_count: Math.max(0, unreadBeforeRead) } : row));
+
     console.error(
       "Unable to mark realtime conversation read:",
       error,
@@ -1679,6 +1775,7 @@ async function markConversationReadRealtime(
     pendingReadIdsRef.current.delete(
       conversationId,
     );
+    pendingReadCountsRef.current.delete(conversationId);
   }
 }
 
@@ -1787,6 +1884,15 @@ function showMultiAgentToast(
       },
       4500,
     );
+}
+
+function showSuccessToast(message: string) {
+  showMultiAgentToast({
+    id: `success-${crypto.randomUUID()}`,
+    activity_type: "success",
+    actor_name: "Success",
+    description: message,
+  });
 }
 
 function normalizeCustomerTags(
@@ -2404,6 +2510,7 @@ useInboxRealtime({
         if (cached) {
           let nextMessages =
             cached.messages;
+          let shouldSort = true;
 
           if (
             event.eventType ===
@@ -2442,13 +2549,30 @@ useInboxRealtime({
                       : message,
                 );
             } else {
-              nextMessages = [
-                ...cached.messages,
-                incoming,
-              ];
+              const optimisticIndex = cached.messages.findIndex((message) => {
+                const optimistic = message as OptimisticInboxMessage;
+                return Boolean(optimistic.__optimistic_status) && matchesOptimisticMessage(message, row);
+              });
+
+              if (optimisticIndex >= 0) {
+                const optimistic = cached.messages[optimisticIndex];
+                nextMessages = cached.messages.map(
+                  (message, index) => index === optimisticIndex
+                    ? retainLocalImagePreview(withOptimisticRenderKey(incoming, optimistic), optimistic)
+                    : message,
+                );
+                delete pendingSendsRef.current[optimistic.id];
+                delete pendingAttachmentSendsRef.current[optimistic.id];
+                shouldSort = false;
+              } else {
+                nextMessages = [
+                  ...cached.messages,
+                  incoming,
+                ];
+              }
             }
 
-            nextMessages =
+            if (shouldSort) nextMessages =
               [...nextMessages].sort(
                 (first, second) => {
                   const timeDifference =
@@ -2540,30 +2664,15 @@ useInboxRealtime({
                   ? optimisticMessage.attachment_url
                   : null;
 
-              const replacement = retainLocalImagePreview({
+              const replacement = retainLocalImagePreview(withOptimisticRenderKey({
                 ...row,
                 attachment_url:
                   row.attachment_url ??
                   localAttachmentUrl,
-              } as unknown as typeof current[number], optimisticMessage);
+              } as unknown as typeof current[number], optimisticMessage), optimisticMessage);
 
-              return [
-                ...current.filter(
-                  (
-                    _message,
-                    index,
-                  ) =>
-                    index !==
-                    optimisticIndex,
-                ),
-                replacement,
-              ].sort(
-                (
-                  first,
-                  second,
-                ) =>
-                  messageOrderMs(first) -
-              messageOrderMs(second),
+              return current.map((message, index) =>
+                index === optimisticIndex ? replacement : message,
               );
             }
 
@@ -4044,11 +4153,14 @@ const loadConversationMessagePage =
             cache: "no-store",
             headers: { Accept: "application/json" },
             signal:
-              controller.signal,
+              AbortSignal.any([controller.signal, AbortSignal.timeout(SYNC_TIMEOUT_MS)]),
           },
         );
 
         const result = await readMessagePageResponse(response);
+
+        // An ignored abort must not repopulate a retired thread's page cache.
+        controller.signal.throwIfAborted();
 
         const nextMessages =
           (Array.isArray(
@@ -4170,6 +4282,8 @@ const prefetchConversation =
     ],
   );
 
+const [searchJump, setSearchJump] = useState<{ conversationId: string; messageId: string; nonce: number } | null>(null);
+
 const selectConversationSmoothly =
   useCallback(
     async (
@@ -4273,6 +4387,7 @@ const selectConversationSmoothly =
         conversationId,
       );
 
+      retireComposerSubmissionScope();
       desiredConversationIdRef.current =
         conversationId;
       setClientSelectedConversationId(
@@ -4291,6 +4406,7 @@ const selectConversationSmoothly =
         ) &&
         (targetConversation.unread_count ?? 0) > 0
       ) {
+        pendingReadCountsRef.current.set(conversationId, targetConversation.unread_count);
         pendingReadIdsRef.current.add(conversationId);
 
         setLiveConversations((current) =>
@@ -4306,8 +4422,6 @@ const selectConversationSmoothly =
         null,
       );
       setLoadingOlderMessages(false);
-      loadOlderInFlightRef.current =
-        false;
 
       const cached =
         getCachedConversationPage(
@@ -4535,6 +4649,7 @@ const selectConversationSmoothly =
       setCachedConversationPage,
       activeBusinessId,
       searchParams,
+      retireComposerSubmissionScope,
     ],
   );
 
@@ -4575,6 +4690,7 @@ const clearConversationSelection =
     }
 
     abortConversationRequestsExcept(null);
+    retireComposerSubmissionScope();
     desiredConversationIdRef.current = null;
     setClientSelectedConversationId(null);
     setLiveMessages([]);
@@ -4601,7 +4717,13 @@ const clearConversationSelection =
     loadingConversationMessages,
     resolvedActiveConversationId,
     setCachedConversationPage,
+    retireComposerSubmissionScope,
   ]);
+
+const selectSearchConversation = useCallback((conversationId: string, match?: InboxSearchMatch) => {
+  setSearchJump(match ? { conversationId, messageId: match.messageId, nonce: Date.now() } : null);
+  void selectConversationSmoothly(conversationId);
+}, [selectConversationSmoothly]);
 
 const retryConversationMessages =
   useCallback(() => {
@@ -4786,6 +4908,7 @@ useEffect(() => {
      * temporary bubble and the real row are both rendered.
      */
     const merged = [...current];
+    let needsSort = false;
 
     for (const serverMessage of serverMessages) {
       const existingIndex = merged.findIndex(
@@ -4837,20 +4960,21 @@ useEffect(() => {
           optimisticId
         ];
 
-        merged[optimisticIndex] = retainLocalImagePreview({
+        merged[optimisticIndex] = retainLocalImagePreview(withOptimisticRenderKey({
           ...serverMessage,
           attachment_url:
             serverMessage.attachment_url ??
             localAttachmentUrl,
-        } as InboxMessage, optimisticMessage);
+        } as InboxMessage, optimisticMessage), optimisticMessage);
 
         continue;
       }
 
       merged.push(serverMessage);
+      needsSort = true;
     }
 
-    return merged.sort(
+    return needsSort ? merged.sort(
       (first, second) => {
         const timeDifference =
           messageOrderMs(first) -
@@ -4860,7 +4984,7 @@ useEffect(() => {
           ? timeDifference
           : first.id.localeCompare(second.id);
       },
-    );
+    ) : merged;
   };
 
   async function syncNewestMessages() {
@@ -5157,14 +5281,23 @@ useEffect(() => {
 ]);
 
 async function handleLoadOlderMessages(): Promise<boolean> {
+  const conversationId = resolvedActiveConversationId;
+  if (!conversationId) return false;
+  const pending = olderMessageFlightRef.current.get(conversationId);
+  if (pending) { setLoadingOlderMessages(true); return pending.promise; }
+  const flight = { promise: loadOlderMessagePage() };
+  olderMessageFlightRef.current.set(conversationId, flight);
+  try { return await flight.promise; }
+  finally { if (olderMessageFlightRef.current.get(conversationId) === flight) olderMessageFlightRef.current.delete(conversationId); }
+}
+
+async function loadOlderMessagePage(): Promise<boolean> {
   const conversationId =
     resolvedActiveConversationId;
 
   if (
     !conversationId ||
-    !hasMoreOlderMessages ||
-    loadingOlderMessages ||
-    loadOlderInFlightRef.current
+    !hasMoreOlderMessages
   ) {
     return false;
   }
@@ -5177,6 +5310,7 @@ async function handleLoadOlderMessages(): Promise<boolean> {
   const oldestPersistedMessage =
     liveMessages.find(
       (message) =>
+        message.conversation_id === conversationId &&
         !message.id.startsWith(
           "optimistic:",
         ) &&
@@ -5192,8 +5326,6 @@ async function handleLoadOlderMessages(): Promise<boolean> {
     return false;
   }
 
-  loadOlderInFlightRef.current =
-    true;
   setLoadingOlderMessages(true);
   setOlderMessagesError(null);
 
@@ -5201,8 +5333,7 @@ async function handleLoadOlderMessages(): Promise<boolean> {
     const searchParams =
       new URLSearchParams({
         beforeCreatedAt:
-          oldestPersistedMessage
-            .created_at,
+          oldestPersistedMessage.platform_created_at ?? oldestPersistedMessage.created_at,
         beforeId:
           oldestPersistedMessage.id,
         limit:
@@ -5227,7 +5358,7 @@ async function handleLoadOlderMessages(): Promise<boolean> {
       Array.isArray(
         result.messages,
       )
-        ? result.messages
+        ? result.messages.filter(message => message.conversation_id === conversationId)
         : [];
 
     /*
@@ -5256,6 +5387,7 @@ async function handleLoadOlderMessages(): Promise<boolean> {
 
     setLiveMessages(
       (current) => {
+        if (desiredConversationIdRef.current !== conversationId) return current;
         const merged =
           new Map<
             string,
@@ -5329,6 +5461,7 @@ async function handleLoadOlderMessages(): Promise<boolean> {
 
     return true;
   } catch (error) {
+    if (desiredConversationIdRef.current !== conversationId) return false;
     const message =
       error instanceof Error
         ? error.message
@@ -5345,11 +5478,7 @@ async function handleLoadOlderMessages(): Promise<boolean> {
 
     return false;
   } finally {
-    loadOlderInFlightRef.current =
-      false;
-    setLoadingOlderMessages(
-      false,
-    );
+    if (desiredConversationIdRef.current === conversationId) setLoadingOlderMessages(false);
   }
 }
 
@@ -5362,6 +5491,7 @@ useEffect(() => {
         requestedConversationId,
     )
   ) {
+    retireComposerSubmissionScope();
     desiredConversationIdRef.current =
       null;
     setClientSelectedConversationId(
@@ -5396,6 +5526,7 @@ useEffect(() => {
 }, [
   liveConversations,
   requestedConversationId,
+  retireComposerSubmissionScope,
 ]);
 
 useEffect(() => {
@@ -5636,6 +5767,7 @@ useEffect(() => {
           ),
         );
       }
+      showSuccessToast("Conversation marked as unread successfully.");
     } catch (error) {
       manualUnreadConversationIdsRef.current.delete(
         conversationId,
@@ -5753,6 +5885,9 @@ async function handleTogglePin() {
         ),
       );
     }
+    showSuccessToast((result.conversation?.is_pinned ?? nextPinned)
+      ? "Conversation pinned successfully."
+      : "Conversation unpinned successfully.");
   } catch (error) {
     const localOverride =
       pinOverrideRef.current.get(conversationId);
@@ -5818,10 +5953,15 @@ function showTelegramActionNotice(
 }
 
 function handleCancelTelegramEdit() {
+  const previousDraft = telegramEditTextDraftRef.current;
+  const conversationKey = composerConversationKeyRef.current;
+  if (!previousDraft || previousDraft.conversationKey !== conversationKey ||
+    !accessibleBusinessIds.includes(previousDraft.conversationKey.split(":")[0])) return;
+  telegramEditTextDraftRef.current = null;
   setEditingTelegramMessageId(
     null,
   );
-  setReply("");
+  setReply(previousDraft.reply);
   setSendError(null);
 }
 
@@ -5854,6 +5994,13 @@ async function handleEditTelegramMessage(
     return;
   }
 
+  const conversation = liveConversationsRef.current.find(row => row.id === resolvedActiveConversationId);
+  const conversationKey = conversation && accessibleBusinessIds.includes(conversation.business_id)
+    ? `${conversation.business_id}:${conversation.id}` : null;
+  if (!conversationKey || conversationKey !== composerConversationKeyRef.current) return;
+  if (telegramEditTextDraftRef.current?.conversationKey !== conversationKey) {
+    telegramEditTextDraftRef.current = { conversationKey, reply: composerDraftRef.current.reply };
+  }
   setReplyingToFacebookMessageId(null);
   setEditingTelegramMessageId(
     messageId,
@@ -6664,7 +6811,8 @@ function createOptimisticMessage({
             reply_comment_id:
               tempId,
           }
-        : null,
+      : null,
+    __render_key: tempId,
     platform_created_at:
       now,
     created_at:
@@ -6820,6 +6968,7 @@ function createOptimisticAttachmentMessage({
         optimistic: true,
       },
     },
+    __render_key: tempId,
     platform_created_at:
       now,
     created_at:
@@ -7101,9 +7250,8 @@ async function performOptimisticSend(
      * message is drawn twice until a refresh replaces the list.
      *
      * The send response carries the real id, so the two can be matched on it
-     * instead. Nothing else needs to change: the matcher below prefers this
-     * when it is present and falls back to the old comparison for messages
-     * that arrive without one, such as a reply sent from Meta's own inbox.
+     * instead. If Realtime wins, the client request ID carried by the echo is
+     * the exact match; distinct messages with identical text are never merged.
      */
     if (result.messageId) {
       const platformId = result.messageId;
@@ -7207,6 +7355,8 @@ async function performOptimisticAttachmentSend(
     if (pending.endpoint === "/api/facebook/send-attachment") {
       formData.set("clientRequestId", pending.tempId);
       if (pending.replyToMessageId) formData.set("replyToMessageId", pending.replyToMessageId);
+    } else if (pending.endpoint.startsWith("/api/telegram/")) {
+      formData.set("clientRequestId", pending.tempId);
     }
 
     /*
@@ -7356,8 +7506,8 @@ async function performOptimisticAttachmentSend(
  * resolves -- almost guaranteed with an album, where six INSERTs land in one
  * burst. Renaming the temporary bubble to the real id would then leave two
  * rows carrying the same id, which React reports as a duplicate key and
- * renders unpredictably. When the real row is already here, keep it and drop
- * the temporary one instead, carrying the local blob preview across so the
+ * renders unpredictably. Merge the stored row at the temporary row's position
+ * and retain its render key, carrying the local blob preview across so the
  * photo does not blink while the stored URL loads.
  */
 function reconcileOptimisticMessage(
@@ -7366,42 +7516,21 @@ function reconcileOptimisticMessage(
   savedMessage: InboxMessage,
   previewUrl: string,
 ): InboxMessage[] {
-  const alreadyStored = current.some(
-    (message) =>
-      message.id === savedMessage.id &&
-      message.id !== tempId,
+  const original = current.find(message =>
+    message.id === tempId ||
+    (message as OptimisticInboxMessage).__render_key === tempId,
   );
-
-  const original = current.find(message => message.id === tempId);
-  const reconciled = retainLocalImagePreview({
+  if (!original) return current;
+  const reconciled = retainLocalImagePreview(withOptimisticRenderKey({
     ...savedMessage,
     attachment_url: savedMessage.message_type === "image" ? savedMessage.attachment_url || previewUrl : previewUrl,
     __optimistic_status: "sent",
     __optimistic_created_at: Date.now(),
-  } as unknown as InboxMessage, original ?? savedMessage);
+  } as unknown as InboxMessage, original ?? savedMessage), original ?? savedMessage);
 
-  if (alreadyStored) {
-    return current.flatMap((message) => {
-      if (message.id === tempId) {
-        return [];
-      }
-
-      return message.id === savedMessage.id
-        ? [
-            {
-              ...message,
-              ...reconciled,
-            } as InboxMessage,
-          ]
-        : [message];
-    });
-  }
-
-  return current.map((message) =>
-    message.id === tempId
-      ? reconciled
-      : message,
-  );
+  return current.flatMap(message => message === original
+    ? [reconciled]
+    : message.id === savedMessage.id ? [] : [message]);
 }
 
 /*
@@ -7418,10 +7547,21 @@ async function performOptimisticAlbumSend(
   caption?: string,
 ): Promise<boolean> {
   const albumGroupId = pendings[0].albumGroupId ?? crypto.randomUUID();
-  for (const pending of pendings) pending.albumGroupId = albumGroupId;
-  setLiveMessages(current => current.map(message => pendings.some(p => p.tempId === message.id)
-    ? { ...message, raw_payload: { ...message.raw_payload, tenh_media_group: { provider: "telegram", id: albumGroupId } } }
-    : message));
+  const pendingById = new Map(pendings.map((pending, position) => {
+    pending.albumGroupId = albumGroupId;
+    pending.albumPosition = position;
+    return [pending.tempId, pending] as const;
+  }));
+  setLiveMessages(current => current.map(message => {
+    const pending = pendingById.get(message.id);
+    return pending
+      ? { ...message, raw_payload: {
+          ...message.raw_payload,
+          tenh_client_request_id: pending.tempId,
+          tenh_media_group: { provider: "telegram", id: albumGroupId, position: pending.albumPosition },
+        } }
+      : message;
+  }));
   for (const pending of pendings) {
     setOptimisticSendStatus(
       pending.tempId,
@@ -7460,6 +7600,7 @@ async function performOptimisticAlbumSend(
         pending.file,
         pending.file.name,
       );
+      formData.append("clientRequestIds", pending.tempId);
     }
 
     const response = await fetch(
@@ -7504,9 +7645,13 @@ async function performOptimisticAlbumSend(
     }
 
     const saved = result.messages ?? [];
+    const correlated = correlateTelegramAlbumMessages(
+      pendings.map(pending => pending.tempId),
+      saved,
+    );
 
     pendings.forEach((pending, index) => {
-      const savedMessage = saved[index];
+      const savedMessage = correlated[index];
 
       if (savedMessage) {
         setLiveMessages((current) =>
@@ -7554,6 +7699,8 @@ async function handleSendAttachments(
   attachments: ReplyAttachment[],
   caption?: string,
 ): Promise<boolean> {
+  const submissionOwner = captureComposerSubmissionOwner();
+  if (!submissionOwner) return false;
   if (editingTelegramMessageId) {
     setSendError(
       "Finish or cancel Telegram editing before sending an attachment.",
@@ -7574,6 +7721,7 @@ async function handleSendAttachments(
           activeConversation,
         );
     } catch (error) {
+      if (!isComposerSubmissionCurrent(submissionOwner)) return false;
       setSendError(
         error instanceof Error
           ? error.message
@@ -7582,6 +7730,7 @@ async function handleSendAttachments(
       return false;
     }
 
+    if (!isComposerSubmissionCurrent(submissionOwner)) return false;
     if (replyPlatform === "telegram") {
       setSendError(
         "Telegram Reply supports text only. Cancel Reply before sending media.",
@@ -7613,6 +7762,7 @@ async function handleSendAttachments(
         activeConversation,
       );
   } catch (error) {
+    if (!isComposerSubmissionCurrent(submissionOwner)) return false;
     setSendError(
       error instanceof Error
         ? error.message
@@ -7621,6 +7771,7 @@ async function handleSendAttachments(
     return false;
   }
 
+  if (!isComposerSubmissionCurrent(submissionOwner)) return false;
   if (
     conversationPlatform ===
     "telegram"
@@ -7724,6 +7875,14 @@ async function handleSendAttachments(
         attachment.file,
       );
 
+    const optimisticKind =
+      conversationPlatform === "telegram"
+        ? telegramOptimisticAttachmentKind({
+            file: attachment.file,
+            requestedKind: attachment.kind,
+          })
+        : attachment.kind;
+
     const messageText =
       conversationPlatform ===
           "telegram" &&
@@ -7732,7 +7891,7 @@ async function handleSendAttachments(
         )
         ? "Sent an animation"
         : getAttachmentMessageText(
-            attachment.kind,
+            optimisticKind,
             attachment.file.name,
           );
 
@@ -7771,7 +7930,7 @@ async function handleSendAttachments(
           activeConversation.contact
             .platform_user_id,
         file: attachment.file,
-        kind: attachment.kind,
+        kind: optimisticKind,
         previewUrl,
         messageText,
         endpoint:
@@ -7796,7 +7955,7 @@ async function handleSendAttachments(
         recipientPlatformId:
           activeConversation.contact
             .platform_user_id,
-        kind: attachment.kind,
+        kind: optimisticKind,
         file: attachment.file,
         previewUrl,
         messageText,
@@ -7899,7 +8058,7 @@ async function handleSendAttachments(
     }
   }
 
-  if (allSucceeded && facebookReplyTarget && activeConversationRef.current?.id === activeConversation.id) {
+  if (allSucceeded && facebookReplyTarget && isComposerSubmissionCurrent(submissionOwner)) {
     setReplyingToFacebookMessageId(current => current === facebookReplyTarget.id ? null : current);
   }
   return allSucceeded;
@@ -7945,6 +8104,9 @@ async function handleSendMessage(
 ) {
   event.preventDefault();
 
+  const submissionOwner = captureComposerSubmissionOwner();
+  if (!submissionOwner) return;
+
   const message =
     (capturedMessage ?? reply).trim();
 
@@ -7984,6 +8146,7 @@ async function handleSendMessage(
           activeConversation,
         );
     } catch (error) {
+      if (!isComposerSubmissionCurrent(submissionOwner)) return;
       setSendError(
         error instanceof Error
           ? error.message
@@ -7993,7 +8156,7 @@ async function handleSendMessage(
     }
   }
 
-  if (desiredConversationIdRef.current !== activeConversation.id) return;
+  if (!isComposerSubmissionCurrent(submissionOwner)) return;
   const selectedReplyId = conversationPlatform === "telegram" ? replyingToTelegramMessageId : replyingToFacebookMessageId;
   if (selectedReplyId && !isCommentReply) {
     const selectedReply = resolvePhotoReplyTarget(liveMessagesRef.current, selectedReplyId, activeConversation.id);
@@ -8114,13 +8277,13 @@ async function handleSendMessage(
           ),
       );
 
-      if (desiredConversationIdRef.current === activeConversation.id) {
+      if (isComposerSubmissionCurrent(submissionOwner)) {
         setReply((current) => current === message ? "" : current);
         setEditingTelegramMessageId((current) => current === editedMessageId ? null : current);
         showTelegramActionNotice("Telegram message edited successfully");
       }
     } catch (error) {
-      if (desiredConversationIdRef.current === activeConversation.id) setSendError(
+      if (isComposerSubmissionCurrent(submissionOwner)) setSendError(
         error instanceof Error
           ? error.message
           : "Unable to edit Telegram message.",
@@ -8213,6 +8376,7 @@ async function handleSendMessage(
                 .contact
                 .platform_user_id,
             message,
+            clientRequestId: tempId,
             ...(replyingToFacebookMessageId ? { replyToMessageId: replyingToFacebookMessageId } : {}),
           };
 
@@ -8298,7 +8462,7 @@ async function handleSendMessage(
   finally { textSubmissionsRef.current.delete(submissionKey); }
   if (!sent && recoverFacebookQuote) {
     const current = composerDraftRef.current;
-    const canRestore = capturedMessage === undefined && desiredConversationIdRef.current === activeConversation.id &&
+    const canRestore = capturedMessage === undefined && isComposerSubmissionCurrent(submissionOwner) &&
       submission === latestTextSubmissionRef.current && current.revision === clearedRevision && !current.reply && !current.quote;
     if (canRestore) {
       setReply(reply);
@@ -8324,6 +8488,7 @@ async function handleSendMessage(
 }
 
   async function handleSendSticker(sticker: InboxStickerChoice): Promise<boolean> {
+    if (!captureComposerSubmissionOwner()) return false;
     const conversation = activeConversationRef.current;
     if (isMetaSticker(sticker)) {
       if (!conversation?.contact || conversation.social_account?.platform !== "facebook") throw new Error("Open a Facebook conversation before sending this sticker.");
@@ -8609,6 +8774,9 @@ async function handleAssignmentChange(
         ),
       );
     }
+    showSuccessToast(nextAssignedTo
+      ? "Conversation assigned successfully."
+      : "Conversation unassigned successfully.");
   } catch (error) {
     assignmentOverrideRef.current.delete(conversationId);
 
@@ -8701,6 +8869,7 @@ async function handleAssignToMe() {
         ),
       ),
     );
+    showSuccessToast("Conversation assigned to you successfully.");
   } catch (error) {
     assignmentOverrideRef.current.delete(conversationId);
     setAssignmentError(
@@ -8717,19 +8886,19 @@ return (
 <FacebookConversationActionProvider navigationOnly businessId={activeConversation?.contact?.business_id ?? activeConversation?.business_id ?? ""} conversationId={activeConversation?.id ?? ""} pageId={activeConversation?.social_account?.platform_account_id ?? null} threadId={activeConversation?.contact?.platform_user_id ?? null}>
 <div data-inbox-shell className="relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
   {multiAgentToast ? (
-    <div className="pointer-events-none absolute right-5 top-5 z-[90] w-[min(390px,calc(100%-2.5rem))]">
+    <div role="status" aria-live="polite" aria-atomic="true" className="pointer-events-none absolute right-5 top-5 z-[90] w-[min(390px,calc(100%-2.5rem))]">
       <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
-            {multiAgentToast.actorName
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${multiAgentToast.activityType === "success" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
+            {multiAgentToast.activityType === "success" ? "✓" : multiAgentToast.actorName
               ?.trim()
               .charAt(0)
               .toUpperCase() || "T"}
           </div>
 
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold uppercase tracking-wide text-blue-600">
-              Team update
+            <p className={`text-xs font-bold uppercase tracking-wide ${multiAgentToast.activityType === "success" ? "text-emerald-600" : "text-blue-600"}`}>
+              {multiAgentToast.activityType === "success" ? "Success" : "Team update"}
             </p>
 
             <p className="mt-1 text-sm font-medium leading-5 text-slate-800">
@@ -8754,7 +8923,7 @@ return (
               }
             }}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-            aria-label="Dismiss team update"
+            aria-label={multiAgentToast.activityType === "success" ? "Dismiss success alert" : "Dismiss team update"}
           >
             ×
           </button>
@@ -8782,7 +8951,7 @@ return (
         activeStatus={activeStatus}
         statusCounts={statusCounts}
         onSelectConversation={
-          selectConversationSmoothly
+          selectSearchConversation
         }
         onPrefetchConversation={
           prefetchConversation
@@ -8800,7 +8969,10 @@ return (
   activeConversation={
     activeConversation
   }
+  storageBusinessId={currentBusinessId}
+  storageMemberId={currentMemberId}
   messages={liveMessages}
+  searchJump={searchJump}
   replyingToFacebookMessageId={replyingToFacebookMessageId}
   onReplyToFacebookMessage={handleReplyToFacebookMessage}
   onCancelFacebookReply={() => setReplyingToFacebookMessageId(null)}
@@ -8831,7 +9003,8 @@ return (
   typingAgents={typingAgents}
   teamPresence={teamPresence}
   agentPresenceStatus={agentPresenceStatus}
-  reply={reply}
+  reply={composerReady ? reply : ""}
+  composerReady={composerReady}
   sending={sending}
   sendError={sendError}
   updatingStatus={updatingStatus}
@@ -8843,7 +9016,7 @@ return (
     customerPanelVisible
   }
 
-  onReplyChange={setReply}
+  onReplyChange={handleComposerReplyChange}
 
   onContactTagsChange={handleContactTagsChange}
 
@@ -8950,6 +9123,7 @@ return (
 />
       {customerPanelVisible ? (
         <CustomerProfile
+          onReminderCreated={() => showSuccessToast("Reminder created successfully.")}
           onReportSpam={() => handleStatusChange("spam")}
           reportingSpam={updatingStatus}
           reportSpamError={statusError}

@@ -117,6 +117,7 @@ type PayWayPaymentState =
   | "idle"
   | "waiting"
   | "approved"
+  | "recovery_required"
   | "pending"
   | "declined"
   | "cancelled"
@@ -159,6 +160,8 @@ type SubscriptionPaymentViewProps = {
   billingCycle: BillingCycle;
   initialPayWayReturn?: string | null;
   initialTransactionId?: string | null;
+  savedTransactionTotalCents?: number | null;
+  transactionReturnOnly?: boolean;
 
   /*
    * Everything below was already being passed by
@@ -192,6 +195,7 @@ type SubscriptionPaymentViewProps = {
   customUpgradeCurrentBillingCycle?: string | null;
   customUpgradeRemainingDays?: number | null;
   customUpgradeExtensionMonths?: number | null;
+  customUpgradeExtensionBillingCycle?: string | null;
   customUpgradeCurrentPeriodEnd?: string | null;
   customUpgradeNewPeriodEnd?: string | null;
 
@@ -222,6 +226,8 @@ function payWayStateLabel(
   isKhmer = false,
 ) {
   switch (state) {
+    case "recovery_required":
+      return "Payment requires billing review";
     case "approved":
       return isKhmer ? "ការទូទាត់បានអនុម័ត — កំពុងដំណើរការ workspace របស់អ្នក" : "Payment approved — activating your workspace";
     case "declined":
@@ -244,6 +250,8 @@ export function SubscriptionPaymentView({
   billingCycle,
   initialPayWayReturn = null,
   initialTransactionId = null,
+  savedTransactionTotalCents = null,
+  transactionReturnOnly = false,
   purchaseBusinessId = null,
   customConnections = null,
   customUsers = null,
@@ -256,6 +264,7 @@ export function SubscriptionPaymentView({
   customUpgradeCurrentBillingCycle = null,
   customUpgradeRemainingDays = null,
   customUpgradeExtensionMonths = null,
+  customUpgradeExtensionBillingCycle = null,
   customUpgradeCurrentPeriodEnd = null,
   customUpgradeNewPeriodEnd = null,
   upgradeFromPlanCode = null,
@@ -308,6 +317,7 @@ export function SubscriptionPaymentView({
   // override and called calculatePlanTotalCents(), which returns null for a
   // Custom plan, so the whole payment page returned null (blank screen).
   const totalCents = useMemo(() => {
+    if (savedTransactionTotalCents !== null) return savedTransactionTotalCents;
     if (customUpgrade && customUpgradeTotalCents !== null) {
       return customUpgradeTotalCents;
     }
@@ -335,6 +345,7 @@ export function SubscriptionPaymentView({
     return calculatePlanTotalCents(planCode, billingCycle);
   }, [
     billingCycle,
+    savedTransactionTotalCents,
     customConnections,
     customUpgrade,
     customUpgradeTotalCents,
@@ -439,11 +450,9 @@ export function SubscriptionPaymentView({
     useState<PayWayPaymentState>(
       initialTransactionId
         ? "waiting"
-        : initialPayWayReturn === "approved"
-          ? "approved"
-          : initialPayWayReturn === "cancelled"
-            ? "cancelled"
-            : "idle",
+        : initialPayWayReturn === "cancelled"
+          ? "cancelled"
+          : "idle",
     );
   const [payWayStatusText, setPayWayStatusText] =
     useState<string | null>(null);
@@ -624,6 +633,7 @@ export function SubscriptionPaymentView({
     if (
       !payWayTransactionId ||
       payWayPaymentState === "approved" ||
+      payWayPaymentState === "recovery_required" ||
       payWayPaymentState === "declined" ||
       payWayPaymentState === "cancelled" ||
       payWayPaymentState === "failed"
@@ -684,6 +694,7 @@ export function SubscriptionPaymentView({
 
         if (
           nextState === "declined" ||
+          nextState === "recovery_required" ||
           nextState === "cancelled" ||
           nextState === "failed"
         ) {
@@ -721,6 +732,7 @@ export function SubscriptionPaymentView({
   }, [payWayPaymentState, payWayTransactionId]);
 
   async function startPayWayCheckout() {
+    if (transactionReturnOnly) return;
     const payWayBridge = window.TenhAbaPaywayBridge;
 
     if (
@@ -761,7 +773,13 @@ export function SubscriptionPaymentView({
               ? { users: customUsers }
               : {}),
             ...(renewSame ? { renewSame: true } : {}),
-            ...(customUpgrade ? { customUpgrade: true } : {}),
+            ...(customUpgrade
+              ? {
+                  customUpgrade: true,
+                  extensionBillingCycle:
+                    customUpgradeExtensionBillingCycle ?? "none",
+                }
+              : {}),
           }),
         },
       );
@@ -838,6 +856,7 @@ export function SubscriptionPaymentView({
   }
 
   async function submitManualPayment() {
+    if (transactionReturnOnly) return;
     if (!manualPaymentConfig?.enabled) {
       setManualPaymentError(
         t("Manual payment is not available right now.", "ការទូទាត់តាមធនាគារដោយដៃមិនអាចប្រើបាននៅពេលនេះទេ។"),
@@ -882,7 +901,13 @@ export function SubscriptionPaymentView({
               ? { users: customUsers }
               : {}),
             ...(renewSame ? { renewSame: true } : {}),
-            ...(customUpgrade ? { customUpgrade: true } : {}),
+            ...(customUpgrade
+              ? {
+                  customUpgrade: true,
+                  extensionBillingCycle:
+                    customUpgradeExtensionBillingCycle ?? "none",
+                }
+              : {}),
             fileName: manualProof.name,
             mimeType: manualProof.type,
             sizeBytes: manualProof.size,
@@ -951,7 +976,13 @@ export function SubscriptionPaymentView({
               ? { users: customUsers }
               : {}),
             ...(renewSame ? { renewSame: true } : {}),
-            ...(customUpgrade ? { customUpgrade: true } : {}),
+            ...(customUpgrade
+              ? {
+                  customUpgrade: true,
+                  extensionBillingCycle:
+                    customUpgradeExtensionBillingCycle ?? "none",
+                }
+              : {}),
             customerNote: manualCustomerNote.trim(),
             fileName: manualProof.name,
             mimeType: manualProof.type,
@@ -1552,6 +1583,7 @@ export function SubscriptionPaymentView({
                 <button
                   type="button"
                   disabled={
+                    transactionReturnOnly ||
                     manualPaymentLoading ||
                     !manualPaymentConfig?.enabled
                   }
@@ -1629,6 +1661,7 @@ export function SubscriptionPaymentView({
                         void startPayWayCheckout();
                       }}
                       disabled={
+                        transactionReturnOnly ||
                         checkoutLoading ||
                         !payWayPluginReady
                       }
@@ -1877,6 +1910,7 @@ export function SubscriptionPaymentView({
                           type="button"
                           onClick={() => void submitManualPayment()}
                           disabled={
+                            transactionReturnOnly ||
                             !manualPaymentConfig?.enabled ||
                             manualPaymentSubmitting ||
                             !manualProof

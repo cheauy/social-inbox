@@ -33,10 +33,10 @@ function deny(error: string, status: number) {
  * Load the caller's effective permissions. Owners short-circuit to full
  * access without a database read for the overrides column.
  */
-export async function loadPermissionContext(): Promise<
+export async function loadPermissionContext(strictWorkspace = false): Promise<
   PermissionGuardResult
 > {
-  const authResult = await getCurrentMember();
+  const authResult = await getCurrentMember(strictWorkspace);
 
   if (!authResult.success) {
     return {
@@ -89,7 +89,7 @@ export async function requirePermission(
   key: string,
   level: PermissionLevel = "manage",
 ): Promise<PermissionGuardResult> {
-  const result = await loadPermissionContext();
+  const result = await loadPermissionContext(level === "manage");
 
   if (!result.success) {
     return result;
@@ -110,7 +110,7 @@ export async function requirePermission(
 
 /** Owner-only actions that no permission toggle can grant. */
 export async function requireOwner(): Promise<PermissionGuardResult> {
-  const result = await loadPermissionContext();
+  const result = await loadPermissionContext(true);
 
   if (!result.success) {
     return result;

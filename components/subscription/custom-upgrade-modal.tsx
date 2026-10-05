@@ -216,24 +216,35 @@ export function CustomUpgradeModal({
     [currentBillingCycle],
   );
 
-  const allowedCycles = useMemo(
-    () =>
-      currentCycle
-        ? TENH_BILLING_CYCLES.filter(
-            (item) => item.months >= currentCycle.months,
-          )
-        : TENH_BILLING_CYCLES,
-    [currentCycle],
-  );
-
   const [connections, setConnections] = useState(currentConnections);
   const [users, setUsers] = useState(currentUsers);
-  const [cycle, setCycle] = useState(
-    currentBillingCycle ?? "monthly",
-  );
-  const [quote, setQuote] = useState<CustomUpgradeQuote | null>(null);
+  const [cycle, setCycle] = useState("none");
+  const [fetchedQuote, setQuote] = useState<{
+    quote: CustomUpgradeQuote;
+    requestKey: string;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const quoteRequestKey = JSON.stringify([
+    targetBusinessId, connections, users, cycle,
+    currentConnections, currentUsers, currentBillingCycle, currentPeriodEnd,
+  ]);
+  // A selection changes before the debounced fetch starts. Hide the previous
+  // price/expiry immediately and disable checkout until this selection is quoted.
+  const candidateQuote = fetchedQuote?.requestKey === quoteRequestKey
+    ? fetchedQuote.quote
+    : null;
+  const quote = candidateQuote &&
+    candidateQuote.targetConnections === connections &&
+    candidateQuote.targetUsers === users &&
+    candidateQuote.currentConnections === currentConnections &&
+    candidateQuote.currentUsers === currentUsers &&
+    candidateQuote.currentBillingCycle === currentBillingCycle &&
+    candidateQuote.targetBillingCycle === (cycle === "none" ? currentBillingCycle : cycle) &&
+    candidateQuote.extensionBillingCycle === (cycle === "none" ? null : cycle) &&
+    Date.parse(candidateQuote.currentPeriodEnd) === Date.parse(currentPeriodEnd ?? "")
+      ? candidateQuote
+      : null;
 
   const closeSafely = useCallback(() => {
     // Clear every transient quote value before the modal is hidden.
@@ -241,18 +252,18 @@ export function CustomUpgradeModal({
     // another subscription is selected and Upgrade is opened again.
     setConnections(currentConnections);
     setUsers(currentUsers);
-    setCycle(currentBillingCycle ?? "monthly");
+    setCycle("none");
     setQuote(null);
     setError(null);
     setLoading(false);
     onClose();
-  }, [currentBillingCycle, currentConnections, currentUsers, onClose]);
+  }, [currentConnections, currentUsers, onClose]);
 
   useEffect(() => {
     if (!open) return;
     setConnections(currentConnections);
     setUsers(currentUsers);
-    setCycle(currentBillingCycle ?? "monthly");
+    setCycle("none");
     setQuote(null);
     setError(null);
   }, [
@@ -260,6 +271,7 @@ export function CustomUpgradeModal({
     currentConnections,
     currentUsers,
     currentBillingCycle,
+    targetBusinessId,
   ]);
 
   useEffect(() => {
@@ -283,7 +295,11 @@ export function CustomUpgradeModal({
         const params = new URLSearchParams({
           connections: String(connections),
           users: String(users),
-          cycle,
+          cycle:
+            cycle === "none"
+              ? currentBillingCycle ?? "monthly"
+              : cycle,
+          extension: cycle,
         });
         if (targetBusinessId) {
           params.set("business_id", targetBusinessId);
@@ -309,9 +325,10 @@ export function CustomUpgradeModal({
           );
         }
 
-        setQuote(result.quote);
+        if (controller.signal.aborted) return;
+        setQuote({ quote: result.quote, requestKey: quoteRequestKey });
       } catch (reason) {
-        if ((reason as Error).name !== "AbortError") {
+        if (!controller.signal.aborted && (reason as Error).name !== "AbortError") {
           setQuote(null);
           setError(
             reason instanceof Error
@@ -320,7 +337,7 @@ export function CustomUpgradeModal({
           );
         }
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }, 180);
 
@@ -328,12 +345,13 @@ export function CustomUpgradeModal({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [open, connections, users, cycle, targetBusinessId]);
+  }, [open, connections, users, cycle, currentConnections, currentUsers,
+    currentBillingCycle, currentPeriodEnd, targetBusinessId, quoteRequestKey]);
 
   if (!open) return null;
 
   const selectedCycle =
-    allowedCycles.find((item) => item.id === cycle) ?? null;
+    TENH_BILLING_CYCLES.find((item) => item.id === cycle) ?? null;
 
   const canContinue = Boolean(
     quote && quote.totalCents > 0 && !loading,
@@ -574,13 +592,43 @@ export function CustomUpgradeModal({
             </p>
             <p className="mt-1 text-sm text-slate-500">
               {t(
-                "You can stay on the current duration or move to a longer duration. Shorter duration is not available during upgrade.",
-                "អ្នកអាចរក្សារយៈពេលបច្ចុប្បន្ន ឬប្តូរទៅរយៈពេលវែងជាង។ មិនអាចប្តូរទៅរយៈពេលខ្លីជាងបានទេពេលអាប់ក្រេដ។",
+                "Keep your current expiry, or add 1, 3, 6, or 12 months after it. Capacity changes are charged only for the time remaining now.",
+                "អ្នកអាចរក្សាថ្ងៃផុតកំណត់បច្ចុប្បន្ន ឬបន្ថែម 1, 3, 6 ឬ 12 ខែ ចាប់ពីថ្ងៃផុតកំណត់នោះ។ ការបន្ថែម Connections និង Users គិតថ្លៃតែសម្រាប់ថ្ងៃដែលនៅសល់។",
               )}
             </p>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              {allowedCycles.map((item) => {
+            <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-5">
+              <button
+                type="button"
+                onClick={() => setCycle("none")}
+                className={`relative rounded-2xl border px-5 py-4 text-left transition ${
+                  cycle === "none"
+                    ? "border-blue-500 bg-blue-50/70 shadow-sm ring-1 ring-blue-100"
+                    : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <span className="text-base font-extrabold text-slate-900">
+                      {t("Keep current expiry", "រក្សាថ្ងៃផុតកំណត់បច្ចុប្បន្ន")}
+                    </span>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {t("Add no time", "មិនបន្ថែមរយៈពេល")}
+                    </p>
+                  </div>
+                  <span
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${
+                      cycle === "none"
+                        ? "border-blue-600 bg-blue-600 text-white"
+                        : "border-slate-300 bg-white text-transparent"
+                    }`}
+                  >
+                    <CheckIcon />
+                  </span>
+                </div>
+              </button>
+
+              {TENH_BILLING_CYCLES.map((item) => {
                 const active = cycle === item.id;
 
                 return (
@@ -604,7 +652,7 @@ export function CustomUpgradeModal({
                                 : "text-slate-900"
                             }`}
                           >
-                            {cycleLabel(item.label, item.months)}
+                            {t("Add", "បន្ថែម")} {cycleLabel(item.label, item.months)}
                           </span>
 
                           {item.discountBasisPoints ? (
@@ -696,16 +744,16 @@ export function CustomUpgradeModal({
                         ? cycleLabel(currentCycle.label, currentCycle.months)
                         : "—"} →{" "}
                       {selectedCycle
-                        ? cycleLabel(selectedCycle.label, selectedCycle.months)
-                        : cycle}
+                        ? `${t("Add", "បន្ថែម")} ${cycleLabel(selectedCycle.label, selectedCycle.months)}`
+                        : t("Keep current expiry", "រក្សាថ្ងៃផុតកំណត់បច្ចុប្បន្ន")}
                     </span>
                     {changeBadge(
                       currentCycle
                         ? cycleLabel(currentCycle.label, currentCycle.months)
                         : "—",
                       selectedCycle
-                        ? cycleLabel(selectedCycle.label, selectedCycle.months)
-                        : cycle,
+                        ? `${t("Add", "បន្ថែម")} ${cycleLabel(selectedCycle.label, selectedCycle.months)}`
+                        : t("Keep current expiry", "រក្សាថ្ងៃផុតកំណត់បច្ចុប្បន្ន"),
                       isKhmer,
                     )}
                   </div>
@@ -829,7 +877,11 @@ export function CustomUpgradeModal({
               onClick={() => {
                 const params = new URLSearchParams({
                   plan: "custom",
-                  cycle,
+                  cycle:
+                    cycle === "none"
+                      ? currentBillingCycle ?? "monthly"
+                      : cycle,
+                  extension: cycle,
                   connections: String(connections),
                   users: String(users),
                   upgrade: "custom",

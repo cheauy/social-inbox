@@ -32,7 +32,7 @@ function harness(config = {}) {
     return [{frameId:0,result}];
   }} };
   const sandbox={URL,URLSearchParams,Map,Set,Object,Promise,Date:class extends Date{static now(){return now;}},
-    crypto:{randomUUID},chrome,TENH_ORIGIN:'https://app.tenhchat.com',
+    crypto:{randomUUID},chrome,tenhStorage:chrome.storage,TENH_ORIGIN:'https://app.tenhchat.com',
     setTimeout:(fn,ms)=>ms===500?setImmediate(()=>{now+=500;fn();}):setTimeout(fn,ms),clearTimeout,
     readState:async()=>({token:config.noToken?null:'fake-device-token'}),
     callTenh:async(path,request)=>{auth.push({path,request});return {ok:!config.denied,result:{success:true,verified:true,...options,customerName:'Customer',sourceType:'messenger',linkSource:'meta_conversations_api',conversationLink:exact,...config.authorization}};},

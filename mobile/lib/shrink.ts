@@ -44,14 +44,14 @@ export function fileSize(uri: string) {
  * is not. Never throws -- a manipulator that cannot read a file gives back
  * the file, and the send fails or succeeds on its own merits.
  */
-export async function shrinkImage(uri: string): Promise<{
+export async function shrinkImage(uri: string, force = false): Promise<{
   uri: string;
   mimeType: string;
   shrank: boolean;
 }> {
   const original = fileSize(uri);
 
-  if (original > 0 && original <= KEEP_UNDER_BYTES) {
+  if (!force && original > 0 && original <= KEEP_UNDER_BYTES) {
     return { uri, mimeType: "", shrank: false };
   }
 
@@ -66,7 +66,7 @@ export async function shrinkImage(uri: string): Promise<{
     });
 
     /* A "smaller" copy that is bigger is not an improvement. */
-    if (original > 0 && fileSize(saved.uri) >= original) {
+    if (!force && original > 0 && fileSize(saved.uri) >= original) {
       return { uri, mimeType: "", shrank: false };
     }
 

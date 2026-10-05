@@ -64,9 +64,9 @@ export function getDeletedMessageText(
   // Actor is explicit metadata, NEVER inferred from the message direction.
   const memberId = text(deleted.deleted_by_member_id);
   const memberName = options.teamMembers?.find((member) => member.id === memberId)?.full_name;
-  const storedName = text(deleted.deleted_by_name) || text(deleted.deleted_by_member_name) || text(deleted.deleted_by_customer_name);
-  if (source === "tenh") return `Message deleted by ${storedName || text(memberName) || "TENH team member"}`;
-  if (source === "customer") return `Message deleted by ${storedName || text(options.customerName) || "customer"}`;
+  const storedName = text(deleted.deleted_by_name) || text(deleted.deleted_by_member_name);
+  if (source === "tenh") return `Message deleted by ${text(memberName) || storedName || "TENH team member"}`;
+  if (source === "customer") return `Message deleted by ${text(deleted.deleted_by_customer_name) || "customer"}`;
   // Telegram "not found" is not evidence of WHO deleted it.
   if (source === "telegram" || source === "unknown") return "Message deleted";
   const existing = text(message.message_text).replace(/^🗑\s*/u, "");
@@ -151,6 +151,32 @@ export type ReplyImageReference = {
   photoIndex?: number | null;
   url?: string | null;
 };
+
+export type ReplyVideoReference = Omit<ReplyImageReference, "photoIndex">;
+
+/** Resolve a video quote without trusting media URLs copied into reply metadata. */
+export function getReplyVideoReference(message: ActionMessage, messages: readonly ActionMessage[]): ReplyVideoReference | null {
+  const raw = record(message.raw_payload), saved = record(raw.tenh_reply);
+  if (raw.tenh_reply_fallback || isMessageDeleted(message)) return null;
+  const native = record(raw.message), telegram = record(native.reply_to_message ?? raw.reply_to_message);
+  const facebookMid = text(record(native.reply_to ?? raw.reply_to).mid);
+  const captured = record(raw.tenh_facebook_reply);
+  const validCaptured = captured.platformMessageId === facebookMid && captured.conversationId === message.conversation_id;
+  const chatId = /^telegram:([^:]+):/.exec(message.platform_message_id ?? "")?.[1];
+  const telegramMid = chatId && telegram.message_id != null ? `telegram:${chatId}:${telegram.message_id}` : "";
+  const platformMessageId = facebookMid || text(saved.reply_to_platform_message_id) || telegramMid;
+  const messageId = text(saved.reply_to_local_message_id);
+  const original = messages.find(row => row.conversation_id === message.conversation_id &&
+    ((platformMessageId && row.platform_message_id === platformMessageId) || (!platformMessageId && messageId && row.id === messageId)));
+  if (original && isMessageDeleted(original)) return null;
+  const savedMatches = !platformMessageId || saved.reply_to_platform_message_id === platformMessageId;
+  const hasVideo = original?.message_type === "video" || (savedMatches && text(saved.preview_type) === "video") ||
+    Boolean(telegram.video) || (validCaptured && text(captured.messageType) === "video");
+  if (!hasVideo || (!messageId && !platformMessageId && !original)) return null;
+  return { conversationId: message.conversation_id, messageId: original?.id || messageId || null,
+    platformMessageId: platformMessageId || null,
+    url: original?.message_type === "video" ? original.attachment_url : null };
+}
 
 /** Resolve quotes even when their original photo is outside the loaded page. */
 export function getReplyImageReference(message: ActionMessage, messages: readonly ActionMessage[]): ReplyImageReference | null {

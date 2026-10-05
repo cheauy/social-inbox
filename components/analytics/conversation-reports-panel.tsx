@@ -1,4 +1,5 @@
 "use client";
+import { useAnalyticsRequest, useAnalyticsResume } from "@/lib/analytics/use-analytics-request";
 import { useForegroundLoading } from "@/lib/display/foreground-loading";
 
 import Link from "next/link";
@@ -430,11 +431,13 @@ export function ConversationReportsPanel() {
       > | null
     >(null);
 
+  const requests = useAnalyticsRequest();
+
   const loadReport =
     useCallback(
-      async (
-        silent = false,
-      ) => {
+      async function loadReport(silent = false): Promise<void> {
+        const request = requests.start(JSON.stringify([period, slaMinutes]), silent, () => { void loadReport(true); });
+        if (!request) return;
         if (silent) {
           setRefreshing(
             true,
@@ -468,12 +471,14 @@ export function ConversationReportsPanel() {
               {
                 cache:
                   "no-store",
+                signal: request.signal,
               },
             );
 
           const result =
             (await response.json()) as
               ReportResponse;
+          if (!request.current()) return;
 
           if (
             !response.ok ||
@@ -527,6 +532,7 @@ export function ConversationReportsPanel() {
         } catch (
           loadError
         ) {
+          if (!request.current()) return;
           setError(
             loadError instanceof
               Error
@@ -534,14 +540,14 @@ export function ConversationReportsPanel() {
               : "Unable to load conversation reports.",
           );
         } finally {
-          setLoading(false);
-          setRefreshing(false);
+          if (request.current()) {
+            setLoading(false);
+            setRefreshing(false);
+          }
+          request.finish();
         }
       },
-      [
-        period,
-        slaMinutes,
-      ],
+      [period, slaMinutes, requests],
     );
 
   const scheduleRefresh =
@@ -567,7 +573,9 @@ export function ConversationReportsPanel() {
 
   useEffect(() => {
     void loadReport();
-  }, [loadReport]);
+    return () => requests.cancel();
+  }, [loadReport, requests]);
+  useAnalyticsResume(loadReport);
 
   useEffect(() => {
     return () => {

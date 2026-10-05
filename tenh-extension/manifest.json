@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "TENH Companion — Localhost",
-  "version": "1.2.32",
-  "description": "TENH development companion for http://localhost:3000, with isolated local connection state.",
+  "name": "TENH Companion",
+  "version": "1.2.34",
+  "description": "TENH companion for app.tenhchat.com, with verified Facebook conversation navigation.",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",
@@ -12,7 +12,7 @@
     "scripting"
   ],
   "host_permissions": [
-    "http://localhost:3000/*",
+    "https://app.tenhchat.com/*",
     "https://www.facebook.com/*",
     "https://business.facebook.com/*"
   ],
@@ -23,7 +23,7 @@
   "content_scripts": [
     {
       "matches": [
-        "http://localhost:3000/*"
+        "https://app.tenhchat.com/*"
       ],
       "js": [
         "src/tenh-bridge.js"
@@ -50,7 +50,7 @@
     "128": "icons/icon-128.png"
   },
   "action": {
-    "default_title": "TENH Companion — Localhost",
+    "default_title": "TENH Companion",
     "default_popup": "src/popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",

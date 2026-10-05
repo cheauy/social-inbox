@@ -200,6 +200,16 @@ async function cancelPayWayTransactionForCurrentUser(
     };
   }
 
+  // Saved historical checkouts are review evidence. Never close them at the
+  // provider merely because a customer leaves or returns to an old payment URL.
+  const metadata = transaction.metadata && typeof transaction.metadata === "object" && !Array.isArray(transaction.metadata)
+    ? transaction.metadata as Record<string, unknown> : {};
+  if (transaction.status === "pending" && metadata.checkout_contract_version !== 2) {
+    return { success: false, status: 409,
+      error: "This saved payment requires billing review and cannot be cancelled from the payment page.",
+      transactionId };
+  }
+
   let verifiedState: string | null = null;
   if (transaction.status === "pending") {
     try {
@@ -208,6 +218,11 @@ async function cancelPayWayTransactionForCurrentUser(
         "browser-status",
       );
       verifiedState = verification.paymentState;
+
+      if (verification.paymentState === "recovery_required") {
+        return { success: false, status: 409,
+          error: "This payment requires billing review before cancellation.", transactionId };
+      }
 
       if (verification.paymentState === "approved") {
         const cookieStore = await cookies();
@@ -227,9 +242,9 @@ async function cancelPayWayTransactionForCurrentUser(
         };
       }
     } catch (error) {
-      // A status check can briefly fail while PayWay is creating the
-      // transaction. We still attempt PayWay Close Transaction below.
       console.warn("[TENH PayWay] Pre-cancel status verification failed:", error);
+      return { success: false, status: 409,
+        error: "This payment could not be verified. Billing review is required before cancellation.", transactionId };
     }
   }
 

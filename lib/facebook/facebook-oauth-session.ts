@@ -11,6 +11,39 @@ export const FACEBOOK_OAUTH_STATE_COOKIE =
 export const FACEBOOK_OAUTH_SESSION_COOKIE =
   "tenh_facebook_oauth_session";
 
+export const FACEBOOK_OAUTH_STATE_MAX_AGE = 10 * 60;
+
+type FacebookOAuthState = {
+  state: string;
+  userId: string;
+  businessId: string;
+  memberId: string;
+  issuedAt: number;
+};
+
+export function encodeFacebookOAuthState(attempt: FacebookOAuthState) {
+  return encryptFacebookToken(JSON.stringify({
+    type: "tenh-facebook-oauth-state-v1",
+    ...attempt,
+  }));
+}
+
+export function decodeFacebookOAuthState(encrypted: string, now = Date.now()): FacebookOAuthState {
+  const parsed = JSON.parse(decryptFacebookToken(encrypted)) as Record<string, unknown>;
+  const state = cleanString(parsed.state);
+  const userId = cleanString(parsed.userId);
+  const businessId = cleanString(parsed.businessId);
+  const memberId = cleanString(parsed.memberId);
+  const issuedAt = parsed.issuedAt;
+  if (parsed.type !== "tenh-facebook-oauth-state-v1" || !state || !/^[a-f0-9]{64}$/.test(state) ||
+      !userId || !businessId || !memberId || typeof issuedAt !== "number" ||
+      !Number.isSafeInteger(issuedAt) || issuedAt > now + 30_000 ||
+      now - issuedAt >= FACEBOOK_OAUTH_STATE_MAX_AGE * 1000) {
+    throw new Error("Invalid or expired Facebook OAuth state.");
+  }
+  return { state, userId, businessId, memberId, issuedAt };
+}
+
 export type FacebookOAuthSession = {
   businessId: string;
   memberId: string;

@@ -91,13 +91,16 @@ const HEARTBEAT_MS = 15_000;
 /*
  * Which of two payloads for the same person is the truth.
  *
- * The revision counts this device's own updates, so it settles the ordinary
- * case; the timestamp settles two devices. Equal on both means the later one
+ * Revisions count independently on each device. Timestamp settles devices;
+ * revision only settles equal timestamps. Equal on both means the later one
  * seen wins, which is why this returns true on a tie -- an exact draw used to
  * keep whichever key the socket listed first, and that could be the one the
  * person had already left.
  */
 function atLeastAsNew(candidate: Viewer, current: Viewer) {
+  if ((candidate.updated_at ?? "") !== (current.updated_at ?? "")) {
+    return (candidate.updated_at ?? "") > (current.updated_at ?? "");
+  }
   const candidateRevision = candidate.revision ?? 0;
   const currentRevision = current.revision ?? 0;
 
@@ -120,6 +123,7 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
   const typingRef = useRef(false);
   const revisionRef = useRef(0);
   const keyRef = useRef<string | null>(null);
+  const foregroundRef = useRef(AppState.currentState === "active");
 
   const businessId = workspace?.businessId ?? null;
   const userId = session?.user.id ?? null;
@@ -140,9 +144,9 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
       name: account.name ?? member?.full_name ?? "Teammate",
       email: account.email ?? member?.email ?? null,
       profile_picture_url: account.avatar ?? member?.profile_picture_url ?? null,
-      conversation_id: viewingRef.current,
-      is_typing: typingRef.current,
-      availability: "online",
+      conversation_id: foregroundRef.current ? viewingRef.current : null,
+      is_typing: foregroundRef.current && typingRef.current,
+      availability: foregroundRef.current ? "online" : "away",
       revision: revisionRef.current,
       online_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -165,7 +169,9 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
   const publishRef = useRef<() => Promise<void>>(async () => {});
 
   const publish = useCallback(() => {
+    const expectedChannel = channelRef.current;
     queueRef.current = queueRef.current.then(async () => {
+      if (!expectedChannel || channelRef.current !== expectedChannel) return;
       const payload = self();
 
       if (!channelRef.current || !payload) return;
@@ -227,6 +233,7 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
     let alive = true;
     let channel: RealtimeChannel | null = null;
     let beat: ReturnType<typeof setInterval> | undefined;
+    keyRef.current = null;
 
     /*
      * A presence key that outlives the app.
@@ -299,7 +306,7 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
         if (status === "SUBSCRIBED") void publishRef.current();
       });
 
-      beat = setInterval(() => void publishRef.current(), HEARTBEAT_MS);
+      beat = setInterval(() => { if (foregroundRef.current) void publishRef.current(); }, HEARTBEAT_MS);
     })();
 
     /*
@@ -308,13 +315,8 @@ export function PresenceProvider({ children }: React.PropsWithChildren) {
      * they put in their pocket ten minutes ago.
      */
     const appState = AppState.addEventListener("change", (state) => {
-      if (state === "active") {
-        void publishRef.current();
-        return;
-      }
-
-      viewingRef.current = null;
-      typingRef.current = false;
+      foregroundRef.current = state === "active";
+      // Publish away once, retaining the focused thread/draft for resume.
       void publishRef.current();
     });
 

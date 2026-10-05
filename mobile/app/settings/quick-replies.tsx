@@ -28,6 +28,8 @@ import { OrderMark, SwipeRow } from "../../components/swipe-row";
 import { Empty, colors, styles } from "../../components/ui";
 import { api } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
+import { useRequestOwner } from "../../lib/use-request-owner";
+import { canManageWorkspacePermission } from "../../lib/workspace-permissions";
 import { useLanguage } from "../../lib/language-provider";
 import type { SavedReply } from "../../lib/types";
 
@@ -47,7 +49,8 @@ import type { SavedReply } from "../../lib/types";
 
 export default function QuickReplies() {
   const insets = useSafeAreaInsets();
-  const { workspace, settingsRevision } = useInbox();
+  const { workspace, member, permissions, settingsRevision } = useInbox();
+  const canManageReplies = canManageWorkspacePermission(workspace, member, permissions, "tags_quick_replies");
   const { t } = useLanguage();
 
   const [replies, setReplies] = useState<SavedReply[]>([]);
@@ -62,7 +65,18 @@ export default function QuickReplies() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
 
+  const scope = JSON.stringify([workspace?.businessId, workspace?.memberId]);
+  const beginRequest = useRequestOwner(scope);
+  const mutationLock = useRef(false);
+  const beginMutation = useRequestOwner(scope);
+  useEffect(() => {
+    mutationLock.current = false;
+    setReplies([]); setCategories([DEFAULT_CATEGORY]); setDraft(null); setSwiped(null); setBusy(null); setSaving(false); setError(""); setFormError("");
+  }, [scope]);
+
   const load = useCallback(async () => {
+    const ownsResponse = beginRequest();
+    if (!ownsResponse()) return;
     if (!workspace) {
       setLoading(false);
       return;
@@ -80,6 +94,7 @@ export default function QuickReplies() {
         ).catch(() => ({ categories: [] })),
       ]);
 
+      if (!ownsResponse()) return;
       const replies = data.savedReplies ?? [];
 
       setReplies(replies);
@@ -101,15 +116,16 @@ export default function QuickReplies() {
 
       setError("");
     } catch (loadError) {
+      if (!ownsResponse()) return;
       setError(
         loadError instanceof Error
           ? loadError.message
           : "Unable to load quick replies.",
       );
     } finally {
-      setLoading(false);
+      if (ownsResponse()) setLoading(false);
     }
-  }, [workspace?.businessId]);
+  }, [workspace?.businessId, beginRequest]);
 
   useEffect(() => {
     setLoading(true);
@@ -128,7 +144,10 @@ export default function QuickReplies() {
   const shown = tab === "active" ? active : disabled;
 
   async function save() {
-    if (!draft || !workspace) return;
+    if (mutationLock.current) return;
+    const ownsResponse = beginMutation();
+    if (!ownsResponse()) return;
+    if (!draft || !workspace || !canManageReplies || saving) return;
 
     const title = draft.title.trim();
     const messageText = draft.messageText.trim();
@@ -147,6 +166,7 @@ export default function QuickReplies() {
     const parsed = Number.parseInt(draft.sortIndex, 10);
     const order = Number.isFinite(parsed) && parsed >= 0 ? parsed : replies.length;
 
+    mutationLock.current = true;
     try {
       await api(
         draft.id ? "/api/saved-replies/" + draft.id : "/api/saved-replies",
@@ -168,16 +188,19 @@ export default function QuickReplies() {
         },
       );
 
+      if (!ownsResponse()) return;
       setDraft(null);
       await load();
     } catch (saveError) {
+      if (!ownsResponse()) return;
       setFormError(
         saveError instanceof Error
           ? saveError.message
           : t("Unable to save that.", "មិនអាចរក្សាទុកបានទេ។"),
       );
     } finally {
-      setSaving(false);
+      if (ownsResponse()) mutationLock.current = false;
+      if (ownsResponse()) setSaving(false);
     }
   }
 
@@ -187,26 +210,33 @@ export default function QuickReplies() {
    * stops appearing in the composer either way.
    */
   async function setActive(reply: SavedReply, active: boolean) {
-    if (!workspace || busy) return;
+    if (mutationLock.current) return;
+    const ownsResponse = beginMutation();
+    if (!ownsResponse()) return;
+    if (!workspace || !canManageReplies || busy) return;
 
     setBusy(reply.id);
     setError("");
 
+    mutationLock.current = true;
     try {
       await api("/api/saved-replies/" + reply.id, workspace.businessId, {
         method: "PATCH",
         body: { isActive: active },
       });
 
+      if (!ownsResponse()) return;
       await load();
     } catch (toggleError) {
+      if (!ownsResponse()) return;
       setError(
         toggleError instanceof Error
           ? toggleError.message
           : "Unable to change that quick reply.",
       );
     } finally {
-      setBusy(null);
+      if (ownsResponse()) mutationLock.current = false;
+      if (ownsResponse()) setBusy(null);
     }
   }
 
@@ -229,20 +259,28 @@ export default function QuickReplies() {
   }
 
   async function remove(reply: SavedReply) {
-    if (!workspace) return;
+    if (mutationLock.current) return;
+    const ownsResponse = beginMutation();
+    if (!ownsResponse()) return;
+    if (!workspace || !canManageReplies || busy) return;
 
+    mutationLock.current = true;
     try {
       await api("/api/saved-replies/" + reply.id, workspace.businessId, {
         method: "DELETE",
       });
 
+      if (!ownsResponse()) return;
       await load();
     } catch (deleteError) {
+      if (!ownsResponse()) return;
       setError(
         deleteError instanceof Error
           ? deleteError.message
           : "Unable to delete that.",
       );
+    } finally {
+      if (ownsResponse()) mutationLock.current = false;
     }
   }
 
@@ -258,7 +296,7 @@ export default function QuickReplies() {
       error={error}
       onRetry={() => void load()}
       skeleton={[5]}
-      footer={
+      footer={canManageReplies ? (
         <View
           style={{
             padding: 14,
@@ -293,7 +331,7 @@ export default function QuickReplies() {
             </Text>
           </Pressable>
         </View>
-      }
+      ) : undefined}
     >
       <View style={{ flexDirection: "row", gap: 8 }}>
         {(["active", "disabled"] as const).map((option) => {
@@ -387,7 +425,8 @@ export default function QuickReplies() {
           {shown.map((reply, index) => {
             const row = (
               <Pressable
-                accessibilityRole="button"
+                accessibilityRole={canManageReplies ? "button" : "text"}
+                disabled={!canManageReplies}
               accessibilityLabel={t("Edit " + reply.title, "កែ " + reply.title)}
               onPress={() => {
                 setFormError("");
@@ -548,6 +587,8 @@ export default function QuickReplies() {
               </Pressable>
             );
 
+            if (!canManageReplies) return <View key={reply.id}>{row}</View>;
+
             return (
               <SwipeRow
                 key={reply.id}
@@ -579,7 +620,7 @@ export default function QuickReplies() {
       )}
 
       <Modal
-        visible={draft !== null}
+        visible={canManageReplies && draft !== null}
         animationType="slide"
         transparent
         onRequestClose={() => setDraft(null)}

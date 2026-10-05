@@ -825,6 +825,18 @@ export async function POST(request: Request) {
     );
   }
 
+  const activationRow = Array.isArray(activation) ? activation[0] : activation;
+  if (activationRow?.subscription_status === "recovery_required") {
+    return noStoreJson({
+      success: false,
+      code: "TENH_BILLING_RECOVERY_REQUIRED",
+      error: "An unresolved payment requires billing review before approval. The subscription has not been changed.",
+    }, { status: 409 });
+  }
+  if (!activationRow || activationRow.subscription_status !== "active" || activationRow.business_id !== payment.business_id) {
+    return noStoreJson({ success: false, error: "Manual approval did not return the expected active subscription." }, { status: 500 });
+  }
+
   await logTenhAdminAction({
     user: admin.user,
     action: wasAlreadyApproved

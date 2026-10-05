@@ -246,7 +246,7 @@ function Row({
 
 export function InformationPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { session } = useAuth();
-  const { member, workspace, workspaces, rooms, roster, loadWorkspaces, refresh } =
+  const { member, workspace, workspaces, loadWorkspaces, refresh } =
     useInbox();
   const { t } = useLanguage();
   const account = useAccount();
@@ -380,23 +380,6 @@ export function InformationPanel({ open, onClose }: { open: boolean; onClose: ()
             value={workspace?.businessName ?? ""}
           />
         )}
-        <Row
-          icon="people-outline"
-          label={t("Team", "ក្រុម")}
-          value={
-            roster.length > 0
-              ? t(
-                  roster.length + (roster.length === 1 ? " person" : " people"),
-                  roster.length + " នាក់",
-                )
-              : "—"
-          }
-        />
-        <Row
-          icon="chatbubbles-outline"
-          label={t("Team rooms", "បន្ទប់ក្រុម")}
-          value={rooms.length > 0 ? String(rooms.length) : "—"}
-        />
         <Row
           icon="albums-outline"
           label={t("Workspaces you can reach", "កន្លែងធ្វើការដែលអ្នកចូលបាន")}

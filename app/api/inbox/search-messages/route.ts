@@ -1,3 +1,4 @@
+import type { InboxSearchMatch } from "@/lib/inbox/search-match";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
    */
   const { data, error } = await supabaseAdmin
     .from("messages")
-    .select("conversation_id")
+    .select("id,conversation_id,business_id,message_text,platform_created_at")
     .in("business_id", scope.accessibleBusinessIds)
     .not("conversation_id", "is", null)
     .ilike(
@@ -112,6 +113,7 @@ export async function GET(request: NextRequest) {
    * the cap are the ones with the most recent match.
    */
   const conversationIds: string[] = [];
+  const matches: Record<string, InboxSearchMatch> = {};
   const seen = new Set<string>();
 
   for (const row of data ?? []) {
@@ -123,6 +125,7 @@ export async function GET(request: NextRequest) {
 
     seen.add(id);
     conversationIds.push(id);
+    if (row.message_text) matches[id] = { messageId: row.id, text: row.message_text, sentAt: row.platform_created_at };
 
     if (conversationIds.length >= MAX_CONVERSATIONS) {
       break;
@@ -130,7 +133,7 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json(
-    { success: true, conversationIds },
+    { success: true, conversationIds, matches },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

@@ -496,9 +496,7 @@ export default function Workspaces() {
                         label={item.role}
                       />
 
-                      {current ? (
-                        <Chip icon="checkmark" label={t("Open now", "កំពុងបើក")} />
-                      ) : null}
+
                     </View>
                   </View>
 

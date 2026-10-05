@@ -648,13 +648,26 @@ export default function Notifications() {
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const requestOwner = `${session?.user.id ?? ""}:${workspace?.businessId ?? ""}`;
+  const ownerRef = useRef(requestOwner);
+  ownerRef.current = requestOwner;
+  const loadSequence = useRef(0);
+  const loadController = useRef<AbortController | null>(null);
+  const loadAlive = useRef(true);
+  useEffect(() => {
+    loadAlive.current = true;
+    return () => { loadAlive.current = false; loadSequence.current++; loadController.current?.abort(); };
+  }, []);
 
-  const load = useCallback(async (quiet = false) => {
-    if (!workspace) {
+  const load = useCallback(async (_quiet = false) => {
+    if (!workspace || !session) {
       setLoading(false);
       return;
     }
-
+    const owner = `${session.user.id}:${workspace.businessId}`, sequence = ++loadSequence.current;
+    loadController.current?.abort();
+    const controller = new AbortController(); loadController.current = controller;
+    const valid = () => loadAlive.current && ownerRef.current === owner && sequence === loadSequence.current && !controller.signal.aborted;
     try {
       /*
        * Three sources, together. An announcement or a subscription warning
@@ -665,21 +678,25 @@ export default function Notifications() {
         api<{ notifications: Notification[] }>(
           "/api/team-notifications",
           workspace.businessId,
+          { signal: controller.signal },
         ),
         api<{ announcement: Announcement | null }>(
           "/api/system-announcements/current",
           workspace.businessId,
+          { signal: controller.signal },
         ).catch(() => ({ announcement: null })),
         api<{ subscription: Subscription | null }>(
           "/api/subscription/current",
           workspace.businessId,
+          { signal: controller.signal },
         ).catch(() => ({ subscription: null })),
         api<{ reminders: Reminder[] }>(
           "/api/reminders",
           workspace.businessId,
+          { signal: controller.signal },
         ).catch(() => ({ reminders: [] })),
       ]);
-
+      if (!valid()) return;
       setItems(alerts.notifications ?? []);
       setAnnouncement(current.announcement ?? null);
       setSubscription(plan.subscription ?? null);
@@ -692,19 +709,22 @@ export default function Notifications() {
       );
       setError("");
     } catch (loadError) {
+      if (!valid()) return;
       setError(
         loadError instanceof Error
           ? loadError.message
           : "Unable to load notifications.",
       );
     } finally {
-      if (!quiet) setLoading(false);
+      if (valid()) setLoading(false);
     }
-  }, [workspace?.businessId]);
+  }, [session?.user.id, workspace?.businessId]);
 
   useEffect(() => {
+    setItems([]); setReminders([]); setAnnouncement(null); setSubscription(null); setError("");
     setLoading(true);
     void load();
+    return () => { loadSequence.current++; loadController.current?.abort(); };
   }, [load]);
 
   /* Realtime and the 30-second fallback refresh in place. Replacing the

@@ -18,8 +18,10 @@ import {
   permissionDenied,
 } from "@/lib/auth/require-permission";
 import {
+  encodeFacebookOAuthState,
   FACEBOOK_OAUTH_SESSION_COOKIE,
   FACEBOOK_OAUTH_STATE_COOKIE,
+  FACEBOOK_OAUTH_STATE_MAX_AGE,
 } from "@/lib/facebook/facebook-oauth-session";
 import {
   FACEBOOK_COOKIE_DOMAIN,
@@ -55,7 +57,7 @@ function getFacebookLoginForBusinessConfigId() {
 export async function GET(
   request: NextRequest,
 ) {
-  const authResult = await getCurrentMember();
+  const authResult = await getCurrentMember(true);
 
   if (!authResult.success) {
     return redirectToIntegrations(
@@ -106,14 +108,33 @@ export async function GET(
   ).toString();
 
   const state = randomBytes(32).toString("hex");
+  let encryptedState: string;
+  try {
+    encryptedState = encodeFacebookOAuthState({
+      state,
+      userId: authResult.user.id,
+      businessId: authResult.member.business_id,
+      memberId: authResult.member.id,
+      issuedAt: Date.now(),
+    });
+  } catch {
+    return redirectToIntegrations(request, "Unable to start Facebook authorization. Check the existing Facebook token-encryption configuration.");
+  }
   const cookieStore = await cookies();
 
-  // Clear any unfinished older connection attempt first.
-  cookieStore.delete(FACEBOOK_OAUTH_SESSION_COOKIE);
+  // Clear the prior selection on the same domain used by the callback.
+  cookieStore.set(FACEBOOK_OAUTH_SESSION_COOKIE, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    domain: FACEBOOK_COOKIE_DOMAIN,
+    maxAge: 0,
+  });
 
   cookieStore.set(
     FACEBOOK_OAUTH_STATE_COOKIE,
-    state,
+    encryptedState,
     {
       httpOnly: true,
       secure:
@@ -121,7 +142,7 @@ export async function GET(
       sameSite: "lax",
       path: "/",
       domain: FACEBOOK_COOKIE_DOMAIN,
-      maxAge: 10 * 60,
+      maxAge: FACEBOOK_OAUTH_STATE_MAX_AGE,
     },
   );
 

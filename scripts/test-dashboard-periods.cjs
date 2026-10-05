@@ -5,7 +5,7 @@ const ast=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true,ts.ScriptK
 let period,callback;
 function walk(n){if(ts.isVariableDeclaration(n)){if(n.name.getText(ast)==='effectivePeriod')period=n.initializer.getText(ast);if(n.name.getText(ast)==='loadOverview')callback=n.initializer.arguments[0].getText(ast);}ts.forEachChild(n,walk)}walk(ast);
 function dashboard(rangeView,requestJson){
- const context={rangeView,requestJson,slaMinutes:10,mountedRef:{current:true},requestVersionRef:{current:0},EMPTY_CUSTOMERS:{},EMPTY_CONVERSATIONS:{},EMPTY_AGENT_SUMMARY:{},exports:{},updates:[]};
+ const context={rangeView,requestJson,requests:{start:()=>({signal:new AbortController().signal,current:()=>true,finish(){}})},slaMinutes:10,mountedRef:{current:true},requestVersionRef:{current:0},EMPTY_CUSTOMERS:{},EMPTY_CONVERSATIONS:{},EMPTY_AGENT_SUMMARY:{},exports:{},updates:[]};
  for(const name of source.match(/\bset[A-Z]\w+/g))context[name]=value=>context.updates.push([name,value]);
  vm.runInNewContext(ts.transpileModule(`const effectivePeriod=${period}; exports.run=${callback}`,{compilerOptions:{target:ts.ScriptTarget.ES2020}}).outputText,context);
  return context;

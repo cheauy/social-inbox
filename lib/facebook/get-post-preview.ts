@@ -5,14 +5,12 @@ import {
   isFacebookAccessTokenError,
   refreshFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
+import {
+  mergePostPreview, record, safePostImage, safePostLink,
+  type FacebookCommentParent, type FacebookPostPhoto, type PostPreviewData,
+} from "@/lib/facebook/post-preview-data";
 
-export type FacebookPostPreview = {
-  id: string;
-  message: string | null;
-  full_picture: string | null;
-  permalink_url: string | null;
-  created_time: string | null;
-};
+export type FacebookPostPreview = PostPreviewData;
 
 type GraphAttachmentMedia = {
   image?: {
@@ -22,9 +20,12 @@ type GraphAttachmentMedia = {
 };
 
 type GraphAttachment = {
+  target?: { id?: string; url?: string };
+  url?: string;
   media?: GraphAttachmentMedia;
   subattachments?: {
     data?: GraphAttachment[];
+    paging?: { next?: string };
   };
 };
 
@@ -36,10 +37,17 @@ type GraphPostResult = {
   created_time?: string;
   attachments?: {
     data?: GraphAttachment[];
+    paging?: { next?: string };
   };
   object?: {
     id?: string;
   };
+  parent?: GraphPostResult;
+  from?: { id?: string; name?: string };
+  attachment?: GraphAttachment;
+  page_story_id?: string;
+  link?: string;
+  images?: { source?: string; width?: number; height?: number }[];
   error?: {
     message?: string;
     code?: number;
@@ -57,51 +65,31 @@ function cleanString(value: unknown) {
     : null;
 }
 
-function attachmentImageUrl(
+function attachmentPhotos(
   attachments: GraphPostResult["attachments"],
-): string | null {
-  const stack = [...(attachments?.data ?? [])];
-
-  while (stack.length > 0) {
-    const attachment = stack.shift();
-
-    if (!attachment) {
-      continue;
+): { photos: FacebookPostPhoto[]; complete: boolean } {
+  const stack = (attachments?.data ?? []).slice(0, 51).map(attachment => ({ attachment, depth: 0 }));
+  const photos: FacebookPostPhoto[] = [];
+  let complete = Array.isArray(attachments?.data) && !attachments?.paging?.next;
+  let visited = 0;
+  while (stack.length && visited < 100 && photos.length < 50) {
+    const { attachment, depth } = stack.shift()!;
+    visited += 1;
+    if (attachment.subattachments) {
+      if (attachment.subattachments.paging?.next || !Array.isArray(attachment.subattachments.data)) complete = false;
+      const children = attachment.subattachments.data ?? [];
+      if (depth >= 8 && children.length) complete = false;
+      else stack.push(...children.slice(0, 51).map(child => ({ attachment: child, depth: depth + 1 })));
+      if (children.length > 50) complete = false;
+      if (children.length || attachment.subattachments.paging?.next || !Array.isArray(attachment.subattachments.data)) continue;
     }
-
-    const image =
-      cleanString(attachment.media?.image?.src);
-
-    if (image) {
-      return image;
+    const src = safePostImage(attachment.media?.image?.src), id = cleanString(attachment.target?.id);
+    if (src && !photos.some(photo => (id && photo.id === id) || photo.src === src)) {
+      photos.push({ id, src, permalink_url: safePostLink(attachment.target?.url) ?? safePostLink(attachment.url) });
     }
-
-    stack.push(...(attachment.subattachments?.data ?? []));
   }
-
-  return null;
-}
-
-function fallbackFacebookPostUrl(
-  postId: string,
-  pageId?: string,
-): string | null {
-  const parts = postId.split("_").filter(Boolean);
-
-  if (parts.length >= 2) {
-    const ownerId = parts[0];
-    const objectId = parts.slice(1).join("_");
-
-    return `https://www.facebook.com/${encodeURIComponent(ownerId)}/posts/${encodeURIComponent(objectId)}`;
-  }
-
-  const normalizedPageId = pageId?.trim();
-
-  if (normalizedPageId) {
-    return `https://www.facebook.com/${encodeURIComponent(normalizedPageId)}/posts/${encodeURIComponent(postId)}`;
-  }
-
-  return null;
+  if (stack.length || (attachments?.data?.length ?? 0) > 50) complete = false;
+  return { photos, complete };
 }
 
 async function requestFacebookPostPreview({
@@ -198,22 +186,20 @@ async function requestWithTokenRepair({
 function normalizePreview({
   result,
   postId,
-  pageId,
 }: {
   result: GraphPostResult;
   postId: string;
-  pageId?: string;
 }): FacebookPostPreview {
+  const attachments = attachmentPhotos(result.attachments);
   return {
     id: cleanString(result.id) ?? postId,
     message: cleanString(result.message),
     full_picture:
-      cleanString(result.full_picture) ??
-      attachmentImageUrl(result.attachments),
-    permalink_url:
-      cleanString(result.permalink_url) ??
-      fallbackFacebookPostUrl(postId, pageId),
+      safePostImage(result.full_picture) ?? attachments.photos[0]?.src ?? null,
+    permalink_url: safePostLink(result.permalink_url),
     created_time: cleanString(result.created_time),
+    photos: attachments.photos,
+    attachments_complete: attachments.complete,
   };
 }
 
@@ -243,16 +229,13 @@ async function loadFacebookPostPreview(
     process.env.FACEBOOK_GRAPH_API_VERSION ?? "v26.0";
 
   try {
-    /*
-     * Fast path used by the original TENH comment card. Keep the field set
-     * small so normal Page posts remain one inexpensive Graph request.
-     */
+    const attachmentFields = "attachments.limit(50){target,url,media,subattachments.limit(50){target,url,media}}";
     const primary = await requestWithTokenRepair({
       graphVersion,
       postId: normalizedPostId,
       pageId,
       accessToken: pageAccessToken,
-      fields: "id,message,full_picture,permalink_url,created_time",
+      fields: `id,message,full_picture,permalink_url,created_time,${attachmentFields}`,
     });
 
     pageAccessToken = primary.accessToken;
@@ -264,25 +247,20 @@ async function loadFacebookPostPreview(
       const preview = normalizePreview({
         result: primary.requestResult.result,
         postId: normalizedPostId,
-        pageId,
       });
 
-      if (preview.full_picture) {
+      if (Array.isArray(primary.requestResult.result.attachments?.data)) {
         return preview;
       }
 
-      /*
-       * Some photo/video/Reel-backed Page posts omit full_picture while still
-       * exposing media through attachments. Ask for that shape only when the
-       * normal response has no image; failure here never hides the card.
-       */
+      // A full_picture can be only the album cover; never skip attachment IDs.
       const mediaFallback = await requestWithTokenRepair({
         graphVersion,
         postId: normalizedPostId,
         pageId,
         accessToken: pageAccessToken,
         fields:
-          "id,message,permalink_url,created_time,attachments{media,subattachments{media}}",
+          `id,message,permalink_url,created_time,${attachmentFields}`,
       });
 
       if (
@@ -292,19 +270,8 @@ async function loadFacebookPostPreview(
         const fallbackPreview = normalizePreview({
           result: mediaFallback.requestResult.result,
           postId: normalizedPostId,
-          pageId,
         });
-
-        return {
-          ...preview,
-          message: preview.message ?? fallbackPreview.message,
-          full_picture:
-            preview.full_picture ?? fallbackPreview.full_picture,
-          permalink_url:
-            preview.permalink_url ?? fallbackPreview.permalink_url,
-          created_time:
-            preview.created_time ?? fallbackPreview.created_time,
-        };
+        return mergePostPreview(preview, fallbackPreview, normalizedPostId);
       }
 
       return preview;
@@ -328,11 +295,21 @@ async function loadFacebookPostPreview(
       fallback.requestResult.response.ok &&
       !fallback.requestResult.result.error
     ) {
-      return normalizePreview({
+      const preview = normalizePreview({
         result: fallback.requestResult.result,
         postId: normalizedPostId,
-        pageId,
       });
+      // Legacy shape preserves media but cannot certify all attachment identities.
+      preview.attachments_complete = false;
+      return preview;
+    }
+
+    // Some object types reject attachment metadata altogether. Keep basic text
+    // and the provider's full_picture without claiming complete album context.
+    const basic = await requestWithTokenRepair({ graphVersion, postId: normalizedPostId, pageId,
+      accessToken: fallback.accessToken, fields: "id,message,full_picture,permalink_url,created_time" });
+    if (basic.requestResult.response.ok && !basic.requestResult.result.error) {
+      return normalizePreview({ result: basic.requestResult.result, postId: normalizedPostId });
     }
 
     console.warn(
@@ -387,12 +364,12 @@ async function loadFacebookPostIdForComment(
       postId: normalizedCommentId,
       pageId,
       accessToken: pageAccessToken,
-      fields: "object",
+      fields: "id,object",
     });
 
     if (
       !request.requestResult.response.ok ||
-      request.requestResult.result.error
+      request.requestResult.result.error || cleanString(request.requestResult.result.id) !== normalizedCommentId
     ) {
       return null;
     }
@@ -457,4 +434,106 @@ export async function getFacebookPostIdForComment(commentId: string, pageId?: st
   }).finally(() => { commentInFlight.delete(key); });
   commentInFlight.set(key, work);
   return work;
+}
+
+export type FacebookCommentContext = {
+  id: string;
+  object_id: string | null;
+  permalink_url: string | null;
+  parent_id: string | null;
+  parent_resolved: boolean;
+  parent: FacebookCommentParent | null;
+};
+export type FacebookPhotoContext = {
+  id: string;
+  post_id: string | null;
+  full_picture: string | null;
+  permalink_url: string | null;
+};
+
+const commentContextCache = new Map<string, { value: FacebookCommentContext | null; expires: number }>();
+const commentContextInFlight = new Map<string, Promise<FacebookCommentContext | null>>();
+const photoContextCache = new Map<string, { value: FacebookPhotoContext | null; expires: number }>();
+const photoContextInFlight = new Map<string, Promise<FacebookPhotoContext | null>>();
+
+function cachedContext<T>(key: string, cache: Map<string, { value: T | null; expires: number }>,
+  inFlight: Map<string, Promise<T | null>>, load: () => Promise<T | null>): Promise<T | null> {
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+  const cached = cache.get(key);
+  if (cached && cached.expires > Date.now()) return Promise.resolve(cached.value);
+  if (inFlight.size >= MAX_CONTEXT_CACHE) return Promise.resolve(null);
+  const work = load().catch(() => null).then(value => {
+    cache.set(key, { value, expires: Date.now() + (value ? 300_000 : 60_000) });
+    trimContextCache(cache);
+    return value;
+  }).finally(() => { inFlight.delete(key); });
+  inFlight.set(key, work);
+  return work;
+}
+
+function normalizeParent(id: string, value: unknown): FacebookCommentParent {
+  const parent = record(value), attachment = record(parent.attachment);
+  const image = safePostImage(record(record(attachment.media).image).src);
+  const text = cleanString(parent.message);
+  return { id, author: cleanString(record(parent.from).name), text, image,
+    permalink_url: safePostLink(parent.permalink_url),
+    status: text ? "available" : image || Object.keys(attachment).length ? "media" : "unavailable" };
+}
+
+/** Read exact provider relationships. Callers must authorize the message/Page first. */
+export async function getFacebookCommentContext(commentId: string, pageId: string): Promise<FacebookCommentContext | null> {
+  const id = commentId.trim(), page = pageId.trim();
+  if (!id || !page) return null;
+  return cachedContext(`${page}:${id}`, commentContextCache, commentContextInFlight, async () => {
+    const graphVersion = process.env.FACEBOOK_GRAPH_API_VERSION ?? "v26.0";
+    let accessToken = await getFacebookPageAccessToken(page);
+    let attempt = await requestWithTokenRepair({ graphVersion, postId: id, pageId: page, accessToken,
+      fields: "id,object,permalink_url,parent{id,from,message,attachment,permalink_url}" });
+    accessToken = attempt.accessToken;
+    if (!attempt.requestResult.response.ok || attempt.requestResult.result.error) {
+      attempt = await requestWithTokenRepair({ graphVersion, postId: id, pageId: page, accessToken,
+        fields: "id,object,permalink_url,parent" });
+      accessToken = attempt.accessToken;
+    }
+    const result = attempt.requestResult.result;
+    if (!attempt.requestResult.response.ok || result.error || cleanString(result.id) !== id) return null;
+    const objectId = cleanString(result.object?.id);
+    const rawParentId = cleanString(result.parent?.id);
+    const parentId = rawParentId && rawParentId !== objectId ? rawParentId : null;
+    let parent = parentId && parentId !== id ? normalizeParent(parentId, result.parent) : null;
+    // Meta can return only parent.id even after expansion. Read that exact ID
+    // once; an inaccessible parent remains an explicit unavailable placeholder.
+    if (parent && parent.status === "unavailable") {
+      try {
+        const lookup = await requestWithTokenRepair({ graphVersion, postId: parent.id, pageId: page, accessToken,
+          fields: "id,from,message,attachment,permalink_url" });
+        if (lookup.requestResult.response.ok && !lookup.requestResult.result.error &&
+            cleanString(lookup.requestResult.result.id) === parent.id) parent = normalizeParent(parent.id, lookup.requestResult.result);
+      } catch { /* Preserve the verified relationship when optional parent content is unavailable. */ }
+    }
+    return { id, object_id: objectId, permalink_url: safePostLink(result.permalink_url), parent_resolved: Object.prototype.hasOwnProperty.call(result, "parent"),
+      parent_id: parentId && parentId !== id ? parentId : null, parent };
+  });
+}
+
+/** Photo.page_story_id is optional; never manufacture a source post or permalink. */
+export async function getFacebookPhotoContext(objectId: string, pageId: string): Promise<FacebookPhotoContext | null> {
+  const id = objectId.trim(), page = pageId.trim();
+  if (!id || !page) return null;
+  return cachedContext(`${page}:${id}`, photoContextCache, photoContextInFlight, async () => {
+    const graphVersion = process.env.FACEBOOK_GRAPH_API_VERSION ?? "v26.0";
+    const accessToken = await getFacebookPageAccessToken(page);
+    const attempt = await requestWithTokenRepair({ graphVersion, postId: id, pageId: page, accessToken,
+      fields: "id,page_story_id,link,images" });
+    const result = attempt.requestResult.result;
+    if (!attempt.requestResult.response.ok || result.error || cleanString(result.id) !== id) return null;
+    const images = Array.isArray(result.images) ? result.images.slice(0, 50) : [];
+    let fullPicture: string | null = null, size = -1;
+    for (const image of images) {
+      const src = safePostImage(image?.source), area = (Number(image?.width) || 0) * (Number(image?.height) || 0);
+      if (src && area > size) { fullPicture = src; size = area; }
+    }
+    return { id, post_id: cleanString(result.page_story_id), full_picture: fullPicture, permalink_url: safePostLink(result.link) };
+  });
 }

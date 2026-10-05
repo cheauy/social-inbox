@@ -20,6 +20,8 @@ import { OrderMark, SwipeRow } from "../../components/swipe-row";
 import { Sheet, TagChip, colors, styles } from "../../components/ui";
 import { api } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
+import { useRequestOwner } from "../../lib/use-request-owner";
+import { canManageWorkspacePermission } from "../../lib/workspace-permissions";
 
 /*
  * The tags this workspace can put on a customer.
@@ -62,7 +64,8 @@ const SWATCHES = [
 
 export default function Tags() {
   const insets = useSafeAreaInsets();
-  const { workspace, canManageRooms, settingsRevision } = useInbox();
+  const { workspace, member, permissions, settingsRevision } = useInbox();
+  const canManageTags = canManageWorkspacePermission(workspace, member, permissions, "tags_quick_replies");
 
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,7 +86,18 @@ export default function Tags() {
   const disabled = tags.filter((tag) => !tag.is_active);
   const shown = tab === "active" ? active : disabled;
 
+  const scope = JSON.stringify([workspace?.businessId, workspace?.memberId]);
+  const beginRequest = useRequestOwner(scope);
+  const mutationLock = useRef(false);
+  const beginMutation = useRequestOwner(scope);
+  useEffect(() => {
+    mutationLock.current = false;
+    setTags([]); setCreating(false); setEditing(null); setBusy(null); setSwiped(null); setError("");
+  }, [scope]);
+
   const load = useCallback(async () => {
+    const ownsResponse = beginRequest();
+    if (!ownsResponse()) return;
     if (!workspace) {
       setLoading(false);
       return;
@@ -95,16 +109,18 @@ export default function Tags() {
         workspace.businessId,
       );
 
+      if (!ownsResponse()) return;
       setTags(data.tags ?? []);
       setError("");
     } catch (loadError) {
+      if (!ownsResponse()) return;
       setError(
         loadError instanceof Error ? loadError.message : "Unable to load tags.",
       );
     } finally {
-      setLoading(false);
+      if (ownsResponse()) setLoading(false);
     }
-  }, [workspace?.businessId]);
+  }, [workspace?.businessId, beginRequest]);
 
   useEffect(() => {
     setLoading(true);
@@ -119,6 +135,7 @@ export default function Tags() {
   }, [settingsRevision, load]);
 
   function startCreate() {
+    if (!canManageTags) return;
     setEditing(null);
     setCreating(true);
     setName("");
@@ -128,6 +145,7 @@ export default function Tags() {
   }
 
   function startEdit(tag: Tag) {
+    if (!canManageTags) return;
     setCreating(false);
     setEditing(tag);
     setName(tag.name);
@@ -141,9 +159,12 @@ export default function Tags() {
   }
 
   async function save() {
+    if (mutationLock.current) return;
+    const ownsResponse = beginMutation();
+    if (!ownsResponse()) return;
     const trimmed = name.trim();
 
-    if (!workspace || !trimmed || busy) {
+    if (!workspace || !canManageTags || !trimmed || busy) {
       return;
     }
 
@@ -154,6 +175,7 @@ export default function Tags() {
     const parsed = Number.parseInt(order, 10);
     const sortIndex = Number.isFinite(parsed) && parsed >= 0 ? parsed : tags.length;
 
+    mutationLock.current = true;
     try {
       if (editing) {
         await api(
@@ -171,16 +193,19 @@ export default function Tags() {
         });
       }
 
+      if (!ownsResponse()) return;
       close();
       await load();
     } catch (saveError) {
+      if (!ownsResponse()) return;
       setError(
         saveError instanceof Error
           ? saveError.message
           : "Unable to save that tag.",
       );
     } finally {
-      setBusy(null);
+      if (ownsResponse()) mutationLock.current = false;
+      if (ownsResponse()) setBusy(null);
     }
   }
 
@@ -190,11 +215,15 @@ export default function Tags() {
    * nobody can put it on anybody new.
    */
   async function setActive(tag: Tag, active: boolean) {
-    if (!workspace || busy) return;
+    if (mutationLock.current) return;
+    const ownsResponse = beginMutation();
+    if (!ownsResponse()) return;
+    if (!workspace || !canManageTags || busy) return;
 
     setBusy(tag.id);
     setError("");
 
+    mutationLock.current = true;
     try {
       await api(
         `/api/tags/${encodeURIComponent(tag.id)}`,
@@ -202,15 +231,18 @@ export default function Tags() {
         { method: "PATCH", body: { isActive: active } },
       );
 
+      if (!ownsResponse()) return;
       await load();
     } catch (toggleError) {
+      if (!ownsResponse()) return;
       setError(
         toggleError instanceof Error
           ? toggleError.message
           : "Unable to change that tag.",
       );
     } finally {
-      setBusy(null);
+      if (ownsResponse()) mutationLock.current = false;
+      if (ownsResponse()) setBusy(null);
     }
   }
 
@@ -230,13 +262,17 @@ export default function Tags() {
   }
 
   async function remove(tag: Tag) {
-    if (!workspace || busy) {
+    if (mutationLock.current) return;
+    const ownsResponse = beginMutation();
+    if (!ownsResponse()) return;
+    if (!workspace || !canManageTags || busy) {
       return;
     }
 
     setBusy(tag.id);
     setError("");
 
+    mutationLock.current = true;
     try {
       await api(
         `/api/tags/${encodeURIComponent(tag.id)}`,
@@ -244,16 +280,19 @@ export default function Tags() {
         { method: "DELETE" },
       );
 
+      if (!ownsResponse()) return;
       close();
       await load();
     } catch (deleteError) {
+      if (!ownsResponse()) return;
       setError(
         deleteError instanceof Error
           ? deleteError.message
           : "Unable to delete that tag.",
       );
     } finally {
-      setBusy(null);
+      if (ownsResponse()) mutationLock.current = false;
+      if (ownsResponse()) setBusy(null);
     }
   }
 
@@ -271,7 +310,7 @@ export default function Tags() {
         while the list it adds to scrolls under it.
       */
       footer={
-        canManageRooms ? (
+        canManageTags ? (
           <View
             style={{
               padding: 14,
@@ -395,11 +434,11 @@ export default function Tags() {
           shown.map((tag, index) => {
             const row = (
               <Pressable
-                accessibilityRole={canManageRooms ? "button" : "text"}
+                accessibilityRole={canManageTags ? "button" : "text"}
                 accessibilityLabel={
-                  canManageRooms ? `Edit the ${tag.name} tag` : tag.name
+                  canManageTags ? `Edit the ${tag.name} tag` : tag.name
                 }
-                disabled={!canManageRooms}
+                disabled={!canManageTags}
                 onPress={() => startEdit(tag)}
                 style={({ pressed }) => ({
                   flexDirection: "row",
@@ -410,7 +449,7 @@ export default function Tags() {
                   borderTopWidth: index === 0 ? 0 : 1,
                   borderTopColor: colors.border,
                   backgroundColor:
-                    pressed && canManageRooms ? colors.pale : "white",
+                    pressed && canManageTags ? colors.pale : "white",
                 })}
               >
                 <OrderMark index={tag.sort_index ?? index} />
@@ -421,7 +460,7 @@ export default function Tags() {
 
                 {busy === tag.id ? (
                   <ActivityIndicator color={colors.blue} />
-                ) : canManageRooms ? (
+                ) : canManageTags ? (
                   <Ionicons
                     name="chevron-forward"
                     size={17}
@@ -431,7 +470,7 @@ export default function Tags() {
               </Pressable>
             );
 
-            if (!canManageRooms) {
+            if (!canManageTags) {
               return <View key={tag.id}>{row}</View>;
             }
 
@@ -463,7 +502,7 @@ export default function Tags() {
         )}
       </SettingsGroup>
 
-      {canManageRooms ? null : (
+      {canManageTags ? null : (
         <Text style={[styles.muted, { fontSize: 12, paddingHorizontal: 2 }]}>
           Only an owner or an admin can change tags. You can put any of these on
           a customer from their panel in the Inbox.

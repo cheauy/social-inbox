@@ -45,6 +45,7 @@ type ManualPaymentBody = {
   users?: unknown;
   renewSame?: unknown;
   customUpgrade?: unknown;
+  extensionBillingCycle?: unknown;
   purchaseBusinessId?: unknown;
 };
 
@@ -92,7 +93,7 @@ function requestDto(row: {
 }
 
 async function requireOwner(requestedBusinessId: string | null = null) {
-  const authResult = await getCurrentMember();
+  const authResult = await getCurrentMember(true);
 
   if (!authResult.success) {
     return {
@@ -100,6 +101,8 @@ async function requireOwner(requestedBusinessId: string | null = null) {
         {
           success: false,
           error: authResult.error,
+          code: authResult.code,
+          businessId: authResult.businessId,
         },
         { status: authResult.status },
       ),
@@ -203,7 +206,7 @@ async function verifyManualPaymentAvailable(
   const { data: subscription, error: subscriptionError } =
     await supabaseAdmin
       .from("business_subscriptions")
-      .select("id,status,plan_code,billing_cycle,last_paid_amount,last_paid_currency,member_limit,channel_limit,pricing_version,pricing_snapshot,current_period_start,current_period_end,payment_provider")
+      .select("id,status,plan_code,billing_cycle,last_paid_amount,last_paid_currency,member_limit,channel_limit,pricing_version,pricing_snapshot,current_period_start,current_period_end,payment_provider,cancel_at_period_end,pending_plan_change_type")
       .eq("business_id", businessId)
       .maybeSingle();
 
@@ -302,6 +305,8 @@ type SubscriptionForQuote = {
   current_period_start: string | null;
   current_period_end: string | null;
   payment_provider: string | null;
+  cancel_at_period_end?: boolean | null;
+  pending_plan_change_type?: string | null;
 };
 
 function getTrustedPlan(
@@ -311,6 +316,7 @@ function getTrustedPlan(
   users: unknown,
   renewSame: boolean,
   customUpgrade: boolean,
+  extensionBillingCycle: unknown,
   subscription: SubscriptionForQuote,
 ) {
   let quote = getTrustedSubscriptionQuote({
@@ -327,6 +333,7 @@ function getTrustedPlan(
         targetConnections: connections,
         targetUsers: users,
         targetBillingCycle: billingCycle,
+        extensionBillingCycle: clean(extensionBillingCycle),
       });
       const cycle = getBillingCycleDefinition(billingCycle);
       if (!cycle || planCode !== "custom") return null;
@@ -648,6 +655,7 @@ export async function POST(request: Request) {
       body.users,
       renewSame,
       customUpgrade,
+      body.extensionBillingCycle,
       availability.subscription as SubscriptionForQuote,
     );
     const fileName = clean(body.fileName);
@@ -764,6 +772,7 @@ export async function POST(request: Request) {
       body.users,
       renewSame,
       customUpgrade,
+      body.extensionBillingCycle,
       availability.subscription as SubscriptionForQuote,
     );
     const fileName = clean(body.fileName);
@@ -874,8 +883,30 @@ export async function POST(request: Request) {
             renewal_total_cents: trustedPlan.renewalTotalCents,
             purchase_type: trustedPlan.purchaseType,
             custom_upgrade: trustedPlan.purchaseType === "custom-upgrade",
+            custom_upgrade_version: trustedPlan.customUpgradeQuote ? 2 : null,
+            quoted_at: trustedPlan.customUpgradeQuote?.quotedAt ?? null,
+            paid_term_basis_version: trustedPlan.customUpgradeQuote ? 1 : null,
+            paid_term_segments: trustedPlan.customUpgradeQuote?.paidTermSegments ?? null,
             current_billing_cycle: trustedPlan.customUpgradeQuote?.currentBillingCycle ?? null,
+            current_plan_code:
+              trustedPlan.customUpgradeQuote
+                ? availability.subscription.plan_code
+                : null,
+            current_member_limit:
+              trustedPlan.customUpgradeQuote
+                ? availability.subscription.member_limit
+                : null,
+            current_channel_limit:
+              trustedPlan.customUpgradeQuote
+                ? availability.subscription.channel_limit
+                : null,
+            current_period_start:
+              trustedPlan.customUpgradeQuote
+                ? availability.subscription.current_period_start
+                : null,
             target_billing_cycle: trustedPlan.customUpgradeQuote?.targetBillingCycle ?? null,
+            extension_billing_cycle:
+              trustedPlan.customUpgradeQuote?.extensionBillingCycle ?? null,
             remaining_days: trustedPlan.customUpgradeQuote?.remainingDays ?? null,
             capacity_proration_cents: trustedPlan.customUpgradeQuote?.capacityProrationCents ?? null,
             extension_months: trustedPlan.customUpgradeQuote?.extensionMonths ?? null,

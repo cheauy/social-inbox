@@ -435,7 +435,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const authResult = await getCurrentMember();
+  const authResult = await getCurrentMember(true);
   if (!authResult.success) {
     return jsonError(authResult.error, authResult.status, authResult.code);
   }
@@ -721,7 +721,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const authResult = await getCurrentMember();
+  const authResult = await getCurrentMember(true);
   if (!authResult.success) {
     return jsonError(authResult.error, authResult.status, authResult.code);
   }

@@ -1,3 +1,7 @@
+import { cachedRead } from "../../lib/api/read-cache";
+import { useOwnedPanelRead } from "../../lib/use-owned-panel-read";
+import { messageMedia, selectMessageAction, resolveMessageAction, type MessageActionSelection, type MessageMedia as MediaPreview } from "../../lib/message-action-selection";
+import { reserveMessageDownload, completeMessageDownload, protectMessageDownloadShare, releaseMessageDownload, type MessageDownloadLease } from "../../lib/message-download-cache";
 import { openInAppLink } from "../../components/in-app-browser";
 import { latestCustomerChannel } from "../../../lib/inbox/latest-customer-channel";
 import { PostWebView } from "../../components/post-webview";
@@ -6,8 +10,10 @@ import { messengerSourceTimeline } from "../../../lib/facebook/messenger-source"
 import { MessengerSourceCard } from "../../components/messenger-source-card";
 import { StickerPicker, type StickerChoice } from "../../components/sticker-picker";
 import { randomUUID } from "expo-crypto";
-import { getMessageActions, isMessagePinned } from "../../../lib/inbox/message-actions";
+import { getMessageActions, isMessagePinned, getReplyImageReference, inboxImageEndpoint } from "../../../lib/inbox/message-actions";
 import { canReactToMessengerMessage, getMessengerReaction, MESSENGER_QUICK_REACTIONS, withMessengerReaction } from "../../../lib/facebook/message-reactions";
+import { getTelegramReaction, TELEGRAM_QUICK_REACTIONS, telegramReactionTarget } from "../../../lib/telegram/message-reactions";
+import { loadTelegramReactionCapability, canUseTelegramReaction, sendTelegramReaction, applyTelegramReactionState, type TelegramReactionCapability } from "../../lib/telegram-reactions";
 import { Ionicons } from "@expo/vector-icons";
 import { createAudioPlayer, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import * as Clipboard from "expo-clipboard";
@@ -16,10 +22,11 @@ import { Directory, File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as ImagePicker from "expo-image-picker";
 import { CachedVideo } from "../../components/cached-video";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Alert,
   Animated,
   Dimensions,
@@ -33,6 +40,8 @@ import {
   Text,
   TextInput,
   View,
+  type GestureResponderEvent,
+  type AccessibilityActionEvent,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -50,6 +59,9 @@ import {
   time,
 } from "../../components/ui";
 import { Composer } from "../../components/composer";
+import { WorkspaceStoragePicker } from "../../components/workspace-storage-picker";
+import { attachStorageDrafts, beginStorageDraftSend, clearStorageDraftOwner, detachStorageDrafts, finishStorageDraftSend, reconcileStorageDrafts, removeStorageDraftFile, storageDraftOwner } from "../../lib/workspace-storage-drafts";
+import { locationAttemptKey, readLocationAttempt, saveLocationAttempt, clearLocationAttempt, type LocationAttempt } from "../../lib/location-send-state";
 import { LocationPicker } from "../../components/location-picker";
 import type { Pending } from "../../components/composer";
 import {
@@ -66,17 +78,25 @@ import type {
 } from "../../components/customer-panel";
 import {
   api,
+  authSessionGeneration,
   cachedApi,
+  threadPreviewKey,
+  peekReadCache,
+  storeReadCache,
+  readCacheGeneration,
+  clearReadCache,
   ApiError,
   upload as uploadNativeFile,
   uploadMany,
 } from "../../lib/api/client";
 import { CHAT_BASE_COLOR, useDisplay } from "../../lib/display-provider";
 import { useInbox } from "../../lib/inbox-provider";
+import { useAuth } from "../../lib/auth/provider";
 import { useMediaSource } from "../../lib/media";
 import { cacheMedia } from "../../lib/media-cache";
 import { facebookPagePhoto } from "../../lib/facebook-page-photo";
-import { shrinkImage } from "../../lib/shrink";
+import { MAX_PENDING_ATTACHMENTS, attachmentIssue, attachmentBatches, type SizedAttachment } from "../../lib/attachment-send-plan";
+import { shrinkImage, fileSize } from "../../lib/shrink";
 
 import { usePresence, useViewers } from "../../lib/presence";
 import { AuthImage } from "../../components/auth-image";
@@ -101,6 +121,8 @@ import type {
  * message sat at the top and time ran backwards as you read down.
  */
 const PAGE_SIZE = 25;
+type ThreadCursor = { sentAt: string; id: string };
+type ThreadPage = { messages: InboxMessage[]; hasMore: boolean; nextCursor: ThreadCursor | null };
 
 const sentAt = (message: InboxMessage) =>
   new Date(message.platform_created_at ?? message.created_at).getTime();
@@ -470,6 +492,7 @@ function VoiceMessage({
   uri,
   hintSeconds,
   onToggle,
+  onHold,
 }: {
   outgoing: boolean;
   active: boolean;
@@ -479,6 +502,7 @@ function VoiceMessage({
   uri: string | null;
   hintSeconds: number;
   onToggle: () => void;
+  onHold?: MessageHold;
 }) {
   const known = useClipSeconds(uri, hintSeconds);
 
@@ -499,6 +523,7 @@ function VoiceMessage({
           : `Play voice message${total > 0 ? `, ${clock(total)}` : ""}`
       }
       onPress={onToggle}
+      {...messageHoldHandlers(onHold)}
       style={({ pressed }) => ({
         flexDirection: "row",
         alignItems: "center",
@@ -633,10 +658,28 @@ function MessagePhoto({
   );
 }
 
-type MediaPreview = {
-  kind: "image" | "video";
-  uri: string;
-};
+type MessageHold = (at: { x: number; y: number }) => void;
+
+// Child controls own their responder. Their hold opens the same menu without
+// capturing taps or preventing ScrollView from cancelling a moving gesture.
+function messageHoldHandlers(onHold?: MessageHold) {
+  if (!onHold) return {};
+  return {
+    delayLongPress: 220,
+    accessibilityHint: "Hold for message actions",
+    accessibilityActions: [{ name: "longpress" as const, label: "Message actions" }],
+    onLongPress: (event: GestureResponderEvent) => {
+      if (event.isPropagationStopped?.()) return;
+      event.stopPropagation();
+      onHold({ x: event.nativeEvent.pageX, y: event.nativeEvent.pageY });
+    },
+    onAccessibilityAction: (event: AccessibilityActionEvent) => {
+      if (event.nativeEvent.actionName !== "longpress") return;
+      event.stopPropagation();
+      onHold({ x: Dimensions.get("window").width / 2, y: 120 });
+    },
+  };
+}
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -658,35 +701,6 @@ function facebookParentCommentId(message: InboxMessage) {
   return words(raw?.parent_comment_id) ?? words(record(raw?.comment)?.parent_id);
 }
 
-function messageMedia(message: InboxMessage): MediaPreview[] {
-  const raw = record(message.raw_payload);
-  const payloadMessage = record(raw?.message);
-  const rawAttachments = Array.isArray(payloadMessage?.attachments)
-    ? payloadMessage.attachments
-    : Array.isArray(raw?.attachments)
-      ? raw.attachments
-      : [];
-  const found = rawAttachments.flatMap((value): MediaPreview[] => {
-    const item = record(value);
-    const payload = record(item?.payload);
-    const imageData = record(item?.image_data);
-    const uri = words(payload?.url) ?? words(imageData?.url) ?? words(item?.url);
-    const declared = words(item?.type)?.toLowerCase();
-
-    if (!uri || (declared !== "image" && declared !== "video")) return [];
-    return [{ kind: declared, uri }];
-  });
-
-  if (message.attachment_url && !found.some((item) => item.uri === message.attachment_url)) {
-    found.unshift({
-      kind: message.message_type === "video" ? "video" : "image",
-      uri: message.attachment_url,
-    });
-  }
-
-  return found;
-}
-
 function InlineVideo({ uri }: { uri: string }) {
   return <View accessibilityLabel="Video — tap to play" style={{ width: "100%", height: "100%", alignItems: "center", justifyContent: "center", backgroundColor: "#e8f1f6" }}><Ionicons name="videocam-outline" size={32} color="#6D7E91" /></View>;
 }
@@ -698,13 +712,15 @@ function VideoPreview({ uri }: { uri: string }) {
 function MediaGrid({
   items,
   onOpen,
+  onHold,
   sticker = false,
 }: {
   items: MediaPreview[];
   onOpen: (item: MediaPreview) => void;
+  onHold?: (item: MediaPreview, at: { x: number; y: number }) => void;
   sticker?: boolean;
 }) {
-  const shown = items.slice(0, 9);
+  const shown = items;
   const width = sticker ? 128 : items.length === 1 ? 224 : items.length === 2 ? 224 : 228;
   const tile = sticker ? 128 : items.length === 1 ? width : items.length === 2 ? 110 : 73;
 
@@ -721,8 +737,9 @@ function MediaGrid({
         <Pressable
           key={`${item.uri}:${index}`}
           accessibilityRole="button"
-          accessibilityLabel={`View ${item.kind}`}
+          accessibilityLabel={`View ${item.kind}${items.length > 1 ? ` ${index + 1} of ${items.length}` : ""}`}
           onPress={() => onOpen(item)}
+          {...messageHoldHandlers(onHold ? at => onHold(item, at) : undefined)}
           style={{
             width: tile,
             height: sticker ? 128 : items.length === 1 ? 220 : tile,
@@ -753,18 +770,13 @@ function MediaGrid({
             <AuthImage uri={item.uri} style={{ width: "100%", height: "100%" }} resizeMode={sticker ? "contain" : "cover"} />
           )}
 
-          {index === 8 && items.length > 9 ? (
-            <View style={{ position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(16,34,56,.6)" }}>
-              <Text style={{ color: "white", fontSize: 21, fontWeight: "800" }}>+{items.length - 9}</Text>
-            </View>
-          ) : null}
         </Pressable>
       ))}
     </View>
   );
 }
 
-function MessageText({ body, outgoing }: { body: string; outgoing: boolean }) {
+function MessageText({ body, outgoing, onHold }: { body: string; outgoing: boolean; onHold?: MessageHold }) {
   const parts = body.split(/(https?:\/\/[^\s]+)/gi);
 
   return (
@@ -775,6 +787,7 @@ function MessageText({ body, outgoing }: { body: string; outgoing: boolean }) {
             key={`${part}:${index}`}
             accessibilityRole="link"
             onPress={() => void openInAppLink(part)}
+            {...messageHoldHandlers(onHold)}
             style={{ color: outgoing ? "white" : colors.blue, textDecorationLine: "underline", fontWeight: "600" }}
           >
             {part}
@@ -1013,11 +1026,13 @@ function MessageFile({
   uri,
   label,
   icon,
+  onHold,
 }: {
   outgoing: boolean;
   uri: string;
   label: string;
   icon: React.ComponentProps<typeof Ionicons>["name"];
+  onHold?: MessageHold;
 }) {
   const tint = outgoing ? "white" : colors.blue;
 
@@ -1026,6 +1041,7 @@ function MessageFile({
       accessibilityRole="button"
       accessibilityLabel={`Open ${label.toLowerCase()}`}
       onPress={() => void openInAppLink(uri)}
+      {...messageHoldHandlers(onHold)}
       style={({ pressed }) => ({
         flexDirection: "row",
         alignItems: "center",
@@ -1054,6 +1070,7 @@ function Bubble({
   audio,
   conversation,
   pageReactionOverride,
+  quoteMessages,
   onViewMedia,
   onReplyComment,
   onCommentAction,
@@ -1064,10 +1081,11 @@ function Bubble({
   commentReplies: InboxMessage[];
   conversation: InboxConversation | null;
   pageReactionOverride?: { emoji: string | null };
+  quoteMessages?: readonly InboxMessage[];
   onViewMedia: (item: MediaPreview) => void;
   onReplyComment: (message: InboxMessage) => void;
   onCommentAction: (message: InboxMessage, action: "like" | "hide" | "delete") => void;
-  onHold: (message: InboxMessage, at: { x: number; y: number }) => void;
+  onHold: (message: InboxMessage, at: { x: number; y: number }, media?: MediaPreview) => void;
   commentBusy: string | null;
   audio: {
     activeId: string | null;
@@ -1077,15 +1095,48 @@ function Bubble({
     onToggle: (message: InboxMessage) => void;
   };
 }) {
+  const hold: MessageHold = at => onHold(message, at);
   const outgoing = message.direction === "outgoing";
   const url = message.attachment_url;
   const type = message.message_type;
   const raw = record(message.raw_payload);
-  const reactions = (["page", "customer"] as const).flatMap(actor => {
+  const reactions: { actor: string; emoji: string }[] = (["page", "customer"] as const).flatMap(actor => {
     const emoji = actor === "page" && pageReactionOverride ? pageReactionOverride.emoji : getMessengerReaction(message.raw_payload, actor)?.emoji;
     return emoji ? [{ actor, emoji }] : [];
   });
-  const quotedText = words(record(raw?.tenh_reply)?.preview_text);
+  const botReaction = getTelegramReaction(message.raw_payload), botTarget = telegramReactionTarget(message);
+  const ownedBotReaction = botReaction && botTarget && botReaction.chatId === botTarget.chatId && botReaction.groupKey === botTarget.groupKey ? botReaction : null;
+  if (ownedBotReaction?.status === "confirmed" && ownedBotReaction.emoji) reactions.push({ actor: "bot", emoji: ownedBotReaction.emoji });
+  const storedQuote = record(raw?.tenh_reply);
+  const nativeMessage = record(raw?.message);
+  const nativeTelegramQuote = record(nativeMessage?.reply_to_message ?? raw?.reply_to_message);
+  const telegramChatId = /^telegram:([^:]+):/.exec(message.platform_message_id ?? "")?.[1];
+  const nativeQuoteMid = words(record(nativeMessage?.reply_to ?? raw?.reply_to)?.mid) ??
+    (telegramChatId && nativeTelegramQuote?.message_id != null ? `telegram:${telegramChatId}:${nativeTelegramQuote.message_id}` : null);
+  // Native reply identity wins. Discard the ENTIRE conflicting saved context,
+  // including its text/index/type, before resolving or labelling any image.
+  const savedQuote = nativeQuoteMid && storedQuote && words(storedQuote.reply_to_platform_message_id) !== nativeQuoteMid ? null : storedQuote;
+  const quoteMessage = storedQuote && !savedQuote ? { ...message, raw_payload: { ...raw, tenh_reply: undefined } } : message;
+  const quotedText = raw?.tenh_reply_fallback ? null : words(savedQuote?.preview_text);
+  // Resolve the selected image through the authorized endpoint. Saved URLs
+  // can expire or be forged; never fetch one directly or substitute photo 1.
+  const expectedQuoteMid = nativeQuoteMid ?? words(savedQuote?.reply_to_platform_message_id);
+  const savedQuoteId = words(savedQuote?.reply_to_local_message_id);
+  const quoteRows = quoteMessages ?? [];
+  const quoteIdentityMismatch = quoteRows.some(row => row.id === savedQuoteId &&
+    (row.conversation_id !== message.conversation_id || !expectedQuoteMid || row.platform_message_id !== expectedQuoteMid));
+  const quoteImage = !quoteIdentityMismatch && !raw?.tenh_reply_fallback && (savedQuote || record(raw?.message)?.reply_to_message || record(raw?.message)?.reply_to || raw?.reply_to_message || raw?.reply_to)
+    ? getReplyImageReference(quoteMessage, quoteMessages ?? []) : null;
+  const quoteIndex = quoteImage ? quoteImage.photoIndex : savedQuote?.preview_image_index;
+  const validQuoteIndex = Number.isSafeInteger(quoteIndex) && Number(quoteIndex) >= 0 && Number(quoteIndex) <= 100;
+  const invalidSavedQuoteIndex = savedQuote?.preview_image_index != null && !validQuoteIndex;
+  // Resolve by immutable provider ID even when the local row is loaded. An ID
+  // lookup alone can return replacement media if that row changes before fetch.
+  // The existing endpoint also scopes this lookup to the authorized conversation.
+  const quoteImageUri = quoteImage?.platformMessageId && !invalidSavedQuoteIndex && (quoteImage.photoIndex == null || validQuoteIndex)
+    ? inboxImageEndpoint({ ...quoteImage, messageId: null }, true) : null;
+  const hasPhotoQuote = !raw?.tenh_reply_fallback && Boolean(quoteImage || ["image", "photo"].includes(String(savedQuote?.preview_type)));
+  const quotePhotoLabel = hasPhotoQuote ? `Photo${validQuoteIndex ? ` ${Number(quoteIndex) + 1}` : ""}${quoteImageUri ? "" : " unavailable"}` : null;
   const attachmentMeta = record(raw?.tenh_attachment);
   const attachmentName = words(attachmentMeta?.name);
   const isComment =
@@ -1228,13 +1279,7 @@ function Bubble({
         taught, and it costs the bubble nothing -- a tap still opens a photo.
       */}
       <Pressable
-        onLongPress={(event) =>
-          onHold(message, {
-            x: event.nativeEvent.pageX,
-            y: event.nativeEvent.pageY,
-          })
-        }
-        delayLongPress={220}
+        {...messageHoldHandlers(hold)}
         style={{
           maxWidth: "82%",
           backgroundColor: bare ? "transparent" : outgoing ? colors.blue : "white",
@@ -1246,12 +1291,15 @@ function Bubble({
           gap: 6,
         }}
       >
-        {quotedText ? <View style={{ alignSelf: "stretch", borderLeftWidth: 3, borderLeftColor: outgoing && !bare ? "#a9e4ff" : colors.blue, backgroundColor: outgoing && !bare ? "rgba(0,38,76,0.18)" : "#edf5fa", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 3 }}>
-          <Text style={{ fontSize: 11, fontWeight: "700", marginBottom: 3, color: outgoing && !bare ? "#d4f1ff" : colors.blue }}>Replying to message</Text>
-          <Text numberOfLines={3} style={{ fontSize: 13, lineHeight: 19, color: outgoing && !bare ? "white" : colors.ink }}>{quotedText}</Text>
+        {quotedText || hasPhotoQuote ? <View style={{ alignSelf: "stretch", borderLeftWidth: 3, borderLeftColor: outgoing && !bare ? "#a9e4ff" : colors.blue, backgroundColor: outgoing && !bare ? "rgba(0,38,76,0.18)" : "#edf5fa", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 3, flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {quoteImageUri ? <AuthImage key={quoteImageUri} uri={quoteImageUri} style={{ width: 40, height: 40, borderRadius: 6 }} resizeMode="cover" /> : hasPhotoQuote ? <Ionicons name="image-outline" size={20} color={outgoing && !bare ? "white" : colors.muted} /> : null}
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 11, fontWeight: "700", marginBottom: quotedText ? 3 : 0, color: outgoing && !bare ? "#d4f1ff" : colors.blue }}>{quotePhotoLabel ? `Replying to ${quotePhotoLabel}` : "Replying to message"}</Text>
+            {quotedText ? <Text numberOfLines={3} style={{ fontSize: 13, lineHeight: 19, color: outgoing && !bare ? "white" : colors.ink }}>{quotedText}</Text> : null}
+          </View>
         </View> : null}
         {media.length > 0 ? (
-          <MediaGrid items={media} onOpen={onViewMedia} sticker={type === "sticker"} />
+          <MediaGrid items={media} onOpen={onViewMedia} onHold={(item, at) => onHold(message, at, item)} sticker={type === "sticker"} />
         ) : null}
 
         {url && (type === "audio" || type === "voice") ? (
@@ -1269,6 +1317,7 @@ function Bubble({
                 : 0
             }
             onToggle={() => audio.onToggle(message)}
+            onHold={hold}
           />
         ) : null}
 
@@ -1276,12 +1325,12 @@ function Bubble({
 
 
         {url && !["image", "audio", "voice", "video", "sticker"].includes(type) ? (
-          <MessageFile outgoing={outgoing} uri={url} label={attachmentName || "File"} icon="document" />
+          <MessageFile outgoing={outgoing} uri={url} label={attachmentName || "File"} icon="document" onHold={hold} />
         ) : null}
 
         {body || !url ? (
           <View style={{ paddingHorizontal: media.length > 0 ? 8 : 0 }}>
-            <MessageText body={body || "—"} outgoing={outgoing && !bare} />
+            <MessageText body={body || "—"} outgoing={outgoing && !bare} onHold={hold} />
           </View>
         ) : null}
 
@@ -1343,8 +1392,9 @@ function Bubble({
           ) : null}
         </View>
         {reactions.length ? <View accessibilityLabel="Message reactions" style={{ position: "absolute", right: 8, bottom: -12.6, flexDirection: "row", gap: 2.7, paddingHorizontal: 6.3, paddingVertical: 1.8, borderRadius: 14.4, backgroundColor: "white", borderWidth: 1, borderColor: colors.border, shadowColor: "#20354b", shadowOpacity: 0.1, shadowRadius: 3, shadowOffset: { width: 0, height: 2 }, elevation: 2 }}>
-          {reactions.map(reaction => <Text key={reaction.actor} accessibilityLabel={`${reaction.actor} reaction ${reaction.emoji}`} style={{ fontSize: 15.3, lineHeight: 20.7 }}>{reaction.emoji}</Text>)}
+          {reactions.map(reaction => <Text key={reaction.actor} accessibilityLabel={`${reaction.actor === "bot" ? "Last confirmed bot" : reaction.actor} reaction ${reaction.emoji}`} style={{ fontSize: 15.3, lineHeight: 20.7 }}>{reaction.emoji}</Text>)}
         </View> : null}
+        {ownedBotReaction?.status === "pending" || ownedBotReaction?.status === "uncertain" ? <Text style={{ fontSize: 11, color: colors.muted }}>{ownedBotReaction.status === "pending" ? "Bot reaction pending" : "Bot reaction needs review"}</Text> : null}
       </Pressable>
     </View>
   );
@@ -1373,28 +1423,54 @@ const MENU_WIDTH = 318;
 const MENU_MARGIN = 10;
 
 type MessageMenuControl = {
-  open: (message: InboxMessage, at: { x: number; y: number }) => void;
+  open: (selection: MessageActionSelection, at: { x: number; y: number }) => void;
   close: () => void;
 };
-// Holding a bubble updates only this small host, not the message list/player/composer.
-function MessageMenuHost({ ref, canReply, saving, platform, onAction }: {
+type ResolvedMessageAction = NonNullable<ReturnType<typeof resolveMessageAction>>;
+// Holding a bubble updates only this small host, not the list/player/composer.
+function MessageMenuHost({ ref, canReply, saving, platform, resolveSelection, onAction, loadTelegramCapability }: {
   ref: Ref<MessageMenuControl>; canReply: boolean; saving: boolean; platform: string;
-  onAction: (action: "reply" | "pin" | "copy" | "download" | "reaction", message: InboxMessage, emoji?: string | null) => void;
+  resolveSelection: (selection: MessageActionSelection) => ResolvedMessageAction | null;
+  onAction: (action: "reply" | "pin" | "copy" | "download" | "reaction", message: InboxMessage, selection: MessageActionSelection, emoji?: string | null, capability?: TelegramReactionCapability | null) => void;
+  loadTelegramCapability?: (message: InboxMessage, owner: string) => Promise<TelegramReactionCapability | null>;
 }) {
-  const [selection, setSelection] = useState<{ message: InboxMessage; at: { x: number; y: number } } | null>(null);
-  const close = () => setSelection(null);
-  useImperativeHandle(ref, () => ({ open: (message, at) => setSelection({ message, at }), close }), []);
+  const [selection, setSelection] = useState<{ target: MessageActionSelection; at: { x: number; y: number }; flight: number } | null>(null);
+  const [telegramCapability, setTelegramCapability] = useState<TelegramReactionCapability | null>(null);
+  const capabilityFlight = useRef(0);
+  const close = () => { capabilityFlight.current++; setSelection(null); setTelegramCapability(null); };
+  useImperativeHandle(ref, () => ({ open: (target, at) => {
+    const current = resolveSelection(target);
+    if (!current) return;
+    const flight = ++capabilityFlight.current;
+    setSelection({ target, at, flight }); setTelegramCapability(null);
+    if (platform === "telegram" && loadTelegramCapability && telegramReactionTarget(current.message)) {
+      void loadTelegramCapability(current.message, target.owner).then(capability => {
+        if (capabilityFlight.current === flight && resolveSelection(target) && capability?.owner === target.owner) setTelegramCapability(capability);
+      }).catch(() => { /* Reply stays available; reactions fail closed. */ });
+    }
+  }, close }), [resolveSelection, platform, loadTelegramCapability]);
+  const resolved = selection ? resolveSelection(selection.target) : null;
   const act = (action: Parameters<typeof onAction>[0], emoji?: string | null) => {
-    if (!selection || saving) return;
-    close(); onAction(action, selection.message, emoji);
+    if (!selection || saving || selection.flight !== capabilityFlight.current) return;
+    const current = resolveSelection(selection.target);
+    close();
+    if (!current) return;
+    const actions = getMessageActions(current.message, platform);
+    if (action === "reply" && (!canReply || !actions.reply)) return;
+    if (action === "pin" && !actions.pin) return;
+    if (action === "reaction" && !canReactToMessengerMessage(current.message, platform) && !canUseTelegramReaction(telegramCapability, current.message, selection.target.owner)) return;
+    // Provider reactions/pins always use the stored row; only reply/download
+    // receive a photo selection ID. No invented provider IDs or fallback row.
+    onAction(action, action === "pin" || action === "reaction" ? current.message : current.photo, selection.target, emoji, telegramCapability);
   };
-  return <MessageMenu message={selection?.message ?? null} at={selection?.at ?? null} canReply={canReply} saving={saving} platform={platform}
+  return <MessageMenu message={resolved?.photo ?? null} selectionContext={resolved} at={selection?.at ?? null} canReply={canReply} saving={saving} platform={platform} telegramCapability={telegramCapability}
     onReply={() => act("reply")} onPin={() => act("pin")} onCopy={() => act("copy")} onDownload={() => act("download")}
     onReact={emoji => act("reaction", emoji)} onClose={close} />;
 }
 
 function MessageMenu({
   message,
+  selectionContext,
   at,
   canReply,
   platform,
@@ -1405,8 +1481,10 @@ function MessageMenu({
   onDownload,
   onPin,
   onClose,
+  telegramCapability,
 }: {
   message: InboxMessage | null;
+  selectionContext: ResolvedMessageAction | null;
   at: { x: number; y: number } | null;
   canReply: boolean;
   platform: string;
@@ -1417,6 +1495,7 @@ function MessageMenu({
   onDownload: () => void;
   onPin: () => void;
   onClose: () => void;
+  telegramCapability?: TelegramReactionCapability | null;
 }) {
   const screen = Dimensions.get("window");
 
@@ -1440,7 +1519,14 @@ function MessageMenu({
    * the quote would be dropped on the way out and nobody would know why.
    */
   const actions = getMessageActions(message, platform);
-  const choosingReaction = canReactToMessengerMessage(message, platform);
+  const reactionMessage = selectionContext?.message ?? message;
+  const choosingTelegramReaction = platform === "telegram" && !!telegramCapability && canUseTelegramReaction(telegramCapability, reactionMessage, telegramCapability.owner);
+  const choosingReaction = canReactToMessengerMessage(reactionMessage, platform) || choosingTelegramReaction;
+  const currentReaction = choosingTelegramReaction ? telegramCapability?.state?.emoji : getMessengerReaction(message.raw_payload, "page")?.emoji;
+  const reactionChoices = choosingTelegramReaction ? [
+    ...TELEGRAM_QUICK_REACTIONS.filter(item => telegramCapability.emojis.includes(item.emoji)),
+    ...telegramCapability.emojis.filter(emoji => !TELEGRAM_QUICK_REACTIONS.some(item => item.emoji === emoji)).map(emoji => ({ emoji, label: emoji })),
+  ].slice(0, 7) : MESSENGER_QUICK_REACTIONS;
   const menuWidth = Math.min(MENU_WIDTH, screen.width - MENU_MARGIN * 2);
   if (canReply && actions.reply) {
     rows.push({ icon: "arrow-undo-outline", label: "Reply", run: onReply });
@@ -1466,12 +1552,18 @@ function MessageMenu({
     });
   }
 
+  if (rows.length === 0 && !choosingReaction) return null;
+
   /*
    * Placed against the corner the finger is nearest, then pulled back inside
    * the screen. A menu that opens half off the edge is a menu with an action
    * nobody can reach.
    */
-  const height = rows.length * 46 + 10 + (choosingReaction ? 94 : 0);
+  const selectedMedia = selectionContext?.media;
+  const telegramReactionUnavailable = platform === "telegram" && !choosingTelegramReaction;
+  const albumReaction = choosingTelegramReaction ? telegramCapability?.album : choosingReaction && selectedMedia && messageMedia(selectionContext.message).length > 1;
+  const wholeMessageReply = selectedMedia && messageMedia(selectionContext.message).length > 1 && !selectionContext.perPhotoReply;
+  const height = rows.length * 46 + 10 + (choosingReaction ? 94 : 0) + (albumReaction || wholeMessageReply ? 42 : 0) + (telegramReactionUnavailable ? 34 : 0);
   const below = at.y + 12;
   const top =
     below + height > screen.height - 24 ? Math.max(24, at.y - height - 12) : below;
@@ -1512,14 +1604,18 @@ function MessageMenu({
           shadowOffset: { width: 0, height: 8 },
         }}
       >
+        {albumReaction || wholeMessageReply ? <Text style={{ paddingHorizontal: 12, paddingBottom: 8, color: colors.muted, fontSize: 11.5 }}>
+          {wholeMessageReply ? "Reply uses the whole message. " : ""}{albumReaction ? choosingTelegramReaction ? "Telegram puts this reaction on the album's first nondeleted message." : "Reactions apply to the whole message." : ""}
+        </Text> : null}
+        {telegramReactionUnavailable ? <Text style={{ paddingHorizontal: 12, paddingBottom: 8, color: colors.muted, fontSize: 11.5 }}>{telegramCapability?.reason || "Reactions aren't available for this Telegram chat yet."}</Text> : null}
         {choosingReaction ? <View style={{ flexDirection: "row", flexWrap: "wrap", padding: 5 }}>
-          {MESSENGER_QUICK_REACTIONS.map(item => <Pressable key={item.emoji} disabled={saving}
+          {reactionChoices.map(item => <Pressable key={item.emoji} disabled={saving}
             accessibilityRole="button" accessibilityLabel={`React with ${item.label}`}
-            onPress={() => onReact(getMessengerReaction(message.raw_payload, "page")?.emoji === item.emoji ? null : item.emoji)}
-            style={{ width: (menuWidth - 10) / 7, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: getMessengerReaction(message.raw_payload, "page")?.emoji === item.emoji ? colors.pale : "transparent" }}>
+            onPress={() => onReact(currentReaction === item.emoji ? null : item.emoji)}
+            style={{ width: (menuWidth - 10) / 7, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: currentReaction === item.emoji ? colors.pale : "transparent" }}>
             <Text style={{ fontSize: 26 }}>{item.emoji}</Text>
           </Pressable>)}
-          {getMessengerReaction(message.raw_payload, "page")?.emoji ? <Pressable disabled={saving} onPress={() => onReact(null)} style={{ padding: 10 }}><Text>Remove reaction</Text></Pressable> : null}
+          {currentReaction ? <Pressable disabled={saving} onPress={() => onReact(null)} style={{ padding: 10 }}><Text>Remove reaction</Text></Pressable> : null}
         </View> : null}
         {rows.map((row, index) => (
           <Pressable
@@ -1620,6 +1716,7 @@ function QuickReplySheet({
     .filter(group => !category || group.name === category)
     .map(group => ({ ...group, replies: group.replies.filter(reply => !query || `${reply.title} ${reply.message_text}`.toLocaleLowerCase().includes(query)) }))
     .filter(group => group.replies.length > 0);
+  const visibleReplies = visibleGroups.flatMap(group => group.replies);
 
   return (
     <Sheet
@@ -1652,41 +1749,18 @@ function QuickReplySheet({
           ))}
         </ScrollView>
       </View>
-      {loading ? (
+      {loading && replies.length === 0 ? (
         <SheetSkeleton rows={4} thumbs />
       ) : replies.length === 0 ? (
         <Empty
-          icon="flash-outline"
+          icon="chatbox-ellipses-outline"
           title="No quick replies"
           detail="Quick replies are written on the web, under Settings. They appear here as soon as they are saved."
         />
       ) : (
         <ScrollView key={JSON.stringify([category, query])} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           {visibleGroups.length === 0 ? <Empty icon="search-outline" title="No matching replies" detail="Try another category or search." /> : null}
-          {visibleGroups.map((group) => (
-            <View key={group.name}>
-              {/*
-                Categories, the way they are set on the web. A workspace with
-                forty saved replies is unusable as one flat list, and the
-                category is already on every row -- it was just being thrown
-                away on the way in.
-              */}
-              <Text
-                style={{
-                  paddingHorizontal: 18,
-                  paddingTop: 14,
-                  paddingBottom: 4,
-                  fontSize: 11,
-                  fontWeight: "800",
-                  letterSpacing: 0.6,
-                  textTransform: "uppercase",
-                  color: colors.muted,
-                }}
-              >
-                {group.name}
-              </Text>
-
-              {group.replies.map((reply) => (
+          {visibleReplies.map((reply, replyIndex) => (
             <Pressable
               key={reply.id}
               accessibilityRole="button"
@@ -1697,6 +1771,8 @@ function QuickReplySheet({
               style={({ pressed }) => ({
                 paddingHorizontal: 18,
                 paddingVertical: 13,
+                borderTopWidth: replyIndex === 0 ? 0 : 1,
+                borderTopColor: colors.border,
                 gap: 3,
                 backgroundColor: pressed ? colors.pale : "transparent",
               })}
@@ -1731,8 +1807,6 @@ function QuickReplySheet({
               */}
               <ReplyThumbs attachments={reply.attachments} />
             </Pressable>
-              ))}
-            </View>
           ))}
         </ScrollView>
       )}
@@ -1906,6 +1980,7 @@ function QuickTagSheet({
   loading,
   error,
   name,
+  onRetry,
   onToggle,
   onClose,
 }: {
@@ -1916,6 +1991,7 @@ function QuickTagSheet({
   loading: boolean;
   error: string;
   name: string;
+  onRetry?: () => void;
   onToggle: (tag: Tag) => void;
   onClose: () => void;
 }) {
@@ -1926,11 +2002,11 @@ function QuickTagSheet({
       detail={`Choose tags for ${name}. Changes apply across every conversation.`}
       onClose={onClose}
     >
-      {error ? <ErrorNotice message={error} /> : null}
+      {error ? <ErrorNotice message={error} onRetry={loading ? undefined : onRetry} /> : null}
 
-      {loading ? (
+      {loading && tags.length === 0 ? (
         <SheetSkeleton rows={5} />
-      ) : tags.length === 0 ? (
+      ) : error && tags.length === 0 ? null : tags.length === 0 ? (
         <Empty
           icon="pricetag-outline"
           title="No tags yet"
@@ -2015,11 +2091,16 @@ function QuickTagSheet({
 
 export default function Conversation() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { workspace } = useInbox();
-  return <ConversationScreen key={JSON.stringify([id, workspace?.businessId])} />;
+  const { workspace, conversations, workspaces } = useInbox();
+  const { session } = useAuth();
+  if (!session) return <Redirect href="/sign-in" />;
+  const businessId = conversations.find(row => row.id === id)?.business_id ?? workspace?.businessId;
+  const membership = workspaces.find(row => row.businessId === businessId && row.subscriptionOperational)?.memberId;
+  return <ConversationScreen key={JSON.stringify([session.user.id, id, businessId, membership])} />;
 }
 
 function ConversationScreen() {
+  const { session } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -2039,7 +2120,7 @@ function ConversationScreen() {
   /* Of those, the ones with something already in their box. */
   const typists = viewers.filter((viewer) => viewer.is_typing);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     const thread = id ? String(id) : null;
 
     setViewing(thread);
@@ -2049,14 +2130,17 @@ function ConversationScreen() {
     return () => {
       if (thread) leaveViewing(thread);
     };
-  }, [id, setViewing, leaveViewing]);
+  }, [id, setViewing, leaveViewing]));
 
 
   const {
     conversations,
+    workspaces,
     workspace,
     member,
     revision,
+    threadUpdates,
+    settingsRevision,
     updateConversation,
     updateContactTags,
   } = useInbox();
@@ -2083,7 +2167,23 @@ function ConversationScreen() {
    */
   const scopeId = conversation?.business_id ?? workspace?.businessId;
 
-  const [messages, setMessages] = useState<InboxMessage[]>([]);
+  const previewKey = threadPreviewKey(session?.user.id, scopeId,
+    workspaces.find(row => row.businessId === scopeId && row.subscriptionOperational)?.memberId, String(id));
+  const [preview] = useState(() => previewKey ? peekReadCache<ThreadPage>(previewKey) : undefined);
+  const [messages, setMessages] = useState<InboxMessage[]>(() => mergeMessages([], preview?.messages ?? []));
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const [focused, setFocused] = useState(false);
+  const focusedRef = useRef(false);
+  useFocusEffect(useCallback(() => {
+    setCustomerReadActivity(true, customerReadActivity.current.foreground);
+    focusedRef.current = true; setFocused(true);
+    return () => {
+      setCustomerReadActivity(false, customerReadActivity.current.foreground);
+      focusedRef.current = false; setFocused(false);
+    };
+  }, []));
+  const [foreground, setForeground] = useState(AppState.currentState === "active");
   const messageChannelPlatform = conversation?.social_account?.platform;
   useEffect(() => {
     if (messageChannelPlatform !== "facebook") return;
@@ -2107,14 +2207,34 @@ function ConversationScreen() {
     return () => clearTimeout(timer);
   }, [pinHighlight]);
   const [cursor, setCursor] = useState<{ sentAt: string; id: string } | null>(
-    null,
+    preview?.nextCursor ?? null,
   );
-  const [hasMore, setHasMore] = useState(false);
+  const [hasMore, setHasMore] = useState(Boolean(preview?.hasMore));
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const olderFlight = useRef<Promise<void> | null>(null);
+  const [loading, setLoading] = useState(!preview);
   const [error, setError] = useState("");
   const [draft, setDraft] = useState("");
-  const [pending, setPending] = useState<Pending[]>([]);
+  const [pending, setPendingState] = useState<Pending[]>([]);
+  // Keep same-frame picker completions visible to Storage's capacity check.
+  const pendingQueue = useRef(pending);
+  const setPending = useCallback((update: Pending[] | ((current: Pending[]) => Pending[])) => {
+    const next = typeof update === "function" ? update(pendingQueue.current) : update;
+    pendingQueue.current = next;
+    setPendingState(next);
+  }, []);
+  const [storageOpen, setStorageOpen] = useState(false);
+  const storageWorkspace = workspaces.find(item => item.businessId === conversation?.business_id);
+  const storageReady = Boolean(session && conversation && storageWorkspace?.subscriptionOperational);
+  const storageDraft = useRef({ ready: false, blocked: true, pending });
+  const storageScope = { userId: session?.user.id ?? "", workspaceId: scopeId ?? "", memberId: storageWorkspace?.memberId ?? "", conversationId: String(id) };
+  const storageOwner = storageDraftOwner(storageScope);
+  useEffect(() => {
+    const recovered = attachStorageDrafts(storageScope);
+    if (recovered.length) setPending(current => [...current, ...recovered.filter(file => !current.some(item => item.key === file.key))]);
+    return () => detachStorageDrafts(storageOwner);
+  }, [storageOwner, setPending]);
+  useEffect(() => { reconcileStorageDrafts(storageOwner, pending); }, [storageOwner, pending]);
 
   /*
    * Whether what is in the box came from a quick reply. It is the only case
@@ -2144,6 +2264,8 @@ function ConversationScreen() {
    * The message the next send will quote, using the website send routes.
    */
   const [quoted, setQuoted] = useState<InboxMessage | null>(null);
+  const quotedSelection = useRef<MessageActionSelection | null>(null);
+  const downloadFlight = useRef<object | null>(null);
   const [saving, setSaving] = useState(false);
   const [replyingToComment, setReplyingToComment] = useState<InboxMessage | null>(null);
   const [commentBusy, setCommentBusy] = useState<string | null>(null);
@@ -2152,29 +2274,130 @@ function ConversationScreen() {
   const [stickerOpen, setStickerOpen] = useState(false);
   const stickerBusy = useRef(false);
   const stickerAttempts = useRef(new Map<string, string>());
-  const [replies, setReplies] = useState<SavedReply[]>([]);
+  const flowAuthGeneration = authSessionGeneration();
+  const repliesOwner = JSON.stringify([session?.user.id, scopeId, String(id),
+    workspaces.find(row => row.businessId === scopeId)?.memberId, flowAuthGeneration]);
+  const repliesOwnerRef = useRef(repliesOwner);
+  repliesOwnerRef.current = repliesOwner;
+  // Context generations retire old queued launches and results even after A -> B -> A.
+  // Session identity is compared only in memory; no credentials enter the owner key.
+  const pickerContext = useRef({ owner: repliesOwner, session, epoch: 0 });
+  if (pickerContext.current.owner !== repliesOwner || pickerContext.current.session !== session) {
+    pickerContext.current = { owner: repliesOwner, session, epoch: pickerContext.current.epoch + 1 };
+  }
+  const pickerRenderEpoch = pickerContext.current.epoch;
+  const pickerOperation = useRef(0);
+  const [replySnapshot, setReplySnapshot] = useState<{ owner: string; replies: SavedReply[] } | null>(null);
+  const replies = replySnapshot?.owner === repliesOwner ? replySnapshot.replies : [];
   const [repliesLoading, setRepliesLoading] = useState(false);
   const [preparingReply, setPreparingReply] = useState(false);
 
   const [tagOpen, setTagOpen] = useState(false);
-  const [tags, setTags] = useState<Tag[]>([]);
+  const metadataMemberId = workspaces.find(row => row.businessId === scopeId)?.memberId;
+  const metadataOwner = JSON.stringify([session?.user.id, scopeId, metadataMemberId, flowAuthGeneration]);
+  const metadataOwnerRef = useRef(metadataOwner); metadataOwnerRef.current = metadataOwner;
+  const metadataActive = focused && foreground && Boolean(session?.user.id && scopeId && metadataMemberId);
+  const tagRead = useOwnedPanelRead(metadataOwner, metadataActive, tagOpen, loadTagDefinitions, settingsRevision, () => authSessionGeneration() === flowAuthGeneration);
+  const tags = tagRead.rows ?? [];
   const [assigned, setAssigned] = useState<Set<string>>(() => new Set());
   const [busyTagId, setBusyTagId] = useState<string | null>(null);
-  const [tagsLoading, setTagsLoading] = useState(false);
-
-  const [members, setMembers] = useState<TeamMember[]>([]);
-  const [membersLoading, setMembersLoading] = useState(false);
-  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const tagsLoading = tagRead.loading;
 
   const [panelOpen, setPanelOpen] = useState(false);
+  const teamRead = useOwnedPanelRead(metadataOwner, metadataActive, panelOpen, loadTeamMembers, settingsRevision, () => authSessionGeneration() === flowAuthGeneration);
+  const members = teamRead.rows ?? [];
+  const membersLoading = teamRead.loading;
+  const panelActionFlight = useRef<{ owner: string; key: string } | null>(null);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+
   const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
   const [postUrl, setPostUrl] = useState<string | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
-  const [customer, setCustomer] = useState<CustomerDetail | null>(null);
+  const [locationError, setLocationError] = useState("");
+  const locationFlight = useRef<string | null>(null);
+  const sendFlight = useRef(false);
+  const mediaPickerFlight = useRef(false);
+  const [draftSendUnknown, setDraftSendUnknown] = useState(false);
+  const locationSequence = useRef(0);
+  const locationModalEpoch = useRef(0);
+  const [locationRecovery, setLocationRecovery] = useState<LocationAttempt | null>(null);
+  const [locationReady, setLocationReady] = useState(false);
+  const locationAttempts = useRef(new Map<string, string>());
+  useEffect(() => {
+    locationSequence.current++; locationModalEpoch.current++;
+    setLocationRecovery(null); setLocationReady(false);
+    if (locationFlight.current) setSending(false);
+    locationFlight.current = null;
+    locationAttempts.current.clear();
+    setMapOpen(false); setLocationError("");
+  }, [scopeId, id]);
+  const customerReadOwner = JSON.stringify([repliesOwner, conversation?.contact?.id ?? null]);
+  const customerSnapshotScope = useRef({ owner: customerReadOwner, epoch: 0 });
+  if (customerSnapshotScope.current.owner !== customerReadOwner) {
+    customerSnapshotScope.current = { owner: customerReadOwner, epoch: customerSnapshotScope.current.epoch + 1 };
+  }
+  const customerSnapshotEpoch = customerSnapshotScope.current.epoch;
+  const [customerSnapshot, setCustomerSnapshot] = useState<{ owner: string; data: CustomerDetail | null } | null>(null);
+  const customer = customerSnapshot?.owner === customerReadOwner ? customerSnapshot.data : null;
+  const setCustomer = useCallback((update: CustomerDetail | null | ((current: CustomerDetail | null) => CustomerDetail | null)) => {
+    const owns = () => authSessionGeneration() === flowAuthGeneration &&
+      customerSnapshotScope.current.owner === customerReadOwner && customerSnapshotScope.current.epoch === customerSnapshotEpoch;
+    if (!owns()) return;
+    setCustomerSnapshot(current => owns() ? ({ owner: customerReadOwner, data: typeof update === "function"
+      ? update(current?.owner === customerReadOwner ? current.data : null) : update }) : current);
+  }, [customerReadOwner, customerSnapshotEpoch, flowAuthGeneration]);
   const [customerLoading, setCustomerLoading] = useState(false);
+  const customerRequest = useRef(0);
+  const customerOwnerRef = useRef("");
+  const customerReadFlight = useRef<{
+    owner: string;
+    readOwner: string;
+    work: Promise<CustomerDetail | null>;
+    next: Promise<CustomerDetail | null> | null;
+  } | null>(null);
+  const tagLocalEdits = useRef(new Map<string, boolean>());
+  const tagInboxSnapshot = useRef<{ owner: string; tags: string; items: Tag[] } | null>(null);
+  const customerReadActivity = useRef({ owner: "", focused: false, foreground: AppState.currentState === "active", epoch: 0, dirty: false });
+  const tagMutationEpoch = useRef(0);
+  const tagMutationFlight = useRef<object | null>(null);
 
   const requestRef = useRef(0);
-  const readMarkedRef = useRef<string | null>(null);
+  const ownerRef = useRef("");
+  ownerRef.current = `${scopeId}:${id}`;
+  storageDraft.current = { ready: storageReady, blocked: sending || preparingReply || !focused || !foreground || Boolean(replyingToComment), pending };
+  useEffect(() => { if (!storageReady || !focused || !foreground) setStorageOpen(false); }, [storageReady, focused, foreground]);
+  const screenAlive = useRef(true);
+  const syncRef = useRef<{
+    pending: Promise<void> | null; dirty: boolean; controller: AbortController | null;
+    timer: ReturnType<typeof setTimeout> | undefined; failures: number;
+    gap: { cursor: ThreadCursor; anchor: InboxMessage } | null;
+  }>({ pending: null, dirty: false, controller: null, timer: undefined, failures: 0, gap: null });
+  const [loadedRevision, setLoadedRevision] = useState(0);
+  const readWatermark = useRef<string | null>(null);
+  const readPending = useRef<Promise<void> | null>(null);
+  const readSuppressed = useRef(false);
+  const readFailures = useRef(0);
+  const readTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [readRetry, setReadRetry] = useState(0);
+  useEffect(() => {
+    screenAlive.current = true;
+    const listener = AppState.addEventListener("change", state => {
+      setCustomerReadActivity(customerReadActivity.current.focused, state === "active");
+      setForeground(state === "active");
+      if (state !== "active") {
+        syncRef.current.controller?.abort();
+        clearTimeout(syncRef.current.timer); clearTimeout(readTimer.current);
+        syncRef.current.timer = undefined;
+        readTimer.current = undefined;
+      }
+    });
+    return () => {
+      screenAlive.current = false; ownerRef.current = ""; requestRef.current++;
+      syncRef.current.controller?.abort();
+      clearTimeout(syncRef.current.timer); clearTimeout(readTimer.current);
+      listener.remove();
+    };
+  }, []);
 
   /*
    * One player for the screen, given whichever clip was tapped. Tapping a
@@ -2194,8 +2417,10 @@ function ConversationScreen() {
 
   async function sendSticker(sticker: StickerChoice) {
     if (stickerBusy.current || sending) throw new Error("A message is already sending.");
+    const quoteSelection = quotedSelection.current;
+    const quote = currentQuote(quoteSelection);
+    const quoteOwner = actionScope.current.value;
     stickerBusy.current = true;
-    const quote = quoted;
     const key = JSON.stringify([scopeId, id, sticker.stickerId, quote?.id]);
     let requestId = stickerAttempts.current.get(key);
     if (!requestId) {
@@ -2211,7 +2436,11 @@ function ConversationScreen() {
         },
       });
       stickerAttempts.current.delete(key);
-      setQuoted(current => current?.id === quote?.id ? null : current);
+      if (!screenAlive.current || actionScope.current.value !== quoteOwner) return;
+      if (quotedSelection.current === quoteSelection) {
+        quotedSelection.current = null;
+        setQuoted(current => current?.id === quoted?.id ? null : current);
+      }
       setStickerOpen(false);
       if (result.warning) Alert.alert("Sticker sent", result.warning);
       // A refresh failure must not invite the user to send a confirmed sticker twice.
@@ -2220,74 +2449,129 @@ function ConversationScreen() {
   }
 
   const contactId = conversation?.contact?.id ?? null;
+  customerOwnerRef.current = `${scopeId}:${id}:${contactId ?? ""}`;
+  // Panel writes belong to the physical customer context, independently of native foreground state.
+  const panelContextKey = JSON.stringify([repliesOwner, contactId, conversation?.business_id]);
+  const panelContext = useRef({ key: panelContextKey, epoch: 0, value: JSON.stringify([panelContextKey, 0]) });
+  if (panelContext.current.key !== panelContextKey) {
+    const epoch = panelContext.current.epoch + 1;
+    panelContext.current = { key: panelContextKey, epoch, value: JSON.stringify([panelContextKey, epoch]) };
+  }
+  const panelOwner = panelContext.current.value;
+  // Fence reads at render as well as synchronously in native focus/AppState callbacks.
+  setCustomerReadActivity(focused, foreground);
+  useEffect(() => {
+    customerRequest.current++;
+    customerReadFlight.current = null;
+    customerReadActivity.current.epoch++;
+    customerReadActivity.current.dirty = false;
+    tagLocalEdits.current.clear();
+    tagInboxSnapshot.current = null;
+    tagMutationEpoch.current++;
+    tagMutationFlight.current = null;
+    setCustomer(null);
+    setCustomerLoading(false);
+    setBusyTagId(null);
+    setAssigned(new Set());
+    setTagOpen(false); setPanelOpen(false);
+  }, [scopeId, id, contactId, repliesOwner]);
   const recipientId = conversation?.contact?.platform_user_id?.trim() ?? "";
   const tagCount = conversation?.contact?.tags?.length ?? 0;
   const name = conversation?.contact?.full_name ?? "Conversation";
 
-  const load = useCallback(async () => {
-    if (!id) {
-      return;
-    }
-
-    const sequence = ++requestRef.current;
-
-    try {
-      const data = await cachedApi<{
-        messages: InboxMessage[];
-        hasMore: boolean;
-        nextCursor: { sentAt: string; id: string } | null;
-      }>(
-        `/api/conversations/${encodeURIComponent(id)}/messages?limit=${PAGE_SIZE}`,
-        scopeId,
-        { freshMs: 0, onCached: (cached) => {
-          if (sequence !== requestRef.current) return;
-          setMessages(current => mergeMessages(current, cached.messages ?? []));
-          setCursor(current => current ?? cached.nextCursor ?? null);
-          setHasMore(current => current || Boolean(cached.hasMore));
+  const load = useCallback((continuation = false, invalidation = true): Promise<void> => {
+    const sync = syncRef.current;
+    // Ordinary focus/resume/retry callers share the current read. A real
+    // message invalidation must still reconcile after an older response.
+    if (!continuation && (!sync.pending || invalidation)) sync.dirty = true;
+    if (sync.pending) return sync.pending;
+    if (!id || !scopeId || !screenAlive.current || !focusedRef.current || AppState.currentState !== "active") return Promise.resolve();
+    clearTimeout(sync.timer); sync.timer = undefined;
+    const owner = `${scopeId}:${id}`, sequence = ++requestRef.current;
+    const controller = new AbortController(); sync.controller = controller;
+    const owns = () => screenAlive.current && ownerRef.current === owner && sequence === requestRef.current;
+    const valid = () => owns() && !controller.signal.aborted;
+    const afterAnchor = (cursor: ThreadCursor, anchor: InboxMessage) => {
+      const difference = Date.parse(cursor.sentAt) - sentAt(anchor);
+      return difference > 0 || (difference === 0 && cursor.id.localeCompare(anchor.id) > 0);
+    };
+    const fetchPage = (before?: ThreadCursor) => {
+      const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      if (before) { query.set("beforeCreatedAt", before.sentAt); query.set("beforeId", before.id); }
+      return api<ThreadPage>(`/api/conversations/${encodeURIComponent(id)}/messages?${query}`, scopeId, { signal: controller.signal, expectedUserId: session?.user.id });
+    };
+    const apply = (data: ThreadPage) => {
+      const merged = mergeMessages(messagesRef.current, data.messages ?? []);
+      messagesRef.current = merged; setMessages(merged);
+    };
+    sync.pending = (async () => {
+      let pages = 0, retryable = true;
+      try {
+        do {
+          if (sync.dirty) {
+            sync.dirty = false;
+            const anchor = messagesRef.current.find(row => !row.id.startsWith("optimistic:"));
+            const cacheEpoch = readCacheGeneration();
+            const data = await fetchPage(); pages++;
+            if (!valid()) return;
+            if (previewKey) storeReadCache(previewKey, {
+              messages: (data.messages ?? []).slice(-PAGE_SIZE), hasMore: data.hasMore, nextCursor: data.nextCursor,
+            }, cacheEpoch);
+            apply(data);
+            setCursor(current => current ?? data.nextCursor ?? null);
+            setHasMore(current => current || Boolean(data.hasMore));
+            if (!sync.gap && anchor && data.hasMore && data.nextCursor && afterAnchor(data.nextCursor, anchor)) {
+              sync.gap = { cursor: data.nextCursor, anchor };
+            }
+          }
+          // Catch up to the previous newest message, at most 100 rows per burst.
+          // A continuation never restarts at the newest page or skips to the old history cursor.
+          while (sync.gap && pages < 4) {
+            const gap = sync.gap;
+            const data = await fetchPage(gap.cursor); pages++;
+            if (!valid()) return;
+            apply(data);
+            sync.gap = data.hasMore && data.nextCursor && afterAnchor(data.nextCursor, gap.anchor)
+              ? { cursor: data.nextCursor, anchor: gap.anchor } : null;
+          }
+        } while (sync.dirty && pages < 4 && valid());
+        if (valid()) { sync.failures = 0; setError(""); setLoadedRevision(value => value + 1); }
+      } catch (loadError) {
+        if (!valid()) { sync.dirty = true; return; }
+        retryable = !(loadError instanceof ApiError && [401, 403, 404].includes(loadError.status));
+        if (!retryable) {
+          clearReadCache(key => key === previewKey);
+          messagesRef.current = []; setMessages([]); sync.gap = null;
+          setCursor(null); setHasMore(false);
+        }
+        else { sync.dirty = true; sync.failures++; }
+        setError(loadError instanceof Error ? loadError.message : "Unable to load this conversation.");
+      } finally {
+        sync.pending = null;
+        if (owns()) {
           setLoading(false);
-        } },
-      );
-
-      // A slower earlier request must not overwrite a newer one.
-      if (sequence !== requestRef.current) {
-        return;
+          if (retryable && focusedRef.current && AppState.currentState === "active" && (sync.dirty || sync.gap)) {
+            sync.timer = setTimeout(() => void load(true), sync.failures ? Math.min(30_000, 1000 * 2 ** Math.min(sync.failures - 1, 5)) : 300);
+          }
+        }
       }
+    })();
+    return sync.pending;
+  }, [id, scopeId, previewKey, session?.user.id]);
 
-      setMessages((current) => mergeMessages(current, data.messages ?? []));
-      setError("");
-
-      /*
-       * Only the first page moves the cursor. Once older pages are loaded
-       * the newest page knows nothing about where the agent has read back
-       * to, and taking its cursor would send them there again.
-       */
-      setCursor((current) => current ?? data.nextCursor ?? null);
-      setHasMore((current) => current || Boolean(data.hasMore));
-    } catch (loadError) {
-      if (sequence !== requestRef.current) {
-        return;
-      }
-
-      if (loadError instanceof ApiError && [401, 403, 404].includes(loadError.status)) {
-        setMessages([]);
-      }
-
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Unable to load this conversation.",
-      );
-    } finally {
-      if (sequence === requestRef.current) {
-        setLoading(false);
-      }
-    }
-  }, [id, scopeId]);
-
-  // revision ticks when Realtime reports a change in this workspace.
+  // revision ticks: only this thread's changes invalidate messages. Global lifecycle and
+  // fallback refreshes still revalidate, while joining an existing read.
+  const threadVersion = threadUpdates.byId[String(id)] ?? 0;
+  const seenThreadUpdate = useRef({ all: threadUpdates.all, version: threadVersion });
   useEffect(() => {
-    void load();
-  }, [load, revision]);
+    const invalidation = seenThreadUpdate.current.all !== threadUpdates.all || seenThreadUpdate.current.version !== threadVersion;
+    seenThreadUpdate.current = { all: threadUpdates.all, version: threadVersion };
+    if (focused && foreground) void load(false, invalidation);
+    else {
+      syncRef.current.controller?.abort(); clearTimeout(syncRef.current.timer); clearTimeout(readTimer.current);
+      readTimer.current = undefined;
+    }
+  }, [load, threadUpdates.all, threadUpdates.refresh, threadVersion, focused, foreground]);
 
   /*
    * Older messages, one page at a time, as the agent scrolls back.
@@ -2297,13 +2581,15 @@ function ConversationScreen() {
    * quietly skip or repeat a message in the middle.
    */
   const loadOlder = useCallback(async () => {
-    if (!id || !cursor || !hasMore || loadingOlder) {
+    if (olderFlight.current) return olderFlight.current;
+    if (!id || !cursor || !hasMore || loadingOlder || syncRef.current.pending || syncRef.current.gap) {
       return;
     }
-
+    const owner = `${scopeId}:${id}`, sequence = requestRef.current;
+    const valid = () => screenAlive.current && ownerRef.current === owner && sequence === requestRef.current;
     setLoadingOlder(true);
 
-    try {
+    const work = (async () => { try {
       const query = new URLSearchParams({
         limit: String(PAGE_SIZE),
         beforeCreatedAt: cursor.sentAt,
@@ -2317,49 +2603,67 @@ function ConversationScreen() {
       }>(
         `/api/conversations/${encodeURIComponent(id)}/messages?${query.toString()}`,
         scopeId,
+        { expectedUserId: session?.user.id },
       );
 
-      setMessages((current) => mergeMessages(current, data.messages ?? []));
+      if (!valid()) return;
+      const merged = mergeMessages(messagesRef.current, data.messages ?? []);
+      messagesRef.current = merged; setMessages(merged);
       setCursor(data.nextCursor ?? null);
       setHasMore(Boolean(data.hasMore));
     } catch (olderError) {
+      if (!valid()) return;
+      if (olderError instanceof ApiError && [401, 403, 404].includes(olderError.status)) {
+        clearReadCache(key => key === previewKey);
+        messagesRef.current = []; setMessages([]); setCursor(null); setHasMore(false);
+      }
       setError(
         olderError instanceof Error
           ? olderError.message
           : "Unable to load older messages.",
       );
     } finally {
-      setLoadingOlder(false);
+      if (screenAlive.current && ownerRef.current === owner) setLoadingOlder(false);
     }
-  }, [cursor, hasMore, id, loadingOlder, scopeId]);
+    })();
+    olderFlight.current = work;
+    try { await work; } finally { if (olderFlight.current === work) olderFlight.current = null; }
+  }, [cursor, hasMore, id, loadingOlder, scopeId, previewKey, session?.user.id]);
 
-  /*
-   * Marked read once per conversation, not on every realtime tick. The server
-   * write is what counts; the local patch is only so the row loses its badge
-   * without waiting for the next bootstrap.
-   */
+  // Acknowledge successfully displayed incoming messages, not the screen mount.
   useEffect(() => {
-    if (!id || !conversation || readMarkedRef.current === id) {
-      return;
-    }
-
-    if ((conversation.unread_count ?? 0) === 0) {
-      readMarkedRef.current = id;
-      return;
-    }
-
-    readMarkedRef.current = id;
-    updateConversation(id, { unread_count: 0 });
-
-    void api(
+    if (!id || !conversation || !focused || !foreground || !loadedRevision || readSuppressed.current || readPending.current || readTimer.current ||
+      syncRef.current.pending || syncRef.current.dirty || syncRef.current.gap) return;
+    const watermark = messages.find(row => row.direction === "incoming" && !row.id.startsWith("optimistic:"))?.id;
+    if (!watermark || readWatermark.current === watermark) return;
+    if ((conversation.unread_count ?? 0) === 0) { readWatermark.current = watermark; return; }
+    const owner = `${scopeId}:${id}`;
+    let acknowledged = false;
+    readPending.current = api(
       `/api/conversations/${encodeURIComponent(id)}/read`,
       scopeId,
       { method: "PATCH" },
-    ).catch(() => {
-      // Leaving the badge cleared locally is the lesser wrong: the next
-      // bootstrap restores the truth either way.
+    ).then(() => {
+      if (!screenAlive.current || ownerRef.current !== owner || readSuppressed.current) return;
+      acknowledged = true;
+      readWatermark.current = watermark; readFailures.current = 0;
+      // A newer arrival remains unread until its own successful acknowledgment.
+      if (messagesRef.current.find(row => row.direction === "incoming" && !row.id.startsWith("optimistic:"))?.id === watermark) {
+        updateConversation(id, { unread_count: 0 });
+      }
+    }).catch(error => {
+      if (!screenAlive.current || ownerRef.current !== owner || readSuppressed.current ||
+        (error instanceof ApiError && [401, 403, 404].includes(error.status))) return;
+      readFailures.current++;
+      clearTimeout(readTimer.current);
+      if (focusedRef.current && AppState.currentState === "active") {
+        readTimer.current = setTimeout(() => { readTimer.current = undefined; if (screenAlive.current) setReadRetry(value => value + 1); }, Math.min(30_000, 1000 * 2 ** Math.min(readFailures.current - 1, 5)));
+      }
+    }).finally(() => {
+      readPending.current = null;
+      if (acknowledged && screenAlive.current && ownerRef.current === owner && !readSuppressed.current) setReadRetry(value => value + 1);
     });
-  }, [id, conversation, scopeId, updateConversation]);
+  }, [id, conversation, scopeId, messages, loadedRevision, focused, foreground, readRetry, updateConversation]);
 
   // A clip that reached its end is no longer the one playing.
   useEffect(() => {
@@ -2397,30 +2701,24 @@ function ConversationScreen() {
 
   async function openReplies() {
     setReplyOpen(true);
-
-    setRepliesLoading(replies.length === 0);
-
-    try {
-      const data = await cachedApi<{ savedReplies: SavedReply[] }>(
-        "/api/saved-replies?activeOnly=true",
-        scopeId,
-        { onCached: data => { setReplies(data.savedReplies ?? []); setRepliesLoading(false); } },
-      );
-
-      const list = data.savedReplies ?? [];
-      setReplies(list);
-
-      // Visible thumbnails download on demand through AuthImage.
-    } catch (replyError) {
-      setError(
-        replyError instanceof Error
-          ? replyError.message
-          : "Unable to load quick replies.",
-      );
-    } finally {
-      setRepliesLoading(false);
-    }
   }
+  useEffect(() => {
+    if (!replyOpen || !focused || !foreground || !scopeId) return;
+    let alive = true;
+    const owner = repliesOwner, controller = new AbortController();
+    const owns = () => alive && screenAlive.current && repliesOwnerRef.current === owner &&
+      focusedRef.current && customerReadActivity.current.foreground;
+    setRepliesLoading(replies.length === 0);
+    void api<{ savedReplies: SavedReply[] }>("/api/saved-replies?activeOnly=true", scopeId, { signal: controller.signal })
+      .then(data => { if (owns()) setReplySnapshot({ owner, replies: data.savedReplies ?? [] }); })
+      .catch(error => {
+        if (!owns()) return;
+        if (error instanceof ApiError && [401, 403].includes(error.status)) setReplySnapshot(null);
+        setError(error instanceof Error ? error.message : "Unable to load quick replies.");
+      })
+      .finally(() => { if (owns()) setRepliesLoading(false); });
+    return () => { alive = false; controller.abort(); };
+  }, [replyOpen, settingsRevision, repliesOwner, scopeId, focused, foreground]);
 
   /*
    * A quick reply's media has to come down before it can go back up: the
@@ -2509,42 +2807,43 @@ function ConversationScreen() {
    * a product shot had to notice that videos were also in there, and Android
    * shows a different, slower picker when both types are allowed.
    */
-  async function pickFromLibrary(
-    mediaTypes: ImagePicker.MediaType[],
-    multiple: boolean,
-  ) {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      setError("TENH needs permission to your photos to attach one.");
+  async function pickFromLibrary() {
+    if (!screenAlive.current || !focusedRef.current || !customerReadActivity.current.foreground || ownerRef.current !== `${scopeId}:${id}` || pickerContext.current.epoch !== pickerRenderEpoch || pickerContext.current.session !== session || pickerContext.current.owner !== repliesOwner || !session?.user.id) return;
+    if (mediaPickerFlight.current || sending || pending.length >= MAX_PENDING_ATTACHMENTS) {
+      if (pending.length >= MAX_PENDING_ATTACHMENTS) setError("Remove an attachment before adding more than 30 items.");
       return;
     }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes,
-      allowsMultipleSelection: multiple,
-      selectionLimit: 30,
-      quality: 1,
-    });
-
-    if (result.canceled) {
-      return;
-    }
-
-    setPending((current) => [
-      ...current,
-      ...result.assets.map((asset, index) => {
+    mediaPickerFlight.current = true;
+    const owner = `${scopeId}:${id}`, epoch = pickerRenderEpoch, operation = ++pickerOperation.current;
+    const ownsResponse = () => screenAlive.current && ownerRef.current === owner && pickerContext.current.epoch === epoch && pickerContext.current.session === session && pickerContext.current.owner === repliesOwner && pickerOperation.current === operation;
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!ownsResponse()) return;
+      if (!permission.granted && permission.accessPrivileges !== "limited") {
+        setError("Allow photo library access to choose images and videos, or use Documents."); return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images", "videos"], allowsMultipleSelection: true,
+        allowsEditing: false, orderedSelection: true,
+        selectionLimit: MAX_PENDING_ATTACHMENTS - pending.length, quality: 1,
+      });
+      if (!ownsResponse() || result.canceled) return;
+      const added: Pending[] = result.assets.map(asset => {
         const video = asset.type === "video";
-
-        return {
-          key: `${asset.assetId ?? asset.uri}:${index}`,
-          uri: asset.uri,
+        return { key: `media:${randomUUID()}`, uri: asset.uri,
           name: asset.fileName || (video ? "video.mp4" : "photo.jpg"),
-          mimeType: asset.mimeType || (video ? "video/mp4" : "image/jpeg"),
-          kind: video ? ("video" as const) : ("image" as const),
-        };
-      }),
-    ]);
+          mimeType: asset.mimeType || (video ? /\.mov$/i.test(asset.fileName || asset.uri) ? "video/quicktime" : "video/mp4" : "image/jpeg"),
+          kind: video ? "video" : "image" };
+      });
+      setPending(current => {
+        if (!ownsResponse()) return current;
+        const room = MAX_PENDING_ATTACHMENTS - current.length;
+        return [...current, ...added.slice(0, Math.max(0, room))];
+      });
+      if (ownsResponse() && added.length > MAX_PENDING_ATTACHMENTS - pending.length) setError("Only the first 30 attachments were added. Send or remove some before choosing more.");
+    } catch {
+      if (ownsResponse()) setError("Could not open the photo library. Close it and try again.");
+    } finally { if (pickerOperation.current === operation) mediaPickerFlight.current = false; }
   }
 
   /*
@@ -2590,69 +2889,132 @@ function ConversationScreen() {
    * has nothing of the kind, so it gets the same Google Maps link the web
    * writes into the reply box -- which is what a customer can actually open.
    */
-  async function sendLocation({
-    latitude,
-    longitude,
-  }: {
-    latitude: number;
-    longitude: number;
-  }) {
-    if (!id || sending) {
-      return;
-    }
+  function closeLocationPicker() {
+    locationModalEpoch.current++;
+    setMapOpen(false);
+  }
 
-    setSending(true);
-    setError("");
-
+  async function openLocationPicker() {
+    const epoch = ++locationModalEpoch.current;
+    const owner = `${scopeId}:${id}`;
+    const ownsModal = () => screenAlive.current && ownerRef.current === owner && locationModalEpoch.current === epoch;
+    setMapOpen(true); setLocationError(""); setLocationReady(false);
     try {
       if (platform === "telegram") {
-        await api("/api/telegram/send-location", scopeId, {
-          method: "POST",
-          body: { conversationId: id, latitude, longitude },
-        });
-      } else {
-        await api("/api/facebook/send", scopeId, {
-          method: "POST",
-          body: {
-            conversationId: id,
-            message: `📍 Location: https://www.google.com/maps?q=${latitude},${longitude}`,
-          },
-        });
-      }
+        if (!session?.user.id || !scopeId || !id) throw new Error("Sign in again before sending a location.");
+        const attempt = await readLocationAttempt(locationAttemptKey(session.user.id, scopeId, id));
+        if (ownsModal()) setLocationRecovery(attempt);
+      } else if (ownsModal()) setLocationRecovery(null);
+      if (ownsModal()) setLocationReady(true);
+    } catch {
+      if (ownsModal()) setLocationError("Could not read location delivery tracking. Close the map and try again before sending.");
+    }
+  }
 
-      setMapOpen(false);
-      await load();
+  async function sendLocation({ latitude, longitude }: { latitude: number; longitude: number }, reconcileOnly = false) {
+    const owner = `${scopeId}:${id}`;
+    if (!id || !scopeId || sending || locationFlight.current === owner || !screenAlive.current || ownerRef.current !== owner) return;
+    const sequence = ++locationSequence.current;
+    const modalEpoch = locationModalEpoch.current;
+    const ownsTransport = () => screenAlive.current && ownerRef.current === owner && locationSequence.current === sequence;
+    const ownsResponse = () => ownsTransport() && locationModalEpoch.current === modalEpoch;
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+      setLocationError("Choose a valid location before sending."); return;
+    }
+    if (platform === "facebook" && !recipientId) {
+      setLocationError("This Facebook customer has no Messenger recipient ID. Refresh the Inbox and try again."); return;
+    }
+    locationFlight.current = owner;
+    const key = JSON.stringify([owner, recipientId, latitude, longitude]);
+    let clientRequestId = locationAttempts.current.get(key);
+    if (!clientRequestId) {
+      clientRequestId = `optimistic:location.${randomUUID()}`;
+      if (locationAttempts.current.size >= 8) locationAttempts.current.delete(locationAttempts.current.keys().next().value!);
+      locationAttempts.current.set(key, clientRequestId);
+    }
+    setSending(true); setError(""); setLocationError("");
+    try {
+      if (platform === "telegram") {
+        if (!session?.user.id) throw new Error("Sign in again before sending a location.");
+        const storageKey = locationAttemptKey(session.user.id, scopeId, id);
+        const previous = await readLocationAttempt(storageKey);
+        if (!ownsTransport()) return;
+        if (previous && !reconcileOnly) {
+          if (ownsTransport()) setLocationRecovery(previous);
+          throw new Error("An earlier location may have been delivered. Check delivery before sending another location.");
+        }
+        const attempt = previous ?? { requestId: clientRequestId.slice("optimistic:location.".length), latitude, longitude };
+        if (reconcileOnly && !previous) throw new Error("No saved location request was found. Close and reopen the map.");
+        const query = new URLSearchParams({ conversationId: id, requestId: attempt.requestId, latitude: String(attempt.latitude), longitude: String(attempt.longitude) });
+        const tracked = await api<{ delivery: string; locationTracking: string }>(`/api/telegram/send-location?${query}`, scopeId);
+        if (!ownsTransport()) return;
+        if (tracked.locationTracking !== "v1") throw new Error("Location delivery tracking needs a newer TENH server. No retry was sent.");
+        if (reconcileOnly) {
+          if (tracked.delivery !== "confirmed") throw new Error("Location delivery is still unknown. Verify in Telegram and contact TENH support; do not resend it.");
+          await clearLocationAttempt(storageKey, attempt.requestId);
+          if (ownsTransport()) setLocationRecovery(null);
+        } else {
+          if (tracked.delivery !== "not_found") throw new Error("This location request already exists. Check delivery before sending.");
+          // Preserve the selected point and request ID before any provider dispatch.
+          await saveLocationAttempt(storageKey, attempt);
+          if (!ownsTransport()) {
+            // No POST was attempted: remove only this preflight reservation.
+            await clearLocationAttempt(storageKey, attempt.requestId);
+            return;
+          }
+          setLocationRecovery(attempt);
+          if (!ownsTransport()) return;
+          const sent = await api<{ delivery: string; locationTracking: string }>("/api/telegram/send-location", scopeId, {
+            method: "POST", body: { conversationId: id, ...attempt },
+          });
+          if (sent.delivery !== "confirmed" || sent.locationTracking !== "v1") throw new Error("Location delivery is unknown. Check delivery; do not resend it.");
+          await clearLocationAttempt(storageKey, attempt.requestId);
+          if (ownsTransport()) setLocationRecovery(null);
+        }
+      } else {
+        await api("/api/facebook/send", scopeId, { method: "POST", body: {
+          conversationId: id, recipientId, clientRequestId,
+          message: `📍 Location: https://www.google.com/maps?q=${latitude},${longitude}`,
+        } });
+      }
+      locationAttempts.current.delete(key);
+      if (ownsResponse()) setMapOpen(false);
+      // A reopened picker keeps its own state; the thread still refreshes.
+      if (ownsTransport()) void load().catch(() => {});
     } catch (locationError) {
-      setError(
-        locationError instanceof ApiError
-          ? locationError.message
-          : "Unable to send that location.",
-      );
+      if (!ownsResponse()) return;
+      const message = locationError instanceof Error ? locationError.message : "Unable to send that location.";
+      setError(message); setLocationError(message);
     } finally {
-      setSending(false);
+      // Closing/reopening the modal does not orphan the transport lock.
+      if (ownsTransport()) { locationFlight.current = null; setSending(false); }
     }
   }
 
   async function pickFile() {
-    const result = await DocumentPicker.getDocumentAsync({
-      multiple: true,
-      copyToCacheDirectory: true,
-    });
-
-    if (result.canceled) {
+    // The initiating render owns a queued iOS launch, not just matching thread IDs.
+    if (!screenAlive.current || !focusedRef.current || !customerReadActivity.current.foreground || ownerRef.current !== `${scopeId}:${id}` || pickerContext.current.epoch !== pickerRenderEpoch || pickerContext.current.session !== session || pickerContext.current.owner !== repliesOwner || !session?.user.id) return;
+    if (mediaPickerFlight.current || sending || pending.length >= MAX_PENDING_ATTACHMENTS) {
+      if (pending.length >= MAX_PENDING_ATTACHMENTS) setError("Remove an attachment before adding more than 30 items.");
       return;
     }
-
-    setPending((current) => [
-      ...current,
-      ...result.assets.map((asset, index) => ({
-        key: `${asset.uri}:${index}`,
-        uri: asset.uri,
-        name: asset.name || "attachment",
-        mimeType: asset.mimeType || "application/octet-stream",
+    mediaPickerFlight.current = true;
+    const pickerOwner = `${scopeId}:${id}`, epoch = pickerRenderEpoch, operation = ++pickerOperation.current;
+    const ownsResponse = () => screenAlive.current && ownerRef.current === pickerOwner && pickerContext.current.epoch === epoch && pickerContext.current.session === session && pickerContext.current.owner === repliesOwner && pickerOperation.current === operation;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true });
+      if (result.canceled || !ownsResponse()) return;
+      const added: Pending[] = result.assets.map((asset, index) => ({
+        key: `${randomUUID()}:${index}`, uri: asset.uri,
+        name: asset.name || "attachment", mimeType: asset.mimeType || "application/octet-stream",
         kind: kindOf(asset.mimeType ?? "", asset.name ?? ""),
-      })),
-    ]);
+      }));
+      setPending(current => ownsResponse() ? [...current, ...added.slice(0, Math.max(0, MAX_PENDING_ATTACHMENTS - current.length))] : current);
+      if (ownsResponse() && added.length > MAX_PENDING_ATTACHMENTS - pending.length) setError("Only the first 30 attachments were added. Send or remove some before choosing more.");
+    } catch (cause) {
+      if (ownsResponse()) setError(cause instanceof Error ? cause.message : "Could not open Documents. Close the picker and try again.");
+    } finally { if (pickerOperation.current === operation) mediaPickerFlight.current = false; }
   }
 
   /*
@@ -2668,9 +3030,9 @@ function ConversationScreen() {
   async function sendable(file: Pending): Promise<Pending> {
     if (file.kind !== "image") return file;
 
-    const smaller = await shrinkImage(file.uri);
+    const smaller = await shrinkImage(file.uri, /\.(heic|heif|avif)$/i.test(file.name || file.uri) || !["image/jpeg", "image/jpg", "image/png", "image/webp"].includes(file.mimeType));
 
-    if (!smaller.shrank) return file;
+    if (!smaller.shrank) return file.mimeType === "image/jpg" ? { ...file, mimeType: "image/jpeg" } : file;
 
     return {
       ...file,
@@ -2681,7 +3043,7 @@ function ConversationScreen() {
   }
 
   async function uploadOne(original: Pending, caption = "", replyToMessageId?: string) {
-    const file = await sendable(original);
+    const file = original;
     const photoOrVideo = file.kind === "image" || file.kind === "video";
     const path =
       platform === "telegram"
@@ -2700,7 +3062,7 @@ function ConversationScreen() {
   }
 
   async function uploadAlbum(originals: Pending[], caption = "", replyToMessageId?: string) {
-    const files = await Promise.all(originals.map(sendable));
+    const files = originals;
 
     if (platform === "telegram") {
       await uploadMany(
@@ -2874,6 +3236,7 @@ function ConversationScreen() {
    * nothing is wrong is one people learn to tap through.
    */
   async function send() {
+    if (sending || sendFlight.current) return;
     if (typists.length > 0 && !confirmedOverlapRef.current) {
       const who =
         typists.length === 1
@@ -2905,9 +3268,13 @@ function ConversationScreen() {
     if ((!text && pending.length === 0) || !id || sending) {
       return;
     }
-    if (pending.length > 30) {
+    if (pending.length > MAX_PENDING_ATTACHMENTS) {
       setError("Send up to 30 attachments at a time. Remove the extra attachments first.");
       return;
+    }
+
+    if (pending.some(file => file.deliveryUnknown) || draftSendUnknown) {
+      setError("A previous send may have reached the customer. Verify the thread, then remove the uncertain attachment or edit/clear the uncertain text before sending again."); return;
     }
 
     if (replyingToComment) {
@@ -2920,6 +3287,7 @@ function ConversationScreen() {
         return;
       }
 
+      sendFlight.current = true;
       setSending(true);
       setError("");
       setDraft("");
@@ -2936,6 +3304,7 @@ function ConversationScreen() {
         setDraft((current) => current || text);
         setError(replyError instanceof Error ? replyError.message : "Unable to reply to this comment.");
       } finally {
+        sendFlight.current = false;
         setSending(false);
       }
 
@@ -2947,9 +3316,52 @@ function ConversationScreen() {
       return;
     }
 
+    const replySelectionSnapshot = quotedSelection.current;
+    let quotedSnapshot: InboxMessage | null;
+    try { quotedSnapshot = currentQuote(replySelectionSnapshot); }
+    catch (quoteError) {
+      setError(quoteError instanceof Error ? quoteError.message : "Choose the reply message again.");
+      return;
+    }
+    sendFlight.current = true;
+    const sendOwner = `${scopeId}:${id}`;
+    const ownsSend = () => screenAlive.current && ownerRef.current === sendOwner;
+    let prepared: SizedAttachment[];
+    setSending(true);
+    try {
+      prepared = await Promise.all(pending.map(async original => {
+        const file = await sendable(original);
+        return { ...file, name: file.name.slice(0, 140), bytes: fileSize(file.uri) };
+      }));
+      if (!ownsSend()) { sendFlight.current = false; return; }
+      const issues = new Map(prepared.flatMap(file => {
+        const issue = attachmentIssue(file, platform); return issue ? [[file.key, issue] as const] : [];
+      }));
+      if (issues.size) {
+        setPending(current => current.map(file => ({ ...file, error: issues.get(file.key) })));
+        setError("Some attachments cannot be sent. Review the item errors and choose smaller or supported files.");
+        setSending(false); sendFlight.current = false; return;
+      }
+    } catch {
+      if (ownsSend()) { setError("Could not prepare the attachments. Pick the affected files again."); setSending(false); }
+      sendFlight.current = false; return;
+    }
+    try {
+      if (quotedSnapshot && quotedSelection.current !== replySelectionSnapshot) throw new Error("The reply was cancelled or changed. Review the message before sending.");
+      quotedSnapshot = currentQuote(replySelectionSnapshot);
+    }
+    catch (quoteError) {
+      setError(quoteError instanceof Error ? quoteError.message : "Choose the reply message again.");
+      setSending(false); sendFlight.current = false; return;
+    }
     const pendingSnapshot = [...pending];
-    const quotedSnapshot = quoted;
+    const storageSendOwner = storageOwner;
+    beginStorageDraftSend(storageSendOwner, pendingSnapshot);
     const sentFileKeys = new Set<string>();
+    let activeBatch: Pending[] = [];
+    let textConfirmed = false;
+    let textInFlight = false;
+    let captionInFlight = false;
     const sentAt = new Date().toISOString();
     const textId = `optimistic:text:${sentAt}`;
     const optimisticIds = [
@@ -2957,7 +3369,7 @@ function ConversationScreen() {
       textId,
     ];
     const visualFiles = pendingSnapshot.filter((file) => file.kind === "image" || file.kind === "video");
-    const telegramCaption = platform === "telegram" && visualFiles.length === pendingSnapshot.length && text.length <= 1024 ? text : "";
+    const telegramCaption = platform === "telegram" && visualFiles.length > 0 && visualFiles.length === pendingSnapshot.length && text.length <= 1024 ? text : "";
     const preview = text || (pendingSnapshot[0]?.kind === "audio" ? "You sent a voice message" : pendingSnapshot[0]?.kind === "video" ? "You sent a video" : pendingSnapshot[0]?.kind === "image" ? "You sent a photo" : pendingSnapshot[0] ? `You sent ${pendingSnapshot[0].name}` : "");
 
     setSending(true);
@@ -2985,34 +3397,28 @@ function ConversationScreen() {
     updateConversation(String(id), { last_message_text: preview, last_message_at: sentAt });
 
     try {
-      /*
-       * Text first, then the files in the order they were added. Messenger
-       * has no caption field, so a picture and the sentence about it are two
-       * messages either way -- this at least puts them in the order they
-       * were written.
-       */
-      const canAlbum =
-        visualFiles.length > 1 &&
-        visualFiles.length === pendingSnapshot.length &&
-        (platform === "telegram" || visualFiles.every((file) => file.kind === "image"));
-
-      if (canAlbum) {
-        const albumLimit = platform === "telegram" ? 10 : 30;
-        for (let offset = 0; offset < visualFiles.length; offset += albumLimit) {
-          const batch = visualFiles.slice(offset, offset + albumLimit);
-          const caption = offset === 0 ? telegramCaption : "";
-          if (batch.length === 1) await uploadOne(batch[0], caption, quotedSnapshot?.id);
-          else await uploadAlbum(batch, caption, quotedSnapshot?.id);
-          batch.forEach((file) => sentFileKeys.add(file.key));
-        }
-      } else {
-        for (const file of pendingSnapshot) {
-          await uploadOne(file, platform === "telegram" && pendingSnapshot.length === 1 ? telegramCaption : "", quotedSnapshot?.id);
-          sentFileKeys.add(file.key);
-        }
+      const batches = attachmentBatches(prepared, platform);
+      for (const [index, batch] of batches.entries()) {
+        if (!ownsSend()) return;
+        const replyTarget = quotedSnapshot && replySelectionSnapshot ? resolveSelection(replySelectionSnapshot) : null;
+        if (quotedSnapshot && !replyTarget) throw new Error("The reply target changed. Choose the message again.");
+        const replyId = replyTarget?.photo.id;
+        const caption = index === 0 ? telegramCaption : "";
+        activeBatch = batch;
+        captionInFlight = !!caption;
+        if (batch.length === 1) await uploadOne(batch[0], caption, replyId);
+        else await uploadAlbum(batch, caption, replyId);
+        batch.forEach(file => sentFileKeys.add(file.key));
+        if (caption) textConfirmed = true;
+        captionInFlight = false;
+        activeBatch = [];
       }
 
       if (text && !telegramCaption) {
+        if (!ownsSend()) return;
+        const replyTarget = quotedSnapshot && replySelectionSnapshot ? resolveSelection(replySelectionSnapshot) : null;
+        if (quotedSnapshot && !replyTarget) throw new Error("The reply target changed. Choose the message again.");
+        textInFlight = true;
         await api(`/api/${platform}/send`, scopeId, {
           method: "POST",
           body: {
@@ -3026,15 +3432,21 @@ function ConversationScreen() {
              * not belong to this conversation.
              */
             ...(quotedSnapshot
-              ? { replyToMessageId: quotedSnapshot.id }
+              ? { replyToMessageId: replyTarget!.photo.id }
               : {}),
           },
         });
+        textConfirmed = true; textInFlight = false;
       }
 
+      if (!ownsSend()) return;
       setMessages((current) => current.filter((message) => !optimisticIds.includes(message.id)));
-      await load();
+      void load().catch(() => {});
     } catch (sendError) {
+      if (!ownsSend()) return;
+      const failedKeys = new Set(activeBatch.map(file => file.key));
+      const failureMessage = sendError instanceof Error ? sendError.message : "Upload response was lost.";
+      if (textInFlight || captionInFlight) setDraftSendUnknown(true);
       /*
        * Whatever has not gone yet is deliberately left in the box. Messenger
        * refuses sends outside its window and after a comment reply, and
@@ -3048,102 +3460,174 @@ function ConversationScreen() {
       );
 
       setMessages((current) => current.filter((message) => !optimisticIds.includes(message.id)));
-      setDraft((current) => current || text);
+      if (!textConfirmed) setDraft((current) => current || text);
+      if (quotedSnapshot) setQuoted(current => current ?? quotedSnapshot);
       setPending((current) => {
         const held = new Set(current.map((file) => file.key));
         return [
           ...pendingSnapshot.filter(
             (file) => !sentFileKeys.has(file.key) && !held.has(file.key),
-          ),
+          ).map(file => ({ ...file,
+            error: failedKeys.has(file.key) ? `${failureMessage} Delivery is unknown; verify the thread before removing this item.` : "Not sent because an earlier upload failed.",
+            deliveryUnknown: failedKeys.has(file.key),
+          })),
           ...current,
         ];
       });
 
-      await load();
+      void load().catch(() => {});
     } finally {
-      setSending(false);
+      finishStorageDraftSend(storageSendOwner, sentFileKeys, new Set(activeBatch.map(file => file.key)), pendingQueue.current);
+      sendFlight.current = false;
+      if (ownsSend()) setSending(false);
     }
   }
 
-  const loadCustomer = useCallback(async () => {
-    if (!contactId) {
+  function setCustomerReadActivity(nextFocused: boolean, nextForeground: boolean) {
+    const activity = customerReadActivity.current;
+    if (activity.owner !== customerOwnerRef.current) {
+      activity.owner = customerOwnerRef.current;
+      activity.epoch++;
+      activity.dirty = false;
+    }
+    if (activity.focused === nextFocused && activity.foreground === nextForeground) return;
+    activity.focused = nextFocused;
+    activity.foreground = nextForeground;
+    activity.epoch++;
+    if (customerReadFlight.current?.owner === customerOwnerRef.current) {
+      customerRequest.current++;
+      activity.dirty = true;
+    }
+  }
+
+  const loadCustomer = useCallback(async (fresh = false): Promise<CustomerDetail | null> => {
+    if (!contactId) return null;
+    const owner = `${scopeId}:${id}:${contactId}`;
+    if (authSessionGeneration() !== flowAuthGeneration || !screenAlive.current || repliesOwnerRef.current !== repliesOwner || customerOwnerRef.current !== owner) return null;
+    const activity = customerReadActivity.current;
+    if (!activity.focused || !activity.foreground || tagMutationFlight.current) {
+      activity.dirty = true;
       return null;
     }
-
-    setCustomerLoading(true);
-
-    try {
-      const data = await cachedApi<CustomerDetail>(
-        `/api/customers/${encodeURIComponent(contactId)}`,
-        scopeId,
-        { freshMs: 0, onCached: data => {
-          setCustomer(data);
-          setAssigned(new Set((data.customer.tags ?? []).map(tag => tag.id)));
-          setCustomerLoading(false);
-        } },
-      );
-
-      setCustomer(data);
-      setAssigned(new Set((data.customer.tags ?? []).map((tag) => tag.id)));
-
-      /*
-       * The conversation's own copy of the tags is caught up here too.
-       *
-       * It arrives with the bootstrap and only changes when this app changes
-       * it, so a tag added from the web -- or from this phone in an earlier
-       * session -- left the header badge and the list row saying one while
-       * the panel said three. This is the freshest reading either of them
-       * gets, so it is the one to trust.
-       */
-      updateContactTags(
-        contactId,
-        (data.customer.tags ?? []).map((tag) => ({
-          id: tag.id,
-          name: tag.name,
-          // CustomerTag has a colour; the panel's copy allows null, and the
-          // chip falls back to the same grey either way.
-          color: tag.color ?? colors.muted,
-        })),
-      );
-
-      return data;
-    } catch (customerError) {
-      if (customerError instanceof ApiError && [401, 403, 404].includes(customerError.status)) {
-        setCustomer(null);
-        setAssigned(new Set());
+    const pendingRead = customerReadFlight.current;
+    if (pendingRead?.owner === owner && pendingRead.readOwner === repliesOwner) {
+      // Invalidate the transport, not merely a logical cachedApi waiter.
+      activity.dirty = true;
+      customerRequest.current++;
+      if (!pendingRead.next) {
+        pendingRead.next = pendingRead.work.then(() => {
+          if (authSessionGeneration() !== flowAuthGeneration || !screenAlive.current || repliesOwnerRef.current !== repliesOwner || customerOwnerRef.current !== owner || !activity.dirty ||
+              !activity.focused || !activity.foreground || tagMutationFlight.current) return null;
+          return loadCustomer(true);
+        });
       }
-      setError(
-        customerError instanceof Error
-          ? customerError.message
-          : "Unable to load this customer.",
-      );
-
-      return null;
-    } finally {
-      setCustomerLoading(false);
+      return pendingRead.next;
     }
-  }, [contactId, scopeId, updateContactTags]);
+    const sequence = ++customerRequest.current;
+    const mutation = tagMutationEpoch.current, epoch = activity.epoch;
+    const owns = () => authSessionGeneration() === flowAuthGeneration && screenAlive.current && repliesOwnerRef.current === repliesOwner && customerOwnerRef.current === owner &&
+      activity.owner === owner && activity.focused && activity.foreground && activity.epoch === epoch &&
+      sequence === customerRequest.current && mutation === tagMutationEpoch.current;
+    activity.dirty = false;
+    setCustomerLoading(true);
+    const flight = { owner, readOwner: repliesOwner, work: Promise.resolve<CustomerDetail | null>(null), next: null as Promise<CustomerDetail | null> | null };
+    customerReadFlight.current = flight;
+    const work = (async () => {
+      try {
+        const path = `/api/customers/${encodeURIComponent(contactId)}`;
+        const data = fresh || tagLocalEdits.current.size > 0
+          ? await api<CustomerDetail>(path, scopeId, { expectedUserId: session?.user.id })
+          : await cachedRead<CustomerDetail>(JSON.stringify([session?.user.id, scopeId, path, metadataMemberId, flowAuthGeneration]),
+            () => api<CustomerDetail>(path, scopeId, { expectedUserId: session?.user.id }), { freshMs: 0, onCached: data => {
+            if (!owns()) return;
+            setCustomer(data);
+            setAssigned(new Set((data.customer.tags ?? []).map(tag => tag.id)));
+            setCustomerLoading(false);
+          } });
+        if (!owns()) return null;
+        tagLocalEdits.current.clear();
+        const items = data.customer.tags ?? [];
+        tagInboxSnapshot.current = { owner, tags: items.map(tag => tag.id).sort().join(","), items };
+        setCustomer(data);
+        setAssigned(new Set(items.map(tag => tag.id)));
+        updateContactTags(contactId, items.map(tag => ({ id: tag.id, name: tag.name, color: tag.color ?? colors.muted })));
+        return data;
+      } catch (customerError) {
+        if (!owns()) return null;
+        if (customerError instanceof ApiError && [401, 403, 404].includes(customerError.status)) {
+          setCustomer(null);
+          setAssigned(new Set());
+        }
+        setError(customerError instanceof Error ? customerError.message : "Unable to load this customer.");
+        return null;
+      } finally {
+        if (authSessionGeneration() === flowAuthGeneration && customerReadFlight.current === flight) {
+          customerReadFlight.current = null;
+          if (authSessionGeneration() === flowAuthGeneration && screenAlive.current && repliesOwnerRef.current === repliesOwner && customerOwnerRef.current === owner) setCustomerLoading(false);
+        }
+      }
+    })();
+    flight.work = work;
+    return work;
+  }, [contactId, scopeId, id, repliesOwner, session?.user.id, metadataMemberId, flowAuthGeneration, setCustomer, updateContactTags]);
 
   // Use the website's per-message eligibility; comment replies keep their own composer.
   const replyable = conversation?.source_type !== "comment";
-  const messageActionBusy = useRef(false);
+  const messageActionBusy = useRef<{ owner: string } | null>(null);
   const [messageActionPending, setMessageActionPending] = useState(false);
   const [reactionPreview, setReactionPreview] = useState<{ id: string; emoji: string | null } | null>(null);
-  const actionScope = useRef("");
-  actionScope.current = `${scopeId}:${id}`;
+  const actionScope = useRef({ key: "", epoch: 0, value: "", activityEpoch: customerReadActivity.current.epoch });
+  const actionKey = conversation && session ? JSON.stringify([session.user.id, conversation.business_id,
+    storageWorkspace?.memberId, id, conversation.social_account?.id, platform, conversation.source_type,
+    workspace?.businessId, storageReady, focused, foreground, customerReadActivity.current.epoch]) : "";
+  if (actionScope.current.key !== actionKey) {
+    actionScope.current = { key: actionKey, epoch: actionScope.current.epoch + 1,
+      value: actionKey ? JSON.stringify([actionKey, actionScope.current.epoch + 1]) : "", activityEpoch: customerReadActivity.current.epoch };
+  }
+  const actionOwner = actionScope.current.value;
+  const resolveSelection = useCallback((selection: MessageActionSelection) => {
+    if (!screenAlive.current || !focusedRef.current || !customerReadActivity.current.foreground) return null;
+    if (actionScope.current.activityEpoch !== customerReadActivity.current.epoch) return null;
+    return resolveMessageAction(selection, actionScope.current.value, messagesRef.current);
+  }, []);
   useEffect(() => {
-    actionScope.current = `${scopeId}:${id}`;
-    return () => { actionScope.current = ""; };
-  }, [scopeId, id]);
+    messageMenu.current?.close(); quotedSelection.current = null; setQuoted(null);
+    messageActionBusy.current = null; downloadFlight.current = null;
+    setMessageActionPending(false); setReactionPreview(null); setSaving(false);
+  }, [actionOwner]);
 
-  async function actOnMessage(target: InboxMessage, action: "pin" | "reaction", emoji: string | null = null) {
+  function currentQuote(selection = quotedSelection.current) {
+    if (!quoted) return null;
+    const target = selection ? resolveSelection(selection) : null;
+    if (!target || !getMessageActions(target.message, platform).reply || !replyable) {
+      throw new Error("The reply target is no longer available. Choose the message again or cancel the reply.");
+    }
+    return target.photo;
+  }
+
+  async function actOnMessage(target: InboxMessage, action: "pin" | "reaction", emoji: string | null = null, telegramCapability?: TelegramReactionCapability | null) {
     if (messageActionBusy.current || target.conversation_id !== String(id)) return;
-    const scope = actionScope.current;
-    messageActionBusy.current = true;
+    const scope = actionScope.current.value;
+    const telegramReaction = action === "reaction" && platform === "telegram";
+    if (telegramReaction && (!telegramCapability || !canUseTelegramReaction(telegramCapability, target, scope) || telegramCapability.scope.businessId !== conversation?.business_id || !session?.user.id)) return;
+    if (!screenAlive.current || !focusedRef.current || !customerReadActivity.current.foreground || !scope) return;
+    const reactionAuthGeneration = telegramReaction ? telegramCapability!.authGeneration : null;
+    const ownsReactionAuth = () => !telegramReaction || authSessionGeneration() === reactionAuthGeneration;
+    const flight = { owner: scope };
+    messageActionBusy.current = flight;
+    const activityEpoch = customerReadActivity.current.epoch;
+    const ownsReactionContext = () => ownsReactionAuth() && screenAlive.current && focusedRef.current && customerReadActivity.current.foreground &&
+      customerReadActivity.current.epoch === activityEpoch && actionScope.current.value === scope;
+    const ownsAction = () => ownsReactionContext() && messageActionBusy.current === flight;
     setMessageActionPending(true);
-    if (action === "reaction") setReactionPreview({ id: target.id, emoji });
+    if (action === "reaction" && !telegramReaction) setReactionPreview({ id: target.id, emoji });
     messageMenu.current?.close();
     try {
+      if (telegramReaction && telegramCapability && session) {
+        const confirmed = await sendTelegramReaction(telegramCapability, target, scope, emoji, session.user.id);
+        if (ownsAction()) setMessages(current => ownsReactionContext() ? applyTelegramReactionState(current, confirmed.scope, confirmed.state) : current);
+        return;
+      }
       const result = await api<{ message?: InboxMessage; timestamp?: number; warning?: string }>(
         action === "pin" ? `/api/conversations/${encodeURIComponent(String(id))}/message-pins` : "/api/facebook/messages/reaction",
         scopeId, {
@@ -3151,7 +3635,7 @@ function ConversationScreen() {
           body: action === "pin" ? { messageId: target.id, pinned: !isMessagePinned(target) }
             : { conversationId: target.conversation_id, messageId: target.id, reaction: emoji },
         });
-      if (actionScope.current !== scope) return;
+      if (!ownsAction()) return;
       if (action === "pin" && result.message) {
         const confirmed = result.message;
         setPinUpdates(current => [...current.filter(row => row.id !== confirmed.id), confirmed].slice(-100));
@@ -3169,10 +3653,19 @@ function ConversationScreen() {
       }));
       if (result.warning) Alert.alert("Reaction", result.warning);
     } catch (error) {
-      if (actionScope.current === scope) Alert.alert("Message action", error instanceof Error ? error.message : "Unable to save. Please try again.");
+      if (ownsAction()) Alert.alert("Message action", error instanceof Error ? error.message : telegramReaction ? "The bot reaction result is unconfirmed. Do not retry; refresh and review Telegram." : "Unable to save. Please try again.");
+      if (telegramReaction && telegramCapability && session && ownsAction()) {
+        // Refresh durable state after uncertainty; never resend the provider action.
+        try {
+          const current = await loadTelegramReactionCapability(target, scope, telegramCapability.scope.businessId, telegramCapability.scope.accountId, session.user.id);
+          if (ownsAction() && current?.state) setMessages(rows => ownsReactionContext() ? applyTelegramReactionState(rows, current.scope, current.state!) : rows);
+        } catch { /* The error below still states the action is unconfirmed. */ }
+      }
     } finally {
-      messageActionBusy.current = false;
-      if (actionScope.current) { setMessageActionPending(false); setReactionPreview(null); }
+      if (messageActionBusy.current === flight) {
+        messageActionBusy.current = null;
+        if (ownsReactionAuth() && screenAlive.current && actionScope.current.value === scope) { setMessageActionPending(false); setReactionPreview(null); }
+      }
     }
   }
 
@@ -3194,11 +3687,13 @@ function ConversationScreen() {
    * anything else is handed to the share sheet, which is Android's own answer
    * to "where should this go".
    */
-  async function downloadMessage(message: InboxMessage) {
+  async function downloadMessage(message: InboxMessage, selection: MessageActionSelection) {
     const url = message.attachment_url;
 
-    if (!url || saving) return;
-
+    if (!url || saving || !resolveSelection(selection)) return;
+    const flight = {}; downloadFlight.current = flight;
+    const owns = () => downloadFlight.current === flight && Boolean(resolveSelection(selection));
+    let lease: MessageDownloadLease | null = null;
     setSaving(true);
 
     try {
@@ -3214,14 +3709,20 @@ function ConversationScreen() {
         words(record(record(message.raw_payload)?.tenh_attachment)?.name) ||
         `tenh-${message.id.slice(0, 8)}${extensionFor(message, target.uri)}`;
 
-      const file = new File(folder, name);
-
-      if (file.exists) file.delete();
+      // Native downloads can outlive a blur/owner reset. Give each operation
+      // an immutable destination, including when provider filenames match.
+      // Keep shared files in cache: Android can consume them after shareAsync
+      // resolves, so deleting/reusing one at that point would break the share.
+      const safeName = name.replace(/[\/\\\u0000-\u001f]/g, "_").slice(0, 140);
+      const operationId = randomUUID();
+      const file = new File(folder, `${operationId}-${safeName}`);
+      lease = reserveMessageDownload(file, operationId);
 
       const saved = await File.downloadFileAsync(target.uri, file, {
         headers: target.headers,
-        idempotent: true,
+        idempotent: false,
       });
+      completeMessageDownload(lease);
 
       /*
        * Handed to Android's own share sheet, which is where "save this" lives
@@ -3230,21 +3731,26 @@ function ConversationScreen() {
        * whose native module Expo Go does not carry -- it threw the moment
        * anybody pressed Download, which is a worse answer than one extra tap.
        */
-      if (await Sharing.isAvailableAsync()) {
+      const sharingAvailable = await Sharing.isAvailableAsync();
+      if (!owns()) return;
+      protectMessageDownloadShare(lease);
+      if (sharingAvailable) {
         await Sharing.shareAsync(saved.uri);
       } else {
         Alert.alert("Saved", `It is on this phone as ${name}.`);
       }
 
-      messageMenu.current?.close();
+      if (owns()) messageMenu.current?.close();
     } catch (downloadError) {
+      if (!owns()) return;
       setError(
         downloadError instanceof Error
           ? downloadError.message
           : "Unable to save that.",
       );
     } finally {
-      setSaving(false);
+      if (lease) { try { releaseMessageDownload(lease); } catch { /* Cache admission stays guarded until a later safe sweep. */ } }
+      if (downloadFlight.current === flight) { downloadFlight.current = null; if (screenAlive.current) setSaving(false); }
     }
   }
 
@@ -3257,33 +3763,19 @@ function ConversationScreen() {
    * assigning it anywhere else is a job for the desk.
    */
   async function createReminder(note: string, remindAt: string) {
-    if (!contactId || !member?.id) {
-      setError("Reminders need a customer and a signed-in member.");
-      return false;
-    }
-
+    const flight = beginPanelAction("reminder");
+    if (!flight) return false;
     try {
+      if (!contactId || !metadataMemberId) throw new Error("Reminders need a customer and a signed-in member.");
       await api("/api/reminders", scopeId, {
-        method: "POST",
-        body: {
-          conversationId: String(id),
-          contactId,
-          assignedTo: member.id,
-          note,
-          remindAt,
-        },
+        method: "POST", expectedUserId: session?.user.id,
+        body: { conversationId: String(id), contactId, assignedTo: metadataMemberId, note, remindAt },
       });
-
-      return true;
+      return ownsPanelAction(flight);
     } catch (remindError) {
-      setError(
-        remindError instanceof Error
-          ? remindError.message
-          : "Unable to set that reminder.",
-      );
-
+      if (ownsPanelAction(flight)) setError(remindError instanceof Error ? remindError.message : "Unable to set that reminder.");
       return false;
-    }
+    } finally { finishPanelAction(flight); }
   }
 
   /*
@@ -3294,8 +3786,9 @@ function ConversationScreen() {
    * flattened into one here. "Where is that receipt" is one question, and
    * which of the two lists holds the answer is not the customer's problem.
    */
-  async function loadFiles(): Promise<CustomerFile[]> {
-    if (!contactId) return [];
+  async function loadFiles(signal: AbortSignal): Promise<CustomerFile[]> {
+    if (authSessionGeneration() !== flowAuthGeneration || !contactId || !scopeId || !session?.user.id) throw new ApiError("This customer is no longer available.", 403);
+    const owner = customerOwnerRef.current, readOwner = repliesOwner;
 
     try {
       const data = await api<{
@@ -3317,7 +3810,8 @@ function ConversationScreen() {
           attachmentUrl: string;
           createdAt: string;
         }[];
-      }>(`/api/customers/${encodeURIComponent(contactId)}/files`, scopeId);
+      }>(`/api/customers/${encodeURIComponent(contactId)}/files`, scopeId, { signal, expectedUserId: session.user.id });
+      if (authSessionGeneration() !== flowAuthGeneration || signal.aborted || !screenAlive.current || repliesOwnerRef.current !== readOwner || customerOwnerRef.current !== owner || !focusedRef.current || !customerReadActivity.current.foreground) throw new ApiError("Customer files read was cancelled.", 409);
 
       /*
        * A saved file is filed by what it actually is, not by the two buckets
@@ -3381,68 +3875,102 @@ function ConversationScreen() {
           new Date(second.createdAt).getTime() -
           new Date(first.createdAt).getTime(),
       );
-    } catch (filesError) {
-      setError(
-        filesError instanceof Error
-          ? filesError.message
-          : "Unable to load this customer's files.",
-      );
-
-      return [];
-    }
+    } catch (filesError) { throw filesError; }
   }
 
-  async function loadHistory(): Promise<TimelineItem[]> {
-    if (!contactId) return [];
-
-    try {
-      const data = await api<{ items: TimelineItem[] }>(
-        `/api/customers/${encodeURIComponent(contactId)}/timeline`,
-        scopeId,
-      );
-
-      return data.items ?? [];
-    } catch (historyError) {
-      setError(
-        historyError instanceof Error
-          ? historyError.message
-          : "Unable to load this customer's history.",
-      );
-
-      return [];
-    }
+  async function loadHistory(signal: AbortSignal): Promise<TimelineItem[]> {
+    if (authSessionGeneration() !== flowAuthGeneration || !contactId || !scopeId || !session?.user.id) throw new ApiError("This customer is no longer available.", 403);
+    const owner = customerOwnerRef.current, readOwner = repliesOwner;
+    const data = await api<{ items: TimelineItem[] }>(
+      `/api/customers/${encodeURIComponent(contactId)}/timeline`, scopeId, { signal, expectedUserId: session.user.id },
+    );
+    if (authSessionGeneration() !== flowAuthGeneration || signal.aborted || !screenAlive.current || repliesOwnerRef.current !== readOwner || customerOwnerRef.current !== owner || !focusedRef.current || !customerReadActivity.current.foreground) throw new ApiError("Customer history read was cancelled.", 409);
+    return data.items ?? [];
   }
 
   async function openTags() {
+    if (authSessionGeneration() !== flowAuthGeneration) return;
     setError("");
     setTagOpen(true);
-    setTagsLoading(tags.length === 0);
     setAssigned(new Set((conversation?.contact?.tags ?? []).map(tag => tag.id)));
 
-    try {
-      const [tagList] = await Promise.all([
-        cachedApi<{ tags: Tag[] }>("/api/tags?activeOnly=true", scopeId, {
-          onCached: data => { setTags(data.tags ?? []); setTagsLoading(false); },
-        }),
-        loadCustomer(),
-      ]);
-
-      setTags(tagList.tags ?? []);
-    } catch (tagError) {
-      setError(
-        tagError instanceof Error ? tagError.message : "Unable to load tags.",
-      );
-    } finally {
-      setTagsLoading(false);
-    }
+    // A tag picker needs current assignments, not a panel's cached preview.
+    await loadCustomer(true);
+  }
+  async function loadTagDefinitions(signal: AbortSignal): Promise<Tag[]> {
+    if (authSessionGeneration() !== flowAuthGeneration) throw new ApiError("Tag read was cancelled.", 409);
+    const data = await api<{ tags: Tag[] }>("/api/tags?activeOnly=true", scopeId, { signal, expectedUserId: session?.user.id });
+    if (authSessionGeneration() !== flowAuthGeneration || signal.aborted || !screenAlive.current || metadataOwnerRef.current !== metadataOwner || !focusedRef.current || !customerReadActivity.current.foreground) throw new ApiError("Tag read was cancelled.", 409);
+    return data.tags ?? [];
   }
 
-  async function toggleTag(tag: Tag) {
-    if (!contactId || busyTagId) {
+  async function loadTeamMembers(signal: AbortSignal): Promise<TeamMember[]> {
+    if (authSessionGeneration() !== flowAuthGeneration) throw new ApiError("Team read was cancelled.", 409);
+    const data = await api<{ members: TeamMember[] }>("/api/team/members", scopeId, { signal, expectedUserId: session?.user.id });
+    if (authSessionGeneration() !== flowAuthGeneration || signal.aborted || !screenAlive.current || metadataOwnerRef.current !== metadataOwner || !focusedRef.current || !customerReadActivity.current.foreground) throw new ApiError("Team read was cancelled.", 409);
+    return data.members ?? [];
+  }
+  useEffect(() => {
+    // The protected customer read and local mutation own the picker state.
+    // An older Inbox bootstrap must not undo a successful tag change.
+    if (tagOpen && !busyTagId && customer && focused && foreground && !customerReadActivity.current.dirty) {
+      setAssigned(new Set((customer.customer.tags ?? []).map(tag => tag.id)));
+    }
+  }, [tagOpen, busyTagId, customer?.customer.tags, focused, foreground]);
+  useEffect(() => {
+    if (!contactId || !screenAlive.current) return;
+    const owner = `${scopeId}:${id}:${contactId}`;
+    if (customerOwnerRef.current !== owner) return;
+    const items = conversation?.contact?.tags ?? [];
+    const inboxTags = items.map(tag => tag.id).sort().join(",");
+    const previous = tagInboxSnapshot.current;
+    const changed = previous?.owner === owner && previous.tags !== inboxTags;
+    tagInboxSnapshot.current = { owner, tags: inboxTags, items };
+    const activity = customerReadActivity.current;
+    const waiting = customerReadFlight.current?.owner === owner;
+    const customerTags = (customer?.customer.tags ?? []).map(tag => tag.id).sort().join(",");
+    if ((changed && (tagOpen || waiting || activity.dirty || tagMutationFlight.current)) ||
+        (tagOpen && customer?.customer.id === contactId && inboxTags !== customerTags)) {
+      activity.dirty = true;
+      customerRequest.current++;
+    }
+    if (!activity.focused || !activity.foreground) {
+      setCustomerLoading(false);
       return;
     }
+    if (!activity.dirty) return;
+    if (tagOpen) {
+      const preview = new Set(items.map(tag => tag.id));
+      for (const [tagId, selected] of tagLocalEdits.current) {
+        if (selected) preview.add(tagId); else preview.delete(tagId);
+      }
+      setAssigned(preview);
+    }
+    // One pending flag survives inactive transitions and mutation completion.
+    // One queued transport per flight starts only for the current active owner.
+    if (!tagMutationFlight.current) void loadCustomer(true);
+  }, [tagOpen, busyTagId, conversation?.contact?.tags, customer?.customer.id, focused, foreground, loadCustomer]);
+
+
+  async function toggleTag(tag: Tag) {
+    if (authSessionGeneration() !== flowAuthGeneration || !contactId || !scopeId || !session?.user.id || !metadataMemberId || conversation?.business_id !== scopeId || tagMutationFlight.current ||
+        !customerReadActivity.current.focused || !customerReadActivity.current.foreground) {
+      return;
+    }
+    const owner = `${scopeId}:${id}:${contactId}`;
+    if (!screenAlive.current || repliesOwnerRef.current !== repliesOwner || customerOwnerRef.current !== owner) return;
+    const flight = {};
+    tagMutationFlight.current = flight;
+    tagMutationEpoch.current++;
+    customerRequest.current++;
+    setCustomerLoading(false);
+    const ownsContext = () => authSessionGeneration() === flowAuthGeneration && screenAlive.current &&
+      panelContext.current.value === panelOwner && repliesOwnerRef.current === repliesOwner && customerOwnerRef.current === owner;
+    const owns = () => ownsContext() && tagMutationFlight.current === flight;
 
     const on = assigned.has(tag.id);
+    const previousEdit = tagLocalEdits.current.get(tag.id);
+    tagLocalEdits.current.set(tag.id, !on);
     const previousConversationTags = conversation?.contact?.tags ?? [];
     const previousCustomerTags = customer?.customer.tags ?? [];
     const inboxTag = {
@@ -3466,6 +3994,7 @@ function ConversationScreen() {
 
     // Moved first so the row answers the tap; put back if the server refuses.
     setAssigned((current) => {
+      if (!ownsContext()) return current;
       const next = new Set(current);
 
       if (on) {
@@ -3478,6 +4007,7 @@ function ConversationScreen() {
     });
 
     if (contactId) {
+      tagInboxSnapshot.current = { owner, tags: nextConversationTags.map(tag => tag.id).sort().join(","), items: nextConversationTags };
       updateContactTags(contactId, nextConversationTags);
     }
 
@@ -3495,17 +4025,21 @@ function ConversationScreen() {
         await api(
           `/api/contacts/${encodeURIComponent(contactId)}/tags/${encodeURIComponent(tag.id)}`,
           scopeId,
-          { method: "DELETE" },
+          { method: "DELETE", expectedUserId: session?.user.id },
         );
       } else {
         await api(
           `/api/contacts/${encodeURIComponent(contactId)}/tags`,
           scopeId,
-          { method: "POST", body: { tagId: tag.id, conversationId: id } },
+          { method: "POST", expectedUserId: session?.user.id, body: { tagId: tag.id, conversationId: id } },
         );
       }
     } catch (toggleError) {
+      if (!owns()) return;
+      if (previousEdit === undefined) tagLocalEdits.current.delete(tag.id);
+      else tagLocalEdits.current.set(tag.id, previousEdit);
       setAssigned((current) => {
+      if (!ownsContext()) return current;
         const next = new Set(current);
 
         if (on) {
@@ -3518,14 +4052,23 @@ function ConversationScreen() {
       });
 
       if (contactId) {
-        updateContactTags(contactId, previousConversationTags);
+        // Roll back only this attempted tag; retain newer remote assignments.
+        const latest = tagInboxSnapshot.current?.owner === owner
+          ? tagInboxSnapshot.current.items : previousConversationTags;
+        const restored = latest.filter(item => item.id !== tag.id);
+        const previousTag = previousConversationTags.find(item => item.id === tag.id);
+        if (on && previousTag) restored.push(previousTag);
+        tagInboxSnapshot.current = { owner, tags: restored.map(tag => tag.id).sort().join(","), items: restored };
+        updateContactTags(contactId, restored.map(item => ({ ...item, color: item.color ?? colors.muted })));
       }
 
       setCustomer((current) =>
         current
           ? {
               ...current,
-              customer: { ...current.customer, tags: previousCustomerTags },
+              customer: { ...current.customer, tags: previousCustomerTags
+                  .filter(item => on && item.id === tag.id)
+                  .concat(current.customer.tags.filter(item => item.id !== tag.id)) },
             }
           : current,
       );
@@ -3536,7 +4079,10 @@ function ConversationScreen() {
           : "Unable to change this tag.",
       );
     } finally {
-      setBusyTagId(null);
+      if (owns()) {
+        tagMutationFlight.current = null;
+        setBusyTagId(null);
+      }
     }
   }
 
@@ -3545,43 +4091,48 @@ function ConversationScreen() {
    * refuses. The list behind is the same object, so a status changed here
    * shows there before the request lands -- and un-shows if it fails.
    */
-  async function runAction(
-    key: string,
-    patch: Record<string, unknown>,
-    request: () => Promise<unknown>,
-  ) {
-    if (!id || !conversation || busyAction) {
-      return false;
-    }
-
-    const before = Object.fromEntries(
-      Object.keys(patch).map((field) => [
-        field,
-        (conversation as unknown as Record<string, unknown>)[field],
-      ]),
-    );
-
+  function panelActionOwner() {
+    return authSessionGeneration() === flowAuthGeneration && panelContext.current.value === panelOwner && screenAlive.current &&
+      repliesOwnerRef.current === repliesOwner && ownerRef.current === `${scopeId}:${id}` &&
+      conversation?.business_id === scopeId && session?.user.id && metadataMemberId ? panelOwner : null;
+  }
+  function beginPanelAction(key: string) {
+    const owner = panelActionOwner();
+    if (!owner || !focusedRef.current || !customerReadActivity.current.foreground || panelActionFlight.current) return null;
+    const flight = { owner, key };
+    panelActionFlight.current = flight;
     setBusyAction(key);
     setError("");
+    return flight;
+  }
+  function ownsPanelAction(flight: { owner: string; key: string }) {
+    return panelActionFlight.current === flight && panelActionOwner() === flight.owner;
+  }
+  function finishPanelAction(flight: { owner: string; key: string }) {
+    if (!ownsPanelAction(flight)) return;
+    panelActionFlight.current = null;
+    setBusyAction(null);
+  }
+  useEffect(() => {
+    panelActionFlight.current = null;
+    readSuppressed.current = false;
+    setBusyAction(null);
+  }, [panelOwner]);
+
+  async function runAction(key: string, patch: Record<string, unknown>, request: () => Promise<unknown>, reservedFlight?: { owner: string; key: string }) {
+    if (!id || !conversation) return false;
+    const flight = reservedFlight ?? beginPanelAction(key);
+    if (!flight || !ownsPanelAction(flight)) return false;
+    const before = Object.fromEntries(Object.keys(patch).map(field => [field, (conversation as unknown as Record<string, unknown>)[field]]));
     updateConversation(id, patch);
-
-    try {
-      await request();
-
-      return true;
-    } catch (actionError) {
-      updateConversation(id, before);
-
-      setError(
-        actionError instanceof Error
-          ? actionError.message
-          : "Unable to change this conversation.",
-      );
-
+    try { await request(); return ownsPanelAction(flight); }
+    catch (actionError) {
+      if (ownsPanelAction(flight)) {
+        updateConversation(id, before);
+        setError(actionError instanceof Error ? actionError.message : "Unable to change this conversation.");
+      }
       return false;
-    } finally {
-      setBusyAction(null);
-    }
+    } finally { finishPanelAction(flight); }
   }
 
   /*
@@ -3599,71 +4150,22 @@ function ConversationScreen() {
    * what everybody else sees.
    */
   async function saveField(field: EditableField, value: string) {
-    if (!contactId || busyAction) {
-      return false;
-    }
-
-    setBusyAction(`field:${field}`);
-    setError("");
-
+    if (!contactId) return false;
+    const flight = beginPanelAction(`field:${field}`); if (!flight) return false;
     try {
-      await api(
-        `/api/contacts/${encodeURIComponent(contactId)}`,
-        scopeId,
-        {
-          method: "PATCH",
-          /*
-           * The endpoint wants the conversation as well as the field. It logs
-           * the edit against the thread it was made from, which is how the
-           * customer timeline knows where a phone number came from.
-           */
-          body: { conversationId: id, [field]: value },
-        },
-      );
-
+      await api(`/api/contacts/${encodeURIComponent(contactId)}`, scopeId, {
+        method: "PATCH", expectedUserId: session?.user.id, body: { conversationId: id, [field]: value },
+      });
+      if (!ownsPanelAction(flight)) return false;
       await loadCustomer();
-
-      return true;
+      return ownsPanelAction(flight);
     } catch (saveError) {
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "Unable to save that.",
-      );
-
+      if (ownsPanelAction(flight)) setError(saveError instanceof Error ? saveError.message : "Unable to save that.");
       return false;
-    } finally {
-      setBusyAction(null);
-    }
+    } finally { finishPanelAction(flight); }
   }
 
-  async function openPanel() {
-    setPanelOpen(true);
-    void loadCustomer();
-
-    if (members.length > 0) {
-      return;
-    }
-
-    setMembersLoading(true);
-
-    try {
-      const data = await api<{ members: TeamMember[] }>(
-        "/api/team/members",
-        scopeId,
-      );
-
-      setMembers(data.members ?? []);
-    } catch (memberError) {
-      setError(
-        memberError instanceof Error
-          ? memberError.message
-          : "Unable to load the team.",
-      );
-    } finally {
-      setMembersLoading(false);
-    }
-  }
+  function openPanel() { if (authSessionGeneration() !== flowAuthGeneration) return; setPanelOpen(true); void loadCustomer(); }
 
   async function changeStatus(next: ConversationStatus) {
     if (conversation?.status === next) {
@@ -3678,7 +4180,7 @@ function ConversationScreen() {
      */
     await runAction(`status:${next}`, { status: next }, () =>
       api(`/api/conversations/${encodeURIComponent(String(id))}/status`, scopeId, {
-        method: "PATCH",
+        method: "PATCH", expectedUserId: session?.user.id,
         body: { status: next },
       }),
     );
@@ -3696,7 +4198,7 @@ function ConversationScreen() {
         api(
           `/api/conversations/${encodeURIComponent(String(id))}/assignment`,
           scopeId,
-          { method: "PATCH", body: { assignedTo: memberId } },
+          { method: "PATCH", expectedUserId: session?.user.id, body: { assignedTo: memberId } },
         ),
     );
   }
@@ -3706,28 +4208,40 @@ function ConversationScreen() {
 
     await runAction("pin", { is_pinned: next }, () =>
       api(`/api/conversations/${encodeURIComponent(String(id))}/pin`, scopeId, {
-        method: "PATCH",
+        method: "PATCH", expectedUserId: session?.user.id,
         body: { isPinned: next },
       }),
     );
   }
 
   async function markUnread() {
-    const done = await runAction("unread", { unread_count: 1 }, () =>
-      api(`/api/conversations/${encodeURIComponent(String(id))}/unread`, scopeId, {
-        method: "PATCH",
-      }),
-    );
-
-    if (done) {
-      /*
-       * Leaving is the point of the action. Staying would put the screen
-       * straight back into its mark-as-read effect the next time it mounts,
-       * and the agent would wonder why the badge did not stick.
-       */
-      setPanelOpen(false);
-      router.back();
-    }
+    // Reserve before waiting: a second tap must not clear the first action's suppression.
+    const flight = beginPanelAction("unread");
+    if (!flight) return;
+    const unreadOwner = flight.owner;
+    readSuppressed.current = true;
+    clearTimeout(readTimer.current);
+    readTimer.current = undefined;
+    try {
+      // Let any earlier read finish before writing the explicit unread state.
+      await readPending.current;
+      if (!ownsPanelAction(flight)) return;
+      const done = await runAction("unread", { unread_count: 1 }, () =>
+        api(`/api/conversations/${encodeURIComponent(String(id))}/unread`, scopeId, {
+          method: "PATCH", expectedUserId: session?.user.id,
+        }), flight,
+      );
+      if (panelActionOwner() !== unreadOwner) return;
+      if (done) {
+        setPanelOpen(false);
+        if (focusedRef.current && customerReadActivity.current.foreground) router.back();
+      } else readSuppressed.current = false;
+    } catch (unreadError) {
+      if (panelActionOwner() === unreadOwner) {
+        readSuppressed.current = false;
+        setError(unreadError instanceof Error ? unreadError.message : "Unable to mark this conversation unread.");
+      }
+    } finally { finishPanelAction(flight); }
   }
 
   const commentThreads = useMemo(() => {
@@ -3893,10 +4407,10 @@ function ConversationScreen() {
       </View>
 
       {replyable && scopeId ? <PinnedMessageBar key={`${scopeId}:${id}`} conversationId={String(id)} workspaceId={scopeId}
-        messages={messages} updated={pinUpdates} busy={messageActionPending}
+            messages={messages} updated={pinUpdates} busy={messageActionPending} revision={revision} enabled={focused && foreground}
         onJump={message => { pinJumpPages.current = 0; pinScrollRetries.current = 0; setPinJump(message.id); }}
         onUnpin={message => void actOnMessage(message, "pin")} /> : null}
-      <ErrorNotice message={error} onRetry={() => void load()} />
+      <ErrorNotice message={error} onRetry={() => void load(false, false)} />
 
       {/*
         Everything between the header and the composer answers a right-to-left
@@ -3951,12 +4465,14 @@ function ConversationScreen() {
                   message={item}
                   commentReplies={commentThreads.repliesByMessageId.get(item.id) ?? []}
                   conversation={conversation}
+                  quoteMessages={messages}
                   pageReactionOverride={reactionPreview?.id === item.id ? reactionPreview : undefined}
                   onViewMedia={setMediaPreview}
                   onReplyComment={beginCommentReply}
                   onCommentAction={requestCommentAction}
-                  onHold={(message, at) => {
-                    messageMenu.current?.open(message, at);
+                  onHold={(message, at, media) => {
+                    const selection = selectMessageAction(actionScope.current.value, message, media);
+                    if (selection && resolveSelection(selection)) messageMenu.current?.open(selection, at);
                   }}
                   commentBusy={commentBusy}
                   audio={{
@@ -4141,6 +4657,7 @@ function ConversationScreen() {
             style={{ width: 3, alignSelf: "stretch", borderRadius: 2, backgroundColor: colors.blue }}
           />
 
+          {quoted.message_type === "image" && quoted.attachment_url ? <AuthImage uri={quoted.attachment_url} style={{ width: 40, height: 40, borderRadius: 6 }} resizeMode="cover" /> : null}
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 11.5, fontWeight: "800", color: colors.blue }}>
               Replying to{" "}
@@ -4163,7 +4680,7 @@ function ConversationScreen() {
             accessibilityRole="button"
             accessibilityLabel="Do not quote this message"
             hitSlop={10}
-            onPress={() => setQuoted(null)}
+            onPress={() => { quotedSelection.current = null; setQuoted(null); }}
           >
             <Ionicons name="close" size={18} color={colors.muted} />
           </Pressable>
@@ -4172,23 +4689,27 @@ function ConversationScreen() {
 
       <Composer
         draft={draft}
-        onDraftChange={setDraft}
+        onDraftChange={(value) => { if (value !== draft) setDraftSendUnknown(false); setDraft(value); }}
         pending={pending}
-        onRemovePending={(key) =>
-          setPending((current) => current.filter((item) => item.key !== key))
-        }
+        onRemovePending={(key) => {
+          removeStorageDraftFile(storageOwner, key);
+          setPending((current) => current.filter((item) => item.key !== key));
+        }}
         sending={sending || preparingReply}
+        sendBlockedReason={pending.some(file => file.deliveryUnknown) ? "An attachment may already be delivered. Verify the thread and remove that item before sending again." : draftSendUnknown ? "The text may already be delivered. Verify the thread, then edit or clear it before sending again." : ""}
         bottomInset={insets.bottom}
-        onPickImages={() => void pickFromLibrary(["images"], true)}
-        onPickVideo={() => void pickFromLibrary(["videos"], false)}
+        onPickMedia={() => void pickFromLibrary()}
         onPickFile={() => void pickFile()}
-        onSendLocation={() => setMapOpen(true)}
+        onStorage={storageReady && !replyingToComment ? () => setStorageOpen(true) : undefined}
+        onSendLocation={() => void openLocationPicker()}
         onQuickReplies={() => void openReplies()}
         onStickers={conversation?.source_type !== "comment" ? () => setStickerOpen(true) : undefined}
         onVoice={stageVoice}
         onSend={() => void send()}
         fromQuickReply={fromQuickReply}
         onClearAll={() => {
+          clearStorageDraftOwner(storageOwner);
+          setDraftSendUnknown(false);
           setDraft("");
           setPending([]);
           setQuoted(null);
@@ -4198,15 +4719,32 @@ function ConversationScreen() {
         attachmentsDisabled={Boolean(replyingToComment)}
       />
 
-      <MessageMenuHost ref={messageMenu} canReply={replyable} platform={platform} saving={saving || messageActionPending}
-        onAction={(action, message, emoji) => {
-          if (action === "reply") setQuoted(message);
+      <MessageMenuHost ref={messageMenu} canReply={replyable} platform={platform} saving={saving || messageActionPending || sending} resolveSelection={resolveSelection}
+        loadTelegramCapability={(message, owner) => {
+          if (!conversation?.business_id || !conversation.social_account?.id || !session?.user.id || owner !== actionScope.current.value) return Promise.resolve(null);
+          return loadTelegramReactionCapability(message, owner, conversation.business_id, conversation.social_account.id, session.user.id);
+        }}
+        onAction={(action, message, selection, emoji, capability) => {
+          if (action === "reply") { quotedSelection.current = selection; setQuoted(message); }
           else if (action === "copy") copyMessage(message);
-          else if (action === "download") void downloadMessage(message);
-          else void actOnMessage(message, action, emoji);
+          else if (action === "download") void downloadMessage(message, selection);
+          else void actOnMessage(message, action, emoji, capability);
         }} />
 
-      {stickerOpen && scopeId ? <StickerPicker key={`${scopeId}:${id}`} conversationId={String(id)} workspaceId={scopeId} platform={platform} onClose={() => setStickerOpen(false)} onSend={sendSticker} /> : null}
+      {stickerOpen && scopeId ? <StickerPicker key={`stickers:${scopeId}:${id}`} conversationId={String(id)} workspaceId={scopeId} platform={platform} onClose={() => setStickerOpen(false)} onSend={sendSticker} /> : null}
+      {storageOpen && storageReady && focused && foreground && session && storageWorkspace && conversation ? <WorkspaceStoragePicker
+        key={JSON.stringify([session.user.id, conversation.business_id, storageWorkspace.memberId, id])}
+        scope={{ userId: session.user.id, workspaceId: conversation.business_id, memberId: storageWorkspace.memberId, conversationId: String(id) }}
+        room={MAX_PENDING_ATTACHMENTS - pending.length}
+        onClose={() => setStorageOpen(false)}
+        onDraft={files => {
+          const current = storageDraft.current;
+          if (!screenAlive.current || !focusedRef.current || ownerRef.current !== `${conversation.business_id}:${id}` || !current.ready || current.blocked || sendFlight.current || pendingQueue.current.length + files.length > MAX_PENDING_ATTACHMENTS) return false;
+          const next = [...pendingQueue.current, ...files];
+          storageDraft.current = { ...current, pending: next };
+          setPending(next);
+          return true;
+        }} /> : null}
       <QuickReplySheet
         open={replyOpen}
         replies={replies}
@@ -4218,8 +4756,12 @@ function ConversationScreen() {
       <LocationPicker
         open={mapOpen}
         sending={sending}
+        sendBlocked={!locationReady || !!locationRecovery}
+        pendingPoint={locationRecovery}
+        onCheckDelivery={locationRecovery ? () => void sendLocation(locationRecovery, true) : undefined}
+        sendError={locationError}
         onSend={(point) => void sendLocation(point)}
-        onClose={() => setMapOpen(false)}
+        onClose={closeLocationPicker}
       />
 
       {/*
@@ -4264,6 +4806,9 @@ function ConversationScreen() {
 
       {postUrl ? <PostWebView url={postUrl} onClose={() => setPostUrl(null)} /> : null}
       <CustomerPanel
+        key={JSON.stringify([repliesOwner, contactId])}
+        readOwner={JSON.stringify([repliesOwner, contactId])}
+        readActive={focused && foreground && Boolean(session?.user.id && scopeId && contactId && customer?.customer.id === contactId)}
         open={panelOpen}
         detail={customer}
         loading={customerLoading}
@@ -4281,7 +4826,9 @@ function ConversationScreen() {
         assignedTo={conversation?.assigned_to ?? null}
         members={members}
         membersLoading={membersLoading}
-        currentMemberId={member?.id ?? null}
+        isCurrent={() => authSessionGeneration() === flowAuthGeneration}
+        currentMemberId={metadataMemberId ?? null}
+        onTeamRetry={teamRead.error ? teamRead.retry : undefined}
         busy={busyAction}
         onStatus={(next) => void changeStatus(next)}
         onAssign={(memberId) => void assign(memberId)}
@@ -4291,7 +4838,7 @@ function ConversationScreen() {
         onRemind={createReminder}
         onHistory={loadHistory}
         onFiles={loadFiles}
-        error={panelOpen ? error : ""}
+        error={panelOpen ? teamRead.error || error : ""}
         onClose={() => setPanelOpen(false)}
       />
 
@@ -4301,7 +4848,8 @@ function ConversationScreen() {
         assigned={assigned}
         busyId={busyTagId}
         loading={tagsLoading}
-        error={tagOpen ? error : ""}
+        error={tagOpen ? tagRead.error || error : ""}
+        onRetry={tagRead.error ? tagRead.retry : undefined}
         name={name}
         onToggle={(tag) => void toggleTag(tag)}
         onClose={() => setTagOpen(false)}

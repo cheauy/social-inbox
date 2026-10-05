@@ -12,6 +12,7 @@ export type LibraryItem = {
   createdAt: string;
   detail: string;
   savedId?: string;
+  selectableId?: string;
   conversationId?: string | null;
 };
 const tabs = [
@@ -52,7 +53,7 @@ function MediaViewer({ item, close }: { item: LibraryItem; close: () => void }) 
   </div>;
 }
 
-export function CustomerFileLibrary({ items, tab, onTab, loading, deletingId, onDelete, onDownload }: {
+export function CustomerFileLibrary({ items, tab, onTab, loading, deletingId, onDelete, onDownload, selectedIds, onToggleSelect, visibleTabs = ["media", "files", "links"], emptyMessages, loadingLabel = "Loading customer files" }: {
   items: LibraryItem[];
   tab: LibraryTab;
   onTab: (tab: LibraryTab) => void;
@@ -60,6 +61,11 @@ export function CustomerFileLibrary({ items, tab, onTab, loading, deletingId, on
   deletingId: string | null;
   onDelete: (id: string) => void;
   onDownload: (id: string) => void;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
+  visibleTabs?: LibraryTab[];
+  emptyMessages?: Partial<Record<LibraryTab, string>>;
+  loadingLabel?: string;
 }) {
   const [preview, setPreview] = useState<LibraryItem | null>(null);
   const shown = items.filter((item) => category(item) === tab).sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
@@ -71,7 +77,14 @@ export function CustomerFileLibrary({ items, tab, onTab, loading, deletingId, on
   }
 
   function actions(item: LibraryItem) {
+    const selectionId = item.selectableId;
     return <div className="flex flex-wrap items-center gap-1">
+      {selectionId && onToggleSelect ? <button
+        type="button"
+        aria-pressed={selectedIds?.has(selectionId) ?? false}
+        onClick={() => onToggleSelect(selectionId)}
+        className={`${actionClass} ${(selectedIds?.has(selectionId) ?? false) ? "bg-[#EAF7FF]" : ""}`}
+      >{selectedIds?.has(selectionId) ? "Selected" : "Select"}</button> : null}
       {item.savedId ? <>
         {item.kind !== "link" ? <button type="button" onClick={() => onDownload(item.savedId!)} className={actionClass}>Download</button> : null}
         <button type="button" disabled={deletingId === item.savedId} onClick={() => onDelete(item.savedId!)} className={`${actionClass} !text-red-600`}>{deletingId === item.savedId ? "Deleting…" : "Delete"}</button>
@@ -80,14 +93,14 @@ export function CustomerFileLibrary({ items, tab, onTab, loading, deletingId, on
   }
 
   return <>
-    <div className="grid shrink-0 grid-cols-3 gap-2 border-b border-[#E3EAF2] px-5 py-3" aria-label="File categories">
-      {tabs.map(({ id, label, Icon }) => <button key={id} type="button" aria-pressed={tab === id} onClick={() => onTab(id)} className={`flex flex-col items-center gap-1 rounded-xl px-2 py-3 transition-colors ${tab === id ? "bg-[#EAF7FF] text-[#0089CC]" : "bg-[#F6F8FC] text-[#6D7E91] hover:bg-slate-100"}`}>
+    <div className={`grid shrink-0 ${visibleTabs.length === 2 ? "grid-cols-2" : "grid-cols-3"} gap-2 border-b border-[#E3EAF2] px-5 py-3`} aria-label="File categories">
+      {tabs.filter(({ id }) => visibleTabs.includes(id)).map(({ id, label, Icon }) => <button key={id} type="button" aria-pressed={tab === id} onClick={() => onTab(id)} className={`flex flex-col items-center gap-1 rounded-xl px-2 py-3 transition-colors ${tab === id ? "bg-[#EAF7FF] text-[#0089CC]" : "bg-[#F6F8FC] text-[#6D7E91] hover:bg-slate-100"}`}>
         <Icon size={19} /><span className="text-xs font-bold">{label}</span><span className="text-[11px] text-[#6D7E91]">{loading ? "—" : items.filter((item) => category(item) === id).length}</span>
       </button>)}
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5" aria-busy={loading}>
-      {loading ? <div className="mt-5 grid grid-cols-3 gap-2 motion-safe:animate-pulse" role="status" aria-label="Loading customer files">{Array.from({ length: 9 }, (_, index) => <div key={index} className="aspect-square rounded-xl bg-[#E3EAF2]" />)}</div>
-        : shown.length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-center text-[#6D7E91]"><FolderOpen size={32} /><p className="text-sm">{tab === "media" ? "No photos or videos from this customer yet." : tab === "files" ? "No documents have been sent or saved." : "No links have been saved for this customer."}</p></div>
+      {loading ? <div className="mt-5 grid grid-cols-3 gap-2 motion-safe:animate-pulse" role="status" aria-label={loadingLabel}>{Array.from({ length: 9 }, (_, index) => <div key={index} className="aspect-square rounded-xl bg-[#E3EAF2]" />)}</div>
+        : shown.length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-center text-[#6D7E91]"><FolderOpen size={32} /><p className="text-sm">{emptyMessages?.[tab] ?? (tab === "media" ? "No photos or videos from this customer yet." : tab === "files" ? "No documents have been sent or saved." : "No links have been saved for this customer.")}</p></div>
           : Array.from(months, ([month, entries]) => <section key={month} className="mt-5">
             <h3 className="mb-3 text-xs font-bold uppercase tracking-wide text-[#6D7E91]">{month}</h3>
             <div className={tab === "media" ? "grid grid-cols-2 gap-3 sm:grid-cols-3" : "divide-y divide-[#E3EAF2] overflow-hidden rounded-2xl border border-[#E3EAF2]"}>

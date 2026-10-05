@@ -49,7 +49,7 @@ export async function POST(
   context: RouteContext,
 ) {
   const authResult =
-    await getCurrentMember();
+    await getCurrentMember(true);
 
   if (!authResult.success) {
     return NextResponse.json(

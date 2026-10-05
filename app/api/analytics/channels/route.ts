@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
+import { readChannelMessages } from "@/lib/analytics/read-channel-messages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -150,13 +151,6 @@ type ConversationRow = {
   created_at: string;
 };
 
-type MessageRow = {
-  conversation_id: string | null;
-  direction: string | null;
-  created_at: string;
-  platform_created_at: string | null;
-};
-
 /*
  * When the message was sent, not when TENH wrote the row.
  *
@@ -291,7 +285,8 @@ export async function GET(request: NextRequest) {
           .eq("business_id", currentMember.business_id)
           .gte("created_at", range.start.toISOString())
           .lt("created_at", range.end.toISOString())
-          .order("created_at", { ascending: true }),
+          .order("created_at", { ascending: true }).order("id", { ascending: true }),
+        { requireComplete: true, signal: request.signal },
       ),
 
       /*
@@ -336,44 +331,6 @@ export async function GET(request: NextRequest) {
 
   const conversationIds = conversations.map((row) => row.id);
 
-  // Chunked: a busy workspace would otherwise blow past the URL length
-  // limit of a single .in() filter.
-  const messages: MessageRow[] = [];
-  const CHUNK = 200;
-
-  for (let index = 0; index < conversationIds.length; index += CHUNK) {
-    const slice = conversationIds.slice(index, index + CHUNK);
-
-    // Paged as well: 200 conversations can easily hold more than 1,000
-    // messages, and a truncated (ascending) read drops the newest replies.
-    const { data, error } = await fetchAllRows<MessageRow>(() =>
-      supabaseAdmin
-        .from("messages")
-        .select(
-          "conversation_id, direction, created_at, platform_created_at",
-        )
-        .eq("business_id", currentMember.business_id)
-        .in("conversation_id", slice)
-        .order("created_at", { ascending: true })
-        .order("id", { ascending: true }),
-    );
-
-    if (error) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Unable to load channel messages.",
-          ...(process.env.NODE_ENV !== "production"
-            ? { details: error.message }
-            : {}),
-        },
-        { status: 500 },
-      );
-    }
-
-    messages.push(...((data ?? []) as MessageRow[]));
-  }
-
   const firstIncomingAtMs = new Map<string, number>();
   const firstOutgoingAtMs = new Map<string, number>();
   const incomingByConversation = new Map<string, number>();
@@ -384,40 +341,48 @@ export async function GET(request: NextRequest) {
    * sent in, so the earliest of each direction is taken by comparison rather
    * than by position.
    */
-  for (const message of messages) {
-    if (!message.conversation_id) {
-      continue;
-    }
+  try {
+    await readChannelMessages(currentMember.business_id, conversationIds, (messages) => {
+      for (const message of messages) {
+        if (!message.conversation_id) {
+          continue;
+        }
 
-    const at = sentAtMs(message);
+        const at = sentAtMs(message);
 
-    if (!Number.isFinite(at)) {
-      continue;
-    }
+        if (!Number.isFinite(at)) {
+          continue;
+        }
 
-    if (message.direction === "outgoing") {
-      outgoingByConversation.set(
-        message.conversation_id,
-        (outgoingByConversation.get(message.conversation_id) ?? 0) + 1,
-      );
+        if (message.direction === "outgoing") {
+          outgoingByConversation.set(
+            message.conversation_id,
+            (outgoingByConversation.get(message.conversation_id) ?? 0) + 1,
+          );
 
-      const earliest = firstOutgoingAtMs.get(message.conversation_id);
+          const earliest = firstOutgoingAtMs.get(message.conversation_id);
 
-      if (earliest === undefined || at < earliest) {
-        firstOutgoingAtMs.set(message.conversation_id, at);
+          if (earliest === undefined || at < earliest) {
+            firstOutgoingAtMs.set(message.conversation_id, at);
+          }
+        } else if (message.direction === "incoming") {
+          incomingByConversation.set(
+            message.conversation_id,
+            (incomingByConversation.get(message.conversation_id) ?? 0) + 1,
+          );
+
+          const earliest = firstIncomingAtMs.get(message.conversation_id);
+
+          if (earliest === undefined || at < earliest) {
+            firstIncomingAtMs.set(message.conversation_id, at);
+          }
+        }
       }
-    } else if (message.direction === "incoming") {
-      incomingByConversation.set(
-        message.conversation_id,
-        (incomingByConversation.get(message.conversation_id) ?? 0) + 1,
-      );
-
-      const earliest = firstIncomingAtMs.get(message.conversation_id);
-
-      if (earliest === undefined || at < earliest) {
-        firstIncomingAtMs.set(message.conversation_id, at);
-      }
-    }
+    }, request.signal);
+  } catch (error) {
+    return NextResponse.json({ success: false, error: "Unable to load channel messages.",
+      ...(process.env.NODE_ENV !== "production" ? { details: error instanceof Error ? error.message : "Message read failed." } : {}),
+    }, { status: 500 });
   }
 
   const buckets = new Map<string, ChannelBucket>();

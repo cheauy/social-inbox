@@ -1,6 +1,7 @@
 import "server-only";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { hydrateTelegramReactionStates } from "@/lib/telegram/reaction-store";
 
 import type {
   InboxMessage,
@@ -176,7 +177,7 @@ export async function getMessagePage({
 
   return {
     messages:
-      pageMessages,
+      await hydrateTelegramReactionStates(supabaseAdmin, normalizedConversationId, pageMessages),
     hasMore,
     nextCursor:
       hasMore &&

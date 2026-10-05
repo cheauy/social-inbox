@@ -6,15 +6,18 @@ import { getMessagePin, getMessageSummary, isMessagePinned } from "../../lib/inb
 import { api } from "../lib/api/client";
 import { colors } from "./ui";
 
-export function PinnedMessageBar({ conversationId, workspaceId, messages, updated, busy, onJump, onUnpin }: {
+export function PinnedMessageBar({ conversationId, workspaceId, messages, updated, busy, onJump, onUnpin, revision = 0, enabled = true }: {
   conversationId: string; workspaceId?: string | null; messages: InboxMessage[];
   updated: InboxMessage[]; busy: boolean; onJump: (message: InboxMessage) => void; onUnpin: (message: InboxMessage) => void;
+  revision?: number; enabled?: boolean;
 }) {
   const [stored, setStored] = useState<InboxMessage[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
+  const [authoritative, setAuthoritative] = useState(false);
   useEffect(() => {
+    if (!enabled) return;
     let alive = true;
     let request = 0;
     const refresh = async () => {
@@ -23,6 +26,7 @@ export function PinnedMessageBar({ conversationId, workspaceId, messages, update
         const result = await api<{ pins: InboxMessage[]; truncated?: boolean }>(`/api/conversations/${encodeURIComponent(conversationId)}/message-pins`, workspaceId);
         if (!alive || sequence !== request) return;
         setStored((result.pins ?? []).filter(row => row.conversation_id === conversationId).slice(0, 100));
+        setAuthoritative(true);
         setError(result.truncated ? "Showing the first 100 pins." : "");
       } catch {
         if (alive && sequence === request) setError("Unable to load pins. Tap to retry.");
@@ -31,17 +35,21 @@ export function PinnedMessageBar({ conversationId, workspaceId, messages, update
     void refresh();
     const subscription = AppState.addEventListener("change", state => { if (state === "active") void refresh(); });
     return () => { alive = false; subscription.remove(); };
-  }, [conversationId, workspaceId, retry]);
+  }, [conversationId, workspaceId, retry, revision, updated, enabled]);
   const pins = useMemo(() => {
     const merged = new Map<string, InboxMessage>();
+    const allowed = new Set(stored.map(row => row.id));
     for (const row of [...stored, ...messages, ...updated]) {
       if (row.conversation_id !== conversationId) continue;
+      // The authorized pin snapshot can remove an old pin outside the newest
+      // message page. A stale loaded message must not resurrect that pin.
+      if (authoritative && !allowed.has(row.id)) continue;
       const prior = merged.get(row.id);
       if (!prior || String(getMessagePin(row).updated_at ?? "") >= String(getMessagePin(prior).updated_at ?? "")) merged.set(row.id, row);
     }
     return [...merged.values()].filter(isMessagePinned).sort((a, b) =>
       String(getMessagePin(b).updated_at ?? "").localeCompare(String(getMessagePin(a).updated_at ?? ""))).slice(0, 100);
-  }, [stored, messages, updated, conversationId]);
+  }, [stored, messages, updated, conversationId, authoritative]);
   const index = Math.max(0, pins.findIndex(row => row.id === selected));
   const pin = pins[index];
   return <>

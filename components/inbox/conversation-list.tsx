@@ -1,4 +1,5 @@
 "use client";
+import { readInboxChannels } from "@/lib/inbox/read-channels";
 
 import { DashboardUtilityNavigation } from "@/components/dashboard/dashboard-utility-navigation";
 import { ConversationHeaderSurface, ConversationRail } from "./inbox-layout-surfaces";
@@ -7,7 +8,9 @@ import { DeferredInboxItem } from "@/components/inbox/deferred-inbox-item";
 import type { BulkReadResult, ReadTarget } from "@/lib/inbox/bulk-read";
 import { useConversationPages } from "@/lib/inbox/use-conversation-pages";
 import { useConversationListAnchor } from "@/lib/inbox/use-conversation-list-anchor";
-import { CONVERSATION_PAGE_SIZE, type ConversationPagingInitial } from "@/lib/inbox/conversation-page-contract";
+import { CONVERSATION_PAGE_SIZE, INBOX_PAGE_CHANGED_EVENT, type ConversationPagingInitial } from "@/lib/inbox/conversation-page-contract";
+
+import { searchRowSubtitle, type InboxSearchMatch } from "@/lib/inbox/search-match";
 
 import { CustomerAvatar } from "@/components/customer-avatar";
 
@@ -101,9 +104,11 @@ type ConversationListProps = {
     StatusCounts;
   onSelectConversation: (
     conversationId: string,
+    match?: InboxSearchMatch,
   ) => void;
   onPrefetchConversation?: (
     conversationId: string,
+    match?: InboxSearchMatch,
   ) => void;
   onClearConversationSelection?: () => void;
 };
@@ -249,7 +254,6 @@ function parseSmartViewTagReference(
 const DEFAULT_SMART_VIEW_ORDER_IDS = [
   "default:my",
   "default:unassigned",
-  "default:comment",
   "default:open",
 ] as const;
 
@@ -1326,6 +1330,9 @@ function ConversationListSkeleton() {
  */
 type ConversationRowProps = {
   conversation: InboxConversation;
+  searchMatch?: InboxSearchMatch;
+  searchQuery: string;
+  searchPending: boolean;
   isActive: boolean;
   isKhmer: boolean;
   channelDirectory: ChannelDirectory;
@@ -1338,14 +1345,19 @@ type ConversationRowProps = {
   hydrated: boolean;
   onSelectConversation: (
     conversationId: string,
+    match?: InboxSearchMatch,
   ) => void;
   onPrefetchConversation?: (
     conversationId: string,
+    match?: InboxSearchMatch,
   ) => void;
 };
 
 const ConversationRow = memo(function ConversationRow({
   conversation,
+  searchMatch,
+  searchQuery,
+  searchPending,
   isActive,
   isKhmer,
   channelDirectory,
@@ -1382,9 +1394,11 @@ const ConversationRow = memo(function ConversationRow({
                       conversation.id
                     }
                     type="button"
+                    disabled={searchPending}
                     onClick={() => {
                       onSelectConversation(
                         conversation.id,
+                        searchMatch,
                       );
                     }}
                     onMouseEnter={() =>
@@ -1515,7 +1529,7 @@ const ConversationRow = memo(function ConversationRow({
                           }}
                         >
                           {normalizeLegacyConversationPreview(
-                            conversation.last_message_text,
+                            searchRowSubtitle(searchQuery, searchMatch, conversation.contact?.phone, conversation.last_message_text),
                           )}
                         </p>
 
@@ -1642,9 +1656,10 @@ function ConversationListView({
   });
 
   const stableSelectConversation = useCallback(
-    (conversationId: string) => {
+    (conversationId: string, match?: InboxSearchMatch) => {
       selectConversationRef.current(
         conversationId,
+        match,
       );
     },
     [],
@@ -1695,8 +1710,12 @@ function ConversationListView({
    * Telegram username/identity. Email, message preview, and Messenger
    * platform identity are excluded by product decision.
    */
-  const deferredSearch =
-    useDeferredValue(search);
+  const [settledSearch, setSettledSearch] = useState(search);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledSearch(search), 150);
+    return () => clearTimeout(timer);
+  }, [search]);
+  const deferredSearch = useDeferredValue(settledSearch);
 
   // Hydration-safe localized timestamps.
   // The server and browser can resolve locale/timezone differently,
@@ -1784,14 +1803,7 @@ function ConversationListView({
 
     async function loadChannelDirectory() {
       try {
-        const response =
-          await fetch(
-            "/api/inbox/channels",
-            {
-              method: "GET",
-              cache: "no-store",
-            },
-          );
+        const response = await readInboxChannels();
 
         const result =
           (await response.json()) as
@@ -2031,7 +2043,7 @@ function ConversationListView({
   }
 
   const [
-    selectedViewKey,
+    localSelectedViewKey,
     setSelectedViewKey,
   ] =
     useState(
@@ -2043,6 +2055,14 @@ function ConversationListView({
         ),
     );
 
+  // Paging reads use one atomic URL scope. An optimistic view combined with
+  // the previous channel/workspace would start an unnecessary wrong-scope read.
+  const selectedViewKey = pagination ? viewKeyFromUrl(searchParams.get("view")) : localSelectedViewKey;
+  const urlStatus = searchParams.get("status");
+  const pageStatus: StatusFilter = pagination
+    ? urlStatus && ["open", "pending", "resolved", "closed", "spam"].includes(urlStatus) ? urlStatus as StatusFilter : "all"
+    : optimisticStatus;
+
   useEffect(() => {
     setSelectedViewKey(
       viewKeyFromUrl(
@@ -2051,9 +2071,12 @@ function ConversationListView({
         ),
       ),
     );
-  }, [
-    searchParams,
-  ]);
+    if (pagination) {
+      const status = searchParams.get("status");
+      setOptimisticStatus(status && ["open", "pending", "resolved", "closed", "spam"].includes(status)
+        ? status as StatusFilter : "all");
+    }
+  }, [searchParams, pagination]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2420,10 +2443,10 @@ function ConversationListView({
   const workspaceContextId =
     selectedWorkspaceId ?? currentBusinessId;
 
-  const pageRequest = useMemo(() => ({ status: optimisticStatus, view: selectedViewKey,
+  const pageRequest = useMemo(() => ({ status: pageStatus, view: selectedViewKey,
     search: deferredSearch.trim(), channelId: selectedChannelId, workspaceId: selectedWorkspaceId,
     workspaceContextId: workspaceContextId ?? null, cursor: null }),
-    [optimisticStatus, selectedViewKey, deferredSearch, selectedChannelId, selectedWorkspaceId, workspaceContextId]);
+    [pageStatus, selectedViewKey, deferredSearch, selectedChannelId, selectedWorkspaceId, workspaceContextId]);
   const pager = useConversationPages(pagination, pageRequest, conversations, onPageRows);
   const { enabled: pagingEnabled, loading: pagingLoading, error: pagingError, more: loadNextPage } = pager;
   const [snapshotLoading, setSnapshotLoading] = useState(false);
@@ -2786,6 +2809,7 @@ function ConversationListView({
    * when the query moves on: a fast typist would otherwise have several
    * searches in flight and the slowest could land last.
    */
+  const [historyMatches, setHistoryMatches] = useState<{ query: string; matches: Record<string, InboxSearchMatch> }>({ query: "", matches: {} });
   const [messageMatchIds, setMessageMatchIds] =
     useState<Set<string>>(
       () => new Set(),
@@ -2838,12 +2862,15 @@ function ConversationListView({
         const result = (await response.json()) as {
           success?: boolean;
           conversationIds?: string[];
+          matches?: Record<string, InboxSearchMatch>;
         };
 
         if (!result.success) {
           return;
         }
 
+        if (controller.signal.aborted) return;
+        setHistoryMatches({ query: keyword, matches: result.matches ?? {} });
         setMessageMatchIds(
           new Set(result.conversationIds ?? []),
         );
@@ -2885,18 +2912,24 @@ function ConversationListView({
               keyword,
             ) ??
             false) ||
-          messageMatchIds.has(
-            conversation.id,
-          ),
+          (historyMatches.query.toLowerCase() === keyword && messageMatchIds.has(conversation.id)),
       );
     }, [
       baseViewConversations,
       conversationSearchIndex,
       deferredSearch,
       messageMatchIds,
+      historyMatches.query,
     ]);
 
-  const filteredConversations = pager.enabled ? pager.rows : legacyFilteredConversations;
+  // Server paging owns complete search/view qualification. Apply the known
+  // unread predicate immediately, rather than waiting for its debounced refresh.
+  const filteredConversations = pager.enabled
+    ? pager.rows.filter(row => !["unread", "pinned", "comment"].includes(selectedViewKey) || matchesView({
+      conversation: row, key: selectedViewKey, savedViews, memberId, memberIdByBusiness,
+      workspaceContextId, channelDirectory,
+    }))
+    : legacyFilteredConversations;
   const visibleConversations =
     useMemo(
       () =>
@@ -3071,12 +3104,6 @@ function ConversationListView({
           count: builtInCounts.unassigned,
         },
         {
-          orderId: "default:comment",
-          key: "comment" as BuiltInViewKey,
-          name: isKhmer ? "មតិយោបល់ Facebook" : "Facebook Comment",
-          count: builtInCounts.comment,
-        },
-        {
           orderId: "default:open",
           key: "open" as BuiltInViewKey,
           name: isKhmer ? "ការសន្ទនាបើក" : "Open conversation",
@@ -3084,7 +3111,6 @@ function ConversationListView({
         },
       ],
       [
-        builtInCounts.comment,
         builtInCounts.my,
         builtInCounts.open,
         builtInCounts.unassigned,
@@ -3285,11 +3311,15 @@ function ConversationListView({
     const queryString =
       query.toString();
 
-    router.push(
-      queryString
-        ? `/dashboard/inbox?${queryString}`
-        : "/dashboard/inbox",
-    );
+    const href = queryString ? `/dashboard/inbox?${queryString}` : "/dashboard/inbox";
+    if (pager.enabled) {
+      // The page API owns paging-mode view qualification; avoid a second RSC
+      // request for the same view and preserve the selected chat/draft tree.
+      setOptimisticStatus("all");
+      window.history.pushState(null, "", href);
+    } else {
+      router.push(href);
+    }
   }
 
   function openCreateView() {
@@ -3490,6 +3520,7 @@ function ConversationListView({
         },
       );
 
+      if (pager.enabled) window.dispatchEvent(new CustomEvent(INBOX_PAGE_CHANGED_EVENT, { detail: { viewConfigurationChanged: true } }));
       const nextKey =
         `saved:${result.view.id}`;
 
@@ -3582,6 +3613,7 @@ function ConversationListView({
         );
       }
 
+      if (pager.enabled) window.dispatchEvent(new CustomEvent(INBOX_PAGE_CHANGED_EVENT, { detail: { viewConfigurationChanged: true } }));
       setDeleteViewTarget(
         null,
       );
@@ -3652,7 +3684,7 @@ function ConversationListView({
 
   const isSmartViewSelected =
     selectedViewKey.startsWith("saved:") ||
-    ["my", "unassigned", "comment", "open"].includes(
+    ["my", "unassigned", "open"].includes(
       selectedViewKey,
     );
 
@@ -3665,7 +3697,7 @@ function ConversationListView({
          * Views do; the filter panel opens beside the list.
          */}
         <div className="px-2 pb-1.5">
-          <InboxChannelSelector variant="rail" onSwitchingChange={setChannelSwitching} />
+          <InboxChannelSelector variant="rail" onSwitchingChange={setChannelSwitching} pagingEnabled={pager.enabled} pageLoading={pager.initialLoading} />
         </div>
 
         <div className="mx-3 mb-2 mt-0.5 border-t border-slate-100 dark:border-slate-800/60" />
@@ -4958,7 +4990,7 @@ function ConversationListView({
                 }{" "}
                 ·{" "}
                 {
-                  pager.enabled ? pager.page?.total ?? 0 : baseViewConversations.length
+                  pager.enabled ? pager.page?.total ?? "…" : baseViewConversations.length
                 }
               </span>
 
@@ -5020,7 +5052,7 @@ function ConversationListView({
             status with no conversations gets the same transition as one with
             plenty rather than snapping straight to "none found".
           */}
-          {statusSwitching || channelSwitching || (pager.enabled && pager.loading && !pager.rows.length) ? (
+          {(pager.enabled ? pager.initialLoading : statusSwitching || channelSwitching) ? (
             <ConversationListSkeleton />
           ) : filteredConversations.length ===
             0 ? (
@@ -5048,6 +5080,9 @@ function ConversationListView({
                   {() => <ConversationRow
                     key={conversation.id}
                     conversation={conversation}
+                    searchPending={search.trim() !== deferredSearch.trim()}
+                    searchQuery={deferredSearch.trim()}
+                    searchMatch={pager.enabled ? pager.page?.searchMatches?.[conversation.id] : historyMatches.query === deferredSearch.trim().replace(/^@/, "") ? historyMatches.matches[conversation.id] : undefined}
                     isActive={
                       conversation.id ===
                       activeConversationId

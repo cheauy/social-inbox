@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   NextRequest,
   NextResponse,
@@ -28,6 +29,8 @@ type SendTelegramLocationBody = {
   latitude?: number;
   longitude?: number;
   message?: string;
+  requestId?: string;
+  reconcileOnly?: boolean;
 };
 
 type ConversationRow = {
@@ -73,8 +76,8 @@ function telegramMessageTime(
   return new Date().toISOString();
 }
 
-export async function POST(
-  request: NextRequest,
+async function handleLocation(
+  request: Pick<NextRequest, "json">,
 ) {
   let body: SendTelegramLocationBody;
 
@@ -90,6 +93,11 @@ export async function POST(
       },
       { status: 400 },
     );
+  }
+
+  const requestId = body.requestId?.trim();
+  if ((body.requestId !== undefined && (!requestId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId))) || (body.reconcileOnly && !requestId)) {
+    return NextResponse.json({ success: false, error: "A valid location request ID is required." }, { status: 400 });
   }
 
   const conversationId =
@@ -373,6 +381,25 @@ export async function POST(
     );
   }
 
+  // The existing receipt table has a platform-independent atomic primary key.
+  // A request ID fences one dispatch attempt, not exactly-once delivery.
+  const fingerprint = createHash("sha256").update(JSON.stringify([
+    "telegram-location-v1", currentMember.business_id, currentMember.id,
+    conversation.id, socialAccount.id, chatId, latitude, longitude, message,
+  ])).digest("hex");
+  const updateReceipt = (values: Record<string, unknown>) => supabaseAdmin.from("facebook_sticker_sends").update(values)
+    .eq("business_id", currentMember.business_id).eq("request_id", requestId!);
+  if (requestId) {
+    const existing = await supabaseAdmin.from("facebook_sticker_sends").select("fingerprint,status,result,http_status").eq("business_id", currentMember.business_id).eq("request_id", requestId).maybeSingle();
+    if (existing.error) return NextResponse.json({ success: false, error: "Location delivery tracking is unavailable. No location was sent." }, { status: 503 });
+    if (existing.data) {
+      if (existing.data.fingerprint !== fingerprint) return NextResponse.json({ success: false, error: "This request ID belongs to a different location send." }, { status: 409 });
+      if (existing.data.status === "completed" && existing.data.result) return NextResponse.json(existing.data.result, { status: existing.data.http_status ?? 200 });
+      return NextResponse.json({ success: false, delivery: "unknown", error: "The earlier location may have been delivered. Check delivery later or verify in Telegram; do not resend it." }, { status: 409 });
+    }
+    if (body.reconcileOnly) return NextResponse.json({ success: true, delivery: "not_found", locationTracking: "v1" });
+  }
+
   let botToken: string;
 
   try {
@@ -391,6 +418,20 @@ export async function POST(
     );
   }
 
+  if (requestId) {
+    const claim = await supabaseAdmin.from("facebook_sticker_sends").insert({
+      business_id: currentMember.business_id, request_id: requestId,
+      conversation_id: conversation.id, member_id: currentMember.id,
+      fingerprint, status: "pending",
+    });
+    if (claim.error) return NextResponse.json({ success: false, delivery: "unknown", error: "The location request could not be claimed. Check delivery before trying again." }, { status: 409 });
+  }
+  const uncertain = async () => {
+    if (!requestId) return;
+    // Never remove a claim after dispatch, even if saving its outcome fails.
+    try { await updateReceipt({ status: "uncertain", updated_at: new Date().toISOString() }); } catch { /* pending still fences retries */ }
+  };
+
   let telegramMessage;
 
   try {
@@ -402,6 +443,7 @@ export async function POST(
         longitude,
       });
   } catch (error) {
+    await uncertain();
     console.error(
       "[Tenh Telegram] Outgoing location send failed:",
       error instanceof Error
@@ -412,6 +454,7 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
+        ...(requestId ? { delivery: "unknown" } : {}),
         error:
           error instanceof Error
             ? error.message
@@ -427,6 +470,7 @@ export async function POST(
   if (
     !Number.isFinite(messageId)
   ) {
+    await uncertain();
     return NextResponse.json(
       {
         success: false,
@@ -458,6 +502,8 @@ export async function POST(
     | string
     | null = null;
 
+  // If persistence throws, the durable pending claim still prevents redispatch.
+  try {
   const {
     error: insertError,
   } =
@@ -562,6 +608,10 @@ export async function POST(
       "Telegram sent the message, but TENH could not update the conversation preview.";
   }
 
+  } catch {
+    saveWarning = "Telegram sent the location, but TENH could not save its local history.";
+  }
+
   console.info(
     "[Tenh Telegram] Outgoing location sent.",
     {
@@ -574,12 +624,36 @@ export async function POST(
     },
   );
 
-  return NextResponse.json({
+  const result = {
     success: true,
+    ...(requestId ? { delivery: "confirmed", locationTracking: "v1" } : {}),
     platform: "telegram",
     messageId:
       platformMessageId,
     warning:
       saveWarning,
-  });
+  };
+  if (requestId) {
+    try {
+      await updateReceipt({ status: "completed", result, http_status: 200, updated_at: new Date().toISOString() });
+    } catch { /* Pending claim remains safe; client has the confirmed result. */ }
+  }
+  return NextResponse.json(result);
+}
+
+export async function POST(request: NextRequest) {
+  return handleLocation(request);
+}
+
+// GET never claims or dispatches. Older deployments return 405 here, so native
+// clients can verify tracking support before making their first send.
+export async function GET(request: NextRequest) {
+  const params = new URL(request.url).searchParams;
+  return handleLocation({ json: async () => ({
+    conversationId: params.get("conversationId") ?? "",
+    requestId: params.get("requestId") ?? "",
+    latitude: params.has("latitude") ? Number(params.get("latitude")) : Number.NaN,
+    longitude: params.has("longitude") ? Number(params.get("longitude")) : Number.NaN,
+    reconcileOnly: true,
+  }) });
 }

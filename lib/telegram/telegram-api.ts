@@ -8,10 +8,44 @@ import type {
   TelegramUser,
   TelegramWebhookInfo,
   TelegramStickerSet,
+  TelegramChatFullInfo,
 } from "@/lib/telegram/types";
 
 const TELEGRAM_API_BASE =
   "https://api.telegram.org";
+
+export async function getTelegramChat(token: string, chatId: string) {
+  return telegramRequest<TelegramChatFullInfo>(token, "getChat", { body: { chat_id: chatId }, timeoutMs: 12000 });
+}
+
+export async function getTelegramReactionBot(token: string) {
+  return telegramRequest<TelegramUser>(token, "getMe", { timeoutMs: 12000 });
+}
+
+/** Only an explicit 4xx Bot API refusal is safe to release for another action. */
+export class TelegramReactionRejectedError extends Error {
+  constructor(readonly errorCode: number, readonly retryAfter: number | null) {
+    super("Telegram rejected this reaction. Check the chat connection and allowed reactions.");
+  }
+}
+
+export async function setTelegramMessageReaction({ token, chatId, messageId, emoji }: {
+  token: string; chatId: string; messageId: number; emoji: string | null;
+}): Promise<true> {
+  const response = await fetch(`${TELEGRAM_API_BASE}/bot${token}/setMessageReaction`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store",
+    body: JSON.stringify({ chat_id: chatId, message_id: messageId, reaction: emoji === null ? [] : [{ type: "emoji", emoji }], is_big: false }),
+    signal: AbortSignal.timeout(12000),
+  });
+  let result: TelegramApiEnvelope<boolean>;
+  try { result = await response.json(); } catch { throw new Error("Telegram did not confirm the reaction."); }
+  if (response.ok && result?.ok === true && result.result === true) return true;
+  if (result?.ok === false && Number.isInteger(result.error_code) && result.error_code! >= 400 && result.error_code! < 500 &&
+      (response.ok || response.status >= 400 && response.status < 500)) {
+    throw new TelegramReactionRejectedError(result.error_code!, typeof result.parameters?.retry_after === "number" ? result.parameters.retry_after : null);
+  }
+  throw new Error("Telegram did not confirm the reaction.");
+}
 
 type TelegramRequestOptions = {
   body?: Record<string, unknown>;
@@ -470,11 +504,13 @@ export async function sendTelegramPhoto({
   chatId,
   photo,
   fileName,
+  caption,
 }: {
   token: string;
   chatId: string | number;
   photo: Blob;
   fileName: string;
+  caption?: string;
 }) {
   const formData =
     new FormData();
@@ -490,6 +526,9 @@ export async function sendTelegramPhoto({
     fileName ||
       "tenh-telegram-photo.jpg",
   );
+
+  const text = caption?.trim().slice(0, 1024);
+  if (text) formData.set("caption", text);
 
   const response = await fetch(
     `${TELEGRAM_API_BASE}/bot${token}/sendPhoto`,
@@ -548,6 +587,7 @@ async function sendTelegramBinaryMedia({
   field,
   file,
   fileName,
+  caption,
 }: {
   token: string;
   chatId: string | number;
@@ -555,6 +595,7 @@ async function sendTelegramBinaryMedia({
   field: TelegramBinaryField;
   file: Blob;
   fileName: string;
+  caption?: string;
 }) {
   const formData =
     new FormData();
@@ -570,6 +611,9 @@ async function sendTelegramBinaryMedia({
     fileName ||
       `tenh-${field}`,
   );
+
+  const text = caption?.trim().slice(0, 1024);
+  if (text) formData.set("caption", text);
 
   const response = await fetch(
     `${TELEGRAM_API_BASE}/bot${token}/${method}`,
@@ -675,17 +719,20 @@ export async function sendTelegramVideo({
   chatId,
   video,
   fileName,
+  caption,
 }: {
   token: string;
   chatId: string | number;
   video: Blob;
   fileName: string;
+  caption?: string;
 }) {
   return sendTelegramBinaryMedia({
     token,
     chatId,
     method: "sendVideo",
     field: "video",
+    caption,
     file: video,
     fileName:
       fileName ||

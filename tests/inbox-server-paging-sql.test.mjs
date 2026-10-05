@@ -106,7 +106,7 @@ if(!engineRoot){test('isolated Inbox PostgreSQL execution',{skip:'Supply an alre
    from conversations c join social_accounts a on a.id=c.social_account_id left join contacts ct on ct.id=c.contact_id
    where c.business_id=ANY($1::uuid[]) and c.id=ANY($2::uuid[]) and ($3::uuid is null or c.social_account_id=$3) and ($4::uuid is null or c.business_id=$4)`,[businesses,filter.conversationIds??[],filter.channelId??null,filter.workspaceId??null])).rows.map(r=>r.row);
   const load=loader({'next/server':{NextResponse:Response,after:()=>{}},'@/lib/auth/get-current-member':{getCurrentMember:async()=>signedOut?{success:false,status:401,error:'Fixture signed out'}:{success:true,user:{id:U},member:{id:M,business_id:B}}},
-   '@/lib/supabase/admin':{supabaseAdmin:admin},'@/lib/inbox/get-conversations':{getInboxConversationScope:scope,getConversations:getRows},
+   '@/lib/supabase/admin':{supabaseAdmin:admin},'@/lib/inbox/get-conversations':{preloadInboxConversationChannels:async()=>{},getInboxConversationScope:scope,getConversations:getRows},
    '@/lib/inbox/get-messages':{getMessages:async()=>[]},'@/lib/inbox/get-team-members':{getTeamMembers:async()=>[]},'@/components/inbox/inbox-view':{InboxView:()=>null}});
   const api=load('app/api/inbox/conversation-page/route.ts');const request=body=>new Request('http://127.0.0.1/api/inbox/conversation-page',{method:'POST',body:JSON.stringify(body)});
   const result=await api.POST(request({view:'comment',memberIds:{[B]:id(9999)}}));assert.equal(result.status,200);assert.equal(result.headers.get('Cache-Control'),'private, no-store');const payload=await result.json();assert.equal(payload.page.conversations.length,30);assert.equal(payload.page.total,52);

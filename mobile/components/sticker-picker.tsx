@@ -33,6 +33,8 @@ export function StickerPicker({ conversationId, workspaceId, platform, onClose, 
   const alive = useRef(true);
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
+  const packReload = useRef(0);
+  const itemReload = useRef(0);
   const params = { conversationId };
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
@@ -43,6 +45,8 @@ export function StickerPicker({ conversationId, workspaceId, platform, onClose, 
   }, [userId, workspaceId, platform, conversationId]);
 
   useEffect(() => {
+    const forceRefresh = packReload.current !== reload;
+    packReload.current = reload;
     if (telegram) return;
     let current = true;
     setBusy(true); setError("");
@@ -52,13 +56,17 @@ export function StickerPicker({ conversationId, workspaceId, platform, onClose, 
       setPacks(next); setPack(value => value || next[0]?.packId || "");
     };
     void cachedApi<{ packs: MetaStickerPack[] }>(`/api/facebook/stickers/packs?${new URLSearchParams(params)}`, workspaceId,
-      { freshMs: 5 * 60_000, onCached: accept }).then(accept).catch(e => {
+      { freshMs: forceRefresh ? 0 : 5 * 60_000, onCached: accept }).then(accept).catch(e => {
         if (current) setError(e instanceof Error ? e.message : "Unable to load sticker packs.");
       }).finally(() => { if (current) setBusy(false); });
     return () => { current = false; };
   }, [conversationId, workspaceId, telegram, reload]);
 
   useEffect(() => {
+    // Consume this click at setup, so a cancelled/debounced reload cannot force
+    // the next pack or search navigation to bypass its normal freshness window.
+    const forceRefresh = itemReload.current !== reload;
+    itemReload.current = reload;
     const q = query.trim().slice(0, 80);
     if ((!pack || pack === "recent") && q.length < 2) { setItems([]); setBusy(false); setError(""); setVisible(PAGE_SIZE); return; }
     let current = true;
@@ -69,7 +77,8 @@ export function StickerPicker({ conversationId, workspaceId, platform, onClose, 
     const timer = setTimeout(() => {
       const path = telegram ? `/api/telegram/stickers?${new URLSearchParams({ ...params, set: pack })}`
         : `/api/facebook/stickers/${q.length >= 2 ? "search" : "pack"}?${new URLSearchParams({ ...params, ...(q.length >= 2 ? { q } : { packId: pack }) })}`;
-      void cachedApi<{ stickers: StickerChoice[] }>(path, workspaceId, { freshMs: q.length >= 2 ? 60_000 : 5 * 60_000, onCached: accept })
+      // An explicit reload must revalidate even a catalog cached moments ago.
+      void cachedApi<{ stickers: StickerChoice[] }>(path, workspaceId, { freshMs: forceRefresh ? 0 : q.length >= 2 ? 60_000 : 5 * 60_000, onCached: accept })
         .then(accept).catch(e => { if (current) setError(e instanceof Error ? e.message : "Unable to load stickers."); })
         .finally(() => { if (current) setBusy(false); });
     }, q.length >= 2 ? 400 : 0);

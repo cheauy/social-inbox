@@ -7,18 +7,88 @@ const row=(n,extra={})=>({id:uuid(n),business_id:uuid(900),status:'open',is_pinn
 const counts={views:{all:1000,unread:1000,my:0,unassigned:1000,comment:0,open:1000,pinned:0},statusCounts:{all:1000,open:1000,pending:0,resolved:0,closed:0,spam:0},totalUnreadCount:1000,unreadConversationCount:1000};
 const page=rows=>({conversations:rows,updates:[],matchedKnownIds:[],total:1000,hasMore:true,cursor:rows.length?{id:rows.at(-1).id,pinned:false,lastMessageAt:rows.at(-1).last_message_at}:null,counts,readTargets:[]});
 function harness(initialRows=Array.from({length:30},(_,i)=>row(i+1))){
- const h=hooks(),events=new Map(),jobs=new Map(),calls=[];let timer=0,answer=body=>page(Array.from({length:30},(_,i)=>row(i+(body.cursor?31:1))));
+ const clock={now:Date.now()};const h=hooks(),events=new Map(),jobs=new Map(),calls=[];let timer=0,answer=body=>page(Array.from({length:30},(_,i)=>row(i+(body.cursor?31:1))));
  const doc={visibilityState:'visible',addEventListener:(n,fn)=>events.set(n,fn),removeEventListener:n=>events.delete(n)};
  const win={addEventListener:(n,fn)=>events.set(n,fn),removeEventListener:n=>events.delete(n),dispatchEvent:e=>events.get(e.type)?.(e)};
- const load=loader({react:h.React},{document:doc,window:win,AbortController,CustomEvent,
+ const load=loader({react:h.React},{document:doc,window:win,AbortController,CustomEvent,Date:class extends Date {static now(){return clock.now;}},
   setTimeout:fn=>{jobs.set(++timer,fn);return timer},clearTimeout:id=>jobs.delete(id),
-  fetch:async(_url,init)=>{const body=JSON.parse(init.body);calls.push(body);const result=await answer(body,init.signal);return Response.json({success:true,page:result});}});
+  fetch:async(_url,init)=>{const body=JSON.parse(init.body);calls.push(body);const result=await answer(body,init.signal);return result instanceof Response ? result : Response.json({success:true,page:result});}});
  const hook=load('lib/inbox/use-conversation-pages.ts').useConversationPages;
  const props={initial:{request:request(),page:{...page(initialRows),ids:initialRows.map(r=>r.id)}},request:request(),live:initialRows,onRows:()=>{}};
  const render=()=>h.render(()=>hook(props.initial,props.request,props.live,props.onRows),{});
  const flush=async()=>{const pending=[...jobs.values()];jobs.clear();for(const fn of pending)fn();await tick();return render()};
- return {h,props,render,flush,events,jobs,calls,doc,answer:fn=>answer=fn};
+ return {h,props,render,flush,events,jobs,calls,doc,advance:ms=>clock.now+=ms,answer:fn=>answer=fn};
 }
+
+test('targeted activity in B retains warm A, while B still requalifies once after navigation',async()=>{
+ const a=uuid(700),b=uuid(701),rowsA=[row(1,{social_account:{id:a}})],rowsB=[row(101,{social_account:{id:b}})],d=harness(rowsA);
+ try{d.props.initial.request={...request(),channelId:a};d.props.request={...request(),channelId:a};d.props.onRows=rows=>d.props.live=contract.mergeConversationPage(d.props.live,rows);d.render();
+ d.answer(body=>({...page(body.channelId===b?rowsB:rowsA),matchedKnownIds:body.knownIds??[]}));d.props.request={...request(),channelId:b};d.render();await tick();d.render();
+ d.events.get(contract.INBOX_PAGE_CHANGED_EVENT)(new CustomEvent('live',{detail:{conversationId:uuid(101)}}));d.render();
+ d.props.request={...request(),channelId:a};const start=performance.now();const state=d.render();const renderMs=performance.now()-start;
+ assert.equal(state.initialLoading,false);assert.equal(state.rows[0].social_account.id,a);await tick();assert.equal(d.calls.length,2);
+ console.log(JSON.stringify({warmUnrelatedChannel:{renderMs,rows:state.rows.length,initialLoading:state.initialLoading,pageReads:d.calls.length,productionLatency:false}}));
+ }finally{d.h.cleanup()}
+});
+test('targeted activity in a different workspace retains only disjoint cached scope',async()=>{
+ const businessA=uuid(900),businessB=uuid(901),d=harness([row(1)]);
+ try{d.props.initial.request={...request(),workspaceId:businessA};d.props.request={...request(),workspaceId:businessA};d.props.onRows=rows=>d.props.live=contract.mergeConversationPage(d.props.live,rows);d.render();
+ d.answer(body=>({...page(body.workspaceId===businessB?[row(2,{business_id:businessB})]:[row(1)]),matchedKnownIds:body.knownIds??[]}));d.props.request={...request(),workspaceId:businessB};d.render();await tick();d.render();
+ d.events.get(contract.INBOX_PAGE_CHANGED_EVENT)(new CustomEvent('live',{detail:{conversationId:uuid(2)}}));d.render();d.props.request={...request(),workspaceId:businessA};const s=d.render();assert.equal(s.initialLoading,false);assert.ok(s.rows.every(r=>r.business_id===businessA));await tick();assert.equal(d.calls.length,2);
+ }finally{d.h.cleanup()}
+});
+test('unknown and permission recovery events still invalidate every inactive snapshot',async()=>{
+ for(const event of [new CustomEvent('live',{detail:{conversationId:uuid(999)}}),new Event('focus')]){
+ const a=uuid(700),b=uuid(701),d=harness([row(1,{social_account:{id:a}})]);try{d.props.initial.request={...request(),channelId:a};d.props.request={...request(),channelId:a};d.props.onRows=rows=>d.props.live=contract.mergeConversationPage(d.props.live,rows);d.render();d.answer(()=>page([row(2,{social_account:{id:b}})]));d.props.request={...request(),channelId:b};d.render();await tick();d.render();
+ const fn=event.type==='focus'?d.events.get('focus'):d.events.get(contract.INBOX_PAGE_CHANGED_EVENT);fn(event);d.render();d.props.request={...request(),channelId:a};assert.equal(d.render().initialLoading,true);
+ }finally{d.h.cleanup()}}
+});
+
+test('a row moving to B invalidates A even though its latest channel differs',async()=>{
+ const a=uuid(700),b=uuid(701),d=harness([row(1,{social_account:{id:a}})]);
+ try{d.props.initial.request={...request(),channelId:a};d.props.request={...request(),channelId:a};d.render();
+ d.answer(()=>page([row(2,{social_account:{id:b}})]));d.props.request={...request(),channelId:b};d.render();await tick();d.render();
+ d.props.live=[row(1,{social_account:{id:b}}),row(2,{social_account:{id:b}})];d.render();
+ d.events.get(contract.INBOX_PAGE_CHANGED_EVENT)(new CustomEvent('live',{detail:{conversationId:uuid(1)}}));
+ d.props.request={...request(),channelId:a};assert.equal(d.render().initialLoading,true);
+ }finally{d.h.cleanup()}
+});
+
+test('warm snapshots are local to each mounted pager, including a new user mount',async()=>{
+ const first=harness();try{first.render();await tick();first.answer(()=>page([row(2)]));first.props.request={...request(),channelId:uuid(700)};first.render();await tick();first.render();}finally{first.h.cleanup()}
+ const second=harness([row(900)]);try{second.render();await tick();second.props.request={...request(),channelId:uuid(700)};const state=second.render();assert.equal(state.initialLoading,true);assert.equal(state.rows.length,0);}finally{second.h.cleanup()}
+});
+
+test('an off-page row moving channels invalidates cached counts for its previous channel',async()=>{
+ const a=uuid(700),b=uuid(701),d=harness([row(1,{social_account:{id:a}})]);
+ try{d.props.initial.request={...request(),channelId:a};d.props.request={...request(),channelId:a};
+ d.props.live=[...d.props.live,row(31,{social_account:{id:a}})];d.render();await tick();
+ d.answer(()=>page([row(2,{social_account:{id:b}})]));d.props.request={...request(),channelId:b};d.render();await tick();d.render();
+ d.props.live=d.props.live.map(r=>r.id===uuid(31)?{...r,social_account:{id:b}}:r);d.render();
+ d.props.request={...request(),channelId:a};assert.equal(d.render().initialLoading,true);
+ }finally{d.h.cleanup()}
+});
+
+test('a server-qualified scope move invalidates old counts even when its version was already recorded',async()=>{
+ const a=uuid(700),b=uuid(701),d=harness([row(1,{social_account:{id:a}})]);
+ try{d.props.initial.request={...request(),channelId:a};d.props.request={...request(),channelId:a};d.props.live.push(row(31,{social_account:{id:a}}));d.render();await tick();
+ d.props.onRows=rows=>d.props.live=[row(1,{social_account:{id:a}}),...rows];
+ d.answer(()=>page([row(31,{social_account:{id:b}})]));d.props.request={...request(),channelId:b};d.render();await tick();d.render();
+ d.props.request={...request(),channelId:a};assert.equal(d.render().initialLoading,true);
+ }finally{d.h.cleanup()}
+});
+
+test('channel A-B-A keeps scoped warm rows and issues one requalification per switch', async () => {
+ const channelA=uuid(700),channelB=uuid(701),rowsA=Array.from({length:30},(_,i)=>row(i+1,{social_account:{id:channelA}}));
+ const d=harness(rowsA);try {
+  d.props.initial.request={...request(),channelId:channelA};d.props.request={...request(),channelId:channelA};
+  d.props.onRows=rows=>{d.props.live=contract.mergeConversationPage(d.props.live,rows);};d.render();await tick();assert.equal(d.calls.length,0);
+  d.answer(body=>({...page(body.channelId===channelB?[row(101,{social_account:{id:channelB}})]:rowsA),matchedKnownIds:body.knownIds??[],total:body.channelId===channelB?1:30}));
+  d.props.request={...request(),channelId:channelB};let state=d.render();assert.equal(state.initialLoading,true);await tick();state=d.render();assert.equal(state.rows.length,1);assert.equal(state.rows[0].social_account.id,channelB);assert.equal(d.calls.length,1);
+  d.props.request={...request(),channelId:channelA};state=d.render();assert.equal(state.initialLoading,false);assert.equal(state.rows.length,30);assert.ok(state.rows.every(row=>row.social_account.id===channelA));
+  await tick();state=d.render();assert.equal(d.calls.length,2);assert.equal(d.calls[1].channelId,channelA);assert.equal(d.calls[1].knownIds.length,30);assert.equal(state.rows.length,30);
+ } finally {d.h.cleanup();}
+});
 test('request validation rejects arbitrary views, injected scope IDs, overlong search and unbounded known IDs',()=>{
  assert.equal(contract.CONVERSATION_PAGE_SIZE,30);
  for(const body of [{view:'admin'},{workspaceId:'bad'},{search:'a'.repeat(501)},{knownIds:Array(201).fill(uuid(1))},{cursor:{id:uuid(1),pinned:false,lastMessageAt:'bad'}}])assert.throws(()=>contract.parseConversationPageRequest(body));
@@ -134,4 +204,77 @@ test('page metadata preserves manual unread, acknowledged reads and optimistic t
  context.applyPage([row(1,{unread_count:0,contact:{id:'ct',tags:[]}})]);assert.equal(current[0].unread_count,3);assert.equal(current[0].is_pinned,true);assert.equal(current[0].status,'pending');assert.equal(current[0].assigned_to,uuid(901));assert.equal(current[0].contact.tags[0].id,'vip');
  context.persistedManualUnreadCountsRef.current.clear();context.manualUnreadConversationIdsRef.current.clear();context.readBarrierMessageTimeRef.current.set(uuid(1),Date.parse(current[0].last_message_at));context.readRowVersionRef.current.set(uuid(1),Date.parse(current[0].updated_at));
  context.applyPage([row(1,{unread_count:2,contact:{id:'ct',tags:[]}})]);assert.equal(current[0].unread_count,0);assert.equal(current[0].contact.tags[0].id,'vip');
+});
+test('optimistic reads immediately reconcile complete unread aggregates without changing other counts',async()=>{
+ const d=harness([row(1,{unread_count:3}),row(2,{unread_count:2}),row(3)]);try{
+ d.render();await tick();d.props.live=d.props.live.map(r=>r.id===uuid(1)?{...r,unread_count:0}:r);
+ let s=d.render();assert.equal(s.rows.find(r=>r.id===uuid(1)).unread_count,0);
+ assert.equal(s.page.counts.views.unread,999);assert.equal(s.page.counts.totalUnreadCount,997);
+ assert.equal(s.page.counts.views.all,1000);assert.equal(d.calls.length,0);
+ d.props.live=d.props.live.map(r=>r.id===uuid(2)?{...r,unread_count:0}:r);s=d.render();assert.equal(s.page.counts.views.unread,998);
+ // Failed server read restores the local row; new incoming activity does likewise.
+ d.props.live=d.props.live.map(r=>r.id===uuid(1)?{...r,unread_count:3}:r);s=d.render();assert.equal(s.page.counts.views.unread,999);
+ d.props.live=d.props.live.map(r=>r.id===uuid(2)?{...r,unread_count:1}:r);s=d.render();assert.equal(s.page.counts.views.unread,1000);
+ }finally{d.h.cleanup()}
+});
+test('authoritative empty page stays empty during quiet refresh while a different view shows initial loading',async()=>{
+ const d=harness([]);let release;try{d.render();await tick();d.answer(()=>new Promise(r=>release=r));
+ d.events.get('focus')();void d.flush();await tick();let s=d.render();assert.equal(s.loading,true);assert.equal(s.initialLoading,false);
+ release({...page([]),hasMore:false});await tick();s=d.render();assert.equal(s.initialLoading,false);
+ d.props.request={...request(),view:'pinned'};d.render();await tick();s=d.render();assert.equal(s.initialLoading,true);
+ release({...page([]),hasMore:false});await tick();s=d.render();assert.equal(s.initialLoading,false);
+ }finally{d.h.cleanup()}
+});
+test('new view over 1000 loaded conversations requests only one first page, not five qualification batches',async()=>{
+ const d=harness(Array.from({length:1000},(_,i)=>row(i+1)));try{d.render();await tick();d.props.request={...request(),view:'comment'};d.render();await tick();const s=d.render();assert.equal(d.calls.length,1);assert.equal(d.calls[0].knownIds,undefined);assert.equal(s.rows.length,30);assert.equal(s.page.total,1000);}finally{d.h.cleanup()}
+});
+test('repeat view renders bounded warm rows and its own total immediately, then revalidates once',async()=>{
+ const d=harness();let release;try{d.render();await tick();d.answer(()=>({...page([row(3)]),total:1}));d.props.request={...request(),view:'unread'};d.render();await tick();let s=d.render();assert.equal(s.page.total,1);
+ d.answer(()=>new Promise(r=>release=r));d.props.request=request();s=d.render();assert.equal(s.rows.length,30);assert.equal(s.page.total,1000);assert.equal(s.initialLoading,false);await tick();assert.equal(d.calls.length,2);assert.equal(d.calls[1].knownIds.length,30);
+ release({...page(Array.from({length:30},(_,i)=>row(i+1))),matchedKnownIds:Array.from({length:30},(_,i)=>uuid(i+1))});await tick();s=d.render();assert.equal(s.rows.length,30);assert.equal(d.calls.length,2);
+ }finally{d.h.cleanup()}
+});
+test('cold-view counts do not inherit previous-view totals, and errors permit retry without wrong rows',async()=>{
+ const d=harness();try{d.render();await tick();d.answer(()=>{throw Error('offline')});d.props.request={...request(),view:'pinned'};let s=d.render();assert.equal(s.page,undefined);assert.equal(s.rows.length,0);await tick();s=d.render();assert.match(s.error,/retry/i);assert.equal(s.initialLoading,false);assert.equal(s.page,undefined);d.answer(()=>({...page([]),total:0,hasMore:false}));s.retry();await tick();s=d.render();assert.equal(s.page.total,0);assert.equal(s.error,null);}finally{d.h.cleanup()}
+});
+test('activity invalidates inactive view cache before pin/read/comment re-entry',async()=>{
+ const d=harness();try{d.render();await tick();d.answer(()=>({...page([row(2)]),total:1}));d.props.request={...request(),view:'pinned'};d.render();await tick();d.props.live=d.props.live.map(r=>r.id===uuid(1)?{...r,unread_count:0,is_pinned:true}:r);d.render();await tick();d.props.request=request();const s=d.render();assert.equal(s.rows.length,0);assert.equal(s.initialLoading,true);}finally{d.h.cleanup()}
+});
+test('workspace context is part of cache key and revoked cached rows cannot be reused',async()=>{
+ const d=harness();try{d.render();await tick();d.answer(()=>({...page([]),total:0}));d.props.request={...request(),view:'unread'};d.render();await tick();d.props.live=[];d.props.request=request();let s=d.render();assert.equal(s.rows.length,0);d.props.request={...request(),workspaceContextId:uuid(999)};s=d.render();assert.equal(s.page,undefined);assert.equal(s.initialLoading,true);}finally{d.h.cleanup()}
+});
+test('view cache expires after 30 seconds and evicts beyond six keys',async()=>{
+ const d=harness();try{d.render();await tick();d.answer(()=>page([row(2)]));for(let n=1;n<=7;n++){d.props.request={...request(),search:'term '+n};d.render();await tick();d.render();}
+ d.props.request=request();let s=d.render();assert.equal(s.initialLoading,true);await tick();d.render();d.props.request={...request(),search:'term 7'};s=d.render();assert.equal(s.initialLoading,false);await tick();d.render();d.advance(30001);d.props.request=request();s=d.render();assert.equal(s.initialLoading,true);
+ }finally{d.h.cleanup()}
+});
+test('authorization denial clears warm cached rows and supplies an error without switching chats',async()=>{
+ const d=harness();try{d.render();await tick();d.answer(()=>({...page([row(2)]),total:1}));d.props.request={...request(),view:'unread'};d.render();await tick();d.answer(()=>Response.json({success:false,error:'Forbidden'},{status:403}));d.props.request=request();let s=d.render();assert.equal(s.rows.length,30);await tick();s=d.render();assert.equal(s.rows.length,0);assert.match(s.error,/Forbidden/);}finally{d.h.cleanup()}
+});
+test('Back then Forward aborts a pending different-view request even when current settled state already matches Forward',async()=>{
+ const d=harness();let releasePinned,releaseAll;try{d.render();await tick();d.advance(33400);
+ d.answer((body,signal)=>new Promise(resolve=>{if(body.view==='pinned')releasePinned={resolve,signal};else releaseAll={resolve,signal};}));
+ d.props.request={...request(),view:'pinned'};d.render();await tick();assert.ok(releasePinned);
+ d.props.request=request();d.render();await tick();assert.equal(releasePinned.signal.aborted,true);assert.ok(releaseAll,'Forward must reconcile All, not leave Pinned running');
+ releasePinned.resolve({...page([]),total:0,hasMore:false});await tick();let s=d.render();assert.equal(s.rows.length,30);assert.equal(s.page.total,1000);
+ releaseAll.resolve(page(Array.from({length:30},(_,i)=>row(i+1))));await tick();s=d.render();assert.equal(s.rows.length,30);assert.equal(s.initialLoading,false);assert.equal(s.loading,false);assert.equal(d.calls.length,2);
+ }finally{d.h.cleanup()}
+});
+test('late aborted finally cannot schedule or consume recovery owned by the Forward request',async()=>{
+ const d=harness();let pinned,all;try{d.render();await tick();d.advance(33400);d.answer((body,signal)=>new Promise(resolve=>{if(body.view==='pinned')pinned={resolve,signal};else all={resolve,signal};}));d.props.request={...request(),view:'pinned'};d.render();await tick();d.props.request=request();d.render();await tick();
+ d.events.get(contract.INBOX_PAGE_CHANGED_EVENT)(new CustomEvent(contract.INBOX_PAGE_CHANGED_EVENT,{detail:{conversationId:uuid(2)}}));assert.equal(d.jobs.size,0);
+ pinned.resolve({...page([]),total:0,hasMore:false});await tick();d.render();assert.equal(d.jobs.size,0,'old finally must not enqueue the new view recovery');assert.equal(all.signal.aborted,false);
+ all.resolve({...page(Array.from({length:30},(_,i)=>row(i+1))),matchedKnownIds:Array.from({length:30},(_,i)=>uuid(i+1))});await tick();d.render();assert.equal(d.jobs.size,1,'new request retains its own pending event');
+ d.answer(body=>({...page(Array.from({length:30},(_,i)=>row(i+1))),matchedKnownIds:body.knownIds??[]}));const s=await d.flush();assert.equal(s.initialLoading,false);assert.equal(s.rows.length,30);assert.equal(d.calls.length,3);
+ }finally{d.h.cleanup()}
+});
+
+
+test('matching message metadata belongs to the current query and survives late old responses',async()=>{
+ const d=harness();try{d.render();let release;const match={messageId:'exact',text:'phone 012345678',sentAt:null};
+ d.answer(body=>body.search==='slow'?new Promise(r=>release=r):({...page([row(900)]),searchMatches:{[row(900).id]:match}}));
+ d.props.request={...request(),search:'slow'};d.render();await tick();d.props.request={...request(),search:'012345678'};d.render();await tick();let s=d.render();
+ assert.equal(s.page.searchMatches[row(900).id].messageId,'exact');release({...page([row(800)]),searchMatches:{[row(800).id]:{...match,messageId:'wrong'}}});await tick();s=d.render();
+ assert.equal(s.page.searchMatches[row(900).id].messageId,'exact');assert.equal(s.page.searchMatches[row(800).id],undefined);
+ }finally{d.h.cleanup()}
 });

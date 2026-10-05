@@ -4,6 +4,13 @@ import { authCookieName, supabase } from "../supabase/client";
 import { sessionCookie } from "./session-cookie";
 import { cachedRead, clearReadCache, invalidateReadCache } from "./read-cache";
 
+export { peekReadCache, storeReadCache, readCacheGeneration, clearReadCache } from "./read-cache";
+
+export function threadPreviewKey(userId: string | undefined, businessId: string | undefined, memberId: string | undefined, conversationId: string) {
+  if (!userId || !businessId || !memberId || !conversationId) return null;
+  return JSON.stringify([userId, businessId, `/api/conversations/${encodeURIComponent(conversationId)}/messages?limit=25`, memberId]);
+}
+
 // Explicit opt-in for read-only panels; never cache sends or subscription checks.
 export async function cachedApi<T>(path: string, workspaceId: string | null | undefined, options: { onCached?: (value: T) => void; freshMs?: number } = {}): Promise<T> {
   const { data } = await supabase.auth.getSession();
@@ -11,7 +18,7 @@ export async function cachedApi<T>(path: string, workspaceId: string | null | un
   return cachedRead(JSON.stringify([data.session.user.id, workspaceId, path]), () => api<T>(path, workspaceId), options);
 }
 
-export class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
+export class ApiError extends Error { constructor(message: string, public status: number, public retiredAuthSession = false) { super(message); } }
 
 /*
  * A sentence, whatever shape the server put the failure in.
@@ -35,12 +42,61 @@ export function describeError(value: unknown, fallback: string): string {
 
   return fallback;
 }
-export async function api<T>(path: string, workspaceId?: string | null, init: { method?: string; body?: unknown; signal?: AbortSignal } = {}, retried = false): Promise<T> {
+type ApiInit = { method?: string; body?: unknown; signal?: AbortSignal; expectedUserId?: string };
+type AuthSession = Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"];
+type AuthLifecycle = { generation: number; known: boolean; userId: string | null; credentials: string | null; renewedCredentials: string[] };
+const lifecycle: AuthLifecycle = { generation: 0, known: false, userId: null, credentials: null, renewedCredentials: [] };
+
+// One synchronous listener for this shared transport's lifetime. It records
+// transitions even when an account returns to the same user before a reply.
+// SIGNED_IN can reconfirm an existing session; TOKEN_REFRESHED renews one.
+function observeAuthSession(owner: AuthLifecycle, session: AuthSession, event?: string) {
+  const userId = session?.user.id ?? null;
+  const credentials = session ? JSON.stringify([userId, session.access_token, session.refresh_token]) : null;
+  // A getSession snapshot taken before a same-lifecycle token renewal may
+  // resolve afterward. Recognize a small bounded history without moving the
+  // current identity backward or treating a normal refresh as a new login.
+  if (owner.known && event !== "SIGNED_OUT" && userId === owner.userId &&
+    credentials !== null && owner.renewedCredentials.includes(credentials)) return;
+  if (!owner.known) {
+    owner.known = true;
+    if (event === "SIGNED_OUT") owner.generation++;
+  } else if (event === "SIGNED_OUT" || userId !== owner.userId ||
+    (credentials !== owner.credentials && event !== "TOKEN_REFRESHED")) {
+    owner.generation++;
+    owner.renewedCredentials = [];
+  }
+  if (credentials !== null) owner.renewedCredentials = [...owner.renewedCredentials, credentials].slice(-4);
+  else owner.renewedCredentials = [];
+  owner.userId = userId;
+  owner.credentials = credentials;
+}
+supabase.auth.onAuthStateChange((event, session) => { observeAuthSession(lifecycle, session, event); });
+// Synchronous ownership check for realtime side effects; shares the API listener.
+export const authSessionGeneration = () => lifecycle.generation;
+
+const retiredAuthSession = () => new ApiError("Your sign-in session changed. Reopen this conversation.", 401, true);
+
+export async function api<T>(path: string, workspaceId?: string | null, init: ApiInit = {}, retried = false): Promise<T> {
+  return apiRequest<T>(path, workspaceId, init, retried);
+}
+async function apiRequest<T>(path: string, workspaceId: string | null | undefined, init: ApiInit, retried: boolean, initiatingGeneration?: number): Promise<T> {
   const base = new URL(process.env.EXPO_PUBLIC_TENH_API_URL || "https://app.tenhchat.com");
   if (base.protocol !== "https:" && !(__DEV__ && ["localhost", "127.0.0.1", "10.0.2.2"].includes(base.hostname))) throw new Error("TENH API must use HTTPS.");
   if (!path.startsWith("/api/") || path.includes("..") || path.includes("\\")) throw new Error("Invalid API path.");
+  if (init.signal?.aborted) throw Object.assign(new Error("Request cancelled."), { name: "AbortError" });
+  const owner = lifecycle;
+  const requestGeneration = initiatingGeneration ?? owner.generation;
+  if (owner.generation !== requestGeneration) throw retiredAuthSession();
   const { data, error } = await supabase.auth.getSession();
+  if (owner.generation !== requestGeneration) throw retiredAuthSession();
+  if (error) throw new ApiError("Please sign in again.", 401);
+  observeAuthSession(owner, data.session);
+  if (owner.generation !== requestGeneration) throw retiredAuthSession();
   if (error || !data.session) throw new ApiError("Please sign in again.", 401);
+  if (init.expectedUserId && data.session.user.id !== init.expectedUserId) throw new ApiError("Your account changed. Reopen this conversation.", 401);
+  if (init.signal?.aborted) throw Object.assign(new Error("Request cancelled."), { name: "AbortError" });
+  const requestUserId = data.session.user.id;
   const mutating = Boolean(init.method && init.method !== "GET");
   if (mutating) invalidateReadCache(data.session.user.id, workspaceId, path);
   const controller = new AbortController();
@@ -48,13 +104,34 @@ export async function api<T>(path: string, workspaceId?: string | null, init: { 
   init.signal?.addEventListener("abort", abort);
   if (init.signal?.aborted) controller.abort();
   const timeout = setTimeout(abort, 60000);
+  const checkCancellation = () => {
+    if (controller.signal.aborted) throw Object.assign(new Error("Request cancelled."), { name: "AbortError" });
+  };
+  const checkOwnership = () => {
+    checkCancellation();
+    if (owner.generation !== requestGeneration) throw retiredAuthSession();
+  };
+  const checkAccountOwnership = async () => {
+    checkOwnership();
+    const { data: current, error: currentError } = await supabase.auth.getSession();
+    checkOwnership();
+    if (currentError) throw new ApiError("Unable to verify your sign-in session. Please try again.", 401);
+    observeAuthSession(owner, current.session);
+    checkOwnership();
+    if (currentError || current.session?.user.id !== requestUserId) throw retiredAuthSession();
+  };
+  let publishing = false;
   try {
+    checkOwnership();
     const multipart = init.body instanceof FormData;
     const response = await fetch(new URL(path, base).toString(), {
       method: init.method || "GET", signal: controller.signal, credentials: "omit", redirect: "error",
       headers: { Accept: "application/json", ...(mutating ? { Origin: base.origin } : {}), Cookie: sessionCookie(authCookieName, data.session, workspaceId), ...(init.body && !multipart ? { "Content-Type": "application/json" } : {}) },
       body: init.body ? multipart ? init.body as FormData : JSON.stringify(init.body) : undefined,
     });
+    // A retired workspace read must not refresh/sign out the current account
+    // or invalidate its cache if a response arrives after cancellation.
+    checkOwnership();
 
     /*
      * A session the server will not accept.
@@ -72,11 +149,15 @@ export async function api<T>(path: string, workspaceId?: string | null, init: { 
      * the sign-in screen where somebody can do something about it.
      */
     if (response.status === 401 && !retried) {
+      await checkAccountOwnership();
+      checkOwnership();
       const { data: refreshed, error: refreshError } =
         await supabase.auth.refreshSession();
+      await checkAccountOwnership();
+      checkOwnership();
 
       if (!refreshError && refreshed.session) {
-        return api<T>(path, workspaceId, init, true);
+        return apiRequest<T>(path, workspaceId, init, true, requestGeneration);
       }
 
       await supabase.auth.signOut();
@@ -84,11 +165,23 @@ export async function api<T>(path: string, workspaceId?: string | null, init: { 
     }
 
     let result;
-    try { result = await response.json(); } catch { throw new ApiError("TENH returned an unexpected response. Check the API address and deployment.", response.status); }
+    try { result = await response.json(); } catch { await checkAccountOwnership(); checkOwnership(); throw new ApiError("TENH returned an unexpected response. Check the API address and deployment.", response.status); }
+    await checkAccountOwnership();
+    checkOwnership();
     if ([401, 403, 404].includes(response.status)) clearReadCache();
     if (!response.ok || result.success === false) throw new ApiError(describeError(result.error ?? result, "Request failed. Please try again."), response.status);
+    publishing = true;
     return result as T;
-  } finally { if (mutating) invalidateReadCache(data.session.user.id, workspaceId, path); clearTimeout(timeout); init.signal?.removeEventListener("abort", abort); }
+  } finally {
+    try {
+      if (mutating && !controller.signal.aborted) {
+        try { await checkAccountOwnership(); checkOwnership(); invalidateReadCache(requestUserId, workspaceId, path); } catch { /* A retired account must not invalidate its replacement's cache. */ }
+      }
+    } finally { clearTimeout(timeout); init.signal?.removeEventListener("abort", abort); }
+    // Mutation cleanup awaits too; do not deliver its earlier successful body
+    // if that final wait crossed into a replacement sign-in session.
+    if (publishing) checkOwnership();
+  }
 }
 
 /*

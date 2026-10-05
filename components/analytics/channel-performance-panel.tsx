@@ -1,4 +1,5 @@
 "use client";
+import { useAnalyticsRequest, useAnalyticsResume } from "@/lib/analytics/use-analytics-request";
 import { useForegroundLoading } from "@/lib/display/foreground-loading";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -439,8 +440,12 @@ export function ChannelPerformancePanel() {
   useForegroundLoading(loading);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const requests = useAnalyticsRequest();
+
+  const load = useCallback(async function load(silent = false): Promise<void> {
+    const request = requests.start(JSON.stringify([period, slaMinutes]), silent, () => { void load(true); });
+    if (!request) return;
+    if (!silent) setLoading(true);
     setError(null);
 
     try {
@@ -448,11 +453,11 @@ export function ChannelPerformancePanel() {
 
       const response = await fetch(
         `/api/analytics/channels?period=${period}&slaMinutes=${slaMinutes}&tzOffsetMinutes=${tzOffsetMinutes}`,
-        { cache: "no-store" },
+        { cache: "no-store", signal: request.signal },
       );
 
       const result = (await response.json()) as ChannelResponse;
-
+      if (!request.current()) return;
       if (!response.ok || !result.success) {
         throw new Error(
           result.error ?? "Unable to load channel performance.",
@@ -462,19 +467,25 @@ export function ChannelPerformancePanel() {
       setSummary({ ...EMPTY_SUMMARY, ...(result.summary ?? {}) });
       setChannels(result.channels ?? []);
     } catch (loadError) {
+      if (!request.current()) return;
       setError(
         loadError instanceof Error
           ? loadError.message
           : "Unable to load channel performance.",
       );
     } finally {
-      setLoading(false);
+      if (request.current()) {
+        setLoading(false);
+      }
+      request.finish();
     }
-  }, [period, slaMinutes]);
+  }, [period, slaMinutes, requests]);
 
   useEffect(() => {
     void load();
-  }, [load]);
+    return () => requests.cancel();
+  }, [load, requests]);
+  useAnalyticsResume(load);
 
   const selected = useMemo(
     () =>
@@ -506,7 +517,7 @@ export function ChannelPerformancePanel() {
 
   const cards = [
     {
-      label: "Conversations",
+      label: "Conversations (excluding comments)",
       value: String(summary.conversations),
       helper: changeLabel,
     },
@@ -613,7 +624,8 @@ export function ChannelPerformancePanel() {
             </h2>
             <p className="mt-1 text-xs text-slate-500">
               Facebook comments are counted as their own channel, separate
-              from Messenger on the same Page.
+              from Messenger on the same Page. Row percentages include every thread;
+              the conversation and response summary excludes comments.
             </p>
           </div>
 

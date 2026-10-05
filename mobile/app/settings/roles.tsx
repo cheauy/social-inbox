@@ -10,6 +10,7 @@ import {
 import { Avatar, Empty, colors, styles } from "../../components/ui";
 import { api } from "../../lib/api/client";
 import { useInbox } from "../../lib/inbox-provider";
+import { useRequestOwner } from "../../lib/use-request-owner";
 import { useLanguage } from "../../lib/language-provider";
 
 /*
@@ -91,8 +92,19 @@ export default function Roles() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<MemberPermissions>({});
+  const scope = JSON.stringify([workspace?.businessId, workspace?.memberId]);
+  const beginRequest = useRequestOwner(scope);
+  const mutationLock = useRef(false);
+  const beginMutation = useRequestOwner(scope);
+  useEffect(() => {
+    mutationLock.current = false;
+    setGroups([]); setMembers([]); setCanManage(false); setMeId(null);
+    setSelectedId(null); setDraft({}); setError(""); setSaved(false); setSaving(false);
+  }, [scope]);
 
   const load = useCallback(async () => {
+    const ownsResponse = beginRequest();
+    if (!ownsResponse()) return;
     if (!workspace) {
       setLoading(false);
       return;
@@ -104,21 +116,23 @@ export default function Roles() {
         workspace.businessId,
       );
 
+      if (!ownsResponse()) return;
       setGroups(data.groups ?? []);
       setMembers(data.members ?? []);
       setCanManage(data.canManage === true);
       setMeId(data.currentMemberId ?? null);
       setError("");
     } catch (loadError) {
+      if (!ownsResponse()) return;
       setError(
         loadError instanceof Error
           ? loadError.message
           : "Unable to load roles and permissions.",
       );
     } finally {
-      setLoading(false);
+      if (ownsResponse()) setLoading(false);
     }
-  }, [workspace?.businessId]);
+  }, [workspace?.businessId, beginRequest]);
 
   useEffect(() => {
     setLoading(true);
@@ -153,6 +167,7 @@ export default function Roles() {
   }, [definitions, draft, selected]);
 
   function choose(member: PermissionMember) {
+    if (saving) return;
     setSelectedId(member.id);
     setDraft({ ...member.permissions });
     setSaved(false);
@@ -160,12 +175,16 @@ export default function Roles() {
   }
 
   async function save(reset = false) {
-    if (!selected || !workspace) return;
+    if (mutationLock.current) return;
+    if (!selected || !workspace || !canManage || saving || selected.isOwner || selected.id === meId) return;
+    const ownsResponse = beginMutation();
+    if (!ownsResponse()) return;
 
     setSaving(true);
     setError("");
     setSaved(false);
 
+    mutationLock.current = true;
     try {
       const result = await api<{
         permissions?: MemberPermissions;
@@ -183,6 +202,7 @@ export default function Roles() {
         },
       );
 
+      if (!ownsResponse()) return;
       const next = result.permissions ?? draft;
 
       setMembers((current) =>
@@ -206,13 +226,15 @@ export default function Roles() {
       setDraft(next);
       setSaved(true);
     } catch (saveError) {
+      if (!ownsResponse()) return;
       setError(
         saveError instanceof Error
           ? saveError.message
           : "Unable to save those permissions.",
       );
     } finally {
-      setSaving(false);
+      if (ownsResponse()) mutationLock.current = false;
+      if (ownsResponse()) setSaving(false);
     }
   }
 

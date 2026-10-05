@@ -247,8 +247,14 @@ globalThis.TenhFacebookProfileResolver = (() => {
     const output = { ...result, diagnostics };
     // A stale matching contact card must not override a different chat header.
     if (result.pageId === options.pageId && result.matchedThreadId === options.threadId &&
-        composer && headers.length === 1 && wanted && headers[0].name !== wanted) {
+        wanted && headers.some(header => header.name !== wanted)) {
       return { ...output, found: false, canReveal: false, profileUrl: undefined, reason: 'facebook_customer_mismatch' };
+    }
+    // A redirected legacy URL has no independent Suite identity. A stale
+    // matching contact card cannot authorize activation before the chat loads.
+    if (provider && actual && provider.key !== actual.key && result.found &&
+        (!composer || headers.length !== 1 || headers[0].name !== wanted)) {
+      return { ...output, found: false, canReveal: false, profileUrl: undefined, reason: 'facebook_chat_not_ready' };
     }
     if (result.found) return { ...output, navigationIdentity: result.profileUrl };
     // Opening a chat does not always require a public-profile link. If the

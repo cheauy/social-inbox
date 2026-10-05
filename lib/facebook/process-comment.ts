@@ -1,4 +1,5 @@
 import "server-only";
+import { record, safePostImage, safePostLink, type FacebookCommentParent } from "@/lib/facebook/post-preview-data";
 import { saveDetectedCustomerPhone } from "@/lib/inbox/save-detected-customer-phone";
 
 import {
@@ -864,6 +865,7 @@ export async function processFacebookComment({
    */
   let normalizedParentId =
     cleanString(value.parent_id);
+  let commentContext: { id: string; object_id: string | null; permalink_url: string | null; parent_id: string | null; parent: FacebookCommentParent | null } | null = null;
 
   let message =
     value.message
@@ -933,7 +935,7 @@ export async function processFacebookComment({
 
       url.searchParams.set(
         "fields",
-        "id,message,from,created_time,parent,object",
+        "id,message,from,created_time,attachment,permalink_url,parent{id,message,from,attachment,permalink_url},object",
       );
       url.searchParams.set(
         "access_token",
@@ -941,6 +943,9 @@ export async function processFacebookComment({
       );
 
       type CommentGraphResult = {
+        id?: string;
+        permalink_url?: string;
+        attachment?: unknown;
         message?: string;
         created_time?: string;
         from?: {
@@ -949,6 +954,10 @@ export async function processFacebookComment({
         };
         parent?: {
           id?: string;
+          message?: string;
+          from?: { name?: string };
+          attachment?: unknown;
+          permalink_url?: string;
         } | null;
         object?: {
           id?: string;
@@ -960,7 +969,7 @@ export async function processFacebookComment({
       };
 
       const requestComment =
-        async (token: string) => {
+        async (token: string, rich = true): Promise<{ response: Response; result: CommentGraphResult }> => {
           url.searchParams.set(
             "access_token",
             token,
@@ -972,6 +981,7 @@ export async function processFacebookComment({
               {
                 method: "GET",
                 cache: "no-store",
+                signal: AbortSignal.timeout(8_000),
               },
             );
 
@@ -994,6 +1004,10 @@ export async function processFacebookComment({
             }
           }
 
+          if (!response.ok && rich && !isFacebookAccessTokenError(result.error)) {
+            url.searchParams.set("fields", "id,message,from,created_time,parent,object");
+            return requestComment(token, false);
+          }
           return {
             response,
             result,
@@ -1043,7 +1057,7 @@ export async function processFacebookComment({
 
       if (
         response.ok &&
-        !result.error
+        !result.error && result.id === commentId
       ) {
         message =
           result.message
@@ -1064,6 +1078,19 @@ export async function processFacebookComment({
           result.parent?.id
             ?.trim() ||
           normalizedParentId;
+        const parentId = cleanString(result.parent?.id) ?? (!Object.prototype.hasOwnProperty.call(result, "parent") ? normalizedParentId : null);
+        const objectId = cleanString(result.object?.id);
+        const parentAttachment = record(result.parent?.attachment);
+        const parentImage = safePostImage(record(record(parentAttachment.media).image).src);
+        const parentText = cleanString(result.parent?.message);
+        const isReply = !!parentId && parentId !== objectId && parentId !== postId && parentId !== commentId;
+        commentContext = {
+          id: commentId, object_id: objectId, permalink_url: safePostLink(result.permalink_url),
+          parent_id: isReply ? parentId : null,
+          parent: isReply ? { id: parentId, author: cleanString(result.parent?.from?.name), text: parentText,
+            image: parentImage, permalink_url: safePostLink(result.parent?.permalink_url),
+            status: parentText ? "available" : Object.keys(parentAttachment).length ? "media" : "unavailable" } : null,
+        };
 
         /*
          * Some feed webhook variants can omit post_id. The Comment Graph
@@ -1392,6 +1419,8 @@ export async function processFacebookComment({
             true,
           raw_payload: {
             ...value,
+            post_id: postId,
+            ...(commentContext ? { comment_context: commentContext } : {}),
             parent_id:
               normalizedParentId ??
               value.parent_id ??
@@ -1721,6 +1750,8 @@ export async function processFacebookComment({
           false,
         raw_payload: {
           ...value,
+          post_id: postId,
+          ...(commentContext ? { comment_context: commentContext } : {}),
           parent_id:
             normalizedParentId ??
             value.parent_id ??

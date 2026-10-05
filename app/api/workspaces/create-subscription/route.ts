@@ -10,7 +10,7 @@ import {
   type BillingCycle,
 } from "@/lib/subscription/plan-catalog";
 
-export const TENH_PURCHASE_ORIGIN_BUSINESS_COOKIE = "tenh_purchase_origin_business_id";
+const TENH_PURCHASE_ORIGIN_BUSINESS_COOKIE = "tenh_purchase_origin_business_id";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

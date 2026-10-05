@@ -50,6 +50,7 @@ type FacebookWebhookEntry = {
   time?: number;
   messaging?:
     FacebookMessagingEvent[];
+  standby?: FacebookMessagingEvent[];
   changes?:
     FacebookFeedChange[];
 };
@@ -59,6 +60,17 @@ type FacebookWebhookPayloadV3110 = {
   entry?:
     FacebookWebhookEntry[];
 };
+
+/** Standby may include non-message events; ingest only complete Page echoes. */
+function isValidFacebookPageEcho(value: unknown, pageId: unknown): value is FacebookMessagingEvent {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const event = value as FacebookMessagingEvent;
+  return typeof pageId === "string" && /^\d{1,32}$/.test(pageId) &&
+    event.message?.is_echo === true &&
+    typeof event.message.mid === "string" && Boolean(event.message.mid.trim()) &&
+    event.sender?.id === pageId &&
+    typeof event.recipient?.id === "string" && /^\d{1,32}$/.test(event.recipient.id) && event.recipient.id !== pageId;
+}
 
 export async function GET(
   request: NextRequest,
@@ -308,10 +320,15 @@ export async function POST(
       const event of
       [
         ...(entry.messaging ?? []),
-        // Meta also documents field/value envelopes for postback referrals.
+        // Meta delivers echoes here when another app owns conversation routing.
+        ...(Array.isArray(entry.standby) ? entry.standby.filter(event => isValidFacebookPageEcho(event, entry.id)) : []),
+        // Referrals have documented field/value envelopes. Echo envelopes are
+        // accepted defensively only when they contain a complete explicit echo.
         ...(entry.changes ?? []).flatMap((change) =>
-          ["messages", "messaging_referrals", "messaging_postbacks"].includes(change.field ?? "") && change.value
-            ? [change.value] : [],
+          change.field === "message_echoes"
+            ? isValidFacebookPageEcho(change.value, entry.id) ? [change.value] : []
+            : ["messages", "messaging_referrals", "messaging_postbacks"].includes(change.field ?? "") && change.value
+              ? [change.value] : [],
         ),
       ]
     ) {

@@ -14,6 +14,10 @@ export type TelegramChat = {
   username?: string;
 };
 
+export type TelegramChatFullInfo = TelegramChat & {
+  available_reactions?: ({ type: "emoji"; emoji: string } | { type: "custom_emoji"; custom_emoji_id: string } | { type: "paid" })[];
+};
+
 export type TelegramPhotoSize = {
   file_id: string;
   file_unique_id: string;

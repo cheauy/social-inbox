@@ -142,7 +142,7 @@ function redirectToIntegrations(
 export async function POST(
   request: NextRequest,
 ) {
-  const authResult = await getCurrentMember();
+  const authResult = await getCurrentMember(true);
 
   if (!authResult.success) {
     return redirectToIntegrations(request, {

@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
 import { getStoredNotificationVolume } from "@/lib/inbox/notification-sounds";
+import { useForegroundResume } from "@/lib/display/use-foreground-resume";
 
 const GROUP_MENTION_SOUND_SRC = "/alert-sound/mentions-notification.mp3";
 const GROUP_MENTION_FALLBACK_SOUND_SRC = "/alert-sound/notification-default.wav";
@@ -467,6 +468,9 @@ export function TeamNotificationCenter() {
       }
     }
   }, []);
+
+  const resumeNotifications = useCallback(() => { void loadNotifications(true); }, [loadNotifications]);
+  useForegroundResume(resumeNotifications);
 
   useEffect(() => {
     void loadNotifications();

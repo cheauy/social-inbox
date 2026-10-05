@@ -71,7 +71,7 @@ export async function GET() {
  * able to do quietly.
  */
 export async function PATCH(request: Request) {
-  const authResult = await getCurrentMember();
+  const authResult = await getCurrentMember(true);
 
   if (!authResult.success) {
     return NextResponse.json(

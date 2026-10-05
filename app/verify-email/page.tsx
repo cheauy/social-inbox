@@ -9,7 +9,7 @@ export default function VerifyEmailPage() {
       className="relative flex min-h-dvh items-center justify-center overflow-hidden p-4 sm:p-6"
       style={{
         backgroundImage:
-          "url('/images/background-login.png')",
+          "url('/images/background-login.webp')",
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
