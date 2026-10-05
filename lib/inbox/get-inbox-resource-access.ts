@@ -8,6 +8,11 @@ import {
 } from "@/lib/subscription/is-operational-subscription";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+  canSeePersonalAccount,
+  personalAccountFromContact,
+  PERSONAL_PLATFORM,
+} from "@/lib/telegram-personal/visibility";
 
 export type InboxAuthorizedMember = {
   id: string;
@@ -25,11 +30,14 @@ type ConversationAccessRow = {
   business_id: string;
   contact_id: string | null;
   social_account_id: string | null;
+  platform?: string | null;
 };
 
 type ContactAccessRow = {
   id: string;
   business_id: string;
+  platform?: string | null;
+  platform_user_id?: string | null;
 };
 
 export type InboxAccessFailure = {
@@ -189,7 +197,7 @@ export async function getInboxConversationAccess(
 
   const { data: conversation, error } = await supabaseAdmin
     .from("conversations")
-    .select("id,business_id,contact_id,social_account_id")
+    .select("id,business_id,contact_id,social_account_id,platform")
     .eq("id", normalizedConversationId)
     .maybeSingle();
 
@@ -212,6 +220,19 @@ export async function getInboxConversationAccess(
   const access = await authorizeInboxBusinessAccess(conversation.business_id);
   if (!access.success) return access;
 
+  // Telegram Personal chats are visible only to the holder and allowed teammates.
+  // Answer exactly like a missing conversation so nothing about it is revealed.
+  if (
+    conversation.platform === PERSONAL_PLATFORM &&
+    !(await canSeePersonalAccount(conversation.social_account_id, access.user.id))
+  ) {
+    return {
+      success: false,
+      status: 404,
+      error: "Conversation was not found.",
+    };
+  }
+
   return {
     ...access,
     conversation: conversation as ConversationAccessRow,
@@ -233,7 +254,7 @@ export async function getInboxContactAccess(
 
   const { data: contact, error } = await supabaseAdmin
     .from("contacts")
-    .select("id,business_id")
+    .select("id,business_id,platform,platform_user_id")
     .eq("id", normalizedContactId)
     .maybeSingle();
 
@@ -255,6 +276,18 @@ export async function getInboxContactAccess(
 
   const access = await authorizeInboxBusinessAccess(contact.business_id);
   if (!access.success) return access;
+
+  const personalAccount = personalAccountFromContact(contact);
+  if (
+    contact.platform === PERSONAL_PLATFORM &&
+    !(await canSeePersonalAccount(personalAccount, access.user.id))
+  ) {
+    return {
+      success: false,
+      status: 404,
+      error: "Customer was not found.",
+    };
+  }
 
   return {
     ...access,

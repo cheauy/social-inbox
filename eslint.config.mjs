@@ -20,6 +20,9 @@ const eslintConfig = defineConfig([
      * finding in the noise. It has its own tsc run.
      */
     "mobile/**",
+    // The Telegram Personal worker is a separate Node service with its own
+    // package.json and tsconfig; it never ships in the Next.js bundle.
+    "workers/**",
   ]),
 ]);
 

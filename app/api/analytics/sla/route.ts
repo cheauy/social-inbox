@@ -5,6 +5,7 @@ import {
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { hiddenConversationIdSet, hiddenPersonalAccountIds } from "@/lib/telegram-personal/visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -144,6 +145,16 @@ export async function GET(
     );
   }
 
+  // Attention rows on Telegram Personal chats this member may not see are not listed.
+  const attention = (data?.attention ?? []) as Array<{ conversationId?: string }>;
+  const hiddenAttention = await hiddenConversationIdSet(
+    attention.map((row) => row.conversationId),
+    await hiddenPersonalAccountIds([currentMember.business_id], authResult.user.id),
+  );
+  const visibleData = data
+    ? { ...data, attention: attention.filter((row) => !row.conversationId || !hiddenAttention.has(row.conversationId)) }
+    : data;
+
   return NextResponse.json({
     success: true,
     businessId:
@@ -157,7 +168,7 @@ export async function GET(
     slaMinutes,
     start: start.toISOString(),
     end: now.toISOString(),
-    analytics: data ?? {
+    analytics: visibleData ?? {
       summary: {
         received: 0,
         responded: 0,

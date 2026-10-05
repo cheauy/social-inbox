@@ -9,6 +9,7 @@ import {
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
+import { hiddenPersonalAccountIds, isHiddenContact } from "@/lib/telegram-personal/visibility";
 
 export const runtime =
   "nodejs";
@@ -61,7 +62,7 @@ export async function DELETE(
     error: contactError,
   } = await supabaseAdmin
     .from("contacts")
-    .select("id")
+    .select("id,platform,platform_user_id")
     .eq(
       "id",
       contactId,
@@ -74,7 +75,8 @@ export async function DELETE(
 
   if (
     contactError ||
-    !contact
+    !contact ||
+    isHiddenContact(contact, await hiddenPersonalAccountIds([currentMember.business_id], authResult.user.id))
   ) {
     return NextResponse.json(
       {

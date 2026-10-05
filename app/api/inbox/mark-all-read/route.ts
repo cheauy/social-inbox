@@ -3,6 +3,7 @@ import { getInboxConversationScope } from "@/lib/inbox/get-conversations";
 import { authorizeInboxBusinessAccess } from "@/lib/inbox/get-inbox-resource-access";
 import { memberHasPermission } from "@/lib/auth/require-permission";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { hiddenPersonalAccountIds } from "@/lib/telegram-personal/visibility";
 import { validReadTarget, readSnapshotCondition, type ReadReceipt, type ReadTarget } from "@/lib/inbox/bulk-read";
 
 export const runtime = "nodejs";
@@ -39,8 +40,9 @@ export async function POST(request: NextRequest) {
     const { data: channels, error: channelError } = await supabaseAdmin.from("social_accounts")
       .select("id,platform,facebook_token_status,telegram_token_status").in("id", channelIds).in("business_id", businesses).eq("is_active", true);
     if (channelError) return json({ success: false, error: "Unable to verify the channels." }, 503);
-    const allowedChannels = new Set((channels ?? []).filter(row => row.platform === "telegram"
-      ? row.telegram_token_status === "verified" : row.facebook_token_status !== "disconnected").map(row => row.id));
+    const hiddenPersonal = await hiddenPersonalAccountIds(businesses, scope.userId);
+    const allowedChannels = new Set((channels ?? []).filter(row => !hiddenPersonal.includes(row.id)).filter(row => row.platform === "telegram"
+      ? row.telegram_token_status === "verified" : row.platform === "telegram_personal" ? true : row.facebook_token_status !== "disconnected").map(row => row.id));
     if (channelIds.some(id => !allowedChannels.has(id))) return json({ success: false, error: "One or more channels are no longer active." }, 403);
     const rowById = new Map((rows ?? []).map(row => [row.id, row]));
     const confirmed: ReadReceipt[] = [];

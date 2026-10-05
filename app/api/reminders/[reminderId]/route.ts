@@ -5,6 +5,7 @@ import {
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { isConversationHiddenFor } from "@/lib/telegram-personal/visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,12 +24,14 @@ type PatchBody = {
 async function loadReminder(
   reminderId: string,
   businessId: string,
+  userId: string,
 ) {
-  return supabaseAdmin
+  const result = await supabaseAdmin
     .from("conversation_reminders")
     .select(`
       id,
       business_id,
+      conversation_id,
       assigned_to,
       created_by,
       status,
@@ -37,6 +40,11 @@ async function loadReminder(
     .eq("id", reminderId)
     .eq("business_id", businessId)
     .maybeSingle();
+  // Reminders on Telegram Personal chats this user may not see do not exist for them.
+  if (result.data && (await isConversationHiddenFor(result.data.conversation_id, userId))) {
+    return { ...result, data: null };
+  }
+  return result;
 }
 
 export async function PATCH(
@@ -64,6 +72,7 @@ export async function PATCH(
   } = await loadReminder(
     reminderId,
     currentMember.business_id,
+    authResult.user.id,
   );
 
   if (loadError) {
@@ -212,6 +221,17 @@ export async function DELETE(
 
   const currentMember = authResult.member;
   const { reminderId } = await context.params;
+
+  const visible = await loadReminder(reminderId, currentMember.business_id, authResult.user.id);
+  if (!visible.error && !visible.data) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Reminder was not found.",
+      },
+      { status: 404 },
+    );
+  }
 
   const { data, error } = await supabaseAdmin
     .from("conversation_reminders")

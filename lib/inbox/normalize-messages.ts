@@ -1,5 +1,7 @@
 import type { InboxMessage } from "@/types/inbox";
 import { retainLocalImagePreview } from "./local-image-preview";
+import { matchesOptimisticMessage } from "./optimistic-message-match";
+import { withOptimisticRenderKey } from "./confirm-outgoing-message";
 
 const asRecord = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const metadataTime = (value: unknown, key: string) => {
@@ -94,11 +96,48 @@ function merge(first: InboxMessage, second: InboxMessage): InboxMessage {
   result.delivery_status = stronger.delivery_status;
   result.seen_at = stronger.seen_at ?? result.seen_at;
   result.delivered_at = stronger.delivered_at ?? result.delivered_at;
+  let merged: InboxMessage = result;
   if (!result.id.startsWith("optimistic:")) {
     delete result.__optimistic_status;
     delete result.__optimistic_created_at;
+    delete (result as { __optimistic_requires_review?: boolean }).__optimistic_requires_review;
+    // Keep the pending bubble's React identity and position once confirmed,
+    // and keep an earlier confirmation's identity across later refreshes.
+    const temporary = [first, second].find((row) => row.id.startsWith("optimistic:"));
+    const keyed = other as InboxMessage & { __render_key?: string };
+    if (temporary) merged = withOptimisticRenderKey(result, temporary);
+    else if (keyed.__render_key && !(preferred as { __render_key?: string }).__render_key) {
+      merged = { ...result, __render_key: keyed.__render_key, platform_created_at: keyed.platform_created_at } as InboxMessage;
+    }
   }
-  return retainLocalImagePreview(result, other);
+  return retainLocalImagePreview(merged, other);
+}
+
+const isTemporary = (message: InboxMessage) => message.id.startsWith("optimistic:");
+const businessOf = (message: InboxMessage) => (message as { business_id?: string | null }).business_id ?? null;
+const sameWorkspace = (a: InboxMessage, b: InboxMessage) => !businessOf(a) || !businessOf(b) || businessOf(a) === businessOf(b);
+
+/*
+ * Fold each pending bubble into the stored row it is exactly correlated with:
+ * the client request id / Messenger metadata, or the confirmed MID. Never by
+ * text or time, so two identical sends stay two messages. Scoped to the same
+ * conversation and workspace. Runs on every update path because the stored
+ * row can gain its correlation after it already exists (a later UPDATE).
+ */
+function reconcileOptimistic(rows: InboxMessage[]): InboxMessage[] {
+  if (!rows.some(isTemporary)) return rows;
+  const consumed = new Set<number>();
+  const replaced = new Map<number, InboxMessage>();
+  rows.forEach((row, index) => {
+    if (!isTemporary(row)) return;
+    const match = rows.findIndex((candidate, at) => at !== index && !consumed.has(at) && !isTemporary(candidate) &&
+      sameWorkspace(row, candidate) &&
+      matchesOptimisticMessage(row, candidate as unknown as Record<string, unknown>));
+    if (match < 0) return;
+    consumed.add(match);
+    replaced.set(index, merge(row, rows[match]));
+  });
+  return consumed.size ? rows.flatMap((row, at) => consumed.has(at) ? [] : [replaced.get(at) ?? row]) : rows;
 }
 
 /** One row per platform message, across responses, polling, caches and Realtime. */
@@ -118,5 +157,5 @@ export function normalizeMessages(next: InboxMessage[], previous: InboxMessage[]
       rows[index] = merge(rows[index], incoming);
     }
   }
-  return rows;
+  return reconcileOptimistic(rows);
 }

@@ -30,12 +30,14 @@ export function getMessageActions(message: ActionMessage, platform?: string | nu
   const none = { reply: false, pin: false, edit: false, delete: false };
   if (message.id.startsWith("optimistic:") || !message.platform_message_id ||
     isMessageDeleted(message) || isFacebookComment(message)) return none;
-  const telegram = platform === "telegram" || message.platform_message_id.startsWith("telegram:");
+  // Telegram Personal has the same buttons as Telegram Bot chats (edits/deletes go through the holder's account).
+  const telegram = platform === "telegram" || platform === "telegram_personal" ||
+    message.platform_message_id.startsWith("telegram:") || message.platform_message_id.startsWith("tgp:");
   if (telegram) {
     const raw = record(message.raw_payload);
     const native = Object.keys(record(raw.message)).length ? record(raw.message) : raw;
     const plainText = message.message_type === "text" && !message.attachment_url &&
-      !raw.tenh_location && !raw.tenh_attachment && !raw.tenh_sticker &&
+      !raw.tenh_location && !raw.tenh_attachment && !raw.tenh_sticker && !raw.tgp_placeholder &&
       !["photo", "video", "document", "voice", "audio", "animation", "sticker", "location"].some((key) => native[key]);
     const ownText = message.direction === "outgoing" && plainText;
     return { reply: true, pin: true, edit: ownText && Boolean(text(message.message_text)), delete: true };

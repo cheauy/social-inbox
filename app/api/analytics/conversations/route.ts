@@ -10,6 +10,8 @@ import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 
+import { hiddenConversationIdSet, hiddenPersonalAccountIds } from "@/lib/telegram-personal/visibility";
+
 export const runtime =
   "nodejs";
 export const dynamic =
@@ -316,6 +318,16 @@ export async function GET(
     );
   }
 
+  // Waiting conversations on Telegram Personal chats this member may not see are not listed.
+  const waiting = (data?.waitingConversations ?? []) as Array<{ conversationId?: string }>;
+  const hiddenWaiting = await hiddenConversationIdSet(
+    waiting.map((row) => row.conversationId),
+    await hiddenPersonalAccountIds([currentMember.business_id], authResult.user.id),
+  );
+  const visibleData = data
+    ? { ...data, waitingConversations: waiting.filter((row) => !row.conversationId || !hiddenWaiting.has(row.conversationId)) }
+    : data;
+
   return NextResponse.json({
     success: true,
     businessId:
@@ -335,7 +347,7 @@ export async function GET(
       range.end.toISOString(),
     warnings: overdueResult.error ? ["Overdue follow-ups could not be loaded."] : [],
     analytics:
-      data ? { ...data, summary: { ...data.summary, overdueReminders: overdueResult.error ? null : (overdueResult.count ?? 0) } } : {
+      visibleData ? { ...visibleData, summary: { ...visibleData.summary, overdueReminders: overdueResult.error ? null : (overdueResult.count ?? 0) } } : {
         summary: {
           receivedConversations: 0,
           resolvedConversations: 0,

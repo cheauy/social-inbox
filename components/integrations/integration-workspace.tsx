@@ -8,6 +8,7 @@ import {
 
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 import { TelegramChannelPanel } from "@/components/integrations/telegram-channel-panel";
+import { PersonalBadge, TelegramPersonalPanel } from "@/components/integrations/telegram-personal-panel";
 
 import {
   TENH_CHANNEL_CATALOG,
@@ -235,11 +236,16 @@ function PlannedChannelPanel({
 }
 
 
+type TelegramVariant = "bot" | "personal";
+
 type AddConnectionModalProps = {
   open: boolean;
   selectedPlatform: TenhChannelPlatform;
   facebookCount: number;
   telegramCount: number;
+  personalAvailable: boolean;
+  telegramVariant: TelegramVariant;
+  onTelegramVariant: (variant: TelegramVariant) => void;
   onClose: () => void;
   onSelect: (platform: TenhChannelPlatform) => void;
   onContinue: () => void;
@@ -392,11 +398,115 @@ function ConnectionInstructions({
   );
 }
 
+function TelegramVariantChooser({
+  variant,
+  onChange,
+  personalAvailable,
+}: {
+  variant: TelegramVariant;
+  onChange: (variant: TelegramVariant) => void;
+  /** Off: Telegram Personal is shown greyed out as "Coming soon" and cannot be chosen. */
+  personalAvailable: boolean;
+}) {
+  const isKhmer = useWorkspaceLanguageId() === "km";
+  const options: Array<{ value: TelegramVariant; title: string; description: string }> = [
+    {
+      value: "bot",
+      title: "Telegram Bot",
+      description: isKhmer
+        ? "ភ្ជាប់ Bot ពី @BotFather ដោយប្រើ Bot Token។"
+        : "Connect a bot from @BotFather with its Bot Token.",
+    },
+    {
+      value: "personal",
+      title: isKhmer ? "Telegram ផ្ទាល់ខ្លួន" : "Telegram Personal",
+      description: isKhmer
+        ? "ចូលដោយប្រើគណនី Telegram ផ្ទាល់ខ្លួនរបស់អ្នកតាមកូដ QR ឬលេខទូរស័ព្ទ។"
+        : "Sign in with your own Telegram account by QR code or phone number.",
+    },
+  ];
+
+  return (
+    <div className="mb-4 grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Telegram connection type">
+      {options.map((option) => {
+        const comingSoon = option.value === "personal" && !personalAvailable;
+        const selected = !comingSoon && variant === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            aria-disabled={comingSoon}
+            disabled={comingSoon}
+            title={comingSoon ? (isKhmer ? "ឆាប់ៗនេះ" : "Coming soon") : undefined}
+            onClick={() => {
+              if (!comingSoon) onChange(option.value);
+            }}
+            className={`rounded-2xl border p-4 text-left transition ${
+              comingSoon
+                ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-60"
+                : selected
+                  ? "border-blue-500 bg-blue-50/50 ring-1 ring-blue-100"
+                  : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            <span className={`flex items-center gap-2 font-semibold ${comingSoon ? "text-slate-500" : "text-slate-950"}`}>
+              {option.title}
+              {option.value === "personal" && !comingSoon ? <PersonalBadge /> : null}
+              {comingSoon ? (
+                <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-600">
+                  {isKhmer ? "ឆាប់ៗនេះ" : "Coming soon"}
+                </span>
+              ) : null}
+            </span>
+            <span className="mt-1 block text-xs leading-5 text-slate-500">{option.description}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function PersonalConnectionInstructions() {
+  const isKhmer = useWorkspaceLanguageId() === "km";
+  const steps = isKhmer
+    ? [
+        "អានពីរបៀបដែល TENH ប្រើគណនីរបស់អ្នក និងអ្នកណាក្នុងក្រុមអាចមើលឃើញវា។",
+        "ស្កេនកូដ QR ក្នុង Telegram → Settings → Devices ឬប្រើលេខទូរស័ព្ទ និងលេខកូដ។",
+        "បញ្ចូលពាក្យសម្ងាត់ផ្ទៀងផ្ទាត់ពីរជំហាន ប្រសិនបើ Telegram ស្នើ។",
+        "គ្មានការជជែកណាមួយត្រូវបានចែករំលែកជាមួយក្រុម រហូតដល់អ្នកជ្រើសរើស។",
+      ]
+    : [
+        "Review how TENH uses your account and who on your team can see it.",
+        "Scan the QR code in Telegram → Settings → Devices, or use your phone number and code.",
+        "Enter your two-step verification password if Telegram asks for it.",
+        "No chats are shared with your team until you choose them.",
+      ];
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-4">
+        <p className="font-bold text-slate-950">{isKhmer ? "Telegram ផ្ទាល់ខ្លួន" : "Telegram Personal"}</p>
+        <PersonalBadge />
+      </div>
+      <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm leading-6 text-slate-600">
+        {steps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function AddConnectionModal({
   open,
   selectedPlatform,
   facebookCount,
   telegramCount,
+  personalAvailable,
+  telegramVariant,
+  onTelegramVariant,
   onClose,
   onSelect,
   onContinue,
@@ -521,9 +631,13 @@ function AddConnectionModal({
                               ? "ភ្ជាប់ Facebook Page សម្រាប់សារ Messenger និងមតិយោបល់។"
                               : "Connect Facebook Pages for Messenger messages and comments."
                             : channel.platform === "telegram"
-                              ? isKhmer
-                                ? "ភ្ជាប់ Telegram Bot សម្រាប់ការជជែកអតិថិជន និង Inbox webhook។"
-                                : "Connect Telegram bots for customer chats and Inbox webhooks."
+                              ? personalAvailable
+                                ? isKhmer
+                                  ? "ភ្ជាប់ Telegram Bot ឬគណនី Telegram ផ្ទាល់ខ្លួនរបស់អ្នក។"
+                                  : "Connect a Telegram Bot or your own Telegram account."
+                                : isKhmer
+                                  ? "ភ្ជាប់ Telegram Bot សម្រាប់ការជជែកអតិថិជន និង Inbox webhook។"
+                                  : "Connect Telegram bots for customer chats and Inbox webhooks."
                               : isKhmer
                                 ? `ការគាំទ្រ ${channel.shortName} ត្រូវបានគ្រោងសម្រាប់ការអាប់ដេត TENH Chat នាពេលខាងមុខ។`
                                 : channel.description}
@@ -562,7 +676,19 @@ function AddConnectionModal({
                 </div>
               </div>
 
-              <ConnectionInstructions platform={selectedPlatform} />
+              {selectedPlatform === "telegram" ? (
+                <TelegramVariantChooser
+                  variant={personalAvailable ? telegramVariant : "bot"}
+                  onChange={onTelegramVariant}
+                  personalAvailable={personalAvailable}
+                />
+              ) : null}
+
+              {selectedPlatform === "telegram" && personalAvailable && telegramVariant === "personal" ? (
+                <PersonalConnectionInstructions />
+              ) : (
+                <ConnectionInstructions platform={selectedPlatform} />
+              )}
 
               <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3">
                 <p className="text-xs font-semibold text-blue-950">
@@ -615,6 +741,9 @@ export function IntegrationWorkspace({
   const [addConnectionPlatform, setAddConnectionPlatform] =
     useState<TenhChannelPlatform>("facebook");
   const [telegramAddRequest, setTelegramAddRequest] = useState(0);
+  const [personalAvailable, setPersonalAvailable] = useState(false);
+  const [telegramVariant, setTelegramVariant] = useState<TelegramVariant>("bot");
+  const [personalOpenRequest, setPersonalOpenRequest] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -659,6 +788,13 @@ export function IntegrationWorkspace({
     }
 
     void loadConnectionSummary();
+
+    // Telegram Personal is feature-flagged per workspace; the route answers 404 when off.
+    fetch("/api/telegram-personal/connections", { method: "GET", cache: "no-store" })
+      .then((response) => {
+        if (!cancelled) setPersonalAvailable(response.ok);
+      })
+      .catch(() => undefined);
 
     return () => {
       cancelled = true;
@@ -779,11 +915,16 @@ export function IntegrationWorkspace({
         {activePlatform === "facebook" ? (
           <div className="min-w-0">{children}</div>
         ) : activePlatform === "telegram" ? (
-          <TelegramChannelPanel
-            canAddConnections={canAddConnections}
-            onConnectionChanged={setTelegramSummary}
-            openAddBotSignal={telegramAddRequest}
-          />
+          <>
+            <TelegramChannelPanel
+              canAddConnections={canAddConnections}
+              onConnectionChanged={setTelegramSummary}
+              openAddBotSignal={telegramAddRequest}
+            />
+            {personalAvailable ? (
+              <TelegramPersonalPanel openSignal={personalOpenRequest} />
+            ) : null}
+          </>
         ) : (
           <PlannedChannelPanel channel={activeChannel} />
         )}
@@ -794,6 +935,9 @@ export function IntegrationWorkspace({
         selectedPlatform={addConnectionPlatform}
         facebookCount={facebookSummary.total}
         telegramCount={telegramSummary.total}
+        personalAvailable={personalAvailable}
+        telegramVariant={telegramVariant}
+        onTelegramVariant={setTelegramVariant}
         onClose={() => setAddConnectionOpen(false)}
         onSelect={setAddConnectionPlatform}
         onContinue={() => {
@@ -805,7 +949,11 @@ export function IntegrationWorkspace({
 
           if (addConnectionPlatform === "telegram") {
             setActivePlatform("telegram");
-            setTelegramAddRequest((value) => value + 1);
+            if (personalAvailable && telegramVariant === "personal") {
+              setPersonalOpenRequest((value) => value + 1);
+            } else {
+              setTelegramAddRequest((value) => value + 1);
+            }
             setAddConnectionOpen(false);
           }
         }}

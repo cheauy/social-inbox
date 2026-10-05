@@ -23,6 +23,7 @@ import {
 } from "@/lib/supabase/admin";
 
 import { getInboxConversationAccess } from "@/lib/inbox/get-inbox-resource-access";
+import { deletePersonalMessage, editPersonalMessage, loadPersonalMessage } from "@/lib/telegram-personal/actions-server";
 import { getDeletedMessageText, getMessageActions, getMessagePin, isMessageDeleted, record } from "@/lib/inbox/message-actions";
 import { mutateMessageMetadata, MessageMutationError } from "@/lib/inbox/mutate-message-metadata";
 
@@ -326,6 +327,10 @@ export async function PATCH(
     );
   }
 
+  // Telegram Personal messages are edited through the holder's account.
+  const personal = await loadPersonalMessage(messageId);
+  if (personal) return editPersonalMessage(personal, text);
+
   let loaded;
 
   try {
@@ -511,6 +516,10 @@ export async function DELETE(
 
   const { messageId } =
     await context.params;
+
+  // Telegram Personal messages are deleted for everyone through the holder's account.
+  const personal = await loadPersonalMessage(messageId);
+  if (personal) return deletePersonalMessage(personal);
 
   let loaded;
 

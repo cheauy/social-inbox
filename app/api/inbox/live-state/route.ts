@@ -10,6 +10,7 @@ import {
 } from "@/lib/inbox/get-conversations";
 import { DISCOVERY_BATCH, validSyncCursor, type InboxSyncCursor } from "@/lib/inbox/live-sync";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { hiddenPersonalAccountIds } from "@/lib/telegram-personal/visibility";
 import { chunkIds } from "@/lib/supabase/chunk-ids";
 import type {
   ConversationStatus,
@@ -174,8 +175,9 @@ async function handlePOST(
     .select("id,platform,facebook_token_status,telegram_token_status")
     .in("business_id", scope.accessibleBusinessIds).eq("is_active", true);
   if (channelError) return NextResponse.json({ success: false, error: "Unable to verify Inbox channels." }, { status: 503 });
-  const channelIds = (channels ?? []).filter(channel => channel.platform === "telegram"
-    ? channel.telegram_token_status === "verified" : channel.facebook_token_status !== "disconnected").map(channel => channel.id);
+  const hiddenPersonal = await hiddenPersonalAccountIds(scope.accessibleBusinessIds, scope.userId);
+  const channelIds = (channels ?? []).filter(channel => !hiddenPersonal.includes(channel.id)).filter(channel => channel.platform === "telegram"
+    ? channel.telegram_token_status === "verified" : channel.platform === "telegram_personal" ? true : channel.facebook_token_status !== "disconnected").map(channel => channel.id);
   if (!channelIds.length) return NextResponse.json({ success: true, conversations: [], hydratedConversations: [], accessibleBusinessIds: scope.accessibleBusinessIds, activeChannelIds: [], hasMore: false }, { headers: { "Cache-Control": "private, no-store" } });
 
   // The old endpoint only knew IDs already on the screen. An empty list or a

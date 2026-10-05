@@ -58,6 +58,7 @@ import {
   ReplyBox,
   type ReplyAttachment,
 } from "@/components/inbox/reply-box";
+import { usePersonalReplyBlock } from "@/lib/telegram-personal/use-personal-reply-status";
 import {
   useWorkspaceLanguageId,
 } from "@/components/display/workspace-language-text";
@@ -1610,6 +1611,12 @@ export function MessagePanel({
           : "Waiting for customer reply"
         : null;
 
+  // Telegram Personal: only the account holder replies; others see why not.
+  const personalReply = usePersonalReplyBlock(
+    activeConversation?.id,
+    activeConversation?.social_account?.platform === "telegram_personal",
+  );
+
   const facebookMessengerBlockedReason =
     facebookWaitingForCustomerReply
       ? isKhmer
@@ -2672,21 +2679,28 @@ export function MessagePanel({
         .startsWith("telegram:"),
     );
 
+  // A Telegram Personal chat: the holder's own Telegram account, shared into TENH.
+  const isTelegramPersonal =
+    explicitPlatform === "telegram_personal";
+
   const headerChannelPlatform:
     | "messenger"
     | "telegram" =
     explicitPlatform === "telegram" ||
+    isTelegramPersonal ||
     hasTelegramMessage
       ? "telegram"
       : "messenger";
 
   const headerChannelAccountName =
-    activeConversation.social_account
-      ?.account_name
-      ?.trim() ||
-    (headerChannelPlatform === "telegram"
-      ? "Telegram Bot"
-      : "Facebook Page");
+    isTelegramPersonal
+      ? `${activeConversation.social_account?.account_name?.trim() || "Telegram"} · Telegram Personal`
+      : activeConversation.social_account
+          ?.account_name
+          ?.trim() ||
+        (headerChannelPlatform === "telegram"
+          ? "Telegram Bot"
+          : "Facebook Page");
 
   /*
    * Use the connected Facebook Page's public profile picture for Page-authored
@@ -5943,7 +5957,7 @@ export function MessagePanel({
           <div className="min-w-0 flex-1 border-l-2 border-sky-400 pl-3">
             <p className="text-xs font-semibold text-sky-700">Replying to {quotedReplyTarget.direction === "outgoing" ? "your message" : activeConversation.contact?.full_name || "customer"}</p>
             <p className="truncate text-sm text-slate-600">{getMessageSummary(quotedReplyTarget)}</p>
-            {replyingToFacebookMessageId && <p className="mt-0.5 text-[11px] text-slate-500">Reply in Messenger</p>}
+            {replyingToFacebookMessageId && <p className="mt-0.5 text-[11px] text-slate-500">{isTelegramPersonal ? "Reply in Telegram" : "Reply in Messenger"}</p>}
           </div>
           <button type="button" aria-label="Cancel message reply" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" onClick={replyingToFacebookMessageId ? onCancelFacebookReply : onCancelTelegramReply}>×</button>
         </div>
@@ -6079,10 +6093,10 @@ export function MessagePanel({
           reply={reply}
           sending={sending}
           error={sendError}
-          blockedReason={facebookCustomerBlock.blocked && !replyingToCommentId ? "This customer is blocked on this Facebook Page. Unblock the user in Customer Details before messaging." : replyingToCommentId && isCommentReplyBlocked(replyingToCommentId, messages, optimisticCommentState)
+          blockedReason={isTelegramPersonal ? personalReply.reason ?? (personalReply.loading ? "Checking reply access…" : null) : facebookCustomerBlock.blocked && !replyingToCommentId ? "This customer is blocked on this Facebook Page. Unblock the user in Customer Details before messaging." : replyingToCommentId && isCommentReplyBlocked(replyingToCommentId, messages, optimisticCommentState)
             ? "Unhide this comment and its parent before replying."
             : facebookMessengerBlockedReason}
-          blockedTitle={facebookCustomerBlock.blocked && !replyingToCommentId ? "Customer blocked" : facebookMessengerBlockedTitle}
+          blockedTitle={isTelegramPersonal ? (personalReply.loading ? "Telegram Personal" : "Read only") : facebookCustomerBlock.blocked && !replyingToCommentId ? "Customer blocked" : facebookMessengerBlockedTitle}
           canOpenInFacebook={Boolean(
             facebookMessengerBlockedReason &&
               !facebookCustomerBlock.blocked && !replyingToCommentId &&
@@ -6109,7 +6123,7 @@ export function MessagePanel({
           canCaptionAttachments={
             activeConversation
               ?.social_account
-              ?.platform === "telegram"
+              ?.platform === "telegram" || isTelegramPersonal
           }
           platform={activeConversation?.social_account?.platform}
           onSendSticker={onSendSticker}

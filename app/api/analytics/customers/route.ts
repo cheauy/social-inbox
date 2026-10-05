@@ -9,6 +9,7 @@ import {
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
+import { hiddenPersonalAccountIds, isHiddenContact } from "@/lib/telegram-personal/visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -303,6 +304,23 @@ export async function GET(
         status: 500,
       },
     );
+  }
+
+  // Named entries for Telegram Personal customers this member may not see are removed.
+  const hiddenPersonal = await hiddenPersonalAccountIds([currentMember.business_id], authResult.user.id);
+  const insights = data as { topCustomers?: Array<{ contactId?: string }> } | null;
+  if (hiddenPersonal.length && insights?.topCustomers?.length) {
+    const ids = insights.topCustomers.map((row) => row.contactId).filter((id): id is string => typeof id === "string");
+    const { data: contactRows, error: contactError } = await supabaseAdmin
+      .from("contacts")
+      .select("id,platform,platform_user_id")
+      .eq("business_id", currentMember.business_id)
+      .in("id", ids);
+    if (contactError) {
+      return NextResponse.json({ success: false, error: "Unable to load customer insights." }, { status: 500 });
+    }
+    const hiddenIds = new Set((contactRows ?? []).filter((row) => isHiddenContact(row, hiddenPersonal)).map((row) => row.id));
+    insights.topCustomers = insights.topCustomers.filter((row) => !row.contactId || !hiddenIds.has(row.contactId));
   }
 
   return NextResponse.json({

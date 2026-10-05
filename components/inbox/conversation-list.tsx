@@ -618,7 +618,8 @@ type ConversationPlatform =
 type ChannelDirectoryEntry = {
   platform:
     | "facebook"
-    | "telegram";
+    | "telegram"
+    | "telegram_personal";
   name: string;
   businessId: string;
   subscriptionId: string | null;
@@ -642,7 +643,8 @@ type ChannelsApiResponse = {
     id: string;
     platform:
       | "facebook"
-      | "telegram";
+      | "telegram"
+      | "telegram_personal";
     name: string;
     businessId: string;
     subscriptionId: string | null;
@@ -704,9 +706,12 @@ function TelegramSourceIcon({
 function ChannelAvatarBadge({
   platform,
   sourceType,
+  personal = false,
 }: {
   platform: ConversationPlatform;
   sourceType?: string | null;
+  /* A Telegram Personal chat (the holder's own account), not a Bot. */
+  personal?: boolean;
 }) {
   const [pngFailed, setPngFailed] =
     useState(false);
@@ -726,12 +731,12 @@ function ChannelAvatarBadge({
       }`}
       title={
         platform === "telegram"
-          ? "Telegram"
+          ? personal ? "Telegram Personal" : "Telegram"
           : isComment ? "Facebook comment" : "Messenger"
       }
       aria-label={
         platform === "telegram"
-          ? "Telegram conversation"
+          ? personal ? "Telegram Personal conversation" : "Telegram conversation"
           : isComment ? "Facebook comment conversation" : "Messenger conversation"
       }
     >
@@ -760,6 +765,20 @@ function ChannelAvatarBadge({
   );
 }
 
+function isPersonalConversation(
+  conversation: InboxConversation,
+  channelDirectory: ChannelDirectory,
+) {
+  const accountId = conversation.social_account?.id;
+  const extended = conversation as InboxConversation & {
+    social_account?: (InboxConversation["social_account"] & { platform?: string | null }) | null;
+  };
+  return (
+    (accountId ? channelDirectory[accountId]?.platform === "telegram_personal" : false) ||
+    extended.social_account?.platform === "telegram_personal"
+  );
+}
+
 function getConversationPlatform(
   conversation: InboxConversation,
   channelDirectory: ChannelDirectory,
@@ -778,7 +797,9 @@ function getConversationPlatform(
 
   if (
     registeredChannel?.platform ===
-    "telegram"
+      "telegram" ||
+    registeredChannel?.platform ===
+      "telegram_personal"
   ) {
     return "telegram";
   }
@@ -813,7 +834,9 @@ function getConversationPlatform(
 
   if (
     explicitPlatform ===
-    "telegram"
+      "telegram" ||
+    explicitPlatform ===
+      "telegram_personal"
   ) {
     return "telegram";
   }
@@ -874,7 +897,7 @@ function getConversationChannel(
       ? channelDirectory[socialAccountId]?.platform
       : null;
 
-  if (registeredPlatform === "telegram") {
+  if (registeredPlatform === "telegram" || registeredPlatform === "telegram_personal") {
     return "telegram" as const;
   }
 
@@ -890,7 +913,8 @@ function getConversationChannel(
 
   if (
     sourceType === "telegram" ||
-    explicitPlatform === "telegram"
+    explicitPlatform === "telegram" ||
+    explicitPlatform === "telegram_personal"
   ) {
     return "telegram" as const;
   }
@@ -1467,6 +1491,7 @@ const ConversationRow = memo(function ConversationRow({
                           platform={
                             conversationPlatform
                           }
+                          personal={isPersonalConversation(conversation, channelDirectory)}
                         />
                       ) : null}
                     </div>

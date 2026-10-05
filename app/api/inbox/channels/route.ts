@@ -10,6 +10,10 @@ import {
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
+import {
+  hiddenPersonalAccountIds,
+  PERSONAL_PLATFORM,
+} from "@/lib/telegram-personal/visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -225,6 +229,7 @@ export async function GET() {
         .in("platform", [
           "facebook",
           "telegram",
+          PERSONAL_PLATFORM,
         ])
         .order("created_at", {
           ascending: true,
@@ -243,9 +248,18 @@ export async function GET() {
      * subscriptions and Owner-disabled channels stay preserved elsewhere but
      * must not leak names/usernames into another user's Inbox selector.
      */
+    // Telegram Personal accounts appear only to members allowed to see them.
+    const hiddenPersonal = rows.some((row) => row.platform === PERSONAL_PLATFORM)
+      ? await hiddenPersonalAccountIds(accessibleBusinessIds, user.id)
+      : [];
+
     const visibleRows = rows.filter((row) => {
       if (row.is_active !== true) {
         return false;
+      }
+
+      if (row.platform === PERSONAL_PLATFORM) {
+        return !hiddenPersonal.includes(row.id);
       }
 
       if (row.platform === "facebook") {
@@ -274,18 +288,22 @@ export async function GET() {
         channelEnabled: true,
         accessAllowed: true,
         platform:
-          row.platform === "telegram"
-            ? "telegram"
+          row.platform === "telegram" || row.platform === PERSONAL_PLATFORM
+            ? row.platform
             : "facebook",
         platformAccountId:
-          row.platform_account_id,
+          row.platform === PERSONAL_PLATFORM
+            ? null
+            : row.platform_account_id,
         name:
           row.platform === "telegram"
             ? row.telegram_bot_name ??
               row.account_name ??
               "Telegram Bot"
-            : row.account_name ??
-              "Facebook Page",
+            : row.platform === PERSONAL_PLATFORM
+              ? row.account_name ?? "Telegram Personal"
+              : row.account_name ??
+                "Facebook Page",
         username:
           row.platform === "telegram"
             ? row.telegram_bot_username

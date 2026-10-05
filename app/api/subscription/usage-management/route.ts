@@ -711,6 +711,18 @@ export async function PATCH(
       );
     }
 
+    /*
+     * Telegram Personal sessions are owned by the worker. Toggling is_active
+     * here would bypass sign-in state, revocation and pause handling, so
+     * those accounts are paused/resumed from Integrations instead.
+     */
+    if (connection.platform === "telegram_personal") {
+      return jsonError(
+        "Pause, resume or sign out Telegram Personal accounts from Integrations → Telegram.",
+        409,
+      );
+    }
+
     if (
       connection.is_active ===
       body.active

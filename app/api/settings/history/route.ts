@@ -4,6 +4,7 @@ import {
 } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
+import { hiddenPersonalAccountIds, hiddenPersonalContactIds, hiddenPersonalConversationIds, visibleIdOrFilter } from "@/lib/telegram-personal/visibility";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requirePermission } from "@/lib/auth/require-permission";
 
@@ -149,6 +150,17 @@ export async function GET(
       ].join(","),
     );
   }
+
+  // Activity on Telegram Personal chats this member may not see is not listed.
+  const hiddenPersonal = await hiddenPersonalAccountIds([currentMember.business_id], authResult.user.id);
+  const [hiddenConversations, hiddenContacts] = await Promise.all([
+    hiddenPersonalConversationIds(hiddenPersonal),
+    hiddenPersonalContactIds(hiddenPersonal),
+  ]);
+  const conversationFilter = visibleIdOrFilter("conversation_id", hiddenConversations);
+  const contactFilter = visibleIdOrFilter("contact_id", hiddenContacts);
+  if (conversationFilter) query = query.or(conversationFilter);
+  if (contactFilter) query = query.or(contactFilter);
 
   const {
     data,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { isConversationHiddenFor } from "@/lib/telegram-personal/visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,7 +73,8 @@ async function authorizeReminder(reminderId: string) {
     };
   }
 
-  if (!reminder) {
+  // Reminders on Telegram Personal chats this user may not see do not exist for them.
+  if (!reminder || (await isConversationHiddenFor(reminder.conversation_id, user.id))) {
     return {
       success: false as const,
       status: 404,
