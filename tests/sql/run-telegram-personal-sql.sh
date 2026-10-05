@@ -7,7 +7,7 @@ cd "$(dirname "$0")/../.."
 db=tgp_test_$$
 dropdb --if-exists "$db" >/dev/null
 createdb "$db"
-trap 'for d in "$db" "${db}_guard" "${db}_d1" "${db}_split"; do dropdb --if-exists "$d" >/dev/null 2>&1 || true; done' EXIT
+trap 'for d in "$db" "${db}_guard" "${db}_d1" "${db}_split" "${db}_u" "${db}_ug"; do dropdb --if-exists "$d" >/dev/null 2>&1 || true; done' EXIT
 psql -q -v ON_ERROR_STOP=1 -d "$db" -f tests/sql/telegram-personal-stub-schema.sql
 psql -q -v ON_ERROR_STOP=1 -d "$db" -f db/proposals/20261020_telegram_personal_draft.sql
 psql -q -v ON_ERROR_STOP=1 -d "$db" -f db/proposals/20261020_telegram_personal_draft.sql 2>/dev/null # idempotent
@@ -21,13 +21,34 @@ psql -q -v ON_ERROR_STOP=1 -d "${db}_d1" -f db/proposals/20261020_telegram_perso
 psql -q -v ON_ERROR_STOP=1 -d "${db}_d1" -f db/proposals/20261021_telegram_personal_d1.sql
 psql -q -v ON_ERROR_STOP=1 -d "${db}_d1" -f tests/sql/telegram-personal-d1.test.sql | grep -q 'all assertions passed'
 echo "PASS D1 assertions"
+# Unified inbox: pilot-like data, live inbox functions, install twice, assertions.
+dropdb --if-exists "${db}_u" >/dev/null; createdb "${db}_u"
+for f in tests/sql/telegram-personal-stub-schema.sql db/proposals/20261020_telegram_personal_draft.sql \
+         db/proposals/20261021_telegram_personal_d1.sql tests/sql/live-inbox-functions-20261005.sql \
+         tests/sql/telegram-personal-unified-seed.sql db/proposals/20261022_telegram_personal_unified_inbox.sql; do
+  psql -q -v ON_ERROR_STOP=1 -d "${db}_u" -f "$f" >/dev/null
+done
+psql -q -v ON_ERROR_STOP=1 -d "${db}_u" -f db/proposals/20261022_telegram_personal_unified_inbox.sql >/dev/null 2>&1 # idempotent
+psql -q -v ON_ERROR_STOP=1 -d "${db}_u" -f tests/sql/telegram-personal-unified.test.sql | grep -q 'all assertions passed'
+echo "PASS unified assertions (installed twice)"
+# Refuses to patch a tenh_inbox_page that differs from the reviewed live version.
+dropdb --if-exists "${db}_ug" >/dev/null; createdb "${db}_ug"
+for f in tests/sql/telegram-personal-stub-schema.sql db/proposals/20261020_telegram_personal_draft.sql \
+         db/proposals/20261021_telegram_personal_d1.sql tests/sql/live-inbox-functions-20261005.sql; do
+  psql -q -v ON_ERROR_STOP=1 -d "${db}_ug" -f "$f" >/dev/null
+done
+psql -q -d "${db}_ug" -c "create or replace function public.tenh_inbox_page(p_user_id uuid, p_business_ids uuid[], p_request jsonb, p_views jsonb default '[]'::jsonb, p_snapshot boolean default false) returns jsonb language sql as 'select ''{}''::jsonb'"
+if psql -q -v ON_ERROR_STOP=1 -d "${db}_ug" -f db/proposals/20261022_telegram_personal_unified_inbox.sql >/dev/null 2>&1; then echo "FAIL inbox guard"; exit 1; fi
+[ "$(psql -qtA -d "${db}_ug" -c "select count(*) from pg_proc where proname='tgp_enqueue_send'")" = "0" ] && echo "PASS unified install refuses an unreviewed tenh_inbox_page (nothing applied)"
+
 # Both files must also survive an editor that splits on statements.
-for f in db/proposals/20261020_telegram_personal_draft.sql db/proposals/20261021_telegram_personal_d1.sql; do
+for f in db/proposals/20261020_telegram_personal_draft.sql db/proposals/20261021_telegram_personal_d1.sql db/proposals/20261022_telegram_personal_unified_inbox.sql; do
   chunks="$(mktemp -d)"
   python3 tests/sql/tools/split-like-editor.py "$f" "$chunks" >/dev/null
   dropdb --if-exists "${db}_split" >/dev/null; createdb "${db}_split"
   psql -q -d "${db}_split" -f tests/sql/telegram-personal-stub-schema.sql
-  [ "$f" = db/proposals/20261021_telegram_personal_d1.sql ] && psql -q -d "${db}_split" -f db/proposals/20261020_telegram_personal_draft.sql
+  [ "$f" != db/proposals/20261020_telegram_personal_draft.sql ] && psql -q -d "${db}_split" -f db/proposals/20261020_telegram_personal_draft.sql
+  [ "$f" = db/proposals/20261022_telegram_personal_unified_inbox.sql ] && psql -q -d "${db}_split" -f db/proposals/20261021_telegram_personal_d1.sql -f tests/sql/live-inbox-functions-20261005.sql >/dev/null
   cat "$chunks"/*.sql | psql -q -v ON_ERROR_STOP=1 -d "${db}_split" >/dev/null
   rm -rf "$chunks"
   echo "PASS statement-split install: $f"
