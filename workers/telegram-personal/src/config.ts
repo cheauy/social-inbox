@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { hostname } from "node:os";
 import type { KeyObject } from "node:crypto";
 import { parseKek, privateKeyFromPem } from "./crypto.ts";
+import { SupabaseMediaStorage, type MediaStorage } from "./media-storage.ts";
 
 export type WorkerConfig = {
   workerId: string;
@@ -22,6 +23,8 @@ export type WorkerConfig = {
   reconnectGraceMs: number;
   authProbeMs: number;
   healthPort: number | null;
+  mediaStorage: MediaStorage | null;
+  mediaMaxBytes: number;
 };
 
 export class ConfigError extends Error {}
@@ -73,5 +76,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
     reconnectGraceMs: int(env, "TELEGRAM_PERSONAL_RECONNECT_GRACE_MS", 10_000, 0, 300_000),
     authProbeMs: int(env, "TELEGRAM_PERSONAL_AUTH_PROBE_MS", 60_000, 15_000, 3_600_000),
     healthPort: env.PORT ? int(env, "PORT", 8080, 1, 65535) : null,
+    // Optional: real photos, files and profile pictures. Without both, media stays a placeholder.
+    mediaStorage: env.TELEGRAM_PERSONAL_STORAGE_URL && env.TELEGRAM_PERSONAL_STORAGE_KEY
+      ? new SupabaseMediaStorage(env.TELEGRAM_PERSONAL_STORAGE_URL, env.TELEGRAM_PERSONAL_STORAGE_KEY)
+      : null,
+    mediaMaxBytes: int(env, "TELEGRAM_PERSONAL_MEDIA_MAX_MB", 20, 1, 50) * 1024 * 1024,
   };
 }

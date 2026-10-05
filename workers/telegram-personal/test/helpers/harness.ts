@@ -1,3 +1,4 @@
+import { MemoryMediaStorage } from "./memory-media.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,6 +19,7 @@ export async function waitFor(condition: () => boolean | Promise<boolean>, timeo
 }
 
 export function makeHarness<S extends Store = MemoryStore>(options: { store?: S; workerId?: string; maxSessions?: number; overrides?: Partial<SupervisorConfig> } = {}) {
+  const media = new MemoryMediaStorage();
   const dataDir = mkdtempSync(join(tmpdir(), "tgp-worker-test-"));
   const pair = generateSealKeyPair();
   const sealPrivateKey = privateKeyFromPem(pair.privateKeyPem);
@@ -40,12 +42,15 @@ export function makeHarness<S extends Store = MemoryStore>(options: { store?: S;
     reconnectGraceMs: 60,
     authProbeMs: 80,
     maxSessions: options.maxSessions ?? 10,
+    mediaStorage: media,
+    mediaMaxBytes: 1024 * 1024,
     ...options.overrides,
   };
   const supervisor = new Supervisor({ store, factory: telegram, config, log });
   // Like the real worker's Postgres LISTEN: store wake-ups poke the session.
   if (!options.store) void store.listen((sessionId) => supervisor.wake(sessionId));
   return {
+    media,
     store,
     telegram,
     supervisor,

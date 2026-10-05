@@ -13,6 +13,19 @@ export type PlaceholderKind =
   | "photo" | "video" | "voice" | "video_note" | "sticker" | "file" | "audio" | "gif"
   | "location" | "contact" | "poll" | "other";
 
+/** A Telegram file the worker may copy into TENH storage (see media-storage.ts). */
+export type MediaRef = {
+  fileId: number;
+  size: number;
+  mimeType: string;
+  name: string;
+  /** messages.message_type once saved. */
+  messageType: "image" | "video" | "audio" | "file" | "sticker";
+  /** Path segment used by the web media route for this message type. */
+  pathKind: "photo" | "video" | "audio" | "file";
+  duration: number | null;
+};
+
 export type IngestInput = {
   chatId: string;
   messageId: number;
@@ -21,6 +34,10 @@ export type IngestInput = {
   body: string | null;
   placeholder: PlaceholderKind | null;
   sentAt: string;
+  /** Present only for media messages. */
+  media?: MediaRef;
+  /** Telegram id of the quoted message in the same chat, when this is a reply. */
+  replyTo?: number;
 };
 
 export type ChatSummary = {
@@ -58,6 +75,82 @@ const SKIPPED_CONTENT = new Set([
   "messageExpiredVoiceNote",
 ]);
 
+type FileObj = { id?: unknown; size?: unknown; expected_size?: unknown };
+
+function fileRef(file: unknown, rest: Omit<MediaRef, "fileId" | "size">): MediaRef | undefined {
+  const f = (file ?? {}) as FileObj;
+  const id = Number(f.id);
+  const size = Number(f.size) || Number(f.expected_size) || 0;
+  if (!Number.isSafeInteger(id) || id <= 0) return undefined;
+  return { fileId: id, size, ...rest };
+}
+
+const num = (value: unknown) => (Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : null);
+const str = (value: unknown, fallback: string) => (typeof value === "string" && value.trim() ? value.trim().slice(0, 200) : fallback);
+
+/** The file inside a media message, if TENH can show it. Animated stickers stay placeholders. */
+export function mediaOf(content: TdObject): MediaRef | undefined {
+  switch (content._) {
+    case "messagePhoto": {
+      const sizes = (((content.photo as TdObject | undefined)?.sizes as TdObject[] | undefined) ?? [])
+        .filter((size) => size.photo)
+        .sort((a, b) => Number(a.width) * Number(a.height) - Number(b.width) * Number(b.height));
+      const largest = sizes[sizes.length - 1];
+      return largest ? fileRef(largest.photo, { mimeType: "image/jpeg", name: "photo.jpg", messageType: "image", pathKind: "photo", duration: null }) : undefined;
+    }
+    case "messageVideo": {
+      const v = (content.video ?? {}) as TdObject;
+      return fileRef(v.video, { mimeType: str(v.mime_type, "video/mp4"), name: str(v.file_name, "video.mp4"), messageType: "video", pathKind: "video", duration: num(v.duration) });
+    }
+    case "messageAnimation": {
+      const v = (content.animation ?? {}) as TdObject;
+      return fileRef(v.animation, { mimeType: str(v.mime_type, "video/mp4"), name: str(v.file_name, "animation.mp4"), messageType: "video", pathKind: "video", duration: num(v.duration) });
+    }
+    case "messageVideoNote": {
+      const v = (content.video_note ?? {}) as TdObject;
+      return fileRef(v.video, { mimeType: "video/mp4", name: "video-message.mp4", messageType: "video", pathKind: "video", duration: num(v.duration) });
+    }
+    case "messageVoiceNote": {
+      const v = (content.voice_note ?? {}) as TdObject;
+      return fileRef(v.voice, { mimeType: str(v.mime_type, "audio/ogg"), name: "voice.ogg", messageType: "audio", pathKind: "audio", duration: num(v.duration) });
+    }
+    case "messageAudio": {
+      const v = (content.audio ?? {}) as TdObject;
+      return fileRef(v.audio, { mimeType: str(v.mime_type, "audio/mpeg"), name: str(v.file_name, "audio.mp3"), messageType: "audio", pathKind: "audio", duration: num(v.duration) });
+    }
+    case "messageDocument": {
+      const v = (content.document ?? {}) as TdObject;
+      return fileRef(v.document, { mimeType: str(v.mime_type, "application/octet-stream"), name: str(v.file_name, "file"), messageType: "file", pathKind: "file", duration: null });
+    }
+    case "messageSticker": {
+      const v = (content.sticker ?? {}) as TdObject;
+      if ((v.format as TdObject | undefined)?._ !== "stickerFormatWebp") return undefined;
+      return fileRef(v.sticker, { mimeType: "image/webp", name: "sticker.webp", messageType: "sticker", pathKind: "file", duration: null });
+    }
+    default:
+      return undefined;
+  }
+}
+
+/** Telegram id of the quoted message when it is in the same chat. */
+export function replyToOf(message: TdObject): number | undefined {
+  const reply = message.reply_to as TdObject | undefined;
+  if (reply?._ === "messageReplyToMessage") {
+    const sameChat = reply.chat_id === undefined || Number(reply.chat_id) === Number(message.chat_id);
+    const id = Number(reply.message_id);
+    return sameChat && Number.isSafeInteger(id) && id > 0 ? id : undefined;
+  }
+  const legacy = Number(message.reply_to_message_id);
+  return Number.isSafeInteger(legacy) && legacy > 0 ? legacy : undefined;
+}
+
+/** Text of a message content (text or caption), for edits. */
+export function contentText(content: TdObject | undefined): string {
+  if (!content) return "";
+  if (content._ === "messageText") return text(content.text) ?? "";
+  return text(content.caption) ?? "";
+}
+
 function text(value: unknown): string | null {
   const t = (value as { text?: unknown } | undefined)?.text;
   return typeof t === "string" && t.length ? t : null;
@@ -72,21 +165,25 @@ export function mapMessage(message: TdObject): IngestInput | null {
   if (!Number.isSafeInteger(id) || !Number.isSafeInteger(chatId) || !Number.isFinite(date) || date <= 0) return null;
   const content = (message.content ?? {}) as TdObject;
   if (SKIPPED_CONTENT.has(content._)) return null;
+  const replyTo = replyToOf(message);
   const base = {
     chatId: String(chatId),
     messageId: id,
     direction: message.is_outgoing === true ? ("outgoing" as const) : ("incoming" as const),
     sentAt: new Date(date * 1000).toISOString(),
+    ...(replyTo ? { replyTo } : {}),
   };
   if (content._ === "messageText") {
     const body = text(content.text);
     return body ? { ...base, type: "text", body: body.slice(0, 4096), placeholder: null } : null;
   }
+  const media = mediaOf(content);
   return {
     ...base,
     type: "placeholder",
     body: text(content.caption)?.slice(0, 4096) ?? null,
     placeholder: PLACEHOLDERS[content._] ?? "other",
+    ...(media ? { media } : {}),
   };
 }
 

@@ -184,6 +184,7 @@ test("PgStore + unified inbox SQL: receive into the inbox, holder-only send, at 
       "tests/sql/live-inbox-functions-20261005.sql",
       "db/proposals/20261022_telegram_personal_unified_inbox.sql",
       "db/proposals/20261023_telegram_personal_auto_share.sql",
+      "db/proposals/20261024_telegram_personal_media.sql",
     ]) await sql.query(readFileSync(`${repo}/${file}`, "utf8"));
     await sql.query(`insert into businesses(id) values ($1)`, [B1]);
     await sql.query(`insert into team_members(id,business_id,user_id,role) values ($1,$2,$3,'owner'),($4,$2,$5,'agent')`, [M1, B1, U1, M3, U3]);
@@ -245,6 +246,40 @@ test("PgStore + unified inbox SQL: receive into the inbox, holder-only send, at 
     await waitFor(async () => Number((await sql.query(`select count(*) from conversations where platform = 'telegram_personal'`)).rows[0].count) === 2, 3000, "auto-shared");
     assert.equal((await sql.query(`select count(*)::int as n from messages where message_text = 'bot says'`)).rows[0].n, 0);
     assert.equal((await sql.query(`select title from telegram_personal_chats where chat_id = '5002'`)).rows[0].title, "Customer B");
+
+    // Media, profile photo, reply, edit and delete through the real SQL.
+    const photoFile = h.telegram.addFile(new Uint8Array(1200).fill(5));
+    h.telegram.chats.get(5002)!.photoFileId = h.telegram.addFile(new Uint8Array(80).fill(6));
+    tg.emit({ _: "updateChatPhoto", chat_id: 5002 }); // what Telegram sends when the photo changes
+    tg.receive({ ...FakeTelegram.photoMessage(5002, 78, photoFile, 1200, "a photo", { date: later }), reply_to: { _: "messageReplyToMessage", chat_id: 5002, message_id: 77 } });
+    await waitFor(async () => (await sql.query(`select message_type from messages where platform_message_id like '%:5002:78'`)).rows[0]?.message_type === "image", 3000, "photo saved");
+    const photo = (await sql.query(`select id, attachment_url, message_text, raw_payload->'tenh_reply'->>'preview_text' as quote from messages where platform_message_id like '%:5002:78'`)).rows[0];
+    assert.equal(photo.attachment_url, `/api/messages/${photo.id}/media`);
+    assert.deepEqual([photo.message_text, photo.quote], ["a photo", "new person"]);
+    assert.ok(h.media.objects.has(`tenh-message-media/${B1}/${photo.id}/photo`));
+    await waitFor(async () => Boolean((await sql.query(`select profile_picture_url from contacts where platform_user_id like '%:5002'`)).rows[0]?.profile_picture_url), 3000, "avatar");
+    tg.emit({ _: "updateMessageContent", chat_id: 5002, message_id: 77, new_content: { _: "messageText", text: { _: "formattedText", text: "new person (edited)" } } });
+    tg.emit({ _: "updateDeleteMessages", chat_id: 5002, message_ids: [78], is_permanent: true, from_cache: false });
+    await waitFor(async () => (await sql.query(`select message_text from messages where platform_message_id like '%:5002:78'`)).rows[0].message_text === "Message deleted", 3000, "deleted");
+    assert.equal((await sql.query(`select message_text from messages where platform_message_id like '%:5002:77'`)).rows[0].message_text, "new person (edited)");
+
+    // Send a document with a quote: staged in storage, sent once, stored with its file.
+    h.telegram.sendOutcome = "succeed";
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const conv2 = (await sql.query(`select conversation_id from telegram_personal_chats where chat_id = '5002'`)).rows[0].conversation_id;
+    const quoted = (await sql.query(`select id from messages where platform_message_id like '%:5002:77'`)).rows[0].id;
+    const mediaReq = crypto.randomUUID();
+    const staging = `${B1}/tgp-outbox/${mediaReq}/price.pdf`;
+    await h.media.upload("tenh-message-media", staging, new Uint8Array(900).fill(1), "application/pdf");
+    const queued = (await sql.query(`select tgp_enqueue_send_v2($1,$2,$3,$4,$5,$6,$7::jsonb,$8) as r`, [conv2, B1, U1, M1, mediaReq, "price list",
+      JSON.stringify({ kind: "document", storage_path: staging, size: 900, mime_type: "application/pdf", name: "price.pdf" }), quoted])).rows[0].r;
+    assert.equal(queued.ok, true, JSON.stringify(queued));
+    const mediaState = async () => (await sql.query(`select tgp_send_state($1,$2,$3,$4) as s`, [conv2, B1, U1, mediaReq])).rows[0].s;
+    await waitFor(async () => (await mediaState()).state === "done", 3000, "media sent");
+    assert.equal(h.telegram.delivered.filter((d) => d.kind === "inputMessageDocument").length, 1);
+    assert.equal(h.telegram.delivered.find((d) => d.kind === "inputMessageDocument")?.replyTo, 77);
+    await waitFor(async () => (await sql.query(`select message_type from messages where id = $1`, [(await mediaState()).message_id])).rows[0].message_type === "file", 3000, "sent file stored");
+    assert.ok(!h.media.objects.has(`tenh-message-media/${staging}`), "staging removed");
   } finally {
     await h.cleanup();
     await store.end();

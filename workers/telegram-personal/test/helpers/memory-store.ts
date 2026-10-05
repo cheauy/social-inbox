@@ -47,7 +47,7 @@ export class MemoryStore implements Store {
   readonly commands: Array<{ id: string; sessionId: string; kind: Command["kind"]; status: string; payload?: Record<string, unknown>; result?: unknown; errorCode?: string | null; tempMessageId?: number; messageId?: string | null }> = [];
   // D1 mirror: shares keyed by session id (one account per session here), messages and waiting chats.
   readonly shares = new Map<string, Map<string, { rowId: string; unshared: boolean; lastReadAt: number; lastMessageAt: string | null; sharedAt: string; preview: string | null; unread: number; title?: string }>>();
-  readonly messages: Array<IngestRow & { sessionId: string; id: string }> = [];
+  readonly messages: Array<IngestRow & { sessionId: string; id: string; savedType?: string; attachment?: Record<string, unknown>; quoted?: number; edited?: boolean; deleted?: boolean }> = [];
   readonly unshared = new Map<string, Set<string>>();
   ingestCalls = 0;
   readonly writes: Array<{ sessionId: string; op: string; accepted: boolean; patch?: unknown }> = [];
@@ -330,9 +330,55 @@ export class MemoryStore implements Store {
     return "SHARED";
   }
 
+  // Media, replies, edits, deletions and profile photos (mirror of the 20261024 SQL).
+  readonly contactPhotos = new Map<string, boolean>();
+  async setMessageMedia(f: Fence, messageId: string, messageType: string, text: string, attachment: Record<string, unknown>) {
+    if (!this.holds(f)) return false;
+    const m = this.messages.find((x) => x.id === messageId && x.sessionId === f.sessionId);
+    if (!m) return false;
+    Object.assign(m, { savedType: messageType, body: text, attachment });
+    return true;
+  }
+  async setMessageReply(f: Fence, messageId: string, chatId: string, replyTo: number) {
+    if (!this.holds(f)) return false;
+    const m = this.messages.find((x) => x.id === messageId && x.chatId === chatId);
+    if (!m) return false;
+    Object.assign(m, { quoted: replyTo });
+    return true;
+  }
+  async editMessage(f: Fence, chatId: string, messageId: number, text: string) {
+    if (!this.holds(f)) return "NOT_LIVE";
+    const m = this.messages.find((x) => x.sessionId === f.sessionId && x.chatId === chatId && x.messageId === messageId);
+    if (!m) return "NOT_FOUND";
+    Object.assign(m, { body: text, edited: true });
+    return "OK";
+  }
+  async deleteMessages(f: Fence, chatId: string, messageIds: number[]) {
+    if (!this.holds(f)) return 0;
+    let n = 0;
+    for (const m of this.messages) {
+      if (m.sessionId === f.sessionId && m.chatId === chatId && messageIds.includes(m.messageId) && !(m as { deleted?: boolean }).deleted) {
+        Object.assign(m, { deleted: true, body: "Message deleted" });
+        n += 1;
+      }
+    }
+    return n;
+  }
+  async chatContact(f: Fence, chatId: string) {
+    if (!this.holds(f)) return null;
+    const share = this.shares.get(f.sessionId)?.get(chatId);
+    return share && !share.unshared && this.messages.some((m) => m.sessionId === f.sessionId && m.chatId === chatId)
+      ? { contactId: `contact-${chatId}`, businessId: (this.rows.get(f.sessionId) as Row).businessId } : null;
+  }
+  async setContactPhoto(f: Fence, chatId: string, hasPhoto: boolean) {
+    if (!this.holds(f)) return false;
+    this.contactPhotos.set(chatId, hasPhoto);
+    return true;
+  }
+
   async sendBegin(f: Fence, commandId: string) {
     if (!this.holds(f)) return false;
-    const command = this.commands.find((c) => c.id === commandId && c.kind === "send_text" && c.status === "claimed");
+    const command = this.commands.find((c) => c.id === commandId && (c.kind === "send_text" || c.kind === "send_media") && c.status === "claimed");
     if (!command) return false;
     command.status = "sending";
     return true;
@@ -348,7 +394,7 @@ export class MemoryStore implements Store {
 
   async sendFinish(f: Fence, tempMessageId: number, status: "done" | "failed", errorCode: string | null, messageId: string | null): Promise<FinishedSend | null> {
     if (!this.holds(f)) return null;
-    const command = this.commands.find((c) => c.sessionId === f.sessionId && c.kind === "send_text" && c.tempMessageId === tempMessageId &&
+    const command = this.commands.find((c) => c.sessionId === f.sessionId && (c.kind === "send_text" || c.kind === "send_media") && c.tempMessageId === tempMessageId &&
       (c.status === "sending" || c.status === "uncertain"));
     if (!command) return null;
     command.status = status;

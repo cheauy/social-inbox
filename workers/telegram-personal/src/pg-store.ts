@@ -160,6 +160,52 @@ export class PgStore implements Store {
     }
   }
 
+  // Media, edits, deletions, replies and profile photos (20261024). Off until installed.
+  private mediaSqlAvailable = true;
+
+  private async optional<T>(sql: string, params: unknown[], fallback: T): Promise<T> {
+    if (!this.mediaSqlAvailable) return fallback;
+    try {
+      const row = await this.one<{ result: T }>(sql, params);
+      return (row?.result ?? fallback) as T;
+    } catch (error) {
+      if (!isMissingFunction(error)) throw error;
+      this.mediaSqlAvailable = false;
+      return fallback;
+    }
+  }
+
+  setMessageMedia(f: Fence, messageId: string, messageType: string, text: string, attachment: Record<string, unknown>) {
+    return this.optional("select public.tgp_set_message_media($1,$2,$3,$4,$5,$6,$7::jsonb) as result",
+      [f.sessionId, f.workerId, f.epoch, messageId, messageType, text, JSON.stringify(attachment)], false);
+  }
+
+  setMessageReply(f: Fence, messageId: string, chatId: string, replyTo: number) {
+    return this.optional("select public.tgp_set_message_reply($1,$2,$3,$4,$5,$6) as result",
+      [f.sessionId, f.workerId, f.epoch, messageId, chatId, replyTo], false);
+  }
+
+  editMessage(f: Fence, chatId: string, messageId: number, text: string, editedAt: string) {
+    return this.optional("select public.tgp_edit_message($1,$2,$3,$4,$5,$6,$7) as result",
+      [f.sessionId, f.workerId, f.epoch, chatId, messageId, text, editedAt], "UNAVAILABLE");
+  }
+
+  deleteMessages(f: Fence, chatId: string, messageIds: number[]) {
+    return this.optional("select public.tgp_delete_messages($1,$2,$3,$4,$5::bigint[]) as result",
+      [f.sessionId, f.workerId, f.epoch, chatId, messageIds], 0).then(Number);
+  }
+
+  async chatContact(f: Fence, chatId: string) {
+    const r = await this.optional<{ contact_id: string; business_id: string } | null>("select public.tgp_worker_chat_contact($1,$2,$3,$4) as result",
+      [f.sessionId, f.workerId, f.epoch, chatId], null);
+    return r ? { contactId: r.contact_id, businessId: r.business_id } : null;
+  }
+
+  setContactPhoto(f: Fence, chatId: string, hasPhoto: boolean) {
+    return this.optional("select public.tgp_set_contact_photo($1,$2,$3,$4,$5) as result",
+      [f.sessionId, f.workerId, f.epoch, chatId, hasPhoto], false);
+  }
+
   private autoShareAvailable = true;
 
   async autoShareChat(f: Fence, chatId: string, title: string, username: string | null): Promise<AutoShareResult> {

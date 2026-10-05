@@ -11,6 +11,7 @@ import {
   ensureSessionDirectory,
   LockHeldError,
   removeSessionDirectory,
+  sessionDirectory,
 } from "./local-data.ts";
 import { maskPhone, type Logger } from "./redact.ts";
 import {
@@ -23,9 +24,16 @@ import {
   type Store,
 } from "./store.ts";
 import { tdErrorDetails, type TdClient, type TdClientFactory, type TdObject } from "./tdlib-port.ts";
-import { listPrivateChats, loadHistory, mapMessage, personChat } from "./chats.ts";
-import type { Command, SharedChat } from "./store.ts";
+import { contentText, listPrivateChats, loadHistory, mapMessage, personChat, type IngestInput, type MediaRef } from "./chats.ts";
+import { CONTACT_AVATAR_BUCKET, MESSAGE_MEDIA_BUCKET } from "./media-storage.ts";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import type { Command, IngestOutcome, SharedChat } from "./store.ts";
+
+/** Large files can take a while to come down from Telegram. */
+const MEDIA_TIMEOUT_MS = 180_000;
 import { OperationTimeoutError, withTimeout } from "./timeout.ts";
+import type { MediaStorage } from "./media-storage.ts";
 
 export type RunnerConfig = {
   workerId: string;
@@ -41,6 +49,10 @@ export type RunnerConfig = {
   reconnectGraceMs: number;
   /** How often a live session confirms with Telegram that it is still authorized. */
   authProbeMs: number;
+  /** Private storage for media and profile photos; null keeps media as text placeholders. */
+  mediaStorage?: MediaStorage | null;
+  /** Larger files stay placeholders (default 20 MB). */
+  mediaMaxBytes?: number;
 };
 
 /** "retry" asks the supervisor to back off before this session is claimed again. */
@@ -115,6 +127,9 @@ export class SessionRunner {
   // D2: sends Telegram accepted, by TDLib's temporary message id, until their outcome arrives.
   private readonly pendingSends = new Map<number, { commandId: string; payload: Record<string, unknown> }>();
   private lastStaleSweep = 0;
+  // Media and profile photos run on their own queue so a large file never delays messages.
+  private mediaQueue: Promise<void> = Promise.resolve();
+  private readonly avatarsDone = new Set<string>();
   private ending = false;
   private finished = false;
 
@@ -255,6 +270,16 @@ export class SessionRunner {
       const message = update.message as TdObject | undefined;
       const tempId = Number(update.old_message_id);
       if (message) void this.enqueue(() => this.handleSendSucceeded(tempId, message));
+    } else if (update._ === "updateMessageContent") {
+      void this.enqueue(() => this.handleEdit(update));
+    } else if (update._ === "updateDeleteMessages") {
+      void this.enqueue(() => this.handleDelete(update));
+    } else if (update._ === "updateChatPhoto") {
+      const chatId = String(update.chat_id ?? "");
+      if (this.sharedChats.has(chatId)) {
+        this.avatarsDone.add(chatId);
+        this.enqueueMedia(() => this.saveAvatar(chatId));
+      }
     } else if (update._ === "updateMessageSendFailed") {
       const tempId = Number(update.old_message_id);
       const code = Number((update.error as TdObject | undefined)?.code);
@@ -528,7 +553,9 @@ export class SessionRunner {
     } else if (row.direction === "outgoing" && !this.sharedChats.has(row.chatId)) {
       return; // Outgoing messages in unshared chats are not even counted.
     }
-    const { result } = await this.store.ingestMessage(this.fence, { ...row, countUnread: true });
+    const outcome = await this.store.ingestMessage(this.fence, { ...row, countUnread: true });
+    const result = outcome.result;
+    await this.afterIngest(row, outcome);
     // Result only: never the text, the name or the chat id.
     this.logEvent(result === "INSERTED" || result === "DUPLICATE" || result === "NOT_SHARED" ? "info" : "warn",
       "chat_message", { direction: row.direction, result });
@@ -574,7 +601,9 @@ export class SessionRunner {
       if (!row || row.chatId !== chatId) continue;
       if (cutoff !== null && Date.parse(row.sentAt) < cutoff) continue;
       // Catch-up messages are new to TENH; an explicit history import is not unread.
-      const { result } = await this.store.ingestMessage(this.fence, { ...row, countUnread: reason !== "import" });
+      const outcome = await this.store.ingestMessage(this.fence, { ...row, countUnread: reason !== "import" });
+      const result = outcome.result;
+      await this.afterIngest(row, outcome);
       if (result === "LEASE_LOST") {
         await this.lostLease();
         return false;
@@ -612,7 +641,7 @@ export class SessionRunner {
         }
         const ok = await this.importHistory(chatId, limit, "import");
         await this.store.finishCommandResult(this.fence, command.id, ok ? "done" : "failed", ok ? null : "HISTORY_IMPORT_FAILED", null);
-      } else if (command.kind === "send_text") {
+      } else if (command.kind === "send_text" || command.kind === "send_media") {
         await this.sendText(command);
       }
       // pause/logout are driven by the session status and finished there.
@@ -628,24 +657,41 @@ export class SessionRunner {
     const payload = command.payload ?? {};
     const chatId = String(payload.chat_id ?? "");
     const text = typeof payload.text === "string" ? payload.text : "";
+    const media = command.kind === "send_media" ? (payload.media as Record<string, unknown> | undefined) : undefined;
     await this.refreshSharedChats(true);
     if (!/^-?[0-9]{1,20}$/.test(chatId) || !this.sharedChats.has(chatId)) {
       await this.store.sendFail(this.fence, command.id, "failed", "CHAT_NOT_SHARED");
       return;
     }
-    if (!text.trim() || text.length > 4096) {
+    if (text.length > 4096 || (!media && !text.trim())) {
       await this.store.sendFail(this.fence, command.id, "failed", "INVALID_TEXT");
       return;
     }
-    if (!(await this.store.sendBegin(this.fence, command.id))) return; // lease lost or already in flight
+
+    // A file is fetched from TENH storage BEFORE anything is sent: if that fails, nothing was sent.
+    let inputContent: TdObject = { _: "inputMessageText", text: { _: "formattedText", text }, clear_draft: false };
+    let localFile: string | null = null;
+    if (command.kind === "send_media") {
+      const prepared = await this.prepareOutgoingFile(command.id, media, text);
+      if ("error" in prepared) {
+        await this.store.sendFail(this.fence, command.id, "failed", prepared.error);
+        return;
+      }
+      inputContent = prepared.content;
+      localFile = prepared.path;
+    }
+    const replyTo = Number(payload.reply_to_message_id);
+    const replyField = Number.isSafeInteger(replyTo) && replyTo > 0 ? { reply_to: { _: "inputMessageReplyToMessage", message_id: replyTo } } : {};
+
+    if (!(await this.store.sendBegin(this.fence, command.id))) { // lease lost or already in flight
+      if (localFile) rmSync(localFile, { force: true });
+      return;
+    }
 
     let sent: TdObject;
     try {
-      sent = await this.invoke({
-        _: "sendMessage",
-        chat_id: Number(chatId),
-        input_message_content: { _: "inputMessageText", text: { _: "formattedText", text }, clear_draft: false },
-      }, this.config.loginStepTimeoutMs, "send_message");
+      sent = await this.invoke({ _: "sendMessage", chat_id: Number(chatId), ...replyField, input_message_content: inputContent },
+        this.config.loginStepTimeoutMs, "send_message");
     } catch (error) {
       const details = tdErrorDetails(error);
       // A 4xx answer means TDLib refused the request: nothing was sent. Anything
@@ -666,6 +712,7 @@ export class SessionRunner {
     if ((sent.sending_state as TdObject | undefined)?._ === "messageSendingStateFailed") {
       await this.store.sendAccepted(this.fence, command.id, tempId);
       await this.store.sendFinish(this.fence, tempId, "failed", "TELEGRAM_REJECTED", null);
+      await this.cleanupOutgoing(command.id, payload);
       return;
     }
     this.pendingSends.set(tempId, { commandId: command.id, payload });
@@ -673,6 +720,52 @@ export class SessionRunner {
     if (!sent.sending_state) {
       // Already final (no temporary message): record it now.
       await this.handleSendSucceeded(tempId, sent);
+    }
+  }
+
+  /** Downloads a queued file from TENH storage into this session folder and builds the TDLib content. */
+  private async prepareOutgoingFile(commandId: string, media: Record<string, unknown> | undefined, caption: string):
+    Promise<{ content: TdObject; path: string } | { error: string }> {
+    const storage = this.config.mediaStorage;
+    const kind = String(media?.kind ?? "");
+    const storagePath = String(media?.storage_path ?? "");
+    if (!storage) return { error: "MEDIA_STORAGE_NOT_CONFIGURED" };
+    if (!["photo", "video", "document", "audio", "voice"].includes(kind) || !storagePath.startsWith(`${this.session.businessId}/tgp-outbox/`)) {
+      return { error: "INVALID_MEDIA" };
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = await storage.download(MESSAGE_MEDIA_BUCKET, storagePath, 50 * 1024 * 1024);
+    } catch {
+      return { error: "MEDIA_DOWNLOAD_FAILED" };
+    }
+    const dir = join(sessionDirectory(this.config.dataDir, this.sessionId).dir, "outbox");
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const ext = /\.([A-Za-z0-9]{1,8})$/.exec(String(media?.name ?? ""))?.[1] ?? "bin";
+    const path = join(dir, `${commandId}.${ext}`);
+    writeFileSync(path, bytes, { mode: 0o600 });
+    const file = { _: "inputFileLocal", path };
+    const formatted = { _: "formattedText", text: caption };
+    const content: TdObject =
+      kind === "photo" ? { _: "inputMessagePhoto", photo: file, caption: formatted }
+      : kind === "video" ? { _: "inputMessageVideo", video: file, caption: formatted, supports_streaming: true }
+      : kind === "audio" ? { _: "inputMessageAudio", audio: file, caption: formatted }
+      : kind === "voice" ? { _: "inputMessageVoiceNote", voice_note: file, caption: formatted }
+      : { _: "inputMessageDocument", document: file, caption: formatted };
+    return { content, path };
+  }
+
+  /** Removes the local copy and the staging object of a sent or failed file. */
+  private async cleanupOutgoing(commandId: string | undefined, payload: Record<string, unknown> | undefined) {
+    const media = payload?.media as Record<string, unknown> | undefined;
+    if (!media) return;
+    const dir = join(sessionDirectory(this.config.dataDir, this.sessionId).dir, "outbox");
+    if (commandId && existsSync(dir)) {
+      for (const name of readdirSync(dir)) if (name.startsWith(`${commandId}.`)) rmSync(join(dir, name), { force: true });
+    }
+    const storagePath = String(media.storage_path ?? "");
+    if (this.config.mediaStorage && storagePath.startsWith(`${this.session.businessId}/tgp-outbox/`)) {
+      await this.config.mediaStorage.remove(MESSAGE_MEDIA_BUCKET, [storagePath]).catch(() => undefined);
     }
   }
 
@@ -691,25 +784,141 @@ export class SessionRunner {
       if (outcome.result === "LEASE_LOST") return this.lostLease();
       await this.store.sendFinish(this.fence, tempId, "done", null, outcome.messageId);
       this.logEvent("info", "send_confirmed", {});
+      await this.afterIngest(row, outcome);
+      await this.cleanupOutgoing(pending.commandId, pending.payload);
       return;
     }
     // After a restart (or a send that earlier timed out) the command is found by its temporary id.
     const finished = await this.store.sendFinish(this.fence, tempId, "done", null, null);
     if (!row) return;
-    const { result } = await this.store.ingestMessage(this.fence, {
+    const outcome = await this.store.ingestMessage(this.fence, {
       ...row,
       countUnread: false,
       clientRequestId: typeof finished?.payload.client_request_id === "string" ? finished.payload.client_request_id : null,
       sentByMember: typeof finished?.payload.member_id === "string" ? finished.payload.member_id : null,
     });
-    if (result === "LEASE_LOST") return this.lostLease();
+    if (outcome.result === "LEASE_LOST") return this.lostLease();
+    await this.afterIngest(row, outcome);
+    if (finished) await this.cleanupOutgoing(finished.commandId, finished.payload);
   }
 
   private async handleSendFailed(tempId: number, code: number) {
     if (this.phase !== "live") return;
+    const pending = this.pendingSends.get(tempId);
     this.pendingSends.delete(tempId);
-    await this.store.sendFinish(this.fence, tempId, "failed", code ? `TELEGRAM_${code}` : "TELEGRAM_REJECTED", null);
+    const finished = await this.store.sendFinish(this.fence, tempId, "failed", code ? `TELEGRAM_${code}` : "TELEGRAM_REJECTED", null);
     this.logEvent("warn", "send_failed", { errorCode: code || "unknown" });
+    await this.cleanupOutgoing(pending?.commandId ?? finished?.commandId, pending?.payload ?? finished?.payload);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Media, replies, profile photos, edits and deletions
+
+  /** Work that follows a newly stored message. Media and photos run on their own queue. */
+  private async afterIngest(row: IngestInput, outcome: IngestOutcome) {
+    if (outcome.result !== "INSERTED" || !outcome.messageId) return;
+    const messageId = outcome.messageId;
+    if (row.replyTo) await this.store.setMessageReply(this.fence, messageId, row.chatId, row.replyTo);
+    if (row.media) {
+      const media = row.media;
+      const caption = row.body ?? "";
+      this.enqueueMedia(() => this.saveMedia(messageId, media, caption));
+    }
+    if (!this.avatarsDone.has(row.chatId)) {
+      this.avatarsDone.add(row.chatId);
+      this.enqueueMedia(() => this.saveAvatar(row.chatId));
+    }
+  }
+
+  private enqueueMedia(task: () => Promise<void>) {
+    if (!this.config.mediaStorage) return;
+    this.mediaQueue = this.mediaQueue.then(async () => {
+      if (this.finished || this.ending) return;
+      try {
+        await task();
+      } catch (error) {
+        this.logEvent("warn", "media_failed", { error });
+      }
+    });
+  }
+
+  private async downloadTelegramFile(fileId: number) {
+    const file = await this.invoke({ _: "downloadFile", file_id: fileId, priority: 1, offset: 0, limit: 0, synchronous: true },
+      MEDIA_TIMEOUT_MS, "download_file");
+    const local = (file.local ?? {}) as TdObject;
+    if (!local.is_downloading_completed || typeof local.path !== "string" || !local.path) throw new Error("Telegram file not downloaded.");
+    return readFileSync(local.path);
+  }
+
+  private async saveMedia(messageId: string, media: MediaRef, caption: string) {
+    const storage = this.config.mediaStorage;
+    const max = this.config.mediaMaxBytes ?? 20 * 1024 * 1024;
+    if (!storage) return;
+    if (media.size > max) {
+      this.logEvent("info", "media_skipped", { reason: "too_large", kind: media.pathKind });
+      return;
+    }
+    const bytes = await this.downloadTelegramFile(media.fileId);
+    if (bytes.byteLength > max) {
+      this.logEvent("info", "media_skipped", { reason: "too_large", kind: media.pathKind });
+      return;
+    }
+    await storage.upload(MESSAGE_MEDIA_BUCKET, `${this.session.businessId}/${messageId}/${media.pathKind}`, bytes, media.mimeType);
+    const text = caption || (media.messageType === "file" ? media.name : "");
+    await this.store.setMessageMedia(this.fence, messageId, media.messageType, text, {
+      type: media.pathKind, name: media.name, mime_type: media.mimeType, size: bytes.byteLength,
+      ...(media.duration ? { duration: media.duration } : {}), source: "telegram_personal",
+    });
+    // Free the TDLib copy; the TENH copy is the one people open.
+    await this.invoke({ _: "deleteFile", file_id: media.fileId }, this.config.loginStepTimeoutMs, "delete_file").catch(() => undefined);
+    this.logEvent("info", "media_saved", { kind: media.pathKind });
+  }
+
+  private async saveAvatar(chatId: string) {
+    const storage = this.config.mediaStorage;
+    if (!storage) return;
+    const contact = await this.store.chatContact(this.fence, chatId);
+    if (!contact) {
+      this.avatarsDone.delete(chatId); // try again with the next message
+      return;
+    }
+    const chat = await this.invoke({ _: "getChat", chat_id: Number(chatId) }, this.config.loginStepTimeoutMs, "get_chat");
+    const small = ((chat.photo as TdObject | undefined)?.small ?? null) as TdObject | null;
+    const fileId = Number(small?.id);
+    if (!small || !Number.isSafeInteger(fileId)) {
+      await this.store.setContactPhoto(this.fence, chatId, false);
+      return;
+    }
+    const bytes = await this.downloadTelegramFile(fileId);
+    if (bytes.byteLength > 5 * 1024 * 1024) return;
+    await storage.upload(CONTACT_AVATAR_BUCKET, `${contact.businessId}/${contact.contactId}/telegram-avatar`, bytes, "image/jpeg");
+    await this.store.setContactPhoto(this.fence, chatId, true);
+    this.logEvent("info", "profile_photo_saved", {});
+  }
+
+  private async handleEdit(update: TdObject) {
+    if (this.phase !== "live" || this.ending) return;
+    const chatId = String(update.chat_id ?? "");
+    const messageId = Number(update.message_id);
+    if (!this.sharedChats.has(chatId) || !Number.isSafeInteger(messageId)) return;
+    const content = update.new_content as TdObject | undefined;
+    const text = contentText(content);
+    if (!text && content?._ !== "messageText") return; // media without caption: nothing to show
+    const result = await this.store.editMessage(this.fence, chatId, messageId, text, new Date().toISOString());
+    this.logEvent("info", "chat_message_edited", { result });
+  }
+
+  private async handleDelete(update: TdObject) {
+    if (this.phase !== "live" || this.ending) return;
+    // Only deletions for everyone, not messages TDLib merely dropped from its cache.
+    if (update.is_permanent !== true || update.from_cache === true) return;
+    const chatId = String(update.chat_id ?? "");
+    if (!this.sharedChats.has(chatId)) return;
+    const ids = (Array.isArray(update.message_ids) ? update.message_ids : []).map(Number).filter((id) => Number.isSafeInteger(id) && id > 0);
+    for (let i = 0; i < ids.length; i += 100) {
+      const count = await this.store.deleteMessages(this.fence, chatId, ids.slice(i, i + 100));
+      this.logEvent("info", "chat_message_deleted", { count });
+    }
   }
 
   /** Sends without an outcome for two minutes become "uncertain"; the holder checks Telegram. */

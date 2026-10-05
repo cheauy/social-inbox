@@ -1,3 +1,6 @@
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { TdRequestError, type TdClient, type TdClientFactory, type TdClientOptions, type TdObject } from "../../src/tdlib-port.ts";
 
 /**
@@ -20,7 +23,7 @@ export class FakeTelegram implements TdClientFactory {
   eventDelayMs = 2;
   private qrCounter = 0;
   // Chats visible to every fake account: id -> chat; history newest first.
-  chats = new Map<number, { title: string; type: "private" | "group"; userId?: number; userType?: string; username?: string }>([
+  chats = new Map<number, { title: string; type: "private" | "group"; userId?: number; userType?: string; username?: string; photoFileId?: number }>([
     [5001, { title: "Customer A", type: "private", userId: 5001, userType: "userTypeRegular", username: "cust_a" }],
     [5002, { title: "Customer B", type: "private", userId: 5002, userType: "userTypeRegular" }],
     [6001, { title: "Some Bot", type: "private", userId: 6001, userType: "userTypeBot" }],
@@ -36,8 +39,34 @@ export class FakeTelegram implements TdClientFactory {
    *   reject   TDLib refuses the request (400): nothing sent
    */
   sendOutcome: "succeed" | "fail" | "silent" | "reject" = "succeed";
+  /** Files on "Telegram's servers": id -> bytes. downloadFile writes them to fileDir. */
+  readonly files = new Map<number, Uint8Array>();
+  readonly fileDir = mkdtempSync(join(tmpdir(), "fake-tg-files-"));
+  readonly deletedFiles: number[] = [];
+  private fileCounter = 70_000;
+
+  addFile(bytes: Uint8Array) {
+    const id = ++this.fileCounter;
+    this.files.set(id, bytes);
+    return id;
+  }
+
+  static photoMessage(chatId: number, id: number, fileId: number, size: number, caption = "", options: { outgoing?: boolean; date?: number } = {}): TdObject {
+    return {
+      _: "message", id, chat_id: chatId, is_outgoing: options.outgoing === true, date: options.date ?? Math.floor(Date.now() / 1000),
+      content: { _: "messagePhoto", caption: { _: "formattedText", text: caption },
+        photo: { sizes: [{ type: "s", width: 90, height: 90, photo: { id: fileId + 100000, size: 10 } }, { type: "x", width: 800, height: 600, photo: { id: fileId, size } }] } },
+    };
+  }
+
+  static documentMessage(chatId: number, id: number, fileId: number, size: number, name: string, options: { outgoing?: boolean; date?: number } = {}): TdObject {
+    return {
+      _: "message", id, chat_id: chatId, is_outgoing: options.outgoing === true, date: options.date ?? Math.floor(Date.now() / 1000),
+      content: { _: "messageDocument", caption: { _: "formattedText", text: "" }, document: { file_name: name, mime_type: "application/pdf", document: { id: fileId, size } } },
+    };
+  }
   /** Every message Telegram actually delivered (to detect duplicate sends). */
-  readonly delivered: Array<{ chatId: number; text: string }> = [];
+  readonly delivered: Array<{ chatId: number; text: string; kind?: string; bytes?: number; replyTo?: number }> = [];
   private messageCounter = 9000;
   private tempCounter = 1_000_000;
 
@@ -213,6 +242,7 @@ export class FakeTdClient implements TdClient {
           _: "chat", id: request.chat_id, title: chat.title,
           type: chat.type === "private" ? { _: "chatTypePrivate", user_id: chat.userId } : { _: "chatTypeSupergroup", supergroup_id: 123 },
           last_message: last ?? null,
+          photo: chat.photoFileId ? { small: { id: chat.photoFileId, size: this.telegram.files.get(chat.photoFileId)?.byteLength ?? 0 } } : null,
         });
       }
       case "getUser": {
@@ -227,19 +257,42 @@ export class FakeTdClient implements TdClient {
         const start = from ? Math.max(0, list.findIndex((m) => Number(m.id) === from)) : 0;
         return Promise.resolve({ _: "messages", messages: list.slice(start, start + Number(request.limit)) });
       }
+      case "downloadFile": {
+        const id = Number(request.file_id);
+        const bytes = this.telegram.files.get(id);
+        if (!bytes) return Promise.reject(new TdRequestError(400, "File not found"));
+        const path = join(this.telegram.fileDir, `file-${id}`);
+        writeFileSync(path, bytes);
+        return Promise.resolve({ _: "file", id, size: bytes.byteLength, local: { path, is_downloading_completed: true } });
+      }
+      case "deleteFile":
+        this.telegram.deletedFiles.push(Number(request.file_id));
+        return Promise.resolve({ _: "ok" });
       case "sendMessage": {
         const chatId = Number(request.chat_id);
         const content = request.input_message_content as TdObject;
-        const text = String(((content?.text as TdObject | undefined)?.text) ?? "");
+        const replyTo = Number(((request.reply_to as TdObject | undefined)?.message_id) ?? 0) || null;
+        const localPath = String(((Object.values(content ?? {}).find((v) => (v as TdObject)?._ === "inputFileLocal") as TdObject | undefined)?.path) ?? "");
+        const text = String(((((content?.text ?? content?.caption) as TdObject | undefined))?.text) ?? "");
         if (this.telegram.sendOutcome === "reject") return Promise.reject(new TdRequestError(400, "CHAT_WRITE_FORBIDDEN"));
+        if (localPath && !existsSync(localPath)) return Promise.reject(new TdRequestError(400, "File not found"));
+        const fileBytes = localPath ? new Uint8Array(readFileSync(localPath)) : null;
         const tempId = this.telegram.nextTempId();
-        const temp: TdObject = { ...FakeTelegram.textMessage(chatId, tempId, text, { outgoing: true }), sending_state: { _: "messageSendingStatePending" } };
+        const build = (id: number): TdObject => {
+          const base = fileBytes
+            ? content._ === "inputMessagePhoto"
+              ? FakeTelegram.photoMessage(chatId, id, this.telegram.addFile(fileBytes), fileBytes.byteLength, text, { outgoing: true })
+              : FakeTelegram.documentMessage(chatId, id, this.telegram.addFile(fileBytes), fileBytes.byteLength, "file.bin", { outgoing: true })
+            : FakeTelegram.textMessage(chatId, id, text, { outgoing: true });
+          return replyTo ? { ...base, reply_to: { _: "messageReplyToMessage", chat_id: chatId, message_id: replyTo } } : base;
+        };
+        const temp: TdObject = { ...build(tempId), sending_state: { _: "messageSendingStatePending" } };
         const outcome = this.telegram.sendOutcome;
         this.emit({ _: "updateNewMessage", message: temp });
         this.later(() => {
           if (outcome === "succeed") {
-            const final = FakeTelegram.textMessage(chatId, this.telegram.nextMessageId(), text, { outgoing: true });
-            this.telegram.delivered.push({ chatId, text });
+            const final = build(this.telegram.nextMessageId());
+            this.telegram.delivered.push({ chatId, text, ...(fileBytes ? { kind: String(content._), bytes: fileBytes.byteLength } : {}), ...(replyTo ? { replyTo } : {}) });
             const list = this.telegram.history.get(chatId) ?? [];
             list.unshift(final);
             this.telegram.history.set(chatId, list);

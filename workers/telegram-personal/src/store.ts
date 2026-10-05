@@ -59,7 +59,7 @@ export type Identity = {
   phoneMasked: string | null;
 };
 
-export type Command = { id: string; kind: "pause" | "logout" | "list_chats" | "import_history" | "send_text"; payload?: Record<string, unknown> };
+export type Command = { id: string; kind: "pause" | "logout" | "list_chats" | "import_history" | "send_text" | "send_media"; payload?: Record<string, unknown> };
 
 export type SharedChat = { chatId: string; rowId: string; lastMessageAt: string | null; sharedAt: string | null };
 
@@ -108,6 +108,17 @@ export interface Store {
   ingestMessage(fence: Fence, row: IngestRow): Promise<IngestOutcome>;
   /** Automatic sharing: shares this chat if the holder switched it on (SHARED), else why not. */
   autoShareChat(fence: Fence, chatId: string, title: string, username: string | null): Promise<AutoShareResult>;
+  /** Media copied into TENH storage: the message shows the real file. */
+  setMessageMedia(fence: Fence, messageId: string, messageType: string, text: string, attachment: Record<string, unknown>): Promise<boolean>;
+  /** Quote of the replied-to message (same chat). */
+  setMessageReply(fence: Fence, messageId: string, chatId: string, replyTo: number): Promise<boolean>;
+  /** Edited in Telegram. */
+  editMessage(fence: Fence, chatId: string, messageId: number, text: string, editedAt: string): Promise<string>;
+  /** Deleted in Telegram for everyone. */
+  deleteMessages(fence: Fence, chatId: string, messageIds: number[]): Promise<number>;
+  /** Contact of a shared chat (for the profile photo path), or null. */
+  chatContact(fence: Fence, chatId: string): Promise<{ contactId: string; businessId: string } | null>;
+  setContactPhoto(fence: Fence, chatId: string, hasPhoto: boolean): Promise<boolean>;
   /** D2. claimed -> sending, BEFORE calling Telegram. A sending command is never claimed again. */
   sendBegin(fence: Fence, commandId: string): Promise<boolean>;
   /** D2. Records TDLib's temporary message id so the outcome can be matched after a restart. */
