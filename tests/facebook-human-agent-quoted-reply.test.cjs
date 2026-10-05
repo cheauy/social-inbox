@@ -33,7 +33,7 @@ for(const failure of ['network','invalid','missing-id'])test(`uncertain ${failur
 function client({outcome='rejected',duringFlight,quoted=true}={}){
  const source=fs.readFileSync('components/inbox/inbox-view.tsx','utf8'),ast=ts.createSourceFile('inbox.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
  const names=new Set(['captureComposerSubmissionOwner','isComposerSubmissionCurrent','performOptimisticSend','handleSendMessage','handleRetryOptimisticMessage']);let functions=[];function visit(n){if(ts.isFunctionDeclaration(n)&&names.has(n.name?.text))functions.push(n.getText(ast));ts.forEachChild(n,visit)}visit(ast);assert.equal(functions.length,5);
- const actions=loader()('lib/inbox/message-actions.ts'),quote={id:'quote',conversation_id:'conv1',platform_message_id:'incoming-mid',message_type:'text',direction:'incoming',message_text:'Question'};
+ const actions={...loader()('lib/inbox/message-actions.ts'),...loader()('lib/inbox/confirm-outgoing-message.ts')},quote={id:'quote',conversation_id:'conv1',platform_message_id:'incoming-mid',message_type:'text',direction:'incoming',message_text:'Question'};
  const conversation={id:'conv1',business_id:'b1',contact:{platform_user_id:'customer'}},state={draft:'Support answer',quote:quoted?'quote':null,messages:[quote],calls:[],statuses:[],error:null},pending={current:{}};
  const draftRef={current:{reply:state.draft,quote:state.quote,revision:0}};
  const assign=(key,value)=>{const next=typeof value==='function'?value(key==='reply'?state.draft:state.quote):value;const old=draftRef.current[key];if(next!==old)draftRef.current.revision++;draftRef.current[key]=next;state[key==='reply'?'draft':'quote']=next;};
