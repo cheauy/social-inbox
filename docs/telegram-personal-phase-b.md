@@ -126,8 +126,8 @@ Feature flag still off; no worker running; no Telegram session exists.
   succeeded** against real Telegram. Owner-verified: Devices entry, worker
   restart (reconnecting → connected, clean shutdown), pause/resume, sign-out.
   Remote termination from the phone was **not detected** at first (idle TDLib
-  session); fixed with a 60 s authorization probe + 15 s card refresh — owner
-  re-test pending. Ended cards are now hidden once a newer session exists.
+  session); fixed with a 60 s authorization probe + 15 s card refresh —
+  **owner re-test passed**. Phase C login/lifecycle checks 1–6 all verified. Ended cards are now hidden once a newer session exists.
   No messages ingested or sent (Phase D).
 
 ## Live preflight results (2026-10-05, read-only, run by the owner)
