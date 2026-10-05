@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
+import { hiddenAccountInList, hiddenPersonalAccountIds } from "@/lib/telegram-personal/visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,6 +49,8 @@ export async function GET(request: NextRequest) {
   const includeLive = request.nextUrl.searchParams.get("includeLive") === "1";
   const slaInput = Number(request.nextUrl.searchParams.get("slaMinutes") ?? 10);
   const slaSeconds = (Number.isFinite(slaInput) ? Math.max(1, Math.min(1440, slaInput)) : 10) * 60;
+  // Telegram Personal chats this member may not see are not counted.
+  const hiddenPersonal = hiddenAccountInList(await hiddenPersonalAccountIds([businessId], authResult.user.id));
 
   const [
     membersResult,
@@ -75,8 +78,8 @@ export async function GET(request: NextRequest) {
      * are never counted), and the read is paged so a busy workspace with more
      * than 1,000 live conversations is no longer silently truncated.
      */
-    fetchAllRows<ConversationRow>(() =>
-      supabaseAdmin
+    fetchAllRows<ConversationRow>(() => {
+      let query = supabaseAdmin
         .from("conversations")
         .select(`
         id,
@@ -85,9 +88,10 @@ export async function GET(request: NextRequest) {
         unread_count
       `)
         .eq("business_id", businessId)
-        .in("status", ["open", "pending"])
-        .order("id", { ascending: true }),
-    ),
+        .in("status", ["open", "pending"]);
+      if (hiddenPersonal) query = query.filter("social_account_id", "not.in", hiddenPersonal);
+      return query.order("id", { ascending: true });
+    }),
 
     supabaseAdmin
       .from("conversation_reminders")

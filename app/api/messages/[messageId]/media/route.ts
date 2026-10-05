@@ -15,6 +15,7 @@ import {
   TENH_TELEGRAM_OUTGOING_PHOTO_MAX_BYTES,
   telegramMessageMediaStoragePath,
 } from "@/lib/telegram/telegram-message-media";
+import { canSeePersonalAccount, personalAccountFromMessageKey } from "@/lib/telegram-personal/visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -338,6 +339,12 @@ export async function GET(
   const message =
     data as unknown as
       MessageRow | null;
+
+  // Telegram Personal messages are only served to members allowed to see the chat.
+  const personalAccount = personalAccountFromMessageKey(message?.platform_message_id);
+  if (personalAccount && !(await canSeePersonalAccount(personalAccount, authResult.user.id))) {
+    return new NextResponse(null, { status: 404 });
+  }
 
   if (
     !message ||

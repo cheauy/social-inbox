@@ -36,8 +36,9 @@ async function canSee(accountId: string, userId: string) {
 /** Personal account ids in these workspaces whose chats this user may NOT see (memoized per request). */
 export function hiddenPersonalAccountIds(businessIds: readonly string[], userId: string): Promise<string[]> {
   const ids = [...new Set(businessIds.filter((id) => UUID.test(id)))].sort();
-  if (!ids.length || !userId) return Promise.resolve([]);
-  return requestMemo(`tgp-hidden:${userId}:${ids.join(",")}`, async () => {
+  if (!ids.length) return Promise.resolve([]);
+  // Without a user id nothing is visible: every Personal account is hidden.
+  return requestMemo(`tgp-hidden:${userId || "-"}:${ids.join(",")}`, async () => {
     const { data, error } = await supabaseAdmin
       .from("social_accounts")
       .select("id")
@@ -46,14 +47,14 @@ export function hiddenPersonalAccountIds(businessIds: readonly string[], userId:
     if (error) throw new Error("Unable to verify Telegram Personal visibility.");
     const hidden: string[] = [];
     for (const row of (data ?? []) as Array<{ id: string }>) {
-      if (!(await canSee(row.id, userId))) hidden.push(row.id);
+      if (!userId || !(await canSee(row.id, userId))) hidden.push(row.id);
     }
     return hidden;
   });
 }
 
 export async function canSeePersonalAccount(accountId: string | null | undefined, userId: string) {
-  if (!accountId || !UUID.test(accountId)) return false;
+  if (!accountId || !UUID.test(accountId) || !userId) return false;
   return requestMemo(`tgp-see:${userId}:${accountId}`, () => canSee(accountId, userId));
 }
 
@@ -138,4 +139,51 @@ export async function hiddenContactIdSet(contactIds: readonly (string | null | u
     }
   }
   return result;
+}
+
+/**
+ * All conversation ids of hidden Personal accounts, for paged reads of rows that
+ * only carry a conversation id. Shared chats are chosen one by one by the
+ * holder, so the list stays small; a very large list fails closed.
+ */
+export async function hiddenPersonalConversationIds(hidden: readonly string[]) {
+  if (!hidden.length) return [] as string[];
+  const { data, error } = await supabaseAdmin
+    .from("conversations")
+    .select("id")
+    .in("social_account_id", [...hidden])
+    .limit(1001);
+  if (error || (data ?? []).length > 1000) throw new Error("Unable to verify Telegram Personal visibility.");
+  return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
+}
+
+/** PostgREST or-filter keeping rows whose id in this column is not hidden (rows without one stay). */
+export function visibleIdOrFilter(column: string, hiddenConversationIds: readonly string[]) {
+  return hiddenConversationIds.length
+    ? `${column}.is.null,${column}.not.in.(${hiddenConversationIds.join(",")})`
+    : null;
+}
+
+/** All contact ids that are customers of hidden Personal accounts (same size rule). */
+export async function hiddenPersonalContactIds(hidden: readonly string[]) {
+  if (!hidden.length) return [] as string[];
+  let query = supabaseAdmin.from("contacts").select("id").eq("platform", PERSONAL_PLATFORM);
+  query = query.or(hiddenContactPatterns(hidden).map((p) => `platform_user_id.like.${p}`).join(","));
+  const { data, error } = await query.limit(1001);
+  if (error || (data ?? []).length > 1000) throw new Error("Unable to verify Telegram Personal visibility.");
+  return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
+}
+
+/** True when this conversation is a Telegram Personal chat the user may not see (fails closed). */
+export async function isConversationHiddenFor(conversationId: string | null | undefined, userId: string) {
+  if (!conversationId) return false;
+  const { data, error } = await supabaseAdmin
+    .from("conversations")
+    .select("social_account_id,platform")
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (error) throw new Error("Unable to verify Telegram Personal visibility.");
+  const row = data as { social_account_id: string | null; platform: string | null } | null;
+  if (!row || row.platform !== PERSONAL_PLATFORM) return false;
+  return !(await canSeePersonalAccount(row.social_account_id, userId));
 }

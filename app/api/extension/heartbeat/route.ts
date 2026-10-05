@@ -6,6 +6,7 @@ import {
 } from "@/lib/extension/device-auth";
 import { resolvePage } from "@/lib/extension/facebook-thread";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { hiddenAccountInList, hiddenPersonalAccountIds } from "@/lib/telegram-personal/visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -198,11 +199,15 @@ export async function POST(request: Request) {
    * read. The extension does not count anything itself -- a second unread
    * system is a second number to disagree with the first.
    */
-  const { data: unreadRows } = await supabaseAdmin
+  // Telegram Personal chats this member may not see are not counted.
+  const hiddenPersonal = hiddenAccountInList(await hiddenPersonalAccountIds([device.business_id], device.user_id));
+  let unreadQuery = supabaseAdmin
     .from("conversations")
     .select("unread_count")
     .eq("business_id", device.business_id)
     .gt("unread_count", 0);
+  if (hiddenPersonal) unreadQuery = unreadQuery.filter("social_account_id", "not.in", hiddenPersonal);
+  const { data: unreadRows } = await unreadQuery;
 
   const unreadTotal = (unreadRows ?? []).reduce(
     (total, row) => total + Math.max(0, (row.unread_count as number) ?? 0),

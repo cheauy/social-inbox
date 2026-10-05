@@ -269,7 +269,7 @@ export async function GET(request: NextRequest) {
   const previousStart = new Date(range.start.getTime() - windowMs);
 
   // Telegram Personal accounts this member may not see are left out entirely.
-  const hiddenPersonal = await hiddenPersonalAccountIds([currentMember.business_id], authResult.user.id);
+  const hiddenPersonal = await hiddenPersonalAccountIds([currentMember.business_id], currentMember.user_id);
   const hiddenList = hiddenAccountInList(hiddenPersonal);
 
   const [accountsResult, conversationsResult, previousResult] =
