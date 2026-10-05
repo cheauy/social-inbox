@@ -29,7 +29,7 @@ const POLL_LIMIT_MS = 120_000;
 const REASONS: Record<string, string> = {
   HOLDER_ONLY: "Read only. Only the person who connected this Telegram account can reply from TENH.",
   NOT_CONNECTED: "This Telegram account is not connected right now, so replies are paused.",
-  CHAT_NOT_SHARED: "This chat is no longer shared into TENH.",
+  CHAT_NOT_SHARED: "Sharing was stopped for this chat, so new messages are not coming in and replies are off. To use it again: Integrations → Telegram → Choose chats to share → tick this chat.",
   NO_PERMISSION: "You do not have permission to reply in this workspace.",
   SEND_DISABLED: "Read only for now. Replying from TENH is not switched on yet; reply in Telegram.",
 };

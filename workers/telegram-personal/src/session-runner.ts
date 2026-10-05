@@ -130,6 +130,7 @@ export class SessionRunner {
   // Media and profile photos run on their own queue so a large file never delays messages.
   private mediaQueue: Promise<void> = Promise.resolve();
   private readonly avatarsDone = new Set<string>();
+  private readonly autoShareNoted = new Set<string>();
   private ending = false;
   private finished = false;
 
@@ -576,7 +577,14 @@ export class SessionRunner {
       await this.lostLease();
       return false;
     }
-    if (result !== "SHARED") return false;
+    if (result !== "SHARED") {
+      // Once per chat: e.g. EXCLUDED = the holder stopped sharing this chat (share it again to use it).
+      if (!this.autoShareNoted.has(chatId)) {
+        this.autoShareNoted.add(chatId);
+        this.logEvent("info", "chat_not_auto_shared", { result });
+      }
+      return false;
+    }
     // Nothing older than this moment is imported: mark the chat caught up.
     this.caughtUp.add(chatId);
     this.sharedChats.set(chatId, { chatId, rowId: "", lastMessageAt: null, sharedAt: new Date().toISOString() });

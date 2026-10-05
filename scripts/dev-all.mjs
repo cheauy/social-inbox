@@ -10,7 +10,10 @@ const workerDir = join(root, "workers", "telegram-personal");
 const children = [];
 
 function run(name, command, args, cwd) {
-  const child = spawn(command, args, { cwd, shell: process.platform === "win32", stdio: ["ignore", "pipe", "pipe"] });
+  // Windows needs a shell for npm; give it one command string (no argument concatenation warning).
+  const child = process.platform === "win32"
+    ? spawn([command, ...args].join(" "), { cwd, shell: true, stdio: ["ignore", "pipe", "pipe"] })
+    : spawn(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
   const prefix = (chunk) => chunk.toString().split(/\r?\n/).filter(Boolean).map((line) => `[${name}] ${line}`).join("\n") + "\n";
   child.stdout.on("data", (chunk) => process.stdout.write(prefix(chunk)));
   child.stderr.on("data", (chunk) => process.stderr.write(prefix(chunk)));
