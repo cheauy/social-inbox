@@ -33,7 +33,7 @@ import { ConversationList } from "@/components/inbox/conversation-list";
 import { useRememberInboxReturn } from "@/components/dashboard/inbox-return-context";
 import { INBOX_PAGE_CHANGED_EVENT, mergeConversationPage } from "@/lib/inbox/conversation-page-contract";
 import { matchesOptimisticMessage } from "@/lib/inbox/optimistic-message-match";
-import { confirmOutgoingMessage, withOptimisticRenderKey } from "@/lib/inbox/confirm-outgoing-message";
+import { confirmOutgoingMessage, isOptimisticConfirmedByServer, withOptimisticRenderKey } from "@/lib/inbox/confirm-outgoing-message";
 import { correlateTelegramAlbumMessages } from "@/lib/inbox/telegram-album-correlation";
 import { normalizeMessages } from "@/lib/inbox/normalize-messages";
 import { retainLocalImagePreview } from "@/lib/inbox/local-image-preview";
@@ -954,6 +954,9 @@ const previousActiveConversationIdRef =
         conversationMessageCacheRef
           .current[conversationId] = {
             ...page,
+            // Cached pages fold a pending bubble into its exactly correlated
+            // stored row, the same as live state, so a reopen never shows both.
+            messages: normalizeMessages(page.messages),
             lastAccessedAt:
               page.lastAccessedAt ??
               now,
@@ -7265,6 +7268,14 @@ async function performOptimisticSend(
     if (result.warning && activeConversationRef.current?.id === pending.conversationId) setSendError(result.warning);
     return true;
   } catch (error) {
+    // A lost or late response after an exactly correlated stored row already
+    // confirmed this send (echo, poll or history won the race): the message
+    // was delivered, so neither mark it failed nor report a send error.
+    if (isOptimisticConfirmedByServer(liveMessagesRef.current, pending.tempId)) {
+      delete pendingSendsRef.current[pending.tempId];
+      return true;
+    }
+
     const errorMessage =
       error instanceof Error
         ? error.message

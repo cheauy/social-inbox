@@ -39,3 +39,9 @@ export function confirmOutgoingMessage<T extends {
     : messages.map((message) => message.id === tempId
       ? { ...message, platform_message_id: platformId } : message);
 }
+
+/** True once an exactly correlated stored row has taken over the pending bubble. */
+export function isOptimisticConfirmedByServer(messages: StableRenderMessage[], tempId: string) {
+  return !messages.some((message) => message.id === tempId) &&
+    messages.some((message) => message.__render_key === tempId);
+}
