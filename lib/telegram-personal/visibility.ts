@@ -2,6 +2,7 @@ import "server-only";
 
 import { requestMemo } from "@/lib/server/request-scope";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { isTelegramPersonalEnabled } from "@/lib/telegram-personal/feature-flag";
 
 /*
  * Telegram Personal chats are ordinary inbox rows, but only the account holder
@@ -41,13 +42,15 @@ export function hiddenPersonalAccountIds(businessIds: readonly string[], userId:
   return requestMemo(`tgp-hidden:${userId || "-"}:${ids.join(",")}`, async () => {
     const { data, error } = await supabaseAdmin
       .from("social_accounts")
-      .select("id")
+      .select("id,business_id")
       .in("business_id", ids)
       .eq("platform", PERSONAL_PLATFORM);
     if (error) throw new Error("Unable to verify Telegram Personal visibility.");
     const hidden: string[] = [];
-    for (const row of (data ?? []) as Array<{ id: string }>) {
-      if (!userId || !(await canSee(row.id, userId))) hidden.push(row.id);
+    for (const row of (data ?? []) as Array<{ id: string; business_id: string }>) {
+      // Feature flag off for the workspace: its Personal chats are hidden everywhere.
+      const enabled = isTelegramPersonalEnabled(process.env, row.business_id);
+      if (!enabled || !userId || !(await canSee(row.id, userId))) hidden.push(row.id);
     }
     return hidden;
   });
@@ -55,7 +58,17 @@ export function hiddenPersonalAccountIds(businessIds: readonly string[], userId:
 
 export async function canSeePersonalAccount(accountId: string | null | undefined, userId: string) {
   if (!accountId || !UUID.test(accountId) || !userId) return false;
-  return requestMemo(`tgp-see:${userId}:${accountId}`, () => canSee(accountId, userId));
+  return requestMemo(`tgp-see:${userId}:${accountId}`, async () => {
+    const { data, error } = await supabaseAdmin
+      .from("social_accounts")
+      .select("business_id")
+      .eq("id", accountId)
+      .eq("platform", PERSONAL_PLATFORM)
+      .maybeSingle();
+    const businessId = (data as { business_id?: string } | null)?.business_id;
+    if (error || !businessId || !isTelegramPersonalEnabled(process.env, businessId)) return false;
+    return canSee(accountId, userId);
+  });
 }
 
 /**

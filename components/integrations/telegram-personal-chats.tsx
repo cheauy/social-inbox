@@ -27,8 +27,9 @@ async function readJson<T>(response: Response): Promise<T> {
  * ticked chats are imported, and only they become visible to the team members
  * allowed by the account's team-access setting.
  */
-export function PersonalChatManager({ sessionId, canManage, canRemoveData, onChanged }: {
+export function PersonalChatManager({ sessionId, channelId, canManage, canRemoveData, onChanged }: {
   sessionId: string;
+  channelId?: string | null;
   canManage: boolean;
   canRemoveData: boolean;
   onChanged?: () => void;
@@ -162,8 +163,11 @@ export function PersonalChatManager({ sessionId, canManage, canRemoveData, onCha
             {t("Choose chats to share", "ជ្រើសរើសការជជែកដើម្បីចែករំលែក")}
           </button>
         ) : null}
-        <Link href="/dashboard/inbox/personal" className="rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-          {t("Open Personal inbox", "បើក Inbox ផ្ទាល់ខ្លួន")}
+        <Link
+          href={channelId ? `/dashboard/inbox?channel=${encodeURIComponent(channelId)}` : "/dashboard/inbox"}
+          className="rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          {t("Open in TENH Inbox", "បើកក្នុង TENH Inbox")}
         </Link>
         {canManage && waiting > 0 ? (
           <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">

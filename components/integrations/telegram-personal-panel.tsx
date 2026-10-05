@@ -21,6 +21,7 @@ type PersonalConnection = {
   connectedAt: string | null;
   isHolder: boolean;
   can: { useLogin: boolean; pause: boolean; resume: boolean; disconnect: boolean; setTeamAccess: boolean; manageChats?: boolean; removeData?: boolean };
+  channelId?: string | null;
 };
 
 type ListResponse = {
@@ -470,6 +471,7 @@ export function TelegramPersonalPanel({ openSignal = 0, onAvailability }: { open
           {connection.can.manageChats || connection.can.removeData || connection.status === "connected" ? (
             <PersonalChatManager
               sessionId={connection.id}
+              channelId={connection.channelId ?? null}
               canManage={Boolean(connection.can.manageChats)}
               canRemoveData={Boolean(connection.can.removeData)}
               onChanged={load}

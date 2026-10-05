@@ -279,38 +279,93 @@ function visibilityDb(visibleAccounts) {
   return db;
 }
 
-test("Personal inbox lists only chats of accounts the member may see, never other workspaces", async () => {
-  const db = visibilityDb([ACC1]);
-  const route = load("app/api/telegram-personal/inbox/route.ts", { db, userId: AGENT, role: "agent" });
-  const body = await (await route.GET()).json();
-  assert.deepEqual([...body.chats.map((c) => c.title)], ["Visible chat"]);
-  assert.ok(!JSON.stringify(body).includes("Hidden chat"));
-  assert.ok(!JSON.stringify(body).includes("Other workspace"));
+const CONV = "55555555-5555-4555-8555-555555555555";
+const REQ = "66666666-6666-4666-8666-666666666666";
 
-  const none = load("app/api/telegram-personal/inbox/route.ts", { db: visibilityDb([]), userId: AGENT, role: "agent" });
-  assert.equal((await (await none.GET()).json()).chats.length, 0, "holder-only default: teammate sees nothing");
+/** The D2 send route, with the shared inbox gate replaced by a fixed answer. */
+function sendRoute({ db, userId = HOLDER, role = "owner", env = ENABLED_ENV, visible = true, platform = "telegram_personal", permission = true }) {
+  const member = { id: `m-${userId.slice(-2)}`, user_id: userId, business_id: B1, role };
+  return loader({
+    "next/server": {
+      NextResponse: { json: (data, init = {}) => new Response(JSON.stringify(data), { status: init.status || 200, headers: { "Content-Type": "application/json", ...(init.headers || {}) } }) },
+    },
+    "@/lib/supabase/admin": { supabaseAdmin: db },
+    "@/lib/auth/require-permission": { memberHasPermission: async () => permission },
+    "@/lib/inbox/get-inbox-resource-access": {
+      getInboxConversationAccess: async () => visible
+        ? { success: true, user: { id: userId }, member, conversation: { id: CONV, business_id: B1, social_account_id: ACC1, platform } }
+        : { success: false, status: 404, error: "Conversation was not found." },
+    },
+  }, { process: { env }, Buffer, setTimeout, crypto })("app/api/telegram-personal/send/route.ts");
+}
 
-  const off = load("app/api/telegram-personal/inbox/route.ts", { db, env: {} });
-  assert.equal((await off.GET()).status, 404, "flag off");
+const sendReq = (body) => Object.assign(new Request("https://tenh.test/api/telegram-personal/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }), {});
+const getReq = (query) => { const url = `https://tenh.test/api/telegram-personal/send?${query}`; return Object.assign(new Request(url), { nextUrl: new URL(url) }); };
+
+function sendDb() {
+  const db = fakeDb({
+    ...d1Seed(),
+    telegram_personal_chats: [{ id: CHAT1, business_id: B1, social_account_id: ACC1, conversation_id: CONV, unshared_at: null }],
+  });
+  return db;
+}
+
+test("send: reply status is holder only; teammates who can see the chat read only", async () => {
+  const db = sendDb();
+  const holder = await (await sendRoute({ db }).GET(getReq(`conversationId=${CONV}`))).json();
+  assert.deepEqual([holder.canReply, holder.reason], [true, null]);
+  const agent = await (await sendRoute({ db, userId: AGENT, role: "agent" }).GET(getReq(`conversationId=${CONV}`))).json();
+  assert.deepEqual([agent.canReply, agent.reason], [false, "HOLDER_ONLY"]);
+  const noPermission = await (await sendRoute({ db, permission: false }).GET(getReq(`conversationId=${CONV}`))).json();
+  assert.equal(noPermission.reason, "NO_PERMISSION");
+  db.tables.telegram_personal_sessions[0].status = "paused";
+  assert.equal((await (await sendRoute({ db }).GET(getReq(`conversationId=${CONV}`))).json()).reason, "NOT_CONNECTED");
 });
 
-test("Personal chat messages: 404 for hidden or foreign chats; read marks via RPC with the caller identity", async () => {
-  const db = visibilityDb([ACC1]);
-  const route = load("app/api/telegram-personal/inbox/[chatRowId]/route.ts", { db, userId: AGENT, role: "agent" });
-  const c = (id) => ({ params: Promise.resolve({ chatRowId: id }) });
-  // Route handlers read searchParams from NextRequest.nextUrl; emulate it.
-  const req = (url) => Object.assign(new Request(url), { nextUrl: new URL(url) });
-  const good = await route.GET(req(`https://tenh.test/x?before=not-a-date&beforeId=abc`), c(CHAT1));
-  assert.equal(good.status, 200);
-  const body = await good.json();
-  assert.equal(body.messages[0].body, "hello");
-  assert.equal((await route.GET(req("https://tenh.test/x"), c(CHAT2))).status, 404, "hidden account");
-  assert.equal((await route.GET(req("https://tenh.test/x"), c(CHAT_OTHER))).status, 404, "other workspace");
-  db.rpcResults.tgp_mark_chat_read = { data: true, error: null };
-  assert.equal((await route.POST(json("POST", { action: "read" }), c(CHAT1))).status, 200);
-  const call = db.rpcCalls.find((x) => x.name === "tgp_mark_chat_read");
-  assert.deepEqual([call.args.p_business, call.args.p_user], [B1, AGENT]);
-  assert.equal((await route.POST(json("POST", { action: "delete" }), c(CHAT1))).status, 400);
+test("send: hidden, non-Personal or flag-off conversations are 404 and never reach the queue", async () => {
+  const db = sendDb();
+  const body = { conversationId: CONV, clientRequestId: REQ, text: "hi" };
+  assert.equal((await sendRoute({ db, visible: false }).POST(sendReq(body))).status, 404);
+  assert.equal((await sendRoute({ db, platform: "telegram" }).POST(sendReq(body))).status, 404);
+  assert.equal((await sendRoute({ db, env: {} }).POST(sendReq(body))).status, 404);
+  assert.equal((await sendRoute({ db }).POST(sendReq({ ...body, clientRequestId: "not-a-uuid" }))).status, 400);
+  assert.equal((await sendRoute({ db }).POST(sendReq({ ...body, text: "   " }))).status, 400);
+  assert.equal((await sendRoute({ db }).POST(sendReq({ ...body, text: "x".repeat(4097) }))).status, 400);
+  assert.equal(db.rpcCalls.filter((c) => c.name === "tgp_enqueue_send").length, 0);
+});
+
+test("send: queue refusals map to clear errors; identity comes from the session, not the body", async () => {
+  const db = sendDb();
+  const body = { conversationId: CONV, clientRequestId: REQ, text: "hello", userId: OTHER_OWNER, memberId: "forged" };
+  for (const [code, status] of [["HOLDER_ONLY", 403], ["RATE_LIMITED", 429], ["CHAT_NOT_SHARED", 409], ["NOT_CONNECTED", 409]]) {
+    db.rpcResults.tgp_enqueue_send = { data: { ok: false, code }, error: null };
+    const response = await sendRoute({ db }).POST(sendReq(body));
+    assert.equal(response.status, status, code);
+    assert.equal((await response.json()).code, code);
+  }
+  const call = db.rpcCalls.find((c) => c.name === "tgp_enqueue_send");
+  assert.deepEqual([call.args.p_user, call.args.p_member, call.args.p_business, call.args.p_client_request_id], [HOLDER, "m-c1", B1, REQ]);
+  db.rpcResults.tgp_enqueue_send = { data: null, error: { code: "XX000" } };
+  const failed = await sendRoute({ db }).POST(sendReq(body));
+  assert.equal(failed.status, 500);
+  assert.match((await failed.json()).error, /Nothing was sent/);
+});
+
+test("send: reports sent, failed and uncertain outcomes and never re-enqueues", async () => {
+  for (const [state, expected] of [["done", "sent"], ["failed", "failed"], ["uncertain", "uncertain"]]) {
+    const db = sendDb();
+    db.rpcResults.tgp_enqueue_send = { data: { ok: true, command_id: "k", state: "queued" }, error: null };
+    db.rpcResults.tgp_send_state = { data: { state, code: state === "done" ? null : "X", message_id: "msg" }, error: null };
+    const response = await sendRoute({ db }).POST(sendReq({ conversationId: CONV, clientRequestId: REQ, text: "hello" }));
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).state, expected);
+    assert.equal(db.rpcCalls.filter((c) => c.name === "tgp_enqueue_send").length, 1, "enqueued exactly once");
+  }
+  const db = sendDb();
+  db.rpcResults.tgp_send_state = { data: { state: "uncertain", code: "OUTCOME_UNKNOWN" }, error: null };
+  const polled = await (await sendRoute({ db }).GET(getReq(`conversationId=${CONV}&clientRequestId=${REQ}`))).json();
+  assert.equal(polled.state, "uncertain");
+  assert.equal(db.rpcCalls.filter((c) => c.name === "tgp_enqueue_send").length, 0, "status checks never send");
 });
 
 test("chat sharing routes: holder only, validated input, chooser results from the worker", async () => {

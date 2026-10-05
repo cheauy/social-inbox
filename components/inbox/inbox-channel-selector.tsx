@@ -30,7 +30,7 @@ type InboxChannel = {
   accessAllowed: boolean;
   subscriptionAccessAllowed: boolean;
   channelEnabled: boolean;
-  platform: "facebook" | "telegram";
+  platform: "facebook" | "telegram" | "telegram_personal";
   platformAccountId: string | null;
   name: string;
   username: string | null;
@@ -74,7 +74,7 @@ const CHANNEL_DISABLED_DETAIL =
 function ChannelIcon({
   platform,
 }: {
-  platform: "facebook" | "telegram" | "all";
+  platform: "facebook" | "telegram" | "telegram_personal" | "all";
 }) {
   if (platform === "all") {
     return (
@@ -115,13 +115,31 @@ function ChannelIcon({
       : "/images/channels/telegram.png";
 
   return (
-    <span className="h-8 w-8 shrink-0 overflow-hidden rounded-lg">
-      <img
-        src={src}
-        alt={platform === "facebook" ? "Messenger" : "Telegram"}
-        className="h-full w-full object-cover"
-        draggable={false}
-      />
+    <span className="relative h-8 w-8 shrink-0">
+      <span className="block h-8 w-8 overflow-hidden rounded-lg">
+        <img
+          src={src}
+          alt={platform === "facebook" ? "Messenger" : platform === "telegram_personal" ? "Telegram Personal" : "Telegram"}
+          className="h-full w-full object-cover"
+          draggable={false}
+        />
+      </span>
+      {platform === "telegram_personal" ? <PersonalBadge /> : null}
+    </span>
+  );
+}
+
+/* Marks a Telegram Personal account (a person's own Telegram) apart from a Bot. */
+function PersonalBadge() {
+  return (
+    <span
+      className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-white text-sky-600 ring-1 ring-sky-200"
+      title="Telegram Personal"
+      aria-hidden="true"
+    >
+      <svg viewBox="0 0 24 24" fill="currentColor" className="h-2.5 w-2.5">
+        <path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.1 0-8 2.1-8 5.2V21h16v-1.8c0-3.1-3.9-5.2-8-5.2Z" />
+      </svg>
     </span>
   );
 }
@@ -312,6 +330,10 @@ export function InboxChannelSelector({
     }, [channels]);
 
   function channelSecondaryText(channel: InboxChannel) {
+    if (channel.platform === "telegram_personal") {
+      return "Telegram Personal";
+    }
+
     if (channel.platform === "telegram") {
       return channel.username
         ? `@${channel.username}`

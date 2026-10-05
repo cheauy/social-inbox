@@ -72,6 +72,8 @@ export function toPublicConnection(row: PersonalSessionRow, actor: PersonalActor
     connectedAt: row.connected_at,
     endedAt: row.ended_at,
     isHolder: actor.userId === row.holder_user_id,
+    // The inbox channel id: shared chats open in the one TENH inbox under this channel.
+    channelId: row.social_account_id,
     can: {
       useLogin: canUseLogin(actor, ref) && OPEN_LOGIN_STATUSES.includes(row.status),
       pause: canPause(actor, ref) && (row.status === "connected" || row.status === "reconnecting"),

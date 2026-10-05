@@ -1,5 +1,6 @@
-import { TelegramPersonalInbox } from "@/components/inbox/telegram-personal-inbox";
+import { redirect } from "next/navigation";
 
+/* Telegram Personal chats now live in the one TENH inbox, under their channel. */
 export default function TelegramPersonalInboxPage() {
-  return <TelegramPersonalInbox />;
+  redirect("/dashboard/inbox");
 }

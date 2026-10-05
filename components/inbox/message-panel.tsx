@@ -58,6 +58,7 @@ import {
   ReplyBox,
   type ReplyAttachment,
 } from "@/components/inbox/reply-box";
+import { TelegramPersonalComposer } from "@/components/inbox/telegram-personal-composer";
 import {
   useWorkspaceLanguageId,
 } from "@/components/display/workspace-language-text";
@@ -2672,21 +2673,28 @@ export function MessagePanel({
         .startsWith("telegram:"),
     );
 
+  // A Telegram Personal chat: the holder's own Telegram account, shared into TENH.
+  const isTelegramPersonal =
+    explicitPlatform === "telegram_personal";
+
   const headerChannelPlatform:
     | "messenger"
     | "telegram" =
     explicitPlatform === "telegram" ||
+    isTelegramPersonal ||
     hasTelegramMessage
       ? "telegram"
       : "messenger";
 
   const headerChannelAccountName =
-    activeConversation.social_account
-      ?.account_name
-      ?.trim() ||
-    (headerChannelPlatform === "telegram"
-      ? "Telegram Bot"
-      : "Facebook Page");
+    isTelegramPersonal
+      ? `${activeConversation.social_account?.account_name?.trim() || "Telegram"} · Telegram Personal`
+      : activeConversation.social_account
+          ?.account_name
+          ?.trim() ||
+        (headerChannelPlatform === "telegram"
+          ? "Telegram Bot"
+          : "Facebook Page");
 
   /*
    * Use the connected Facebook Page's public profile picture for Page-authored
@@ -6040,7 +6048,12 @@ export function MessagePanel({
 
 
       {/* Reply composer */}
-      {activeConversation.contact ? (
+      {activeConversation.contact && isTelegramPersonal ? (
+        <TelegramPersonalComposer
+          key={`${activeConversation.business_id}:${activeConversation.id}`}
+          conversationId={activeConversation.id}
+        />
+      ) : activeConversation.contact ? (
         /*
          * V3.11.30.1 — Messenger DMs and Facebook comments can share one
          * thread. The normal composer stays available. Clicking Reply on a

@@ -120,12 +120,19 @@ test("allowlisted Facebook and Bot helpers never mention telegram_personal reads
 const ACCOUNT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OTHER = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
-function visibility(seed = {}, canSee = () => false) {
+const BUSINESS = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const FLAG_ON = { TENH_TELEGRAM_PERSONAL_ENABLED: "true", TENH_TELEGRAM_PERSONAL_BUSINESS_IDS: BUSINESS };
+const ACCOUNTS = [
+  { id: ACCOUNT, business_id: BUSINESS, platform: "telegram_personal" },
+  { id: OTHER, business_id: BUSINESS, platform: "telegram_personal" },
+];
+
+function visibility(seed = {}, canSee = () => false, env = FLAG_ON, rpcError = null) {
   const calls = [];
   const admin = {
-    rpc: async (name, args) => { calls.push({ name, args }); return { data: canSee(args), error: null }; },
+    rpc: async (name, args) => { calls.push({ name, args }); return rpcError ? { data: null, error: rpcError } : { data: canSee(args), error: null }; },
     from: (name) => {
-      const rows = seed[name] ?? [];
+      const rows = seed[name] ?? (name === "social_accounts" ? ACCOUNTS : []);
       const filters = [];
       const q = {
         select: () => q,
@@ -143,7 +150,7 @@ function visibility(seed = {}, canSee = () => false) {
   const mod = loader({
     "@/lib/supabase/admin": { supabaseAdmin: admin },
     "@/lib/server/request-scope": { requestMemo: (key, fn) => { if (!memo.has(key)) memo.set(key, fn()); return memo.get(key); } },
-  })("lib/telegram-personal/visibility.ts");
+  }, { process: { env }, console: { ...console, error: () => {} } })("lib/telegram-personal/visibility.ts");
   return { mod, calls };
 }
 
@@ -179,14 +186,20 @@ test("hidden accounts are those the member may not see; visibility is asked per 
 });
 
 test("visibility fails closed when the check errors", async () => {
-  const { mod } = visibility();
-  const admin = { rpc: async () => ({ data: null, error: { code: "42883" } }) };
-  const failing = loader({
-    "@/lib/supabase/admin": { supabaseAdmin: admin },
-    "@/lib/server/request-scope": { requestMemo: (_k, fn) => fn() },
-  }, { console: { ...console, error: () => {} } })("lib/telegram-personal/visibility.ts");
+  const failing = visibility({}, () => true, FLAG_ON, { code: "42883" }).mod;
   assert.equal(await failing.canSeePersonalAccount(ACCOUNT, "user-1"), false);
-  assert.equal(await mod.canSeePersonalAccount("not-a-uuid", "user-1"), false);
+  assert.equal(await failing.canSeePersonalAccount("not-a-uuid", "user-1"), false);
+});
+
+test("with the feature flag off every Personal account is hidden, even for the holder", async () => {
+  const { mod, calls } = visibility({}, () => true, {});
+  assert.deepEqual([...(await mod.hiddenPersonalAccountIds([BUSINESS], "user-1"))].sort(), [ACCOUNT, OTHER].sort());
+  assert.equal(await mod.canSeePersonalAccount(ACCOUNT, "user-1"), false);
+  assert.equal(calls.length, 0);
+  const otherWorkspace = visibility({}, () => true, { ...FLAG_ON, TENH_TELEGRAM_PERSONAL_BUSINESS_IDS: "dddddddd-dddd-4ddd-8ddd-dddddddddddd" }).mod;
+  assert.equal(await otherWorkspace.canSeePersonalAccount(ACCOUNT, "user-1"), false);
+  const on = visibility({}, () => true).mod;
+  assert.equal(await on.canSeePersonalAccount(ACCOUNT, "user-1"), true);
 });
 
 test("a non-Personal conversation is never hidden; a Personal one follows the member check", async () => {
