@@ -58,7 +58,7 @@ import {
   ReplyBox,
   type ReplyAttachment,
 } from "@/components/inbox/reply-box";
-import { TelegramPersonalComposer } from "@/components/inbox/telegram-personal-composer";
+import { usePersonalReplyBlock } from "@/lib/telegram-personal/use-personal-reply-status";
 import {
   useWorkspaceLanguageId,
 } from "@/components/display/workspace-language-text";
@@ -1610,6 +1610,12 @@ export function MessagePanel({
           ? "រយៈពេលផ្ញើសារ 7 ថ្ងៃបានផុតកំណត់"
           : "Waiting for customer reply"
         : null;
+
+  // Telegram Personal: only the account holder replies; others see why not.
+  const personalReply = usePersonalReplyBlock(
+    activeConversation?.id,
+    activeConversation?.social_account?.platform === "telegram_personal",
+  );
 
   const facebookMessengerBlockedReason =
     facebookWaitingForCustomerReply
@@ -6048,14 +6054,7 @@ export function MessagePanel({
 
 
       {/* Reply composer */}
-      {activeConversation.contact && isTelegramPersonal ? (
-        <TelegramPersonalComposer
-          key={`${activeConversation.business_id}:${activeConversation.id}`}
-          conversationId={activeConversation.id}
-          replyToMessageId={replyingToFacebookMessageId}
-          onReplyUsed={onCancelFacebookReply}
-        />
-      ) : activeConversation.contact ? (
+      {activeConversation.contact ? (
         /*
          * V3.11.30.1 — Messenger DMs and Facebook comments can share one
          * thread. The normal composer stays available. Clicking Reply on a
@@ -6094,10 +6093,10 @@ export function MessagePanel({
           reply={reply}
           sending={sending}
           error={sendError}
-          blockedReason={facebookCustomerBlock.blocked && !replyingToCommentId ? "This customer is blocked on this Facebook Page. Unblock the user in Customer Details before messaging." : replyingToCommentId && isCommentReplyBlocked(replyingToCommentId, messages, optimisticCommentState)
+          blockedReason={isTelegramPersonal ? personalReply.reason ?? (personalReply.loading ? "Checking reply access…" : null) : facebookCustomerBlock.blocked && !replyingToCommentId ? "This customer is blocked on this Facebook Page. Unblock the user in Customer Details before messaging." : replyingToCommentId && isCommentReplyBlocked(replyingToCommentId, messages, optimisticCommentState)
             ? "Unhide this comment and its parent before replying."
             : facebookMessengerBlockedReason}
-          blockedTitle={facebookCustomerBlock.blocked && !replyingToCommentId ? "Customer blocked" : facebookMessengerBlockedTitle}
+          blockedTitle={isTelegramPersonal ? (personalReply.loading ? "Telegram Personal" : "Read only") : facebookCustomerBlock.blocked && !replyingToCommentId ? "Customer blocked" : facebookMessengerBlockedTitle}
           canOpenInFacebook={Boolean(
             facebookMessengerBlockedReason &&
               !facebookCustomerBlock.blocked && !replyingToCommentId &&
@@ -6124,7 +6123,7 @@ export function MessagePanel({
           canCaptionAttachments={
             activeConversation
               ?.social_account
-              ?.platform === "telegram"
+              ?.platform === "telegram" || isTelegramPersonal
           }
           platform={activeConversation?.social_account?.platform}
           onSendSticker={onSendSticker}

@@ -517,3 +517,23 @@ test("Telegram Personal messages can be quoted, not edited, deleted or pinned fr
   assert.deepEqual({ ...actions.getMessageActions(message, "telegram_personal") }, { reply: true, pin: false, edit: false, delete: false });
   assert.deepEqual({ ...actions.getMessageActions({ ...message, direction: "outgoing" }, "facebook") }, { reply: true, pin: false, edit: false, delete: false });
 });
+
+test("send file: a TENH microphone recording is sent as a voice message", async () => {
+  const db = sendDb();
+  db.rpcResults.tgp_enqueue_send_v2 = { data: { ok: true, command_id: "k", state: "queued" }, error: null };
+  db.rpcResults.tgp_send_state = { data: { state: "done" }, error: null };
+  const voice = new File([new Uint8Array(300)], "voice-message-1791210000000.webm", { type: "audio/webm" });
+  assert.equal((await sendRoute({ db }).POST(fileReq({ conversationId: CONV, clientRequestId: REQ, text: "" }, voice))).status, 200);
+  assert.equal(db.rpcCalls.find((c) => c.name === "tgp_enqueue_send_v2").args.p_media.kind, "voice");
+  const song = new File([new Uint8Array(300)], "song.mp3", { type: "audio/mpeg" });
+  await sendRoute({ db }).POST(fileReq({ conversationId: CONV, clientRequestId: "88888888-8888-4888-8888-888888888888", text: "" }, song));
+  assert.equal(db.rpcCalls.filter((c) => c.name === "tgp_enqueue_send_v2")[1].args.p_media.kind, "audio");
+});
+
+test("optimistic bubbles match the stored Personal message by request id", () => {
+  const { matchesOptimisticMessage } = loader({})("lib/inbox/optimistic-message-match.ts");
+  const bubble = { id: "optimistic:abc", conversation_id: CONV, platform_message_id: "optimistic:abc" };
+  assert.equal(matchesOptimisticMessage(bubble, { direction: "outgoing", conversation_id: CONV, raw_payload: { tenh_client_request_id: "abc" } }), true);
+  assert.equal(matchesOptimisticMessage(bubble, { direction: "outgoing", conversation_id: CONV, raw_payload: { tenh_client_request_id: "other" } }), false);
+  assert.equal(matchesOptimisticMessage(bubble, { direction: "incoming", conversation_id: CONV, raw_payload: { tenh_client_request_id: "abc" } }), false);
+});

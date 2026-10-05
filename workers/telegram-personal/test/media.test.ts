@@ -180,3 +180,26 @@ test("a file outside this workspace outbox is refused", async () => {
     await h.cleanup();
   }
 });
+
+test("a recorded voice message (WebM) is converted and sent as a Telegram voice message", async () => {
+  const h = makeHarness();
+  try {
+    const id = await sharedChat(h);
+    const { readFileSync } = await import("node:fs");
+    const webm = new Uint8Array(readFileSync(new URL("./fixtures/voice-known-size.webm", import.meta.url)));
+    const staging = "biz-1/tgp-outbox/req-voice/voice-message-1.webm";
+    await h.media.upload(MESSAGE_MEDIA_BUCKET, staging, webm, "audio/webm");
+    const command = h.store.enqueueSend(id, "5001", "", "req-voice");
+    command.kind = "send_media";
+    command.payload = { ...command.payload, media: { kind: "voice", storage_path: staging, size: webm.byteLength, mime_type: "audio/webm", name: "voice-message-1.webm" } };
+    await waitFor(() => command.status === "done", 3000, "sent");
+    const voiceSend = client(h, id).requests.find((r) => r._ === "sendMessage")!;
+    const content = voiceSend.input_message_content as { _: string; voice_note: { _: string; voice_note: { path: string } } };
+    assert.equal(content._, "inputMessageVoiceNote");
+    assert.equal(content.voice_note._, "inputVoiceNote");
+    assert.match(content.voice_note.voice_note.path, /\.ogg$/);
+    assert.equal(h.telegram.delivered[0].kind, "inputMessageVoiceNote");
+  } finally {
+    await h.cleanup();
+  }
+});

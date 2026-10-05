@@ -13,6 +13,7 @@ import { telegramOptimisticAttachmentKind } from "@/lib/telegram/telegram-optimi
 import { isCommentReplyBlocked } from "@/components/inbox/comment-reply-access";
 
 import { prepareFacebookVoice } from "@/lib/facebook/prepare-voice";
+import { sendPersonalMessage } from "@/lib/telegram-personal/client-send";
 
 import {
   useRouter,
@@ -7695,12 +7696,71 @@ async function performOptimisticAlbumSend(
   }
 }
 
+/*
+ * Telegram Personal: the same reply box as every channel, sent through the
+ * holder-only Personal queue. One request id per message (the bubble id), so a
+ * message is never sent twice; an unconfirmed send is shown, never retried.
+ */
+async function sendPersonalItems(items: Array<{ text: string; file?: File | null; kind?: ReplyAttachment["kind"]; previewUrl?: string | null }>): Promise<boolean> {
+  const conversation = activeConversationRef.current;
+  if (!conversation?.contact) return false;
+  const quoteSelection = replyingToFacebookMessageId;
+  const quoteTarget = quoteSelection ? resolvePhotoReplyTarget(liveMessagesRef.current, quoteSelection, conversation.id) : null;
+  let allSent = true;
+  for (const [index, item] of items.entries()) {
+    const requestId = crypto.randomUUID();
+    const tempId = `optimistic:${requestId}`;
+    const label = item.file ? (item.text || (item.kind === "image" ? "Photo" : item.kind === "video" ? "Video" : item.kind === "audio" ? "Voice message" : item.file.name)) : item.text;
+    const optimistic = createOptimisticMessage({ tempId, conversationId: conversation.id, message: label,
+      recipientPlatformId: conversation.contact.platform_user_id, commentReplyParentId: null });
+    if (item.file) {
+      optimistic.message_type = item.kind === "image" ? "image" : item.kind === "video" ? "video" : item.kind === "audio" ? "audio" : "file";
+      optimistic.attachment_url = item.previewUrl ?? null;
+    }
+    const quote = index === 0 && quoteTarget ? quoteTarget : null;
+    optimistic.raw_payload = { ...(optimistic.raw_payload || {}), tenh_client_request_id: requestId,
+      ...(quote ? { tenh_reply: createReplyContext(quote, "telegram") } : {}) };
+    setLiveMessages((current) => [...current, optimistic]);
+    updateConversationPreviewOptimistically({ conversationId: conversation.id, message: item.file ? `You sent ${label}` : label, createdAt: optimistic.created_at });
+    if (index === 0) setReplyingToFacebookMessageId(null);
+    setSendError(null);
+    const outcome = await sendPersonalMessage({
+      conversationId: conversation.id, requestId, text: item.text, file: item.file ?? null,
+      replyToMessageId: quote ? quote.id : null,
+      isAlive: () => true,
+    });
+    if (outcome.state === "sent") {
+      setOptimisticSendStatus(tempId, "sent");
+      continue;
+    }
+    allSent = false;
+    if (outcome.state === "refused") {
+      // Nothing was queued: remove the bubble; the caller keeps the text.
+      setLiveMessages((current) => current.filter((message) => message.id !== tempId));
+    } else {
+      setOptimisticSendStatus(tempId, "failed");
+    }
+    if (activeConversationRef.current?.id === conversation.id) setSendError(outcome.error);
+    if (outcome.state === "refused") break;
+  }
+  return allSent;
+}
+
 async function handleSendAttachments(
   attachments: ReplyAttachment[],
   caption?: string,
 ): Promise<boolean> {
   const submissionOwner = captureComposerSubmissionOwner();
   if (!submissionOwner) return false;
+  if (activeConversationRef.current?.social_account?.platform === "telegram_personal") {
+    const text = caption?.trim() ?? "";
+    return sendPersonalItems(attachments.map((attachment, index) => ({
+      text: index === 0 ? text : "",
+      file: attachment.file,
+      kind: attachment.kind,
+      previewUrl: attachment.previewUrl,
+    })));
+  }
   if (editingTelegramMessageId) {
     setSendError(
       "Finish or cancel Telegram editing before sending an attachment.",
@@ -8115,6 +8175,15 @@ async function handleSendMessage(
     !activeConversation ||
     !activeConversation.contact
   ) {
+    return;
+  }
+
+  if (activeConversation.social_account?.platform === "telegram_personal") {
+    if (capturedMessage === undefined) setReply(current => current === reply ? "" : current);
+    const sent = await sendPersonalItems([{ text: message }]);
+    if (!sent && capturedMessage === undefined && isComposerSubmissionCurrent(submissionOwner) && !composerDraftRef.current.reply) {
+      setReply(message);
+    }
     return;
   }
 

@@ -73,7 +73,9 @@ export async function GET(request: NextRequest) {
 function mediaKind(mime: string, name: string) {
   if (/^image\/(jpeg|png|webp)$/.test(mime)) return "photo";
   if (mime === "video/mp4" || /\.mp4$/i.test(name)) return "video";
-  if (mime === "audio/ogg") return "voice"; // Telegram voice notes are OGG/Opus
+  // TENH microphone recordings (any container; the worker converts WebM to OGG) and OGG files are voice messages.
+  if (/^voice-message-/.test(name) && mime.startsWith("audio/")) return "voice";
+  if (mime === "audio/ogg") return "voice";
   if (mime.startsWith("audio/")) return "audio";
   return "document";
 }

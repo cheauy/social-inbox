@@ -69,7 +69,8 @@ export function selectAttachments(
       continue;
     }
 
-    if (platform === "telegram" && file.size > 4 * 1024 * 1024) {
+    // Telegram Bot and Telegram Personal uploads both go through a 4 MB web request.
+    if ((platform === "telegram" || platform === "telegram_personal") && file.size > 4 * 1024 * 1024) {
       rejected.push({ file, reason: "Telegram attachments are limited to 4 MB" });
       continue;
     }

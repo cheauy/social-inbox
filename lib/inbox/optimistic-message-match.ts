@@ -4,5 +4,7 @@ export function matchesOptimisticMessage(candidate: { id: string; conversation_i
   if (candidate.platform_message_id && !candidate.platform_message_id.startsWith("optimistic:") && candidate.platform_message_id === server.platform_message_id) return true;
   const raw = server.raw_payload as Record<string, unknown> | null;
   const message = raw?.message as Record<string, unknown> | null;
-  return raw?.tenh_client_request_id === candidate.id || message?.metadata === candidate.id;
+  // Telegram Personal stores the bare request id; the bubble id is "optimistic:<id>".
+  return raw?.tenh_client_request_id === candidate.id || message?.metadata === candidate.id ||
+    (typeof raw?.tenh_client_request_id === "string" && candidate.id === `optimistic:${raw.tenh_client_request_id}`);
 }

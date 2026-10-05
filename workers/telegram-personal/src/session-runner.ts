@@ -26,6 +26,7 @@ import {
 import { tdErrorDetails, type TdClient, type TdClientFactory, type TdObject } from "./tdlib-port.ts";
 import { contentText, listPrivateChats, loadHistory, mapMessage, personChat, type IngestInput, type MediaRef } from "./chats.ts";
 import { CONTACT_AVATAR_BUCKET, MESSAGE_MEDIA_BUCKET } from "./media-storage.ts";
+import { webmToOggOpus } from "./webm-to-ogg.ts";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Command, IngestOutcome, SharedChat } from "./store.ts";
@@ -735,7 +736,7 @@ export class SessionRunner {
   private async prepareOutgoingFile(commandId: string, media: Record<string, unknown> | undefined, caption: string):
     Promise<{ content: TdObject; path: string } | { error: string }> {
     const storage = this.config.mediaStorage;
-    const kind = String(media?.kind ?? "");
+    let kind = String(media?.kind ?? "");
     const storagePath = String(media?.storage_path ?? "");
     if (!storage) return { error: "MEDIA_STORAGE_NOT_CONFIGURED" };
     if (!["photo", "video", "document", "audio", "voice"].includes(kind) || !storagePath.startsWith(`${this.session.businessId}/tgp-outbox/`)) {
@@ -747,9 +748,18 @@ export class SessionRunner {
     } catch {
       return { error: "MEDIA_DOWNLOAD_FAILED" };
     }
+    let ext = /\.([A-Za-z0-9]{1,8})$/.exec(String(media?.name ?? ""))?.[1] ?? "bin";
+    if (kind === "voice" && !/^audio\/ogg/.test(String(media?.mime_type ?? "")) && ext.toLowerCase() !== "ogg") {
+      // Browser recordings are WebM; Telegram voice messages must be OGG (same Opus audio).
+      try {
+        bytes = webmToOggOpus(bytes);
+        ext = "ogg";
+      } catch {
+        kind = "audio"; // still delivered, as an audio file
+      }
+    }
     const dir = join(sessionDirectory(this.config.dataDir, this.sessionId).dir, "outbox");
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const ext = /\.([A-Za-z0-9]{1,8})$/.exec(String(media?.name ?? ""))?.[1] ?? "bin";
     const path = join(dir, `${commandId}.${ext}`);
     writeFileSync(path, bytes, { mode: 0o600 });
     const file = { _: "inputFileLocal", path };
