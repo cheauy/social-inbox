@@ -8,7 +8,7 @@
 --
 -- Design (docs/telegram-personal-phase-a.md):
 --  * Multi-tenant self-service: any workspace Owner connects their OWN account.
---    The TENH user who signs in is the "holder". Sessions are isolated per row
+--    The TENH user who signs in is the holder. Sessions are isolated per row
 --    (own TDLib directory, own wrapped key, own lease).
 --  * One Telegram account can be live in at most one workspace.
 --  * A Personal account counts as one channel through social_accounts.is_active.
@@ -20,7 +20,7 @@ begin;
 
 -- 0. Allow the new platform value on social_accounts.
 --    Live preflight (2026-10-05): social_accounts_platform_check is exactly
---    CHECK ((platform = ANY (ARRAY['facebook'::text, 'telegram'::text]))).
+--    CHECK ((platform = ANY (ARRAY[facebook::text, telegram::text]))).
 --    Only that exact definition is extended; anything else unexpected stops the
 --    install so it can be reviewed. contacts/conversations checks are Phase D.
 do $platform$
@@ -72,7 +72,7 @@ create table if not exists public.telegram_personal_sessions (
   lease_epoch bigint not null default 0,
   lease_expires_at timestamptz,
   last_shutdown text check (last_shutdown in ('clean','unclean')),
-  last_error_code text check (last_error_code is null or last_error_code ~ '^[A-Z0-9_]{1,64}$'),
+  last_error_code text check (last_error_code is null or (length(last_error_code) between 1 and 64 and last_error_code !~ '[^A-Z0-9_]')),
   disclosure_accepted_at timestamptz not null,
   connected_at timestamptz,
   ended_at timestamptz,
@@ -101,7 +101,7 @@ create table if not exists public.telegram_personal_logins (
   password_hint text,
   input_kind text check (input_kind in ('phone','code','password')),
   input_sealed text,
-  error_code text check (error_code is null or error_code ~ '^[A-Z0-9_]{1,64}$'),
+  error_code text check (error_code is null or (length(error_code) between 1 and 64 and error_code !~ '[^A-Z0-9_]')),
   deadline_at timestamptz not null,
   updated_at timestamptz not null default now()
 );
@@ -124,7 +124,7 @@ create index if not exists telegram_personal_commands_open
   on public.telegram_personal_commands (session_id, created_at)
   where status in ('queued','claimed');
 
--- 4. Explicit team access for team_access = 'selected_members' -----------------
+-- 4. Explicit team access for team_access = selected_members -----------------
 create table if not exists public.telegram_personal_member_access (
   session_id uuid not null references public.telegram_personal_sessions(id) on delete cascade,
   member_id uuid not null,
@@ -147,19 +147,19 @@ grant select, insert, update, delete on public.telegram_personal_sessions,
 
 -- 6. Helpers ---------------------------------------------------------------------
 create or replace function public.tgp_open_login_statuses() returns text[]
-language sql immutable set search_path = '' as $$
+language sql immutable set search_path = '' as $fn$
   select array['connecting','waiting_phone','waiting_qr','waiting_code','waiting_password']
-$$;
+$fn$;
 
 create or replace function public.tgp_terminal_statuses() returns text[]
-language sql immutable set search_path = '' as $$
+language sql immutable set search_path = '' as $fn$
   select array['cancelled','expired','failed','revoked','disconnected']
-$$;
+$fn$;
 
 -- Channel capacity, mirroring getBusinessEntitlements + the Bot route:
 -- unmanaged (no subscription row) is allowed; locked/expired is refused.
 create or replace function public.tgp_channel_capacity_error(p_business uuid, p_extra_slots int)
-returns text language plpgsql stable set search_path = '' as $$
+returns text language plpgsql stable set search_path = '' as $fn$
 declare v_sub record; v_active int; v_end timestamptz;
 begin
   select status, channel_limit, current_period_end, trial_ends_at
@@ -174,23 +174,23 @@ begin
     where business_id = p_business and is_active;
   if v_active + p_extra_slots > coalesce(v_sub.channel_limit, 0) then return 'CHANNEL_LIMIT_REACHED'; end if;
   return null;
-end $$;
+end $fn$;
 
 create or replace function public.tgp_is_active_owner(p_business uuid, p_user uuid)
-returns boolean language sql stable set search_path = '' as $$
+returns boolean language sql stable set search_path = '' as $fn$
   select exists (select 1 from public.team_members
     where business_id = p_business and user_id = p_user and is_active and role = 'owner')
-$$;
+$fn$;
 
 create or replace function public.tgp_wake(p_session uuid) returns void
-language sql set search_path = '' as $$
+language sql set search_path = '' as $fn$
   select pg_notify('telegram_personal', p_session::text)
-$$;
+$fn$;
 
 -- Maps a refusal from the existing social_accounts triggers (live bodies seen
 -- 2026-10-05) to a stable code, preferring their DETAIL codes over message text.
 create or replace function public.tgp_trigger_refusal_code(p_detail text, p_message text)
-returns text language sql immutable set search_path = '' as $$
+returns text language sql immutable set search_path = '' as $fn$
   select case
     when p_detail = 'TENH_CHANNEL_LIMIT_REACHED' then 'CHANNEL_LIMIT_REACHED'
     when p_detail = 'TENH_SUBSCRIPTION_LOCKED' then 'SUBSCRIPTION_LOCKED'
@@ -198,13 +198,13 @@ returns text language sql immutable set search_path = '' as $$
     when p_message ilike '%channel limit%' then 'CHANNEL_LIMIT_REACHED'
     else 'CHANNEL_ACTIVATION_REFUSED'
   end
-$$;
+$fn$;
 
 -- 7. API-side RPCs (service_role; the API has already authenticated the user) ------
 create or replace function public.tgp_begin_login(
   p_business uuid, p_user uuid, p_member uuid, p_method text,
   p_login_ttl_seconds int default 300, p_max_open_per_business int default 3)
-returns uuid language plpgsql set search_path = '' as $$
+returns uuid language plpgsql set search_path = '' as $fn$
 declare v_id uuid; v_err text;
 begin
   if p_method not in ('qr','phone') then raise exception 'TGP_BAD_METHOD' using errcode = '22023'; end if;
@@ -234,11 +234,11 @@ begin
   values (v_id, now() + make_interval(secs => p_login_ttl_seconds));
   perform public.tgp_wake(v_id);
   return v_id;
-end $$;
+end $fn$;
 
 create or replace function public.tgp_submit_login_input(
   p_session uuid, p_business uuid, p_user uuid, p_kind text, p_sealed text)
-returns boolean language plpgsql set search_path = '' as $$
+returns boolean language plpgsql set search_path = '' as $fn$
 declare v_status text;
 begin
   select status into v_status from public.telegram_personal_sessions
@@ -252,11 +252,11 @@ begin
   if not found then return false; end if;
   perform public.tgp_wake(p_session);
   return true;
-end $$;
+end $fn$;
 
 -- Cancellation takes effect immediately; late worker updates are fenced by status.
 create or replace function public.tgp_cancel_login(p_session uuid, p_business uuid, p_user uuid)
-returns boolean language plpgsql set search_path = '' as $$
+returns boolean language plpgsql set search_path = '' as $fn$
 begin
   update public.telegram_personal_sessions
      set status = 'cancelled', ended_at = now(), updated_at = now()
@@ -266,13 +266,13 @@ begin
   delete from public.telegram_personal_logins where session_id = p_session;
   perform public.tgp_wake(p_session);
   return true;
-end $$;
+end $fn$;
 
 -- pause: holder or any active owner; logout (sign out + revoke): holder or any
--- active owner; resume: holder only (re-exposes the holder's account).
+-- active owner; resume: holder only (re-exposes the holders account).
 create or replace function public.tgp_request_action(
   p_session uuid, p_business uuid, p_user uuid, p_member uuid, p_kind text, p_client_request_id uuid)
-returns text language plpgsql set search_path = '' as $$
+returns text language plpgsql set search_path = '' as $fn$
 declare s public.telegram_personal_sessions; v_err text; v_detail text;
 begin
   perform pg_advisory_xact_lock(hashtextextended('tgp:business:' || p_business::text, 0));
@@ -317,11 +317,11 @@ begin
   values (p_session, p_business, p_member, p_kind, p_client_request_id);
   perform public.tgp_wake(p_session);
   return 'OK';
-end $$;
+end $fn$;
 
 create or replace function public.tgp_set_team_access(
   p_session uuid, p_business uuid, p_user uuid, p_mode text, p_member_ids uuid[])
-returns text language plpgsql set search_path = '' as $$
+returns text language plpgsql set search_path = '' as $fn$
 declare v_valid int;
 begin
   if p_mode not in ('holder_only','owners','all_inbox_members','selected_members') then return 'INVALID_MODE'; end if;
@@ -340,21 +340,21 @@ begin
   end if;
   update public.telegram_personal_sessions set team_access = p_mode, updated_at = now() where id = p_session;
   return 'OK';
-end $$;
+end $fn$;
 
 -- 8. Worker-side RPCs (fenced) ---------------------------------------------------
 create or replace function public.tgp_holds_lease(p_session uuid, p_worker text, p_epoch bigint)
-returns boolean language sql stable set search_path = '' as $$
+returns boolean language sql stable set search_path = '' as $fn$
   select exists (select 1 from public.telegram_personal_sessions
     where id = p_session and lease_owner = p_worker and lease_epoch = p_epoch and lease_expires_at > now())
-$$;
+$fn$;
 
 -- Claims sessions that need a client: open logins, live sessions, pending
 -- lifecycle work, or terminal sessions whose local data still has to be removed.
 create or replace function public.tgp_claim_sessions(p_worker text, p_ttl_seconds int, p_limit int)
 returns table (id uuid, business_id uuid, status text, login_method text, lease_epoch bigint,
                db_key_wrapped text, local_state text)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = '' as $fn$
 begin
   return query
   with candidates as (
@@ -377,31 +377,31 @@ begin
     from candidates c
    where s.id = c.id
   returning s.id, s.business_id, s.status, s.login_method, s.lease_epoch, s.db_key_wrapped, s.local_state;
-end $$;
+end $fn$;
 
 create or replace function public.tgp_renew_lease(p_session uuid, p_worker text, p_epoch bigint, p_ttl_seconds int)
-returns boolean language plpgsql set search_path = '' as $$
+returns boolean language plpgsql set search_path = '' as $fn$
 begin
   update public.telegram_personal_sessions
      set lease_expires_at = now() + make_interval(secs => p_ttl_seconds)
    where id = p_session and lease_owner = p_worker and lease_epoch = p_epoch and lease_expires_at > now();
   return found;
-end $$;
+end $fn$;
 
 create or replace function public.tgp_release_lease(p_session uuid, p_worker text, p_epoch bigint, p_shutdown text)
-returns boolean language plpgsql set search_path = '' as $$
+returns boolean language plpgsql set search_path = '' as $fn$
 begin
   update public.telegram_personal_sessions
      set lease_owner = null, lease_expires_at = null,
          last_shutdown = coalesce(p_shutdown, last_shutdown), updated_at = now()
    where id = p_session and lease_owner = p_worker and lease_epoch = p_epoch;
   return found;
-end $$;
+end $fn$;
 
 -- Generic fenced update. Terminal and lifecycle transitions also deactivate the
 -- channel; a terminal status can never be left again.
 create or replace function public.tgp_worker_update(p_session uuid, p_worker text, p_epoch bigint, p_patch jsonb)
-returns boolean language plpgsql set search_path = '' as $$
+returns boolean language plpgsql set search_path = '' as $fn$
 declare s public.telegram_personal_sessions; v_status text;
 begin
   if not public.tgp_holds_lease(p_session, p_worker, p_epoch) then return false; end if;
@@ -436,14 +436,14 @@ begin
     end if;
   end if;
   return true;
-end $$;
+end $fn$;
 
 -- Login progress. Ignored unless the login is still open (delayed QR updates
 -- after cancel/expiry are dropped here).
 create or replace function public.tgp_worker_login_update(
   p_session uuid, p_worker text, p_epoch bigint, p_status text,
   p_qr_link text, p_password_hint text, p_error_code text)
-returns boolean language plpgsql set search_path = '' as $$
+returns boolean language plpgsql set search_path = '' as $fn$
 begin
   if not public.tgp_holds_lease(p_session, p_worker, p_epoch) then return false; end if;
   if p_status is not null and not (p_status = any(public.tgp_open_login_statuses())) then return false; end if;
@@ -458,11 +458,11 @@ begin
          updated_at = now()
    where session_id = p_session;
   return true;
-end $$;
+end $fn$;
 
 create or replace function public.tgp_take_login_input(p_session uuid, p_worker text, p_epoch bigint)
 returns table (input_kind text, input_sealed text, deadline_at timestamptz)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = '' as $fn$
 begin
   if not public.tgp_holds_lease(p_session, p_worker, p_epoch) then return; end if;
   return query
@@ -478,17 +478,17 @@ begin
     from taken t
    where l.session_id = t.session_id
   returning t.input_kind, t.input_sealed, t.deadline_at;
-end $$;
+end $fn$;
 
 -- Completes a login: duplicate-ownership and capacity checks, then creates or
--- reuses the workspace's social_accounts row in the same transaction.
+-- reuses the workspaces social_accounts row in the same transaction.
 create or replace function public.tgp_activate(
   p_session uuid, p_worker text, p_epoch bigint,
   p_telegram_user_id text, p_display_name text, p_username text, p_phone_masked text)
-returns jsonb language plpgsql set search_path = '' as $$
+returns jsonb language plpgsql set search_path = '' as $fn$
 declare s public.telegram_personal_sessions; v_err text; v_account uuid; v_detail text;
 begin
-  if p_telegram_user_id !~ '^[0-9]{1,20}$' then return jsonb_build_object('ok', false, 'code', 'BAD_IDENTITY'); end if;
+  if p_telegram_user_id is null or length(p_telegram_user_id) not between 1 and 20 or p_telegram_user_id ~ '[^0-9]' then return jsonb_build_object('ok', false, 'code', 'BAD_IDENTITY'); end if;
   select * into s from public.telegram_personal_sessions where id = p_session;
   if not found then return jsonb_build_object('ok', false, 'code', 'NOT_FOUND'); end if;
   perform pg_advisory_xact_lock(hashtextextended('tgp:business:' || s.business_id::text, 0));
@@ -561,10 +561,10 @@ begin
    where id = p_session;
   delete from public.telegram_personal_logins where session_id = p_session;
   return jsonb_build_object('ok', true, 'social_account_id', v_account);
-end $$;
+end $fn$;
 
 create or replace function public.tgp_claim_commands(p_session uuid, p_worker text, p_epoch bigint, p_limit int)
-returns setof public.telegram_personal_commands language plpgsql set search_path = '' as $$
+returns setof public.telegram_personal_commands language plpgsql set search_path = '' as $fn$
 begin
   if not public.tgp_holds_lease(p_session, p_worker, p_epoch) then return; end if;
   return query
@@ -573,18 +573,18 @@ begin
                   where session_id = p_session and status in ('queued','claimed')
                   order by created_at limit greatest(p_limit, 0) for update skip locked)
   returning c.*;
-end $$;
+end $fn$;
 
 create or replace function public.tgp_finish_command(
   p_command uuid, p_session uuid, p_worker text, p_epoch bigint, p_status text, p_error_code text)
-returns boolean language plpgsql set search_path = '' as $$
+returns boolean language plpgsql set search_path = '' as $fn$
 begin
   if p_status not in ('done','failed') then return false; end if;
   if not public.tgp_holds_lease(p_session, p_worker, p_epoch) then return false; end if;
   update public.telegram_personal_commands set status = p_status, error_code = p_error_code, updated_at = now()
    where id = p_command and session_id = p_session and status = 'claimed';
   return found;
-end $$;
+end $fn$;
 
 -- 9. Function privileges ---------------------------------------------------------
 do $grants$
