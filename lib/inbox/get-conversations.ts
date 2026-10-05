@@ -9,6 +9,7 @@ import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 import { chunkIds } from "@/lib/supabase/chunk-ids";
+import { hiddenPersonalAccountIds } from "@/lib/telegram-personal/visibility";
 
 import type {
   CustomerTag,
@@ -116,6 +117,8 @@ export type InboxConversationScope = {
   currentBusinessId: string;
   currentMemberId: string;
   accessibleBusinessIds: string[];
+  /** Signed-in user; empty when there is no access. */
+  userId: string;
 };
 
 function sortConversations(
@@ -232,6 +235,9 @@ async function readInboxConversationScope(): Promise<
       authResult.member.business_id,
     currentMemberId:
       authResult.member.id,
+    // Used to hide Telegram Personal accounts this user may not see.
+    userId:
+      authResult.user.id,
     accessibleBusinessIds,
   };
 }
@@ -324,8 +330,14 @@ export async function getConversations(
    */
   const activeChannelData = await activeChannelsForScope(JSON.stringify([...scopedBusinessIds].sort()));
 
+  // Telegram Personal accounts this member may not see are not channels for them.
+  const viewer = await getCurrentMember();
+  if (!viewer.success) return [];
+  const hiddenPersonal = await hiddenPersonalAccountIds(scopedBusinessIds, viewer.user.id);
+
   const activeChannelIds =
     (activeChannelData ?? [])
+      .filter((channel) => !hiddenPersonal.includes(String(channel.id ?? "")))
       .filter((channel) => {
         if (channel.platform === "telegram") {
           return channel.telegram_token_status === "verified";

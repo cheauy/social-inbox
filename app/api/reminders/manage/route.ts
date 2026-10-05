@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { hiddenConversationIdSet, hiddenPersonalAccountIds } from "@/lib/telegram-personal/visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -125,6 +126,7 @@ async function loadReminderScope() {
     return {
       success: true as const,
       businessIds: [] as string[],
+      userId: user.id,
     };
   }
 
@@ -151,6 +153,7 @@ async function loadReminderScope() {
 
   return {
     success: true as const,
+    userId: user.id,
     businessIds: businessIds.filter((businessId) =>
       isOperational(latest.get(businessId) ?? null),
     ),
@@ -276,7 +279,11 @@ export async function GET(request: NextRequest) {
     ]),
   );
   const nowMs = Date.now();
-  const rows = (reminders ?? []) as unknown as ReminderRow[];
+  // Reminders on Telegram Personal chats this member may not see are not listed.
+  const hiddenPersonal = await hiddenPersonalAccountIds(scope.businessIds, scope.userId);
+  const allRows = (reminders ?? []) as unknown as ReminderRow[];
+  const hiddenConversations = await hiddenConversationIdSet(allRows.map((row) => row.conversation_id), hiddenPersonal);
+  const rows = allRows.filter((row) => !hiddenConversations.has(row.conversation_id));
 
   const counts = rows.reduce(
     (result, reminder) => {

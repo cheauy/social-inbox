@@ -1,6 +1,7 @@
 import "server-only";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { canSeePersonalAccount, personalAccountFromContact, PERSONAL_PLATFORM } from "@/lib/telegram-personal/visibility";
 
 type CreateTeamMentionsInput = {
   businessId: string;
@@ -27,6 +28,21 @@ function uniqueStrings(values: string[]): string[] {
         .filter(Boolean),
     ),
   );
+}
+
+/** The Telegram Personal account behind a conversation or contact, if any. */
+async function personalAccountFor({ businessId, conversationId, contactId }: { businessId: string; conversationId: string | null; contactId: string | null }) {
+  if (conversationId) {
+    const { data } = await supabaseAdmin.from("conversations").select("platform,social_account_id")
+      .eq("id", conversationId).eq("business_id", businessId).maybeSingle();
+    if (data?.platform === PERSONAL_PLATFORM) return String(data.social_account_id);
+  }
+  if (contactId) {
+    const { data } = await supabaseAdmin.from("contacts").select("platform,platform_user_id")
+      .eq("id", contactId).eq("business_id", businessId).maybeSingle();
+    if (data) return personalAccountFromContact(data);
+  }
+  return null;
 }
 
 export async function createTeamMentions({
@@ -81,7 +97,7 @@ export async function createTeamMentions({
   const { data: validMembers, error: validError } =
     await supabaseAdmin
       .from("team_members")
-      .select("id")
+      .select("id,user_id")
       .eq("business_id", businessId)
       .eq("is_active", true)
       .in("id", targetIds);
@@ -92,8 +108,17 @@ export async function createTeamMentions({
     );
   }
 
+  // On a Telegram Personal chat, only teammates allowed to see it are notified
+  // (notification rows reach browsers through Realtime with their text).
+  const personalAccount = await personalAccountFor({ businessId, conversationId, contactId });
+  const allowedMembers: Array<{ id: string; user_id: string | null }> = [];
+  for (const member of (validMembers ?? []) as Array<{ id: string; user_id: string | null }>) {
+    if (personalAccount && !(await canSeePersonalAccount(personalAccount, String(member.user_id ?? "")))) continue;
+    allowedMembers.push(member);
+  }
+
   const validIds = uniqueStrings(
-    (validMembers ?? []).map((member) => member.id),
+    allowedMembers.map((member) => member.id),
   );
 
   if (validIds.length === 0) {

@@ -5,6 +5,7 @@ import {
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { hiddenPersonalAccountIds, isHiddenContact } from "@/lib/telegram-personal/visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -176,6 +177,7 @@ export async function GET(
       business_id,
       full_name,
       profile_picture_url,
+      platform,
       platform_user_id,
       phone,
       address,
@@ -219,7 +221,13 @@ export async function GET(
     );
   }
 
-  if (!customerData) {
+  if (
+    !customerData ||
+    isHiddenContact(
+      customerData as { platform?: string | null; platform_user_id?: string | null },
+      await hiddenPersonalAccountIds([currentMember.business_id], authResult.user.id),
+    )
+  ) {
     return NextResponse.json(
       {
         success: false,

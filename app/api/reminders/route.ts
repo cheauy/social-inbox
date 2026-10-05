@@ -5,6 +5,7 @@ import {
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { canSeePersonalAccount, hiddenConversationIdSet, hiddenPersonalAccountIds } from "@/lib/telegram-personal/visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -135,9 +136,13 @@ export async function GET(
     );
   }
 
+  // Reminders on Telegram Personal chats this member may not see are not listed.
+  const hiddenPersonal = await hiddenPersonalAccountIds([currentMember.business_id], authResult.user.id);
+  const hiddenConversations = await hiddenConversationIdSet((data ?? []).map((row) => row.conversation_id), hiddenPersonal);
+
   return NextResponse.json({
     success: true,
-    reminders: data ?? [],
+    reminders: (data ?? []).filter((row) => !hiddenConversations.has(row.conversation_id)),
     currentMemberId: currentMember.id,
     currentMemberRole: currentMember.role,
   });
@@ -231,11 +236,15 @@ export async function POST(
     error: conversationError,
   } = await supabaseAdmin
     .from("conversations")
-    .select("id, contact_id, business_id")
+    .select("id, contact_id, business_id, social_account_id, platform")
     .eq("id", conversationId)
     .eq("contact_id", contactId)
     .eq("business_id", currentMember.business_id)
     .maybeSingle();
+
+  // A reminder cannot be created on a Telegram Personal chat the member may not see.
+  const conversationHidden = conversation?.platform === "telegram_personal" &&
+    !(await canSeePersonalAccount(conversation.social_account_id, authResult.user.id));
 
   if (conversationError) {
     return NextResponse.json(
@@ -249,7 +258,7 @@ export async function POST(
     );
   }
 
-  if (!conversation) {
+  if (!conversation || conversationHidden) {
     return NextResponse.json(
       {
         success: false,
@@ -265,7 +274,7 @@ export async function POST(
     error: assigneeError,
   } = await supabaseAdmin
     .from("team_members")
-    .select("id")
+    .select("id, user_id")
     .eq("id", assignedTo)
     .eq("business_id", currentMember.business_id)
     .eq("is_active", true)
@@ -282,7 +291,11 @@ export async function POST(
     );
   }
 
-  if (!assignee) {
+  // The assignee must also be allowed to see a Telegram Personal chat.
+  const assigneeHidden = Boolean(assignee) && conversation.platform === "telegram_personal" &&
+    !(await canSeePersonalAccount(conversation.social_account_id, String(assignee?.user_id ?? "")));
+
+  if (!assignee || assigneeHidden) {
     return NextResponse.json(
       {
         success: false,

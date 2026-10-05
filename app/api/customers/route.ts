@@ -4,6 +4,7 @@ import {
 } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
+import { hiddenAccountInList, hiddenContactPatterns, hiddenPersonalAccountIds } from "@/lib/telegram-personal/visibility";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -279,6 +280,10 @@ export async function GET(
         "business_id",
         currentMember.business_id,
       );
+
+  // Customers of Telegram Personal accounts this member may not see stay hidden.
+  const hiddenPersonal = await hiddenPersonalAccountIds([currentMember.business_id], authResult.user.id);
+  for (const pattern of hiddenContactPatterns(hiddenPersonal)) query = query.filter("platform_user_id", "not.like", pattern);
 
   if (search) {
     query = query.or(
@@ -647,59 +652,33 @@ export async function GET(
     );
   }
 
+  // Summary counts exclude Telegram Personal customers/conversations this member may not see.
+  let totalCustomersQuery = supabaseAdmin
+    .from("contacts")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", currentMember.business_id);
+  let activeTodayQuery = supabaseAdmin
+    .from("contacts")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", currentMember.business_id)
+    .gte("last_contact_at", new Date(new Date().setHours(0, 0, 0, 0)).toISOString());
+  for (const pattern of hiddenContactPatterns(hiddenPersonal)) {
+    totalCustomersQuery = totalCustomersQuery.filter("platform_user_id", "not.like", pattern);
+    activeTodayQuery = activeTodayQuery.filter("platform_user_id", "not.like", pattern);
+  }
+  let unassignedQuery = supabaseAdmin
+    .from("conversations")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", currentMember.business_id)
+    .is("assigned_to", null);
+  const hiddenList = hiddenAccountInList(hiddenPersonal);
+  if (hiddenList) unassignedQuery = unassignedQuery.filter("social_account_id", "not.in", hiddenList);
+
   const [
     totalCustomersResult,
     activeTodayResult,
     unassignedResult,
-  ] = await Promise.all([
-    supabaseAdmin
-      .from("contacts")
-      .select("id", {
-        count: "exact",
-        head: true,
-      })
-      .eq(
-        "business_id",
-        currentMember.business_id,
-      ),
-
-    supabaseAdmin
-      .from("contacts")
-      .select("id", {
-        count: "exact",
-        head: true,
-      })
-      .eq(
-        "business_id",
-        currentMember.business_id,
-      )
-      .gte(
-        "last_contact_at",
-        new Date(
-          new Date().setHours(
-            0,
-            0,
-            0,
-            0,
-          ),
-        ).toISOString(),
-      ),
-
-    supabaseAdmin
-      .from("conversations")
-      .select("id", {
-        count: "exact",
-        head: true,
-      })
-      .eq(
-        "business_id",
-        currentMember.business_id,
-      )
-      .is(
-        "assigned_to",
-        null,
-      ),
-  ]);
+  ] = await Promise.all([totalCustomersQuery, activeTodayQuery, unassignedQuery]);
 
   return NextResponse.json({
     success: true,

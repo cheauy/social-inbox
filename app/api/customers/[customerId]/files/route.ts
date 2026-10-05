@@ -13,6 +13,7 @@ import {
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
+import { hiddenPersonalAccountIds, isHiddenContact } from "@/lib/telegram-personal/visibility";
 
 export const runtime =
   "nodejs";
@@ -141,9 +142,11 @@ function cleanDescription(
 async function verifyContact({
   contactId,
   businessId,
+  userId,
 }: {
   contactId: string;
   businessId: string;
+  userId: string;
 }) {
   const {
     data,
@@ -152,7 +155,9 @@ async function verifyContact({
     .from("contacts")
     .select(`
       id,
-      full_name
+      full_name,
+      platform,
+      platform_user_id
     `)
     .eq(
       "id",
@@ -168,6 +173,11 @@ async function verifyContact({
     throw new Error(
       error.message,
     );
+  }
+
+  // Telegram Personal customers this member may not see behave as missing.
+  if (data && isHiddenContact(data, await hiddenPersonalAccountIds([businessId], userId))) {
+    return null;
   }
 
   return data;
@@ -336,6 +346,7 @@ export async function GET(
         contactId,
         businessId:
           currentMember.business_id,
+        userId: authResult.user.id,
       });
   } catch (
     contactError
@@ -690,6 +701,7 @@ export async function POST(
       contactId,
       businessId:
         currentMember.business_id,
+      userId: authResult.user.id,
     }).catch(() => null);
 
   if (!contact) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { hiddenAccountInList, hiddenPersonalAccountIds } from "@/lib/telegram-personal/visibility";
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import { readChannelMessages } from "@/lib/analytics/read-channel-messages";
 
@@ -267,6 +268,10 @@ export async function GET(request: NextRequest) {
   const windowMs = range.end.getTime() - range.start.getTime();
   const previousStart = new Date(range.start.getTime() - windowMs);
 
+  // Telegram Personal accounts this member may not see are left out entirely.
+  const hiddenPersonal = await hiddenPersonalAccountIds([currentMember.business_id], authResult.user.id);
+  const hiddenList = hiddenAccountInList(hiddenPersonal);
+
   const [accountsResult, conversationsResult, previousResult] =
     await Promise.all([
       supabaseAdmin
@@ -295,13 +300,16 @@ export async function GET(request: NextRequest) {
        * change percentage compares Messenger against Messenger-plus-comments
        * and reports a fall that never happened.
        */
-      supabaseAdmin
-        .from("conversations")
-        .select("id", { count: "exact", head: true })
-        .eq("business_id", currentMember.business_id)
-        .or("source_type.is.null,source_type.neq.comment")
-        .gte("created_at", previousStart.toISOString())
-        .lt("created_at", range.start.toISOString()),
+      (() => {
+        const previous = supabaseAdmin
+          .from("conversations")
+          .select("id", { count: "exact", head: true })
+          .eq("business_id", currentMember.business_id)
+          .or("source_type.is.null,source_type.neq.comment")
+          .gte("created_at", previousStart.toISOString())
+          .lt("created_at", range.start.toISOString());
+        return hiddenList ? previous.filter("social_account_id", "not.in", hiddenList) : previous;
+      })(),
     ]);
 
   if (accountsResult.error || conversationsResult.error) {
@@ -321,9 +329,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const accounts = (accountsResult.data ?? []) as AccountRow[];
-  const conversations = (conversationsResult.data ??
-    []) as ConversationRow[];
+  const accounts = ((accountsResult.data ?? []) as AccountRow[])
+    .filter((account) => !hiddenPersonal.includes(account.id));
+  const conversations = ((conversationsResult.data ??
+    []) as ConversationRow[])
+    .filter((row) => !row.social_account_id || !hiddenPersonal.includes(row.social_account_id));
 
   const accountById = new Map(
     accounts.map((account) => [account.id, account]),

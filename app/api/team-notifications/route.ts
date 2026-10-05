@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { hiddenContactIdSet, hiddenConversationIdSet, hiddenPersonalAccountIds } from "@/lib/telegram-personal/visibility";
 import { cookies } from "next/headers";
 import { TENH_ACTIVE_BUSINESS_COOKIE } from "@/lib/auth/get-current-member";
 
@@ -313,13 +314,22 @@ export async function GET() {
     );
   }
 
+  // Notifications about Telegram Personal chats this user may not see are not shown.
+  const hiddenPersonal = await hiddenPersonalAccountIds(scope.businessIds, scope.user.id);
+  const rows = (data ?? []) as Array<{ conversation_id?: string | null; contact_id?: string | null }>;
+  const hiddenConversations = await hiddenConversationIdSet(rows.map((row) => row.conversation_id), hiddenPersonal);
+  const hiddenContacts = await hiddenContactIdSet(rows.map((row) => row.contact_id), hiddenPersonal);
+  const visible = rows.filter((row) =>
+    !(row.conversation_id && hiddenConversations.has(row.conversation_id)) &&
+    !(row.contact_id && hiddenContacts.has(row.contact_id)));
+
   return NextResponse.json(
     {
       success: true,
       memberIds: scope.memberIds,
       businessIds: scope.businessIds,
       currentBusinessId: scope.currentBusinessId,
-      notifications: data ?? [],
+      notifications: visible,
     },
     { headers: NO_STORE_HEADERS },
   );

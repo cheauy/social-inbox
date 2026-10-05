@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { getInboxConversationScope } from "@/lib/inbox/get-conversations";
+import { hiddenMessagePatterns, hiddenPersonalAccountIds } from "@/lib/telegram-personal/visibility";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -83,11 +84,14 @@ export async function GET(request: NextRequest) {
    * from the request. The admin client bypasses RLS, so the scope has to be
    * applied here or a search would read every workspace's messages.
    */
-  const { data, error } = await supabaseAdmin
+  const hiddenPersonal = await hiddenPersonalAccountIds(scope.accessibleBusinessIds, scope.userId);
+  let searchQuery = supabaseAdmin
     .from("messages")
     .select("id,conversation_id,business_id,message_text,platform_created_at")
     .in("business_id", scope.accessibleBusinessIds)
-    .not("conversation_id", "is", null)
+    .not("conversation_id", "is", null);
+  for (const pattern of hiddenMessagePatterns(hiddenPersonal)) searchQuery = searchQuery.filter("platform_message_id", "not.like", pattern);
+  const { data, error } = await searchQuery
     .ilike(
       "message_text",
       `%${escapeLikePattern(query)}%`,
