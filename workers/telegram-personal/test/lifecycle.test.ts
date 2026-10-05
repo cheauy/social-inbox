@@ -70,7 +70,8 @@ test("QR refresh replaces the link; delayed QR update after cancel is dropped an
     c.auth("authorizationStateWaitOtherDeviceConfirmation", { link: "tg://login?token=FAKEQR_LATE" });
     await waitFor(() => h.store.rows.get(id)?.localState === "removed", 2000, "cleanup");
     assert.equal(h.store.rows.get(id)!.status, "cancelled");
-    assert.ok(h.store.writes.some((w) => w.op === "login" && !w.accepted), "late QR write rejected");
+    // The late link is either rejected by the store or never written (cancel processed first).
+    assert.ok(!h.store.writes.some((w) => w.op === "login" && w.accepted && JSON.stringify(w.patch).includes("FAKEQR_LATE")), "late QR never stored");
     assert.ok(h.telegram.destroyed.length === 1, "unauthorized login destroyed locally, no logOut needed");
     assert.equal(existsSync(sessionDirectory(h.dataDir, id).dir), false);
     assert.equal(h.store.rows.get(id)!.dbKeyWrapped, null);

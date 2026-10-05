@@ -22,6 +22,7 @@ export class Supervisor {
   private claiming = false;
   private draining = false;
   private claimFailures = 0;
+  private claimAgain = false;
   private claimBlockedUntil = 0;
 
   constructor(options: { store: Store; factory: TdClientFactory; config: SupervisorConfig; log: Logger }) {
@@ -56,7 +57,12 @@ export class Supervisor {
   }
 
   async tick() {
-    if (this.draining || this.claiming || Date.now() < this.claimBlockedUntil) return;
+    if (this.claiming) {
+      // A wake-up arrived mid-claim (e.g. two sign-ins at once): claim again right after.
+      this.claimAgain = true;
+      return;
+    }
+    if (this.draining || Date.now() < this.claimBlockedUntil) return;
     const capacity = this.config.maxSessions - this.runners.size;
     if (capacity <= 0) return;
     this.claiming = true;
@@ -98,6 +104,10 @@ export class Supervisor {
       });
     } finally {
       this.claiming = false;
+      if (this.claimAgain && !this.draining) {
+        this.claimAgain = false;
+        void this.tick();
+      }
     }
   }
 

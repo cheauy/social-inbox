@@ -59,7 +59,21 @@ export type Identity = {
   phoneMasked: string | null;
 };
 
-export type Command = { id: string; kind: "pause" | "logout" };
+export type Command = { id: string; kind: "pause" | "logout" | "list_chats" | "import_history"; payload?: Record<string, unknown> };
+
+export type SharedChat = { chatId: string; rowId: string; lastMessageAt: string | null };
+
+export type IngestResult = "INSERTED" | "DUPLICATE" | "NOT_SHARED" | "NOT_LIVE" | "LEASE_LOST" | "UNAVAILABLE";
+
+export type IngestRow = {
+  chatId: string;
+  messageId: number;
+  direction: "incoming" | "outgoing";
+  type: "text" | "placeholder";
+  body: string | null;
+  placeholder: string | null;
+  sentAt: string;
+};
 
 /** All worker writes are fenced: they return false once the lease is lost. */
 export interface Store {
@@ -73,6 +87,12 @@ export interface Store {
   activate(fence: Fence, identity: Identity): Promise<{ ok: boolean; code?: string }>;
   claimCommands(fence: Fence, limit: number): Promise<Command[]>;
   finishCommand(fence: Fence, commandId: string, status: "done" | "failed", errorCode: string | null): Promise<boolean>;
+  /** D1. Store a command result (e.g. the chat list) for the holder to read. */
+  finishCommandResult(fence: Fence, commandId: string, status: "done" | "failed", errorCode: string | null, result: unknown): Promise<boolean>;
+  /** D1. Chats the holder shares from this session's account. */
+  sharedChats(fence: Fence): Promise<SharedChat[]>;
+  /** D1. Idempotent, fenced message ingest. */
+  ingestMessage(fence: Fence, row: IngestRow): Promise<IngestResult>;
   /** Subscribe to wake-ups (Postgres NOTIFY). Returns an unsubscribe function. */
   listen(onWake: (sessionId: string) => void): Promise<() => Promise<void>>;
 }

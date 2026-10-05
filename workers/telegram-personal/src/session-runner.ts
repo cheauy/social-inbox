@@ -23,6 +23,8 @@ import {
   type Store,
 } from "./store.ts";
 import { tdErrorDetails, type TdClient, type TdClientFactory, type TdObject } from "./tdlib-port.ts";
+import { listPrivateChats, loadHistory, mapMessage } from "./chats.ts";
+import type { Command, SharedChat } from "./store.ts";
 import { OperationTimeoutError, withTimeout } from "./timeout.ts";
 
 export type RunnerConfig = {
@@ -103,6 +105,13 @@ export class SessionRunner {
   private connectionReady = false;
   private notReadySince: number | null = null;
   private lastAuthProbe = Date.now();
+  // D1 chat state (in memory only; the database is the source of truth).
+  private myUserId: number | null = null;
+  private readonly sharedChats = new Map<string, SharedChat>();
+  private sharesLoadedAt = 0;
+  private sharesDirty = false;
+  private readonly privateChats = new Map<number, boolean>();
+  private readonly caughtUp = new Set<string>();
   private ending = false;
   private finished = false;
 
@@ -203,14 +212,19 @@ export class SessionRunner {
     client.onUpdate((update) => this.onUpdate(update));
 
     this.renewTimer = setInterval(() => void this.renew(), this.config.renewEveryMs);
-    this.tickTimer = setInterval(() => this.poke(), this.config.pollMs);
+    this.tickTimer = setInterval(() => this.poke(false), this.config.pollMs);
     this.logEvent("info", "session_started", { status: session.status });
     this.poke();
   }
 
-  /** Request an immediate reconciliation (e.g. after a NOTIFY wake-up). */
-  poke() {
+  /**
+   * Request an immediate reconciliation. External wake-ups (Postgres NOTIFY
+   * after a share, cancel or lifecycle request) also refresh shared chats
+   * right away; the periodic timer keeps the 5 s throttle.
+   */
+  poke(external = true) {
     if (this.finished || this.ending) return;
+    if (external) this.sharesDirty = true;
     void this.enqueue(() => this.tick());
   }
 
@@ -228,8 +242,14 @@ export class SessionRunner {
     } else if (update._ === "updateConnectionState") {
       const name = (update.state as TdObject | undefined)?._ ?? "";
       void this.enqueue(() => this.handleConnection(name));
+    } else if (update._ === "updateNewChat") {
+      const chat = update.chat as TdObject | undefined;
+      if (chat) this.privateChats.set(Number(chat.id), (chat.type as TdObject | undefined)?._ === "chatTypePrivate");
+    } else if (update._ === "updateNewMessage") {
+      const message = update.message as TdObject | undefined;
+      if (message) void this.enqueue(() => this.handleNewMessage(message));
     }
-    // Phase B ingests no chats or messages; all other updates are dropped unread.
+    // Everything else is dropped unread. Message content is never logged.
   }
 
   private waitClosed(ms: number) {
@@ -278,6 +298,7 @@ export class SessionRunner {
         if (this.observedStatus === "disconnect_pending") return this.signOutAndRemove("disconnected");
         if (this.observedStatus === "pausing") return this.pause();
         if (this.connectionReady) await this.setLiveStatus("connected");
+        await this.startChatSync();
         return;
       }
       if (name === "authorizationStateWaitPhoneNumber" || UNSUPPORTED_LOGIN_STATES.has(name) ||
@@ -367,8 +388,10 @@ export class SessionRunner {
     if (result.ok) {
       this.phase = "live";
       this.observedStatus = "connected";
+      this.myUserId = Number(identity.telegramUserId);
       await this.invoke({ _: "setOption", name: "online", value: { _: "optionValueBoolean", value: false } }, this.config.loginStepTimeoutMs, "set_offline").catch(() => undefined);
       this.logEvent("info", "session_connected");
+      await this.startChatSync();
       return;
     }
     if (result.code === "LEASE_LOST") return this.lostLease();
@@ -427,6 +450,123 @@ export class SessionRunner {
           Date.now() - this.lastAuthProbe >= this.config.authProbeMs) {
         await this.probeAuthorization();
       }
+      if (this.lastAuth === "authorizationStateReady" && !this.ending) {
+        await this.refreshSharedChats(false);
+        await this.processChatCommands();
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // D1: shared chats and incoming messages
+
+  private async startChatSync() {
+    if (this.myUserId === null) {
+      const me = await this.invoke({ _: "getMe" }, this.config.loginStepTimeoutMs, "get_me").catch(() => null);
+      if (me) this.myUserId = Number(me.id);
+    }
+    await this.refreshSharedChats(true);
+  }
+
+  /** Reloads the shared chat list (at most every 5 s) and catches up newly shared or restarted chats. */
+  private async refreshSharedChats(force: boolean) {
+    if (!force && !this.sharesDirty && Date.now() - this.sharesLoadedAt < 5000) return;
+    this.sharesLoadedAt = Date.now();
+    this.sharesDirty = false;
+    let chats: SharedChat[];
+    try {
+      chats = await this.store.sharedChats(this.fence);
+    } catch (error) {
+      this.logEvent("warn", "chat_shares_unavailable", { error });
+      return;
+    }
+    this.sharedChats.clear();
+    for (const chat of chats) this.sharedChats.set(chat.chatId, chat);
+    for (const chat of chats) {
+      if (this.caughtUp.has(chat.chatId) || this.ending) continue;
+      this.caughtUp.add(chat.chatId);
+      // Messages that arrived while this worker was not running. Idempotent.
+      await this.importHistory(chat.chatId, 20, "catch_up");
+    }
+  }
+
+  private async isPrivateChat(chatId: number) {
+    const known = this.privateChats.get(chatId);
+    if (known !== undefined) return known;
+    try {
+      const chat = await this.invoke({ _: "getChat", chat_id: chatId }, this.config.loginStepTimeoutMs, "get_chat");
+      const isPrivate = (chat.type as TdObject | undefined)?._ === "chatTypePrivate";
+      this.privateChats.set(chatId, isPrivate);
+      return isPrivate;
+    } catch {
+      return false;
+    }
+  }
+
+  private async handleNewMessage(message: TdObject) {
+    if (this.phase !== "live" || this.ending) return;
+    const row = mapMessage(message);
+    if (!row) return;
+    const chatId = Number(row.chatId);
+    if (chatId === this.myUserId || !(await this.isPrivateChat(chatId))) return; // Saved Messages, groups, channels
+    // Outgoing messages in unshared chats are not even counted.
+    if (row.direction === "outgoing" && !this.sharedChats.has(row.chatId)) return;
+    const result = await this.store.ingestMessage(this.fence, row);
+    if (result === "LEASE_LOST") return this.lostLease();
+  }
+
+  private async importHistory(chatId: string, limit: number, reason: string) {
+    let messages: TdObject[];
+    try {
+      messages = await loadHistory((request, operation) => this.invoke(request, this.config.loginStepTimeoutMs, operation), chatId, limit);
+    } catch (error) {
+      this.logEvent("warn", "chat_history_failed", { reason, errorCode: tdErrorDetails(error)?.code ?? "timeout" });
+      return false;
+    }
+    let inserted = 0;
+    for (const message of messages) {
+      const row = mapMessage(message);
+      if (!row || row.chatId !== chatId) continue;
+      const result = await this.store.ingestMessage(this.fence, row);
+      if (result === "LEASE_LOST") {
+        await this.lostLease();
+        return false;
+      }
+      if (result === "INSERTED") inserted += 1;
+    }
+    this.logEvent("info", "chat_history_synced", { reason, count: inserted });
+    return true;
+  }
+
+  private async processChatCommands() {
+    let commands: Command[];
+    try {
+      commands = await this.store.claimCommands(this.fence, 5);
+    } catch {
+      return;
+    }
+    for (const command of commands) {
+      if (this.ending) return;
+      if (command.kind === "list_chats") {
+        try {
+          const chats = await listPrivateChats((request, operation) => this.invoke(request, this.config.loginStepTimeoutMs, operation), this.myUserId);
+          await this.store.finishCommandResult(this.fence, command.id, "done", null, { chats });
+          this.logEvent("info", "chat_list_ready", { count: chats.length });
+        } catch (error) {
+          await this.store.finishCommandResult(this.fence, command.id, "failed", error instanceof OperationTimeoutError ? "TELEGRAM_TIMEOUT" : "CHAT_LIST_FAILED", null);
+        }
+      } else if (command.kind === "import_history") {
+        const chatId = String(command.payload?.chat_id ?? "");
+        const limit = Math.min(50, Math.max(1, Number(command.payload?.limit) || 50));
+        await this.refreshSharedChats(true);
+        if (!/^-?[0-9]{1,20}$/.test(chatId) || !this.sharedChats.has(chatId)) {
+          await this.store.finishCommandResult(this.fence, command.id, "failed", "CHAT_NOT_SHARED", null);
+          continue;
+        }
+        const ok = await this.importHistory(chatId, limit, "import");
+        await this.store.finishCommandResult(this.fence, command.id, ok ? "done" : "failed", ok ? null : "HISTORY_IMPORT_FAILED", null);
+      }
+      // pause/logout are driven by the session status and finished there.
     }
   }
 

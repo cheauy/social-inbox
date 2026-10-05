@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { LoginInputKind } from "../../src/crypto.ts";
+import type { IngestResult, IngestRow, SharedChat } from "../../src/store.ts";
 import {
   isOpenLogin,
   isTerminal,
@@ -43,7 +44,12 @@ const LIVE_OWNED: SessionStatus[] = ["connected", "reconnecting", "pausing", "pa
 export class MemoryStore implements Store {
   readonly rows = new Map<string, Row>();
   readonly logins = new Map<string, Login>();
-  readonly commands: Array<{ id: string; sessionId: string; kind: "pause" | "logout"; status: string }> = [];
+  readonly commands: Array<{ id: string; sessionId: string; kind: Command["kind"]; status: string; payload?: Record<string, unknown>; result?: unknown; errorCode?: string | null }> = [];
+  // D1 mirror: shares keyed by session id (one account per session here), messages and waiting chats.
+  readonly shares = new Map<string, Map<string, { rowId: string; unshared: boolean; lastReadAt: number; lastMessageAt: string | null; preview: string | null; unread: number }>>();
+  readonly messages: Array<IngestRow & { sessionId: string }> = [];
+  readonly unshared = new Map<string, Set<string>>();
+  ingestCalls = 0;
   readonly writes: Array<{ sessionId: string; op: string; accepted: boolean; patch?: unknown }> = [];
   channelLimit = new Map<string, number>();
   private wake: ((id: string) => void) | null = null;
@@ -86,6 +92,28 @@ export class MemoryStore implements Store {
     row.channelActive = false;
     this.commands.push({ id: randomUUID(), sessionId: id, kind, status: "queued" });
     this.wake?.(id);
+  }
+
+  requestChatList(id: string) {
+    const command: MemoryStore["commands"][number] = { id: randomUUID(), sessionId: id, kind: "list_chats", status: "queued" };
+    this.commands.push(command);
+    this.wake?.(id);
+    return command;
+  }
+
+  shareChat(id: string, chatId: string, history: "none" | "last_50" = "none") {
+    const map = this.shares.get(id) ?? new Map();
+    this.shares.set(id, map);
+    const existing = map.get(chatId);
+    map.set(chatId, existing ? { ...existing, unshared: false } : { rowId: randomUUID(), unshared: false, lastReadAt: Date.now(), lastMessageAt: null, preview: null, unread: 0 });
+    this.unshared.get(id)?.delete(chatId);
+    if (history === "last_50") this.commands.push({ id: randomUUID(), sessionId: id, kind: "import_history", status: "queued", payload: { chat_id: chatId, limit: 50 } });
+    this.wake?.(id);
+  }
+
+  unshareChat(id: string, chatId: string) {
+    const share = this.shares.get(id)?.get(chatId);
+    if (share) share.unshared = true;
   }
 
   expireLease(id: string) {
@@ -221,8 +249,49 @@ export class MemoryStore implements Store {
     return this.commands.filter((c) => c.sessionId === f.sessionId && (c.status === "queued" || c.status === "claimed")).slice(0, limit)
       .map((c) => {
         c.status = "claimed";
-        return { id: c.id, kind: c.kind };
+        return { id: c.id, kind: c.kind, payload: c.payload ?? {} };
       });
+  }
+
+  async finishCommandResult(f: Fence, commandId: string, status: "done" | "failed", errorCode: string | null, result: unknown) {
+    if (!this.holds(f)) return false;
+    const command = this.commands.find((c) => c.id === commandId && c.status === "claimed");
+    if (!command) return false;
+    command.status = status;
+    command.errorCode = errorCode;
+    command.result = result;
+    return true;
+  }
+
+  async sharedChats(f: Fence): Promise<SharedChat[]> {
+    if (!this.holds(f)) return [];
+    return [...(this.shares.get(f.sessionId)?.entries() ?? [])]
+      .filter(([, share]) => !share.unshared)
+      .map(([chatId, share]) => ({ chatId, rowId: share.rowId, lastMessageAt: share.lastMessageAt }));
+  }
+
+  async ingestMessage(f: Fence, row: IngestRow): Promise<IngestResult> {
+    this.ingestCalls += 1;
+    if (!this.holds(f)) return "LEASE_LOST";
+    const session = this.rows.get(f.sessionId) as Row;
+    if (!["connected", "reconnecting"].includes(session.status)) return "NOT_LIVE";
+    const share = this.shares.get(f.sessionId)?.get(row.chatId);
+    if (!share || share.unshared) {
+      if (row.direction === "incoming") {
+        const set = this.unshared.get(f.sessionId) ?? new Set<string>();
+        set.add(row.chatId);
+        this.unshared.set(f.sessionId, set);
+      }
+      return "NOT_SHARED";
+    }
+    if (this.messages.some((m) => m.sessionId === f.sessionId && m.chatId === row.chatId && m.messageId === row.messageId)) return "DUPLICATE";
+    this.messages.push({ ...row, sessionId: f.sessionId });
+    if (!share.lastMessageAt || row.sentAt >= share.lastMessageAt) {
+      share.lastMessageAt = row.sentAt;
+      share.preview = row.body ?? `[${row.placeholder}]`;
+    }
+    if (row.direction === "incoming" && Date.parse(row.sentAt) > share.lastReadAt) share.unread += 1;
+    return "INSERTED";
   }
 
   async finishCommand(f: Fence, commandId: string, status: "done" | "failed") {

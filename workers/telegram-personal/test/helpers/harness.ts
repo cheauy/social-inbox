@@ -43,6 +43,8 @@ export function makeHarness<S extends Store = MemoryStore>(options: { store?: S;
     ...options.overrides,
   };
   const supervisor = new Supervisor({ store, factory: telegram, config, log });
+  // Like the real worker's Postgres LISTEN: store wake-ups poke the session.
+  if (!options.store) void store.listen((sessionId) => supervisor.wake(sessionId));
   return {
     store,
     telegram,

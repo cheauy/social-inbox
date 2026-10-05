@@ -39,6 +39,7 @@ test("PgStore + draft SQL: full lifecycle with fencing and tenant checks", { ski
   try {
     await sql.query(readFileSync(`${repo}/tests/sql/telegram-personal-stub-schema.sql`, "utf8"));
     await sql.query(readFileSync(`${repo}/db/proposals/20261020_telegram_personal_draft.sql`, "utf8"));
+    await sql.query(readFileSync(`${repo}/db/proposals/20261021_telegram_personal_d1.sql`, "utf8"));
     await sql.query(`insert into businesses(id) values ($1),($2)`, [B1, B2]);
     await sql.query(`insert into team_members(id,business_id,user_id,role) values ($1,$4,$5,'owner'),($2,$6,$7,'owner'),($3,$4,$8,'agent')`, [M1, M2, M3, B1, U1, B2, U2, U3]);
     await sql.query(`insert into business_subscriptions(business_id,status,channel_limit,current_period_end) values ($1,'active',2,now()+interval '30 days')`, [B1]);
@@ -99,6 +100,25 @@ test("PgStore + draft SQL: full lifecycle with fencing and tenant checks", { ski
     const epoch = Number((await sql.query(`select lease_epoch from telegram_personal_sessions where id=$1`, [d])).rows[0].lease_epoch);
     assert.equal(await store.workerUpdate({ sessionId: d, workerId: "worker-A", epoch: epoch - 1 }, { status: "revoked" }), false);
 
+    // D1: list chats, share one, receive messages through the real SQL.
+    const listCmd = (await sql.query(`select tgp_request_chat_list($1,$2,$3,$4) as id`, [d, B1, U1, M1])).rows[0].id as string;
+    await waitFor(async () => (await sql.query(`select tgp_read_chat_list($1,$2,$3,$4)->>'state' as s`, [listCmd, d, B1, U1])).rows[0].s === "ready", 3000, "chat list");
+    const shared = (await sql.query(`select tgp_share_chat($1,$2,$3,$4,'5001','none') as r`, [d, B1, U1, M1])).rows[0].r;
+    assert.equal(shared.ok, true, JSON.stringify(shared));
+    const dClient = h.telegram.clientFor(sessionDirectory(h.dataDir, d).database)!;
+    await waitFor(async () => dClient.requests.some((r) => r._ === "getChatHistory"), 3000, "share picked up via NOTIFY or poll");
+    const { FakeTelegram } = await import("./helpers/fake-telegram.ts");
+    const later = Math.floor(Date.now() / 1000) + 5;
+    const msg = FakeTelegram.textMessage(5001, 4242, "hello from Telegram", { date: later });
+    dClient.receive(msg);
+    dClient.emit({ _: "updateNewMessage", message: msg }); // duplicate update
+    dClient.receive(FakeTelegram.textMessage(5002, 1, "unshared", { date: later }));
+    await waitFor(async () => Number((await sql.query(`select count(*) from telegram_personal_messages`)).rows[0].count) === 1, 3000, "ingested");
+    const chat = (await sql.query(`select unread_count, last_message_preview from telegram_personal_chats where chat_id='5001'`)).rows[0];
+    assert.deepEqual(chat, { unread_count: 1, last_message_preview: "hello from Telegram" });
+    await waitFor(async () => Number((await sql.query(`select count(*) from telegram_personal_unshared_activity`)).rows[0].count) === 1, 3000, "waiting count");
+    assert.equal((await sql.query(`select count(*)::int as n from telegram_personal_messages where body = 'unshared'`)).rows[0].n, 0);
+
     // Disconnect by another owner of the same workspace is allowed (revocation).
     await sql.query(`insert into team_members(business_id,user_id,role) values ($1,'00000000-0000-0000-0000-0000000000c9','owner')`, [B1]);
     assert.equal((await sql.query(`select tgp_request_action($1,$2,'00000000-0000-0000-0000-0000000000c9',$3,'logout',$4) as r`, [d, B1, M1, req()])).rows[0].r, "OK");
@@ -107,6 +127,36 @@ test("PgStore + draft SQL: full lifecycle with fencing and tenant checks", { ski
     assert.equal((await sql.query(`select count(*)::int as n from telegram_personal_commands where status <> 'done'`)).rows[0].n, 0);
   } finally {
     await h.cleanup();
+    await store.end();
+    await sql.end();
+    await admin.query(`drop database if exists ${dbName} with (force)`);
+    await admin.end();
+  }
+});
+
+test("PgStore without the D1 SQL degrades gracefully (worker updated before the database)", { skip: !adminUrl && "TGP_TEST_DATABASE_URL not set" }, async () => {
+  const dbName = `tgp_worker_nod1_${process.pid}`;
+  const admin = new pg.Client({ connectionString: adminUrl });
+  await admin.connect();
+  await admin.query(`drop database if exists ${dbName}`);
+  await admin.query(`create database ${dbName}`);
+  const url = new URL(adminUrl as string);
+  url.pathname = `/${dbName}`;
+  const sql = new pg.Client({ connectionString: url.toString() });
+  await sql.connect();
+  const store = new PgStore(url.toString());
+  try {
+    await sql.query(readFileSync(`${repo}/tests/sql/telegram-personal-stub-schema.sql`, "utf8"));
+    await sql.query(readFileSync(`${repo}/db/proposals/20261020_telegram_personal_draft.sql`, "utf8"));
+    await sql.query(`insert into businesses(id) values ($1)`, [B1]);
+    await sql.query(`insert into team_members(id,business_id,user_id,role) values ($1,$2,$3,'owner')`, [M1, B1, U1]);
+    const id = (await sql.query(`select tgp_begin_login($1,$2,$3,'qr') as id`, [B1, U1, M1])).rows[0].id as string;
+    const [claimed] = await store.claimSessions("w", 30, 5);
+    const fence = { sessionId: id, workerId: "w", epoch: claimed.epoch };
+    assert.deepEqual(await store.claimCommands(fence, 5), [], "falls back to the original claim function");
+    assert.deepEqual(await store.sharedChats(fence), []);
+    assert.equal(await store.ingestMessage(fence, { chatId: "1", messageId: 1, direction: "incoming", type: "text", body: "x", placeholder: null, sentAt: new Date().toISOString() }), "UNAVAILABLE");
+  } finally {
     await store.end();
     await sql.end();
     await admin.query(`drop database if exists ${dbName} with (force)`);

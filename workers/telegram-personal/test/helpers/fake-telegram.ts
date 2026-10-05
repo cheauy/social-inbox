@@ -19,6 +19,19 @@ export class FakeTelegram implements TdClientFactory {
   invokeHangs = new Set<string>();
   eventDelayMs = 2;
   private qrCounter = 0;
+  // Chats visible to every fake account: id -> chat; history newest first.
+  chats = new Map<number, { title: string; type: "private" | "group"; userId?: number; userType?: string; username?: string }>([
+    [5001, { title: "Customer A", type: "private", userId: 5001, userType: "userTypeRegular", username: "cust_a" }],
+    [5002, { title: "Customer B", type: "private", userId: 5002, userType: "userTypeRegular" }],
+    [6001, { title: "Some Bot", type: "private", userId: 6001, userType: "userTypeBot" }],
+    [777000, { title: "Telegram", type: "private", userId: 777000, userType: "userTypeRegular" }],
+    [-100123, { title: "Team group", type: "group" }],
+  ]);
+  history = new Map<number, TdObject[]>();
+
+  static textMessage(chatId: number, id: number, text: string, options: { outgoing?: boolean; date?: number } = {}): TdObject {
+    return { _: "message", id, chat_id: chatId, is_outgoing: options.outgoing === true, date: options.date ?? Math.floor(Date.now() / 1000), content: { _: "messageText", text: { _: "formattedText", text } } };
+  }
 
   create(options: TdClientOptions): TdClient {
     const client = new FakeTdClient(this, options);
@@ -108,6 +121,15 @@ export class FakeTdClient implements TdClient {
     this.connection("connectionStateReady");
   }
 
+  /** A message arrives (or is sent from the phone): stored in history and pushed as an update. */
+  receive(message: TdObject) {
+    const chatId = Number(message.chat_id);
+    const list = this.telegram.history.get(chatId) ?? [];
+    list.unshift(message);
+    this.telegram.history.set(chatId, list);
+    this.emit({ _: "updateNewMessage", message });
+  }
+
   /** Terminated on Telegram's side, but TDLib has not noticed yet (idle session). */
   revokeSilently() {
     this.telegram.authorized.delete(this.options.databaseDirectory);
@@ -156,6 +178,35 @@ export class FakeTdClient implements TdClient {
       }
       case "setOption":
         return Promise.resolve({ _: "ok" });
+      case "loadChats":
+        return Promise.reject(new TdRequestError(404, "Not Found"));
+      case "getChats":
+        return Promise.resolve({ _: "chats", total_count: this.telegram.chats.size, chat_ids: [...this.telegram.chats.keys()] });
+      case "getChat": {
+        const chat = this.telegram.chats.get(Number(request.chat_id));
+        if (!chat && Number(request.chat_id) === this.telegram.authorized.get(dir)?.id) {
+          return Promise.resolve({ _: "chat", id: request.chat_id, title: "Saved Messages", type: { _: "chatTypePrivate", user_id: request.chat_id } });
+        }
+        if (!chat) return Promise.reject(new TdRequestError(400, "Chat not found"));
+        const last = this.telegram.history.get(Number(request.chat_id))?.[0];
+        return Promise.resolve({
+          _: "chat", id: request.chat_id, title: chat.title,
+          type: chat.type === "private" ? { _: "chatTypePrivate", user_id: chat.userId } : { _: "chatTypeSupergroup", supergroup_id: 123 },
+          last_message: last ?? null,
+        });
+      }
+      case "getUser": {
+        const chat = [...this.telegram.chats.values()].find((c) => c.userId === Number(request.user_id));
+        if (!chat) return Promise.reject(new TdRequestError(404, "User not found"));
+        return Promise.resolve({ _: "user", id: request.user_id, type: { _: chat.userType }, usernames: chat.username ? { active_usernames: [chat.username] } : null });
+      }
+      case "getChatHistory": {
+        const list = this.telegram.history.get(Number(request.chat_id)) ?? [];
+        const from = Number(request.from_message_id);
+        // Like TDLib with offset 0: the page starts at from_message_id itself.
+        const start = from ? Math.max(0, list.findIndex((m) => Number(m.id) === from)) : 0;
+        return Promise.resolve({ _: "messages", messages: list.slice(start, start + Number(request.limit)) });
+      }
       case "getActiveSessions":
         if (!this.telegram.authorized.has(dir)) return Promise.reject(new TdRequestError(401, "Unauthorized"));
         return Promise.resolve({ _: "sessions", sessions: [] });

@@ -1,6 +1,9 @@
 import pg from "pg";
 import type { LoginInputKind } from "./crypto.ts";
-import type { ClaimedSession, Command, Fence, Identity, LoginPatch, SessionStatus, Store, WorkerPatch } from "./store.ts";
+import type { ClaimedSession, Command, Fence, Identity, IngestResult, IngestRow, LoginPatch, SessionStatus, SharedChat, Store, WorkerPatch } from "./store.ts";
+
+// Postgres "undefined function": the D1 SQL is not installed yet.
+const isMissingFunction = (error: unknown) => (error as { code?: string } | null)?.code === "42883";
 
 /**
  * Postgres implementation using the fenced tgp_* RPCs from
@@ -89,9 +92,54 @@ export class PgStore implements Store {
     return row?.result ?? { ok: false, code: "NO_RESULT" };
   }
 
+  private d1Available = true;
+
   async claimCommands(f: Fence, limit: number): Promise<Command[]> {
+    if (this.d1Available) {
+      try {
+        const result = await this.pool.query("select id, kind, payload from public.tgp_claim_commands_v2($1,$2,$3,$4)", [f.sessionId, f.workerId, f.epoch, limit]);
+        return result.rows.map((row) => ({ id: row.id, kind: row.kind, payload: row.payload ?? {} }));
+      } catch (error) {
+        if (!isMissingFunction(error)) throw error;
+        this.d1Available = false;
+      }
+    }
     const result = await this.pool.query("select id, kind from public.tgp_claim_commands($1,$2,$3,$4)", [f.sessionId, f.workerId, f.epoch, limit]);
     return result.rows.map((row) => ({ id: row.id, kind: row.kind }));
+  }
+
+  async finishCommandResult(f: Fence, commandId: string, status: "done" | "failed", errorCode: string | null, result: unknown) {
+    if (!this.d1Available) return this.finishCommand(f, commandId, status, errorCode);
+    const row = await this.one<{ ok: boolean }>("select public.tgp_finish_command_result($1,$2,$3,$4,$5,$6,$7::jsonb) as ok", [
+      commandId, f.sessionId, f.workerId, f.epoch, status, errorCode, result === null || result === undefined ? null : JSON.stringify(result),
+    ]);
+    return row?.ok === true;
+  }
+
+  async sharedChats(f: Fence): Promise<SharedChat[]> {
+    if (!this.d1Available) return [];
+    try {
+      const result = await this.pool.query("select chat_id, chat_row_id, last_message_at from public.tgp_worker_shared_chats($1,$2,$3)", [f.sessionId, f.workerId, f.epoch]);
+      return result.rows.map((row) => ({ chatId: row.chat_id, rowId: row.chat_row_id, lastMessageAt: row.last_message_at ? new Date(row.last_message_at).toISOString() : null }));
+    } catch (error) {
+      if (!isMissingFunction(error)) throw error;
+      this.d1Available = false;
+      return [];
+    }
+  }
+
+  async ingestMessage(f: Fence, r: IngestRow): Promise<IngestResult> {
+    if (!this.d1Available) return "UNAVAILABLE";
+    try {
+      const row = await this.one<{ result: IngestResult }>("select public.tgp_ingest_message($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) as result", [
+        f.sessionId, f.workerId, f.epoch, r.chatId, r.messageId, r.direction, r.type, r.body, r.placeholder, r.sentAt,
+      ]);
+      return row?.result ?? "UNAVAILABLE";
+    } catch (error) {
+      if (!isMissingFunction(error)) throw error;
+      this.d1Available = false;
+      return "UNAVAILABLE";
+    }
   }
 
   async finishCommand(f: Fence, commandId: string, status: "done" | "failed", errorCode: string | null) {
