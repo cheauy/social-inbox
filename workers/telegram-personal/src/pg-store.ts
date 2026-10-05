@@ -1,6 +1,6 @@
 import pg from "pg";
 import type { LoginInputKind } from "./crypto.ts";
-import type { ClaimedSession, Command, Fence, Identity, IngestResult, IngestRow, LoginPatch, SessionStatus, SharedChat, Store, WorkerPatch } from "./store.ts";
+import type { ClaimedSession, Command, Fence, FinishedSend, Identity, IngestOutcome, IngestResult, IngestRow, LoginPatch, SessionStatus, SharedChat, Store, WorkerPatch } from "./store.ts";
 
 // Postgres "undefined function": the D1 SQL is not installed yet.
 const isMissingFunction = (error: unknown) => (error as { code?: string } | null)?.code === "42883";
@@ -119,8 +119,10 @@ export class PgStore implements Store {
   async sharedChats(f: Fence): Promise<SharedChat[]> {
     if (!this.d1Available) return [];
     try {
-      const result = await this.pool.query("select chat_id, chat_row_id, last_message_at from public.tgp_worker_shared_chats($1,$2,$3)", [f.sessionId, f.workerId, f.epoch]);
-      return result.rows.map((row) => ({ chatId: row.chat_id, rowId: row.chat_row_id, lastMessageAt: row.last_message_at ? new Date(row.last_message_at).toISOString() : null }));
+      // shared_at arrives with the unified inbox SQL; before that it is null.
+      const result = await this.pool.query("select * from public.tgp_worker_shared_chats($1,$2,$3)", [f.sessionId, f.workerId, f.epoch]);
+      const iso = (value: unknown) => (value ? new Date(value as string).toISOString() : null);
+      return result.rows.map((row) => ({ chatId: row.chat_id, rowId: row.chat_row_id, lastMessageAt: iso(row.last_message_at), sharedAt: iso(row.shared_at) }));
     } catch (error) {
       if (!isMissingFunction(error)) throw error;
       this.d1Available = false;
@@ -128,17 +130,66 @@ export class PgStore implements Store {
     }
   }
 
-  async ingestMessage(f: Fence, r: IngestRow): Promise<IngestResult> {
-    if (!this.d1Available) return "UNAVAILABLE";
+  // Unified inbox SQL (20261022). Until it is installed the D1 ingest keeps working.
+  private inboxAvailable = true;
+
+  async ingestMessage(f: Fence, r: IngestRow): Promise<IngestOutcome> {
+    if (this.inboxAvailable) {
+      try {
+        const row = await this.one<{ result: { result?: IngestResult; message_id?: string | null } | null }>(
+          "select public.tgp_ingest_inbox_message($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) as result",
+          [f.sessionId, f.workerId, f.epoch, r.chatId, r.messageId, r.direction, r.type, r.body, r.placeholder, r.sentAt,
+            r.countUnread !== false, r.clientRequestId ?? null, r.sentByMember ?? null],
+        );
+        return { result: row?.result?.result ?? "UNAVAILABLE", messageId: row?.result?.message_id ?? null };
+      } catch (error) {
+        if (!isMissingFunction(error)) throw error;
+        this.inboxAvailable = false;
+      }
+    }
+    if (!this.d1Available) return { result: "UNAVAILABLE", messageId: null };
     try {
       const row = await this.one<{ result: IngestResult }>("select public.tgp_ingest_message($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) as result", [
         f.sessionId, f.workerId, f.epoch, r.chatId, r.messageId, r.direction, r.type, r.body, r.placeholder, r.sentAt,
       ]);
-      return row?.result ?? "UNAVAILABLE";
+      return { result: row?.result ?? "UNAVAILABLE", messageId: null };
     } catch (error) {
       if (!isMissingFunction(error)) throw error;
       this.d1Available = false;
-      return "UNAVAILABLE";
+      return { result: "UNAVAILABLE", messageId: null };
+    }
+  }
+
+  async sendBegin(f: Fence, commandId: string) {
+    const row = await this.one<{ ok: boolean }>("select public.tgp_send_begin($1,$2,$3,$4) as ok", [commandId, f.sessionId, f.workerId, f.epoch]);
+    return row?.ok === true;
+  }
+
+  async sendAccepted(f: Fence, commandId: string, tempMessageId: number) {
+    const row = await this.one<{ ok: boolean }>("select public.tgp_send_accepted($1,$2,$3,$4,$5) as ok", [commandId, f.sessionId, f.workerId, f.epoch, tempMessageId]);
+    return row?.ok === true;
+  }
+
+  async sendFinish(f: Fence, tempMessageId: number, status: "done" | "failed", errorCode: string | null, messageId: string | null): Promise<FinishedSend | null> {
+    const row = await this.one<{ result: { command_id: string; payload: Record<string, unknown> | null } | null }>(
+      "select public.tgp_send_finish($1,$2,$3,$4,$5,$6,$7) as result",
+      [f.sessionId, f.workerId, f.epoch, tempMessageId, status, errorCode, messageId],
+    );
+    return row?.result ? { commandId: row.result.command_id, payload: row.result.payload ?? {} } : null;
+  }
+
+  async sendFail(f: Fence, commandId: string, status: "failed" | "uncertain", errorCode: string) {
+    const row = await this.one<{ ok: boolean }>("select public.tgp_send_fail($1,$2,$3,$4,$5,$6) as ok", [commandId, f.sessionId, f.workerId, f.epoch, status, errorCode]);
+    return row?.ok === true;
+  }
+
+  async sendMarkStale(f: Fence, olderThanSeconds: number) {
+    try {
+      const row = await this.one<{ count: number }>("select public.tgp_send_mark_stale($1,$2,$3,$4) as count", [f.sessionId, f.workerId, f.epoch, olderThanSeconds]);
+      return Number(row?.count ?? 0);
+    } catch (error) {
+      if (isMissingFunction(error)) return 0; // D2 SQL not installed: there are no sends to sweep.
+      throw error;
     }
   }
 

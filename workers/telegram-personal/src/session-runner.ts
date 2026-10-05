@@ -112,6 +112,9 @@ export class SessionRunner {
   private sharesDirty = false;
   private readonly privateChats = new Map<number, boolean>();
   private readonly caughtUp = new Set<string>();
+  // D2: sends Telegram accepted, by TDLib's temporary message id, until their outcome arrives.
+  private readonly pendingSends = new Map<number, { commandId: string; payload: Record<string, unknown> }>();
+  private lastStaleSweep = 0;
   private ending = false;
   private finished = false;
 
@@ -248,6 +251,14 @@ export class SessionRunner {
     } else if (update._ === "updateNewMessage") {
       const message = update.message as TdObject | undefined;
       if (message) void this.enqueue(() => this.handleNewMessage(message));
+    } else if (update._ === "updateMessageSendSucceeded") {
+      const message = update.message as TdObject | undefined;
+      const tempId = Number(update.old_message_id);
+      if (message) void this.enqueue(() => this.handleSendSucceeded(tempId, message));
+    } else if (update._ === "updateMessageSendFailed") {
+      const tempId = Number(update.old_message_id);
+      const code = Number((update.error as TdObject | undefined)?.code);
+      void this.enqueue(() => this.handleSendFailed(tempId, Number.isFinite(code) ? code : 0));
     }
     // Everything else is dropped unread. Message content is never logged.
   }
@@ -453,6 +464,7 @@ export class SessionRunner {
       if (this.lastAuth === "authorizationStateReady" && !this.ending) {
         await this.refreshSharedChats(false);
         await this.processChatCommands();
+        await this.sweepStaleSends();
       }
     }
   }
@@ -486,7 +498,9 @@ export class SessionRunner {
       if (this.caughtUp.has(chat.chatId) || this.ending) continue;
       this.caughtUp.add(chat.chatId);
       // Messages that arrived while this worker was not running. Idempotent.
-      await this.importHistory(chat.chatId, 20, "catch_up");
+      // Only messages after the share (or the last stored one): history "none" stays none.
+      const after = [chat.lastMessageAt, chat.sharedAt].filter((v): v is string => Boolean(v)).sort().pop() ?? null;
+      await this.importHistory(chat.chatId, 20, "catch_up", after);
     }
   }
 
@@ -511,11 +525,13 @@ export class SessionRunner {
     if (chatId === this.myUserId || !(await this.isPrivateChat(chatId))) return; // Saved Messages, groups, channels
     // Outgoing messages in unshared chats are not even counted.
     if (row.direction === "outgoing" && !this.sharedChats.has(row.chatId)) return;
-    const result = await this.store.ingestMessage(this.fence, row);
+    const { result } = await this.store.ingestMessage(this.fence, { ...row, countUnread: true });
     if (result === "LEASE_LOST") return this.lostLease();
   }
 
-  private async importHistory(chatId: string, limit: number, reason: string) {
+  private async importHistory(chatId: string, limit: number, reason: string, after: string | null = null) {
+    // Telegram dates are whole seconds: compare from the start of that second.
+    const cutoff = after ? Math.floor(Date.parse(after) / 1000) * 1000 : null;
     let messages: TdObject[];
     try {
       messages = await loadHistory((request, operation) => this.invoke(request, this.config.loginStepTimeoutMs, operation), chatId, limit);
@@ -527,7 +543,9 @@ export class SessionRunner {
     for (const message of messages) {
       const row = mapMessage(message);
       if (!row || row.chatId !== chatId) continue;
-      const result = await this.store.ingestMessage(this.fence, row);
+      if (cutoff !== null && Date.parse(row.sentAt) < cutoff) continue;
+      // Catch-up messages are new to TENH; an explicit history import is not unread.
+      const { result } = await this.store.ingestMessage(this.fence, { ...row, countUnread: reason !== "import" });
       if (result === "LEASE_LOST") {
         await this.lostLease();
         return false;
@@ -565,8 +583,115 @@ export class SessionRunner {
         }
         const ok = await this.importHistory(chatId, limit, "import");
         await this.store.finishCommandResult(this.fence, command.id, ok ? "done" : "failed", ok ? null : "HISTORY_IMPORT_FAILED", null);
+      } else if (command.kind === "send_text") {
+        await this.sendText(command);
       }
       // pause/logout are driven by the session status and finished there.
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // D2: replies from TENH. A send is attempted at most once: it is marked
+  // "sending" before Telegram is called and a sending command is never claimed
+  // again. When the outcome is unknown it becomes "uncertain", never retried.
+
+  private async sendText(command: Command) {
+    const payload = command.payload ?? {};
+    const chatId = String(payload.chat_id ?? "");
+    const text = typeof payload.text === "string" ? payload.text : "";
+    await this.refreshSharedChats(true);
+    if (!/^-?[0-9]{1,20}$/.test(chatId) || !this.sharedChats.has(chatId)) {
+      await this.store.sendFail(this.fence, command.id, "failed", "CHAT_NOT_SHARED");
+      return;
+    }
+    if (!text.trim() || text.length > 4096) {
+      await this.store.sendFail(this.fence, command.id, "failed", "INVALID_TEXT");
+      return;
+    }
+    if (!(await this.store.sendBegin(this.fence, command.id))) return; // lease lost or already in flight
+
+    let sent: TdObject;
+    try {
+      sent = await this.invoke({
+        _: "sendMessage",
+        chat_id: Number(chatId),
+        input_message_content: { _: "inputMessageText", text: { _: "formattedText", text }, clear_draft: false },
+      }, this.config.loginStepTimeoutMs, "send_message");
+    } catch (error) {
+      const details = tdErrorDetails(error);
+      // A 4xx answer means TDLib refused the request: nothing was sent. Anything
+      // else (timeout, aborted request) leaves the outcome unknown.
+      if (details && details.code >= 400 && details.code < 500) {
+        await this.store.sendFail(this.fence, command.id, "failed", `TELEGRAM_${details.code}`);
+      } else {
+        await this.store.sendFail(this.fence, command.id, "uncertain", error instanceof OperationTimeoutError ? "TELEGRAM_TIMEOUT" : "OUTCOME_UNKNOWN");
+      }
+      this.logEvent("warn", "send_not_confirmed", { errorCode: details?.code ?? "timeout" });
+      return;
+    }
+    const tempId = Number(sent.id);
+    if (!Number.isSafeInteger(tempId)) {
+      await this.store.sendFail(this.fence, command.id, "uncertain", "OUTCOME_UNKNOWN");
+      return;
+    }
+    if ((sent.sending_state as TdObject | undefined)?._ === "messageSendingStateFailed") {
+      await this.store.sendAccepted(this.fence, command.id, tempId);
+      await this.store.sendFinish(this.fence, tempId, "failed", "TELEGRAM_REJECTED", null);
+      return;
+    }
+    this.pendingSends.set(tempId, { commandId: command.id, payload });
+    await this.store.sendAccepted(this.fence, command.id, tempId);
+    if (!sent.sending_state) {
+      // Already final (no temporary message): record it now.
+      await this.handleSendSucceeded(tempId, sent);
+    }
+  }
+
+  private async handleSendSucceeded(tempId: number, message: TdObject) {
+    if (this.phase !== "live") return;
+    const pending = this.pendingSends.get(tempId);
+    this.pendingSends.delete(tempId);
+    const row = mapMessage({ ...message, sending_state: undefined });
+    if (pending && row) {
+      const outcome = await this.store.ingestMessage(this.fence, {
+        ...row,
+        countUnread: false,
+        clientRequestId: typeof pending.payload.client_request_id === "string" ? pending.payload.client_request_id : null,
+        sentByMember: typeof pending.payload.member_id === "string" ? pending.payload.member_id : null,
+      });
+      if (outcome.result === "LEASE_LOST") return this.lostLease();
+      await this.store.sendFinish(this.fence, tempId, "done", null, outcome.messageId);
+      this.logEvent("info", "send_confirmed", {});
+      return;
+    }
+    // After a restart (or a send that earlier timed out) the command is found by its temporary id.
+    const finished = await this.store.sendFinish(this.fence, tempId, "done", null, null);
+    if (!row) return;
+    const { result } = await this.store.ingestMessage(this.fence, {
+      ...row,
+      countUnread: false,
+      clientRequestId: typeof finished?.payload.client_request_id === "string" ? finished.payload.client_request_id : null,
+      sentByMember: typeof finished?.payload.member_id === "string" ? finished.payload.member_id : null,
+    });
+    if (result === "LEASE_LOST") return this.lostLease();
+  }
+
+  private async handleSendFailed(tempId: number, code: number) {
+    if (this.phase !== "live") return;
+    this.pendingSends.delete(tempId);
+    await this.store.sendFinish(this.fence, tempId, "failed", code ? `TELEGRAM_${code}` : "TELEGRAM_REJECTED", null);
+    this.logEvent("warn", "send_failed", { errorCode: code || "unknown" });
+  }
+
+  /** Sends without an outcome for two minutes become "uncertain"; the holder checks Telegram. */
+  private async sweepStaleSends() {
+    if (Date.now() - this.lastStaleSweep < 60_000) return;
+    this.lastStaleSweep = Date.now();
+    try {
+      const count = await this.store.sendMarkStale(this.fence, 120);
+      if (count) this.logEvent("warn", "send_outcome_unknown", { count });
+    } catch {
+      // Retried on the next sweep.
     }
   }
 

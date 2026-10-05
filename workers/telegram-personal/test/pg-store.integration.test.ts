@@ -155,8 +155,89 @@ test("PgStore without the D1 SQL degrades gracefully (worker updated before the 
     const fence = { sessionId: id, workerId: "w", epoch: claimed.epoch };
     assert.deepEqual(await store.claimCommands(fence, 5), [], "falls back to the original claim function");
     assert.deepEqual(await store.sharedChats(fence), []);
-    assert.equal(await store.ingestMessage(fence, { chatId: "1", messageId: 1, direction: "incoming", type: "text", body: "x", placeholder: null, sentAt: new Date().toISOString() }), "UNAVAILABLE");
+    assert.equal((await store.ingestMessage(fence, { chatId: "1", messageId: 1, direction: "incoming", type: "text", body: "x", placeholder: null, sentAt: new Date().toISOString() })).result, "UNAVAILABLE");
   } finally {
+    await store.end();
+    await sql.end();
+    await admin.query(`drop database if exists ${dbName} with (force)`);
+    await admin.end();
+  }
+});
+
+test("PgStore + unified inbox SQL: receive into the inbox, holder-only send, at most once", { skip: !adminUrl && "TGP_TEST_DATABASE_URL not set" }, async () => {
+  const dbName = `tgp_worker_unified_${process.pid}`;
+  const admin = new pg.Client({ connectionString: adminUrl });
+  await admin.connect();
+  await admin.query(`drop database if exists ${dbName}`);
+  await admin.query(`create database ${dbName}`);
+  const url = new URL(adminUrl as string);
+  url.pathname = `/${dbName}`;
+  const sql = new pg.Client({ connectionString: url.toString() });
+  await sql.connect();
+  const store = new PgStore(url.toString());
+  const h = makeHarness({ store });
+  try {
+    for (const file of [
+      "tests/sql/telegram-personal-stub-schema.sql",
+      "db/proposals/20261020_telegram_personal_draft.sql",
+      "db/proposals/20261021_telegram_personal_d1.sql",
+      "tests/sql/live-inbox-functions-20261005.sql",
+      "db/proposals/20261022_telegram_personal_unified_inbox.sql",
+    ]) await sql.query(readFileSync(`${repo}/${file}`, "utf8"));
+    await sql.query(`insert into businesses(id) values ($1)`, [B1]);
+    await sql.query(`insert into team_members(id,business_id,user_id,role) values ($1,$2,$3,'owner'),($4,$2,$5,'agent')`, [M1, B1, U1, M3, U3]);
+    await sql.query(`insert into business_subscriptions(business_id,status,channel_limit,current_period_end) values ($1,'active',2,now()+interval '30 days')`, [B1]);
+
+    await h.supervisor.start();
+    const a = (await sql.query(`select tgp_begin_login($1,$2,$3,'qr') as id`, [B1, U1, M1])).rows[0].id as string;
+    await waitFor(async () => (await sql.query(`select qr_link from telegram_personal_logins where session_id=$1`, [a])).rows[0]?.qr_link != null, 3000, "qr");
+    const tg = h.telegram.clientFor(sessionDirectory(h.dataDir, a).database)!;
+    tg.approveQr({ id: 7001, firstName: "Owner One", phone: "85511122233" });
+    await waitFor(async () => (await sql.query(`select status from telegram_personal_sessions where id=$1`, [a])).rows[0].status === "connected", 3000, "connected");
+
+    // History "none": an older message must not be imported when sharing.
+    const { FakeTelegram } = await import("./helpers/fake-telegram.ts");
+    h.telegram.history.set(5001, [FakeTelegram.textMessage(5001, 100, "before sharing", { date: Math.floor(Date.now() / 1000) - 3600 })]);
+    const listCmd = (await sql.query(`select tgp_request_chat_list($1,$2,$3,$4) as id`, [a, B1, U1, M1])).rows[0].id as string;
+    await waitFor(async () => (await sql.query(`select tgp_read_chat_list($1,$2,$3,$4)->>'state' as s`, [listCmd, a, B1, U1])).rows[0].s === "ready", 3000, "chat list");
+    assert.equal((await sql.query(`select tgp_share_chat($1,$2,$3,$4,'5001','none') as r`, [a, B1, U1, M1])).rows[0].r.ok, true);
+    await waitFor(async () => tg.requests.some((r) => r._ === "getChatHistory"), 3000, "share picked up");
+
+    const later = Math.floor(Date.now() / 1000) + 5;
+    tg.receive(FakeTelegram.textMessage(5001, 4242, "hello from Telegram", { date: later }));
+    await waitFor(async () => Number((await sql.query(`select count(*) from messages where platform_message_id like 'tgp:%'`)).rows[0].count) === 1, 3000, "ingested into inbox");
+    const conv = (await sql.query(`select id, unread_count, platform from conversations where platform = 'telegram_personal'`)).rows[0];
+    assert.equal(conv.unread_count, 1);
+    assert.equal((await sql.query(`select count(*)::int as n from messages where message_text = 'before sharing'`)).rows[0].n, 0, "history none imports nothing older");
+
+    // Teammate: refused. Holder: sent once, recorded with the request id.
+    const reqId = crypto.randomUUID();
+    const enqueue = (user: string, member: string, id: string, text: string) =>
+      sql.query(`select tgp_enqueue_send($1,$2,$3,$4,$5,$6) as r`, [conv.id, B1, user, member, id, text]).then((r) => r.rows[0].r);
+    assert.equal((await enqueue(U3, M3, crypto.randomUUID(), "agent")).code, "HOLDER_ONLY");
+    assert.equal((await enqueue(U1, M1, reqId, "reply from TENH")).ok, true);
+    const state = async () => (await sql.query(`select tgp_send_state($1,$2,$3,$4) as s`, [conv.id, B1, U1, reqId])).rows[0].s;
+    await waitFor(async () => (await state()).state === "done", 3000, "send done");
+    const sent = (await sql.query(`select direction, message_text, sent_by_member_id, raw_payload->>'tenh_client_request_id' as req, delivery_status from messages where id = $1`, [(await state()).message_id])).rows[0];
+    assert.deepEqual(sent, { direction: "outgoing", message_text: "reply from TENH", sent_by_member_id: M1, req: reqId, delivery_status: "sent" });
+    assert.equal((await enqueue(U1, M1, reqId, "reply from TENH")).duplicate, true, "same request id is not queued again");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(h.telegram.delivered.length, 1, "delivered exactly once");
+
+    // No outcome from Telegram: stays in flight, then the sweep marks it uncertain; never resent.
+    h.telegram.sendOutcome = "silent";
+    await new Promise((resolve) => setTimeout(resolve, 1100)); // 1 per second limit
+    const silentId = crypto.randomUUID();
+    assert.equal((await enqueue(U1, M1, silentId, "no answer")).ok, true);
+    const silentState = async () => (await sql.query(`select tgp_send_state($1,$2,$3,$4) as s`, [conv.id, B1, U1, silentId])).rows[0].s.state;
+    await waitFor(async () => (await silentState()) === "sending", 3000, "in flight");
+    const epoch = Number((await sql.query(`select lease_epoch from telegram_personal_sessions where id=$1`, [a])).rows[0].lease_epoch);
+    assert.equal(await store.sendMarkStale({ sessionId: a, workerId: h.config.workerId, epoch }, 0), 1);
+    assert.equal(await silentState(), "uncertain");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(tg.requests.filter((r) => r._ === "sendMessage").length, 2, "the uncertain send is never retried");
+  } finally {
+    await h.cleanup();
     await store.end();
     await sql.end();
     await admin.query(`drop database if exists ${dbName} with (force)`);

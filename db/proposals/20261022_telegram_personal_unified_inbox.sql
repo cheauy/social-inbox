@@ -297,6 +297,21 @@ begin
   return 'OK';
 end $fn$;
 
+-- 8b. Shared chats for the worker, now with the share time. Catch-up after a
+-- restart imports only messages newer than the share (history none means none).
+drop function if exists public.tgp_worker_shared_chats(uuid,text,bigint);
+create function public.tgp_worker_shared_chats(p_session uuid, p_worker text, p_epoch bigint)
+returns table (chat_id text, chat_row_id uuid, last_message_at timestamptz, shared_at timestamptz)
+language plpgsql stable set search_path = '' as $fn$
+begin
+  if not public.tgp_holds_lease(p_session, p_worker, p_epoch) then return; end if;
+  return query
+    select c.chat_id, c.id, c.last_message_at, c.shared_at
+      from public.telegram_personal_chats c
+      join public.telegram_personal_sessions s on s.social_account_id = c.social_account_id
+     where s.id = p_session and c.unshared_at is null;
+end $fn$;
+
 -- 9. D2: sending text replies (holder only; owner decision 2=b) ------------------------
 alter table public.telegram_personal_commands drop constraint if exists telegram_personal_commands_kind_check;
 alter table public.telegram_personal_commands add constraint telegram_personal_commands_kind_check
@@ -435,7 +450,7 @@ begin
     'tgp_enqueue_send(uuid,uuid,uuid,uuid,uuid,text)','tgp_send_state(uuid,uuid,uuid,uuid)',
     'tgp_send_begin(uuid,uuid,text,bigint)','tgp_send_accepted(uuid,uuid,text,bigint,bigint)',
     'tgp_send_finish(uuid,text,bigint,bigint,text,text,uuid)','tgp_send_fail(uuid,uuid,text,bigint,text,text)',
-    'tgp_send_mark_stale(uuid,text,bigint,int)']
+    'tgp_send_mark_stale(uuid,text,bigint,int)','tgp_worker_shared_chats(uuid,text,bigint)']
   loop
     execute format('revoke all on function public.%s from public, anon, authenticated', f);
     execute format('grant execute on function public.%s to service_role', f);

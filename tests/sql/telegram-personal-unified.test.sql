@@ -24,6 +24,13 @@ do $$ declare conv uuid; begin
   assert exists (select 1 from messages where conversation_id = conv and message_text like '[photo]%');
 end $$;
 
+-- 2b. The worker learns each chat's share time (catch-up never imports older history).
+do $$ declare r record; begin
+  select * into r from tgp_worker_shared_chats(pg_temp.k('sess'),'w1',pg_temp.ep()) where chat_id = '5001';
+  assert r.shared_at is not null, 'shared_at returned';
+  assert not exists (select 1 from tgp_worker_shared_chats(pg_temp.k('sess'),'w1',pg_temp.ep()-1)), 'fenced';
+end $$;
+
 -- 3. Ingest into inbox tables.
 do $$ declare r jsonb; conv uuid := (select conversation_id from telegram_personal_chats where chat_id='5001'); begin
   r := tgp_ingest_inbox_message(pg_temp.k('sess'),'w1',pg_temp.ep(),'5001',20,'incoming','text','new hello',null,now(),true);

@@ -28,6 +28,26 @@ export class FakeTelegram implements TdClientFactory {
     [-100123, { title: "Team group", type: "group" }],
   ]);
   history = new Map<number, TdObject[]>();
+  /**
+   * D2. How Telegram treats the next sendMessage:
+   *   succeed  accepted, then updateMessageSendSucceeded
+   *   fail     accepted, then updateMessageSendFailed
+   *   silent   accepted, but no outcome ever arrives
+   *   reject   TDLib refuses the request (400): nothing sent
+   */
+  sendOutcome: "succeed" | "fail" | "silent" | "reject" = "succeed";
+  /** Every message Telegram actually delivered (to detect duplicate sends). */
+  readonly delivered: Array<{ chatId: number; text: string }> = [];
+  private messageCounter = 9000;
+  private tempCounter = 1_000_000;
+
+  nextMessageId() {
+    return ++this.messageCounter;
+  }
+
+  nextTempId() {
+    return ++this.tempCounter;
+  }
 
   static textMessage(chatId: number, id: number, text: string, options: { outgoing?: boolean; date?: number } = {}): TdObject {
     return { _: "message", id, chat_id: chatId, is_outgoing: options.outgoing === true, date: options.date ?? Math.floor(Date.now() / 1000), content: { _: "messageText", text: { _: "formattedText", text } } };
@@ -206,6 +226,29 @@ export class FakeTdClient implements TdClient {
         // Like TDLib with offset 0: the page starts at from_message_id itself.
         const start = from ? Math.max(0, list.findIndex((m) => Number(m.id) === from)) : 0;
         return Promise.resolve({ _: "messages", messages: list.slice(start, start + Number(request.limit)) });
+      }
+      case "sendMessage": {
+        const chatId = Number(request.chat_id);
+        const content = request.input_message_content as TdObject;
+        const text = String(((content?.text as TdObject | undefined)?.text) ?? "");
+        if (this.telegram.sendOutcome === "reject") return Promise.reject(new TdRequestError(400, "CHAT_WRITE_FORBIDDEN"));
+        const tempId = this.telegram.nextTempId();
+        const temp: TdObject = { ...FakeTelegram.textMessage(chatId, tempId, text, { outgoing: true }), sending_state: { _: "messageSendingStatePending" } };
+        const outcome = this.telegram.sendOutcome;
+        this.emit({ _: "updateNewMessage", message: temp });
+        this.later(() => {
+          if (outcome === "succeed") {
+            const final = FakeTelegram.textMessage(chatId, this.telegram.nextMessageId(), text, { outgoing: true });
+            this.telegram.delivered.push({ chatId, text });
+            const list = this.telegram.history.get(chatId) ?? [];
+            list.unshift(final);
+            this.telegram.history.set(chatId, list);
+            this.emit({ _: "updateMessageSendSucceeded", message: final, old_message_id: tempId });
+          } else if (outcome === "fail") {
+            this.emit({ _: "updateMessageSendFailed", message: { ...temp, sending_state: { _: "messageSendingStateFailed" } }, old_message_id: tempId, error: { _: "error", code: 403, message: "USER_PRIVACY_RESTRICTED" } });
+          }
+        });
+        return Promise.resolve(temp);
       }
       case "getActiveSessions":
         if (!this.telegram.authorized.has(dir)) return Promise.reject(new TdRequestError(401, "Unauthorized"));

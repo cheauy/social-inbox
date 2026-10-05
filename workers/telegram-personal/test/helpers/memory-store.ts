@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { LoginInputKind } from "../../src/crypto.ts";
-import type { IngestResult, IngestRow, SharedChat } from "../../src/store.ts";
+import type { FinishedSend, IngestOutcome, IngestRow, SharedChat } from "../../src/store.ts";
 import {
   isOpenLogin,
   isTerminal,
@@ -44,10 +44,10 @@ const LIVE_OWNED: SessionStatus[] = ["connected", "reconnecting", "pausing", "pa
 export class MemoryStore implements Store {
   readonly rows = new Map<string, Row>();
   readonly logins = new Map<string, Login>();
-  readonly commands: Array<{ id: string; sessionId: string; kind: Command["kind"]; status: string; payload?: Record<string, unknown>; result?: unknown; errorCode?: string | null }> = [];
+  readonly commands: Array<{ id: string; sessionId: string; kind: Command["kind"]; status: string; payload?: Record<string, unknown>; result?: unknown; errorCode?: string | null; tempMessageId?: number; messageId?: string | null }> = [];
   // D1 mirror: shares keyed by session id (one account per session here), messages and waiting chats.
-  readonly shares = new Map<string, Map<string, { rowId: string; unshared: boolean; lastReadAt: number; lastMessageAt: string | null; preview: string | null; unread: number }>>();
-  readonly messages: Array<IngestRow & { sessionId: string }> = [];
+  readonly shares = new Map<string, Map<string, { rowId: string; unshared: boolean; lastReadAt: number; lastMessageAt: string | null; sharedAt: string; preview: string | null; unread: number }>>();
+  readonly messages: Array<IngestRow & { sessionId: string; id: string }> = [];
   readonly unshared = new Map<string, Set<string>>();
   ingestCalls = 0;
   readonly writes: Array<{ sessionId: string; op: string; accepted: boolean; patch?: unknown }> = [];
@@ -105,10 +105,22 @@ export class MemoryStore implements Store {
     const map = this.shares.get(id) ?? new Map();
     this.shares.set(id, map);
     const existing = map.get(chatId);
-    map.set(chatId, existing ? { ...existing, unshared: false } : { rowId: randomUUID(), unshared: false, lastReadAt: Date.now(), lastMessageAt: null, preview: null, unread: 0 });
+    const sharedAt = new Date().toISOString();
+    map.set(chatId, existing ? { ...existing, unshared: false, sharedAt } : { rowId: randomUUID(), unshared: false, lastReadAt: Date.now(), lastMessageAt: null, sharedAt, preview: null, unread: 0 });
     this.unshared.get(id)?.delete(chatId);
     if (history === "last_50") this.commands.push({ id: randomUUID(), sessionId: id, kind: "import_history", status: "queued", payload: { chat_id: chatId, limit: 50 } });
     this.wake?.(id);
+  }
+
+  /** What tgp_enqueue_send does (holder, sharing and rate checks are tested in SQL). */
+  enqueueSend(id: string, chatId: string, text: string, clientRequestId: string = randomUUID(), memberId = "member-1") {
+    const command: MemoryStore["commands"][number] = {
+      id: randomUUID(), sessionId: id, kind: "send_text", status: "queued",
+      payload: { chat_id: chatId, text, member_id: memberId, client_request_id: clientRequestId },
+    };
+    this.commands.push(command);
+    this.wake?.(id);
+    return command;
   }
 
   unshareChat(id: string, chatId: string) {
@@ -267,14 +279,15 @@ export class MemoryStore implements Store {
     if (!this.holds(f)) return [];
     return [...(this.shares.get(f.sessionId)?.entries() ?? [])]
       .filter(([, share]) => !share.unshared)
-      .map(([chatId, share]) => ({ chatId, rowId: share.rowId, lastMessageAt: share.lastMessageAt }));
+      .map(([chatId, share]) => ({ chatId, rowId: share.rowId, lastMessageAt: share.lastMessageAt, sharedAt: share.sharedAt }));
   }
 
-  async ingestMessage(f: Fence, row: IngestRow): Promise<IngestResult> {
+  async ingestMessage(f: Fence, row: IngestRow): Promise<IngestOutcome> {
     this.ingestCalls += 1;
-    if (!this.holds(f)) return "LEASE_LOST";
+    const none = (result: IngestOutcome["result"]): IngestOutcome => ({ result, messageId: null });
+    if (!this.holds(f)) return none("LEASE_LOST");
     const session = this.rows.get(f.sessionId) as Row;
-    if (!["connected", "reconnecting"].includes(session.status)) return "NOT_LIVE";
+    if (!["connected", "reconnecting"].includes(session.status)) return none("NOT_LIVE");
     const share = this.shares.get(f.sessionId)?.get(row.chatId);
     if (!share || share.unshared) {
       if (row.direction === "incoming") {
@@ -282,16 +295,61 @@ export class MemoryStore implements Store {
         set.add(row.chatId);
         this.unshared.set(f.sessionId, set);
       }
-      return "NOT_SHARED";
+      return none("NOT_SHARED");
     }
-    if (this.messages.some((m) => m.sessionId === f.sessionId && m.chatId === row.chatId && m.messageId === row.messageId)) return "DUPLICATE";
-    this.messages.push({ ...row, sessionId: f.sessionId });
+    const existing = this.messages.find((m) => m.sessionId === f.sessionId && m.chatId === row.chatId && m.messageId === row.messageId);
+    if (existing) return { result: "DUPLICATE", messageId: existing.id };
+    const id = randomUUID();
+    this.messages.push({ ...row, sessionId: f.sessionId, id });
     if (!share.lastMessageAt || row.sentAt >= share.lastMessageAt) {
       share.lastMessageAt = row.sentAt;
       share.preview = row.body ?? `[${row.placeholder}]`;
     }
-    if (row.direction === "incoming" && Date.parse(row.sentAt) > share.lastReadAt) share.unread += 1;
-    return "INSERTED";
+    if (row.direction === "incoming" && row.countUnread !== false) share.unread += 1;
+    return { result: "INSERTED", messageId: id };
+  }
+
+  async sendBegin(f: Fence, commandId: string) {
+    if (!this.holds(f)) return false;
+    const command = this.commands.find((c) => c.id === commandId && c.kind === "send_text" && c.status === "claimed");
+    if (!command) return false;
+    command.status = "sending";
+    return true;
+  }
+
+  async sendAccepted(f: Fence, commandId: string, tempMessageId: number) {
+    if (!this.holds(f)) return false;
+    const command = this.commands.find((c) => c.id === commandId && (c.status === "sending" || c.status === "uncertain"));
+    if (!command) return false;
+    command.tempMessageId = tempMessageId;
+    return true;
+  }
+
+  async sendFinish(f: Fence, tempMessageId: number, status: "done" | "failed", errorCode: string | null, messageId: string | null): Promise<FinishedSend | null> {
+    if (!this.holds(f)) return null;
+    const command = this.commands.find((c) => c.sessionId === f.sessionId && c.kind === "send_text" && c.tempMessageId === tempMessageId &&
+      (c.status === "sending" || c.status === "uncertain"));
+    if (!command) return null;
+    command.status = status;
+    command.errorCode = errorCode;
+    command.messageId = messageId;
+    return { commandId: command.id, payload: command.payload ?? {} };
+  }
+
+  async sendFail(f: Fence, commandId: string, status: "failed" | "uncertain", errorCode: string) {
+    if (!this.holds(f)) return false;
+    const command = this.commands.find((c) => c.id === commandId && (c.status === "claimed" || c.status === "sending"));
+    if (!command) return false;
+    command.status = status;
+    command.errorCode = errorCode;
+    return true;
+  }
+
+  staleSweeps = 0;
+  async sendMarkStale(f: Fence) {
+    if (!this.holds(f)) return 0;
+    this.staleSweeps += 1;
+    return 0;
   }
 
   async finishCommand(f: Fence, commandId: string, status: "done" | "failed") {

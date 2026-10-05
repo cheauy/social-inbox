@@ -59,11 +59,17 @@ export type Identity = {
   phoneMasked: string | null;
 };
 
-export type Command = { id: string; kind: "pause" | "logout" | "list_chats" | "import_history"; payload?: Record<string, unknown> };
+export type Command = { id: string; kind: "pause" | "logout" | "list_chats" | "import_history" | "send_text"; payload?: Record<string, unknown> };
 
-export type SharedChat = { chatId: string; rowId: string; lastMessageAt: string | null };
+export type SharedChat = { chatId: string; rowId: string; lastMessageAt: string | null; sharedAt: string | null };
 
-export type IngestResult = "INSERTED" | "DUPLICATE" | "NOT_SHARED" | "NOT_LIVE" | "LEASE_LOST" | "UNAVAILABLE";
+export type IngestResult = "INSERTED" | "DUPLICATE" | "NOT_SHARED" | "NOT_LIVE" | "LEASE_LOST" | "UNAVAILABLE" | "INVALID";
+
+/** The ingest result and, in the unified inbox, the TENH message id. */
+export type IngestOutcome = { result: IngestResult; messageId: string | null };
+
+/** D2: what a finished send returns (the queued command it belonged to). */
+export type FinishedSend = { commandId: string; payload: Record<string, unknown> };
 
 export type IngestRow = {
   chatId: string;
@@ -73,6 +79,11 @@ export type IngestRow = {
   body: string | null;
   placeholder: string | null;
   sentAt: string;
+  /** Live and catch-up messages count as unread; imported history does not. */
+  countUnread?: boolean;
+  /** D2: set on a message sent from TENH, so the inbox can match it to the send. */
+  clientRequestId?: string | null;
+  sentByMember?: string | null;
 };
 
 /** All worker writes are fenced: they return false once the lease is lost. */
@@ -91,8 +102,18 @@ export interface Store {
   finishCommandResult(fence: Fence, commandId: string, status: "done" | "failed", errorCode: string | null, result: unknown): Promise<boolean>;
   /** D1. Chats the holder shares from this session's account. */
   sharedChats(fence: Fence): Promise<SharedChat[]>;
-  /** D1. Idempotent, fenced message ingest. */
-  ingestMessage(fence: Fence, row: IngestRow): Promise<IngestResult>;
+  /** Idempotent, fenced message ingest into the TENH inbox. */
+  ingestMessage(fence: Fence, row: IngestRow): Promise<IngestOutcome>;
+  /** D2. claimed -> sending, BEFORE calling Telegram. A sending command is never claimed again. */
+  sendBegin(fence: Fence, commandId: string): Promise<boolean>;
+  /** D2. Records TDLib's temporary message id so the outcome can be matched after a restart. */
+  sendAccepted(fence: Fence, commandId: string, tempMessageId: number): Promise<boolean>;
+  /** D2. Outcome by temporary id (also resolves an earlier "uncertain"). Null when no send matches. */
+  sendFinish(fence: Fence, tempMessageId: number, status: "done" | "failed", errorCode: string | null, messageId: string | null): Promise<FinishedSend | null>;
+  /** D2. A send that failed before Telegram accepted it, or whose outcome is unknown. */
+  sendFail(fence: Fence, commandId: string, status: "failed" | "uncertain", errorCode: string): Promise<boolean>;
+  /** D2. Sends in flight longer than this become "uncertain" (never retried). */
+  sendMarkStale(fence: Fence, olderThanSeconds: number): Promise<number>;
   /** Subscribe to wake-ups (Postgres NOTIFY). Returns an unsubscribe function. */
   listen(onWake: (sessionId: string) => void): Promise<() => Promise<void>>;
 }
