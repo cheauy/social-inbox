@@ -109,10 +109,32 @@ authenticated Supabase session); Postgres LISTEN/NOTIFY wake-ups in isolation
 5. Team access default: holder only. History import default: none (Phase D).
 6. Sign-in window 5 minutes; QR via server-rendered PNG; `qrcode@1.5.4` added.
 
+## Live preflight results (2026-10-05, read-only, run by the owner)
+
+- `social_accounts_platform_check` allowed only `facebook`, `telegram`. The
+  draft now extends **exactly that definition** to add `telegram_personal`, and
+  still refuses to install if it finds any other platform constraint.
+- `tenh_enforce_channel_entitlement` and `tenh_guard_trial_channel_reuse`
+  triggers run on `social_accounts`. Their bodies are not in the repo; the
+  draft catches a refusal from them during activation/resume and returns
+  `CHANNEL_LIMIT_REACHED` / `TRIAL_NOT_ALLOWED` / `CHANNEL_ACTIVATION_REFUSED`
+  (the worker then signs the new device out).
+- `social_accounts` has RLS enabled and **no policies**, so although the table
+  is in the Realtime publication, browsers cannot receive its rows.
+- `messages` is unique on `(business_id, platform_message_id)` → Phase D keys
+  must stay connection-scoped (as designed). `contacts`/`conversations`
+  platform checks will need `telegram_personal` in Phase D.
+- `platform_account_id` is NOT NULL; 0 workspaces have multiple active Bots.
+
+Rollback of the constraint change is only possible while no
+`telegram_personal` rows exist: restore
+`check (platform = any (array['facebook','telegram']))`.
+
 ## Remaining blockers / your actions before Phase C
 
-1. Run `docs/sql/telegram-personal-preflight-readonly.sql` and share the output
-   (base schema constraints are not in the repo).
+1. Optional last read-only check: the bodies of `tenh_check_channel_entitlement`
+   and `tenh_guard_trial_channel_reuse` (see chat), to confirm how they treat
+   the new platform.
 2. Choose a worker host with a persistent encrypted volume (e.g. Fly.io
    Machine + volume, Railway/Render worker with disk, or a VPS). Not provisioned.
 3. Register TENH's own app at my.telegram.org yourself; put `api_id`/`api_hash`

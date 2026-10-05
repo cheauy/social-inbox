@@ -130,6 +130,8 @@ export function mapTgpCode(code: string) {
       return jsonError("This TENH subscription is expired or inactive.", 409, "SUBSCRIPTION_LOCKED");
     case "INVALID_STATE":
       return jsonError("This action is not available in the connection's current state.", 409, "INVALID_STATE");
+    case "CHANNEL_ACTIVATION_REFUSED":
+      return jsonError("This workspace's channel rules did not allow activating the account.", 409, "CHANNEL_ACTIVATION_REFUSED");
     case "INVALID_MEMBER":
       return jsonError("Choose active members of this workspace.", 400, "INVALID_MEMBER");
     default:

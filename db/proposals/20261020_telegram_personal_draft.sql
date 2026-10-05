@@ -1,7 +1,8 @@
 -- TENH Telegram Personal — PROPOSED SCHEMA (Phase B draft).
 -- Status: tested only against a scratch Postgres 16 with stand-in base tables
--- (tests/sql/telegram-personal-*.sql). NOT applied to any TENH environment.
--- Run docs/sql/telegram-personal-preflight-readonly.sql first and review.
+-- that mirror the live constraints/triggers reported by the 2026-10-05
+-- preflight (tests/sql/telegram-personal-*.sql). NOT applied to any TENH
+-- environment yet.
 -- The owner applies this manually; nothing here activates the feature, which
 -- also requires TENH_TELEGRAM_PERSONAL_ENABLED and a running worker.
 --
@@ -17,12 +18,22 @@
 
 begin;
 
--- 0. Refuse to install if an existing CHECK constraint restricts
---    social_accounts.platform without telegram_personal. Extending it is a
---    separate, reviewed change (the current definition is not in the repo).
-do $guard$
-declare r record;
+-- 0. Allow the new platform value on social_accounts.
+--    Live preflight (2026-10-05): social_accounts_platform_check is exactly
+--    CHECK ((platform = ANY (ARRAY['facebook'::text, 'telegram'::text]))).
+--    Only that exact definition is extended; anything else unexpected stops the
+--    install so it can be reviewed. contacts/conversations checks are Phase D.
+do $platform$
+declare v_def text; r record;
 begin
+  select pg_get_constraintdef(oid) into v_def from pg_constraint
+   where conrelid = 'public.social_accounts'::regclass and conname = 'social_accounts_platform_check';
+  if v_def = 'CHECK ((platform = ANY (ARRAY[''facebook''::text, ''telegram''::text])))' then
+    alter table public.social_accounts
+      drop constraint social_accounts_platform_check,
+      add constraint social_accounts_platform_check
+        check (platform = any (array['facebook'::text, 'telegram'::text, 'telegram_personal'::text]));
+  end if;
   for r in
     select conname, pg_get_constraintdef(oid) as def
     from pg_constraint
@@ -30,11 +41,11 @@ begin
       and pg_get_constraintdef(oid) ilike '%platform%'
   loop
     if r.def not ilike '%telegram_personal%' then
-      raise exception 'social_accounts constraint % restricts platform (%). Extend it to include telegram_personal before installing.', r.conname, r.def;
+      raise exception 'social_accounts constraint % restricts platform (%). Review before installing.', r.conname, r.def;
     end if;
   end loop;
 end
-$guard$;
+$platform$;
 
 -- 1. Sessions -----------------------------------------------------------------
 create table if not exists public.telegram_personal_sessions (
@@ -274,8 +285,12 @@ begin
     if s.status <> 'paused' then return 'INVALID_STATE'; end if;
     v_err := public.tgp_channel_capacity_error(p_business, 1);
     if v_err is not null then return v_err; end if;
+    begin
+      update public.social_accounts set is_active = true, updated_at = now() where id = s.social_account_id;
+    exception when others then
+      return case when sqlerrm ilike '%limit%' then 'CHANNEL_LIMIT_REACHED' else 'CHANNEL_ACTIVATION_REFUSED' end;
+    end;
     update public.telegram_personal_sessions set status = 'reconnecting', updated_at = now() where id = p_session;
-    update public.social_accounts set is_active = true, updated_at = now() where id = s.social_account_id;
     perform public.tgp_wake(p_session);
     return 'OK';
   else
@@ -494,22 +509,36 @@ begin
     return jsonb_build_object('ok', false, 'code', v_err);
   end if;
 
-  select id into v_account from public.social_accounts
-   where business_id = s.business_id and platform = 'telegram_personal'
-     and platform_account_id = p_telegram_user_id
-   order by created_at desc limit 1 for update;
-  if v_account is null then
-    insert into public.social_accounts (business_id, platform, platform_account_id, account_name, is_active)
-    values (s.business_id, 'telegram_personal', p_telegram_user_id, left(p_display_name, 200), true)
-    returning id into v_account;
-  else
-    -- Detach the row from any earlier (ended) session, keep its history.
-    update public.telegram_personal_sessions set social_account_id = null
-     where social_account_id = v_account and id <> p_session;
-    update public.social_accounts
-       set is_active = true, account_name = left(p_display_name, 200), updated_at = now()
-     where id = v_account;
-  end if;
+  -- Existing social_accounts triggers (tenh_enforce_channel_entitlement,
+  -- tenh_guard_trial_channel_reuse) may still refuse. Catch that so the worker
+  -- receives a code and signs the new device out instead of retrying.
+  begin
+    select id into v_account from public.social_accounts
+     where business_id = s.business_id and platform = 'telegram_personal'
+       and platform_account_id = p_telegram_user_id
+     order by created_at desc limit 1 for update;
+    if v_account is null then
+      insert into public.social_accounts (business_id, platform, platform_account_id, account_name, is_active)
+      values (s.business_id, 'telegram_personal', p_telegram_user_id, left(p_display_name, 200), true)
+      returning id into v_account;
+    else
+      -- Detach the row from any earlier (ended) session, keep its history.
+      update public.telegram_personal_sessions set social_account_id = null
+       where social_account_id = v_account and id <> p_session;
+      update public.social_accounts
+         set is_active = true, account_name = left(p_display_name, 200), updated_at = now()
+       where id = v_account;
+    end if;
+  exception when others then
+    v_err := case when sqlerrm ilike '%limit%' then 'CHANNEL_LIMIT_REACHED'
+                  when sqlerrm ilike '%trial%' then 'TRIAL_NOT_ALLOWED'
+                  else 'CHANNEL_ACTIVATION_REFUSED' end;
+    update public.telegram_personal_sessions
+       set status = 'failed', last_error_code = v_err, ended_at = now(), updated_at = now()
+     where id = p_session;
+    delete from public.telegram_personal_logins where session_id = p_session;
+    return jsonb_build_object('ok', false, 'code', v_err);
+  end;
 
   update public.telegram_personal_sessions
      set status = 'connected', social_account_id = v_account, telegram_user_id = p_telegram_user_id,

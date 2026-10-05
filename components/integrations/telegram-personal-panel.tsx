@@ -88,6 +88,8 @@ function errorMessage(t: ReturnType<typeof useT>, code: string | null) {
     case "ACCOUNT_IN_OTHER_WORKSPACE": return t("This Telegram account is already connected to another TENH workspace.", "គណនី Telegram នេះបានភ្ជាប់ជាមួយកន្លែងធ្វើការ TENH ផ្សេងរួចហើយ។");
     case "ACCOUNT_ALREADY_CONNECTED": return t("This Telegram account is already connected in this workspace.", "គណនី Telegram នេះបានភ្ជាប់នៅក្នុងកន្លែងធ្វើការនេះរួចហើយ។");
     case "CHANNEL_LIMIT_REACHED": return t("Channel limit reached. Disable another channel or upgrade the plan.", "ដល់កម្រិតឆានែលហើយ។ សូមបិទឆានែលផ្សេង ឬដំឡើងគម្រោង។");
+    case "CHANNEL_ACTIVATION_REFUSED": return t("This workspace's channel rules did not allow activating the account.", "ច្បាប់ឆានែលរបស់កន្លែងធ្វើការនេះមិនអនុញ្ញាតឱ្យបើកដំណើរការគណនីនេះទេ។");
+    case "TRIAL_NOT_ALLOWED": return t("This account cannot be connected on a free trial in this workspace.", "គណនីនេះមិនអាចភ្ជាប់ក្នុងការសាកល្បងឥតគិតថ្លៃនៅកន្លែងធ្វើការនេះបានទេ។");
     case "UNSUPPORTED_AUTH_STEP": return t("Telegram asked for a sign-in step TENH does not support. Finish account setup in the Telegram app first.", "Telegram ស្នើជំហានចូលដែល TENH មិនគាំទ្រ។ សូមបញ្ចប់ការរៀបចំគណនីក្នុងកម្មវិធី Telegram ជាមុនសិន។");
     case "SESSION_REVOKED": return t("This session was ended from Telegram (Settings → Devices). Connect again to continue.", "វគ្គនេះត្រូវបានបញ្ចប់ពី Telegram (Settings → Devices)។ សូមភ្ជាប់ម្តងទៀត។");
     case "LOGIN_EXPIRED": return t("The sign-in took too long and expired.", "ការចូលយូរពេក ហើយបានផុតកំណត់។");

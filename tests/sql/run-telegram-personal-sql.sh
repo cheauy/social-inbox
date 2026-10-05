@@ -36,11 +36,13 @@ live="$(psql -qtA -d "$db" -c "select count(*) from telegram_personal_sessions w
 echo "race results: [$results] live=$live"
 [ "$live" = "1" ] && echo "$results" | grep -q "ACCOUNT_IN_OTHER_WORKSPACE" && echo "PASS concurrent duplicate ownership"
 
-# Guard: install refused while an existing platform CHECK excludes telegram_personal.
+# The live platform CHECK is extended; an unexpected one stops the install.
+psql -qtA -d "$db" -c "select pg_get_constraintdef(oid) from pg_constraint where conname='social_accounts_platform_check'" | grep -q telegram_personal \
+  && echo "PASS live platform constraint extended"
 createdb "${db}_guard"
 psql -q -d "${db}_guard" -f tests/sql/telegram-personal-stub-schema.sql
-psql -q -d "${db}_guard" -c "alter table social_accounts add constraint social_accounts_platform_check check (platform in ('facebook','telegram'))"
+psql -q -d "${db}_guard" -c "alter table social_accounts drop constraint social_accounts_platform_check, add constraint social_accounts_platform_check check (platform in ('facebook','telegram','instagram'))"
 if psql -q -v ON_ERROR_STOP=1 -d "${db}_guard" -f db/proposals/20261020_telegram_personal_draft.sql >/dev/null 2>&1; then
   echo "FAIL guard"; exit 1
 fi
-[ -z "$(psql -qtA -d "${db}_guard" -c "select to_regclass('public.telegram_personal_sessions')")" ] && echo "PASS install guard (nothing created)"
+[ -z "$(psql -qtA -d "${db}_guard" -c "select to_regclass('public.telegram_personal_sessions')")" ] && echo "PASS install guard on unexpected constraint (nothing created)"

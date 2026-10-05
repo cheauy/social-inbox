@@ -153,6 +153,19 @@ do $$ declare sf uuid := (select v from s where k='f'); r jsonb; begin
 end $$;
 update business_subscriptions set channel_limit = 3 where business_id = (select v from ids where k='b1');
 
+-- 7b. A refusal from an existing social_accounts trigger becomes a clean code
+create function pg_temp.refuse() returns trigger language plpgsql as $$ begin raise exception 'Channel limit reached (trigger)'; end $$;
+create trigger zz_test_refuse before insert on social_accounts for each row execute function pg_temp.refuse();
+insert into s select 'f2', tgp_begin_login((select v from ids where k='b1'),(select v from ids where k='u1'),(select v from ids where k='m1'),'qr');
+create temp table ep4b as select * from tgp_claim_sessions('worker-A', 30, 10);
+do $$ declare sf uuid := (select v from s where k='f2'); r jsonb; begin
+  r := tgp_activate(sf,'worker-A',(select lease_epoch from ep4b where id=sf),'5550009','Nine','nine','+9');
+  assert r->>'code' = 'CHANNEL_LIMIT_REACHED', r::text;
+  assert (select status from telegram_personal_sessions where id=sf) = 'failed';
+  assert not exists (select 1 from social_accounts where platform_account_id='5550009');
+end $$;
+drop trigger zz_test_refuse on social_accounts;
+
 -- 8. Holder demoted mid-login --------------------------------------------------
 insert into s select 'g', tgp_begin_login((select v from ids where k='b1'),(select v from ids where k='u1'),(select v from ids where k='m1'),'qr');
 update team_members set role = 'agent' where id = (select v from ids where k='m1');
