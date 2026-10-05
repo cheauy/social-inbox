@@ -526,6 +526,9 @@ export class SessionRunner {
     // Outgoing messages in unshared chats are not even counted.
     if (row.direction === "outgoing" && !this.sharedChats.has(row.chatId)) return;
     const { result } = await this.store.ingestMessage(this.fence, { ...row, countUnread: true });
+    // Result only: never the text, the name or the chat id.
+    this.logEvent(result === "INSERTED" || result === "DUPLICATE" || result === "NOT_SHARED" ? "info" : "warn",
+      "chat_message", { direction: row.direction, result });
     if (result === "LEASE_LOST") return this.lostLease();
   }
 
