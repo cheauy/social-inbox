@@ -297,14 +297,28 @@ function sendRoute({ db, userId = HOLDER, role = "owner", env = SEND_ENV, visibl
         ? { success: true, user: { id: userId }, member, conversation: { id: CONV, business_id: B1, social_account_id: ACC1, platform } }
         : { success: false, status: 404, error: "Conversation was not found." },
     },
-  }, { process: { env }, Buffer, setTimeout, crypto })("app/api/telegram-personal/send/route.ts");
+  }, { process: { env }, Buffer, setTimeout, crypto, File, FormData })("app/api/telegram-personal/send/route.ts");
 }
 
 const sendReq = (body) => Object.assign(new Request("https://tenh.test/api/telegram-personal/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }), {});
 const getReq = (query) => { const url = `https://tenh.test/api/telegram-personal/send?${query}`; return Object.assign(new Request(url), { nextUrl: new URL(url) }); };
 
+/** fakeDb plus a Supabase Storage double that records uploads and removals. */
+function fakeDbWithStorage(seed) {
+  const db = fakeDb(seed);
+  db.objects = new Map();
+  db.removed = [];
+  db.storage = {
+    from: (bucket) => ({
+      upload: async (path, bytes, options) => { db.objects.set(`${bucket}/${path}`, { size: bytes.length, contentType: options?.contentType }); return { error: null }; },
+      remove: async (paths) => { for (const p of paths) { db.removed.push(`${bucket}/${p}`); db.objects.delete(`${bucket}/${p}`); } return { error: null }; },
+    }),
+  };
+  return db;
+}
+
 function sendDb() {
-  const db = fakeDb({
+  const db = fakeDbWithStorage({
     ...d1Seed(),
     telegram_personal_chats: [{ id: CHAT1, business_id: B1, social_account_id: ACC1, conversation_id: CONV, unshared_at: null }],
   });
@@ -331,7 +345,7 @@ test("send: off by default (separate switch); receiving stays read only until it
   const refused = await route.POST(sendReq({ conversationId: CONV, clientRequestId: REQ, text: "hi" }));
   assert.equal(refused.status, 403);
   assert.equal((await refused.json()).code, "SEND_DISABLED");
-  assert.equal(db.rpcCalls.filter((c) => c.name === "tgp_enqueue_send").length, 0);
+  assert.equal(db.rpcCalls.filter((c) => c.name === "tgp_enqueue_send_v2").length, 0);
 });
 
 test("send: hidden, non-Personal or flag-off conversations are 404 and never reach the queue", async () => {
@@ -343,21 +357,21 @@ test("send: hidden, non-Personal or flag-off conversations are 404 and never rea
   assert.equal((await sendRoute({ db }).POST(sendReq({ ...body, clientRequestId: "not-a-uuid" }))).status, 400);
   assert.equal((await sendRoute({ db }).POST(sendReq({ ...body, text: "   " }))).status, 400);
   assert.equal((await sendRoute({ db }).POST(sendReq({ ...body, text: "x".repeat(4097) }))).status, 400);
-  assert.equal(db.rpcCalls.filter((c) => c.name === "tgp_enqueue_send").length, 0);
+  assert.equal(db.rpcCalls.filter((c) => c.name === "tgp_enqueue_send_v2").length, 0);
 });
 
 test("send: queue refusals map to clear errors; identity comes from the session, not the body", async () => {
   const db = sendDb();
   const body = { conversationId: CONV, clientRequestId: REQ, text: "hello", userId: OTHER_OWNER, memberId: "forged" };
   for (const [code, status] of [["HOLDER_ONLY", 403], ["RATE_LIMITED", 429], ["CHAT_NOT_SHARED", 409], ["NOT_CONNECTED", 409]]) {
-    db.rpcResults.tgp_enqueue_send = { data: { ok: false, code }, error: null };
+    db.rpcResults.tgp_enqueue_send_v2 = { data: { ok: false, code }, error: null };
     const response = await sendRoute({ db }).POST(sendReq(body));
     assert.equal(response.status, status, code);
     assert.equal((await response.json()).code, code);
   }
-  const call = db.rpcCalls.find((c) => c.name === "tgp_enqueue_send");
+  const call = db.rpcCalls.find((c) => c.name === "tgp_enqueue_send_v2");
   assert.deepEqual([call.args.p_user, call.args.p_member, call.args.p_business, call.args.p_client_request_id], [HOLDER, "m-c1", B1, REQ]);
-  db.rpcResults.tgp_enqueue_send = { data: null, error: { code: "XX000" } };
+  db.rpcResults.tgp_enqueue_send_v2 = { data: null, error: { code: "XX000" } };
   const failed = await sendRoute({ db }).POST(sendReq(body));
   assert.equal(failed.status, 500);
   assert.match((await failed.json()).error, /Nothing was sent/);
@@ -366,18 +380,18 @@ test("send: queue refusals map to clear errors; identity comes from the session,
 test("send: reports sent, failed and uncertain outcomes and never re-enqueues", async () => {
   for (const [state, expected] of [["done", "sent"], ["failed", "failed"], ["uncertain", "uncertain"]]) {
     const db = sendDb();
-    db.rpcResults.tgp_enqueue_send = { data: { ok: true, command_id: "k", state: "queued" }, error: null };
+    db.rpcResults.tgp_enqueue_send_v2 = { data: { ok: true, command_id: "k", state: "queued" }, error: null };
     db.rpcResults.tgp_send_state = { data: { state, code: state === "done" ? null : "X", message_id: "msg" }, error: null };
     const response = await sendRoute({ db }).POST(sendReq({ conversationId: CONV, clientRequestId: REQ, text: "hello" }));
     assert.equal(response.status, 200);
     assert.equal((await response.json()).state, expected);
-    assert.equal(db.rpcCalls.filter((c) => c.name === "tgp_enqueue_send").length, 1, "enqueued exactly once");
+    assert.equal(db.rpcCalls.filter((c) => c.name === "tgp_enqueue_send_v2").length, 1, "enqueued exactly once");
   }
   const db = sendDb();
   db.rpcResults.tgp_send_state = { data: { state: "uncertain", code: "OUTCOME_UNKNOWN" }, error: null };
   const polled = await (await sendRoute({ db }).GET(getReq(`conversationId=${CONV}&clientRequestId=${REQ}`))).json();
   assert.equal(polled.state, "uncertain");
-  assert.equal(db.rpcCalls.filter((c) => c.name === "tgp_enqueue_send").length, 0, "status checks never send");
+  assert.equal(db.rpcCalls.filter((c) => c.name === "tgp_enqueue_send_v2").length, 0, "status checks never send");
 });
 
 test("chat sharing routes: holder only, validated input, chooser results from the worker", async () => {
@@ -440,4 +454,66 @@ test("automatic sharing: holder only, boolean input, state reported, not install
   db.tables.telegram_personal_sessions[0].auto_share = true;
   const state = await (await holder.GET(req("https://tenh.test/x"), ctx())).json();
   assert.deepEqual([state.autoShare, state.autoShareAvailable], [true, true]);
+});
+
+const fileReq = (fields, file) => {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields)) form.set(key, value);
+  if (file) form.set("file", file, file.name);
+  return new Request("https://tenh.test/api/telegram-personal/send", { method: "POST", body: form });
+};
+
+test("send file: staged privately under this request, queued with its details, quote passed through", async () => {
+  const db = sendDb();
+  db.rpcResults.tgp_enqueue_send_v2 = { data: { ok: true, command_id: "k", state: "queued" }, error: null };
+  db.rpcResults.tgp_send_state = { data: { state: "done", message_id: "m" }, error: null };
+  const quote = "77777777-7777-4777-8777-777777777777";
+  const file = new File([new Uint8Array(2048)], "../../Price list.pdf", { type: "application/pdf" });
+  const response = await sendRoute({ db }).POST(fileReq({ conversationId: CONV, clientRequestId: REQ, text: "prices", replyToMessageId: quote }, file));
+  assert.equal(response.status, 200);
+  const path = `${B1}/tgp-outbox/${REQ}/Price_list.pdf`;
+  assert.deepEqual(db.objects.get(`tenh-message-media/${path}`), { size: 2048, contentType: "application/pdf" });
+  const call = db.rpcCalls.find((c) => c.name === "tgp_enqueue_send_v2");
+  assert.deepEqual({ ...call.args.p_media }, { kind: "document", storage_path: path, size: 2048, mime_type: "application/pdf", name: "Price_list.pdf" });
+  assert.equal(call.args.p_reply_to, quote);
+  assert.equal(call.args.p_text, "prices");
+});
+
+test("send file: photos are photos; refused sends remove the staged file; size and caption limits", async () => {
+  const db = sendDb();
+  db.rpcResults.tgp_enqueue_send_v2 = { data: { ok: false, code: "RATE_LIMITED" }, error: null };
+  const photo = new File([new Uint8Array(10)], "cat.jpg", { type: "image/jpeg" });
+  const refused = await sendRoute({ db }).POST(fileReq({ conversationId: CONV, clientRequestId: REQ, text: "" }, photo));
+  assert.equal(refused.status, 429);
+  assert.equal(db.rpcCalls.find((c) => c.name === "tgp_enqueue_send_v2").args.p_media.kind, "photo");
+  assert.deepEqual([...db.removed], [`tenh-message-media/${B1}/tgp-outbox/${REQ}/cat.jpg`]);
+  assert.equal(db.objects.size, 0);
+  const big = new File([new Uint8Array(4 * 1024 * 1024 + 1)], "big.bin");
+  assert.equal((await sendRoute({ db }).POST(fileReq({ conversationId: CONV, clientRequestId: REQ, text: "" }, big))).status, 413);
+  const longCaption = await sendRoute({ db }).POST(fileReq({ conversationId: CONV, clientRequestId: REQ, text: "x".repeat(1025) }, photo));
+  assert.equal(longCaption.status, 400);
+  const badQuote = await sendRoute({ db }).POST(sendReq({ conversationId: CONV, clientRequestId: REQ, text: "hi", replyToMessageId: "nope" }));
+  assert.equal(badQuote.status, 400);
+});
+
+test("send: works on the earlier SQL for plain text; files and quotes explain the missing update", async () => {
+  const db = sendDb();
+  db.rpcResults.tgp_enqueue_send_v2 = { data: null, error: { code: "42883" } };
+  db.rpcResults.tgp_enqueue_send = { data: { ok: true, command_id: "k", state: "queued" }, error: null };
+  db.rpcResults.tgp_send_state = { data: { state: "done" }, error: null };
+  const text = await sendRoute({ db }).POST(sendReq({ conversationId: CONV, clientRequestId: REQ, text: "hi" }));
+  assert.equal(text.status, 200);
+  assert.equal(db.rpcCalls.filter((c) => c.name === "tgp_enqueue_send").length, 1);
+  const quote = await sendRoute({ db }).POST(sendReq({ conversationId: CONV, clientRequestId: REQ, text: "hi", replyToMessageId: "77777777-7777-4777-8777-777777777777" }));
+  assert.equal((await quote.json()).code, "NOT_INSTALLED");
+  const file = await sendRoute({ db }).POST(fileReq({ conversationId: CONV, clientRequestId: REQ, text: "" }, new File([new Uint8Array(5)], "a.txt", { type: "text/plain" })));
+  assert.equal(file.status, 409);
+  assert.equal(db.objects.size, 0, "staged file removed when the queue is not installed");
+});
+
+test("Telegram Personal messages can be quoted, not edited, deleted or pinned from TENH", () => {
+  const actions = loader({})("lib/inbox/message-actions.ts");
+  const message = { id: "m1", platform_message_id: `tgp:${ACC1}:5001:10`, conversation_id: CONV, direction: "incoming", message_type: "text", message_text: "hi", attachment_url: null, raw_payload: {} };
+  assert.deepEqual({ ...actions.getMessageActions(message, "telegram_personal") }, { reply: true, pin: false, edit: false, delete: false });
+  assert.deepEqual({ ...actions.getMessageActions({ ...message, direction: "outgoing" }, "facebook") }, { reply: true, pin: false, edit: false, delete: false });
 });

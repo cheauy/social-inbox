@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 /*
- * Composer for Telegram Personal chats (D2): text only, and only the person who
- * connected the Telegram account may reply. Everyone else sees why not.
+ * Composer for Telegram Personal chats: text, or one photo/file with a caption,
+ * optionally quoting a message. Only the person who connected the Telegram
+ * account may reply. Everyone else sees why not.
  *
  * Each send has its own request id, so the server never sends it twice. A send
  * whose outcome Telegram did not confirm is shown as "uncertain" and is never
@@ -12,7 +13,7 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
  * The sent message itself appears in the thread when the worker records it.
  */
 
-type ReplyStatus = { canReply: boolean; reason: string | null };
+type ReplyStatus = { canReply: boolean; reason: string | null; maxFileBytes?: number };
 type SendView = {
   requestId: string;
   text: string;
@@ -21,6 +22,7 @@ type SendView = {
 };
 
 const MAX_TEXT = 4096;
+const MAX_CAPTION = 1024;
 const POLL_MS = 2_000;
 const POLL_LIMIT_MS = 120_000;
 
@@ -36,10 +38,18 @@ function newRequestId() {
   return crypto.randomUUID();
 }
 
-export function TelegramPersonalComposer({ conversationId }: { conversationId: string }) {
+export function TelegramPersonalComposer({ conversationId, replyToMessageId = null, onReplyUsed }: {
+  conversationId: string;
+  /** The message picked with Reply in the thread, if any. */
+  replyToMessageId?: string | null;
+  onReplyUsed?: () => void;
+}) {
   const [status, setStatus] = useState<ReplyStatus | null>(null);
   const [statusError, setStatusError] = useState(false);
   const [text, setText] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement | null>(null);
   const [sends, setSends] = useState<SendView[]>([]);
   const mounted = useRef(true);
 
@@ -53,7 +63,7 @@ export function TelegramPersonalComposer({ conversationId }: { conversationId: s
       .then(async (response) => {
         const result = (await response.json().catch(() => ({}))) as Partial<ReplyStatus> & { success?: boolean };
         if (!response.ok || !result.success) throw new Error();
-        setStatus({ canReply: Boolean(result.canReply), reason: result.reason ?? null });
+        setStatus({ canReply: Boolean(result.canReply), reason: result.reason ?? null, maxFileBytes: result.maxFileBytes });
       })
       .catch((error: unknown) => {
         if ((error as { name?: string })?.name !== "AbortError") setStatusError(true);
@@ -112,23 +122,54 @@ export function TelegramPersonalComposer({ conversationId }: { conversationId: s
     });
   }
 
+  function pickFile(picked: File | null) {
+    setFileError(null);
+    if (!picked) return;
+    const max = status?.maxFileBytes ?? 4 * 1024 * 1024;
+    if (picked.size > max) {
+      setFileError(`Files can be up to ${Math.floor(max / (1024 * 1024))} MB.`);
+      return;
+    }
+    setFile(picked);
+  }
+
   async function submit(event?: FormEvent) {
     event?.preventDefault();
     const message = text;
-    if (!status?.canReply || !message.trim() || message.length > MAX_TEXT) return;
+    const attachment = file;
+    const quote = replyToMessageId && !replyToMessageId.includes(":") ? replyToMessageId : null;
+    if (!status?.canReply) return;
+    if (attachment ? message.length > MAX_CAPTION : !message.trim() || message.length > MAX_TEXT) return;
     const requestId = newRequestId();
     setText("");
-    setSends((current) => [...current, { requestId, text: message, state: "sending" }]);
+    setFile(null);
+    onReplyUsed?.();
+    const label = attachment ? `📎 ${attachment.name}${message.trim() ? ` · ${message}` : ""}` : message;
+    setSends((current) => [...current, { requestId, text: label, state: "sending" }]);
     try {
-      const response = await fetch("/api/telegram-personal/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId, clientRequestId: requestId, text: message }),
-      });
+      let response: Response;
+      if (attachment) {
+        const form = new FormData();
+        form.set("conversationId", conversationId);
+        form.set("clientRequestId", requestId);
+        form.set("text", message);
+        if (quote) form.set("replyToMessageId", quote);
+        form.set("file", attachment, attachment.name);
+        response = await fetch("/api/telegram-personal/send", { method: "POST", body: form });
+      } else {
+        response = await fetch("/api/telegram-personal/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId, clientRequestId: requestId, text: message, ...(quote ? { replyToMessageId: quote } : {}) }),
+        });
+      }
       const result = (await response.json().catch(() => ({}))) as { state?: string; error?: string; code?: string };
       if (!response.ok && response.status !== 202) {
-        // Refused before queueing: nothing was sent, so the text goes back to the box.
-        if (mounted.current) setText((current) => current || message);
+        // Refused before queueing: nothing was sent, so the text and file come back.
+        if (mounted.current) {
+          setText((current) => current || message);
+          setFile((current) => current ?? attachment);
+        }
         update(requestId, { state: "failed", error: `${result.error ?? "Unable to send."} Nothing was sent.` });
         return;
       }
@@ -202,28 +243,61 @@ export function TelegramPersonalComposer({ conversationId }: { conversationId: s
       {notice ? (
         <p className="rounded-lg bg-slate-50 px-3 py-2.5 text-[13px] text-slate-600 ring-1 ring-slate-200">{notice}</p>
       ) : (
-        <form onSubmit={(event) => void submit(event)} className="flex items-end gap-2">
+        <form onSubmit={(event) => void submit(event)} className="space-y-2">
+          {file || fileError ? (
+            <div className="flex items-center gap-2 text-[13px]">
+              {file ? (
+                <span className="inline-flex min-w-0 items-center gap-2 rounded-lg bg-sky-50 px-2.5 py-1 text-sky-900 ring-1 ring-sky-200">
+                  <span className="truncate">📎 {file.name}</span>
+                  <span className="shrink-0 text-[11px] text-sky-700">{Math.max(1, Math.round(file.size / 1024))} KB</span>
+                  <button type="button" onClick={() => setFile(null)} aria-label="Remove file" className="shrink-0 rounded px-1 font-semibold hover:bg-black/5">×</button>
+                </span>
+              ) : null}
+              {fileError ? <span className="text-rose-700">{fileError}</span> : null}
+            </div>
+          ) : null}
+          <div className="flex items-end gap-2">
+          <input
+            ref={fileInput}
+            type="file"
+            className="hidden"
+            onChange={(event) => {
+              pickFile(event.target.files?.[0] ?? null);
+              event.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            disabled={!status?.canReply}
+            aria-label="Attach a photo or file"
+            title="Attach a photo or file (up to 4 MB)"
+            className="h-11 w-11 shrink-0 rounded-xl border border-slate-200 text-[18px] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            📎
+          </button>
           <textarea
             value={text}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={onKeyDown}
             disabled={!status}
-            maxLength={MAX_TEXT}
+            maxLength={file ? MAX_CAPTION : MAX_TEXT}
             rows={2}
-            placeholder={status ? "Reply from your Telegram account…" : "Checking reply access…"}
+            placeholder={!status ? "Checking reply access…" : file ? "Add a caption (optional)…" : "Reply from your Telegram account…"}
             aria-label="Reply from your Telegram account"
             className="min-h-[44px] flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-[14px] text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 disabled:bg-slate-50"
           />
           <button
             type="submit"
-            disabled={!status?.canReply || !text.trim()}
+            disabled={!status?.canReply || (!text.trim() && !file)}
             className="h-11 shrink-0 rounded-xl bg-sky-600 px-4 text-[14px] font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             Send
           </button>
+          </div>
         </form>
       )}
-      <p className="mt-1.5 text-[11px] text-slate-400">Telegram Personal · text only · sent from the connected Telegram account</p>
+      <p className="mt-1.5 text-[11px] text-slate-400">Telegram Personal · text, photos and files up to 4 MB · sent from the connected Telegram account</p>
     </div>
   );
 }

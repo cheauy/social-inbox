@@ -30,6 +30,10 @@ export function getMessageActions(message: ActionMessage, platform?: string | nu
   const none = { reply: false, pin: false, edit: false, delete: false };
   if (message.id.startsWith("optimistic:") || !message.platform_message_id ||
     isMessageDeleted(message) || isFacebookComment(message)) return none;
+  // Telegram Personal: quoting only (edits and deletions happen in Telegram itself).
+  if (platform === "telegram_personal" || message.platform_message_id.startsWith("tgp:")) {
+    return { reply: true, pin: false, edit: false, delete: false };
+  }
   const telegram = platform === "telegram" || message.platform_message_id.startsWith("telegram:");
   if (telegram) {
     const raw = record(message.raw_payload);

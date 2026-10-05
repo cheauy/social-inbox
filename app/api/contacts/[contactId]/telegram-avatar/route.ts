@@ -76,9 +76,10 @@ export async function GET(
         authResult.member
           .business_id,
       )
-      .eq(
+      // Bot customers and Telegram Personal contacts share the avatar store.
+      .in(
         "platform",
-        "telegram",
+        ["telegram", "telegram_personal"],
       )
       .maybeSingle();
 

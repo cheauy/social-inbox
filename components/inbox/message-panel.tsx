@@ -5951,7 +5951,7 @@ export function MessagePanel({
           <div className="min-w-0 flex-1 border-l-2 border-sky-400 pl-3">
             <p className="text-xs font-semibold text-sky-700">Replying to {quotedReplyTarget.direction === "outgoing" ? "your message" : activeConversation.contact?.full_name || "customer"}</p>
             <p className="truncate text-sm text-slate-600">{getMessageSummary(quotedReplyTarget)}</p>
-            {replyingToFacebookMessageId && <p className="mt-0.5 text-[11px] text-slate-500">Reply in Messenger</p>}
+            {replyingToFacebookMessageId && <p className="mt-0.5 text-[11px] text-slate-500">{isTelegramPersonal ? "Reply in Telegram" : "Reply in Messenger"}</p>}
           </div>
           <button type="button" aria-label="Cancel message reply" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" onClick={replyingToFacebookMessageId ? onCancelFacebookReply : onCancelTelegramReply}>×</button>
         </div>
@@ -6052,6 +6052,8 @@ export function MessagePanel({
         <TelegramPersonalComposer
           key={`${activeConversation.business_id}:${activeConversation.id}`}
           conversationId={activeConversation.id}
+          replyToMessageId={replyingToFacebookMessageId}
+          onReplyUsed={onCancelFacebookReply}
         />
       ) : activeConversation.contact ? (
         /*
