@@ -38,3 +38,15 @@ end $$;
 create trigger tenh_enforce_channel_entitlement before insert or update of business_id, is_active
   on public.social_accounts for each row execute function public.tenh_check_channel_entitlement();
 grant select, insert, update, delete on all tables in schema public to service_role;
+-- Stand-in for Supabase auth.uid(): reads the request user set by tests.
+create schema if not exists auth;
+create or replace function auth.uid() returns uuid language sql stable as $$
+  select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
+$$;
+grant usage on schema auth to anon, authenticated, service_role;
+grant execute on function auth.uid() to anon, authenticated, service_role;
+create table public.contacts (id uuid primary key default gen_random_uuid(), business_id uuid, platform text,
+  constraint contacts_platform_check check (platform in ('facebook','instagram','telegram')));
+create table public.conversations (id uuid primary key default gen_random_uuid(), business_id uuid, platform text,
+  constraint conversations_platform_check check (platform in ('facebook','instagram','telegram')));
+grant select, insert, update, delete on public.contacts, public.conversations to service_role;

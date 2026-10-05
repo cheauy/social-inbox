@@ -7,12 +7,31 @@ cd "$(dirname "$0")/../.."
 db=tgp_test_$$
 dropdb --if-exists "$db" >/dev/null
 createdb "$db"
-trap 'dropdb --if-exists "$db" >/dev/null 2>&1 || true; dropdb --if-exists "${db}_guard" >/dev/null 2>&1 || true' EXIT
+trap 'for d in "$db" "${db}_guard" "${db}_d1" "${db}_split"; do dropdb --if-exists "$d" >/dev/null 2>&1 || true; done' EXIT
 psql -q -v ON_ERROR_STOP=1 -d "$db" -f tests/sql/telegram-personal-stub-schema.sql
 psql -q -v ON_ERROR_STOP=1 -d "$db" -f db/proposals/20261020_telegram_personal_draft.sql
 psql -q -v ON_ERROR_STOP=1 -d "$db" -f db/proposals/20261020_telegram_personal_draft.sql 2>/dev/null # idempotent
 psql -q -v ON_ERROR_STOP=1 -d "$db" -f tests/sql/telegram-personal-draft.test.sql | grep -q 'all assertions passed'
 echo "PASS assertions"
+psql -q -v ON_ERROR_STOP=1 -d "$db" -f db/proposals/20261021_telegram_personal_d1.sql
+psql -q -v ON_ERROR_STOP=1 -d "$db" -f db/proposals/20261021_telegram_personal_d1.sql 2>/dev/null # idempotent
+dropdb --if-exists "${db}_d1" >/dev/null; createdb "${db}_d1"
+psql -q -v ON_ERROR_STOP=1 -d "${db}_d1" -f tests/sql/telegram-personal-stub-schema.sql
+psql -q -v ON_ERROR_STOP=1 -d "${db}_d1" -f db/proposals/20261020_telegram_personal_draft.sql
+psql -q -v ON_ERROR_STOP=1 -d "${db}_d1" -f db/proposals/20261021_telegram_personal_d1.sql
+psql -q -v ON_ERROR_STOP=1 -d "${db}_d1" -f tests/sql/telegram-personal-d1.test.sql | grep -q 'all assertions passed'
+echo "PASS D1 assertions"
+# Both files must also survive an editor that splits on statements.
+for f in db/proposals/20261020_telegram_personal_draft.sql db/proposals/20261021_telegram_personal_d1.sql; do
+  chunks="$(mktemp -d)"
+  python3 tests/sql/tools/split-like-editor.py "$f" "$chunks" >/dev/null
+  dropdb --if-exists "${db}_split" >/dev/null; createdb "${db}_split"
+  psql -q -d "${db}_split" -f tests/sql/telegram-personal-stub-schema.sql
+  [ "$f" = db/proposals/20261021_telegram_personal_d1.sql ] && psql -q -d "${db}_split" -f db/proposals/20261020_telegram_personal_draft.sql
+  cat "$chunks"/*.sql | psql -q -v ON_ERROR_STOP=1 -d "${db}_split" >/dev/null
+  rm -rf "$chunks"
+  echo "PASS statement-split install: $f"
+done
 
 # Concurrency: two workspaces activate the same Telegram account at once.
 psql -q -v ON_ERROR_STOP=1 -d "$db" <<'SQL'
