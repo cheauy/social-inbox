@@ -273,6 +273,35 @@ test("Remote revocation marks the session revoked, frees the channel and removes
   }
 });
 
+test("Silent remote termination of an idle session is detected by the auth probe", async () => {
+  const h = makeHarness();
+  try {
+    const id = await qrLogin(h);
+    await waitFor(() => h.store.rows.get(id)?.status === "connected");
+    client(h, id).revokeSilently(); // no TDLib update is emitted
+    await waitFor(() => h.store.rows.get(id)?.status === "revoked", 3000, "revoked via probe");
+    assert.equal(h.store.rows.get(id)!.lastErrorCode, "SESSION_REVOKED");
+    assert.equal(h.store.rows.get(id)!.channelActive, false);
+    await waitFor(() => h.store.rows.get(id)?.localState === "removed");
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test("Auth probe ignores network errors (no false revocation)", async () => {
+  const h = makeHarness();
+  try {
+    const id = await qrLogin(h);
+    await waitFor(() => h.store.rows.get(id)?.status === "connected");
+    h.telegram.invokeHangs.add("getActiveSessions"); // probe times out locally
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    assert.equal(h.store.rows.get(id)!.status, "connected");
+    assert.ok(client(h, id).requests.filter((r) => r._ === "getActiveSessions").length >= 1, "probe ran");
+  } finally {
+    await h.cleanup();
+  }
+});
+
 test("Revoked while the worker was down is detected on restart", async () => {
   const h = makeHarness();
   const id = await qrLogin(h);

@@ -38,6 +38,7 @@ export function makeHarness<S extends Store = MemoryStore>(options: { store?: S;
     logoutTimeoutMs: 300,
     loginStepTimeoutMs: 300,
     reconnectGraceMs: 60,
+    authProbeMs: 80,
     maxSessions: options.maxSessions ?? 10,
     ...options.overrides,
   };

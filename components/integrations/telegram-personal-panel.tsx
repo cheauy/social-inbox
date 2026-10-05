@@ -320,11 +320,17 @@ export function TelegramPersonalPanel({ openSignal = 0, onAvailability }: { open
   }, [load]);
 
   const transitional = list?.connections?.some((connection) => TRANSITIONAL.includes(connection.status)) ?? false;
+  const live = list?.connections?.some((connection) => connection.status === "connected" || connection.status === "paused") ?? false;
+  // Fast refresh while something is changing; slower while connected so a
+  // session ended from Telegram (Settings -> Devices) shows up without a reload.
+  const refreshMs = transitional ? 4000 : live ? 15000 : null;
   useEffect(() => {
-    if (!transitional) return;
-    const timer = setInterval(load, 4000);
+    if (!refreshMs) return;
+    const timer = setInterval(() => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") load();
+    }, refreshMs);
     return () => clearInterval(timer);
-  }, [transitional, load]);
+  }, [refreshMs, load]);
 
   if (!list?.enabled) return null;
 

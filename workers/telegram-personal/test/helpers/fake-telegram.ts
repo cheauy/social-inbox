@@ -108,6 +108,11 @@ export class FakeTdClient implements TdClient {
     this.connection("connectionStateReady");
   }
 
+  /** Terminated on Telegram's side, but TDLib has not noticed yet (idle session). */
+  revokeSilently() {
+    this.telegram.authorized.delete(this.options.databaseDirectory);
+  }
+
   /** Session terminated from another device (Settings -> Devices). */
   revokeRemotely() {
     this.telegram.authorized.delete(this.options.databaseDirectory);
@@ -151,6 +156,9 @@ export class FakeTdClient implements TdClient {
       }
       case "setOption":
         return Promise.resolve({ _: "ok" });
+      case "getActiveSessions":
+        if (!this.telegram.authorized.has(dir)) return Promise.reject(new TdRequestError(401, "Unauthorized"));
+        return Promise.resolve({ _: "sessions", sessions: [] });
       case "logOut":
         if (this.telegram.logoutHangs) return new Promise(() => undefined);
         this.telegram.authorized.delete(dir);

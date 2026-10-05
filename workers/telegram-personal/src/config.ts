@@ -20,6 +20,7 @@ export type WorkerConfig = {
   logoutTimeoutMs: number;
   loginStepTimeoutMs: number;
   reconnectGraceMs: number;
+  authProbeMs: number;
   healthPort: number | null;
 };
 
@@ -70,6 +71,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
     logoutTimeoutMs: int(env, "TELEGRAM_PERSONAL_LOGOUT_TIMEOUT_MS", 30_000, 1000, 120_000),
     loginStepTimeoutMs: int(env, "TELEGRAM_PERSONAL_LOGIN_STEP_TIMEOUT_MS", 15_000, 1000, 120_000),
     reconnectGraceMs: int(env, "TELEGRAM_PERSONAL_RECONNECT_GRACE_MS", 10_000, 0, 300_000),
+    authProbeMs: int(env, "TELEGRAM_PERSONAL_AUTH_PROBE_MS", 60_000, 15_000, 3_600_000),
     healthPort: env.PORT ? int(env, "PORT", 8080, 1, 65535) : null,
   };
 }

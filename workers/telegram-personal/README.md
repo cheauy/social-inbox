@@ -46,7 +46,9 @@ there is intentionally no plaintext backup.
 - A device Telegram authorized but TENH refused (duplicate owner, channel limit,
   cancelled) is signed out with `logOut`, not left as an orphan.
 - Remote termination (Telegram → Settings → Devices) ⇒ `revoked`, channel slot
-  freed, local data removed.
+  freed, local data removed. An idle session confirms its authorization every
+  `TELEGRAM_PERSONAL_AUTH_PROBE_MS` (default 60 s) so termination is noticed
+  even when Telegram sends no update; network errors never count as revoked.
 - Pause keeps data; Disconnect signs out at Telegram, then removes data. An
   unconfirmed sign-out stays `disconnect_pending` (`LOGOUT_UNCONFIRMED`) and is
   retried; it is never reported as done.

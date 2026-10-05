@@ -37,6 +37,8 @@ export type RunnerConfig = {
   logoutTimeoutMs: number;
   loginStepTimeoutMs: number;
   reconnectGraceMs: number;
+  /** How often a live session confirms with Telegram that it is still authorized. */
+  authProbeMs: number;
 };
 
 /** "retry" asks the supervisor to back off before this session is claimed again. */
@@ -100,6 +102,7 @@ export class SessionRunner {
   private closedWaiters: Array<() => void> = [];
   private connectionReady = false;
   private notReadySince: number | null = null;
+  private lastAuthProbe = Date.now();
   private ending = false;
   private finished = false;
 
@@ -419,6 +422,27 @@ export class SessionRunner {
       if (this.observedStatus === "connected" && this.notReadySince !== null &&
           Date.now() - this.notReadySince >= this.config.reconnectGraceMs) {
         await this.setLiveStatus("reconnecting");
+      }
+      if (this.lastAuth === "authorizationStateReady" && this.connectionReady &&
+          Date.now() - this.lastAuthProbe >= this.config.authProbeMs) {
+        await this.probeAuthorization();
+      }
+    }
+  }
+
+  /**
+   * An idle TDLib session only learns that it was terminated from another
+   * device (Settings -> Devices) on its next server request. This small
+   * authorized request makes that happen within authProbeMs. Network errors
+   * are ignored; only an authorization error (401) means the session is gone.
+   */
+  private async probeAuthorization() {
+    this.lastAuthProbe = Date.now();
+    try {
+      await this.invoke({ _: "getActiveSessions" }, this.config.loginStepTimeoutMs, "auth_probe");
+    } catch (error) {
+      if (tdErrorDetails(error)?.code === 401 && !this.ending) {
+        await this.revoked();
       }
     }
   }
