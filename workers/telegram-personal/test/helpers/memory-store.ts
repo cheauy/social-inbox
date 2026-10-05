@@ -45,9 +45,17 @@ export class MemoryStore implements Store {
   readonly rows = new Map<string, Row>();
   readonly logins = new Map<string, Login>();
   readonly commands: Array<{ id: string; sessionId: string; kind: Command["kind"]; status: string; payload?: Record<string, unknown>; result?: unknown; errorCode?: string | null; tempMessageId?: number; messageId?: string | null }> = [];
+
+  /** What tgp_enqueue_action does (holder and message checks are tested in SQL). */
+  enqueueAction(id: string, kind: "edit_text" | "delete_messages" | "typing", payload: Record<string, unknown>, messageId: string | null = null) {
+    const command: MemoryStore["commands"][number] = { id: randomUUID(), sessionId: id, kind, status: "queued", payload, messageId };
+    this.commands.push(command);
+    this.wake?.(id);
+    return command;
+  }
   // D1 mirror: shares keyed by session id (one account per session here), messages and waiting chats.
   readonly shares = new Map<string, Map<string, { rowId: string; unshared: boolean; lastReadAt: number; lastMessageAt: string | null; sharedAt: string; preview: string | null; unread: number; title?: string }>>();
-  readonly messages: Array<IngestRow & { sessionId: string; id: string; savedType?: string; attachment?: Record<string, unknown>; quoted?: number; edited?: boolean; deleted?: boolean }> = [];
+  readonly messages: Array<IngestRow & { sessionId: string; id: string; savedType?: string; attachment?: Record<string, unknown>; quoted?: number; edited?: boolean; deleted?: boolean; deletedBy?: string }> = [];
   readonly unshared = new Map<string, Set<string>>();
   ingestCalls = 0;
   readonly writes: Array<{ sessionId: string; op: string; accepted: boolean; patch?: unknown }> = [];
@@ -270,7 +278,7 @@ export class MemoryStore implements Store {
     return this.commands.filter((c) => c.sessionId === f.sessionId && (c.status === "queued" || c.status === "claimed")).slice(0, limit)
       .map((c) => {
         c.status = "claimed";
-        return { id: c.id, kind: c.kind, payload: c.payload ?? {} };
+        return { id: c.id, kind: c.kind, payload: c.payload ?? {}, messageId: c.messageId ?? null };
       });
   }
 
@@ -370,6 +378,13 @@ export class MemoryStore implements Store {
     return share && !share.unshared && this.messages.some((m) => m.sessionId === f.sessionId && m.chatId === chatId)
       ? { contactId: `contact-${chatId}`, businessId: (this.rows.get(f.sessionId) as Row).businessId } : null;
   }
+  async markDeletedByMember(f: Fence, messageId: string, memberId: string) {
+    if (!this.holds(f)) return false;
+    const m = this.messages.find((x) => x.id === messageId && x.sessionId === f.sessionId);
+    if (!m) return false;
+    Object.assign(m, { deleted: true, body: "Message deleted", deletedBy: memberId });
+    return true;
+  }
   async setContactPhoto(f: Fence, chatId: string, hasPhoto: boolean) {
     if (!this.holds(f)) return false;
     this.contactPhotos.set(chatId, hasPhoto);
@@ -419,11 +434,12 @@ export class MemoryStore implements Store {
     return 0;
   }
 
-  async finishCommand(f: Fence, commandId: string, status: "done" | "failed") {
+  async finishCommand(f: Fence, commandId: string, status: "done" | "failed", errorCode: string | null = null) {
     if (!this.holds(f)) return false;
     const command = this.commands.find((c) => c.id === commandId && c.status === "claimed");
     if (!command) return false;
     command.status = status;
+    command.errorCode = errorCode;
     return true;
   }
 

@@ -47,3 +47,20 @@ The updated worker and web app keep working before the SQL is installed (feature
 | Typecheck / lint (changed files) / production build | clean / no new errors / success |
 
 Not verified: real Telegram files, real Supabase Storage upload, the UI in a browser.
+
+## Same chat screen as Telegram Bot (2026-10-05)
+
+Personal chats now use the Telegram Bot chat screen end to end:
+
+- the main reply box: quick replies, quick tags, emoji, TENH stickers (sent as images), photos, videos, files, microphone;
+- recorded voice is sent as a real Telegram voice message (WebM repackaged to OGG/Opus in the worker, no re-encoding);
+- message buttons: Reply, Pin (TENH bookmark), Edit (own text messages), Delete (for everyone in Telegram);
+- "typing…" in Telegram while the holder types (at most once per 4 seconds).
+
+Edit/delete/typing go through the same web routes as Bot chats, which hand Personal messages to the worker
+(`db/proposals/20261025_telegram_personal_actions.sql`). Holder only; the send switch must be on.
+
+Not the same yet: Telegram sticker packs (the Bot loads pack previews with its bot token; Personal chats have no
+bot), so TENH image stickers are used instead.
+
+Fixed: photos, videos and files were refused by TDLib 1.8.67 (files must be wrapped in inputPhoto/inputVideo/...).

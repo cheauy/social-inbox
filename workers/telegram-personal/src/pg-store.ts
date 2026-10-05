@@ -97,8 +97,10 @@ export class PgStore implements Store {
   async claimCommands(f: Fence, limit: number): Promise<Command[]> {
     if (this.d1Available) {
       try {
-        const result = await this.pool.query("select id, kind, payload from public.tgp_claim_commands_v2($1,$2,$3,$4)", [f.sessionId, f.workerId, f.epoch, limit]);
-        return result.rows.map((row) => ({ id: row.id, kind: row.kind, payload: row.payload ?? {} }));
+        const result = await this.pool.query(
+          "select c.id, c.kind, c.payload, k.message_id from public.tgp_claim_commands_v2($1,$2,$3,$4) c left join public.telegram_personal_commands k on k.id = c.id",
+          [f.sessionId, f.workerId, f.epoch, limit]);
+        return result.rows.map((row) => ({ id: row.id, kind: row.kind, payload: row.payload ?? {}, messageId: row.message_id ?? null }));
       } catch (error) {
         if (!isMissingFunction(error)) throw error;
         this.d1Available = false;
@@ -204,6 +206,11 @@ export class PgStore implements Store {
   setContactPhoto(f: Fence, chatId: string, hasPhoto: boolean) {
     return this.optional("select public.tgp_set_contact_photo($1,$2,$3,$4,$5) as result",
       [f.sessionId, f.workerId, f.epoch, chatId, hasPhoto], false);
+  }
+
+  markDeletedByMember(f: Fence, messageId: string, memberId: string) {
+    return this.optional("select public.tgp_mark_deleted_by_member($1,$2,$3,$4,$5) as result",
+      [f.sessionId, f.workerId, f.epoch, messageId, memberId], false);
   }
 
   private autoShareAvailable = true;

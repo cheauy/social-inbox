@@ -182,7 +182,9 @@ function getLoadedConversationPlatform(
       ?.platform ??
     null;
 
-  if (platform === "telegram") {
+  // Telegram Personal uses the Telegram chat screen (edit, delete, typing);
+  // its sends are routed separately in handleSendMessage/handleSendAttachments.
+  if (platform === "telegram" || platform === "telegram_personal") {
     return "telegram";
   }
 
@@ -8178,7 +8180,7 @@ async function handleSendMessage(
     return;
   }
 
-  if (activeConversation.social_account?.platform === "telegram_personal") {
+  if (activeConversation.social_account?.platform === "telegram_personal" && !editingTelegramMessageId) {
     if (capturedMessage === undefined) setReply(current => current === reply ? "" : current);
     const sent = await sendPersonalItems([{ text: message }]);
     if (!sent && capturedMessage === undefined && isComposerSubmissionCurrent(submissionOwner) && !composerDraftRef.current.reply) {

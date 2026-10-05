@@ -652,6 +652,8 @@ export class SessionRunner {
         await this.store.finishCommandResult(this.fence, command.id, ok ? "done" : "failed", ok ? null : "HISTORY_IMPORT_FAILED", null);
       } else if (command.kind === "send_text" || command.kind === "send_media") {
         await this.sendText(command);
+      } else if (command.kind === "edit_text" || command.kind === "delete_messages" || command.kind === "typing") {
+        await this.messageAction(command);
       }
       // pause/logout are driven by the session status and finished there.
     }
@@ -937,6 +939,49 @@ export class SessionRunner {
     for (let i = 0; i < ids.length; i += 100) {
       const count = await this.store.deleteMessages(this.fence, chatId, ids.slice(i, i + 100));
       this.logEvent("info", "chat_message_deleted", { count });
+    }
+  }
+
+  /** Edit, delete for everyone, or typing, on the real Telegram chat (all safe to repeat). */
+  private async messageAction(command: Command) {
+    const payload = command.payload ?? {};
+    const chatId = String(payload.chat_id ?? "");
+    if (!/^-?[0-9]{1,20}$/.test(chatId) || !this.sharedChats.has(chatId)) {
+      await this.refreshSharedChats(true);
+      if (!this.sharedChats.has(chatId)) {
+        await this.store.finishCommand(this.fence, command.id, "failed", "CHAT_NOT_SHARED");
+        return;
+      }
+    }
+    const invoke = (request: TdObject, operation: string) => this.invoke(request, this.config.loginStepTimeoutMs, operation);
+    try {
+      if (command.kind === "typing") {
+        await invoke({ _: "sendChatAction", chat_id: Number(chatId), action: { _: "chatActionTyping" } }, "send_chat_action");
+      } else if (command.kind === "edit_text") {
+        const messageId = Number(payload.message_id);
+        const text = typeof payload.text === "string" ? payload.text : "";
+        await invoke({ _: "editMessageText", chat_id: Number(chatId), message_id: messageId,
+          input_message_content: { _: "inputMessageText", text: { _: "formattedText", text } } }, "edit_message");
+        await this.store.editMessage(this.fence, chatId, messageId, text, new Date().toISOString());
+      } else {
+        const ids = (Array.isArray(payload.message_ids) ? payload.message_ids : []).map(Number).filter((id) => Number.isSafeInteger(id) && id > 0);
+        try {
+          await invoke({ _: "deleteMessages", chat_id: Number(chatId), message_ids: ids, revoke: true }, "delete_messages");
+        } catch (error) {
+          // Already gone in Telegram counts as done; anything else is a real failure.
+          if (tdErrorDetails(error)?.code !== 400) throw error;
+        }
+        const memberId = typeof payload.member_id === "string" ? payload.member_id : null;
+        if (command.messageId && memberId) await this.store.markDeletedByMember(this.fence, command.messageId, memberId);
+        else await this.store.deleteMessages(this.fence, chatId, ids);
+      }
+      await this.store.finishCommand(this.fence, command.id, "done", null);
+      if (command.kind !== "typing") this.logEvent("info", command.kind === "edit_text" ? "message_edited" : "message_deleted", {});
+    } catch (error) {
+      const details = tdErrorDetails(error);
+      await this.store.finishCommand(this.fence, command.id, "failed",
+        error instanceof OperationTimeoutError ? "TELEGRAM_TIMEOUT" : details ? `TELEGRAM_${details.code}` : "ACTION_FAILED");
+      if (command.kind !== "typing") this.logEvent("warn", "message_action_failed", { kind: command.kind, errorCode: details?.code ?? "timeout" });
     }
   }
 

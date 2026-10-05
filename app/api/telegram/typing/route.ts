@@ -19,6 +19,7 @@ import {
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
+import { personalTyping } from "@/lib/telegram-personal/actions-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,6 +70,11 @@ export async function POST(
       { success: false, error: inboxAccess.error },
       { status: inboxAccess.status },
     );
+  }
+
+  // Telegram Personal chats: "typing…" goes out through the holder's account.
+  if (inboxAccess.conversation.platform === "telegram_personal") {
+    return personalTyping(conversationId);
   }
 
   const currentMember = inboxAccess.member;

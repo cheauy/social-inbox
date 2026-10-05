@@ -511,11 +511,14 @@ test("send: works on the earlier SQL for plain text; files and quotes explain th
   assert.equal(db.objects.size, 0, "staged file removed when the queue is not installed");
 });
 
-test("Telegram Personal messages can be quoted, not edited, deleted or pinned from TENH", () => {
+test("Telegram Personal messages get the same buttons as Telegram Bot messages", () => {
   const actions = loader({})("lib/inbox/message-actions.ts");
-  const message = { id: "m1", platform_message_id: `tgp:${ACC1}:5001:10`, conversation_id: CONV, direction: "incoming", message_type: "text", message_text: "hi", attachment_url: null, raw_payload: {} };
-  assert.deepEqual({ ...actions.getMessageActions(message, "telegram_personal") }, { reply: true, pin: false, edit: false, delete: false });
-  assert.deepEqual({ ...actions.getMessageActions({ ...message, direction: "outgoing" }, "facebook") }, { reply: true, pin: false, edit: false, delete: false });
+  const base = { id: "m1", platform_message_id: `tgp:${ACC1}:5001:10`, conversation_id: CONV, message_type: "text", message_text: "hi", attachment_url: null, raw_payload: {} };
+  assert.deepEqual({ ...actions.getMessageActions({ ...base, direction: "outgoing" }, "telegram_personal") }, { reply: true, pin: true, edit: true, delete: true });
+  assert.deepEqual({ ...actions.getMessageActions({ ...base, direction: "incoming" }, "telegram_personal") }, { reply: true, pin: true, edit: false, delete: true });
+  const placeholder = { ...base, direction: "outgoing", raw_payload: { tgp_placeholder: "photo" } };
+  assert.equal(actions.getMessageActions(placeholder, "telegram_personal").edit, false, "media placeholders are not editable");
+  assert.deepEqual({ ...actions.getMessageActions({ ...base, direction: "outgoing", platform_message_id: "telegram:1:2" }, "telegram") }, { reply: true, pin: true, edit: true, delete: true }, "Bot unchanged");
 });
 
 test("send file: a TENH microphone recording is sent as a voice message", async () => {
@@ -536,4 +539,49 @@ test("optimistic bubbles match the stored Personal message by request id", () =>
   assert.equal(matchesOptimisticMessage(bubble, { direction: "outgoing", conversation_id: CONV, raw_payload: { tenh_client_request_id: "abc" } }), true);
   assert.equal(matchesOptimisticMessage(bubble, { direction: "outgoing", conversation_id: CONV, raw_payload: { tenh_client_request_id: "other" } }), false);
   assert.equal(matchesOptimisticMessage(bubble, { direction: "incoming", conversation_id: CONV, raw_payload: { tenh_client_request_id: "abc" } }), false);
+});
+
+function actionsRoute({ db, userId = HOLDER, env = SEND_ENV, visible = true }) {
+  const member = { id: `m-${userId.slice(-2)}`, user_id: userId, business_id: B1, role: "owner", full_name: "Holder" };
+  return loader({
+    "next/server": {
+      NextResponse: { json: (data, init = {}) => new Response(JSON.stringify(data), { status: init.status || 200, headers: { "Content-Type": "application/json" } }) },
+    },
+    "@/lib/supabase/admin": { supabaseAdmin: db },
+    "@/lib/auth/require-permission": { memberHasPermission: async () => true },
+    "@/lib/inbox/get-inbox-resource-access": {
+      getInboxConversationAccess: async () => visible
+        ? { success: true, user: { id: userId }, member, conversation: { id: CONV, business_id: B1, social_account_id: ACC1, platform: "telegram_personal" } }
+        : { success: false, status: 404, error: "Conversation was not found." },
+    },
+  }, { process: { env }, Buffer, setTimeout, crypto })("lib/telegram-personal/actions-server.ts");
+}
+
+test("edit/delete/typing for Personal: holder only through SQL, outcome waited for, nothing for hidden chats", async () => {
+  const MSG = "99999999-9999-4999-8999-999999999999";
+  const db = sendDb();
+  db.tables.messages = [{ id: MSG, conversation_id: CONV, platform_message_id: `tgp:${ACC1}:5001:10`, message_text: "fixed", raw_payload: { tenh_edit: { edited_at: "2026-10-05T00:00:00Z" } } }];
+  db.rpcResults.tgp_enqueue_action = { data: { ok: true, command_id: "c1" }, error: null };
+  db.rpcResults.tgp_action_state = { data: { state: "done" }, error: null };
+  const mod = actionsRoute({ db });
+  const message = { id: MSG, conversation_id: CONV };
+  const edited = await mod.editPersonalMessage(message, "fixed");
+  assert.equal(edited.status, 200);
+  assert.equal((await edited.json()).messageText, "fixed");
+  const call = db.rpcCalls.find((c) => c.name === "tgp_enqueue_action");
+  assert.deepEqual([call.args.p_action, call.args.p_user, call.args.p_message, call.args.p_text], ["edit", HOLDER, MSG, "fixed"]);
+
+  db.rpcResults.tgp_enqueue_action = { data: { ok: false, code: "HOLDER_ONLY" }, error: null };
+  assert.equal((await actionsRoute({ db, userId: AGENT }).deletePersonalMessage(message)).status, 403);
+
+  db.rpcResults.tgp_enqueue_action = { data: { ok: true, command_id: "c2" }, error: null };
+  db.rpcResults.tgp_action_state = { data: { state: "failed", code: "TELEGRAM_400" }, error: null };
+  const refused = await mod.deletePersonalMessage(message);
+  assert.equal(refused.status, 502);
+  assert.match((await refused.json()).error, /TELEGRAM_400/);
+
+  const before = db.rpcCalls.length;
+  assert.equal((await actionsRoute({ db, visible: false }).editPersonalMessage(message, "x")).status, 404);
+  assert.equal((await actionsRoute({ db, env: ENABLED_ENV }).deletePersonalMessage(message)).status, 403, "send switch off");
+  assert.equal(db.rpcCalls.length, before, "nothing queued");
 });

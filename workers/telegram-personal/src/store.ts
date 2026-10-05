@@ -59,7 +59,13 @@ export type Identity = {
   phoneMasked: string | null;
 };
 
-export type Command = { id: string; kind: "pause" | "logout" | "list_chats" | "import_history" | "send_text" | "send_media"; payload?: Record<string, unknown> };
+export type Command = {
+  id: string;
+  kind: "pause" | "logout" | "list_chats" | "import_history" | "send_text" | "send_media" | "edit_text" | "delete_messages" | "typing";
+  payload?: Record<string, unknown>;
+  /** For edit/delete: the TENH message the command is about. */
+  messageId?: string | null;
+};
 
 export type SharedChat = { chatId: string; rowId: string; lastMessageAt: string | null; sharedAt: string | null };
 
@@ -119,6 +125,8 @@ export interface Store {
   /** Contact of a shared chat (for the profile photo path), or null. */
   chatContact(fence: Fence, chatId: string): Promise<{ contactId: string; businessId: string } | null>;
   setContactPhoto(fence: Fence, chatId: string, hasPhoto: boolean): Promise<boolean>;
+  /** Deleted from TENH by a member (shown as "Message deleted by <name>"). */
+  markDeletedByMember(fence: Fence, messageId: string, memberId: string): Promise<boolean>;
   /** D2. claimed -> sending, BEFORE calling Telegram. A sending command is never claimed again. */
   sendBegin(fence: Fence, commandId: string): Promise<boolean>;
   /** D2. Records TDLib's temporary message id so the outcome can be matched after a restart. */

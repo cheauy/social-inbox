@@ -10,7 +10,7 @@ grant usage on schema public to anon, authenticated, service_role;
 create table public.businesses (id uuid primary key default gen_random_uuid(), name text);
 create table public.team_members (
   id uuid primary key default gen_random_uuid(), business_id uuid not null references public.businesses(id),
-  user_id uuid not null, role text not null, is_active boolean not null default true, created_at timestamptz default now());
+  user_id uuid not null, role text not null, is_active boolean not null default true, full_name text, created_at timestamptz default now());
 create table public.business_subscriptions (
   business_id uuid primary key references public.businesses(id), plan_code text, status text not null,
   member_limit int, channel_limit int, current_period_end timestamptz, trial_ends_at timestamptz, created_at timestamptz default now());

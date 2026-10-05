@@ -43,6 +43,9 @@ export class FakeTelegram implements TdClientFactory {
   readonly files = new Map<number, Uint8Array>();
   readonly fileDir = mkdtempSync(join(tmpdir(), "fake-tg-files-"));
   readonly deletedFiles: number[] = [];
+  readonly edits: Array<{ chatId: number; messageId: number }> = [];
+  readonly deletions: Array<{ chatId: number; ids: number[]; revoke: boolean }> = [];
+  readonly chatActions: Array<{ chatId: number; action: string }> = [];
   private fileCounter = 70_000;
 
   addFile(bytes: Uint8Array) {
@@ -321,6 +324,28 @@ export class FakeTdClient implements TdClient {
         });
         return Promise.resolve(temp);
       }
+      case "editMessageText": {
+        const list = this.telegram.history.get(Number(request.chat_id)) ?? [];
+        const target = list.find((m) => Number(m.id) === Number(request.message_id));
+        if (!target) return Promise.reject(new TdRequestError(400, "Message not found"));
+        if (target.is_outgoing !== true) return Promise.reject(new TdRequestError(400, "Message can't be edited"));
+        const content = request.input_message_content as TdObject;
+        target.content = { _: "messageText", text: content.text };
+        this.telegram.edits.push({ chatId: Number(request.chat_id), messageId: Number(request.message_id) });
+        return Promise.resolve(target);
+      }
+      case "deleteMessages": {
+        const chatId = Number(request.chat_id);
+        const ids = (request.message_ids as number[]).map(Number);
+        const list = this.telegram.history.get(chatId) ?? [];
+        if (!ids.some((id) => list.some((m) => Number(m.id) === id))) return Promise.reject(new TdRequestError(400, "Message not found"));
+        this.telegram.history.set(chatId, list.filter((m) => !ids.includes(Number(m.id))));
+        this.telegram.deletions.push({ chatId, ids, revoke: request.revoke === true });
+        return Promise.resolve({ _: "ok" });
+      }
+      case "sendChatAction":
+        this.telegram.chatActions.push({ chatId: Number(request.chat_id), action: String((request.action as TdObject)?._) });
+        return Promise.resolve({ _: "ok" });
       case "getActiveSessions":
         if (!this.telegram.authorized.has(dir)) return Promise.reject(new TdRequestError(401, "Unauthorized"));
         return Promise.resolve({ _: "sessions", sessions: [] });
