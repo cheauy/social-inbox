@@ -117,6 +117,16 @@ second run succeeded). Verified: `social_accounts_platform_check` includes
 `telegram_personal`, 4 `telegram_personal_*` tables, 21 `tgp_*` functions.
 Feature flag still off; no worker running; no Telegram session exists.
 
+## Phase C pilot log
+
+- 2026-10-05: worker running on the owner PC (`TELEGRAM_PERSONAL_WORKER_ID=local-pc`),
+  web app on localhost with the flag allowlisted to the owner workspace.
+  First sign-in attempt stalled only because the worker process had been
+  stopped; after restarting it, **QR sign-in with the owner's own account
+  succeeded** against real Telegram. Pending checks: Devices entry, restart
+  (reconnecting → connected, clean shutdown), pause/resume, sign-out, remote
+  termination. No messages ingested or sent (Phase D).
+
 ## Live preflight results (2026-10-05, read-only, run by the owner)
 
 - `social_accounts_platform_check` allowed only `facebook`, `telegram`. The
