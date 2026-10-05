@@ -11,6 +11,8 @@ import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { requirePermission } from "@/lib/auth/require-permission";
 import {
   attachmentKindFor,
+  SAVED_REPLY_AUDIO_UNSUPPORTED,
+  savedReplyMimeType,
   isPathOwnedByBusiness,
   SAVED_REPLY_MEDIA_BUCKET,
   SAVED_REPLY_MEDIA_MAX_BYTES,
@@ -46,6 +48,16 @@ function extensionFor(mimeType: string) {
       return "mov";
     case "video/webm":
       return "webm";
+    case "audio/mpeg":
+    case "audio/mp3":
+      return "mp3";
+    case "audio/mp4":
+    case "audio/x-m4a":
+    case "audio/m4a":
+      return "m4a";
+    case "audio/ogg":
+    case "audio/opus":
+      return "ogg";
     default:
       return "jpg";
   }
@@ -102,11 +114,14 @@ async function handlePOST(
     );
   }
 
-  const kind = attachmentKindFor(file.type);
+  const mimeType = savedReplyMimeType(file);
+  const kind = attachmentKindFor(mimeType);
 
   if (!kind) {
     return jsonError(
-      `That file type is not supported. Allowed: ${supportedMediaTypes().join(", ")}.`,
+      mimeType.startsWith("audio/")
+        ? SAVED_REPLY_AUDIO_UNSUPPORTED
+        : `That file type is not supported. Allowed: ${supportedMediaTypes().join(", ")}.`,
       415,
     );
   }
@@ -131,7 +146,7 @@ async function handlePOST(
   const businessId =
     authResult.member.business_id;
   const path = `${SAVED_REPLY_MEDIA_PREFIX}/${businessId}/${crypto.randomUUID()}.${extensionFor(
-    file.type,
+    mimeType,
   )}`;
 
   const { error: uploadError } =
@@ -141,7 +156,7 @@ async function handlePOST(
         path,
         await file.arrayBuffer(),
         {
-          contentType: file.type,
+          contentType: mimeType,
           upsert: false,
           cacheControl: "86400",
         },
@@ -166,7 +181,7 @@ async function handlePOST(
       kind,
       name: file.name || "attachment",
       size: file.size,
-      mimeType: file.type,
+      mimeType: mimeType,
     },
   });
 }

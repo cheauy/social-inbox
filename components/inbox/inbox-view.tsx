@@ -7759,20 +7759,30 @@ async function sendPersonalItems(items: Array<{ text: string; file?: File | null
   return allSent;
 }
 
+/* Telegram's caption limit, in the UTF-16 units JavaScript counts. */
+const TELEGRAM_CAPTION_LIMIT = 1024;
+
 async function handleSendAttachments(
   attachments: ReplyAttachment[],
-  caption?: string,
+  text?: string,
+  options?: { onQueued?: () => void },
 ): Promise<boolean> {
   const submissionOwner = captureComposerSubmissionOwner();
   if (!submissionOwner) return false;
   if (activeConversationRef.current?.social_account?.platform === "telegram_personal") {
-    const text = caption?.trim() ?? "";
-    return sendPersonalItems(attachments.map((attachment, index) => ({
-      text: index === 0 ? text : "",
-      file: attachment.file,
-      kind: attachment.kind,
-      previewUrl: attachment.previewUrl,
-    })));
+    const personalText = text?.trim() ?? "";
+    // A caption holds 1024 characters; longer text follows as its own item
+    // rather than being cut.
+    const personalCaption = personalText.length <= TELEGRAM_CAPTION_LIMIT ? personalText : "";
+    return sendPersonalItems([
+      ...attachments.map((attachment, index) => ({
+        text: index === 0 ? personalCaption : "",
+        file: attachment.file,
+        kind: attachment.kind,
+        previewUrl: attachment.previewUrl,
+      })),
+      ...(personalText && !personalCaption ? [{ text: personalText }] : []),
+    ]);
   }
   if (editingTelegramMessageId) {
     setSendError(
@@ -7922,6 +7932,29 @@ async function handleSendAttachments(
   let allSucceeded = true;
   const albumPendings: PendingOptimisticAttachmentSend[] = [];
 
+  /*
+   * Where the typed text goes. Telegram carries it as the caption of the first
+   * photo or MP4 -- a single photo too, which used to drop it -- when it fits
+   * the 1024-character caption limit. Anything else (Messenger, documents,
+   * audio, or longer text) follows as its own message after the media, so the
+   * text is never lost.
+   */
+  const trimmedText = text?.trim() ?? "";
+  const isTelegramAlbumCandidate = (attachment: ReplyAttachment) =>
+    conversationPlatform === "telegram" &&
+    ((attachment.kind === "image" && !isTelegramGifFile(attachment.file)) ||
+      (attachment.kind === "video" &&
+        attachment.file.type.split(";")[0].trim().toLowerCase() === "video/mp4"));
+  const telegramCaption =
+    trimmedText &&
+    trimmedText.length <= TELEGRAM_CAPTION_LIMIT &&
+    attachments.some(isTelegramAlbumCandidate)
+      ? trimmedText
+      : undefined;
+  const followUpText = trimmedText && !telegramCaption ? trimmedText : "";
+  let captionBubbleAssigned = false;
+  const queuedSends: PendingOptimisticAttachmentSend[] = [];
+
   const groupedPhotoIds = new Set<string>();
   const facebookPhotos = conversationPlatform === "facebook"
     ? attachments.filter((item) => item.kind === "image") : [];
@@ -7975,16 +8008,15 @@ async function handleSendAttachments(
      * keep their own path.
      */
     const isAlbumCandidate =
-      conversationPlatform === "telegram" &&
-      ((attachment.kind === "image" &&
-        !isTelegramGifFile(
-          attachment.file,
-        )) ||
-        (attachment.kind === "video" &&
-          attachment.file.type
-            .split(";")[0]
-            .trim()
-            .toLowerCase() === "video/mp4"));
+      isTelegramAlbumCandidate(attachment);
+
+    /* The bubble that will carry the caption shows it from the start. */
+    const carriesCaption =
+      isAlbumCandidate &&
+      Boolean(telegramCaption) &&
+      !captionBubbleAssigned;
+
+    if (carriesCaption) captionBubbleAssigned = true;
 
     const attachmentEndpoint =
       conversationPlatform ===
@@ -8031,7 +8063,10 @@ async function handleSendAttachments(
         kind: optimisticKind,
         file: attachment.file,
         previewUrl,
-        messageText,
+        messageText:
+          carriesCaption && telegramCaption
+            ? telegramCaption
+            : messageText,
       });
 
     if (facebookReplyTarget) {
@@ -8073,12 +8108,19 @@ async function handleSendAttachments(
       continue;
     }
 
-    const succeeded =
-      await performOptimisticAttachmentSend(
-        pending,
-      );
+    queuedSends.push(pending);
+  }
 
-    if (!succeeded) {
+  /*
+   * Every outgoing item is on screen as "Sending" before anything uploads.
+   * From here each bubble owns its own success, failure and Retry, so the
+   * composer must not be refilled with them -- that was a second copy.
+   */
+  options?.onQueued?.();
+
+  const attachmentsDone = (async () => {
+  for (const pending of queuedSends) {
+    if (!(await performOptimisticAttachmentSend(pending))) {
       allSucceeded = false;
     }
   }
@@ -8088,6 +8130,7 @@ async function handleSendAttachments(
     const succeeded =
       await performOptimisticAttachmentSend(
         albumPendings[0],
+        telegramCaption,
       );
 
     if (!succeeded) {
@@ -8115,13 +8158,13 @@ async function handleSendAttachments(
           ? await performOptimisticAttachmentSend(
               chunk[0],
               index === 0
-                ? caption
+                ? telegramCaption
                 : undefined,
             )
           : await performOptimisticAlbumSend(
               chunk,
               index === 0
-                ? caption
+                ? telegramCaption
                 : undefined,
             );
 
@@ -8130,6 +8173,25 @@ async function handleSendAttachments(
       }
     }
   }
+
+  })();
+
+  /*
+   * The text's bubble appears now, after the media bubbles; its request waits
+   * for the media so the customer receives them in the same order. It is sent
+   * whether or not the media succeeded -- each item stands on its own. A Reply
+   * quote is carried by the media, as before, not repeated on the text.
+   */
+  const textDone = followUpText
+    ? handleSendMessage(
+        { preventDefault() {} } as unknown as FormEvent,
+        followUpText,
+        { startAfter: attachmentsDone, withoutReply: true },
+      )
+    : Promise.resolve();
+
+  await attachmentsDone;
+  await textDone;
 
   if (allSucceeded && facebookReplyTarget && isComposerSubmissionCurrent(submissionOwner)) {
     setReplyingToFacebookMessageId(current => current === facebookReplyTarget.id ? null : current);
@@ -8174,6 +8236,7 @@ async function handleRetryOptimisticMessage(
 async function handleSendMessage(
   event: FormEvent,
   capturedMessage?: string,
+  options?: { startAfter?: Promise<unknown>; withoutReply?: boolean },
 ) {
   event.preventDefault();
 
@@ -8182,6 +8245,10 @@ async function handleSendMessage(
 
   const message =
     (capturedMessage ?? reply).trim();
+
+  /* Text sent after attachments leaves the Reply quote to the attachments. */
+  const facebookReplyId = options?.withoutReply ? null : replyingToFacebookMessageId;
+  const telegramReplyId = options?.withoutReply ? null : replyingToTelegramMessageId;
 
   if (
     !message ||
@@ -8239,7 +8306,7 @@ async function handleSendMessage(
   }
 
   if (!isComposerSubmissionCurrent(submissionOwner)) return;
-  const selectedReplyId = conversationPlatform === "telegram" ? replyingToTelegramMessageId : replyingToFacebookMessageId;
+  const selectedReplyId = conversationPlatform === "telegram" ? telegramReplyId : facebookReplyId;
   if (selectedReplyId && !isCommentReply) {
     const selectedReply = resolvePhotoReplyTarget(liveMessagesRef.current, selectedReplyId, activeConversation.id);
     if (!selectedReply || !getMessageActions(selectedReply, conversationPlatform).reply) {
@@ -8399,7 +8466,7 @@ async function handleSendMessage(
 
   if (
     conversationPlatform === "telegram" &&
-    replyingToTelegramMessageId &&
+    telegramReplyId &&
     telegramLocation
   ) {
     setSendError(
@@ -8443,10 +8510,10 @@ async function handleSendMessage(
               conversationId:
                 activeConversation.id,
               message,
-              ...(replyingToTelegramMessageId
+              ...(telegramReplyId
                 ? {
                     replyToMessageId:
-                      replyingToTelegramMessageId,
+                      telegramReplyId,
                   }
                 : {}),
             }
@@ -8459,7 +8526,7 @@ async function handleSendMessage(
                 .platform_user_id,
             message,
             clientRequestId: tempId,
-            ...(replyingToFacebookMessageId ? { replyToMessageId: replyingToFacebookMessageId } : {}),
+            ...(facebookReplyId ? { replyToMessageId: facebookReplyId } : {}),
           };
 
   const pending:
@@ -8501,7 +8568,7 @@ async function handleSendMessage(
     });
 
   const replyTarget = resolvePhotoReplyTarget(liveMessagesRef.current,
-    conversationPlatform === "telegram" ? replyingToTelegramMessageId : replyingToFacebookMessageId, activeConversation.id);
+    conversationPlatform === "telegram" ? telegramReplyId : facebookReplyId, activeConversation.id);
   if (replyTarget && !isCommentReply) {
     optimisticMessage.raw_payload = { ...(optimisticMessage.raw_payload ?? {}),
       ...(conversationPlatform === "facebook" ? { reply_to: { mid: replyTarget.platform_message_id } } : {}),
@@ -8540,6 +8607,8 @@ async function handleSendMessage(
   setSendError(null);
 
   let sent: boolean;
+  // Shown as "Sending" already; wait for the items queued before it.
+  if (options?.startAfter) await options.startAfter.catch(() => undefined);
   try { sent = await performOptimisticSend(pending); }
   finally { textSubmissionsRef.current.delete(submissionKey); }
   if (!sent && recoverFacebookQuote) {

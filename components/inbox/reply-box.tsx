@@ -100,9 +100,15 @@ type ReplyBoxProps = {
     capturedMessage?: string,
   ) => void | Promise<void>;
 
+  /*
+   * `text` is everything typed; the parent decides whether it travels as a
+   * Telegram caption or follows the media as its own message. `onQueued` fires
+   * once every outgoing item has its own bubble on screen.
+   */
   onSendAttachments?: (
     attachments: ReplyAttachment[],
-    caption?: string,
+    text?: string,
+    options?: { onQueued?: () => void },
   ) => Promise<boolean>;
 
   /*
@@ -278,7 +284,6 @@ export function ReplyBox({
   onReplyChange,
   onSubmit,
   onSendAttachments,
-  canCaptionAttachments = false,
   attachmentsBlockedReason = null,
   showAttachmentsBlockedNotice = true,
   onStatusChange,
@@ -535,9 +540,19 @@ export function ReplyBox({
           const blob =
             await fileResponse.blob();
 
+          /*
+           * A saved voice clip goes out as a native voice message, not a music
+           * file: the "voice-message-" name is the contract the recorder
+           * already uses, which Telegram's send path maps to sendVoice. The
+           * extension is kept so the format check still sees MP3/M4A/OGG.
+           */
+          const extension =
+            /\.[a-z0-9]{2,5}$/i.exec(saved.name ?? "")?.[0] ?? "";
           const file = new File(
             [blob],
-            saved.name || "attachment",
+            saved.kind === "audio"
+              ? `voice-message-${Date.now()}${extension}`
+              : saved.name || "attachment",
             {
               type:
                 saved.mimeType || blob.type,
@@ -1676,7 +1691,6 @@ export function ReplyBox({
       event.preventDefault();
       void sendAttachments(
         postSendStatus,
-        event,
       );
       return;
     }
@@ -1687,9 +1701,6 @@ export function ReplyBox({
   async function sendAttachments(
     postSendStatus:
       | ConversationStatus
-      | null = null,
-    submitEvent:
-      | FormEvent<HTMLFormElement>
       | null = null,
   ) {
     if (
@@ -1703,36 +1714,19 @@ export function ReplyBox({
     setSendingContent(true);
 
     /*
-     * On Telegram the typed message travels with the media as the album's
-     * caption, so photo + video + text arrives as one message instead of
-     * three. Telegram caps a caption at 1024 characters, and anything longer
-     * still has to follow as its own message -- there is no other way for it
-     * to arrive.
+     * Empty the composer the moment sending starts.
      *
-     * Messenger albums have no caption field, so the text follows as its own
-     * message there however this is written.
-     */
-    const canCaption =
-      canCaptionAttachments &&
-      reply.trim().length > 0 &&
-      reply.trim().length <= 1024;
-
-    const caption = canCaption
-      ? reply.trim()
-      : undefined;
-
-    /*
-     * Empty the composer the moment sending starts, and put it back if the
-     * send fails.
-     *
-     * The attachments and the typed message used to sit there through the whole
-     * upload, so a slow send looked like nothing had happened and invited a
-     * second press. Clearing straight away matches what the thread already
-     * does -- the optimistic bubble is there before the request finishes -- and
-     * restoring on failure means nothing is lost when it does not.
+     * The parent puts a "Sending" bubble on screen for every item -- each
+     * photo, the video or voice clip, and the text -- before any upload
+     * starts, then reports each one's success or failure on that bubble with
+     * its own Retry. Once that has happened (onQueued), the composer must never
+     * be refilled: a second copy here plus a failed bubble there was how a
+     * partial failure became a duplicate. The composer is only restored when
+     * nothing was queued at all, i.e. the send was refused before it began.
      */
     const sentAttachments = attachments;
     const sentReply = reply;
+    let queued = false;
 
     setAttachments([]);
     onReplyChange("");
@@ -1741,75 +1735,38 @@ export function ReplyBox({
       const success =
         await onSendAttachments(
           sentAttachments,
-          caption,
+          sentReply.trim() || undefined,
+          { onQueued: () => { queued = true; } },
         );
 
-      if (!success) {
+      if (!success && !queued) {
         setAttachments(sentAttachments);
-
         onReplyChange(sentReply);
+        pendingPostSendStatusRef.current = null;
+        return;
       }
 
-      if (success) {
-        for (const attachment of sentAttachments) {
-          URL.revokeObjectURL(
-            attachment.previewUrl,
-          );
-        }
+      for (const attachment of sentAttachments) {
+        URL.revokeObjectURL(
+          attachment.previewUrl,
+        );
+      }
 
-        /* Sent as the caption already; nothing more to send. */
-        if (canCaption) {
-          pendingPostSendStatusRef.current =
-            null;
+      pendingPostSendStatusRef.current = null;
 
-          if (
-            postSendStatus &&
-            onStatusChange
-          ) {
-            onStatusChange(postSendStatus);
-          }
-
-          return;
-        }
-
-        /*
-         * If the agent also typed a message, send it right after the
-         * attachments instead of leaving it in the box. The parent submit
-         * handler receives the captured text and drives `sending`,
-         * so the existing sending-finished effect applies any Send & close /
-         * Send & pending status after the text goes out.
-         */
-        if (
-          submitEvent &&
-          sentReply.trim()
-        ) {
-          pendingPostSendStatusRef.current =
-            postSendStatus;
-          await onSubmit(submitEvent, sentReply);
-          return;
-        }
-
-        pendingPostSendStatusRef.current =
-          null;
-
-        if (
-          postSendStatus &&
-          onStatusChange
-        ) {
-          onStatusChange(
-            postSendStatus,
-          );
-          setSendMode("now");
-        }
-      } else {
-        pendingPostSendStatusRef.current =
-          null;
+      if (
+        postSendStatus &&
+        onStatusChange
+      ) {
+        onStatusChange(postSendStatus);
+        setSendMode("now");
       }
     } catch (sendError) {
-      /* Give the agent back exactly what they were about to send. */
-      setAttachments(sentAttachments);
-
-      onReplyChange(sentReply);
+      if (!queued) {
+        /* Give the agent back exactly what they were about to send. */
+        setAttachments(sentAttachments);
+        onReplyChange(sentReply);
+      }
 
       console.error(
         "Unable to send attachments:",
@@ -1817,7 +1774,9 @@ export function ReplyBox({
       );
 
       window.alert(
-        "Unable to send attachments.",
+        queued
+          ? "Some items could not be sent. Use Retry on the failed message."
+          : "Unable to send attachments.",
       );
     } finally {
       setSendingContent(false);

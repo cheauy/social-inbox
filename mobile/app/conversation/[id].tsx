@@ -2737,7 +2737,17 @@ function ConversationScreen() {
       return;
     }
 
-    const withUrls = reply.attachments.filter((item) => item.url);
+    // Voice-message quick replies are sent from the web Inbox for now. Leaving
+    // them out is honest; the phone's staging treats every non-video file as a
+    // photo, so including one would fail the whole send.
+    const sendable = reply.attachments.filter((item) => item.kind === "image" || item.kind === "video");
+    const skippedVoice = reply.attachments.length - sendable.length;
+
+    if (skippedVoice > 0) {
+      setError("This quick reply's voice message can only be sent from the web Inbox. Its text and other media are added.");
+    }
+
+    const withUrls = sendable.filter((item) => item.url);
 
     if (withUrls.length === 0) {
       return;

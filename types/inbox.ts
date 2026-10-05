@@ -27,7 +27,8 @@ export type TeamMember = {
 
 export type SavedReplyAttachmentType =
   | "image"
-  | "video";
+  | "video"
+  | "audio";
 
 /*
  * Quick reply media, as stored in saved_replies.attachments.

@@ -146,6 +146,22 @@ function ImageIcon() {
   );
 }
 
+/* Mirrors the server's list: formats that send as native voice on both channels. */
+function isVoiceUploadFile(file: File) {
+  const type = file.type.split(";")[0].trim().toLowerCase();
+  if (["audio/ogg", "audio/opus", "audio/mpeg", "audio/mp3", "audio/mp4", "audio/x-m4a", "audio/m4a"].includes(type)) return true;
+  return !type && /\.(?:mp3|m4a|ogg|opus)$/i.test(file.name);
+}
+
+function VoiceIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function VideoIcon() {
   return (
     <svg
@@ -220,6 +236,8 @@ export function SavedReplyFormModal({
 
   const videoInputRef =
     useRef<HTMLInputElement | null>(null);
+  const audioInputRef =
+    useRef<HTMLInputElement>(null);
 
   const [emojiOpen, setEmojiOpen] =
     useState(false);
@@ -259,6 +277,36 @@ export function SavedReplyFormModal({
         (attachment) =>
           attachment.attachmentType === "video",
       ).length;
+
+    const currentAudio =
+      value.existingAttachments.filter(
+        (attachment) =>
+          attachment.kind === "audio",
+      ).length +
+      value.newAttachments.filter(
+        (attachment) =>
+          attachment.attachmentType === "audio",
+      ).length;
+
+    /*
+     * One voice message, sent on its own after the text and images. It cannot
+     * share a reply with a video, the same rule the server applies.
+     */
+    if (attachmentType === "audio" && (currentAudio > 0 || currentVideos > 0)) {
+      window.alert(
+        currentAudio > 0
+          ? "A quick reply can include one voice message. Remove the current one first."
+          : "A quick reply can include a voice message or a video, not both.",
+      );
+
+      return;
+    }
+
+    if (attachmentType === "video" && currentAudio > 0) {
+      window.alert("This quick reply has a voice message. Remove it before adding a video.");
+
+      return;
+    }
 
     /*
      * Images or one video, never a mix. Both channels send video on its own and
@@ -300,9 +348,11 @@ export function SavedReplyFormModal({
             ? file.type.startsWith(
                 "image/",
               )
-            : file.type.startsWith(
-                "video/",
-              );
+            : attachmentType === "audio"
+              ? isVoiceUploadFile(file)
+              : file.type.startsWith(
+                  "video/",
+                );
 
         return (
           validType &&
@@ -315,7 +365,9 @@ export function SavedReplyFormModal({
       selectedFiles.length
     ) {
       window.alert(
-        `Some files were rejected. Each ${attachmentType} must be under 20 MB and in a format both Messenger and Telegram accept.`,
+        attachmentType === "audio"
+          ? "That audio was not added. Use MP3, M4A or OGG/Opus under 20 MB: those send as a native voice message on Messenger and Telegram. WAV and WebM cannot be sent as Telegram voice."
+          : `Some files were rejected. Each ${attachmentType} must be under 20 MB and in a format both Messenger and Telegram accept.`,
       );
     }
 
@@ -365,6 +417,17 @@ export function SavedReplyFormModal({
     addFiles(
       event.target.files,
       "image",
+    );
+
+    event.target.value = "";
+  }
+
+  function handleAudioChange(
+    event: ChangeEvent<HTMLInputElement>,
+  ) {
+    addFiles(
+      event.target.files,
+      "audio",
     );
 
     event.target.value = "";
@@ -757,8 +820,8 @@ export function SavedReplyFormModal({
                   </div>
                   <p className="mt-1 text-sm text-slate-500">
                     {isKhmer
-                      ? "បន្ថែមរូបភាព ឬវីដេអូទៅការឆ្លើយតបរហ័សនេះ។"
-                      : "Add images or videos to this quick reply."}
+                      ? "បន្ថែមរូបភាព វីដេអូ ឬសារជាសំឡេងទៅការឆ្លើយតបរហ័សនេះ។"
+                      : "Add images, a video or a voice message to this quick reply."}
                   </p>
                 </div>
 
@@ -782,6 +845,16 @@ export function SavedReplyFormModal({
                     <VideoIcon />
                     {isKhmer ? "បន្ថែមវីដេអូ" : "Add videos"}
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => audioInputRef.current?.click()}
+                    disabled={saving}
+                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <VoiceIcon />
+                    {isKhmer ? "បន្ថែមសារជាសំឡេង" : "Add voice message"}
+                  </button>
                 </div>
 
                 <input
@@ -798,6 +871,13 @@ export function SavedReplyFormModal({
                   accept="video/*"
                   multiple
                   onChange={handleVideoChange}
+                  className="hidden"
+                />
+                <input
+                  ref={audioInputRef}
+                  type="file"
+                  accept=".mp3,.m4a,.ogg,.opus,audio/mpeg,audio/mp4,audio/x-m4a,audio/ogg,audio/opus"
+                  onChange={handleAudioChange}
                   className="hidden"
                 />
 
@@ -834,6 +914,8 @@ export function SavedReplyFormModal({
                                 path={attachment.path}
                                 alt={existingDisplayName(attachment)}
                               />
+                            ) : attachmentType === "audio" ? (
+                              <VoiceIcon />
                             ) : (
                               <VideoIcon />
                             )}
@@ -844,8 +926,8 @@ export function SavedReplyFormModal({
                             </p>
                             <p className="mt-1 text-xs text-slate-400">
                               {isKhmer
-                                ? `${attachmentType === "image" ? "រូបភាព" : "វីដេអូ"}ដែលមានស្រាប់`
-                                : `Existing ${attachmentType}`}
+                                ? `${attachmentType === "image" ? "រូបភាព" : attachmentType === "audio" ? "សារជាសំឡេង" : "វីដេអូ"}ដែលមានស្រាប់`
+                                : attachmentType === "audio" ? "Existing voice message" : `Existing ${attachmentType}`}
                             </p>
                           </div>
                           <button
@@ -873,6 +955,8 @@ export function SavedReplyFormModal({
                               alt={attachment.file.name}
                               className="h-full w-full object-cover"
                             />
+                          ) : attachment.attachmentType === "audio" ? (
+                            <VoiceIcon />
                           ) : (
                             <VideoIcon />
                           )}
@@ -883,9 +967,12 @@ export function SavedReplyFormModal({
                           </p>
                           <p className="mt-1 text-xs text-slate-400">
                             {isKhmer
-                              ? `${attachment.attachmentType === "image" ? "រូបភាព" : "វីដេអូ"}ថ្មី`
-                              : `New ${attachment.attachmentType}`}
+                              ? `${attachment.attachmentType === "image" ? "រូបភាព" : attachment.attachmentType === "audio" ? "សារជាសំឡេង" : "វីដេអូ"}ថ្មី`
+                              : attachment.attachmentType === "audio" ? "New voice message" : `New ${attachment.attachmentType}`}
                           </p>
+                          {attachment.attachmentType === "audio" ? (
+                            <audio controls preload="metadata" src={attachment.previewUrl} className="mt-2 h-8 w-full" />
+                          ) : null}
                         </div>
                         <button
                           type="button"

@@ -45,6 +45,7 @@ export const SAVED_REPLY_MEDIA_MAX_BYTES =
  */
 export const SAVED_REPLY_MAX_IMAGES = 10;
 export const SAVED_REPLY_MAX_VIDEOS = 1;
+export const SAVED_REPLY_MAX_AUDIO = 1;
 
 const IMAGE_TYPES = new Set([
   "image/jpeg",
@@ -58,6 +59,41 @@ const VIDEO_TYPES = new Set([
   "video/quicktime",
   "video/webm",
 ]);
+
+/*
+ * Audio a quick reply can deliver as a native voice message on both channels:
+ * Telegram's sendVoice takes OGG/Opus, MP3 and M4A, and Messenger plays all
+ * three (OGG is converted in the browser first). WAV and WebM are refused at
+ * upload rather than saved: Telegram cannot send either as voice, and a reply
+ * that only fails at send time is worse than one that was never accepted.
+ */
+const AUDIO_TYPES = new Set([
+  "audio/ogg",
+  "audio/opus",
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/mp4",
+  "audio/x-m4a",
+  "audio/m4a",
+]);
+
+const AUDIO_EXTENSIONS: Record<string, string> = {
+  ogg: "audio/ogg",
+  opus: "audio/ogg",
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+};
+
+/* Some systems report no type for .m4a/.opus; trust the extension for audio only. */
+export function savedReplyMimeType(file: { type: string; name: string }) {
+  const declared = file.type.split(";")[0].trim().toLowerCase();
+  if (declared) return declared;
+  const extension = file.name.toLowerCase().split(".").pop() ?? "";
+  return AUDIO_EXTENSIONS[extension] ?? "";
+}
+
+export const SAVED_REPLY_AUDIO_UNSUPPORTED =
+  "Use MP3, M4A or OGG/Opus audio. Those send as a native voice message on Messenger and Telegram; WAV and WebM cannot be sent as Telegram voice.";
 
 /* One shape for this, shared with the client through types/inbox. */
 export type {
@@ -80,11 +116,15 @@ export function attachmentKindFor(
     return "video";
   }
 
+  if (AUDIO_TYPES.has(normalized)) {
+    return "audio";
+  }
+
   return null;
 }
 
 export function supportedMediaTypes() {
-  return [...IMAGE_TYPES, ...VIDEO_TYPES];
+  return [...IMAGE_TYPES, ...VIDEO_TYPES, ...AUDIO_TYPES];
 }
 
 /** Storage paths are the workspace boundary, so check the prefix on every read. */
@@ -122,7 +162,8 @@ export function parseAttachments(
         : "";
     const kind =
       item.kind === "image" ||
-      item.kind === "video"
+      item.kind === "video" ||
+      item.kind === "audio"
         ? item.kind
         : null;
 
@@ -147,7 +188,9 @@ export function parseAttachments(
           ? item.mimeType
           : kind === "image"
             ? "image/jpeg"
-            : "video/mp4",
+            : kind === "audio"
+              ? "audio/mpeg"
+              : "video/mp4",
     });
   }
 
@@ -197,6 +240,19 @@ export function validateAttachments(
 
   if (images > SAVED_REPLY_MAX_IMAGES) {
     return `A quick reply can include up to ${SAVED_REPLY_MAX_IMAGES} images.`;
+  }
+
+  const audio = attachments.filter(
+    (attachment) =>
+      attachment.kind === "audio",
+  ).length;
+
+  if (audio > SAVED_REPLY_MAX_AUDIO) {
+    return "A quick reply can include one voice message.";
+  }
+
+  if (audio > 0 && videos > 0) {
+    return "A quick reply can include a voice message or a video, not both.";
   }
 
   return null;
