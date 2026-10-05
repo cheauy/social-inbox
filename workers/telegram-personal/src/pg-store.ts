@@ -1,6 +1,6 @@
 import pg from "pg";
 import type { LoginInputKind } from "./crypto.ts";
-import type { ClaimedSession, Command, Fence, FinishedSend, Identity, IngestOutcome, IngestResult, IngestRow, LoginPatch, SessionStatus, SharedChat, Store, WorkerPatch } from "./store.ts";
+import type { AutoShareResult, ClaimedSession, Command, Fence, FinishedSend, Identity, IngestOutcome, IngestResult, IngestRow, LoginPatch, SessionStatus, SharedChat, Store, WorkerPatch } from "./store.ts";
 
 // Postgres "undefined function": the D1 SQL is not installed yet.
 const isMissingFunction = (error: unknown) => (error as { code?: string } | null)?.code === "42883";
@@ -157,6 +157,21 @@ export class PgStore implements Store {
       if (!isMissingFunction(error)) throw error;
       this.d1Available = false;
       return { result: "UNAVAILABLE", messageId: null };
+    }
+  }
+
+  private autoShareAvailable = true;
+
+  async autoShareChat(f: Fence, chatId: string, title: string, username: string | null): Promise<AutoShareResult> {
+    if (!this.autoShareAvailable) return "UNAVAILABLE";
+    try {
+      const row = await this.one<{ result: AutoShareResult }>("select public.tgp_worker_auto_share($1,$2,$3,$4,$5,$6) as result",
+        [f.sessionId, f.workerId, f.epoch, chatId, title, username]);
+      return row?.result ?? "UNAVAILABLE";
+    } catch (error) {
+      if (!isMissingFunction(error)) throw error;
+      this.autoShareAvailable = false; // auto-share SQL not installed yet
+      return "UNAVAILABLE";
     }
   }
 

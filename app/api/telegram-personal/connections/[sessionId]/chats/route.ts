@@ -58,6 +58,9 @@ export async function GET(request: NextRequest, context: Context) {
       .eq("social_account_id", session.social_account_id),
   ]);
   if (chats.error || waiting.error) return jsonError("Unable to load shared chats.", 500, "LOAD_FAILED");
+  // Read separately: before the automatic-sharing SQL is installed the column does not exist.
+  const auto = await supabaseAdmin.from("telegram_personal_sessions").select("auto_share").eq("id", session.id).maybeSingle();
+  const autoShare = !auto.error && (auto.data as { auto_share?: boolean } | null)?.auto_share === true;
   return NextResponse.json(
     {
       success: true,
@@ -66,6 +69,8 @@ export async function GET(request: NextRequest, context: Context) {
         sharedAt: chat.shared_at, lastMessageAt: chat.last_message_at, unread: chat.unread_count, history: chat.history_import,
       })),
       waitingCount: waiting.count ?? 0,
+      autoShare,
+      autoShareAvailable: !auto.error,
     },
     { headers: NO_STORE },
   );
@@ -75,6 +80,7 @@ export async function GET(request: NextRequest, context: Context) {
  * { action: "list" }                         ask the worker for recent one-to-one chats
  * { action: "share", chatId, history }       share one listed chat (history: none | last_50)
  * { action: "dismiss_waiting" }              clear the waiting-chats count
+ * { action: "auto_share", enabled }         share every one-to-one chat automatically (new messages only)
  */
 export async function POST(request: NextRequest, context: Context) {
   const { sessionId } = await context.params;
@@ -82,7 +88,7 @@ export async function POST(request: NextRequest, context: Context) {
   if ("response" in result) return result.response;
   const { auth, session } = result;
 
-  let body: { action?: unknown; chatId?: unknown; history?: unknown };
+  let body: { action?: unknown; chatId?: unknown; history?: unknown; enabled?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -110,6 +116,18 @@ export async function POST(request: NextRequest, context: Context) {
         : jsonError("You cannot share chats for this account.", 403, outcome?.code ?? "FORBIDDEN");
     }
     return NextResponse.json({ success: true, chatRowId: outcome.chat_row_id });
+  }
+
+  if (body.action === "auto_share") {
+    if (typeof body.enabled !== "boolean") return jsonError("Invalid request.", 400, "INVALID_REQUEST");
+    const { data, error } = await supabaseAdmin.rpc("tgp_set_auto_share", { ...ids, p_enabled: body.enabled });
+    if (error) {
+      return error.code === "42883" || error.code === "PGRST202"
+        ? jsonError("Automatic sharing is not installed yet.", 409, "NOT_INSTALLED")
+        : jsonError("Unable to change automatic sharing.", 500, "REQUEST_FAILED");
+    }
+    if (data !== "OK") return jsonError("Connect the account first.", 409, "NOT_CONNECTED");
+    return NextResponse.json({ success: true, autoShare: body.enabled });
   }
 
   if (body.action === "dismiss_waiting") {

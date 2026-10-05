@@ -23,7 +23,7 @@ import {
   type Store,
 } from "./store.ts";
 import { tdErrorDetails, type TdClient, type TdClientFactory, type TdObject } from "./tdlib-port.ts";
-import { listPrivateChats, loadHistory, mapMessage } from "./chats.ts";
+import { listPrivateChats, loadHistory, mapMessage, personChat } from "./chats.ts";
 import type { Command, SharedChat } from "./store.ts";
 import { OperationTimeoutError, withTimeout } from "./timeout.ts";
 
@@ -523,13 +523,39 @@ export class SessionRunner {
     if (!row) return;
     const chatId = Number(row.chatId);
     if (chatId === this.myUserId || !(await this.isPrivateChat(chatId))) return; // Saved Messages, groups, channels
-    // Outgoing messages in unshared chats are not even counted.
-    if (row.direction === "outgoing" && !this.sharedChats.has(row.chatId)) return;
+    if (!this.sharedChats.has(row.chatId) && (await this.tryAutoShare(row.chatId))) {
+      // Newly shared by the holder's automatic sharing: this message is the first one stored.
+    } else if (row.direction === "outgoing" && !this.sharedChats.has(row.chatId)) {
+      return; // Outgoing messages in unshared chats are not even counted.
+    }
     const { result } = await this.store.ingestMessage(this.fence, { ...row, countUnread: true });
     // Result only: never the text, the name or the chat id.
     this.logEvent(result === "INSERTED" || result === "DUPLICATE" || result === "NOT_SHARED" ? "info" : "warn",
       "chat_message", { direction: row.direction, result });
     if (result === "LEASE_LOST") return this.lostLease();
+  }
+
+  /** Automatic sharing (holder switch). True when the chat is now shared. */
+  private async tryAutoShare(chatId: string) {
+    let person: { title: string; username: string | null } | null;
+    try {
+      person = await personChat((request, operation) => this.invoke(request, this.config.loginStepTimeoutMs, operation), Number(chatId), this.myUserId);
+    } catch {
+      return false;
+    }
+    if (!person) return false; // bots, Telegram service, Saved Messages
+    const result = await this.store.autoShareChat(this.fence, chatId, person.title, person.username);
+    if (result === "LEASE_LOST") {
+      await this.lostLease();
+      return false;
+    }
+    if (result !== "SHARED") return false;
+    // Nothing older than this moment is imported: mark the chat caught up.
+    this.caughtUp.add(chatId);
+    this.sharedChats.set(chatId, { chatId, rowId: "", lastMessageAt: null, sharedAt: new Date().toISOString() });
+    this.sharesDirty = true;
+    this.logEvent("info", "chat_auto_shared", {});
+    return true;
   }
 
   private async importHistory(chatId: string, limit: number, reason: string, after: string | null = null) {

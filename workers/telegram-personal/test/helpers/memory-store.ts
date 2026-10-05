@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { LoginInputKind } from "../../src/crypto.ts";
-import type { FinishedSend, IngestOutcome, IngestRow, SharedChat } from "../../src/store.ts";
+import type { AutoShareResult, FinishedSend, IngestOutcome, IngestRow, SharedChat } from "../../src/store.ts";
 import {
   isOpenLogin,
   isTerminal,
@@ -46,7 +46,7 @@ export class MemoryStore implements Store {
   readonly logins = new Map<string, Login>();
   readonly commands: Array<{ id: string; sessionId: string; kind: Command["kind"]; status: string; payload?: Record<string, unknown>; result?: unknown; errorCode?: string | null; tempMessageId?: number; messageId?: string | null }> = [];
   // D1 mirror: shares keyed by session id (one account per session here), messages and waiting chats.
-  readonly shares = new Map<string, Map<string, { rowId: string; unshared: boolean; lastReadAt: number; lastMessageAt: string | null; sharedAt: string; preview: string | null; unread: number }>>();
+  readonly shares = new Map<string, Map<string, { rowId: string; unshared: boolean; lastReadAt: number; lastMessageAt: string | null; sharedAt: string; preview: string | null; unread: number; title?: string }>>();
   readonly messages: Array<IngestRow & { sessionId: string; id: string }> = [];
   readonly unshared = new Map<string, Set<string>>();
   ingestCalls = 0;
@@ -121,6 +121,15 @@ export class MemoryStore implements Store {
     this.commands.push(command);
     this.wake?.(id);
     return command;
+  }
+
+  /** What tgp_set_auto_share does (holder checks are tested in SQL). */
+  readonly autoShare = new Set<string>();
+  setAutoShare(id: string, enabled: boolean) {
+    if (enabled) this.autoShare.add(id);
+    else this.autoShare.delete(id);
+    this.unshared.delete(id);
+    this.wake?.(id);
   }
 
   unshareChat(id: string, chatId: string) {
@@ -307,6 +316,18 @@ export class MemoryStore implements Store {
     }
     if (row.direction === "incoming" && row.countUnread !== false) share.unread += 1;
     return { result: "INSERTED", messageId: id };
+  }
+
+  async autoShareChat(f: Fence, chatId: string, title: string): Promise<AutoShareResult> {
+    if (!this.holds(f)) return "LEASE_LOST";
+    if (!this.autoShare.has(f.sessionId)) return "OFF";
+    const map = this.shares.get(f.sessionId) ?? new Map();
+    this.shares.set(f.sessionId, map);
+    const existing = map.get(chatId);
+    if (existing) return existing.unshared ? "EXCLUDED" : "SHARED";
+    map.set(chatId, { rowId: randomUUID(), unshared: false, lastReadAt: Date.now(), lastMessageAt: null, sharedAt: new Date().toISOString(), preview: null, unread: 0, title });
+    this.unshared.get(f.sessionId)?.delete(chatId);
+    return "SHARED";
   }
 
   async sendBegin(f: Fence, commandId: string) {

@@ -122,6 +122,25 @@ export async function listPrivateChats(invoke: Invoke, myUserId: number | null, 
 }
 
 /**
+ * Title and username of a one-to-one chat with a real user, or null for
+ * anything else (groups, channels, bots, Saved Messages, Telegram service).
+ * Used by automatic sharing, with the same rules as the chat chooser.
+ */
+export async function personChat(invoke: Invoke, chatId: number, myUserId: number | null): Promise<{ title: string; username: string | null } | null> {
+  const chat = await invoke({ _: "getChat", chat_id: chatId }, "get_chat");
+  const type = chat.type as TdObject | undefined;
+  if (type?._ !== "chatTypePrivate") return null;
+  const userId = Number(type.user_id);
+  if (userId === myUserId || userId === TELEGRAM_SERVICE_USER_ID) return null;
+  const user = await invoke({ _: "getUser", user_id: userId }, "get_user");
+  if ((user.type as TdObject | undefined)?._ !== "userTypeRegular") return null;
+  return {
+    title: String(chat.title ?? "Telegram user").slice(0, 200),
+    username: ((user.usernames as { active_usernames?: string[] } | undefined)?.active_usernames ?? [])[0] ?? null,
+  };
+}
+
+/**
  * Up to `limit` most recent messages of one chat, newest first, in pages of at
  * most 50. With offset 0 TDLib starts each page at from_message_id itself, so
  * repeated ids are skipped.

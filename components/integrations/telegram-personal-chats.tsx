@@ -38,6 +38,8 @@ export function PersonalChatManager({ sessionId, channelId, canManage, canRemove
   const base = `/api/telegram-personal/connections/${sessionId}/chats`;
   const [shared, setShared] = useState<SharedChat[]>([]);
   const [waiting, setWaiting] = useState(0);
+  const [autoShare, setAutoShare] = useState(false);
+  const [autoShareAvailable, setAutoShareAvailable] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [listState, setListState] = useState<"idle" | "loading" | "ready" | "failed">("idle");
   const [listed, setListed] = useState<ListedChat[]>([]);
@@ -53,11 +55,13 @@ export function PersonalChatManager({ sessionId, channelId, canManage, canRemove
   const load = useCallback(() => {
     if (!canManage) return;
     void fetch(base, { cache: "no-store" })
-      .then((response) => (response.ok ? readJson<{ shared?: SharedChat[]; waitingCount?: number }>(response) : null))
+      .then((response) => (response.ok ? readJson<{ shared?: SharedChat[]; waitingCount?: number; autoShare?: boolean; autoShareAvailable?: boolean }>(response) : null))
       .then((data) => {
         if (!data) return;
         setShared(data.shared ?? []);
         setWaiting(data.waitingCount ?? 0);
+        setAutoShare(data.autoShare === true);
+        setAutoShareAvailable(data.autoShareAvailable === true);
       })
       .catch(() => undefined);
   }, [base, canManage]);
@@ -138,6 +142,24 @@ export function PersonalChatManager({ sessionId, channelId, canManage, canRemove
     onChanged?.();
   }
 
+  async function toggleAutoShare(enabled: boolean) {
+    setBusy(true);
+    setError(null);
+    const response = await fetch(base, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "auto_share", enabled }),
+    });
+    setBusy(false);
+    if (!response.ok) {
+      setError((await readJson<{ error?: string }>(response)).error ?? t("Request failed.", "សំណើបរាជ័យ។"));
+      return;
+    }
+    setAutoShare(enabled);
+    load();
+    onChanged?.();
+  }
+
   async function confirmRemoveData() {
     setBusy(true);
     const response = await fetch(`/api/telegram-personal/connections/${sessionId}`, {
@@ -157,6 +179,26 @@ export function PersonalChatManager({ sessionId, channelId, canManage, canRemove
 
   return (
     <div className="mt-3 space-y-3 border-t border-slate-100 pt-3">
+      {canManage && autoShareAvailable ? (
+        <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4"
+            checked={autoShare}
+            disabled={busy}
+            onChange={(event) => void toggleAutoShare(event.target.checked)}
+          />
+          <span className="text-xs text-slate-700">
+            <span className="block font-semibold text-slate-900">
+              {t("Share all my one-to-one chats automatically", "ចែករំលែកការជជែកមួយទល់មួយទាំងអស់ដោយស្វ័យប្រវត្តិ")}
+            </span>
+            {t(
+              "Each chat with a person appears in TENH when a new message arrives. Older messages are not copied. Groups, channels and bots stay out. Your team sees them only if Team access allows.",
+              "ការជជែកនីមួយៗជាមួយមនុស្សនឹងបង្ហាញក្នុង TENH នៅពេលមានសារថ្មី។ សារចាស់ៗមិនត្រូវបានចម្លងទេ។ ក្រុម ឆានែល និង bot មិនត្រូវបាននាំចូលទេ។ ក្រុមការងាររបស់អ្នកមើលឃើញតែនៅពេលការកំណត់ Team access អនុញ្ញាត។",
+            )}
+          </span>
+        </label>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         {canManage ? (
           <button type="button" onClick={() => void openChooser()} className="rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">

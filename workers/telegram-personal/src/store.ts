@@ -65,6 +65,8 @@ export type SharedChat = { chatId: string; rowId: string; lastMessageAt: string 
 
 export type IngestResult = "INSERTED" | "DUPLICATE" | "NOT_SHARED" | "NOT_LIVE" | "LEASE_LOST" | "UNAVAILABLE" | "INVALID";
 
+export type AutoShareResult = "SHARED" | "OFF" | "EXCLUDED" | "NOT_LIVE" | "LEASE_LOST" | "UNAVAILABLE";
+
 /** The ingest result and, in the unified inbox, the TENH message id. */
 export type IngestOutcome = { result: IngestResult; messageId: string | null };
 
@@ -104,6 +106,8 @@ export interface Store {
   sharedChats(fence: Fence): Promise<SharedChat[]>;
   /** Idempotent, fenced message ingest into the TENH inbox. */
   ingestMessage(fence: Fence, row: IngestRow): Promise<IngestOutcome>;
+  /** Automatic sharing: shares this chat if the holder switched it on (SHARED), else why not. */
+  autoShareChat(fence: Fence, chatId: string, title: string, username: string | null): Promise<AutoShareResult>;
   /** D2. claimed -> sending, BEFORE calling Telegram. A sending command is never claimed again. */
   sendBegin(fence: Fence, commandId: string): Promise<boolean>;
   /** D2. Records TDLib's temporary message id so the outcome can be matched after a restart. */

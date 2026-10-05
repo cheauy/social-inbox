@@ -421,3 +421,23 @@ test("remove imported data requires explicit confirmation", async () => {
   const agent = load("app/api/telegram-personal/connections/[sessionId]/route.ts", { db, userId: AGENT, role: "agent" });
   assert.equal((await agent.PATCH(json("PATCH", { action: "remove_data", confirm: "REMOVE_DATA" }), ctx())).status, 403);
 });
+
+test("automatic sharing: holder only, boolean input, state reported, not installed is explained", async () => {
+  const db = visibilityDb([ACC1]);
+  const req = (url, method = "GET", body) => Object.assign(new Request(url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined }), { nextUrl: new URL(url) });
+  const asOwner = load("app/api/telegram-personal/connections/[sessionId]/chats/route.ts", { db, userId: OTHER_OWNER });
+  assert.equal((await asOwner.POST(req("https://tenh.test/x", "POST", { action: "auto_share", enabled: true }), ctx())).status, 404);
+  const holder = load("app/api/telegram-personal/connections/[sessionId]/chats/route.ts", { db });
+  assert.equal((await holder.POST(req("https://tenh.test/x", "POST", { action: "auto_share", enabled: "yes" }), ctx())).status, 400);
+  db.rpcResults.tgp_set_auto_share = { data: "OK", error: null };
+  const on = await holder.POST(req("https://tenh.test/x", "POST", { action: "auto_share", enabled: true }), ctx());
+  assert.equal(on.status, 200);
+  const call = db.rpcCalls.find((c) => c.name === "tgp_set_auto_share");
+  assert.deepEqual([call.args.p_user, call.args.p_business, call.args.p_enabled], [HOLDER, B1, true]);
+  db.rpcResults.tgp_set_auto_share = { data: null, error: { code: "42883" } };
+  const missing = await holder.POST(req("https://tenh.test/x", "POST", { action: "auto_share", enabled: true }), ctx());
+  assert.equal((await missing.json()).code, "NOT_INSTALLED");
+  db.tables.telegram_personal_sessions[0].auto_share = true;
+  const state = await (await holder.GET(req("https://tenh.test/x"), ctx())).json();
+  assert.deepEqual([state.autoShare, state.autoShareAvailable], [true, true]);
+});

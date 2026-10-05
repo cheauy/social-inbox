@@ -183,6 +183,7 @@ test("PgStore + unified inbox SQL: receive into the inbox, holder-only send, at 
       "db/proposals/20261021_telegram_personal_d1.sql",
       "tests/sql/live-inbox-functions-20261005.sql",
       "db/proposals/20261022_telegram_personal_unified_inbox.sql",
+      "db/proposals/20261023_telegram_personal_auto_share.sql",
     ]) await sql.query(readFileSync(`${repo}/${file}`, "utf8"));
     await sql.query(`insert into businesses(id) values ($1)`, [B1]);
     await sql.query(`insert into team_members(id,business_id,user_id,role) values ($1,$2,$3,'owner'),($4,$2,$5,'agent')`, [M1, B1, U1, M3, U3]);
@@ -236,6 +237,14 @@ test("PgStore + unified inbox SQL: receive into the inbox, holder-only send, at 
     assert.equal(await silentState(), "uncertain");
     await new Promise((resolve) => setTimeout(resolve, 200));
     assert.equal(tg.requests.filter((r) => r._ === "sendMessage").length, 2, "the uncertain send is never retried");
+
+    // Automatic sharing: a message from a new person brings the chat in; a bot does not.
+    assert.equal((await sql.query(`select tgp_set_auto_share($1,$2,$3,true) as r`, [a, B1, U1])).rows[0].r, "OK");
+    tg.receive(FakeTelegram.textMessage(6001, 1, "bot says", { date: later }));
+    tg.receive(FakeTelegram.textMessage(5002, 77, "new person", { date: later }));
+    await waitFor(async () => Number((await sql.query(`select count(*) from conversations where platform = 'telegram_personal'`)).rows[0].count) === 2, 3000, "auto-shared");
+    assert.equal((await sql.query(`select count(*)::int as n from messages where message_text = 'bot says'`)).rows[0].n, 0);
+    assert.equal((await sql.query(`select title from telegram_personal_chats where chat_id = '5002'`)).rows[0].title, "Customer B");
   } finally {
     await h.cleanup();
     await store.end();

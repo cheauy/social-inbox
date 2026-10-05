@@ -113,3 +113,17 @@ Not verified yet:
 - **Read receipts.** Telegram read receipts are never sent. Marking read in TENH does not mark read in Telegram.
 - **Reconnecting** starts team access at "Only me" again.
 - **Rate limits are per account** (1/s, 20/min). A rejected send says so and nothing is sent.
+
+## Automatic sharing (owner decision 2026-10-05: all 1-to-1 chats, new messages only)
+
+SQL: `db/proposals/20261023_telegram_personal_auto_share.sql` (install after 20261022; one script, nothing highlighted).
+
+- Switch in **Integrations → Telegram → Share all my one-to-one chats automatically**. Holder only, off by default, and off again after reconnecting.
+- When on, a chat with a real person appears in TENH when a new message arrives in it, in either direction. Nothing older is copied.
+- Groups, channels, bots, Saved Messages and the Telegram service account stay out.
+- A chat you stop sharing stays stopped. If you delete its history, a nameless marker keeps it out.
+- **Remove imported data** also switches automatic sharing off.
+- Teammates still see these chats only if Team access allows.
+- Limitation: if a brand-new person messages you while the worker is stopped, that chat appears with their next message after the worker is running.
+
+Tests: SQL assertions (installed twice, editor-split install), 4 worker tests (fake TDLib), the real-SQL integration test (bot ignored, new person shared), and a web route test.
