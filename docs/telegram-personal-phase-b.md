@@ -123,9 +123,12 @@ Feature flag still off; no worker running; no Telegram session exists.
   web app on localhost with the flag allowlisted to the owner workspace.
   First sign-in attempt stalled only because the worker process had been
   stopped; after restarting it, **QR sign-in with the owner's own account
-  succeeded** against real Telegram. Pending checks: Devices entry, restart
-  (reconnecting → connected, clean shutdown), pause/resume, sign-out, remote
-  termination. No messages ingested or sent (Phase D).
+  succeeded** against real Telegram. Owner-verified: Devices entry, worker
+  restart (reconnecting → connected, clean shutdown), pause/resume, sign-out.
+  Remote termination from the phone was **not detected** at first (idle TDLib
+  session); fixed with a 60 s authorization probe + 15 s card refresh — owner
+  re-test pending. Ended cards are now hidden once a newer session exists.
+  No messages ingested or sent (Phase D).
 
 ## Live preflight results (2026-10-05, read-only, run by the owner)
 

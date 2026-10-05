@@ -238,3 +238,15 @@ test("public connection view hides secrets and narrows identity for agents", asy
   assert.deepEqual(conn.can, { useLogin: false, pause: false, resume: false, disconnect: false, setTeamAccess: false });
   assert.ok(!JSON.stringify(body).includes("SECRET"));
 });
+
+test("ended sessions are hidden once a newer session exists for the same account or holder", () => {
+  const { selectVisibleSessions } = loader({ "@/lib/supabase/admin": { supabaseAdmin: {} }, "qrcode": {} }, { Buffer })("lib/telegram-personal/server.ts");
+  const rows = [ // newest first
+    { id: "new", holder_user_id: HOLDER, status: "connected", telegram_user_id: "7001" },
+    { id: "old-signed-out", holder_user_id: HOLDER, status: "disconnected", telegram_user_id: "7001" },
+    { id: "old-expired-attempt", holder_user_id: HOLDER, status: "expired", telegram_user_id: null },
+    { id: "other-owner-ended", holder_user_id: OTHER_OWNER, status: "revoked", telegram_user_id: "7002" },
+  ];
+  assert.deepEqual([...selectVisibleSessions(rows).map((r) => r.id)], ["new", "other-owner-ended"]);
+  assert.deepEqual([...selectVisibleSessions([rows[1]]).map((r) => r.id)], ["old-signed-out"], "an ended session alone stays visible");
+});

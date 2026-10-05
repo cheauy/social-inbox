@@ -82,17 +82,41 @@ export function toPublicConnection(row: PersonalSessionRow, actor: PersonalActor
   };
 }
 
+const TERMINAL_STATUSES = ["cancelled", "expired", "failed", "revoked", "disconnected"];
+
+/**
+ * Ended sessions stay visible for 24h so the owner can see what happened
+ * (expired, ended in Telegram...), but only until a newer session exists for
+ * the same Telegram account, or for the same holder when the ended attempt
+ * never reached an identity. Rows must be ordered newest first.
+ */
+export function selectVisibleSessions<T extends { holder_user_id: string; status: string; telegram_user_id?: string | null }>(rows: T[]) {
+  const seenAccounts = new Set<string>();
+  const seenHolders = new Set<string>();
+  const visible: T[] = [];
+  for (const row of rows) {
+    const ended = TERMINAL_STATUSES.includes(row.status);
+    const account = row.telegram_user_id ?? null;
+    const superseded = ended && (account ? seenAccounts.has(account) : seenHolders.has(row.holder_user_id));
+    if (!superseded) visible.push(row);
+    if (account) seenAccounts.add(account);
+    seenHolders.add(row.holder_user_id);
+  }
+  return visible;
+}
+
 export async function loadVisibleSessions(businessId: string) {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabaseAdmin
     .from("telegram_personal_sessions")
-    .select(SESSION_PUBLIC_SELECT)
+    // telegram_user_id is read only to group sessions; toPublicConnection never returns it.
+    .select(`${SESSION_PUBLIC_SELECT},telegram_user_id`)
     .eq("business_id", businessId)
     .or(`ended_at.is.null,ended_at.gt.${since}`)
     .order("created_at", { ascending: false })
     .limit(50);
   if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as PersonalSessionRow[];
+  return selectVisibleSessions((data ?? []) as unknown as Array<PersonalSessionRow & { telegram_user_id: string | null }>);
 }
 
 export async function loadSession(businessId: string, sessionId: string) {
