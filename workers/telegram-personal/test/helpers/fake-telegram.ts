@@ -272,7 +272,25 @@ export class FakeTdClient implements TdClient {
         const chatId = Number(request.chat_id);
         const content = request.input_message_content as TdObject;
         const replyTo = Number(((request.reply_to as TdObject | undefined)?.message_id) ?? 0) || null;
-        const localPath = String(((Object.values(content ?? {}).find((v) => (v as TdObject)?._ === "inputFileLocal") as TdObject | undefined)?.path) ?? "");
+        // Like TDLib 1.8.67: each file sits inside its typed wrapper; a bare file is refused.
+        const WRAPPERS: Record<string, [string, string, string]> = {
+          inputMessagePhoto: ["photo", "inputPhoto", "photo"],
+          inputMessageVideo: ["video", "inputVideo", "video"],
+          inputMessageDocument: ["document", "inputDocument", "document"],
+          inputMessageAudio: ["audio", "inputAudio", "audio"],
+          inputMessageVoiceNote: ["voice_note", "inputVoiceNote", "voice_note"],
+          inputMessageSticker: ["sticker", "inputSticker", "sticker"],
+        };
+        let localPath = "";
+        const wrapper = WRAPPERS[String(content?._)];
+        if (wrapper) {
+          const outer = content[wrapper[0]] as TdObject | undefined;
+          const inner = outer?.[wrapper[2]] as TdObject | undefined;
+          if (outer?._ !== wrapper[1] || !inner || !String(inner._).startsWith("inputFile")) {
+            return Promise.reject(new TdRequestError(400, `Field "${wrapper[0]}" must be of type ${wrapper[1]}`));
+          }
+          localPath = inner._ === "inputFileLocal" ? String(inner.path ?? "") : "";
+        }
         const text = String(((((content?.text ?? content?.caption) as TdObject | undefined))?.text) ?? "");
         if (this.telegram.sendOutcome === "reject") return Promise.reject(new TdRequestError(400, "CHAT_WRITE_FORBIDDEN"));
         if (localPath && !existsSync(localPath)) return Promise.reject(new TdRequestError(400, "File not found"));

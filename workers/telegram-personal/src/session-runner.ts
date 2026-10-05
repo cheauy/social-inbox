@@ -754,12 +754,13 @@ export class SessionRunner {
     writeFileSync(path, bytes, { mode: 0o600 });
     const file = { _: "inputFileLocal", path };
     const formatted = { _: "formattedText", text: caption };
+    // TDLib 1.8.67 wraps each file in its own input object (inputPhoto, inputVideo, ...).
     const content: TdObject =
-      kind === "photo" ? { _: "inputMessagePhoto", photo: file, caption: formatted }
-      : kind === "video" ? { _: "inputMessageVideo", video: file, caption: formatted, supports_streaming: true }
-      : kind === "audio" ? { _: "inputMessageAudio", audio: file, caption: formatted }
-      : kind === "voice" ? { _: "inputMessageVoiceNote", voice_note: file, caption: formatted }
-      : { _: "inputMessageDocument", document: file, caption: formatted };
+      kind === "photo" ? { _: "inputMessagePhoto", photo: { _: "inputPhoto", photo: file }, caption: formatted }
+      : kind === "video" ? { _: "inputMessageVideo", video: { _: "inputVideo", video: file, supports_streaming: true }, caption: formatted }
+      : kind === "audio" ? { _: "inputMessageAudio", audio: { _: "inputAudio", audio: file }, caption: formatted }
+      : kind === "voice" ? { _: "inputMessageVoiceNote", voice_note: { _: "inputVoiceNote", voice_note: file, duration: Number(media?.duration) || 0 }, caption: formatted }
+      : { _: "inputMessageDocument", document: { _: "inputDocument", document: file }, caption: formatted };
     return { content, path };
   }
 
