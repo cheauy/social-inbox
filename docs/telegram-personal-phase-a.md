@@ -1,9 +1,10 @@
 # Telegram Personal — Phase A (architecture proposal, not implemented)
 
-Status: **DRAFT proposal only.** No code, schema, dependency, credential,
-deployment or Telegram session has been created. Nothing here is a tested
-pilot or production-ready. Phase B starts only after the owner approves the
-decisions in §11.
+Status: **Approved proposal (2026-10-05), with the added requirement that this is
+a self-service multi-tenant SaaS feature.** Phase B is implemented as an offline,
+tested draft — see `docs/telegram-personal-phase-b.md`, which supersedes the
+details below where they differ (table names, where login inputs are sealed,
+QR rendering).
 
 ---
 
@@ -180,12 +181,12 @@ Before sign-in, a disclosure screen (must be acknowledged):
 - Agents can reply as you in shared chats; replies are sent from your account.
 
 Login methods:
-- **QR (default)** — QR rendered client-side from the link; auto-refreshes as
-  TDLib issues new links; visible countdown; Cancel.
+- **QR (default)** — QR rendered server-side as an image for the holder only;
+  auto-refreshes as TDLib issues new links; visible countdown; Cancel.
 - **Phone + code** (fallback) and **2FA password** when TDLib asks. Entered in a
-  TENH form field (never chat), sent over HTTPS, **sealed to the worker’s public
-  key in the browser→API path** (API never sees plaintext; see §6), consumed once
-  and deleted. Never logged.
+  TENH form field (never chat), sent over HTTPS; the API **seals it to the
+  worker’s public key immediately** (plaintext only in that request’s memory,
+  never stored, logged or echoed), the worker consumes it once and it is deleted.
 
 States (single enum `telegram_personal_status`):
 `connecting → waiting_qr | waiting_code | waiting_password → connected`;
@@ -337,8 +338,8 @@ and `docs/sql/telegram-personal-preflight-readonly.sql` (read-only checks to run
 first). Summary:
 - `telegram_personal_sessions` (1:1 with `social_accounts`; wrapped DB key,
   status, identity, lease/fencing, shutdown markers) — service-role only.
-- `telegram_personal_login_attempts` (status, sealed inputs, expiry,
-  initiated_by) — service-role only; served via API.
+- `telegram_personal_logins` (QR link, sealed input, hint, deadline; deleted
+  when the login ends) — service-role only; served via API.
 - `telegram_personal_commands` (type, client_request_id, payload, status
   incl. `uncertain`, temp id, attempts) — service-role only.
 - `telegram_personal_chat_shares` (connection, chat_id, shared_by, revoked_at).
