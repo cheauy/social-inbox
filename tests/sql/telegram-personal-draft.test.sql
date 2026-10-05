@@ -154,15 +154,20 @@ end $$;
 update business_subscriptions set channel_limit = 3 where business_id = (select v from ids where k='b1');
 
 -- 7b. A refusal from an existing social_accounts trigger becomes a clean code
-create function pg_temp.refuse() returns trigger language plpgsql as $$ begin raise exception 'Channel limit reached (trigger)'; end $$;
+create function pg_temp.refuse() returns trigger language plpgsql as $$ begin
+  raise exception using errcode = 'P0001', message = 'Workspace subscription is not active.', detail = 'TENH_SUBSCRIPTION_LOCKED'; end $$;
 create trigger zz_test_refuse before insert on social_accounts for each row execute function pg_temp.refuse();
 insert into s select 'f2', tgp_begin_login((select v from ids where k='b1'),(select v from ids where k='u1'),(select v from ids where k='m1'),'qr');
 create temp table ep4b as select * from tgp_claim_sessions('worker-A', 30, 10);
 do $$ declare sf uuid := (select v from s where k='f2'); r jsonb; begin
   r := tgp_activate(sf,'worker-A',(select lease_epoch from ep4b where id=sf),'5550009','Nine','nine','+9');
-  assert r->>'code' = 'CHANNEL_LIMIT_REACHED', r::text;
+  assert r->>'code' = 'SUBSCRIPTION_LOCKED', r::text;
   assert (select status from telegram_personal_sessions where id=sf) = 'failed';
   assert not exists (select 1 from social_accounts where platform_account_id='5550009');
+  assert tgp_trigger_refusal_code('TENH_CHANNEL_TRIAL_ALREADY_USED', 'x') = 'TRIAL_NOT_ALLOWED';
+  assert tgp_trigger_refusal_code(null, 'The free trial has expired.') = 'TRIAL_NOT_ALLOWED';
+  assert tgp_trigger_refusal_code('TENH_CHANNEL_LIMIT_REACHED', 'x') = 'CHANNEL_LIMIT_REACHED';
+  assert tgp_trigger_refusal_code(null, 'other') = 'CHANNEL_ACTIVATION_REFUSED';
 end $$;
 drop trigger zz_test_refuse on social_accounts;
 

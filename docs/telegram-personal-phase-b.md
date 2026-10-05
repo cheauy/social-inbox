@@ -132,9 +132,12 @@ Rollback of the constraint change is only possible while no
 
 ## Remaining blockers / your actions before Phase C
 
-1. Optional last read-only check: the bodies of `tenh_check_channel_entitlement`
-   and `tenh_guard_trial_channel_reuse` (see chat), to confirm how they treat
-   the new platform.
+1. Trigger bodies checked (2026-10-05): `tenh_check_channel_entitlement` counts
+   every active `social_accounts` row (Personal = 1 channel) and its DETAIL codes
+   are mapped exactly; `tenh_guard_trial_channel_reuse` skips platforms other than
+   facebook/telegram, so Personal accounts have **no trial-reuse protection**
+   unless you decide to extend it (expired trials are still blocked by
+   `tgp_channel_capacity_error`).
 2. Choose a worker host with a persistent encrypted volume (e.g. Fly.io
    Machine + volume, Railway/Render worker with disk, or a VPS). Not provisioned.
 3. Register TENH's own app at my.telegram.org yourself; put `api_id`/`api_hash`

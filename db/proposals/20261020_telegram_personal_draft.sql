@@ -187,6 +187,19 @@ language sql set search_path = '' as $$
   select pg_notify('telegram_personal', p_session::text)
 $$;
 
+-- Maps a refusal from the existing social_accounts triggers (live bodies seen
+-- 2026-10-05) to a stable code, preferring their DETAIL codes over message text.
+create or replace function public.tgp_trigger_refusal_code(p_detail text, p_message text)
+returns text language sql immutable set search_path = '' as $$
+  select case
+    when p_detail = 'TENH_CHANNEL_LIMIT_REACHED' then 'CHANNEL_LIMIT_REACHED'
+    when p_detail = 'TENH_SUBSCRIPTION_LOCKED' then 'SUBSCRIPTION_LOCKED'
+    when p_detail = 'TENH_CHANNEL_TRIAL_ALREADY_USED' or p_message ilike '%trial%' then 'TRIAL_NOT_ALLOWED'
+    when p_message ilike '%channel limit%' then 'CHANNEL_LIMIT_REACHED'
+    else 'CHANNEL_ACTIVATION_REFUSED'
+  end
+$$;
+
 -- 7. API-side RPCs (service_role; the API has already authenticated the user) ------
 create or replace function public.tgp_begin_login(
   p_business uuid, p_user uuid, p_member uuid, p_method text,
@@ -260,7 +273,7 @@ end $$;
 create or replace function public.tgp_request_action(
   p_session uuid, p_business uuid, p_user uuid, p_member uuid, p_kind text, p_client_request_id uuid)
 returns text language plpgsql set search_path = '' as $$
-declare s public.telegram_personal_sessions; v_err text;
+declare s public.telegram_personal_sessions; v_err text; v_detail text;
 begin
   perform pg_advisory_xact_lock(hashtextextended('tgp:business:' || p_business::text, 0));
   select * into s from public.telegram_personal_sessions
@@ -288,7 +301,8 @@ begin
     begin
       update public.social_accounts set is_active = true, updated_at = now() where id = s.social_account_id;
     exception when others then
-      return case when sqlerrm ilike '%limit%' then 'CHANNEL_LIMIT_REACHED' else 'CHANNEL_ACTIVATION_REFUSED' end;
+      get stacked diagnostics v_detail = pg_exception_detail;
+      return public.tgp_trigger_refusal_code(v_detail, sqlerrm);
     end;
     update public.telegram_personal_sessions set status = 'reconnecting', updated_at = now() where id = p_session;
     perform public.tgp_wake(p_session);
@@ -472,7 +486,7 @@ create or replace function public.tgp_activate(
   p_session uuid, p_worker text, p_epoch bigint,
   p_telegram_user_id text, p_display_name text, p_username text, p_phone_masked text)
 returns jsonb language plpgsql set search_path = '' as $$
-declare s public.telegram_personal_sessions; v_err text; v_account uuid;
+declare s public.telegram_personal_sessions; v_err text; v_account uuid; v_detail text;
 begin
   if p_telegram_user_id !~ '^[0-9]{1,20}$' then return jsonb_build_object('ok', false, 'code', 'BAD_IDENTITY'); end if;
   select * into s from public.telegram_personal_sessions where id = p_session;
@@ -530,9 +544,8 @@ begin
        where id = v_account;
     end if;
   exception when others then
-    v_err := case when sqlerrm ilike '%limit%' then 'CHANNEL_LIMIT_REACHED'
-                  when sqlerrm ilike '%trial%' then 'TRIAL_NOT_ALLOWED'
-                  else 'CHANNEL_ACTIVATION_REFUSED' end;
+    get stacked diagnostics v_detail = pg_exception_detail;
+    v_err := public.tgp_trigger_refusal_code(v_detail, sqlerrm);
     update public.telegram_personal_sessions
        set status = 'failed', last_error_code = v_err, ended_at = now(), updated_at = now()
      where id = p_session;
@@ -579,7 +592,7 @@ declare f text;
 begin
   foreach f in array array[
     'tgp_open_login_statuses()','tgp_terminal_statuses()','tgp_channel_capacity_error(uuid,int)',
-    'tgp_is_active_owner(uuid,uuid)','tgp_wake(uuid)',
+    'tgp_is_active_owner(uuid,uuid)','tgp_wake(uuid)','tgp_trigger_refusal_code(text,text)',
     'tgp_begin_login(uuid,uuid,uuid,text,int,int)','tgp_submit_login_input(uuid,uuid,uuid,text,text)',
     'tgp_cancel_login(uuid,uuid,uuid)','tgp_request_action(uuid,uuid,uuid,uuid,text,uuid)',
     'tgp_set_team_access(uuid,uuid,uuid,text,uuid[])','tgp_holds_lease(uuid,text,bigint)',

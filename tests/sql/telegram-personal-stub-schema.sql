@@ -30,7 +30,9 @@ begin
   select channel_limit into v_limit from public.business_subscriptions where business_id = new.business_id;
   if v_limit is null then return new; end if;
   select count(*) into v_active from public.social_accounts where business_id = new.business_id and is_active and id <> new.id;
-  if v_active >= v_limit then raise exception 'Channel limit reached for this subscription'; end if;
+  if v_active >= v_limit then
+    raise exception using errcode = 'P0001', message = 'Channel limit reached. Upgrade your plan.', detail = 'TENH_CHANNEL_LIMIT_REACHED';
+  end if;
   return new;
 end $$;
 create trigger tenh_enforce_channel_entitlement before insert or update of business_id, is_active
