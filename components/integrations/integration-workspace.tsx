@@ -401,9 +401,12 @@ function ConnectionInstructions({
 function TelegramVariantChooser({
   variant,
   onChange,
+  personalAvailable,
 }: {
   variant: TelegramVariant;
   onChange: (variant: TelegramVariant) => void;
+  /** Off: Telegram Personal is shown greyed out as "Coming soon" and cannot be chosen. */
+  personalAvailable: boolean;
 }) {
   const isKhmer = useWorkspaceLanguageId() === "km";
   const options: Array<{ value: TelegramVariant; title: string; description: string }> = [
@@ -425,26 +428,42 @@ function TelegramVariantChooser({
 
   return (
     <div className="mb-4 grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Telegram connection type">
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          role="radio"
-          aria-checked={variant === option.value}
-          onClick={() => onChange(option.value)}
-          className={`rounded-2xl border p-4 text-left transition ${
-            variant === option.value
-              ? "border-blue-500 bg-blue-50/50 ring-1 ring-blue-100"
-              : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-          }`}
-        >
-          <span className="flex items-center gap-2 font-semibold text-slate-950">
-            {option.title}
-            {option.value === "personal" ? <PersonalBadge /> : null}
-          </span>
-          <span className="mt-1 block text-xs leading-5 text-slate-500">{option.description}</span>
-        </button>
-      ))}
+      {options.map((option) => {
+        const comingSoon = option.value === "personal" && !personalAvailable;
+        const selected = !comingSoon && variant === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            aria-disabled={comingSoon}
+            disabled={comingSoon}
+            title={comingSoon ? (isKhmer ? "ឆាប់ៗនេះ" : "Coming soon") : undefined}
+            onClick={() => {
+              if (!comingSoon) onChange(option.value);
+            }}
+            className={`rounded-2xl border p-4 text-left transition ${
+              comingSoon
+                ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-60"
+                : selected
+                  ? "border-blue-500 bg-blue-50/50 ring-1 ring-blue-100"
+                  : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            <span className={`flex items-center gap-2 font-semibold ${comingSoon ? "text-slate-500" : "text-slate-950"}`}>
+              {option.title}
+              {option.value === "personal" && !comingSoon ? <PersonalBadge /> : null}
+              {comingSoon ? (
+                <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-600">
+                  {isKhmer ? "ឆាប់ៗនេះ" : "Coming soon"}
+                </span>
+              ) : null}
+            </span>
+            <span className="mt-1 block text-xs leading-5 text-slate-500">{option.description}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -657,8 +676,12 @@ function AddConnectionModal({
                 </div>
               </div>
 
-              {selectedPlatform === "telegram" && personalAvailable ? (
-                <TelegramVariantChooser variant={telegramVariant} onChange={onTelegramVariant} />
+              {selectedPlatform === "telegram" ? (
+                <TelegramVariantChooser
+                  variant={personalAvailable ? telegramVariant : "bot"}
+                  onChange={onTelegramVariant}
+                  personalAvailable={personalAvailable}
+                />
               ) : null}
 
               {selectedPlatform === "telegram" && personalAvailable && telegramVariant === "personal" ? (
