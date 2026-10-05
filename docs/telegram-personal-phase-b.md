@@ -109,6 +109,14 @@ authenticated Supabase session); Postgres LISTEN/NOTIFY wake-ups in isolation
 5. Team access default: holder only. History import default: none (Phase D).
 6. Sign-in window 5 minutes; QR via server-rendered PNG; `qrcode@1.5.4` added.
 
+## Schema install (2026-10-05)
+
+The owner applied `db/proposals/20261020_telegram_personal_draft.sql` in the
+Supabase SQL Editor (first attempt rolled back cleanly after a partial run;
+second run succeeded). Verified: `social_accounts_platform_check` includes
+`telegram_personal`, 4 `telegram_personal_*` tables, 21 `tgp_*` functions.
+Feature flag still off; no worker running; no Telegram session exists.
+
 ## Live preflight results (2026-10-05, read-only, run by the owner)
 
 - `social_accounts_platform_check` allowed only `facebook`, `telegram`. The
