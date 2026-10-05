@@ -33,6 +33,7 @@ function fakeDb(seed) {
     or() { return this; }
     eq(k, v) { this.filters.push((r) => r[k] === v); return this; }
     in(k, vs) { this.filters.push((r) => vs.includes(r[k])); return this; }
+    is(k, v) { this.filters.push((r) => (r[k] ?? null) === v); return this; }
     maybeSingle() { this.single = true; return this.run(); }
     then(res, rej) { return this.run().then(res, rej); }
     async run() {
@@ -235,7 +236,7 @@ test("public connection view hides secrets and narrows identity for agents", asy
   assert.equal(conn.username, null);
   assert.equal(conn.phoneMasked, null);
   assert.equal(body.canConnect, false);
-  assert.deepEqual(conn.can, { useLogin: false, pause: false, resume: false, disconnect: false, setTeamAccess: false });
+  assert.deepEqual(conn.can, { useLogin: false, pause: false, resume: false, disconnect: false, setTeamAccess: false, manageChats: false, removeData: false });
   assert.ok(!JSON.stringify(body).includes("SECRET"));
 });
 
@@ -249,4 +250,107 @@ test("ended sessions are hidden once a newer session exists for the same account
   ];
   assert.deepEqual([...selectVisibleSessions(rows).map((r) => r.id)], ["new", "other-owner-ended"]);
   assert.deepEqual([...selectVisibleSessions([rows[1]]).map((r) => r.id)], ["old-signed-out"], "an ended session alone stays visible");
+});
+
+// ---------------------------------------------------------------- D1 routes
+const ACC1 = "22222222-2222-4222-8222-222222222221";
+const ACC2 = "22222222-2222-4222-8222-222222222222";
+const CHAT1 = "33333333-3333-4333-8333-333333333331";
+const CHAT2 = "33333333-3333-4333-8333-333333333332";
+const CHAT_OTHER = "33333333-3333-4333-8333-333333333339";
+
+function d1Seed() {
+  const chat = (id, account, business, title) => ({ id, business_id: business, social_account_id: account, title, username: null, shared_at: "2026-10-05T00:00:00Z", unshared_at: null, last_message_at: "2026-10-05T10:00:00Z", last_message_preview: "hi", last_direction: "incoming", unread_count: 2, history_import: "none" });
+  return {
+    telegram_personal_sessions: [session({ status: "connected", social_account_id: ACC1 })],
+    social_accounts: [
+      { id: ACC1, business_id: B1, platform: "telegram_personal", account_name: "Holder" },
+      { id: ACC2, business_id: B1, platform: "telegram_personal", account_name: "Other owner account" },
+    ],
+    telegram_personal_chats: [chat(CHAT1, ACC1, B1, "Visible chat"), chat(CHAT2, ACC2, B1, "Hidden chat"), chat(CHAT_OTHER, ACC1, B2, "Other workspace")],
+    telegram_personal_messages: [{ id: "m1", chat_row_id: CHAT1, telegram_message_id: 10, direction: "incoming", message_type: "text", body: "hello", placeholder_kind: null, sent_at: "2026-10-05T10:00:00Z" }],
+    telegram_personal_unshared_activity: [],
+  };
+}
+
+function visibilityDb(visibleAccounts) {
+  const db = fakeDb(d1Seed());
+  db.rpcResults.tgp_member_can_see = (args) => ({ data: visibleAccounts.includes(args.p_social_account), error: null });
+  return db;
+}
+
+test("Personal inbox lists only chats of accounts the member may see, never other workspaces", async () => {
+  const db = visibilityDb([ACC1]);
+  const route = load("app/api/telegram-personal/inbox/route.ts", { db, userId: AGENT, role: "agent" });
+  const body = await (await route.GET()).json();
+  assert.deepEqual([...body.chats.map((c) => c.title)], ["Visible chat"]);
+  assert.ok(!JSON.stringify(body).includes("Hidden chat"));
+  assert.ok(!JSON.stringify(body).includes("Other workspace"));
+
+  const none = load("app/api/telegram-personal/inbox/route.ts", { db: visibilityDb([]), userId: AGENT, role: "agent" });
+  assert.equal((await (await none.GET()).json()).chats.length, 0, "holder-only default: teammate sees nothing");
+
+  const off = load("app/api/telegram-personal/inbox/route.ts", { db, env: {} });
+  assert.equal((await off.GET()).status, 404, "flag off");
+});
+
+test("Personal chat messages: 404 for hidden or foreign chats; read marks via RPC with the caller identity", async () => {
+  const db = visibilityDb([ACC1]);
+  const route = load("app/api/telegram-personal/inbox/[chatRowId]/route.ts", { db, userId: AGENT, role: "agent" });
+  const c = (id) => ({ params: Promise.resolve({ chatRowId: id }) });
+  // Route handlers read searchParams from NextRequest.nextUrl; emulate it.
+  const req = (url) => Object.assign(new Request(url), { nextUrl: new URL(url) });
+  const good = await route.GET(req(`https://tenh.test/x?before=not-a-date&beforeId=abc`), c(CHAT1));
+  assert.equal(good.status, 200);
+  const body = await good.json();
+  assert.equal(body.messages[0].body, "hello");
+  assert.equal((await route.GET(req("https://tenh.test/x"), c(CHAT2))).status, 404, "hidden account");
+  assert.equal((await route.GET(req("https://tenh.test/x"), c(CHAT_OTHER))).status, 404, "other workspace");
+  db.rpcResults.tgp_mark_chat_read = { data: true, error: null };
+  assert.equal((await route.POST(json("POST", { action: "read" }), c(CHAT1))).status, 200);
+  const call = db.rpcCalls.find((x) => x.name === "tgp_mark_chat_read");
+  assert.deepEqual([call.args.p_business, call.args.p_user], [B1, AGENT]);
+  assert.equal((await route.POST(json("POST", { action: "delete" }), c(CHAT1))).status, 400);
+});
+
+test("chat sharing routes: holder only, validated input, chooser results from the worker", async () => {
+  const db = visibilityDb([ACC1]);
+  const req = (url, method = "GET", body) => Object.assign(new Request(url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined }), { nextUrl: new URL(url) });
+  const asOwner = load("app/api/telegram-personal/connections/[sessionId]/chats/route.ts", { db, userId: OTHER_OWNER });
+  assert.equal((await asOwner.GET(req("https://tenh.test/x"), ctx())).status, 404, "other owner cannot manage holder chats");
+  assert.equal((await asOwner.POST(req("https://tenh.test/x", "POST", { action: "list" }), ctx())).status, 404);
+
+  const holder = load("app/api/telegram-personal/connections/[sessionId]/chats/route.ts", { db });
+  const list = await holder.GET(req("https://tenh.test/x"), ctx());
+  assert.equal(list.status, 200);
+  db.rpcResults.tgp_request_chat_list = { data: "44444444-4444-4444-8444-444444444444", error: null };
+  const requested = await holder.POST(req("https://tenh.test/x", "POST", { action: "list" }), ctx());
+  assert.equal(requested.status, 202);
+  assert.equal((await holder.GET(req("https://tenh.test/x?commandId=bad"), ctx())).status, 400);
+  assert.equal((await holder.POST(req("https://tenh.test/x", "POST", { action: "share", chatId: "12; drop", history: "none" }), ctx())).status, 400);
+  db.rpcResults.tgp_share_chat = { data: { ok: false, code: "CHAT_NOT_LISTED" }, error: null };
+  assert.equal((await holder.POST(req("https://tenh.test/x", "POST", { action: "share", chatId: "5001", history: "none" }), ctx())).status, 409);
+  db.rpcResults.tgp_share_chat = { data: { ok: true, chat_row_id: CHAT1 }, error: null };
+  assert.equal((await holder.POST(req("https://tenh.test/x", "POST", { action: "share", chatId: "5001", history: "last_50", title: "spoofed" }), ctx())).status, 200);
+  const share = db.rpcCalls.filter((x) => x.name === "tgp_share_chat").pop();
+  assert.deepEqual([share.args.p_chat_id, share.args.p_history, share.args.p_user], ["5001", "last_50", HOLDER]);
+  assert.ok(!("p_title" in share.args), "title is never taken from the browser");
+
+  const unshare = load("app/api/telegram-personal/connections/[sessionId]/chats/[chatRowId]/route.ts", { db });
+  const uctx = { params: Promise.resolve({ sessionId: S1, chatRowId: CHAT1 }) };
+  assert.equal((await unshare.DELETE(json("DELETE", { deleteHistory: true }), uctx)).status, 400, "confirmation required");
+  db.rpcResults.tgp_unshare_chat = { data: "OK", error: null };
+  assert.equal((await unshare.DELETE(json("DELETE", { confirm: "UNSHARE", deleteHistory: true }), uctx)).status, 200);
+  assert.equal(db.rpcCalls.filter((x) => x.name === "tgp_unshare_chat").pop().args.p_delete_history, true);
+});
+
+test("remove imported data requires explicit confirmation", async () => {
+  const db = visibilityDb([ACC1]);
+  const route = load("app/api/telegram-personal/connections/[sessionId]/route.ts", { db, userId: OTHER_OWNER });
+  assert.equal((await route.PATCH(json("PATCH", { action: "remove_data" }), ctx())).status, 400);
+  db.rpcResults.tgp_remove_imported_data = { data: "OK", error: null };
+  assert.equal((await route.PATCH(json("PATCH", { action: "remove_data", confirm: "REMOVE_DATA" }), ctx())).status, 200);
+  db.rpcResults.tgp_remove_imported_data = { data: "FORBIDDEN", error: null };
+  const agent = load("app/api/telegram-personal/connections/[sessionId]/route.ts", { db, userId: AGENT, role: "agent" });
+  assert.equal((await agent.PATCH(json("PATCH", { action: "remove_data", confirm: "REMOVE_DATA" }), ctx())).status, 403);
 });

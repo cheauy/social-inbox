@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
+import { PersonalChatManager } from "@/components/integrations/telegram-personal-chats";
 
 type TeamAccess = "holder_only" | "owners" | "all_inbox_members" | "selected_members";
 
@@ -19,7 +20,7 @@ type PersonalConnection = {
   lastErrorCode: string | null;
   connectedAt: string | null;
   isHolder: boolean;
-  can: { useLogin: boolean; pause: boolean; resume: boolean; disconnect: boolean; setTeamAccess: boolean };
+  can: { useLogin: boolean; pause: boolean; resume: boolean; disconnect: boolean; setTeamAccess: boolean; manageChats?: boolean; removeData?: boolean };
 };
 
 type ListResponse = {
@@ -465,6 +466,14 @@ export function TelegramPersonalPanel({ openSignal = 0, onAvailability }: { open
                 ) : null}
               </select>
             </label>
+          ) : null}
+          {connection.can.manageChats || connection.can.removeData || connection.status === "connected" ? (
+            <PersonalChatManager
+              sessionId={connection.id}
+              canManage={Boolean(connection.can.manageChats)}
+              canRemoveData={Boolean(connection.can.removeData)}
+              onChanged={load}
+            />
           ) : null}
         </article>
       ))}

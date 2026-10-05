@@ -43,14 +43,14 @@ async function requestAction(
   return mapTgpCode(code);
 }
 
-/** Pause, resume, or change who on the team may see this account's shared chats. */
+/** Pause, resume, remove imported data, or change who on the team may see this account's shared chats. */
 export async function PATCH(request: NextRequest, context: Context) {
   const { sessionId } = await context.params;
   const loaded = await load(sessionId);
   if ("response" in loaded) return loaded.response;
   const { auth, session } = loaded;
 
-  let body: { action?: unknown; clientRequestId?: unknown; mode?: unknown; memberIds?: unknown };
+  let body: { action?: unknown; clientRequestId?: unknown; mode?: unknown; memberIds?: unknown; confirm?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -61,6 +61,16 @@ export async function PATCH(request: NextRequest, context: Context) {
   if (body.action === "pause" || body.action === "resume") {
     const failure = await requestAction(ids, body.action, body.clientRequestId);
     if (failure) return failure;
+  } else if (body.action === "remove_data") {
+    // Deletes every chat and message this account imported into TENH. Telegram is not touched.
+    if ((body as { confirm?: unknown }).confirm !== "REMOVE_DATA") return jsonError("Confirm first.", 400, "CONFIRMATION_REQUIRED");
+    const { data, error } = await supabaseAdmin.rpc("tgp_remove_imported_data", {
+      p_session: session.id,
+      p_business: auth.member.business_id,
+      p_user: auth.user.id,
+    });
+    if (error) return mapTgpCode("REQUEST_FAILED");
+    if (data !== "OK") return mapTgpCode(String(data));
   } else if (body.action === "team_access") {
     const mode = TEAM_ACCESS.find((value) => value === body.mode);
     const memberIds = Array.isArray(body.memberIds) ? body.memberIds.filter((id): id is string => typeof id === "string" && UUID.test(id)) : [];

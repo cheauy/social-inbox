@@ -78,6 +78,9 @@ export function toPublicConnection(row: PersonalSessionRow, actor: PersonalActor
       resume: canResume(actor, ref) && row.status === "paused",
       disconnect: canDisconnect(actor, ref) && ["connected", "reconnecting", "pausing", "paused"].includes(row.status),
       setTeamAccess: canSetTeamAccess(actor, ref),
+      // D1: the holder chooses shared chats while connected; holder or any owner may remove imported data.
+      manageChats: actor.userId === row.holder_user_id && (row.status === "connected" || row.status === "reconnecting"),
+      removeData: Boolean(row.social_account_id) && canDisconnect(actor, ref),
     },
   };
 }
