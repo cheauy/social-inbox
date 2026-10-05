@@ -4,6 +4,8 @@ import { readInboxChannels } from "@/lib/inbox/read-channels";
 import { DashboardUtilityNavigation } from "@/components/dashboard/dashboard-utility-navigation";
 import { ConversationHeaderSurface, ConversationRail } from "./inbox-layout-surfaces";
 import { ConversationListHeader } from "@/components/inbox/conversation-list-header";
+import { ActiveFilterBanner, filterBannerIcons, statusBannerIcon } from "@/components/inbox/active-filter-banner";
+import { destinationFromHref, destinationFromParams, sameDestination, type StatusDestination } from "@/lib/inbox/status-destination";
 import { DeferredInboxItem } from "@/components/inbox/deferred-inbox-item";
 import type { BulkReadResult, ReadTarget } from "@/lib/inbox/bulk-read";
 import { useConversationPages } from "@/lib/inbox/use-conversation-pages";
@@ -41,7 +43,6 @@ import type {
 import {
   formatMessageTime,
   getInitial,
-  getStatusClasses,
   getStatusLabel,
   statusOptions,
 } from "@/components/inbox/inbox-utils";
@@ -2019,8 +2020,18 @@ function ConversationListView({
    * it. The effect below re-syncs from the prop, so a back button, a shared
    * link or a server correction all win over the optimistic value.
    */
-  const [optimisticStatus, setOptimisticStatus] =
+  const [localStatus, setOptimisticStatus] =
     useState<StatusFilter>(activeStatus);
+
+  /*
+   * Paging mode: the destination of a status link that is still navigating.
+   * Title, highlight, banner and the page request all read one scope -- this
+   * destination until the URL has it, then the URL -- so the list never shows
+   * a new title above the previous filter's rows. Cleared when the URL
+   * reaches it, or on Back/Forward, where the URL is authoritative.
+   */
+  const [pendingDestination, setPendingDestination] =
+    useState<StatusDestination | null>(null);
 
   const [
     lastServerStatus,
@@ -2034,6 +2045,8 @@ function ConversationListView({
   const statusFrameRef = useRef<number | null>(null);
 
   const beginStatusSwitch = useCallback(() => {
+    // Paging mode shows the pager's real request state instead of a timer.
+    if (pagination) return;
     if (statusFrameRef.current !== null) {
       window.cancelAnimationFrame(statusFrameRef.current);
     }
@@ -2044,7 +2057,7 @@ function ConversationListView({
         setStatusSwitching(false);
       });
     });
-  }, []);
+  }, [pagination]);
 
   useEffect(() => () => {
     if (statusFrameRef.current !== null) {
@@ -2082,11 +2095,23 @@ function ConversationListView({
 
   // Paging reads use one atomic URL scope. An optimistic view combined with
   // the previous channel/workspace would start an unnecessary wrong-scope read.
-  const selectedViewKey = pagination ? viewKeyFromUrl(searchParams.get("view")) : localSelectedViewKey;
-  const urlStatus = searchParams.get("status");
-  const pageStatus: StatusFilter = pagination
-    ? urlStatus && ["open", "pending", "resolved", "closed", "spam"].includes(urlStatus) ? urlStatus as StatusFilter : "all"
-    : optimisticStatus;
+  const urlDestination = destinationFromParams(searchParams);
+  if (pendingDestination && sameDestination(pendingDestination, urlDestination)) {
+    setPendingDestination(null);
+  }
+  const pagingScope = pendingDestination ?? urlDestination;
+  const selectedViewKey = pagination ? viewKeyFromUrl(pagingScope.view) : localSelectedViewKey;
+  const pageStatus: StatusFilter = pagination ? pagingScope.status : localStatus;
+  const optimisticStatus = pageStatus;
+  const requestChannelId = pagination ? pagingScope.channel : selectedChannelId;
+  const requestWorkspaceId = pagination ? pagingScope.workspace : selectedWorkspaceId;
+
+  useEffect(() => {
+    if (!pagination) return;
+    const onHistory = () => setPendingDestination(null);
+    window.addEventListener("popstate", onHistory);
+    return () => window.removeEventListener("popstate", onHistory);
+  }, [pagination]);
 
   useEffect(() => {
     setSelectedViewKey(
@@ -2466,12 +2491,12 @@ function ConversationListView({
     );
 
   const workspaceContextId =
-    selectedWorkspaceId ?? currentBusinessId;
+    requestWorkspaceId ?? currentBusinessId;
 
   const pageRequest = useMemo(() => ({ status: pageStatus, view: selectedViewKey,
-    search: deferredSearch.trim(), channelId: selectedChannelId, workspaceId: selectedWorkspaceId,
+    search: deferredSearch.trim(), channelId: requestChannelId, workspaceId: requestWorkspaceId,
     workspaceContextId: workspaceContextId ?? null, cursor: null }),
-    [pageStatus, selectedViewKey, deferredSearch, selectedChannelId, selectedWorkspaceId, workspaceContextId]);
+    [pageStatus, selectedViewKey, deferredSearch, requestChannelId, requestWorkspaceId, workspaceContextId]);
   const pager = useConversationPages(pagination, pageRequest, conversations, onPageRows);
   const { enabled: pagingEnabled, loading: pagingLoading, error: pagingError, more: loadNextPage } = pager;
   const [snapshotLoading, setSnapshotLoading] = useState(false);
@@ -4901,6 +4926,7 @@ function ConversationListView({
                             setOptimisticStatus(
                               filter.value,
                             );
+                            if (pagination) setPendingDestination(destinationFromHref(href));
 
                             beginStatusSwitch();
                           }}
@@ -4962,32 +4988,18 @@ function ConversationListView({
 
         {optimisticStatus !==
         "all" ? (
-          <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-3 py-2">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-xs text-slate-500">
-                Showing:
-              </span>
-
-              <div className="flex items-center gap-2">
-                <span
-                  className={`rounded-full px-2.5 py-1 text-xs font-medium ${getStatusClasses(
-                    optimisticStatus,
-                  )}`}
-                >
-                  {getStatusLabel(
-                    optimisticStatus,
-                  )}
-                </span>
-
-                <Link
-                  href={
-                    selectedChannelId
+          <ActiveFilterBanner
+            icon={statusBannerIcon(optimisticStatus)}
+            label={getStatusLabel(optimisticStatus)}
+            count={effectiveStatusCounts[optimisticStatus] ?? "…"}
+            clearLabel={isKhmer ? "សម្អាត" : "Clear filter"}
+            clear={{
+              href: selectedChannelId
                       ? `/dashboard/inbox?channel=${encodeURIComponent(
                           selectedChannelId,
                         )}`
-                      : "/dashboard/inbox"
-                  }
-                  onClick={(event) => {
+                      : "/dashboard/inbox",
+              onClick: (event) => {
                     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
                     /*
                      * This is the second way to change the status filter, and
@@ -4997,34 +5009,21 @@ function ConversationListView({
                      * placeholder rows exist to remove.
                      */
                     setOptimisticStatus("all");
+                    if (pagination) setPendingDestination(destinationFromHref(event.currentTarget.getAttribute("href") ?? "/dashboard/inbox"));
                     beginStatusSwitch();
-                  }}
-                  className="text-xs font-medium text-blue-700 hover:underline"
-                >
-                  Clear
-                </Link>
-              </div>
-            </div>
-          </div>
+                  },
+            }}
+          />
         ) : activeViewLabel ? (
-          <div className="shrink-0 border-b border-violet-100 bg-violet-50 px-3 py-2">
-            <div className="flex items-center justify-between gap-3">
-              <span className="min-w-0 truncate text-xs font-semibold text-violet-700">
-                {
-                  activeViewLabel
-                }{" "}
-                ·{" "}
-                {
-                  pager.enabled ? pager.page?.total ?? "…" : baseViewConversations.length
-                }
-              </span>
-
-              <div className="flex shrink-0 items-center gap-1">
-                {selectedViewKey === "unread" && onMarkAllRead ? (
+          <ActiveFilterBanner
+            icon={filterBannerIcons[selectedViewKey] ?? filterBannerIcons.smart}
+            label={activeViewLabel}
+            count={pager.enabled ? pager.page?.total ?? "…" : baseViewConversations.length}
+            actions={selectedViewKey === "unread" && onMarkAllRead ? (
                   <button
                     type="button"
                     disabled={markingAllRead || snapshotLoading || (pager.enabled ? !pager.page?.total : filteredConversations.length === 0)}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-blue-600 transition hover:bg-blue-100/70 disabled:cursor-not-allowed disabled:opacity-40"
                     aria-label={isKhmer ? "សម្គាល់ទាំងអស់ថាបានអាន" : "Mark all as read"}
                     title={isKhmer ? "សម្គាល់ទាំងអស់ថាបានអាន" : "Mark all as read"}
                     onClick={async () => {
@@ -5041,36 +5040,24 @@ function ConversationListView({
                       } finally { setSnapshotLoading(false); }
                     }}
                   >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5" aria-hidden="true">
                       <path d="m3 12 4 4 9-9M12 16l9-9" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                     <span className="sr-only">{isKhmer ? "សម្គាល់ទាំងអស់ថាបានអាន" : "Mark all as read"}</span>
                   </button>
                 ) : null}
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    selectView(
-                      "all",
-                    )
-                  }
-                  className="text-xs font-semibold text-violet-700 hover:underline"
-                >
-                  Clear view
-                </button>
-              </div>
-            </div>
-            {selectedViewKey === "unread" && bulkReadNotice ? (
-              <p role="status" aria-live="polite" className="mt-1 text-[11px] leading-4 text-violet-600">
+            footer={selectedViewKey === "unread" && bulkReadNotice ? (
+              <p role="status" aria-live="polite" className="mt-1 px-1 text-[11px] leading-4 text-blue-700">
                 {bulkReadNotice}
               </p>
             ) : null}
-          </div>
+            clearLabel={isKhmer ? "សម្អាត" : "Clear view"}
+            clear={{ onClick: () => selectView("all") }}
+          />
         ) : null}
 
 
-        <div ref={listContainerRef} style={{ overflowAnchor: "none" }} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" aria-busy={statusSwitching || channelSwitching}>
+        <div ref={listContainerRef} style={{ overflowAnchor: "none" }} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" aria-busy={(pager.enabled ? pager.loading : statusSwitching) || channelSwitching}>
           {pager.enabled && pager.error ? <p role="alert" className="p-3 text-sm">{pager.error} <button type="button" onClick={pager.retry} className="underline">Retry</button></p> : null}
           {/*
             The skeleton wins over both the rows and the empty state, so a

@@ -34,6 +34,8 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
   useEffect(() => { viewCacheRef.current = viewCache; }, [viewCache]);
   const stateRef = useRef(state), requestRef = useRef(request), onRowsRef = useRef(onRows);
   const controllerRef = useRef<AbortController | null>(null);
+  // The request key the in-flight read belongs to.
+  const inFlightKeyRef = useRef<string | null>(null);
   const generationRef = useRef(0);
   const requestedKeyRef = useRef(key);
   const dirtyRef = useRef(false);
@@ -90,7 +92,7 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
     if (!current) mode = "replace";
     else if (mode === "replace") mode = "refresh";
     if (mode === "more" && (!current || current.key !== activeKey || !current.page.hasMore)) return;
-    const controller = new AbortController(); controllerRef.current = controller;
+    const controller = new AbortController(); controllerRef.current = controller; inFlightKeyRef.current = activeKey;
     const generation = ++generationRef.current;
     const finishForeground = mode === "refresh" ? () => {} : beginForegroundLoading();
     if (current) setState({ ...current, loading: true, error: null });
@@ -166,7 +168,7 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
       }
     } finally {
       finishForeground();
-      if (controllerRef.current === controller) controllerRef.current = null;
+      if (controllerRef.current === controller) { controllerRef.current = null; inFlightKeyRef.current = null; }
       // An old request's finally must not schedule or consume the new view's
       // recovery work after navigation has transferred request ownership.
       if (generation === generationRef.current && requestKey(requestRef.current) === activeKey && dirtyRef.current && visible()) {
@@ -182,6 +184,10 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
     const navigated = requestedKeyRef.current !== key;
     requestedKeyRef.current = key;
     if (!navigated && stateRef.current?.key === key) return;
+    // A navigation landing brings new server props for the destination this
+    // pager is already reading (the read started at the click). Restarting it
+    // would abort that read and repeat it.
+    if (!navigated && controllerRef.current && inFlightKeyRef.current === key) return;
     // Settled state can still belong to the destination while another view
     // is loading (A -> B -> A). Cancel B before considering A already loaded.
     controllerRef.current?.abort(); controllerRef.current = null; generationRef.current++;
