@@ -38,6 +38,7 @@ import { correlateTelegramAlbumMessages } from "@/lib/inbox/telegram-album-corre
 import { normalizeMessages } from "@/lib/inbox/normalize-messages";
 import { ActionGuard, ActionNotificationLedger } from "@/lib/inbox/action-feedback";
 import { requestCommentAction } from "@/lib/inbox/comment-action-request";
+import { useUrlConversationSelection } from "@/lib/inbox/use-url-conversation-selection";
 import { retainLocalImagePreview } from "@/lib/inbox/local-image-preview";
 import { readMessagePageResponse } from "@/lib/inbox/read-message-page-response";
 import { latestCustomerChannel } from "@/lib/inbox/latest-customer-channel";
@@ -557,6 +558,10 @@ const requestedConversationId =
     useRef<string | null>(
       clientSelectedConversationId,
     );
+
+  /* URLs pushed by row/search clicks, so their late arrival is not navigation. */
+  const ownConversationUrlPushesRef =
+    useRef<string[]>([]);
 
   const [
     loadingConversationMessages,
@@ -4685,6 +4690,10 @@ const selectConversationSmoothly =
         const query =
           params.toString();
 
+        ownConversationUrlPushesRef.current.push(
+          conversationId,
+        );
+
         window.history.pushState(
           null,
           "",
@@ -4779,7 +4788,8 @@ const clearConversationSelection =
 
 const selectSearchConversation = useCallback((conversationId: string, match?: InboxSearchMatch) => {
   setSearchJump(match ? { conversationId, messageId: match.messageId, nonce: Date.now() } : null);
-  void selectConversationSmoothly(conversationId);
+  // An explicit click owns the URL too, so URL, row, header and messages agree.
+  void selectConversationSmoothly(conversationId, true);
 }, [selectConversationSmoothly]);
 
 const retryConversationMessages =
@@ -5298,44 +5308,30 @@ useEffect(() => {
 ]);
 
 /*
- * Browser Back/Forward changes useSearchParams without a full route reload.
- * Mirror that URL selection into the same smooth client switch path.
+ * Browser Back/Forward and direct links change ?conversation= without a route
+ * reload. Mirror only real URL changes into the same smooth client switch; a
+ * stale URL snapshot or our own lagging push must never undo a newer click.
  */
-useEffect(() => {
-  const fallbackId =
-    requestedConversationId &&
-    liveConversations.some(
-      (conversation) =>
-        conversation.id ===
-        requestedConversationId,
-    )
-      ? requestedConversationId
-      : null;
+const isConversationAvailable = useCallback(
+  (conversationId: string) =>
+    liveConversations.some((conversation) => conversation.id === conversationId),
+  [liveConversations],
+);
 
-  if (!fallbackId) {
-    /*
-     * Left-panel filters/channels intentionally change the URL without a
-     * conversation parameter. Keep the client-selected center thread alive.
-     * A real browser refresh still starts empty because client state is rebuilt.
-     */
-    return;
-  }
+const selectFromUrl = useCallback(
+  (conversationId: string) => {
+    void selectConversationSmoothly(conversationId, false);
+  },
+  [selectConversationSmoothly],
+);
 
-  if (
-    fallbackId !==
-    clientSelectedConversationId
-  ) {
-    selectConversationSmoothly(
-      fallbackId,
-      false,
-    );
-  }
-}, [
-  clientSelectedConversationId,
-  liveConversations,
+useUrlConversationSelection({
   requestedConversationId,
-  selectConversationSmoothly,
-]);
+  selectedConversationId: clientSelectedConversationId,
+  isAvailable: isConversationAvailable,
+  select: selectFromUrl,
+  ownPushesRef: ownConversationUrlPushesRef,
+});
 
 async function handleLoadOlderMessages(): Promise<boolean> {
   const conversationId = resolvedActiveConversationId;
