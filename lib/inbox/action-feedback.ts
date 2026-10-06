@@ -60,14 +60,17 @@ const ECHO_WINDOW_MS = 20_000;
 export type RealtimeDecision = "show" | "suppress";
 
 /*
- * One success notification per local action.
+ * Success is silent for this browser's own actions.
  *
- * The first of {HTTP confirmation, this browser's own Realtime activity row}
- * shows it; the second is suppressed. A teammate's activity -- or this member
- * acting from another device -- has no entry here and is always shown.
+ * The HTTP confirmation shows nothing, and this browser's own Realtime
+ * activity row for the same action is suppressed too. A teammate's activity
+ * -- or this member acting from another device -- has no entry here and is
+ * always shown.
  */
 export class ActionNotificationLedger {
   private readonly entries = new Map<string, LedgerEntry>();
+  /* Activity rows already suppressed, so a duplicate delivery stays silent. */
+  private readonly suppressedRows = new Set<string>();
   private counter = 0;
 
   constructor(private readonly now: () => number = () => Date.now()) {}
@@ -103,15 +106,16 @@ export class ActionNotificationLedger {
 
   /*
    * A conversation_activity row arrived over Realtime. "suppress" when it is
-   * this browser's own confirmed action whose toast is already shown;
-   * otherwise "show" (and, when it confirms a still-pending local action,
-   * that action will not show a second toast when its response lands).
+   * the echo of this browser's own action, pending or confirmed; otherwise
+   * "show".
    */
   claimRealtime(row: Record<string, unknown>): RealtimeDecision {
     this.prune();
     const conversationId = typeof row.conversation_id === "string" ? row.conversation_id : null;
     const activityType = typeof row.activity_type === "string" ? row.activity_type : null;
     const actorId = typeof row.actor_member_id === "string" ? row.actor_member_id : null;
+    const rowId = typeof row.id === "string" ? row.id : null;
+    if (rowId && this.suppressedRows.has(rowId)) return "suppress";
     if (!conversationId || !activityType || !actorId) return "show";
 
     // Oldest unechoed matching action first: rapid Pin -> Unpin pairs each
@@ -122,9 +126,13 @@ export class ActionNotificationLedger {
       if (!entry.memberId || entry.memberId !== actorId) continue;
       if (!entry.activityTypes.includes(activityType)) continue;
       entry.echoed = true;
-      if (entry.shown) return "suppress";
+      // This browser's own action: success is silent whichever arrives first.
       entry.shown = true;
-      return "show";
+      if (rowId) {
+        if (this.suppressedRows.size > 500) this.suppressedRows.clear();
+        this.suppressedRows.add(rowId);
+      }
+      return "suppress";
     }
     return "show";
   }

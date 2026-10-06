@@ -51,18 +51,26 @@ const activity = (overrides = {}) => ({
   conversation_id: "c1", activity_type: "pinned", actor_member_id: "me", ...overrides,
 });
 
-test("response first, then our own realtime echo: exactly one toast", () => {
+test("response first, then our own realtime echo: success stays silent", () => {
   const ledger = new feedback.ActionNotificationLedger();
   const token = ledger.expect("c1", ["pinned"], "me");
-  assert.equal(ledger.confirmLocal(token), true, "the response shows it");
-  assert.equal(ledger.claimRealtime(activity()), "suppress", "the echo does not");
+  ledger.confirmLocal(token);
+  assert.equal(ledger.claimRealtime(activity({ id: "act-1" })), "suppress");
 });
 
-test("realtime echo first, then the response: exactly one toast", () => {
+test("realtime echo first, then the response: success stays silent", () => {
   const ledger = new feedback.ActionNotificationLedger();
   const token = ledger.expect("c1", ["status_changed"], "me");
-  assert.equal(ledger.claimRealtime(activity({ activity_type: "status_changed" })), "show");
-  assert.equal(ledger.confirmLocal(token), false, "the response does not toast again");
+  assert.equal(ledger.claimRealtime(activity({ id: "act-2", activity_type: "status_changed" })), "suppress");
+  ledger.confirmLocal(token);
+});
+
+test("duplicate realtime deliveries of our own activity stay silent", () => {
+  const ledger = new feedback.ActionNotificationLedger();
+  ledger.expect("c1", ["assigned"], "me");
+  for (let i = 0; i < 3; i += 1) {
+    assert.equal(ledger.claimRealtime(activity({ id: "act-3", activity_type: "assigned" })), "suppress");
+  }
 });
 
 test("a teammate's activity and my own from another device are always shown", () => {
@@ -75,7 +83,7 @@ test("a teammate's activity and my own from another device are always shown", ()
   assert.equal(fresh.claimRealtime(activity()), "show", "no local action here: another device");
 });
 
-test("a failed action releases its entry; a late echo past the window is shown", () => {
+test("a failed action releases its entry; a later unrelated echo is shown", () => {
   let now = 1_000;
   const ledger = new feedback.ActionNotificationLedger(() => now);
   const failed = ledger.expect("c1", ["pinned"], "me");
@@ -84,27 +92,16 @@ test("a failed action releases its entry; a late echo past the window is shown",
   const ok = ledger.expect("c1", ["pinned"], "me");
   ledger.confirmLocal(ok);
   now += 25_000;
-  assert.equal(ledger.claimRealtime(activity()), "show", "a much later identical action is new");
+  assert.equal(ledger.claimRealtime(activity()), "show", "past the window it is not ours");
 });
 
-test("rapid toggles with out-of-order echoes: each action gets one toast", () => {
+test("rapid toggles with out-of-order echoes: every own echo silent, teammate still shown", () => {
   const ledger = new feedback.ActionNotificationLedger();
-  const pin = ledger.expect("c1", ["pinned"], "me");
-  const unpin = ledger.expect("c1", ["unpinned"], "me");
-  assert.equal(ledger.claimRealtime(activity({ activity_type: "unpinned" })), "show", "unpin echo pairs with unpin");
-  assert.equal(ledger.confirmLocal(pin), true, "pin still shows once");
-  assert.equal(ledger.claimRealtime(activity()), "suppress");
-  assert.equal(ledger.confirmLocal(unpin), false);
-});
-
-test("rapid toggles: each action gets its own single toast", () => {
-  const ledger = new feedback.ActionNotificationLedger();
-  const pin = ledger.expect("c1", ["pinned"], "me");
-  assert.equal(ledger.confirmLocal(pin), true);
-  assert.equal(ledger.claimRealtime(activity()), "suppress");
-  const unpin = ledger.expect("c1", ["unpinned"], "me");
-  assert.equal(ledger.claimRealtime(activity({ activity_type: "unpinned" })), "show");
-  assert.equal(ledger.confirmLocal(unpin), false);
+  ledger.expect("c1", ["pinned"], "me");
+  ledger.expect("c1", ["unpinned"], "me");
+  assert.equal(ledger.claimRealtime(activity({ id: "u", activity_type: "unpinned" })), "suppress");
+  assert.equal(ledger.claimRealtime(activity({ id: "p" })), "suppress");
+  assert.equal(ledger.claimRealtime(activity({ id: "t", actor_member_id: "teammate" })), "show");
 });
 
 test("rollback never overwrites a teammate's newer value", () => {
@@ -334,4 +331,32 @@ test("client outcomes: deleted, partial, failed, uncertain timeout and network l
   assert.equal((await requestCommentAction("/x", {}, "fail", send(504, null))).kind, "uncertain", "gateway timeout after the call");
   assert.equal((await requestCommentAction("/x", {}, "fail", async () => { throw new TypeError("network"); })).kind, "uncertain");
   assert.equal((await requestCommentAction("/x", {}, "fail", send(200, { success: true }))).kind, "ok");
+});
+
+/* -------------------------------- silent success, visible failures (source) */
+
+const fs = require("fs");
+const view = fs.readFileSync("components/inbox/inbox-view.tsx", "utf8");
+const panel = fs.readFileSync("components/inbox/message-panel.tsx", "utf8");
+
+test("listed actions show no success toast; their errors remain", () => {
+  for (const text of ["Conversation pinned.", "Conversation unpinned.", "Conversation assigned.", "Conversation unassigned.",
+    "Conversation assigned to you.", "Conversation marked as unread", "Status changed to"]) {
+    assert.ok(!view.includes(text), `no success toast: ${text}`);
+  }
+  assert.equal((view.match(/confirmActionSilently\(activityToken\)/g) || []).length, 4, "pin, status, assign, claim confirm silently");
+  for (const error of ["setPinError(message)", "setStatusError(", "setAssignmentError(", "Unable to mark conversation unread."]) {
+    assert.ok(view.includes(error), `error kept: ${error}`);
+  }
+  assert.ok(view.includes('showSuccessToast("Reminder created successfully.")'), "unrelated success toast untouched");
+});
+
+test("comment success is silent; partial warnings, deleted and uncertain notices remain", () => {
+  const body = panel.slice(panel.indexOf("function showCommentSuccess"), panel.indexOf("const [actionNotice, setActionNotice]"));
+  assert.match(body, /if \(result\.warning\) showActionNotice/);
+  assert.match(body, /else setActionNotice\(null\)/, "the pending text clears with no success message");
+  assert.ok(panel.includes('showActionNotice("Comment is already deleted")'));
+  assert.ok(panel.includes("result.uncertain) showActionNotice"));
+  assert.ok(panel.includes('showActionNotice(result.error ?? "Action failed. Please try again.")'));
+  assert.ok(panel.includes('"Deleting comment…"') && panel.includes('"Liking comment…"'), "pending indicators kept");
 });

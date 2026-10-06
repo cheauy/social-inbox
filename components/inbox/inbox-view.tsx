@@ -1950,9 +1950,9 @@ function expectActivity(conversationId: string, activityTypes: string[]) {
   return actionLedgerRef.current.expect(conversationId, activityTypes, currentMemberId);
 }
 
-/* One success toast, whether the response or our own Realtime echo lands first. */
-function confirmActionToast(token: string, message: string) {
-  if (actionLedgerRef.current.confirmLocal(token)) showSuccessToast(message);
+/* Success is silent; recording it keeps our own Realtime echo silent too. */
+function confirmActionSilently(token: string) {
+  actionLedgerRef.current.confirmLocal(token);
 }
 
 function normalizeCustomerTags(
@@ -5816,7 +5816,6 @@ useEffect(() => {
           ),
         );
       }
-      showSuccessToast("Conversation marked as unread.");
     } catch (error) {
       manualUnreadConversationIdsRef.current.delete(
         conversationId,
@@ -5942,9 +5941,7 @@ async function handleTogglePin() {
         ),
       );
     }
-    confirmActionToast(activityToken, (result.conversation?.is_pinned ?? nextPinned)
-      ? "Conversation pinned."
-      : "Conversation unpinned.");
+    confirmActionSilently(activityToken);
   } catch (error) {
     const localOverride =
       pinOverrideRef.current.get(conversationId);
@@ -8586,7 +8583,7 @@ async function handleSendMessage(
         ),
       );
       // Status had no local confirmation; it relied on the Realtime echo.
-      confirmActionToast(activityToken, `Status changed to ${capitalizeFirst(authoritativeStatus)}.`);
+      confirmActionSilently(activityToken);
       return true;
     } catch (error) {
       actionLedgerRef.current.cancel(activityToken);
@@ -8744,9 +8741,7 @@ async function handleAssignmentChange(
         ),
       );
     }
-    confirmActionToast(activityToken, nextAssignedTo
-      ? "Conversation assigned."
-      : "Conversation unassigned.");
+    confirmActionSilently(activityToken);
   } catch (error) {
     actionLedgerRef.current.cancel(activityToken);
     assignmentOverrideRef.current.delete(conversationId);
@@ -8853,7 +8848,7 @@ async function handleAssignToMe() {
         ),
       ),
     );
-    confirmActionToast(activityToken, "Conversation assigned to you.");
+    confirmActionSilently(activityToken);
   } catch (error) {
     actionLedgerRef.current.cancel(activityToken);
     assignmentOverrideRef.current.delete(conversationId);

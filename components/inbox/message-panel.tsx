@@ -1676,9 +1676,10 @@ export function MessagePanel({
     }
   }
 
-  /* Success wording, plus the warning when Facebook applied it but TENH did not save it. */
+  /* Success is silent: clear the pending text. Only a partial success says anything. */
   function showCommentSuccess(result: CommentActionOutcome, text: string) {
-    showActionNotice(result.warning ? `${text}. ${result.warning}` : text);
+    if (result.warning) showActionNotice(`${text}. ${result.warning}`);
+    else setActionNotice(null);
   }
 
   const [actionNotice, setActionNotice] =
