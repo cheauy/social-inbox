@@ -6,6 +6,7 @@ import {
   getInboxConversationAccess,
 } from "@/lib/inbox/get-inbox-resource-access";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { phaseTimer } from "@/lib/server/phase-timer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ export async function PATCH(
   _request: Request,
   context: RouteContext,
 ) {
+  const timer = phaseTimer();
   const { conversationId } =
     await context.params;
 
@@ -50,6 +52,7 @@ export async function PATCH(
   }
 
   const currentMember = access.member;
+  timer.mark("auth");
 
   const {
     data: conversation,
@@ -97,27 +100,58 @@ export async function PATCH(
     );
   }
 
+  /*
+   * The count is the run of incoming messages at the newest end of the
+   * thread. It used to load the whole history to walk that run; long threads
+   * paid for every message they had ever exchanged. The same number comes
+   * from two bounded reads: the newest message that is not incoming, then a
+   * count of incoming messages newer than it.
+   *
+   * Identical except at an exact created_at tie with that boundary row, where
+   * the old walk's order was itself unspecified.
+   */
   const {
-    data: messages,
-    error: messagesError,
+    data: boundary,
+    error: boundaryError,
   } = await supabaseAdmin
     .from("messages")
-    .select(`
-      id,
-      direction,
-      created_at
-    `)
-    .eq(
-      "business_id",
-      currentMember.business_id,
-    )
-    .eq(
-      "conversation_id",
-      normalizedConversationId,
-    )
-    .order("created_at", {
-      ascending: false,
-    });
+    .select("created_at")
+    .eq("business_id", currentMember.business_id)
+    .eq("conversation_id", normalizedConversationId)
+    // Matches the old walk, where any non-"incoming" row (even null) ended the run.
+    .or("direction.is.null,direction.neq.incoming")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (boundaryError) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Unable to load conversation messages.",
+      },
+      {
+        status: 500,
+      },
+    );
+  }
+
+  let incomingQuery = supabaseAdmin
+    .from("messages")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", currentMember.business_id)
+    .eq("conversation_id", normalizedConversationId)
+    .eq("direction", "incoming");
+
+  if (boundary?.created_at) {
+    incomingQuery = incomingQuery.gt("created_at", boundary.created_at);
+  }
+
+  const {
+    count: incomingCount,
+    error: messagesError,
+  } = await incomingQuery;
 
   if (messagesError) {
     return NextResponse.json(
@@ -132,18 +166,9 @@ export async function PATCH(
     );
   }
 
-  let unreadCount = 0;
+  timer.mark("count");
 
-  for (const message of messages ?? []) {
-    if (
-      message.direction !==
-      "incoming"
-    ) {
-      break;
-    }
-
-    unreadCount += 1;
-  }
+  let unreadCount = incomingCount ?? 0;
 
   /*
    * Manual Mark unread is also useful when the latest row is outgoing.
@@ -202,9 +227,14 @@ export async function PATCH(
     );
   }
 
-  return NextResponse.json({
-    success: true,
-    conversation:
-      updatedConversation,
-  });
+  timer.mark("db");
+
+  return NextResponse.json(
+    {
+      success: true,
+      conversation:
+        updatedConversation,
+    },
+    { headers: { "Server-Timing": timer.header() } },
+  );
 }

@@ -25,6 +25,20 @@ import type {
   TeamAgentPresence,
 } from "@/lib/inbox/use-agent-presence";
 
+/* Wording for an action that is still waiting for the server. */
+export type ConversationPendingLabels = {
+  assign?: string | null;
+  pin?: string | null;
+  unread?: string | null;
+  status?: string | null;
+};
+
+/*
+ * Pending is visibly different from done: dimmed, pulsing, and labelled with
+ * what is happening. The confirmed state is the ordinary button again.
+ */
+const pendingButtonClass = "cursor-wait animate-pulse opacity-60";
+
 type ConversationHeaderProps = {
   conversation: InboxConversation;
   teamMembers: TeamMember[];
@@ -35,6 +49,8 @@ type ConversationHeaderProps = {
   updatingStatus: boolean;
   assigning: boolean;
   markingUnread: boolean;
+  pinning?: boolean;
+  pendingLabels?: ConversationPendingLabels;
   customerPanelVisible: boolean;
   channelPlatform: "messenger" | "telegram";
   channelAccountName: string;
@@ -169,6 +185,8 @@ export function ConversationHeader({
   updatingStatus,
   assigning,
   markingUnread,
+  pinning = false,
+  pendingLabels,
   customerPanelVisible,
   channelPlatform,
   channelAccountName,
@@ -446,9 +464,10 @@ export function ConversationHeader({
               type="button"
               onClick={() => setAssignmentOpen((current) => !current)}
               disabled={assigning}
-              className={`${actionButtonBase} ${assignmentOpen ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"}`}
-              title={isKhmer ? "ចាត់តាំងការសន្ទនា" : "Assign conversation"}
-              aria-label={isKhmer ? "ចាត់តាំងការសន្ទនា" : "Assign conversation"}
+              aria-busy={assigning}
+              className={`${actionButtonBase} ${assignmentOpen ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"} ${assigning ? pendingButtonClass : ""}`}
+              title={assigning ? `${pendingLabels?.assign ?? "Assigning"}…` : isKhmer ? "ចាត់តាំងការសន្ទនា" : "Assign conversation"}
+              aria-label={assigning ? `${pendingLabels?.assign ?? "Assigning"}…` : isKhmer ? "ចាត់តាំងការសន្ទនា" : "Assign conversation"}
               aria-expanded={assignmentOpen}
             >
               <UsersIcon />
@@ -563,9 +582,11 @@ export function ConversationHeader({
           <button
             type="button"
             onClick={onTogglePin}
-            className={`${actionButtonBase} ${isPinned ? "border-[#E8A317]/40 bg-[#FFF6E0] text-[#E8A317]" : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"}`}
-            title={isKhmer ? (isPinned ? "ដោះខ្ទាស់ការសន្ទនា" : "ខ្ទាស់ការសន្ទនា") : (isPinned ? "Unpin conversation" : "Pin conversation")}
-            aria-label={isKhmer ? (isPinned ? "ដោះខ្ទាស់ការសន្ទនា" : "ខ្ទាស់ការសន្ទនា") : (isPinned ? "Unpin conversation" : "Pin conversation")}
+            disabled={pinning}
+            aria-busy={pinning}
+            className={`${actionButtonBase} ${isPinned ? "border-[#E8A317]/40 bg-[#FFF6E0] text-[#E8A317]" : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"} ${pinning ? pendingButtonClass : ""}`}
+            title={pinning ? `${pendingLabels?.pin ?? "Saving"}…` : isKhmer ? (isPinned ? "ដោះខ្ទាស់ការសន្ទនា" : "ខ្ទាស់ការសន្ទនា") : (isPinned ? "Unpin conversation" : "Pin conversation")}
+            aria-label={pinning ? `${pendingLabels?.pin ?? "Saving"}…` : isKhmer ? (isPinned ? "ដោះខ្ទាស់ការសន្ទនា" : "ខ្ទាស់ការសន្ទនា") : (isPinned ? "Unpin conversation" : "Pin conversation")}
             aria-pressed={isPinned}
           >
             <ConversationBookmark filled={isPinned} />
@@ -575,13 +596,15 @@ export function ConversationHeader({
             type="button"
             onClick={onMarkUnread}
             disabled={markingUnread}
-            className={`${actionButtonBase} border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800`}
-            title={isKhmer ? "សម្គាល់ថាមិនទាន់អាន" : "Mark as unread"}
-            aria-label={isKhmer ? "សម្គាល់ថាមិនទាន់អាន" : "Mark as unread"}
+            aria-busy={markingUnread}
+            className={`${actionButtonBase} border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800 ${markingUnread ? pendingButtonClass : ""}`}
+            title={markingUnread ? `${pendingLabels?.unread ?? "Saving"}…` : isKhmer ? "សម្គាល់ថាមិនទាន់អាន" : "Mark as unread"}
+            aria-label={markingUnread ? `${pendingLabels?.unread ?? "Saving"}…` : isKhmer ? "សម្គាល់ថាមិនទាន់អាន" : "Mark as unread"}
           >
             <UnreadIcon />
           </button>
 
+          <span aria-busy={updatingStatus} title={updatingStatus ? `${pendingLabels?.status ?? "Saving"}…` : undefined} className={updatingStatus ? pendingButtonClass : undefined}>
           <ConversationStatusMenu
             key={`status-menu:${conversation.id}`}
             value={conversation.status}
@@ -590,6 +613,7 @@ export function ConversationHeader({
             label={isKhmer ? "ប្តូរស្ថានភាពការសន្ទនា" : "Change conversation status"}
             statusLabel={statusLabel}
           />
+          </span>
 
           <div className="mx-0.5 h-7 w-px bg-slate-200" aria-hidden="true" />
 

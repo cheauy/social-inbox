@@ -17,6 +17,11 @@ import {
   FacebookCommentContextError,
   loadAuthorizedFacebookCommentActionContext,
 } from "../_shared";
+import {
+  confirmCommentMissing,
+  isGraphObjectMissing,
+  phaseTimer,
+} from "@/lib/facebook/comment-action-evidence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,6 +66,7 @@ async function readGraphResult(
 export async function POST(
   request: NextRequest,
 ) {
+  const timer = phaseTimer();
   try {
     let body: HideCommentBody;
 
@@ -156,6 +162,7 @@ export async function POST(
       return { response, result, pageAccessToken };
     }
 
+    timer.mark("auth");
     let attempt =
       await updateVisibility(
         context.pageAccessToken,
@@ -177,12 +184,20 @@ export async function POST(
 
     const { response, result } = attempt;
     const activePageAccessToken = attempt.pageAccessToken;
+    timer.mark("meta");
 
     if (
       !response.ok ||
       result.success === false ||
       result.error
     ) {
+      // Deleted only on structured, twice-confirmed evidence.
+      if (isGraphObjectMissing(result.error) && await confirmCommentMissing(commentId, activePageAccessToken, graphVersion)) {
+        return NextResponse.json(
+          { success: false, code: "COMMENT_DELETED", error: "This comment no longer exists on Facebook." },
+          { status: 410, headers: { "Server-Timing": timer.header() } },
+        );
+      }
       return NextResponse.json(
         {
           success: false,
@@ -238,6 +253,8 @@ export async function POST(
       // The update already succeeded. Verification is intentionally best-effort.
     }
 
+    timer.mark("verify");
+
     if (
       verifiedHidden !== null &&
       verifiedHidden !== hidden
@@ -272,27 +289,34 @@ export async function POST(
           currentMember.business_id,
         );
 
+    timer.mark("db");
+
     if (databaseError) {
+      // Facebook applied (and verified) it: partial, not a failure to retry.
       return NextResponse.json(
         {
-          success: false,
-          error:
-            "Facebook updated the comment visibility, but TENH could not save the local state.",
+          success: true,
+          partial: true,
+          code: "LOCAL_SAVE_FAILED",
+          hidden,
+          warning:
+            "Facebook updated the visibility, but TENH could not save it locally.",
         },
-        {
-          status: 500,
-        },
+        { headers: { "Server-Timing": timer.header() } },
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      hidden,
-      verified:
-        verifiedHidden !== null,
-      pageId:
-        context.pageId,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        hidden,
+        verified:
+          verifiedHidden !== null,
+        pageId:
+          context.pageId,
+      },
+      { headers: { "Server-Timing": timer.header() } },
+    );
   } catch (error) {
     if (
       error instanceof

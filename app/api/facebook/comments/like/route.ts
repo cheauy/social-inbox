@@ -17,6 +17,11 @@ import {
   FacebookCommentContextError,
   loadAuthorizedFacebookCommentActionContext,
 } from "../_shared";
+import {
+  confirmCommentMissing,
+  isGraphObjectMissing,
+  phaseTimer,
+} from "@/lib/facebook/comment-action-evidence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,6 +62,7 @@ async function readGraphResult(
 export async function POST(
   request: NextRequest,
 ) {
+  const timer = phaseTimer();
   try {
     let body: LikeCommentBody;
 
@@ -142,9 +148,11 @@ export async function POST(
       return { response, result };
     }
 
+    timer.mark("auth");
+    let usedToken = context.pageAccessToken;
     let attempt =
       await updateLike(
-        context.pageAccessToken,
+        usedToken,
       );
 
     if (
@@ -155,6 +163,7 @@ export async function POST(
         await refreshFacebookPageAccessToken(
           context.pageId,
         );
+      usedToken = refreshedToken;
       attempt =
         await updateLike(
           refreshedToken,
@@ -162,6 +171,7 @@ export async function POST(
     }
 
     const { response, result } = attempt;
+    timer.mark("meta");
 
     /*
      * V3.11.30: only change TENH local state after Meta confirms the
@@ -169,6 +179,14 @@ export async function POST(
      * which could display a Like that Facebook had rejected.
      */
     if (!response.ok || result.error) {
+      // Deleted only on structured, twice-confirmed evidence.
+      if (isGraphObjectMissing(result.error) && await confirmCommentMissing(commentId, usedToken, graphVersion)) {
+        timer.mark("verify");
+        return NextResponse.json(
+          { success: false, code: "COMMENT_DELETED", error: "This comment no longer exists on Facebook." },
+          { status: 410, headers: { "Server-Timing": timer.header() } },
+        );
+      }
       return NextResponse.json(
         {
           success: false,
@@ -198,23 +216,33 @@ export async function POST(
           currentMember.business_id,
         );
 
+    timer.mark("db");
+
     if (databaseError) {
+      /*
+       * Facebook already applied it. Partial, not failed: a failure would
+       * invite the agent to click again, and the provider state is changed.
+       */
       return NextResponse.json(
         {
-          success: false,
-          error:
-            "Facebook updated the comment Like, but TENH could not save the local state.",
+          success: true,
+          partial: true,
+          code: "LOCAL_SAVE_FAILED",
+          liked,
+          warning:
+            "Facebook updated the Like, but TENH could not save it locally.",
         },
-        {
-          status: 500,
-        },
+        { headers: { "Server-Timing": timer.header() } },
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      liked,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        liked,
+      },
+      { headers: { "Server-Timing": timer.header() } },
+    );
   } catch (error) {
     if (
       error instanceof

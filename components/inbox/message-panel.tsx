@@ -52,6 +52,7 @@ import {
 
 import {
   ConversationHeader,
+  type ConversationPendingLabels,
 } from "@/components/inbox/conversation-header";
 
 import {
@@ -325,6 +326,17 @@ function readStoredChatBackgroundSrc() {
   return DEFAULT_CHAT_BACKGROUND_SRC;
 }
 
+/* What a Facebook comment action came back with. */
+type CommentActionOutcome = {
+  success: boolean;
+  deleted?: boolean;
+  /* Facebook may have applied it: keep the screen as set and do not resend. */
+  uncertain?: boolean;
+  error?: string;
+  /* Applied on Facebook; a later step (the local save) did not complete. */
+  warning?: string;
+};
+
 type MessagePanelProps = {
   searchJump?: { conversationId: string; messageId: string; nonce: number } | null;
   storageBusinessId: string;
@@ -389,6 +401,9 @@ type MessagePanelProps = {
     | null;
 
   markingUnread: boolean;
+  pinning?: boolean;
+  /* Per-action pending wording for the open conversation, e.g. "Assigning". */
+  pendingLabels?: ConversationPendingLabels;
 
   customerPanelVisible: boolean;
 
@@ -434,18 +449,12 @@ type MessagePanelProps = {
   onLikeComment: (
     commentId: string,
     liked: boolean,
-  ) => Promise<{
-    success: boolean;
-    deleted?: boolean;
-  }>;
+  ) => Promise<CommentActionOutcome>;
 
   onHideComment: (
     commentId: string,
     hidden: boolean,
-  ) => Promise<{
-    success: boolean;
-    deleted?: boolean;
-  }>;
+  ) => Promise<CommentActionOutcome>;
 
   onReplyToComment: (
     commentId: string,
@@ -496,10 +505,7 @@ type MessagePanelProps = {
 
   onDeleteComment: (
     commentId: string,
-  ) => Promise<{
-    success: boolean;
-    deleted?: boolean;
-  }>;
+  ) => Promise<CommentActionOutcome>;
 
   onRetryMessage?: (
     messageId: string,
@@ -1495,6 +1501,8 @@ export function MessagePanel({
   assigning,
   assignmentError,
   markingUnread,
+  pinning = false,
+  pendingLabels,
   customerPanelVisible,
 
   onMarkUnread,
@@ -1650,13 +1658,15 @@ export function MessagePanel({
 
   async function runCommentAction(
     messageId: string,
-    action: () => Promise<{ success: boolean; deleted?: boolean }>,
-  ) {
+    action: () => Promise<CommentActionOutcome>,
+  ): Promise<CommentActionOutcome> {
     pendingCommentActionsRef.current.add(messageId);
     try {
       const result = await action();
+      // One notice per outcome; the caller adds the success wording.
       if (result.deleted) showActionNotice("Comment is already deleted");
-      if (!result.success && !result.deleted) showActionNotice("Action failed. Please try again.");
+      else if (result.uncertain) showActionNotice(result.error ?? "Not confirmed. Check before trying again.");
+      else if (!result.success) showActionNotice(result.error ?? "Action failed. Please try again.");
       return result;
     } catch {
       showActionNotice("Action failed. Please try again.");
@@ -1664,6 +1674,11 @@ export function MessagePanel({
     } finally {
       pendingCommentActionsRef.current.delete(messageId);
     }
+  }
+
+  /* Success wording, plus the warning when Facebook applied it but TENH did not save it. */
+  function showCommentSuccess(result: CommentActionOutcome, text: string) {
+    showActionNotice(result.warning ? `${text}. ${result.warning}` : text);
   }
 
   const [actionNotice, setActionNotice] =
@@ -2161,6 +2176,9 @@ export function MessagePanel({
           return;
         }
 
+        // Uncertain: leave it as the agent set it; never roll back or resend.
+        if (result.uncertain) return;
+
         if (!result.success) {
           setOptimisticCommentState(
             (current) => ({
@@ -2171,9 +2189,7 @@ export function MessagePanel({
           return;
         }
 
-        showActionNotice(
-          "Comment deleted successfully",
-        );
+        showCommentSuccess(result, "Comment deleted");
         return;
       }
 
@@ -2216,6 +2232,8 @@ export function MessagePanel({
         return;
       }
 
+      if (result.uncertain) return;
+
       if (!result.success) {
         setOptimisticCommentState(
           (current) => ({
@@ -2226,11 +2244,7 @@ export function MessagePanel({
         return;
       }
 
-      showActionNotice(
-        nextHidden
-          ? "Comment hidden"
-          : "Comment unhidden",
-      );
+      showCommentSuccess(result, nextHidden ? "Comment hidden" : "Comment unhidden");
     } finally {
       setCommentConfirmLoading(false);
     }
@@ -2959,6 +2973,8 @@ export function MessagePanel({
         markingUnread={
           markingUnread
         }
+        pinning={pinning}
+        pendingLabels={pendingLabels}
         customerPanelVisible={
           customerPanelVisible
         }
@@ -3821,6 +3837,8 @@ export function MessagePanel({
                   return;
                 }
 
+                if (result.uncertain) return;
+
                 if (!result.success) {
                   setOptimisticCommentState(
                     (current) => ({
@@ -3837,11 +3855,7 @@ export function MessagePanel({
                   return;
                 }
 
-                showActionNotice(
-                  next
-                    ? "Comment liked"
-                    : "Comment unliked",
-                );
+                showCommentSuccess(result, next ? "Comment liked" : "Comment unliked");
               }
 
               /*
@@ -4643,7 +4657,7 @@ export function MessagePanel({
                                                     return;
                                                   }
 
-                                                  if (!result.success) {
+                                                  if (!result.success && !result.uncertain) {
                                                     setOptimisticCommentState(
                                                       (current) => ({
                                                         ...current,
@@ -4654,7 +4668,7 @@ export function MessagePanel({
                                                       }),
                                                     );
                                                   }
-                                                  if (result.success) showActionNotice(next ? "Comment liked" : "Comment unliked");
+                                                  if (result.success) showCommentSuccess(result, next ? "Comment liked" : "Comment unliked");
                                                 }}
                                                 className={`inline-flex items-center gap-1.5 transition ${
                                                   replyState.liked

@@ -19,6 +19,11 @@ import {
   FacebookCommentContextError,
   loadAuthorizedFacebookCommentActionContext,
 } from "../_shared";
+import {
+  confirmCommentMissing,
+  isGraphObjectMissing,
+  phaseTimer,
+} from "@/lib/facebook/comment-action-evidence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,6 +63,7 @@ async function readGraphResult(
 export async function POST(
   request: NextRequest,
 ) {
+  const timer = phaseTimer();
   try {
     let body: DeleteCommentBody;
 
@@ -138,9 +144,11 @@ export async function POST(
       return { response, result };
     }
 
+    timer.mark("auth");
+    let usedToken = context.pageAccessToken;
     let attempt =
       await deleteComment(
-        context.pageAccessToken,
+        usedToken,
       );
 
     if (
@@ -151,6 +159,7 @@ export async function POST(
         await refreshFacebookPageAccessToken(
           context.pageId,
         );
+      usedToken = refreshedToken;
       attempt =
         await deleteComment(
           refreshedToken,
@@ -158,12 +167,20 @@ export async function POST(
     }
 
     const { response, result } = attempt;
+    timer.mark("meta");
 
     if (
       !response.ok ||
       result.success === false ||
       result.error
     ) {
+      // Deleted only on structured, twice-confirmed evidence.
+      if (isGraphObjectMissing(result.error) && await confirmCommentMissing(commentId, usedToken, graphVersion)) {
+        return NextResponse.json(
+          { success: false, code: "COMMENT_DELETED", error: "This comment no longer exists on Facebook." },
+          { status: 410, headers: { "Server-Timing": timer.header() } },
+        );
+      }
       return NextResponse.json(
         {
           success: false,
@@ -183,16 +200,39 @@ export async function POST(
      * If the parent comment disappears, all locally saved replies that
      * point to that comment (including nested replies) become deleted too.
      */
-    await markFacebookCommentThreadDeleted({
-      businessId:
-        currentMember.business_id,
-      commentId,
-      deletedBy: "page",
-    });
+    /*
+     * Facebook has deleted it. If mirroring the thread locally fails now, that
+     * is partial, not a failed delete: answering 500 here used to tell the
+     * agent the comment was still there when it no longer existed.
+     */
+    try {
+      await markFacebookCommentThreadDeleted({
+        businessId:
+          currentMember.business_id,
+        commentId,
+        deletedBy: "page",
+      });
+    } catch (reconcileError) {
+      timer.mark("reconcile");
+      console.error("Facebook comment deleted, but local reconciliation failed:", reconcileError);
+      return NextResponse.json(
+        {
+          success: true,
+          partial: true,
+          code: "LOCAL_SAVE_FAILED",
+          warning: "Facebook deleted the comment, but TENH could not update its replies locally.",
+        },
+        { headers: { "Server-Timing": timer.header() } },
+      );
+    }
+    timer.mark("reconcile");
 
-    return NextResponse.json({
-      success: true,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+      },
+      { headers: { "Server-Timing": timer.header() } },
+    );
   } catch (error) {
     if (
       error instanceof

@@ -36,6 +36,8 @@ import { matchesOptimisticMessage } from "@/lib/inbox/optimistic-message-match";
 import { confirmOutgoingMessage, isOptimisticConfirmedByServer, withOptimisticRenderKey } from "@/lib/inbox/confirm-outgoing-message";
 import { correlateTelegramAlbumMessages } from "@/lib/inbox/telegram-album-correlation";
 import { normalizeMessages } from "@/lib/inbox/normalize-messages";
+import { ActionGuard, ActionNotificationLedger } from "@/lib/inbox/action-feedback";
+import { requestCommentAction } from "@/lib/inbox/comment-action-request";
 import { retainLocalImagePreview } from "@/lib/inbox/local-image-preview";
 import { readMessagePageResponse } from "@/lib/inbox/read-message-page-response";
 import { latestCustomerChannel } from "@/lib/inbox/latest-customer-channel";
@@ -642,14 +644,26 @@ const requestedConversationId =
 
 const [markingAllRead, setMarkingAllRead] = useState(false);
 const bulkReadInFlightRef = useRef(false);
-const [markingUnread, setMarkingUnread] =
+const [, setMarkingUnread] =
   useState(false);
 
 const [historyOpen, setHistoryOpen] =
   useState(false);
 
-const [pinning, setPinning] =
+const [, setPinning] =
   useState(false);
+
+/*
+ * Per-conversation, synchronous action guards and one-toast-per-action
+ * bookkeeping. React state is not updated until the next render, so it can
+ * not stop a double click; a ref can. The version counter re-renders the
+ * pending labels when an action starts or settles.
+ */
+const actionGuardRef = useRef(new ActionGuard());
+const actionLedgerRef = useRef(new ActionNotificationLedger());
+const [, setActionPendingVersion] = useState(0);
+// Each in-flight automatic read, so Mark Unread can wait for exactly it.
+const readPromisesRef = useRef(new Map<string, Promise<void>>());
 
 const [pinError, setPinError] =
   useState<string | null>(null);
@@ -765,7 +779,7 @@ const previousActiveConversationIdRef =
   const [statusError, setStatusError] =
     useState<string | null>(null);
 
-  const [assigning, setAssigning] =
+  const [, setAssigning] =
     useState(false);
   const [assignmentError, setAssignmentError] =
     useState<string | null>(null);
@@ -1669,6 +1683,13 @@ async function markConversationReadRealtime(
   readInFlightRef.current.add(
     conversationId,
   );
+  let settleRead: () => void = () => {};
+  readPromisesRef.current.set(
+    conversationId,
+    new Promise<void>((resolve) => {
+      settleRead = resolve;
+    }),
+  );
 
   /*
    * Keep the active conversation visually at zero unread
@@ -1778,6 +1799,8 @@ async function markConversationReadRealtime(
     readInFlightRef.current.delete(
       conversationId,
     );
+    readPromisesRef.current.delete(conversationId);
+    settleRead();
     pendingReadIdsRef.current.delete(
       conversationId,
     );
@@ -1899,6 +1922,32 @@ function showSuccessToast(message: string) {
     actor_name: "Success",
     description: message,
   });
+}
+
+/* False when the same action on the same conversation is already running. */
+function beginAction(target: string, kind: string, label: string) {
+  if (!actionGuardRef.current.begin(target, kind, label)) return false;
+  setActionPendingVersion((value) => value + 1);
+  return true;
+}
+
+function endAction(target: string, kind: string) {
+  actionGuardRef.current.end(target, kind);
+  setActionPendingVersion((value) => value + 1);
+}
+
+/* "Saving", "Assigning"... while pending for that conversation, else null. */
+function actionLabel(target: string | null | undefined, kind: string) {
+  return target ? actionGuardRef.current.label(target, kind) : null;
+}
+
+function expectActivity(conversationId: string, activityTypes: string[]) {
+  return actionLedgerRef.current.expect(conversationId, activityTypes, currentMemberId);
+}
+
+/* One success toast, whether the response or our own Realtime echo lands first. */
+function confirmActionToast(token: string, message: string) {
+  if (actionLedgerRef.current.confirmLocal(token)) showSuccessToast(message);
 }
 
 function normalizeCustomerTags(
@@ -2141,7 +2190,9 @@ useInboxRealtime({
       if (
         activityConversationId &&
         activityConversationId ===
-          resolvedActiveConversationId
+          resolvedActiveConversationId &&
+        // This browser's own action already announced its success.
+        actionLedgerRef.current.claimRealtime(event.newRow) === "show"
       ) {
         showMultiAgentToast(
           event.newRow,
@@ -5653,6 +5704,9 @@ useEffect(() => {
 
     const conversationId =
       activeConversation.id;
+    if (!beginAction(conversationId, "unread", "Saving")) {
+      return;
+    }
 
     /* Keep it unread for the entire time this exact thread stays open. */
     readBarrierMessageTimeRef.current.delete(
@@ -5693,20 +5747,13 @@ useEffect(() => {
 
     try {
       /*
-       * If TENH was still finishing the automatic read request from opening
-       * this thread, let that tracked request finish first. The unread PATCH is
-       * then guaranteed to be the later write instead of losing a race to
-       * /read and disappearing a moment later.
+       * If the automatic read from opening this thread is still in flight,
+       * wait for exactly that request, not a polling loop. The read route
+       * answers after its write, so the unread PATCH is then the later write
+       * and a late read can not undo it. No new automatic read starts while
+       * the thread is marked unread (markConversationReadRealtime checks it).
        */
-      for (let attempt = 0; attempt < 200; attempt += 1) {
-        if (!readInFlightRef.current.has(conversationId)) {
-          break;
-        }
-
-        await new Promise<void>((resolve) => {
-          window.setTimeout(resolve, 25);
-        });
-      }
+      await readPromisesRef.current.get(conversationId);
 
       const response = await fetch(
         `/api/conversations/${conversationId}/unread`,
@@ -5773,7 +5820,7 @@ useEffect(() => {
           ),
         );
       }
-      showSuccessToast("Conversation marked as unread successfully.");
+      showSuccessToast("Conversation marked as unread.");
     } catch (error) {
       manualUnreadConversationIdsRef.current.delete(
         conversationId,
@@ -5787,15 +5834,23 @@ useEffect(() => {
     } finally {
       unreadWriteInFlightRef.current.delete(conversationId);
       setMarkingUnread(false);
+      endAction(conversationId, "unread");
     }
   }
 
 async function handleTogglePin() {
-  if (!activeConversation || pinning) {
+  if (!activeConversation) {
     return;
   }
 
   const conversationId = activeConversation.id;
+  if (!beginAction(conversationId, "pin", "Saving")) {
+    return;
+  }
+  const activityToken = expectActivity(
+    conversationId,
+    [activeConversation.is_pinned ? "unpinned" : "pinned"],
+  );
   const previousPinState = {
     is_pinned: Boolean(activeConversation.is_pinned),
     pinned_at: activeConversation.pinned_at ?? null,
@@ -5891,9 +5946,9 @@ async function handleTogglePin() {
         ),
       );
     }
-    showSuccessToast((result.conversation?.is_pinned ?? nextPinned)
-      ? "Conversation pinned successfully."
-      : "Conversation unpinned successfully.");
+    confirmActionToast(activityToken, (result.conversation?.is_pinned ?? nextPinned)
+      ? "Conversation pinned."
+      : "Conversation unpinned.");
   } catch (error) {
     const localOverride =
       pinOverrideRef.current.get(conversationId);
@@ -5903,7 +5958,9 @@ async function handleTogglePin() {
       setLiveConversations((current) =>
         sortLiveConversations(
           current.map((conversation) =>
-            conversation.id === conversationId
+            // Only undo our own write; a teammate's newer pin wins.
+            conversation.id === conversationId &&
+            Boolean(conversation.is_pinned) === nextPinned
               ? { ...conversation, ...previousPinState }
               : conversation,
           ),
@@ -5916,10 +5973,12 @@ async function handleTogglePin() {
         ? error.message
         : "Unable to update conversation pin.";
 
+    actionLedgerRef.current.cancel(activityToken);
     setPinError(message);
     console.error("Unable to update conversation pin:", error);
   } finally {
     setPinning(false);
+    endAction(conversationId, "pin");
   }
 }
 
@@ -6397,207 +6456,72 @@ function isDeletedCommentError(
   );
 }
 
-async function handleLikeComment(
-  commentId: string,
-  liked: boolean,
-): Promise<{
+type CommentActionResult = {
   success: boolean;
   deleted?: boolean;
-}> {
-  try {
-    const response =
-      await fetch(
-        "/api/facebook/comments/like",
-        {
-          method: "POST",
+  /* Facebook may or may not have applied it: never roll back or resend. */
+  uncertain?: boolean;
+  error?: string;
+  /* Applied on Facebook, but something after it (the local save) failed. */
+  warning?: string;
+};
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body: JSON.stringify({
-            commentId,
-            liked,
-          }),
-        },
-      );
-
-    const responseText =
-      await response.text();
-
-    let result: {
-      success?: boolean;
-      error?: string;
-    } = {};
-
-    if (responseText.trim()) {
-      try {
-        result =
-          JSON.parse(
-            responseText,
-          );
-      } catch {
-        result = {
-          success: false,
-          error:
-            "Like API returned invalid JSON.",
-        };
-      }
-    }
-
-    if (
-      !response.ok ||
-      !result.success
-    ) {
-      if (
-        isDeletedCommentError(
-          result.error,
-        )
-      ) {
-        await markCommentDeletedLocally(
-          commentId,
-        );
-
-        patchLiveFacebookCommentState(
-          commentId,
-          {
-            comment_is_liked: false,
-            comment_is_hidden: false,
-            comment_is_deleted: true,
-            comment_deleted_by:
-              "customer",
-          },
-          true,
-        );
-
-        return {
-          success: false,
-          deleted: true,
-        };
-      }
-
-      window.alert(
-        result.error ??
-          "Unable to update Like.",
-      );
-
-      return {
-        success: false,
-      };
-    }
-
+async function settleCommentAction(
+  commentId: string,
+  outcome: Awaited<ReturnType<typeof requestCommentAction>>,
+  applyConfirmed: () => void,
+): Promise<CommentActionResult> {
+  if (outcome.kind === "deleted") {
+    await markCommentDeletedLocally(commentId);
     patchLiveFacebookCommentState(
       commentId,
       {
-        comment_is_liked: liked,
+        comment_is_liked: false,
+        comment_is_hidden: false,
+        comment_is_deleted: true,
+        comment_deleted_by: "customer",
       },
+      true,
     );
-
-    return {
-      success: true,
-    };
-  } catch (error) {
-    window.alert(
-      error instanceof Error
-        ? error.message
-        : "Unable to update Like.",
-    );
-
-    return {
-      success: false,
-    };
+    return { success: false, deleted: true };
   }
+
+  if (outcome.kind === "uncertain") {
+    return { success: false, uncertain: true, error: outcome.error };
+  }
+
+  if (outcome.kind === "failed") {
+    return { success: false, error: outcome.error };
+  }
+
+  applyConfirmed();
+  return { success: true, warning: outcome.warning };
+}
+
+async function handleLikeComment(
+  commentId: string,
+  liked: boolean,
+): Promise<CommentActionResult> {
+  const outcome = await requestCommentAction(
+    "/api/facebook/comments/like",
+    { commentId, liked },
+    "Unable to update Like.",
+  );
+
+  return settleCommentAction(commentId, outcome, () =>
+    patchLiveFacebookCommentState(commentId, { comment_is_liked: liked }));
 }
 
 async function handleDeleteComment(
   commentId: string,
-): Promise<{
-  success: boolean;
-  deleted?: boolean;
-}> {
-  try {
-    const response =
-      await fetch(
-        "/api/facebook/comments/delete",
-        {
-          method: "POST",
+): Promise<CommentActionResult> {
+  const outcome = await requestCommentAction(
+    "/api/facebook/comments/delete",
+    { commentId },
+    "Unable to delete comment.",
+  );
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body: JSON.stringify({
-            commentId,
-          }),
-        },
-      );
-
-    const responseText =
-      await response.text();
-
-    let result: {
-      success?: boolean;
-      error?: string;
-    } = {};
-
-    if (responseText.trim()) {
-      try {
-        result =
-          JSON.parse(
-            responseText,
-          );
-      } catch {
-        result = {
-          success: false,
-          error:
-            "Delete API returned invalid JSON.",
-        };
-      }
-    }
-
-    if (
-      !response.ok ||
-      !result.success
-    ) {
-      if (
-        isDeletedCommentError(
-          result.error,
-        )
-      ) {
-        await markCommentDeletedLocally(
-          commentId,
-        );
-
-        patchLiveFacebookCommentState(
-          commentId,
-          {
-            comment_is_liked: false,
-            comment_is_hidden: false,
-            comment_is_deleted: true,
-            comment_deleted_by:
-              "customer",
-          },
-          true,
-        );
-
-        return {
-          success: false,
-          deleted: true,
-        };
-      }
-
-      window.alert(
-        result.error ??
-          "Unable to delete comment.",
-      );
-
-      return {
-        success: false,
-      };
-    }
-
+  return settleCommentAction(commentId, outcome, () =>
     patchLiveFacebookCommentState(
       commentId,
       {
@@ -6607,135 +6531,21 @@ async function handleDeleteComment(
         comment_deleted_by: "page",
       },
       true,
-    );
-
-    return {
-      success: true,
-    };
-  } catch (error) {
-    window.alert(
-      error instanceof Error
-        ? error.message
-        : "Unable to delete comment.",
-    );
-
-    return {
-      success: false,
-    };
-  }
+    ));
 }
 
 async function handleHideComment(
   commentId: string,
   hidden: boolean,
-): Promise<{
-  success: boolean;
-  deleted?: boolean;
-}> {
-  try {
-    const response =
-      await fetch(
-        "/api/facebook/comments/hide",
-        {
-          method: "POST",
+): Promise<CommentActionResult> {
+  const outcome = await requestCommentAction(
+    "/api/facebook/comments/hide",
+    { commentId, hidden },
+    "Unable to update comment visibility.",
+  );
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body: JSON.stringify({
-            commentId,
-            hidden,
-          }),
-        },
-      );
-
-    const responseText =
-      await response.text();
-
-    let result: {
-      success?: boolean;
-      error?: string;
-    } = {};
-
-    if (responseText.trim()) {
-      try {
-        result =
-          JSON.parse(
-            responseText,
-          );
-      } catch {
-        result = {
-          success: false,
-          error:
-            "Hide API returned invalid JSON.",
-        };
-      }
-    }
-
-    if (
-      !response.ok ||
-      !result.success
-    ) {
-      if (
-        isDeletedCommentError(
-          result.error,
-        )
-      ) {
-        await markCommentDeletedLocally(
-          commentId,
-        );
-
-        patchLiveFacebookCommentState(
-          commentId,
-          {
-            comment_is_liked: false,
-            comment_is_hidden: false,
-            comment_is_deleted: true,
-            comment_deleted_by:
-              "customer",
-          },
-          true,
-        );
-
-        return {
-          success: false,
-          deleted: true,
-        };
-      }
-
-      window.alert(
-        result.error ??
-          "Unable to update comment visibility.",
-      );
-
-      return {
-        success: false,
-      };
-    }
-
-    patchLiveFacebookCommentState(
-      commentId,
-      {
-        comment_is_hidden: hidden,
-      },
-    );
-
-    return {
-      success: true,
-    };
-  } catch (error) {
-    window.alert(
-      error instanceof Error
-        ? error.message
-        : "Unable to update comment visibility.",
-    );
-
-    return {
-      success: false,
-    };
-  }
+  return settleCommentAction(commentId, outcome, () =>
+    patchLiveFacebookCommentState(commentId, { comment_is_hidden: hidden }));
 }
 
 function setOptimisticSendStatus(
@@ -8694,7 +8504,6 @@ async function handleSendMessage(
   ) {
     if (
       !activeConversation ||
-      updatingStatus ||
       nextStatus === activeConversation.status
     ) {
       return false;
@@ -8702,6 +8511,10 @@ async function handleSendMessage(
 
     const conversationId = activeConversation.id;
     const previousStatus = activeConversation.status;
+    if (!beginAction(conversationId, "status", "Saving")) {
+      return false;
+    }
+    const activityToken = expectActivity(conversationId, ["status_changed"]);
 
     statusOverrideRef.current.set(conversationId, {
       status: nextStatus,
@@ -8776,8 +8589,11 @@ async function handleSendMessage(
           ),
         ),
       );
+      // Status had no local confirmation; it relied on the Realtime echo.
+      confirmActionToast(activityToken, `Status changed to ${capitalizeFirst(authoritativeStatus)}.`);
       return true;
     } catch (error) {
+      actionLedgerRef.current.cancel(activityToken);
       const currentOverride =
         statusOverrideRef.current.get(conversationId);
 
@@ -8807,13 +8623,14 @@ async function handleSendMessage(
       return false;
     } finally {
       setUpdatingStatus(false);
+      endAction(conversationId, "status");
     }
   }
 
 async function handleAssignmentChange(
   assignedTo: string,
 ) {
-  if (!activeConversation || assigning) {
+  if (!activeConversation) {
     return;
   }
 
@@ -8839,6 +8656,12 @@ async function handleAssignmentChange(
   const optimisticMember = nextAssignedTo
     ? teamMembers.find((member) => member.id === nextAssignedTo) ?? null
     : null;
+
+  // One assignment write per conversation at a time; Assign to me shares it.
+  if (!beginAction(conversationId, "assign", "Assigning")) {
+    return;
+  }
+  const activityToken = expectActivity(conversationId, [nextAssignedTo ? "assigned" : "unassigned"]);
 
   assignmentOverrideRef.current.set(conversationId, {
     assignedTo: nextAssignedTo,
@@ -8925,16 +8748,19 @@ async function handleAssignmentChange(
         ),
       );
     }
-    showSuccessToast(nextAssignedTo
-      ? "Conversation assigned successfully."
-      : "Conversation unassigned successfully.");
+    confirmActionToast(activityToken, nextAssignedTo
+      ? "Conversation assigned."
+      : "Conversation unassigned.");
   } catch (error) {
+    actionLedgerRef.current.cancel(activityToken);
     assignmentOverrideRef.current.delete(conversationId);
 
     setLiveConversations((current) =>
       sortLiveConversations(
         current.map((conversation) =>
-          conversation.id === conversationId
+          // Only undo our own write; a teammate's newer assignment wins.
+          conversation.id === conversationId &&
+          (conversation.assigned_to ?? null) === nextAssignedTo
             ? {
                 ...conversation,
                 ...previousAssignment,
@@ -8951,11 +8777,12 @@ async function handleAssignmentChange(
     );
   } finally {
     setAssigning(false);
+    endAction(conversationId, "assign");
   }
 }
 
 async function handleAssignToMe() {
-  if (!activeConversation || assigning) {
+  if (!activeConversation) {
     return;
   }
 
@@ -8964,6 +8791,16 @@ async function handleAssignToMe() {
   }
 
   const conversationId = activeConversation.id;
+
+  /*
+   * Pending shows at once ("Assigning to you"), but the assignee does not:
+   * the claim is atomic on the server and may lose to a teammate, so the
+   * name appears only once the server says it is ours.
+   */
+  if (!beginAction(conversationId, "assign", "Assigning to you")) {
+    return;
+  }
+  const activityToken = expectActivity(conversationId, ["assigned"]);
 
   setAssigning(true);
   setAssignmentError(null);
@@ -9020,8 +8857,9 @@ async function handleAssignToMe() {
         ),
       ),
     );
-    showSuccessToast("Conversation assigned to you successfully.");
+    confirmActionToast(activityToken, "Conversation assigned to you.");
   } catch (error) {
+    actionLedgerRef.current.cancel(activityToken);
     assignmentOverrideRef.current.delete(conversationId);
     setAssignmentError(
       error instanceof Error
@@ -9030,6 +8868,7 @@ async function handleAssignToMe() {
     );
   } finally {
     setAssigning(false);
+    endAction(conversationId, "assign");
   }
 }
 
@@ -9158,11 +8997,19 @@ return (
   composerReady={composerReady}
   sending={sending}
   sendError={sendError}
-  updatingStatus={updatingStatus}
+  // Pending is per conversation: another thread's action never disables these.
+  updatingStatus={Boolean(actionLabel(activeConversation?.id, "status"))}
   statusError={statusError}
-  assigning={assigning}
+  assigning={Boolean(actionLabel(activeConversation?.id, "assign"))}
   assignmentError={assignmentError}
-  markingUnread={markingUnread}
+  markingUnread={Boolean(actionLabel(activeConversation?.id, "unread"))}
+  pinning={Boolean(actionLabel(activeConversation?.id, "pin"))}
+  pendingLabels={{
+    assign: actionLabel(activeConversation?.id, "assign"),
+    pin: actionLabel(activeConversation?.id, "pin"),
+    unread: actionLabel(activeConversation?.id, "unread"),
+    status: actionLabel(activeConversation?.id, "status"),
+  }}
   customerPanelVisible={
     customerPanelVisible
   }
@@ -9281,7 +9128,7 @@ return (
           activeConversation={
             customerProfileConversation
           }
-          assigning={assigning}
+          assigning={Boolean(actionLabel(customerProfileConversation?.id, "assign"))}
           onAssignToMe={() => {
             void handleAssignToMe();
           }}

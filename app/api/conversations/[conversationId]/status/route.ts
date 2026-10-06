@@ -5,6 +5,7 @@ import {
 
 import { getInboxConversationAccess } from "@/lib/inbox/get-inbox-resource-access";
 import { createConversationActivity } from "@/lib/inbox/create-conversation-activity";
+import { phaseTimer } from "@/lib/server/phase-timer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 import type {
@@ -64,6 +65,7 @@ export async function PATCH(
   request: NextRequest,
   context: RouteContext,
 ) {
+  const timer = phaseTimer();
   const { conversationId } =
     await context.params;
 
@@ -90,6 +92,7 @@ export async function PATCH(
   }
 
   const currentMember = access.member;
+  timer.mark("auth");
 
   /*
    * 2. Parse request body.
@@ -297,6 +300,7 @@ export async function PATCH(
    */
   let activityRecorded = false;
 
+  timer.mark("db");
   try {
     await createConversationActivity({
       businessId:
@@ -351,10 +355,12 @@ export async function PATCH(
     );
   }
 
+  timer.mark("activity");
+
   return NextResponse.json({
     success: true,
     conversation:
       updatedConversation,
     activityRecorded,
-  });
+  }, { headers: { "Server-Timing": timer.header() } });
 }

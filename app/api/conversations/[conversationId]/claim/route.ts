@@ -5,6 +5,7 @@ import {
 
 import { getInboxConversationAccess } from "@/lib/inbox/get-inbox-resource-access";
 import { createConversationActivity } from "@/lib/inbox/create-conversation-activity";
+import { phaseTimer } from "@/lib/server/phase-timer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -28,6 +29,7 @@ export async function PATCH(
   _request: NextRequest,
   context: RouteContext,
 ) {
+  const timer = phaseTimer();
   const { conversationId } =
     await context.params;
 
@@ -55,6 +57,7 @@ export async function PATCH(
   }
 
   const currentMember = access.member;
+  timer.mark("auth");
 
   const {
     data: conversationData,
@@ -196,6 +199,7 @@ export async function PATCH(
 
   let activityRecorded = false;
 
+  timer.mark("db");
   try {
     await createConversationActivity({
       businessId:
@@ -233,9 +237,11 @@ export async function PATCH(
     );
   }
 
+  timer.mark("activity");
+
   return NextResponse.json({
     success: true,
     conversation: claimedConversation,
     activityRecorded,
-  });
+  }, { headers: { "Server-Timing": timer.header() } });
 }
