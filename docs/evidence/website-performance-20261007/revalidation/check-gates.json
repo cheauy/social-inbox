@@ -1,0 +1,62 @@
+{
+  "at": "2026-10-07T11:32:45.412Z",
+  "currentHead": "fe194c1e434fc5d432ac4e7fd787fe987019f486",
+  "startingHead": "ca120c7ac61b25d8f8f3556f8dad2558d088b389",
+  "localHeadMoved": true,
+  "performedByThisTask": {
+    "push": false,
+    "deploy": false,
+    "activation": false,
+    "productionOperations": false
+  },
+  "completeTests": {
+    "status": "FAIL",
+    "pass": 208,
+    "fail": 7,
+    "preExisting": true
+  },
+  "pairedComparison": {
+    "status": "PASS",
+    "changedOutcomes": 0
+  },
+  "inboxPhotosBrowser": {
+    "status": "PASS",
+    "viewports": 3,
+    "modes": 2,
+    "checksPerRun": 52
+  },
+  "legacyBotCopy": {
+    "status": "FAIL",
+    "baselineIdentical": true,
+    "laterBotChecks": "UNTESTED"
+  },
+  "typescript": {
+    "status": "PASS",
+    "command": "npx tsc --noEmit --incremental false",
+    "exitCode": 0,
+    "overlappingEarlierAttemptExitCode": 1
+  },
+  "lint": {
+    "status": "PASS",
+    "files": 10,
+    "errors": 0,
+    "warnings": 0
+  },
+  "build": {
+    "status": "PASS",
+    "command": "npm run build",
+    "exitCode": 0,
+    "compiledSeconds": 34.6,
+    "buildTypeScriptSeconds": 92
+  },
+  "whitespace": {
+    "status": "PASS"
+  },
+  "hostedMetrics": {
+    "status": "UNVERIFIED",
+    "hostingAccessRestrictionRespected": true
+  },
+  "cacheCleanup": {
+    "status": "DENIED: not retried; cache preserved"
+  }
+}

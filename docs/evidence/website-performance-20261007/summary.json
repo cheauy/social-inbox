@@ -382,20 +382,90 @@
       "pass": 16,
       "fail": 0
     },
-    "broad": {
-      "pass": 142,
-      "fail": 1,
-      "total": 143,
-      "failure": "Unchanged native test mock lacks authSessionGeneration"
+    "pairedCommon": {
+      "baseline": {
+        "pass": 198,
+        "fail": 7,
+        "total": 205
+      },
+      "final": {
+        "pass": 198,
+        "fail": 7,
+        "total": 205
+      },
+      "changedOutcomes": 0,
+      "evidence": "revalidation/paired-tests.json"
     },
-    "additionalBehavior": {
-      "pass": 66,
-      "fail": 6,
-      "total": 72,
-      "failure": "Unchanged legacy success-alert tests lack current action guard and expect removed alerts"
+    "completeFinal": {
+      "pass": 208,
+      "fail": 7,
+      "total": 215,
+      "exitCode": 1,
+      "evidence": "revalidation/complete-final-tests.json"
     },
-    "typescript": "PASS",
-    "lint": "PASS: 7 files, 0 errors/warnings; CJS-only require-import rule override",
-    "productionBuild": "PASS: npm run build (Next 16.2.12 webpack)"
+    "concurrentTikTokTest": {
+      "pass": 45,
+      "fail": 0,
+      "scope": "Existing mocks only; separate from performance suite"
+    },
+    "typescript": "PASS: standalone after build; earlier overlapping attempt exited 1 and is not used as final gate",
+    "lint": "PASS: 10 files; 0 errors/warnings; CJS-only require-import override",
+    "productionBuild": "PASS: npm run build, exit 0, Next 16.2.12 webpack",
+    "whitespace": "PASS: git diff --check"
+  },
+  "revalidation": {
+    "at": "2026-10-07T11:32:45.230Z",
+    "baselinePreparation": "revalidation/baseline-preparation.json",
+    "concurrentTestDiff": "revalidation/concurrent-tiktok-test.diff",
+    "browser": "revalidation/paired-inbox-browser.json",
+    "hashManifest": "revalidation/final-hashes.json",
+    "benchmarkSourcesUnchanged": true,
+    "benchmarkSourceVerification": [
+      {
+        "path": "components/dashboard/team-notification-center.tsx",
+        "benchmarkSha256": "751917f64fc30a87fd343935cb9c2a43a31b140f15741cca3d144da461a60c2f",
+        "finalSha256": "751917f64fc30a87fd343935cb9c2a43a31b140f15741cca3d144da461a60c2f",
+        "unchanged": true
+      },
+      {
+        "path": "tests/website-header-read-lifecycle.test.cjs",
+        "benchmarkSha256": "26db0ad8753a5351f07843972ab3150381243b225699cdeeb66f9e378173c11e",
+        "finalSha256": "26db0ad8753a5351f07843972ab3150381243b225699cdeeb66f9e378173c11e",
+        "unchanged": true
+      },
+      {
+        "path": "tests/website-read-efficiency.test.cjs",
+        "benchmarkSha256": "4254c7174441027fa94028306cd1dce54fcd6ea78a5fb1707205775366f56563",
+        "finalSha256": "4254c7174441027fa94028306cd1dce54fcd6ea78a5fb1707205775366f56563",
+        "unchanged": true
+      },
+      {
+        "path": "tests/website-header-performance-browser.cjs",
+        "benchmarkSha256": "8461b13024f460107da5202302d268d76c14f237c68ff29feadd1857c8cc0a19",
+        "finalSha256": "8461b13024f460107da5202302d268d76c14f237c68ff29feadd1857c8cc0a19",
+        "unchanged": true
+      },
+      {
+        "path": "tests/fixtures/website-header-performance.entry.cjs",
+        "benchmarkSha256": "276fa75d65f8c4644d670b3a6c7ca5e490098e5fd9e086673534bcfeb0578421",
+        "finalSha256": "276fa75d65f8c4644d670b3a6c7ca5e490098e5fd9e086673534bcfeb0578421",
+        "unchanged": true
+      },
+      {
+        "path": "tests/fixtures/website-header-navigation.cjs",
+        "benchmarkSha256": "654a753fea3e23719ab7911ae955579fb11c41ea57b508a85f2adb18505314b7",
+        "finalSha256": "654a753fea3e23719ab7911ae955579fb11c41ea57b508a85f2adb18505314b7",
+        "unchanged": true
+      },
+      {
+        "path": "tests/fixtures/website-header-supabase.cjs",
+        "benchmarkSha256": "8a8bf238e25e7e98fb606ceb3574ac89a4ef58a21cfdccd26007aa32cc2b9eaf",
+        "finalSha256": "8a8bf238e25e7e98fb606ceb3574ac89a4ef58a21cfdccd26007aa32cc2b9eaf",
+        "unchanged": true
+      }
+    ],
+    "confirmedRegressions": "No new paired test/Inbox-photo check failure; desktop warm median increased 6.4ms in five synthetic samples",
+    "preExistingFailures": "Seven identical common-test failures and one Bot-copy expectation",
+    "unverified": "Authenticated full-site latency, physical devices, real Supabase/Vercel usage or cost, production PostgREST, real media/provider actions"
   }
 }

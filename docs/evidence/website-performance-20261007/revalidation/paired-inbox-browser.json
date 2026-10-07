@@ -1,0 +1,223 @@
+{
+  "at": "2026-10-07T11:32:45.213Z",
+  "assertionContract": {
+    "sourcePath": "C:\\Users\\TUF\\social-inbox\\tests\\fixtures\\inbox-paging-browser.entry.cjs",
+    "sourceRoot": "C:\\Users\\TUF\\social-inbox",
+    "assertions": 66,
+    "unchanged": true
+  },
+  "baselineAssertionContract": {
+    "sourcePath": "C:\\Users\\TUF\\social-inbox\\tests\\fixtures\\inbox-paging-browser.entry.cjs",
+    "sourceRoot": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-web-performance-e056cbf361e8417bb0fabd752ab07a0d\\pre-change-baseline",
+    "assertions": 66,
+    "unchanged": true
+  },
+  "runs": [
+    {
+      "viewport": "1280x720",
+      "baseline": {
+        "passed": false,
+        "groups": {
+          "inbox": {
+            "passed": true,
+            "pass": 46,
+            "fail": 0
+          },
+          "legacyBot": {
+            "passed": false,
+            "pass": 0,
+            "fail": 1
+          },
+          "photos": {
+            "passed": true,
+            "pass": 6,
+            "fail": 0
+          }
+        },
+        "errors": {
+          "legacyBot": "Error: draft editor explicitly unavailable for live execution"
+        }
+      },
+      "final": {
+        "passed": false,
+        "groups": {
+          "inbox": {
+            "passed": true,
+            "pass": 46,
+            "fail": 0
+          },
+          "legacyBot": {
+            "passed": false,
+            "pass": 0,
+            "fail": 1
+          },
+          "photos": {
+            "passed": true,
+            "pass": 6,
+            "fail": 0
+          }
+        },
+        "errors": {
+          "legacyBot": "Error: draft editor explicitly unavailable for live execution"
+        }
+      },
+      "identicalCheckOutcomes": true,
+      "rawChecksIdentical": false,
+      "diagnosticDifferences": [
+        {
+          "baseline": {
+            "name": "broken sticker provides visible fallback and bounded pack recovery",
+            "ok": true,
+            "detail": {
+              "refreshCount": 1,
+              "mediaCalls": [
+                "/api/facebook/stickers/packs?conversationId=00000000-0000-4000-8000-000000000001",
+                "/api/facebook/stickers/pack?conversationId=00000000-0000-4000-8000-000000000001&packId=100",
+                "/api/facebook/stickers/pack?conversationId=00000000-0000-4000-8000-000000000001&packId=100&refresh=1",
+                "/api/facebook/post-preview?conversationId=00000000-0000-4000-8000-000000000001&messageId=00000000-0000-4000-8000-000000000200&source=1&refresh=1",
+                "/api/facebook/stickers/pack?conversationId=00000000-0000-4000-8000-000000000001&packId=100&refresh=1"
+              ]
+            }
+          },
+          "final": {
+            "name": "broken sticker provides visible fallback and bounded pack recovery",
+            "ok": true,
+            "detail": {
+              "refreshCount": 1,
+              "mediaCalls": [
+                "/api/facebook/stickers/pack?conversationId=00000000-0000-4000-8000-000000000001&packId=100&refresh=1",
+                "/api/facebook/post-preview?conversationId=00000000-0000-4000-8000-000000000001&messageId=00000000-0000-4000-8000-000000000200&source=1&refresh=1",
+                "/api/facebook/stickers/pack?conversationId=00000000-0000-4000-8000-000000000001&packId=100&refresh=1"
+              ]
+            }
+          }
+        }
+      ],
+      "fixtureConversationRequests": {
+        "baseline": 12,
+        "final": 12
+      },
+      "samePhaseOutcomes": true,
+      "sameFailures": true
+    },
+    {
+      "viewport": "390x844",
+      "baseline": {
+        "passed": false,
+        "groups": {
+          "inbox": {
+            "passed": true,
+            "pass": 46,
+            "fail": 0
+          },
+          "legacyBot": {
+            "passed": false,
+            "pass": 0,
+            "fail": 1
+          },
+          "photos": {
+            "passed": true,
+            "pass": 6,
+            "fail": 0
+          }
+        },
+        "errors": {
+          "legacyBot": "Error: draft editor explicitly unavailable for live execution"
+        }
+      },
+      "final": {
+        "passed": false,
+        "groups": {
+          "inbox": {
+            "passed": true,
+            "pass": 46,
+            "fail": 0
+          },
+          "legacyBot": {
+            "passed": false,
+            "pass": 0,
+            "fail": 1
+          },
+          "photos": {
+            "passed": true,
+            "pass": 6,
+            "fail": 0
+          }
+        },
+        "errors": {
+          "legacyBot": "Error: draft editor explicitly unavailable for live execution"
+        }
+      },
+      "identicalCheckOutcomes": true,
+      "rawChecksIdentical": true,
+      "diagnosticDifferences": [],
+      "fixtureConversationRequests": {
+        "baseline": 12,
+        "final": 12
+      },
+      "samePhaseOutcomes": true,
+      "sameFailures": true
+    },
+    {
+      "viewport": "768x1024",
+      "baseline": {
+        "passed": false,
+        "groups": {
+          "inbox": {
+            "passed": true,
+            "pass": 46,
+            "fail": 0
+          },
+          "legacyBot": {
+            "passed": false,
+            "pass": 0,
+            "fail": 1
+          },
+          "photos": {
+            "passed": true,
+            "pass": 6,
+            "fail": 0
+          }
+        },
+        "errors": {
+          "legacyBot": "Error: draft editor explicitly unavailable for live execution"
+        }
+      },
+      "final": {
+        "passed": false,
+        "groups": {
+          "inbox": {
+            "passed": true,
+            "pass": 46,
+            "fail": 0
+          },
+          "legacyBot": {
+            "passed": false,
+            "pass": 0,
+            "fail": 1
+          },
+          "photos": {
+            "passed": true,
+            "pass": 6,
+            "fail": 0
+          }
+        },
+        "errors": {
+          "legacyBot": "Error: draft editor explicitly unavailable for live execution"
+        }
+      },
+      "identicalCheckOutcomes": true,
+      "rawChecksIdentical": true,
+      "diagnosticDifferences": [],
+      "fixtureConversationRequests": {
+        "baseline": 12,
+        "final": 12
+      },
+      "samePhaseOutcomes": true,
+      "sameFailures": true
+    }
+  ],
+  "overallStatus": "FAIL: baseline-identical Bot text assertion remains failed",
+  "inboxAndPhotosStatus": "PASS: 46 Inbox checks and 6 photo checks per mode and viewport",
+  "unreached": "Later Bot assertions after the first text expectation; not a live Bot validation"
+}

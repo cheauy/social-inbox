@@ -1,0 +1,32 @@
+{
+  "base": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-web-performance-e056cbf361e8417bb0fabd752ab07a0d\\pre-change-baseline",
+  "startingFilesVerified": 20,
+  "recoveredTest": {
+    "path": "tests/tiktok-advertiser-account-deletion.test.cjs",
+    "sha256": "92ea67dcbc15ca21d412fc3c821cb1130820a7bf2040e8e4b73a5a62b45f3347",
+    "currentSha256": "df6173704e3444f80a357d279966dc85f1e1c1fe67135c817cc8492913f2fc86",
+    "patches": [
+      {
+        "log": "rollout-2026-10-07T15-07-50-01a11567-8b8e-7a70-806b-6388c36fae9e.jsonl",
+        "line": 1587,
+        "time": "2026-10-07T10:11:31.624Z",
+        "callId": "call_AcwgFKt2YczGcEqJMivBWpEf"
+      },
+      {
+        "log": "rollout-2026-10-07T15-07-50-01a11567-8b8e-7a70-806b-6388c36fae9e.jsonl",
+        "line": 1594,
+        "time": "2026-10-07T10:11:52.573Z",
+        "callId": "call_JellDt8lH7An9nsCJEKlxMhy"
+      },
+      {
+        "log": "rollout-2026-10-07T15-07-50-01a11567-8b8e-7a70-806b-6388c36fae9e.jsonl",
+        "line": 1602,
+        "time": "2026-10-07T10:12:21.168Z",
+        "callId": "call_LYZVi9dFcSx97tXgrUNSwIb9"
+      }
+    ]
+  },
+  "sourceFiles": 1061,
+  "node": "v24.18.0",
+  "conditions": "Same installed dependencies, serial test runner, common unchanged assertions; only source root/cwd differs"
+}
