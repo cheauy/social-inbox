@@ -1,0 +1,228 @@
+{
+  "mode": "final",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "cold": [
+    {
+      "feedbackMs": 6,
+      "contentMs": 115,
+      "requests": 2,
+      "dbReads": 7,
+      "dbRows": 3,
+      "dbBytes": 686,
+      "authReads": 2,
+      "writes": 0,
+      "responseBytes": 808,
+      "durationsMs": [
+        {
+          "endpoint": "team",
+          "ms": 104.41560000000754
+        },
+        {
+          "endpoint": "announcement",
+          "ms": 227.99729999998817
+        }
+      ]
+    },
+    {
+      "feedbackMs": 6.700000002980232,
+      "contentMs": 125.30000000447035,
+      "requests": 2,
+      "dbReads": 7,
+      "dbRows": 3,
+      "dbBytes": 686,
+      "authReads": 2,
+      "writes": 0,
+      "responseBytes": 808,
+      "durationsMs": [
+        {
+          "endpoint": "team",
+          "ms": 109.63719999999739
+        },
+        {
+          "endpoint": "announcement",
+          "ms": 217.16969999999856
+        }
+      ]
+    },
+    {
+      "feedbackMs": 5.100000001490116,
+      "contentMs": 115.70000000298023,
+      "requests": 2,
+      "dbReads": 7,
+      "dbRows": 3,
+      "dbBytes": 686,
+      "authReads": 2,
+      "writes": 0,
+      "responseBytes": 808,
+      "durationsMs": [
+        {
+          "endpoint": "team",
+          "ms": 101.89319999999134
+        },
+        {
+          "endpoint": "announcement",
+          "ms": 228.22540000002482
+        }
+      ]
+    },
+    {
+      "feedbackMs": 5.799999997019768,
+      "contentMs": 100,
+      "requests": 2,
+      "dbReads": 7,
+      "dbRows": 3,
+      "dbBytes": 686,
+      "authReads": 2,
+      "writes": 0,
+      "responseBytes": 808,
+      "durationsMs": [
+        {
+          "endpoint": "team",
+          "ms": 98.40680000002612
+        },
+        {
+          "endpoint": "announcement",
+          "ms": 223.7735999999859
+        }
+      ]
+    },
+    {
+      "feedbackMs": 3.899999998509884,
+      "contentMs": 108,
+      "requests": 2,
+      "dbReads": 7,
+      "dbRows": 3,
+      "dbBytes": 686,
+      "authReads": 2,
+      "writes": 0,
+      "responseBytes": 808,
+      "durationsMs": [
+        {
+          "endpoint": "team",
+          "ms": 101.55929999999353
+        },
+        {
+          "endpoint": "announcement",
+          "ms": 223.33249999998952
+        }
+      ]
+    }
+  ],
+  "warm": [
+    {
+      "contentMs": 10.700000002980232,
+      "requests": 2,
+      "dbReads": 7,
+      "dbRows": 3,
+      "dbBytes": 686,
+      "authReads": 2,
+      "writes": 0,
+      "responseBytes": 808,
+      "durationsMs": [
+        {
+          "endpoint": "team",
+          "ms": 105.93189999999595
+        },
+        {
+          "endpoint": "announcement",
+          "ms": 214.72119999999995
+        }
+      ]
+    },
+    {
+      "contentMs": 9.399999998509884,
+      "requests": 2,
+      "dbReads": 7,
+      "dbRows": 3,
+      "dbBytes": 686,
+      "authReads": 2,
+      "writes": 0,
+      "responseBytes": 808,
+      "durationsMs": [
+        {
+          "endpoint": "team",
+          "ms": 102.43170000001555
+        },
+        {
+          "endpoint": "announcement",
+          "ms": 226.0676000000094
+        }
+      ]
+    },
+    {
+      "contentMs": 10,
+      "requests": 2,
+      "dbReads": 7,
+      "dbRows": 3,
+      "dbBytes": 686,
+      "authReads": 2,
+      "writes": 0,
+      "responseBytes": 808,
+      "durationsMs": [
+        {
+          "endpoint": "team",
+          "ms": 90.02440000002389
+        },
+        {
+          "endpoint": "announcement",
+          "ms": 215.06519999998272
+        }
+      ]
+    },
+    {
+      "contentMs": 5,
+      "requests": 2,
+      "dbReads": 7,
+      "dbRows": 3,
+      "dbBytes": 686,
+      "authReads": 2,
+      "writes": 0,
+      "responseBytes": 808,
+      "durationsMs": [
+        {
+          "endpoint": "team",
+          "ms": 100.47550000000047
+        },
+        {
+          "endpoint": "announcement",
+          "ms": 226.6417000000074
+        }
+      ]
+    },
+    {
+      "contentMs": 6.699999995529652,
+      "requests": 2,
+      "dbReads": 7,
+      "dbRows": 3,
+      "dbBytes": 686,
+      "authReads": 2,
+      "writes": 0,
+      "responseBytes": 808,
+      "durationsMs": [
+        {
+          "endpoint": "team",
+          "ms": 104.88300000000163
+        },
+        {
+          "endpoint": "announcement",
+          "ms": 211.64989999998943
+        }
+      ]
+    }
+  ],
+  "checks": [
+    "production CSS styles the real header",
+    "remounted workspace never restores old response",
+    "failed request has honest retry feedback",
+    "retry recovers correct content",
+    "unmount removes timers and realtime subscriptions"
+  ],
+  "realtime": {
+    "opens": 7,
+    "closes": 7
+  },
+  "passed": true
+}

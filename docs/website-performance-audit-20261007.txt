@@ -1,0 +1,105 @@
+TENH CHAT LOCAL WEBSITE PERFORMANCE AUDIT — October 7, 2026
+
+Outcome
+One product file changed: the dashboard notification header. Correct notification content publishes as soon as its own request finishes, and overlapping mount/bell/resume reads share one pending request per endpoint. No completed-response cache, extra polling, new subscriptions, route prefetch, dependency, schema or infrastructure change was introduced.
+This is a verified local improvement, not proof that every page is faster or that production bills are unchanged. Full-site authenticated latency, provider usage and physical-device measurements remain UNVERIFIED.
+
+Root causes and fixes (paths relative to C:/Users/TUF/social-inbox)
+1. components/dashboard/team-notification-center.tsx:432: the original loader awaited both responses and both JSON bodies before publishing notifications. A slow announcement delayed usable team content. Each endpoint now publishes independently.
+2. Same file:376 and :435: mount, repeated bell opening, foreground resume and polling could start overlapping pairs. A component-owned pending map shares only overlapping GETs (maximum two entries); settled reads are removed. Every subsequent non-overlapping refresh still authorizes on the server.
+3. Same file:378, :438, :482, :527, :656: abort plus generation ownership retires old responses on unmount, workspace invalidation, realtime mutation and optimistic actions. Controller identity prevents old cleanup from removing a newer read. 401/403 clears displayed private state and cancels the other read. Existing cross-workspace notification aggregation remains unchanged.
+4. Same file:481 and :1008: loading starts from initial state; explicit retry changes loading immediately. Redundant synchronous state updates in the mount effect were removed. No separate render-count improvement is claimed.
+5. tests/website-read-efficiency.test.cjs:20: the timer double previously invoked 30- and 60-second callbacks in one synchronous turn. It now settles asynchronous work between cycles, so the regression test verifies real polling rather than artificially merging distinct polls.
+
+Per-page and workflow decisions
+Inbox/menu navigation: keep existing installed Next Link behavior and saved return context (components/dashboard/dashboard-nav-link.tsx:13). Inbox route prefetch stays disabled. Fetch the authorized first page immediately; do not prefetch all histories on menu hover.
+Inbox boot and selection: app/dashboard/inbox/page.tsx:110-155 already reuses channel metadata and overlaps selected messages after row authorization. Keep this. Fetch off-page selected conversation metadata before messages. Fetch only selected history, with lib/inbox/get-messages.ts:23 default 25 and existing cap 100.
+Conversation switching/history pagination: keep existing owned requests, bounded paging, selection and drafts. Read older history on demand. Do not remove the conversation authorization/read in app/api/conversations/[conversationId]/messages/route.ts:124: it is shared with native consumers and correctness checks.
+Inbox search/filter/pagination: keep server-side filtering and lib/inbox/use-conversation-pages.ts:11 existing cache (6 views, at most 90 rows/view, 30-second freshness), its scope/invalidation and abort logic. Search snippets in lib/inbox/get-search-matches.ts:24 use a bounded bulk read; cap saturation can require per-thread probes for correctness. No speculative RPC/index or full-table download added. app/dashboard/inbox/page.tsx:126 retains the existing complete legacy conversation fallback only when the paging RPC is absent; production RPC/PostgREST availability is UNVERIFIED. Removing that fallback or changing its schema contract needs a separate approved change.
+Message/media/context: fetch context/dialogs when selected/opened and preserve provider/action identity. components/inbox/inbox-photo-image.tsx:16 already uses lazy non-preview images and stable dimensions; originals/preview/playback unchanged. External media bytes, transformations and CDN cost were not measured; no thumbnail/recompression optimization accepted without that evidence.
+Analytics: components/analytics/analytics-workspace.tsx:486 mounts the selected report. Keep report fetching on selection, current period/SLA controls, cancellation and existing bounded history reads. Do not fetch hidden panels or shorten polling intervals. Synthetic browser checks cover rapid A-B-A filters and Back/Forward.
+Integrations: app/dashboard/integrations/page.tsx:66 and :127 require fresh member/permission/subscription/channel data. Keep immediate authorized reads; no private authorization cache. Both TikTok integrations and their security draft are unchanged by this task.
+Settings: app/dashboard/settings/page.tsx:4 redirects to General. General/Display mostly use local UI. Fetch Tags/Quick Replies on entering those pages: lib/settings/get-tag-settings-page-data.ts:30 and lib/settings/get-saved-replies-page-data.ts:23 initialize workspace defaults before their bounded related reads. Preserve those business side effects; do not replace them with stale cache entries.
+Workspace switching: preserve existing cookie mutation, scope events, refresh and owned navigation. Cache invalidation remains required; no cache carries revoked authorization. Header pending reads retire on workspace-data-changed without an extra GET.
+Header: fetch the two current endpoints immediately and reuse only pending requests. Preserve required 30-second polling even while hidden because GET produces due reminders. Resume reads still use existing coalescing. A mounted SystemAnnouncementBanner duplicate was ruled out: it is not mounted.
+No other page optimization was accepted without a measured bottleneck and safe equivalent resource budget.
+
+Equivalent benchmark method and limits
+Five component-cold mounts and five warm bell cycles per viewport, for both the saved starting header and final header. Same production React, webpack settings (minification disabled for both), generated app CSS, synthetic dataset and loopback server. The fixture verifies the actual styled bell before measuring. A component-cold mount is not a browser/network-cold whole-page load.
+Real HTTP requests execute the existing two API GET handlers through the test loader; authentication and Supabase are mocks. Dataset: one member, one notification, one announcement, no due reminders/personal channel. Fixed endpoint delays: team 20 ms, announcement 180 ms; mock DB query delay 10 ms. Handler compilation is primed outside measurement. API bodies are no-store. Viewports emulate layout on this desktop, not physical phones/tablets or throttled cellular networks.
+The final runs below were repeated after the production build, with built CSS loaded. Earlier exploratory runs without CSS are excluded from delivered evidence.
+Cold feedback measures opening the panel; cold content measures visible correct notification text. Announcement completion remains separate. Warm content is already-held component state, not freshly completed server work. HTTP handler durations below are recorded separately; they are not Vercel telemetry.
+
+Median milliseconds (5 runs per cell)
+Viewport | cold correct content before -> after | saved ms | cold feedback before -> after | warm existing content before -> after
+1280x720 | 229.8 -> 114.8 | 115 | 5.6 -> 5.1 | 4.2 -> 10.6
+390x844 | 256 -> 115 | 141 | 8.1 -> 5.8 | 15 -> 9.4
+768x1024 | 235 -> 113.7 | 121.3 | 6 -> 5.2 | 7.7 -> 6
+Warm display timing is mixed: desktop increased from 4.2 to 10.6 ms (+6.4 ms), while phone/tablet were faster in these samples. Five samples do not establish a stable warm-speed improvement; none is claimed.
+
+Per-workload measured request budget (identical for all three viewports and all five repetitions)
+Metric                         Cold before -> after       Warm before -> after
+Fixture API GETs               6 -> 2                     4 -> 2
+Duplicate overlapping GETs     4 -> 0                     2 -> 0
+Synthetic DB query executions   21 -> 7                    14 -> 7
+Synthetic selected rows        9 -> 3                     6 -> 3
+Selected-row JSON body bytes    2058 -> 686                1372 -> 686
+Synthetic auth operations      6 -> 2                     4 -> 2
+Writes attempted               0 -> 0                     0 -> 0
+HTTP response body bytes       2424 -> 808                1616 -> 808
+Header realtime lifecycle      7 opens / 7 closes -> 7 opens / 7 closes per complete fixture
+Polling                        unchanged: 30 seconds; 4 GETs/minute when both endpoints settle
+Fixture realtime traffic is mocked; real event volume and connection duration are UNVERIFIED.
+Byte values exclude transport headers, compression and external assets. Fixture infra /prime, /stats and /evidence are excluded consistently. Raw endpoint durations and every sample are retained in docs/evidence/website-performance-20261007.
+
+Cold per-handler median and per-workload summed handler duration, ms
+1280: team 111.3 -> 105.9; announcement 221.7 -> 216; summed cold handlers 997.2 -> 323.2; summed warm handlers 643.6 -> 324.4
+390: team 108.1 -> 101.9; announcement 222.2 -> 223.8; summed cold handlers 983.2 -> 326.8; summed warm handlers 649.2 -> 320.7
+768: team 102.9 -> 103.4; announcement 221.7 -> 219.8; summed cold handlers 972 -> 326.1; summed warm handlers 640.6 -> 324.6
+Per-handler timings fluctuate; this patch reduces waiting on another endpoint and removes redundant executions, rather than making the server query itself faster. Summed handler ms is a local work proxy, not an invoice or production CPU measurement.
+
+Resource gates by significant change
+Independent content publication: PASS for local equivalent request/query/row/byte budgets; UNVERIFIED for hosted usage/cost.
+Overlapping GET sharing: PASS for fewer local requests, queries, rows and bytes, with no added writes, polling or subscription count; UNVERIFIED for actual Supabase reads/CPU and Vercel invocations/duration/transfer/cost.
+Retirement/generation fencing: PASS focused stale-response, denial, mutation and cleanup checks; no added refetch. Hosted cancelled-request savings are UNVERIFIED (abort can occur after server work starts).
+Media optimization: none accepted; media/provider/image-processing cost UNVERIFIED.
+Authorization-cache, poll-frequency, schema/RPC/index or dependency changes: not implemented. No resource trade-off was accepted.
+
+Final checks
+Starting focused baseline: 36/36 passed before product edits; working-tree hashes and the starting header were saved without resetting the repository.
+Focused header lifecycle + polling: 16/16 passed (10 new tests). Includes ignored aborts, workspace invalidation, 401/403, slow announcement, realtime deletion, optimistic read, retry, unmount and hidden due-reminder production.
+Broad web/shared regression suite: 143 total, 142 passed, 1 failed. Failure: tests/team-chat-retirement.test.cjs:35 native bootstrap mock lacks authSessionGeneration expected by mobile/lib/inbox-provider.tsx:55. Narrow reproduction fails independently. Both the test and mobile sources match HEAD; native code was not edited.
+Additional action/draft/send suite: 72 total, 66 passed, 6 failed. tests/inbox-success-alerts.test.mjs:55 lacks beginAction and expects assignment/pin/unread success alerts that the current product intentionally removed. Those tests and Inbox source match HEAD. The current silent-success/realtime-echo tests in inbox-action-feedback passed. No removed alerts were restored to satisfy obsolete expectations.
+These two disjoint suites total 215 tests: 208 passed, 7 failed. This is not a green whole-suite result.
+TypeScript: PASS, npx tsc --noEmit --incremental false.
+Targeted ESLint: PASS, 7 files, 0 errors/warnings. CommonJS test files receive a scoped no-require-imports override only; no production hook suppression. The starting header also had the mount-effect lint error; final product code passes.
+Production build: PASS, npm run build (Next 16.2.12, webpack). No deployment follows.
+Browser: styled header benchmarks PASS at all three viewports. Analytics behavior 11 checks PASS; search/history behavior PASS. The existing composite Inbox fixture passes 46 checks on desktop and phone; tablet also passes its Inbox/layout/navigation phases. It then FAILS at tests/fixtures/inbox-paging-browser.entry.cjs:83, requiring the Bot copy "Live execution unavailable". Fixture and Bot source match HEAD; no Bot change or activation was made. Later composite Bot/photo checks are not reached. Focused photo/album Node tests pass. The initial missing-CSS shadow failure was resolved by serving the correct generated webpack CSS; no product style changed.
+Browser results and remaining gates are recorded in browser-checks.json beside the raw benchmark evidence. Full authenticated app, real multi-workspace permissions, physical-device background behavior, production PostgREST availability, external media, real action-completion latency and provider telemetry remain UNVERIFIED. There is no claim of sitewide completion latency or identical monthly bills.
+
+Preservation and scope
+19/20 initially dirty/untracked files match saved starting SHA256 hashes. Different at final check: tests/tiktok-advertiser-account-deletion.test.cjs. This performance task did not edit that TikTok test and did not restore it. The full preservation manifest is in summary.json; independent in-session modifications cannot be attributed from a hash alone.
+No Billing, PayWay, SQL, TikTok/OAuth/security, Bot, native mobile or unrelated UI product file was changed by this task. No production writes, real messages, provider operations, permissions/configuration, activation, push or deployment. Vercel access restriction respected.
+Automatic approval review rejected recursive .next/cache/webpack deletion as blocked by policy. That cache was left intact; the normal build passed.
+
+Exact task files
+components/dashboard/team-notification-center.tsx
+tests/website-header-read-lifecycle.test.cjs
+tests/website-read-efficiency.test.cjs
+tests/website-header-performance-browser.cjs
+tests/fixtures/website-header-performance.entry.cjs
+tests/fixtures/website-header-navigation.cjs
+tests/fixtures/website-header-supabase.cjs
+docs/website-performance-audit-20261007.txt
+docs/evidence/website-performance-20261007/{baseline-1280,baseline-390,baseline-768,final-1280,final-390,final-768}.json
+docs/evidence/website-performance-20261007/summary.json
+docs/evidence/website-performance-20261007/browser-checks.json
+
+Reproduction
+Run npm run build first. Save the starting reviewed header to a temporary .tsx path without replacing the working file. Set TENH_PERF_OUTPUT to an absolute disposable folder and TENH_PERF_BASELINE to that saved file; run node tests/website-header-performance-browser.cjs to build baseline. Clear TENH_PERF_BASELINE, set TENH_PERF_SERVE=1, and run the same command to build final/start the loopback server. Through permitted browser controls open ?mode=baseline and ?mode=final at each viewport, click Run benchmark and verify passed=true. Each page records five cold/warm cases and saves its JSON locally. Stop the server and reset viewport afterward. No real backend credentials are used by the fixture.
+
+Broad final suite command (prefix routine commands with the repository's RTK executable)
+node --test tests/website-header-read-lifecycle.test.cjs tests/website-read-efficiency.test.cjs tests/inbox-performance.test.cjs tests/inbox-return-context.test.cjs tests/inbox-navigation-loading.test.cjs tests/dashboard-nav-link.test.cjs tests/dashboard-next-link-contract.test.cjs tests/dashboard-utility-navigation.test.cjs tests/analytics-request-lifecycle.test.cjs tests/analytics-next-history.test.cjs tests/analytics-url-navigation.test.cjs tests/channel-analytics-request-budget.test.cjs tests/channel-analytics-read-safety.test.cjs tests/inbox-view-navigation.test.cjs tests/inbox-search-match.test.cjs tests/inbox-photo-loading.test.cjs tests/inbox-albums.test.cjs tests/album-action-target.test.mjs tests/optimistic-outgoing-dedupe.test.cjs tests/workspace-storage-cache.test.cjs tests/team-chat-retirement.test.cjs
+Additional behavior suite command
+node --test tests/inbox-action-feedback.test.cjs tests/inbox-success-alerts.test.mjs tests/inbox-text-draft.test.cjs tests/message-send-reconciliation.test.mjs tests/quick-reply-mixed-send.test.cjs
+Targeted lint uses ESLint's installed API over the seven source/test files listed above, with overrideConfig.files=['**/*.cjs'] and rules['@typescript-eslint/no-require-imports']='off' for CommonJS tests only. Production rules are unchanged.

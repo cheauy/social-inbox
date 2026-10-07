@@ -1,4 +1,9 @@
+"use client";
+
+import { useForegroundLoading } from "@/lib/display/foreground-loading";
+
 export default function InboxLoading() {
+  useForegroundLoading(true);
   return (
     <main className="p-6">
       <div className="mx-auto max-w-6xl">

@@ -32,7 +32,7 @@ test('real React dashboard lifetime restores Inbox through installed Next naviga
  const historyContext={window:win,originalPushState:win.history.pushState.bind(win.history),applyUrlFromHistoryPushReplace:url=>{restores++;routeUrl=new URL(url,win.location.href)}};
  vm.createContext(historyContext);vm.runInContext(copy+'\nwindow.history.pushState='+push,historyContext);
  const click=installedNext(win,href=>{navCount++;win.history.pushState(null,'',href);render();});
- const Link=props=>React.createElement('a',{href:props.href,'data-prefetch':String(props.prefetch),onClick:e=>click(e,props.href,{current:null},false,undefined)},props.children);
+ const Link=props=>React.createElement('a',{href:props.href,'data-prefetch':String(props.prefetch),onClick:e=>click(e,props.href,{current:null},false,undefined,props.onNavigate)},props.children);
  const load=loader({'next/navigation':{usePathname:()=>routeUrl.pathname},'next/link':{__esModule:true,default:Link,useLinkStatus:()=>({pending:false})}}, {window:win,URLSearchParams});
  const api=load('components/dashboard/inbox-return-context.tsx'),Nav=load('components/dashboard/dashboard-nav-link.tsx').DashboardNavLink;
  function Inbox(){api.useRememberInboxReturn({...location,businessId:identity.businessId,memberId:identity.memberId,query:routeUrl.search,selected});return React.createElement('div',{id:'inbox'});}
@@ -41,10 +41,12 @@ test('real React dashboard lifetime restores Inbox through installed Next naviga
  const href=()=>win.document.querySelector('a').getAttribute('href');
  const go=async path=>{await act(async()=>{win.history.pushState(null,'',path);render();});};
  try{
-  await act(async()=>render());assert.equal(href(),'/dashboard/inbox','active Inbox remains explicit reset anchor');
+  await act(async()=>render());assert.equal(href(),'/dashboard/inbox');
   await go('/dashboard/analytics');assert.equal(href(),`/dashboard/inbox?channel=${channel}&conversation=${conversation}`);assert.equal(win.document.querySelector('a').getAttribute('data-prefetch'),'false');
   await act(async()=>win.document.querySelector('a').dispatchEvent(new win.MouseEvent('click',{bubbles:true,cancelable:true})));
   assert.equal(navCount,1);assert.equal(win.location.search,`?channel=${channel}&conversation=${conversation}`);assert.ok(win.document.querySelector('#inbox'));assert.equal(href(),'/dashboard/inbox');
+  await act(async()=>win.document.querySelector('a').dispatchEvent(new win.MouseEvent('click',{bubbles:true,cancelable:true})));
+  assert.equal(navCount,1,'active Inbox does not navigate');assert.equal(win.location.search,`?channel=${channel}&conversation=${conversation}`,'active click preserves filters and selection');
   await go('/dashboard/analytics');explicitHref='/dashboard/inbox?conversation='+uuid(99);await act(async()=>render());assert.equal(href(),explicitHref,'explicit deep link wins over remembered context');explicitHref='/dashboard/inbox';
   await act(async()=>{win.dispatchEvent(new win.Event('tenh:workspace-data-changed'));render();});assert.equal(href(),'/dashboard/inbox');
   await go('/dashboard/inbox?channel='+channel);await go('/dashboard/analytics');assert.ok(href().includes('conversation='));

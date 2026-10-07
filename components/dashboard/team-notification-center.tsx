@@ -372,6 +372,14 @@ export function TeamNotificationCenter() {
   /* A ref, not state: the guard must apply within the same click, before any re-render. */
   const switchingWorkspaceRef = useRef(false);
   const groupMentionFallbackRef = useRef(false);
+  // Share only overlapping reads within this header; no completed-response cache.
+  const readsRef = useRef(new Map<string, { controller: AbortController; promise: Promise<void> }>());
+  const readGenerationRef = useRef(0);
+  const cancelReads = useCallback(() => {
+    readGenerationRef.current++;
+    for (const read of readsRef.current.values()) read.controller.abort();
+    readsRef.current.clear();
+  }, []);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -421,68 +429,69 @@ export function TeamNotificationCenter() {
     void audio.play().catch(() => undefined);
   }, []);
 
-  const loadNotifications = useCallback(async (quiet = false) => {
-    if (!quiet) {
-      setLoading(true);
-    }
+  const loadNotifications = useCallback(async () => {
+    const generation = readGenerationRef.current;
+    const read = (path: string, publish: (response: Response, current: () => boolean) => Promise<void>, primary = false) => {
+      const existing = readsRef.current.get(path);
+      if (existing) return existing.promise;
+      const controller = new AbortController();
+      const current = () => !controller.signal.aborted && readGenerationRef.current === generation;
+      const promise = (async () => {
+        try {
+          const response = await fetch(path, { cache: "no-store", signal: controller.signal });
+          if (!current()) return;
+          if (response.status === 401 || response.status === 403) {
+            cancelReads();
+            setNotifications([]); setMemberIds([]); setCurrentBusinessId(null); setAnnouncement(null);
+            setLoading(false); setError("Unable to load notifications.");
+            return;
+          }
+          await publish(response, current);
+        } catch (loadError) {
+          if (current()) setError(loadError instanceof Error ? loadError.message : "Unable to load notifications.");
+        } finally {
+          if (current() && primary) setLoading(false);
+          if (readsRef.current.get(path)?.controller === controller) readsRef.current.delete(path);
+        }
+      })();
+      readsRef.current.set(path, { controller, promise });
+      return promise;
+    };
+    await Promise.all([
+      read("/api/team-notifications", async (response, current) => {
+        const result = await response.json() as TeamNotificationsResponse;
+        if (!current()) return;
+        if (!response.ok || !result.success) throw new Error(result.error ?? "Unable to load notifications.");
+        setError(null);
+        setNotifications(result.notifications ?? []);
+        setMemberIds(result.memberIds ?? []);
+        setCurrentBusinessId(result.currentBusinessId ?? null);
+      }, true),
+      read("/api/system-announcements/current", async (response, current) => {
+        const result = await response.json() as AnnouncementResponse;
+        if (current() && response.ok && result.success) setAnnouncement(result.announcement ?? null);
+      }),
+    ]);
+  }, [cancelReads]);
 
-    setError(null);
-
-    try {
-      const [teamResponse, announcementResponse] = await Promise.all([
-        fetch("/api/team-notifications", {
-          cache: "no-store",
-        }),
-        fetch("/api/system-announcements/current", {
-          cache: "no-store",
-        }),
-      ]);
-
-      const [teamResult, announcementResult] = await Promise.all([
-        teamResponse.json() as Promise<TeamNotificationsResponse>,
-        announcementResponse.json() as Promise<AnnouncementResponse>,
-      ]);
-
-      if (!teamResponse.ok || !teamResult.success) {
-        throw new Error(
-          teamResult.error ?? "Unable to load notifications.",
-        );
-      }
-
-      setNotifications(teamResult.notifications ?? []);
-      setMemberIds(teamResult.memberIds ?? []);
-      setCurrentBusinessId(teamResult.currentBusinessId ?? null);
-
-      if (announcementResponse.ok && announcementResult.success) {
-        setAnnouncement(announcementResult.announcement ?? null);
-      }
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Unable to load notifications.",
-      );
-    } finally {
-      if (!quiet) {
-        setLoading(false);
-      }
-    }
-  }, []);
-
-  const resumeNotifications = useCallback(() => { void loadNotifications(true); }, [loadNotifications]);
+  const resumeNotifications = useCallback(() => { void loadNotifications(); }, [loadNotifications]);
   useForegroundResume(resumeNotifications);
 
   useEffect(() => {
     void loadNotifications();
+    const scopeChanged = () => { cancelReads(); setLoading(false); };
+    window.addEventListener("tenh:workspace-data-changed", scopeChanged);
 
     const timer = window.setInterval(() => {
-      void loadNotifications(true);
+      void loadNotifications();
     }, 30_000);
 
     return () => {
       window.clearInterval(timer);
+      window.removeEventListener("tenh:workspace-data-changed", scopeChanged);
+      cancelReads();
     };
-  }, [loadNotifications]);
+  }, [loadNotifications, cancelReads]);
 
   const memberIdsKey = useMemo(
     () => [...new Set(memberIds)].sort().join("|"),
@@ -509,11 +518,14 @@ export function TeamNotificationCenter() {
             const incoming = readRealtimeNotification(payload.new);
 
             if (!incoming) {
-              void loadNotifications(true);
+              void loadNotifications();
               return;
             }
 
             if (incoming.notification_type === "team_chat_mention") return;
+
+            cancelReads();
+            setLoading(false);
 
             if (!incoming.is_read && incoming.notification_type === "conversation_reminder") {
               playGroupMentionSound();
@@ -543,9 +555,12 @@ export function TeamNotificationCenter() {
             const updated = readRealtimeNotification(payload.new);
 
             if (!updated) {
-              void loadNotifications(true);
+              void loadNotifications();
               return;
             }
+
+            cancelReads();
+            setLoading(false);
 
             setNotifications((current) =>
               updated.is_read
@@ -573,9 +588,12 @@ export function TeamNotificationCenter() {
                 : null;
 
             if (!removedId) {
-              void loadNotifications(true);
+              void loadNotifications();
               return;
             }
+
+            cancelReads();
+            setLoading(false);
 
             setNotifications((current) =>
               current.filter((item) => item.id !== removedId),
@@ -590,7 +608,7 @@ export function TeamNotificationCenter() {
         void supabase.removeChannel(channel);
       }
     };
-  }, [loadNotifications, memberIdsKey, playGroupMentionSound]);
+  }, [loadNotifications, memberIdsKey, playGroupMentionSound, cancelReads]);
 
   useEffect(() => {
     if (!open) {
@@ -635,6 +653,8 @@ export function TeamNotificationCenter() {
   const badgeLabel = totalUnread > 99 ? "99+" : String(totalUnread);
 
   async function markRead(notification: TeamNotification) {
+    cancelReads();
+    setLoading(false);
     if (notification.is_read) {
       setNotifications((current) =>
         current.filter((item) => item.id !== notification.id),
@@ -686,6 +706,9 @@ export function TeamNotificationCenter() {
       return;
     }
 
+    cancelReads();
+    setLoading(false);
+
     setWorkingId("all");
 
     try {
@@ -721,6 +744,9 @@ export function TeamNotificationCenter() {
     if (!announcement || workingId) {
       return;
     }
+
+    cancelReads();
+    setLoading(false);
 
     setWorkingId(`announcement:${announcement.id}`);
 
@@ -821,7 +847,7 @@ export function TeamNotificationCenter() {
         // The notification may belong to a workspace that expired or was
         // removed after the notification was created. Refresh the list and do
         // not navigate into stale workspace data.
-        void loadNotifications(true);
+        void loadNotifications();
         return;
       } finally {
         switchingWorkspaceRef.current = false;
@@ -846,7 +872,7 @@ export function TeamNotificationCenter() {
           setOpen((current) => !current);
 
           if (!open) {
-            void loadNotifications(true);
+            void loadNotifications();
           }
         }}
         className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
@@ -979,6 +1005,8 @@ export function TeamNotificationCenter() {
                 <button
                   type="button"
                   onClick={() => {
+                    setLoading(true);
+                    setError(null);
                     void loadNotifications();
                   }}
                   className="mt-2 text-xs font-bold text-blue-600 hover:text-blue-700"

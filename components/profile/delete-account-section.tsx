@@ -287,7 +287,7 @@ export function DeleteAccountSection({
                 Delete account
               </h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                Permanently delete your TENH Chat login and personal account data.
+                Permanently delete your TENH Chat login and redact your workspace profile. Shared history and required records remain.
                 If you are the only Owner of an active subscription, TENH will ask
                 whether to transfer it or end it too.
               </p>
@@ -565,11 +565,11 @@ export function DeleteAccountSection({
                         />
                         <div>
                           <p className="font-bold text-slate-950">
-                            Delete anyway — end subscription too
+                            Delete account — end subscription too
                           </p>
                           <p className="mt-1 text-xs leading-5 text-slate-600 sm:text-sm">
                             TENH will immediately end the active or trial subscription, disable connected channels,
-                            remove workspace access for all members, and delete the workspace data. Remaining prepaid
+                            remove workspace access for all members. Shared history and required records remain retained. Remaining prepaid
                             time is forfeited and no refund is created.
                           </p>
                         </div>
@@ -607,7 +607,7 @@ export function DeleteAccountSection({
                     className="mt-0.5 h-5 w-5 shrink-0 rounded border-slate-300 accent-blue-600"
                   />
                   <span className="text-sm leading-6 text-slate-700">
-                    I understand this permanently deletes my TENH login and personal profile data,
+                      I understand this permanently deletes my TENH login and redacts my workspace profile,
                     revokes my workspace access, and cannot be undone.
                   </span>
                 </label>

@@ -1,0 +1,401 @@
+{
+  "date": "2026-10-07",
+  "head": "ca120c7ac61b25d8f8f3556f8dad2558d088b389",
+  "scope": "Isolated styled header fixture; not a whole-site or provider benchmark",
+  "measurements": [
+    {
+      "width": 1280,
+      "baseline": {
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        },
+        "coldContentMs": 229.8,
+        "coldFeedbackMs": 5.6,
+        "warmExistingContentMs": 4.2,
+        "coldHandlerMsTotal": 997.2,
+        "warmHandlerMsTotal": 643.6,
+        "endpointMedianMs": {
+          "team": 111.3,
+          "announcement": 221.7
+        },
+        "realtime": {
+          "opens": 7,
+          "closes": 7
+        },
+        "cold": {
+          "requests": 6,
+          "dbReads": 21,
+          "dbRows": 9,
+          "dbBytes": 2058,
+          "authReads": 6,
+          "writes": 0,
+          "responseBytes": 2424
+        },
+        "warm": {
+          "requests": 4,
+          "dbReads": 14,
+          "dbRows": 6,
+          "dbBytes": 1372,
+          "authReads": 4,
+          "writes": 0,
+          "responseBytes": 1616
+        }
+      },
+      "final": {
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        },
+        "coldContentMs": 114.8,
+        "coldFeedbackMs": 5.1,
+        "warmExistingContentMs": 10.6,
+        "coldHandlerMsTotal": 323.2,
+        "warmHandlerMsTotal": 324.4,
+        "endpointMedianMs": {
+          "team": 105.9,
+          "announcement": 216
+        },
+        "realtime": {
+          "opens": 7,
+          "closes": 7
+        },
+        "cold": {
+          "requests": 2,
+          "dbReads": 7,
+          "dbRows": 3,
+          "dbBytes": 686,
+          "authReads": 2,
+          "writes": 0,
+          "responseBytes": 808
+        },
+        "warm": {
+          "requests": 2,
+          "dbReads": 7,
+          "dbRows": 3,
+          "dbBytes": 686,
+          "authReads": 2,
+          "writes": 0,
+          "responseBytes": 808
+        }
+      },
+      "measuredResourceGate": "PASS",
+      "providerResourceGate": "UNVERIFIED"
+    },
+    {
+      "width": 390,
+      "baseline": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "coldContentMs": 256,
+        "coldFeedbackMs": 8.1,
+        "warmExistingContentMs": 15,
+        "coldHandlerMsTotal": 983.2,
+        "warmHandlerMsTotal": 649.2,
+        "endpointMedianMs": {
+          "team": 108.1,
+          "announcement": 222.2
+        },
+        "realtime": {
+          "opens": 7,
+          "closes": 7
+        },
+        "cold": {
+          "requests": 6,
+          "dbReads": 21,
+          "dbRows": 9,
+          "dbBytes": 2058,
+          "authReads": 6,
+          "writes": 0,
+          "responseBytes": 2424
+        },
+        "warm": {
+          "requests": 4,
+          "dbReads": 14,
+          "dbRows": 6,
+          "dbBytes": 1372,
+          "authReads": 4,
+          "writes": 0,
+          "responseBytes": 1616
+        }
+      },
+      "final": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "coldContentMs": 115,
+        "coldFeedbackMs": 5.8,
+        "warmExistingContentMs": 9.4,
+        "coldHandlerMsTotal": 326.8,
+        "warmHandlerMsTotal": 320.7,
+        "endpointMedianMs": {
+          "team": 101.9,
+          "announcement": 223.8
+        },
+        "realtime": {
+          "opens": 7,
+          "closes": 7
+        },
+        "cold": {
+          "requests": 2,
+          "dbReads": 7,
+          "dbRows": 3,
+          "dbBytes": 686,
+          "authReads": 2,
+          "writes": 0,
+          "responseBytes": 808
+        },
+        "warm": {
+          "requests": 2,
+          "dbReads": 7,
+          "dbRows": 3,
+          "dbBytes": 686,
+          "authReads": 2,
+          "writes": 0,
+          "responseBytes": 808
+        }
+      },
+      "measuredResourceGate": "PASS",
+      "providerResourceGate": "UNVERIFIED"
+    },
+    {
+      "width": 768,
+      "baseline": {
+        "viewport": {
+          "width": 768,
+          "height": 1024
+        },
+        "coldContentMs": 235,
+        "coldFeedbackMs": 6,
+        "warmExistingContentMs": 7.7,
+        "coldHandlerMsTotal": 972,
+        "warmHandlerMsTotal": 640.6,
+        "endpointMedianMs": {
+          "team": 102.9,
+          "announcement": 221.7
+        },
+        "realtime": {
+          "opens": 7,
+          "closes": 7
+        },
+        "cold": {
+          "requests": 6,
+          "dbReads": 21,
+          "dbRows": 9,
+          "dbBytes": 2058,
+          "authReads": 6,
+          "writes": 0,
+          "responseBytes": 2424
+        },
+        "warm": {
+          "requests": 4,
+          "dbReads": 14,
+          "dbRows": 6,
+          "dbBytes": 1372,
+          "authReads": 4,
+          "writes": 0,
+          "responseBytes": 1616
+        }
+      },
+      "final": {
+        "viewport": {
+          "width": 768,
+          "height": 1024
+        },
+        "coldContentMs": 113.7,
+        "coldFeedbackMs": 5.2,
+        "warmExistingContentMs": 6,
+        "coldHandlerMsTotal": 326.1,
+        "warmHandlerMsTotal": 324.6,
+        "endpointMedianMs": {
+          "team": 103.4,
+          "announcement": 219.8
+        },
+        "realtime": {
+          "opens": 7,
+          "closes": 7
+        },
+        "cold": {
+          "requests": 2,
+          "dbReads": 7,
+          "dbRows": 3,
+          "dbBytes": 686,
+          "authReads": 2,
+          "writes": 0,
+          "responseBytes": 808
+        },
+        "warm": {
+          "requests": 2,
+          "dbReads": 7,
+          "dbRows": 3,
+          "dbBytes": 686,
+          "authReads": 2,
+          "writes": 0,
+          "responseBytes": 808
+        }
+      },
+      "measuredResourceGate": "PASS",
+      "providerResourceGate": "UNVERIFIED"
+    }
+  ],
+  "sources": [
+    {
+      "path": "components/dashboard/team-notification-center.tsx",
+      "sha256": "751917f64fc30a87fd343935cb9c2a43a31b140f15741cca3d144da461a60c2f"
+    },
+    {
+      "path": "tests/website-header-read-lifecycle.test.cjs",
+      "sha256": "26db0ad8753a5351f07843972ab3150381243b225699cdeeb66f9e378173c11e"
+    },
+    {
+      "path": "tests/website-read-efficiency.test.cjs",
+      "sha256": "4254c7174441027fa94028306cd1dce54fcd6ea78a5fb1707205775366f56563"
+    },
+    {
+      "path": "tests/website-header-performance-browser.cjs",
+      "sha256": "8461b13024f460107da5202302d268d76c14f237c68ff29feadd1857c8cc0a19"
+    },
+    {
+      "path": "tests/fixtures/website-header-performance.entry.cjs",
+      "sha256": "276fa75d65f8c4644d670b3a6c7ca5e490098e5fd9e086673534bcfeb0578421"
+    },
+    {
+      "path": "tests/fixtures/website-header-navigation.cjs",
+      "sha256": "654a753fea3e23719ab7911ae955579fb11c41ea57b508a85f2adb18505314b7"
+    },
+    {
+      "path": "tests/fixtures/website-header-supabase.cjs",
+      "sha256": "8a8bf238e25e7e98fb606ceb3574ac89a4ef58a21cfdccd26007aa32cc2b9eaf"
+    }
+  ],
+  "baselineHeaderSha256": "61c02c2d994f45247e7191e3fbc160b62a014069f9655800ae14b2911dd93ea4",
+  "preservation": [
+    {
+      "path": "app/api/account/delete/route.ts",
+      "startingSha256": "41b489d24c989984c85f7f8c49ec5b5f39de937b142555b83c871dcaff7423ba",
+      "currentSha256": "41b489d24c989984c85f7f8c49ec5b5f39de937b142555b83c871dcaff7423ba"
+    },
+    {
+      "path": "app/api/subscription/usage-management/route.ts",
+      "startingSha256": "c82cb56b2ab02dd90c13f45b5771a8d8475c291fdeec285082c17ed3c0ff5ea0",
+      "currentSha256": "c82cb56b2ab02dd90c13f45b5771a8d8475c291fdeec285082c17ed3c0ff5ea0"
+    },
+    {
+      "path": "app/dashboard/inbox/loading.tsx",
+      "startingSha256": "f1054f16c8f504dfb4c7a7d921d92caacc4ab9a1a884db068fb4775c01843601",
+      "currentSha256": "f1054f16c8f504dfb4c7a7d921d92caacc4ab9a1a884db068fb4775c01843601"
+    },
+    {
+      "path": "components/dashboard/dashboard-nav-link.tsx",
+      "startingSha256": "c945b299b98e7b0c65c141c4f89c294039dce5d99fc8c7f6700787eb5ec72b17",
+      "currentSha256": "c945b299b98e7b0c65c141c4f89c294039dce5d99fc8c7f6700787eb5ec72b17"
+    },
+    {
+      "path": "components/profile/delete-account-section.tsx",
+      "startingSha256": "3b88bbc21b9da3ee3a28991eb597e20cb5882b15451dc0cd6f1d061e3b8965f1",
+      "currentSha256": "3b88bbc21b9da3ee3a28991eb597e20cb5882b15451dc0cd6f1d061e3b8965f1"
+    },
+    {
+      "path": "tests/dashboard-nav-link.test.cjs",
+      "startingSha256": "e46ac80af96d841b5233b40332bd938d6572a2922ba2f0cc60d4a3f0851f5c16",
+      "currentSha256": "e46ac80af96d841b5233b40332bd938d6572a2922ba2f0cc60d4a3f0851f5c16"
+    },
+    {
+      "path": "tests/dashboard-next-link-contract.test.cjs",
+      "startingSha256": "f666a9819c3ffb337c1910056df27b47504698b83c34d8b44be979fd750394b7",
+      "currentSha256": "f666a9819c3ffb337c1910056df27b47504698b83c34d8b44be979fd750394b7"
+    },
+    {
+      "path": "tests/inbox-return-context.test.cjs",
+      "startingSha256": "1d6437480f6f33ff7906d2b60fc385eab3a312ee79cbb725e22e9c97f77f7166",
+      "currentSha256": "1d6437480f6f33ff7906d2b60fc385eab3a312ee79cbb725e22e9c97f77f7166"
+    },
+    {
+      "path": "app/api/tiktok/advertiser/connections/[connectionId]/route.ts",
+      "startingSha256": "d83ec9207ebaaf8863c352480d71bb032ce307f137815e5dcdbc6be34d4f77a4",
+      "currentSha256": "d83ec9207ebaaf8863c352480d71bb032ce307f137815e5dcdbc6be34d4f77a4"
+    },
+    {
+      "path": "app/api/tiktok/advertiser/oauth/callback/route.ts",
+      "startingSha256": "f689489b00844ca2ddd7543ee6a63b0090e08f3221d4acb90a831447eb8db8f2",
+      "currentSha256": "f689489b00844ca2ddd7543ee6a63b0090e08f3221d4acb90a831447eb8db8f2"
+    },
+    {
+      "path": "app/api/tiktok/advertiser/oauth/connect/route.ts",
+      "startingSha256": "7721a9ce2b8fb21432c45ce8af43df4200b26d7a9f9055ae54d77a0115ea64f5",
+      "currentSha256": "7721a9ce2b8fb21432c45ce8af43df4200b26d7a9f9055ae54d77a0115ea64f5"
+    },
+    {
+      "path": "db/proposals/20261007_tiktok_advertiser_oauth.sql",
+      "startingSha256": "2cf71ce53af0db9648ff366d196a4406b782411296e5a9c5a7d7baacc9484e4f",
+      "currentSha256": "2cf71ce53af0db9648ff366d196a4406b782411296e5a9c5a7d7baacc9484e4f"
+    },
+    {
+      "path": "docs/tiktok-advertiser-account-deletion.md",
+      "startingSha256": "6100a6305bdbe8956431bb8b5a198640a6caa28e3118bf1c6c02975ef877883c",
+      "currentSha256": "6100a6305bdbe8956431bb8b5a198640a6caa28e3118bf1c6c02975ef877883c"
+    },
+    {
+      "path": "docs/tiktok-advertiser-oauth-draft.md",
+      "startingSha256": "2de2e73d008ac377f9fccc0dfc562060a67fc0f4cc95979f81ab24a3cdd36a5b",
+      "currentSha256": "2de2e73d008ac377f9fccc0dfc562060a67fc0f4cc95979f81ab24a3cdd36a5b"
+    },
+    {
+      "path": "lib/tiktok/advertiser-api.ts",
+      "startingSha256": "b77547ec619b75c335c8c4a5bbe003892ffdabb321cad2e81a8ebedd21d36c2a",
+      "currentSha256": "b77547ec619b75c335c8c4a5bbe003892ffdabb321cad2e81a8ebedd21d36c2a"
+    },
+    {
+      "path": "lib/tiktok/advertiser-oauth.ts",
+      "startingSha256": "1a4e9dbf4e2d3b9299bebea0ed6087bb40363f26f3ccd472360c7dd43d6270ef",
+      "currentSha256": "1a4e9dbf4e2d3b9299bebea0ed6087bb40363f26f3ccd472360c7dd43d6270ef"
+    },
+    {
+      "path": "tests/inbox-navigation-loading.test.cjs",
+      "startingSha256": "c0826e8c168a5289b5142ddce22c0a43b59b33b2730a9eade5b612aca8b97bd4",
+      "currentSha256": "c0826e8c168a5289b5142ddce22c0a43b59b33b2730a9eade5b612aca8b97bd4"
+    },
+    {
+      "path": "tests/tiktok-advertiser-account-deletion.test.cjs",
+      "startingSha256": "92ea67dcbc15ca21d412fc3c821cb1130820a7bf2040e8e4b73a5a62b45f3347",
+      "currentSha256": "df6173704e3444f80a357d279966dc85f1e1c1fe67135c817cc8492913f2fc86"
+    },
+    {
+      "path": "tests/tiktok-advertiser-oauth.test.mjs",
+      "startingSha256": "92e67c6d37a5b45801c44c0868bd02d89eef3f4dd5446206ae5e4204cd6c4860",
+      "currentSha256": "92e67c6d37a5b45801c44c0868bd02d89eef3f4dd5446206ae5e4204cd6c4860"
+    },
+    {
+      "path": "tests/tiktok-advertiser-postgres.test.mjs",
+      "startingSha256": "6b1ce6ff7d2617527789edab48dded249b219046d35bb7de9cc394f36ef175c4",
+      "currentSha256": "6b1ce6ff7d2617527789edab48dded249b219046d35bb7de9cc394f36ef175c4"
+    }
+  ],
+  "changedExisting": [
+    "tests/tiktok-advertiser-account-deletion.test.cjs"
+  ],
+  "tests": {
+    "focused": {
+      "pass": 16,
+      "fail": 0
+    },
+    "broad": {
+      "pass": 142,
+      "fail": 1,
+      "total": 143,
+      "failure": "Unchanged native test mock lacks authSessionGeneration"
+    },
+    "additionalBehavior": {
+      "pass": 66,
+      "fail": 6,
+      "total": 72,
+      "failure": "Unchanged legacy success-alert tests lack current action guard and expect removed alerts"
+    },
+    "typescript": "PASS",
+    "lint": "PASS: 7 files, 0 errors/warnings; CJS-only require-import rule override",
+    "productionBuild": "PASS: npm run build (Next 16.2.12 webpack)"
+  }
+}

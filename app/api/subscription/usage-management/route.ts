@@ -89,6 +89,15 @@ function jsonError(
   );
 }
 
+function advertiserOwnerBlocker(error: { code?: string; message: string }) {
+  if (error.code !== "23514" || error.message !== "Reconcile TikTok advertiser work or transfer Owner access before removing the last Owner.") return null;
+  return NextResponse.json(
+    { success: false, code: "TENH_TIKTOK_ADVERTISER_RECONCILIATION_REQUIRED",
+      error: "Reconcile TikTok advertiser work or transfer Owner access before removing the last Owner." },
+    { status: 409, headers: { "Cache-Control": "no-store" } },
+  );
+}
+
 /** Permission flags for the selected workspace. Owners always pass. */
 async function canManageMembers(member: { id: string; role: string }) {
   return memberHasPermission(member, "team_members", "manage");
@@ -523,6 +532,8 @@ export async function PATCH(
         );
 
     if (updateError) {
+      const advertiserBlocker = advertiserOwnerBlocker(updateError);
+      if (advertiserBlocker) return advertiserBlocker;
       return jsonError(
         body.role === "owner"
           ? "Unable to make this team member an Owner."
@@ -646,6 +657,8 @@ export async function PATCH(
         );
 
     if (updateError) {
+      const advertiserBlocker = advertiserOwnerBlocker(updateError);
+      if (advertiserBlocker) return advertiserBlocker;
       return jsonError(
         updateError.message.includes(
           "Team member limit reached",

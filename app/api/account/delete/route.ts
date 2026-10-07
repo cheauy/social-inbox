@@ -5,6 +5,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { decryptChannelCredential } from "@/lib/channels/channel-token-crypto";
 import { decryptFacebookToken } from "@/lib/facebook/facebook-token-crypto";
 import { deleteTelegramWebhook } from "@/lib/telegram/telegram-api";
+import { hasPermission, resolvePermissions } from "@/lib/auth/permissions";
+import { randomUUID } from "node:crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -902,6 +904,65 @@ async function accountDeletionBillingHold(userId: string) {
   return null;
 }
 
+async function accountDeletionAdvertiserBlocker(
+  userId: string,
+  closingBusinessIds: string[] = [],
+  transferringBusinessIds: string[] = [],
+) {
+  // The disabled advertiser draft must not add schema dependencies to account deletion.
+  if (process.env.TIKTOK_ADVERTISER_OAUTH_ENABLED !== "true") return null;
+
+  const unavailable = () => NextResponse.json(
+    { success: false, code: "TENH_TIKTOK_ADVERTISER_DELETION_CHECK_UNAVAILABLE",
+      error: "TENH could not verify TikTok advertiser access before account deletion. Your account has not been changed. Contact TENH support before retrying." },
+    { status: 503, headers: NO_STORE_HEADERS },
+  );
+
+  try {
+    const { data: memberships, error: membershipError } = await supabaseAdmin
+      .from("team_members").select("business_id,role")
+      .eq("user_id", userId).eq("is_active", true);
+    if (membershipError || !Array.isArray(memberships)) return unavailable();
+    const businessIds = Array.from(new Set([
+      ...memberships.map((member) => member.business_id as string),
+      ...closingBusinessIds,
+    ])).filter((id) => !transferringBusinessIds.includes(id));
+    if (businessIds.length === 0) return null;
+
+    const { data: survivors, error: survivorError } = await supabaseAdmin
+      .from("team_members").select("business_id,role,permissions")
+      .in("business_id", businessIds).eq("is_active", true)
+      .neq("user_id", userId).not("user_id", "is", null);
+    if (survivorError || !Array.isArray(survivors)) return unavailable();
+    const affectedBusinessIds = businessIds.filter((businessId) => {
+      const remaining = survivors.filter((member) => member.business_id === businessId);
+      // Workspace closure deactivates even managers, unless a new Owner makes closure skip it.
+      if (closingBusinessIds.includes(businessId) && !remaining.some((member) => member.role === "owner")) return true;
+      const losesOwner = memberships.some((member) => member.business_id === businessId && member.role === "owner")
+        && !remaining.some((member) => member.role === "owner");
+      return losesOwner || !remaining.some((member) => hasPermission(
+        resolvePermissions(member.role, member.permissions ?? {}), "channels", "manage",
+      ));
+    });
+    if (affectedBusinessIds.length === 0) return null;
+
+    // Confirmed disconnected reservations keep their business FK and need no active operator.
+    // This checks application access loss, not unverified production Auth FK/trigger effects.
+    const { data: connections, error: connectionError } = await supabaseAdmin
+      .from("tiktok_advertiser_connections").select("id")
+      .in("business_id", affectedBusinessIds).neq("status", "disconnected").limit(1);
+    if (connectionError || !Array.isArray(connections)) return unavailable();
+    if (connections.length > 0) return NextResponse.json(
+      { success: false, code: "TENH_TIKTOK_ADVERTISER_RECONCILIATION_REQUIRED",
+        error: "This deletion would remove the last authorized TikTok advertiser Owner or close workspace access before authorization attempts or grants are reconciled. Transfer workspace ownership or contact TENH support before deleting. Your account has not been changed." },
+      { status: 409, headers: NO_STORE_HEADERS },
+    );
+    return null;
+  } catch {
+    return unavailable();
+  }
+}
+
 export async function GET() {
   try {
     const user = await getAuthenticatedUser();
@@ -922,6 +983,12 @@ export async function GET() {
     const billingHold = await accountDeletionBillingHold(user.id);
     if (billingHold) return billingHold;
     const impact = await loadAccountDeletionImpact(user.id);
+
+    // Keep the Owner decision available: transfer can preserve advertiser access.
+    if (impact.canDelete) {
+      const advertiserBlocker = await accountDeletionAdvertiserBlocker(user.id);
+      if (advertiserBlocker) return advertiserBlocker;
+    }
 
     return NextResponse.json(
       {
@@ -950,6 +1017,7 @@ export async function GET() {
 }
 
 export async function DELETE(request: NextRequest) {
+  let advertiserClosureReserved = false;
   try {
     let body: {
       confirmation?: unknown;
@@ -1055,6 +1123,43 @@ export async function DELETE(request: NextRequest) {
         },
         { status: 400 },
       );
+    }
+
+    const advertiserBlocker = await accountDeletionAdvertiserBlocker(
+      user.id,
+      ownerDecision === "delete_subscriptions" ? impact.blockingSubscriptions.map((item) => item.businessId) : [],
+      ownerDecision === "transfer" ? impact.blockingSubscriptions.map((item) => item.businessId) : [],
+    );
+    if (advertiserBlocker) return advertiserBlocker;
+
+    if (process.env.TIKTOK_ADVERTISER_OAUTH_ENABLED === "true") {
+      // Durable reservation closes the gap between read-only preflight and staging.
+      // An interrupted operation retains its fence; never expire or steal its owner.
+      try {
+        const { data, error } = await supabaseAdmin.rpc("tenh_begin_tiktok_advertiser_account_deletion", {
+          p_user_id: user.id, p_operation_id: randomUUID(),
+          p_closing_business_ids: ownerDecision === "delete_subscriptions" ? impact.blockingSubscriptions.map((item) => item.businessId) : [],
+          p_transferring_business_ids: ownerDecision === "transfer" ? impact.blockingSubscriptions.map((item) => item.businessId) : [],
+        });
+        if (!error && data?.outcome === "blocked") return NextResponse.json(
+          { success: false, code: "TENH_TIKTOK_ADVERTISER_RECONCILIATION_REQUIRED",
+            error: "TikTok advertiser work must be reconciled or Owner access transferred before this deletion. Your account has not been changed." },
+          { status: 409, headers: NO_STORE_HEADERS },
+        );
+        if (!error && data?.outcome === "busy") return NextResponse.json(
+          { success: false, code: "TENH_TIKTOK_ADVERTISER_CLOSURE_PENDING",
+            error: "An earlier workspace closure requires reconciliation. Contact TENH support before retrying. Your account has not been changed." },
+          { status: 409, headers: NO_STORE_HEADERS },
+        );
+        if (error || data?.outcome !== "reserved" || !Array.isArray(data.business_ids)) throw new Error("Closure reservation unavailable.");
+        advertiserClosureReserved = data.business_ids.length > 0;
+      } catch {
+        return NextResponse.json(
+          { success: false, code: "TENH_TIKTOK_ADVERTISER_DELETION_CHECK_UNAVAILABLE",
+            error: "TENH could not confirm advertiser closure coordination. A reservation may remain pending. Contact TENH support before retrying." },
+          { status: 503, headers: NO_STORE_HEADERS },
+        );
+      }
     }
 
     let ownerTransferSnapshots: MemberRoleSnapshot[] = [];
@@ -1168,6 +1273,11 @@ export async function DELETE(request: NextRequest) {
 
     return response;
   } catch (error) {
+    if (advertiserClosureReserved) return NextResponse.json(
+      { success: false, code: "TENH_TIKTOK_ADVERTISER_CLOSURE_PENDING",
+        error: "TENH could not confirm that account deletion completed. Advertiser closure remains fenced pending reconciliation. Contact TENH support before retrying." },
+      { status: 409, headers: NO_STORE_HEADERS },
+    );
     console.error("[TENH Account Delete] Failed:", error);
 
     return NextResponse.json(

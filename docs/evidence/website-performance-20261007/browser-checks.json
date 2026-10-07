@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-07",
+  "environment": "Permitted Codex in-app browser, loopback-only synthetic fixtures; viewport emulation on desktop hardware",
+  "header": {
+    "status": "PASS",
+    "viewports": ["1280x720", "390x844", "768x1024"],
+    "runsPerModeAndViewport": { "cold": 5, "warm": 5 },
+    "modes": ["starting reviewed header", "final working-tree header"],
+    "checks": [
+      "Production CSS styles the actual header",
+      "Remounted workspace never restores old response",
+      "Failed request has honest retry feedback",
+      "Retry recovers correct content",
+      "Unmount removes timers and realtime subscriptions"
+    ],
+    "evidence": "baseline-*.json and final-*.json in this directory"
+  },
+  "analyticsBehavior": {
+    "status": "PASS",
+    "viewport": "1280x720",
+    "fixture": "tests/analytics-performance-browser-build.cjs",
+    "checksPassed": 11,
+    "checks": ["Selected deep-link panel only", "Rapid Today/90-day/Today ignores retired results and aborts transport", "Query navigation", "Back/Forward report synchronization", "Controls remain usable during requests", "Dashboard A-B-A cancels obsolete batch"],
+    "limitation": "Mock HTTP responses and navigation binding; behavior proof, not actual API latency, styled-layout proof or provider metrics"
+  },
+  "inboxSearchBehavior": {
+    "status": "PASS",
+    "viewport": "1280x720",
+    "fixture": "tests/inbox-search-browser-build.cjs",
+    "checks": ["Correct snippet", "Stale search ignored", "Avatar candidate preserved", "15 historical fixture pages", "Exact highlight", "Warm return", "Concurrent same thread", "Cross-thread ownership", "Repeated A-B-A"],
+    "limitation": "Fixture extracts current search/history functions; not a full authenticated Inbox page"
+  },
+  "inboxComposite": {
+    "status": "FAIL",
+    "fixture": "tests/inbox-paging-browser-build.cjs",
+    "styles": "Generated .next/static/css styles served inline after the production webpack build",
+    "viewports": [
+      { "viewport": "1280x720", "passedChecks": 46, "failedChecks": 1 },
+      { "viewport": "390x844", "passedChecks": 46, "failedChecks": 1 },
+      { "viewport": "768x1024", "outcome": "Passed the same Inbox/layout/navigation phases, then stopped at the Bot copy assertion" }
+    ],
+    "verifiedPhases": ["Bounded pagination and preserved selection/scroll", "Comments/pinned/unread/history search", "Bounded rich rendering", "Simulated hidden/resume and reconnect", "Duplicate realtime events", "Sticker/source-photo failure recovery", "Composer and reduced-height layout", "Settings/Inbox menu return and authorized rail", "Combined picker retains text and focus"],
+    "firstFailure": "draft editor explicitly unavailable for live execution",
+    "source": "tests/fixtures/inbox-paging-browser.entry.cjs:83",
+    "assertion": "Existing Bot fixture requires the text Live execution unavailable and no Turn on text",
+    "scope": "Fixture and Bot component match HEAD and were not changed. This is not evidence of live activation; all fixture fetches are mocked.",
+    "unreached": "Later Bot/photo checks in this composite fixture; focused photo/album tests passed in the Node regression suite",
+    "initialSetupFailure": "An earlier run lacked the built webpack CSS and failed a shadow assertion. After correcting only temporary hosting, style/navigation checks passed; delivered header timings use verified CSS."
+  },
+  "remainingGates": {
+    "authenticatedWholeAppColdWarmWorkflows": "UNVERIFIED",
+    "physicalPhoneTabletAndActualBackgroundResume": "UNVERIFIED",
+    "productionPostgRESTAndPermissionRevocation": "UNVERIFIED",
+    "SupabaseProviderUsageAndCost": "UNVERIFIED",
+    "VercelInvocationsDurationTransferAndImageProcessing": "UNVERIFIED; access restriction respected",
+    "realMediaPayloadsAndProviderCompatibility": "UNVERIFIED; media code unchanged",
+    "realSendActionCompletion": "UNVERIFIED; no real messages, production writes or provider operations"
+  }
+}
