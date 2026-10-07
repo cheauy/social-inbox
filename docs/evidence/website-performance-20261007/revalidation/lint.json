@@ -1,0 +1,58 @@
+{
+  "files": [
+    "components/dashboard/team-notification-center.tsx",
+    "tests/website-header-read-lifecycle.test.cjs",
+    "tests/website-read-efficiency.test.cjs",
+    "tests/website-header-performance-browser.cjs",
+    "tests/fixtures/website-header-performance.entry.cjs",
+    "tests/fixtures/website-header-navigation.cjs",
+    "tests/fixtures/website-header-supabase.cjs",
+    "tests/website-prechange-comparison.cjs",
+    "tests/website-inbox-browser-build.cjs",
+    "docs/evidence/website-performance-20261007/revalidation/reporter.cjs"
+  ],
+  "errors": 0,
+  "warnings": 0,
+  "results": [
+    {
+      "path": "C:\\Users\\TUF\\social-inbox\\components\\dashboard\\team-notification-center.tsx",
+      "messages": []
+    },
+    {
+      "path": "C:\\Users\\TUF\\social-inbox\\tests\\website-header-read-lifecycle.test.cjs",
+      "messages": []
+    },
+    {
+      "path": "C:\\Users\\TUF\\social-inbox\\tests\\website-read-efficiency.test.cjs",
+      "messages": []
+    },
+    {
+      "path": "C:\\Users\\TUF\\social-inbox\\tests\\website-header-performance-browser.cjs",
+      "messages": []
+    },
+    {
+      "path": "C:\\Users\\TUF\\social-inbox\\tests\\fixtures\\website-header-performance.entry.cjs",
+      "messages": []
+    },
+    {
+      "path": "C:\\Users\\TUF\\social-inbox\\tests\\fixtures\\website-header-navigation.cjs",
+      "messages": []
+    },
+    {
+      "path": "C:\\Users\\TUF\\social-inbox\\tests\\fixtures\\website-header-supabase.cjs",
+      "messages": []
+    },
+    {
+      "path": "C:\\Users\\TUF\\social-inbox\\tests\\website-prechange-comparison.cjs",
+      "messages": []
+    },
+    {
+      "path": "C:\\Users\\TUF\\social-inbox\\tests\\website-inbox-browser-build.cjs",
+      "messages": []
+    },
+    {
+      "path": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\website-performance-20261007\\revalidation\\reporter.cjs",
+      "messages": []
+    }
+  ]
+}

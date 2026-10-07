@@ -1,0 +1,1138 @@
+{
+  "at": "2026-10-07T11:30:05.524Z",
+  "node": "v24.18.0",
+  "testConcurrency": 1,
+  "timezone": "Asia/Ho_Chi_Minh",
+  "exitCode": 1,
+  "total": 215,
+  "pass": 208,
+  "fail": 7,
+  "failures": [
+    {
+      "name": "Conversation assigned successfully. only after confirmed success",
+      "status": "fail",
+      "failureType": "testCodeFailure",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "Conversation unassigned successfully. only after confirmed success",
+      "status": "fail",
+      "failureType": "testCodeFailure",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "Conversation assigned to you successfully. only after confirmed success",
+      "status": "fail",
+      "failureType": "testCodeFailure",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "Conversation pinned successfully. only after confirmed success",
+      "status": "fail",
+      "failureType": "testCodeFailure",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "Conversation unpinned successfully. only after confirmed success",
+      "status": "fail",
+      "failureType": "testCodeFailure",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "Conversation marked as unread successfully. only after confirmed success",
+      "status": "fail",
+      "failureType": "testCodeFailure",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "mobile bootstrap, resume and reconnect retain customer updates with no room requests",
+      "status": "fail",
+      "failureType": "testCodeFailure",
+      "error": "(0 , client_1.authSessionGeneration) is not a function"
+    }
+  ],
+  "results": [
+    {
+      "name": "explicitly selected photo retains its exact Copy/Reply identity and stored reaction row",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Telegram photos keep individual stored reaction/action rows",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "stale selection from another conversation or album cannot change the target",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "current reply is the fallback when a selected photo leaves the album",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "default Telegram anchor and Facebook first attachment preserve the existing group reply",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "same IDs in foreign rows cannot become the reaction owner",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "incoming explicit photo actions stay selected while the pointer crosses other photos",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "outgoing explicit photo actions stay selected while the pointer crosses other photos",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Telegram album retains group pin/delete while replying to the selected photo",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "icon-only Copy keeps copied feedback accessible without a growing text pill",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Sending Telegram album reserves the future toolbar without enabling unavailable actions",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Sending Facebook album reserves Reply/Pin and reaction space without inventing Delete",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "incoming album does not inherit outgoing Sending reservations",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Analytics sidebar uses the installed Next history wrapper without bypassing URL synchronization",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "AgentPerformancePanel ignores late success/error/finally after changing period during a refresh",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "CustomerInsightsPanel ignores late success/error/finally after changing period during a refresh",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "ConversationReportsPanel ignores late success/error/finally after changing period during a refresh",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "SlaAnalyticsPanel ignores late success/error/finally after changing period during a refresh",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "ChannelPerformancePanel ignores late success/error/finally after changing period during a refresh",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "DashboardOverviewPanel ignores late success/error/finally after changing period during a refresh",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "same-key live invalidations retain one trailing refresh and retire it on navigation",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Agent performance carries the browser timezone like the dashboard and SLA panels",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "empty SLA results cannot display a successful 100 percent even if the RPC sends that legacy value",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Channel performance Today -> 90 days -> Today retires the slow response, including finally",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Channel focus revalidation preserves the populated panel while its read is pending",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Dashboard preserves all period and SLA controls during the first fetch and period changes",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Dashboard hidden poll and focus do no requests; resume and focus coalesce with in-flight deduplication",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "every dated Analytics panel cancels transport on unmount",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Analytics content follows links, Back/Forward, deep links and missing/invalid query views",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Channel metrics preserve full history, recovered timestamps, comments, unanswered means and SLA",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "unauthorized and removed members perform no analytics reads",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "previous count failure remains unknown while message failure never returns partial statistics",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "aborted client results retire queued chunks and do not cancel another user/business request",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "strict row helper distinguishes exact cap from overflow and preserves legacy callers",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "streaming message reader folds bounded pages and rejects overflow instead of reporting a partial aggregate",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "real Channel route bounds raw-history concurrency without adding reads or changing its history window",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "bounded controlled-delay Channel comparison records counts and timings without claiming production latency",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "fetchAllRows treats reaching its configured cap as success without a completeness marker",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "navigation /dashboard/inbox selects /dashboard/inbox: true",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "navigation /dashboard/analytics selects /dashboard/inbox: false",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "navigation /dashboard/settings/display selects /dashboard/settings: true",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "navigation /dashboard/inbox selects /dashboard/admin: false",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "navigation /dashboard/settings-other selects /dashboard/settings: false",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "return to Inbox uses the installed Next click contract; modified clicks remain native",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "shared layout forwards existing server admin identity false",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "shared layout forwards existing server admin identity true",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "subscription read error retains authorized navigation without bypassing access gate",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "signed-out layout still redirects before admin navigation identity checks",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "double click: the second identical action on one conversation is refused synchronously",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "independent conversations stay usable while one is pending",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Assign and Assign to me share one per-conversation slot (claim conflict guard)",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "response first, then our own realtime echo: success stays silent",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "realtime echo first, then the response: success stays silent",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "duplicate realtime deliveries of our own activity stay silent",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "a teammate's activity and my own from another device are always shown",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "a failed action releases its entry; a later unrelated echo is shown",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "rapid toggles with out-of-order echoes: every own echo silent, teammate still shown",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "rollback never overwrites a teammate's newer value",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "late auto-read: awaiting the exact read keeps Mark Unread the later write (old 5 s poll did not)",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "unread count: identical to the old full-history walk on varied threads",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "unread route reports per-phase Server-Timing",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "deleted only on structured, twice-confirmed evidence",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "provider accepted, local save failed: partial success, not failure (Like and Hide)",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Hide keeps its verification: Meta accepted but still visible is reported",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Delete: reconciliation runs after Facebook confirms, and succeeds normally",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Delete: Facebook deleted it but reconciliation failed is partial, not a 500",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "comment routes report per-phase Server-Timing",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "client outcomes: deleted, partial, failed, uncertain timeout and network loss",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "listed actions show no success toast; their errors remain",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "comment success is silent; partial warnings, deleted and uncertain notices remain",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "incoming and outgoing nearby singles remain independent without an authoritative identity",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Telegram incoming provider album groups separate rows and preserves caption/reply data",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Telegram flat outgoing response media_group_id is recognized",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "album boundaries include sender, staff, recipient, conversation, channel, business and direction",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "partial arrival stays single then becomes album; out-of-order item arrival sorts numeric provider IDs",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "explicit client positions keep optimistic and confirmed album order stable",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "duplicate echoes yield one photo per platform ID and bare projection retains album metadata",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "deleted photos leave the grid and unrelated photos between album items are never absorbed",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "one Facebook attachment stays single; authoritative arrays create grid with individual photo selection",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "outgoing Facebook albums retain saved URLs through a bare echo without becoming blob URLs",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "local explicit outgoing batches group before delivery; incoming cannot forge local batch grouping",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "partial stored outgoing batch matches optimistic scope only when the observed staff agrees",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "all distinct substantive album captions survive partial/out-of-order arrival",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "selected-photo recovery skips mixed videos and never substitutes the first album photo",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "authorized media route signs the selected stored album slot, rejects missing/foreign/deleted slots",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Facebook multiple upload persists every byte slot even with unavailable Graph attachment detail",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Inbox navigation hands off link progress to its fallback and releases it on every exit",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "seven simultaneous workspace consumers use one request and independent readable bodies",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "failed workspace read retries and mutation never joins a pre-switch read",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "workspace lifecycle pauses hidden polls and batches visible focus/resume/reconnect",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "offscreen bubbles defer rendering; measured height and above-viewport expansion preserve scroll",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "reply jump mounts an offscreen target and short threads render without virtualization",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "1000-row comparable fixture mounts 40 rich rows instead of 1000; data remains complete",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "focused controls and playing media survive leaving the viewport",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "browsers without IntersectionObserver render all history normally",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "moving a reply target into view discards stale above-viewport anchoring",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "one workspace consumer aborts without cancelling another shared read",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "recovered insertion above a long thread preserves its visible message; append and duplicate do not jump",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "native list anchoring does not receive a second manual offset",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "saved URL remains authoritative while local preview survives echoes and reopened cached history",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "partial album indices preserve exact local photo instead of showing photo zero",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "preview never crosses workspace, conversation, provider identity, incoming messages or deletion",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "actual optimistic reconciliation keeps canonical URL, local preview and existing sent identity",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "slow single load has reserved geometry, lazy decoding and accessible status until loaded",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "local preview stays selected across remote URL changes without remounting image",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "expired selected album photo gets one exact-index thumbnail recovery then accessible manual retry",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "optimistic image failures do not request an unresolved temporary server message",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "lightbox uses intrinsic contained image, eager loading and full-size selected recovery",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "actual lightbox explicitly selects preview layout",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "return URL has only bounded validated filters and an accessible matching thread",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "real React dashboard lifetime restores Inbox through installed Next navigation and isolates identity/reset/deep links",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "restored destination server rejects revoked selection and independently reads fresh accessible messages",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "historical message takes priority over unrelated latest preview; contact-only phone has no invented target",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "batched history matches are scoped, newest and not crowded out by prolific threads",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "avatar remount starts with the candidate that loaded; a different identity tries its own photo",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "search jump reaches history beyond the old twelve-page limit and highlights the exact message",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "superseded search jump stops without scrolling or highlighting",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "older-page client cursor uses recovered platform time and excludes another conversation",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Auto detect number still fills only an empty incoming contact phone and preserves agent edits",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "same-thread replacement jump joins the pending page and cancelled owner settles before the page",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "A completion cannot change pending B history, loading or errors (success)",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "A completion cannot change pending B history, loading or errors (failure)",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "repeated A -> B -> A joins A flight; B cleanup cannot clear A ownership",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Conversation assigned successfully. only after confirmed success",
+      "status": "fail",
+      "failureType": "testCodeFailure",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "Conversation unassigned successfully. only after confirmed success",
+      "status": "fail",
+      "failureType": "testCodeFailure",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "Conversation assigned to you successfully. only after confirmed success",
+      "status": "fail",
+      "failureType": "testCodeFailure",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "Conversation pinned successfully. only after confirmed success",
+      "status": "fail",
+      "failureType": "testCodeFailure",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "Conversation unpinned successfully. only after confirmed success",
+      "status": "fail",
+      "failureType": "testCodeFailure",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "Conversation marked as unread successfully. only after confirmed success",
+      "status": "fail",
+      "failureType": "testCodeFailure",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "success alerts reuse the existing timer and replace repeated alerts",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "reminder creation reaches the Inbox success alert only after the server saves it",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "unsent text survives Telegram -> Messenger -> Telegram, while quotes and workspace drafts stay separate",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "same-thread metadata refresh preserves new work, and a sent/cleared draft never resurrects",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "revoked membership removes its draft and a reused identifier in another workspace cannot recover it",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "the text-only cache retains at most 25 inactive conversation drafts",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "editing a sent Telegram message never becomes a new-message draft after A -> B -> A",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "the oldest destination restores before eviction and the active draft is outside the inactive cap",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "edit mode metadata updates keep the edit, while canceled edit text can become an ordinary draft",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "reverse Messenger -> Telegram edit -> Messenger restores only the ordinary draft",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Cancel Telegram edit restores the pre-edit ordinary text, never the edited sent text",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "editing another message keeps the original pre-edit draft and stale Cancel cannot clear new work",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "switching away from an edit caches only its pre-edit ordinary draft under the same conversation owner",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "revoking the edit owner clears its pre-edit draft without restoring it elsewhere",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "ending edit mode retires the saved pre-edit text so stale Cancel cannot overwrite later work",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "two edit handlers before a React state commit capture the ordinary draft only once",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "an Edit handler from a retired conversation cannot replace the current composer",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "paging sidebar navigation changes URL and selected view without duplicate router work",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "legacy sidebar still uses router-owned loading and qualified scope",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "personal Smart View scope survives paging URL navigation",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Facebook text and quick replies carry the optimistic request id end to end",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "a retry with the same request id returns the stored send",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "idempotent replay cannot bypass workspace, permission or recipient checks",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "confirmation keeps one bubble and one render identity",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "photo, file and prepared voice sends use the same stable correlation path",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "reproduction: persisted row before response, late correlation, lost response, poll, refresh, reopen",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "response before echo: the response MID confirms, the echo then merges into it",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "echo before response: correlated echo replaces the bubble, the late response is a no-op",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "a late send error cannot downgrade a message an exact server event already confirmed",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "a pending bubble with no correlated server row stays pending and visible",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "repeated Realtime events for the same row never multiply it",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "two intentionally identical sends remain two messages",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "same text and time but no exact correlation is never merged",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "another agent's message carrying their own request id is not folded into mine",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "a correlated row in another conversation never confirms this one",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "attachment preview, reply context and the strongest receipt survive the merge",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "message order is preserved: the confirmed row keeps the bubble's place",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "the component's Telegram caption limit is Telegram's 1024",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Messenger: every image, the voice clip and the text show as Sending before any upload settles",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "the text request starts only after the media settle, so delivery order matches the screen",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "partial failure: the failed image does not stop the next item or the text",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "no duplicates: one request per item and one bubble per item",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "a Facebook Reply quote stays on the media and is not repeated on the follow-up text",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Telegram, one image + text: the text rides as the photo's caption (it used to be dropped)",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Telegram, several images + text: caption on the album, once",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Telegram, text over the 1024-character caption limit: media first, then the full text as its own message",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Telegram, text exactly at the 1024 limit still goes as the caption",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Telegram, voice clip + text: a voice note takes no caption here, so the text follows as its own message",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Telegram, MP4 video + text: caption on the video",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Telegram Personal: long text is not cut into the caption, it follows as its own item",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "composer: once items are queued, a partial failure does not refill the composer (no second copy)",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "composer: refused before anything was queued, the draft comes back intact",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "composer: the typed text is handed to the parent, not sent a second time by the composer",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "a saved voice clip is loaded as a voice message, keeping its format",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "Telegram's optimistic bubble treats a quick-reply voice clip as audio, not a file",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "saving: MP3, M4A and OGG/Opus are accepted as voice; WAV and WebM are refused with a clear reason",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "saving: a file with no reported type is recognized by its audio extension only",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "saving: one voice clip, alongside text and images, never with a video",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "reading: stored voice clips survive parsing with a sensible default type",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "all retired room operations reject without reading or mutating stored data",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "saved web and mobile room links redirect to existing customer Inbox",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "updated app has no room API callers, room subscriptions or room search links",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "shared team access helpers preserve member listing and extension management roles",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "mobile bootstrap, resume and reconnect retain customer updates with no room requests",
+      "status": "fail",
+      "failureType": "testCodeFailure",
+      "error": "(0 , client_1.authSessionGeneration) is not a function"
+    },
+    {
+      "name": "changed mobile consumers parse without installed Expo dependencies",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "notification reads exclude retired room mentions while preserving reminder and other alerts",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "mount, bell and resume share overlapping reads but never cache completed responses",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "correct notifications publish before the announcement completes",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "slow announcement cannot prevent the next 30-second notification poll",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "workspace invalidation fences old responses even when transport ignores abort",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "unmount aborts transports and does not publish a retired response",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "failure retires the read and an explicit retry is fresh",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "denial 401 clears protected state and fences pending announcements",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "denial 403 clears protected state and fences pending announcements",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "realtime deletion cannot be overwritten by an older read snapshot",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "optimistic mark-read fences snapshots without another GET",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "TeamNotificationCenter preserves required polls, pauses nonessential hidden reads and coalesces recovery",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "PendingInvitationsBanner preserves required polls, pauses nonessential hidden reads and coalesces recovery",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "FacebookConnectionAttentionBanner preserves required polls, pauses nonessential hidden reads and coalesces recovery",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "the foreground recovery timer is discarded when hidden or unmounted",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "initially hidden notification polling continues every 30 seconds for reminder production",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "a reminder becoming due while hidden is materialized by the actual notification GET and producer",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "cold load deduplicates, then warm data is immediately readable until TTL expiry",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "workspace entries are member-scoped, bounded, and cleared on member/logout change",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "mutation generation blocks a late refresh from resurrecting deleted files",
+      "status": "pass",
+      "error": null
+    },
+    {
+      "name": "failed refresh preserves warm data and access invalidation drops it",
+      "status": "pass",
+      "error": null
+    }
+  ]
+}

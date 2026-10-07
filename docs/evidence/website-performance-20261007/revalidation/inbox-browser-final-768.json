@@ -1,0 +1,272 @@
+{
+  "passed": false,
+  "groups": {
+    "inbox": {
+      "passed": true,
+      "pass": 46,
+      "fail": 0
+    },
+    "legacyBot": {
+      "passed": false,
+      "pass": 0,
+      "fail": 1
+    },
+    "photos": {
+      "passed": true,
+      "pass": 6,
+      "fail": 0
+    }
+  },
+  "errors": {
+    "legacyBot": "Error: draft editor explicitly unavailable for live execution"
+  },
+  "viewport": {
+    "width": 768,
+    "height": 1024
+  },
+  "checks": [
+    {
+      "name": "direct Settings load hides main rail and retains secondary navigation",
+      "ok": true
+    },
+    {
+      "name": "initial 30 rows without duplicate fetch",
+      "ok": true
+    },
+    {
+      "name": "conversation header and empty state requested copy",
+      "ok": true
+    },
+    {
+      "name": "icon-only filter preserves accessible toggle",
+      "ok": true
+    },
+    {
+      "name": "increment adds 30 and preserves selection",
+      "ok": true
+    },
+    {
+      "name": "append preserves list scroll",
+      "ok": true,
+      "detail": {
+        "before": 600,
+        "after": 600
+      }
+    },
+    {
+      "name": "comments view",
+      "ok": true
+    },
+    {
+      "name": "pinned view",
+      "ok": true
+    },
+    {
+      "name": "history-only search finds off-page conversation",
+      "ok": true
+    },
+    {
+      "name": "incoming metadata changes unread membership",
+      "ok": true
+    },
+    {
+      "name": "explicit unread snapshot includes off-page rows",
+      "ok": true
+    },
+    {
+      "name": "real observers bound long-thread rich rendering",
+      "ok": true,
+      "detail": {
+        "rich": 33,
+        "total": 180
+      }
+    },
+    {
+      "name": "long-thread scroll settles without jumping",
+      "ok": true,
+      "detail": {
+        "before": 6000,
+        "after": 6000
+      }
+    },
+    {
+      "name": "simulated hidden document suppresses page fetch",
+      "ok": true
+    },
+    {
+      "name": "resume coalesces one catch-up read",
+      "ok": true
+    },
+    {
+      "name": "duplicate incoming events show one updated conversation",
+      "ok": true
+    },
+    {
+      "name": "teammate preview updates without losing selected chat or thread position",
+      "ok": true
+    },
+    {
+      "name": "reconnect catch-up preserves unique rows",
+      "ok": true
+    },
+    {
+      "name": "real sticker grid retains accessible send selection",
+      "ok": true
+    },
+    {
+      "name": "broken sticker provides visible fallback and bounded pack recovery",
+      "ok": true,
+      "detail": {
+        "refreshCount": 1,
+        "mediaCalls": [
+          "/api/facebook/stickers/pack?conversationId=00000000-0000-4000-8000-000000000001&packId=100&refresh=1",
+          "/api/facebook/post-preview?conversationId=00000000-0000-4000-8000-000000000001&messageId=00000000-0000-4000-8000-000000000200&source=1&refresh=1",
+          "/api/facebook/stickers/pack?conversationId=00000000-0000-4000-8000-000000000001&packId=100&refresh=1"
+        ]
+      }
+    },
+    {
+      "name": "fallback tile preserves fixture send choice",
+      "ok": true
+    },
+    {
+      "name": "source-photo failure retains context and attempts one local recovery",
+      "ok": true
+    },
+    {
+      "name": "conversation header uses faint downward shadow without bottom divider",
+      "ok": true
+    },
+    {
+      "name": "conversation panel left rail seam removed",
+      "ok": true
+    },
+    {
+      "name": "short message viewport meets composer with no external gap",
+      "ok": true
+    },
+    {
+      "name": "empty message viewport fills remaining height",
+      "ok": true
+    },
+    {
+      "name": "long thread scrolls only message area",
+      "ok": true
+    },
+    {
+      "name": "growing composer reduces message area and stays adjacent at bottom",
+      "ok": true
+    },
+    {
+      "name": "reduced available height keeps composer aligned and scroll bounded",
+      "ok": true
+    },
+    {
+      "name": "left navigation keeps settings and hides unauthorized admin",
+      "ok": true
+    },
+    {
+      "name": "Settings client navigation hides only the main rail",
+      "ok": true
+    },
+    {
+      "name": "header Inbox exit restores one authorized main rail",
+      "ok": true
+    },
+    {
+      "name": "nested Settings route hides main rail while secondary remains visible",
+      "ok": true
+    },
+    {
+      "name": "leaving Settings restores existing admin route active state",
+      "ok": true
+    },
+    {
+      "name": "selected global rail has pale tile and separate blue left pill",
+      "ok": true
+    },
+    {
+      "name": "back to inbox restores one navigation rail",
+      "ok": true
+    },
+    {
+      "name": "Settings surface uses connected rounded outline and shadow",
+      "ok": true
+    },
+    {
+      "name": "Settings columns touch at their existing seam",
+      "ok": true
+    },
+    {
+      "name": "Settings content retains independent scroll without hiding navigation",
+      "ok": true
+    },
+    {
+      "name": "combined picker opens in emoji mode",
+      "ok": true
+    },
+    {
+      "name": "combined popup fits visual viewport",
+      "ok": true,
+      "detail": {
+        "width": 768,
+        "height": 1024,
+        "popup": {
+          "left": 8,
+          "top": 35.6875,
+          "right": 428,
+          "bottom": 485.6875
+        }
+      }
+    },
+    {
+      "name": "mode switch retains composer and does not send",
+      "ok": true
+    },
+    {
+      "name": "emoji selection only inserts text",
+      "ok": true
+    },
+    {
+      "name": "Escape closes unified popup and restores trigger focus",
+      "ok": true
+    },
+    {
+      "name": "unified popup reopens without losing composer text",
+      "ok": true
+    },
+    {
+      "name": "outside pointer closes unified popup",
+      "ok": true
+    },
+    {
+      "name": "draft editor explicitly unavailable for live execution",
+      "ok": false
+    },
+    {
+      "name": "nearby singles remain two individual photo layouts",
+      "ok": true
+    },
+    {
+      "name": "native attachment array uses real album frame with two distinct photos",
+      "ok": true
+    },
+    {
+      "name": "second album item opens its original individual source",
+      "ok": true
+    },
+    {
+      "name": "partial provider album remains accessible as a single",
+      "ok": true
+    },
+    {
+      "name": "out-of-order album arrival renders ordered items once",
+      "ok": true
+    },
+    {
+      "name": "broken photo has visible accessible fallback",
+      "ok": true
+    }
+  ],
+  "requests": 12
+}

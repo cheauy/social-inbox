@@ -1,0 +1,207 @@
+{
+  "conditions": {
+    "node": "v24.18.0",
+    "testConcurrency": 1,
+    "timezone": "Asia/Ho_Chi_Minh",
+    "dependencies": "same existing node_modules",
+    "commonTests": [
+      {
+        "path": "tests/website-read-efficiency.test.cjs",
+        "sha256": "4254c7174441027fa94028306cd1dce54fcd6ea78a5fb1707205775366f56563"
+      },
+      {
+        "path": "tests/inbox-performance.test.cjs",
+        "sha256": "499ac1ec20de9ab27a555b6fce06b55480aba0a17520cb12c24a8bab8b6d32b3"
+      },
+      {
+        "path": "tests/inbox-return-context.test.cjs",
+        "sha256": "1d6437480f6f33ff7906d2b60fc385eab3a312ee79cbb725e22e9c97f77f7166"
+      },
+      {
+        "path": "tests/inbox-navigation-loading.test.cjs",
+        "sha256": "c0826e8c168a5289b5142ddce22c0a43b59b33b2730a9eade5b612aca8b97bd4"
+      },
+      {
+        "path": "tests/dashboard-nav-link.test.cjs",
+        "sha256": "e46ac80af96d841b5233b40332bd938d6572a2922ba2f0cc60d4a3f0851f5c16"
+      },
+      {
+        "path": "tests/dashboard-next-link-contract.test.cjs",
+        "sha256": "f666a9819c3ffb337c1910056df27b47504698b83c34d8b44be979fd750394b7"
+      },
+      {
+        "path": "tests/dashboard-utility-navigation.test.cjs",
+        "sha256": "68cc7d4e073d3a89e3c58d24c38898a8a018d364807df1a32c2a045a556908f6"
+      },
+      {
+        "path": "tests/analytics-request-lifecycle.test.cjs",
+        "sha256": "62ff971831a8daeab7c8e2ecaa0ed97a6e8287de79338faf9bb6df36a4f2455b"
+      },
+      {
+        "path": "tests/analytics-next-history.test.cjs",
+        "sha256": "f24ad285933e652117a9a84b91861b58254f6ef44d38157234f8edbef7da8ec2"
+      },
+      {
+        "path": "tests/analytics-url-navigation.test.cjs",
+        "sha256": "97f45fc7d7d52b2145535e8768e78aebdc0b618ea3fb340bcf86704427b67cd3"
+      },
+      {
+        "path": "tests/channel-analytics-request-budget.test.cjs",
+        "sha256": "0d5e758454d7796b39ac7b771323c68f6b9e7804b200ed18ab0c2b90b88a295e"
+      },
+      {
+        "path": "tests/channel-analytics-read-safety.test.cjs",
+        "sha256": "2fb4aaa008c24e8a75dc5b4a61b411a16ecd30459410ea4136e7942e0245ec56"
+      },
+      {
+        "path": "tests/inbox-view-navigation.test.cjs",
+        "sha256": "0eb3af836831a61216e9f9a502963d2c16419bdb00ba5c0274abc4750f2da0fd"
+      },
+      {
+        "path": "tests/inbox-search-match.test.cjs",
+        "sha256": "e81140aed6052dc140ffff9c5d94aa7aba0d05a9d93a26498b607d82576c508f"
+      },
+      {
+        "path": "tests/inbox-photo-loading.test.cjs",
+        "sha256": "7f97f1b2ef0e616984d8cb468533b1b0d5b2601c416ea3b881917d4ed7b6a155"
+      },
+      {
+        "path": "tests/inbox-albums.test.cjs",
+        "sha256": "55e0e4d220d8c400cf05614b62d1c2ac17feeae0347de3263d05c46e442902a7"
+      },
+      {
+        "path": "tests/album-action-target.test.mjs",
+        "sha256": "9602c13df2798f1a03a0db4e5ff7f49f2a58790576bcb1eca42d94904735527f"
+      },
+      {
+        "path": "tests/optimistic-outgoing-dedupe.test.cjs",
+        "sha256": "0ff0b2f4632015dabfc8bf5171d6885037bfb3d1af64c9c93f6c302e67e6031d"
+      },
+      {
+        "path": "tests/workspace-storage-cache.test.cjs",
+        "sha256": "d6135e3df88b3461c36e5c68ce85bdcb35399e536926bc2fbb776ebd8b5738e9"
+      },
+      {
+        "path": "tests/team-chat-retirement.test.cjs",
+        "sha256": "86e863e5e4c69a9ed2553c44f39d063627913becb87dbb5fe730cde3ee1fad18"
+      },
+      {
+        "path": "tests/inbox-action-feedback.test.cjs",
+        "sha256": "71f4d715af56cbc456fdee375305a2c2c20ec9158981aa210c97cf1298d97a63"
+      },
+      {
+        "path": "tests/inbox-success-alerts.test.mjs",
+        "sha256": "8c9796410df41566551c392e014342ea8bd864fc062c663ce4e8c748385f59c4"
+      },
+      {
+        "path": "tests/inbox-text-draft.test.cjs",
+        "sha256": "b7b3c1fdc89f64ab6e8bcfe190d145a98e04bb91ccd66f2c0efed7dbd6c93153"
+      },
+      {
+        "path": "tests/message-send-reconciliation.test.mjs",
+        "sha256": "fcade5ee07e2ee21da7fd1cbef1a4528871c148502372d4a6879c9495d570043"
+      },
+      {
+        "path": "tests/quick-reply-mixed-send.test.cjs",
+        "sha256": "e8ae9b78976f4a0cc00198670153063da8e87729e61b372c0ad9d7fa20b37b96"
+      }
+    ]
+  },
+  "baseline": {
+    "total": 205,
+    "pass": 198,
+    "failures": [
+      {
+        "name": "Conversation assigned successfully. only after confirmed success",
+        "status": "fail",
+        "failureType": "testCodeFailure",
+        "error": "finish is not a function"
+      },
+      {
+        "name": "Conversation unassigned successfully. only after confirmed success",
+        "status": "fail",
+        "failureType": "testCodeFailure",
+        "error": "finish is not a function"
+      },
+      {
+        "name": "Conversation assigned to you successfully. only after confirmed success",
+        "status": "fail",
+        "failureType": "testCodeFailure",
+        "error": "finish is not a function"
+      },
+      {
+        "name": "Conversation pinned successfully. only after confirmed success",
+        "status": "fail",
+        "failureType": "testCodeFailure",
+        "error": "finish is not a function"
+      },
+      {
+        "name": "Conversation unpinned successfully. only after confirmed success",
+        "status": "fail",
+        "failureType": "testCodeFailure",
+        "error": "finish is not a function"
+      },
+      {
+        "name": "Conversation marked as unread successfully. only after confirmed success",
+        "status": "fail",
+        "failureType": "testCodeFailure",
+        "error": "finish is not a function"
+      },
+      {
+        "name": "mobile bootstrap, resume and reconnect retain customer updates with no room requests",
+        "status": "fail",
+        "failureType": "testCodeFailure",
+        "error": "(0 , client_1.authSessionGeneration) is not a function"
+      }
+    ]
+  },
+  "final": {
+    "total": 205,
+    "pass": 198,
+    "failures": [
+      {
+        "name": "Conversation assigned successfully. only after confirmed success",
+        "status": "fail",
+        "failureType": "testCodeFailure",
+        "error": "finish is not a function"
+      },
+      {
+        "name": "Conversation unassigned successfully. only after confirmed success",
+        "status": "fail",
+        "failureType": "testCodeFailure",
+        "error": "finish is not a function"
+      },
+      {
+        "name": "Conversation assigned to you successfully. only after confirmed success",
+        "status": "fail",
+        "failureType": "testCodeFailure",
+        "error": "finish is not a function"
+      },
+      {
+        "name": "Conversation pinned successfully. only after confirmed success",
+        "status": "fail",
+        "failureType": "testCodeFailure",
+        "error": "finish is not a function"
+      },
+      {
+        "name": "Conversation unpinned successfully. only after confirmed success",
+        "status": "fail",
+        "failureType": "testCodeFailure",
+        "error": "finish is not a function"
+      },
+      {
+        "name": "Conversation marked as unread successfully. only after confirmed success",
+        "status": "fail",
+        "failureType": "testCodeFailure",
+        "error": "finish is not a function"
+      },
+      {
+        "name": "mobile bootstrap, resume and reconnect retain customer updates with no room requests",
+        "status": "fail",
+        "failureType": "testCodeFailure",
+        "error": "(0 , client_1.authSessionGeneration) is not a function"
+      }
+    ]
+  },
+  "changedOutcomes": []
+}
