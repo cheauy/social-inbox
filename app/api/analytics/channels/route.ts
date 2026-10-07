@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { effectiveAnalyticsPeriod, explicitAnalyticsRange } from "@/lib/analytics/overview-metrics";
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -249,7 +250,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const currentMember = authResult.member;
+  const currentMember=authResult.member;
+  const expected=request.nextUrl.searchParams.get("businessId");
+  if(expected&&expected!==currentMember.business_id)return NextResponse.json({success:false,error:"Workspace changed. Reload this view."},{status:409});
   const params = request.nextUrl.searchParams;
 
   const period = parsePeriod(params.get("period"));
@@ -262,7 +265,8 @@ export async function GET(request: NextRequest) {
   );
 
   const now = new Date();
-  const range = getPeriodRange(period, now, tzOffsetMinutes);
+  const range = explicitAnalyticsRange(params, now, getPeriodRange(period, now, tzOffsetMinutes));
+  if (!range) return NextResponse.json({success:false,error:"Invalid analytics date bounds."},{status:400});
 
   // Same-length window immediately before this one, for "vs previous".
   const windowMs = range.end.getTime() - range.start.getTime();
@@ -603,7 +607,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     success: true,
     businessId: currentMember.business_id,
-    period,
+    period: effectiveAnalyticsPeriod(request.nextUrl.searchParams,period),
     slaMinutes,
     tzOffsetMinutes,
     start: range.start.toISOString(),

@@ -1,4 +1,7 @@
 "use client";
+import { useAnalyticsFilters } from "@/lib/analytics/use-analytics-filters";
+import { ANALYTICS_PERIOD_LABELS } from "@/lib/analytics/overview-metrics";
+import { AnalyticsUnavailable } from "@/components/analytics/analytics-unavailable";
 import { useAnalyticsRequest, useAnalyticsResume } from "@/lib/analytics/use-analytics-request";
 import { useForegroundLoading } from "@/lib/display/foreground-loading";
 
@@ -13,13 +16,13 @@ import {
 import { AgentPerformanceHelp } from "@/components/analytics/agent-performance-help";
 import { createClient } from "@/lib/supabase/client";
 
-type PeriodKey = "7d" | "30d" | "90d";
+type PeriodKey = import("@/lib/analytics/overview-metrics").AnalyticsPeriod;
 
 type AgentSummary = {
   totalOutgoing: number;
   attributedOutgoing: number;
   unattributedOutgoing: number;
-  attributionRate: number;
+  attributionRate: number | null;
   totalFirstResponses: number;
   attributedFirstResponses: number;
   unattributedFirstResponses: number;
@@ -112,6 +115,8 @@ function roleLabel(role: string) {
 }
 
 function formatRange(period: PeriodKey) {
+  if(period==="3m"||period==="6m"||period==="1y")return ANALYTICS_PERIOD_LABELS[period];
+  if(period==="today"||period==="yesterday")return period==="today"?"Today":"Yesterday";
   const days = period === "7d" ? 7 : period === "30d" ? 30 : 90;
   const end = new Date();
   const start = new Date(end);
@@ -299,8 +304,8 @@ function getSpeed(agent: AgentRow, slaMinutes: number) {
 }
 
 export function AgentPerformancePanel() {
-  const [period, setPeriod] = useState<PeriodKey>("7d");
-  const [slaMinutes, setSlaMinutes] = useState(10);
+  const {period,setPeriod,slaMinutes,setSlaMinutes,query:filterQuery}=useAnalyticsFilters("7d");
+
   const [summary, setSummary] = useState<AgentSummary>(EMPTY_SUMMARY);
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [businessId, setBusinessId] = useState<string | null>(null);
@@ -315,7 +320,7 @@ export function AgentPerformancePanel() {
 
   const loadAnalytics = useCallback(
     async function loadAnalytics(silent = false): Promise<void> {
-      const request = requests.start(JSON.stringify([period, slaMinutes]), silent, () => { void loadAnalytics(true); });
+      const request = requests.start(filterQuery, silent, () => { void loadAnalytics(true); });
       if (!request) return;
       if (silent) {
         setRefreshing(true);
@@ -326,11 +331,7 @@ export function AgentPerformancePanel() {
       setError(null);
 
       try {
-        const params = new URLSearchParams({
-          period,
-          slaMinutes: String(slaMinutes),
-          tzOffsetMinutes: String(new Date().getTimezoneOffset()),
-        });
+        const params = new URLSearchParams(filterQuery);
 
         const response = await fetch(
           `/api/analytics/agents?${params.toString()}`,
@@ -380,7 +381,7 @@ export function AgentPerformancePanel() {
         request.finish();
       }
     },
-    [period, slaMinutes, requests],
+    [filterQuery, requests],
   );
 
   useEffect(() => {
@@ -507,6 +508,8 @@ export function AgentPerformancePanel() {
     );
   }
 
+  if(error)return <AnalyticsUnavailable message={error} onRetry={()=>void loadAnalytics()} period={period} onPeriod={setPeriod}/>;
+
   return (
     <section className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
@@ -576,7 +579,7 @@ export function AgentPerformancePanel() {
       */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <MetricCard
-          label="First responses"
+          label="Attributed first responses"
           value={String(summary.attributedFirstResponses)}
           helper={
             summary.unattributedFirstResponses > 0
@@ -598,7 +601,7 @@ export function AgentPerformancePanel() {
           tone="purple"
         />
         <MetricCard
-          label="SLA met"
+          label="Attributed SLA met"
           value={summary.slaRate === null ? "—" : `${summary.slaRate}%`}
           helper={`${summary.slaMet} met · ${summary.slaMissed} missed`}
           icon="shield"
@@ -611,7 +614,7 @@ export function AgentPerformancePanel() {
         <p>
           <span className="font-semibold">Tracking coverage:</span>{" "}
           {summary.attributedOutgoing} of {summary.totalOutgoing} outgoing replies in this period
-          ({summary.attributionRate}%) identify the Tenh Chat sender, and this page describes those.
+          ({summary.attributionRate===null?"—":summary.attributionRate+"%"}) identify the Tenh Chat sender, and this page describes those.
           {summary.unattributedOutgoing > 0
             ? " The rest are left out rather than guessed at."
             : " Sender attribution is complete for this period."}

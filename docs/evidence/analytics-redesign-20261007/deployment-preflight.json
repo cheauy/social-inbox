@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-07",
+  "targetBranch": "main",
+  "scope": "Reviewed analytics overview, report correctness guards, long periods, and requested notice/link removal",
+  "build": {
+    "passed": true,
+    "sourceDrift": [],
+    "isolated": true,
+    "syntheticConfigOnly": true,
+    "advertiserFlag": false,
+    "accountHolderFlag": false,
+    "proposalInstalled": false,
+    "log": "production-build.log"
+  },
+  "tests": {
+    "passed": 177,
+    "failed": 0,
+    "skipped": 0,
+    "concurrency": 1,
+    "log": "deployment-tests.log",
+    "initialAttempt": {
+      "passed": 176,
+      "failed": 1,
+      "error": "Windows UNKNOWN file-read error in test harness while build was running",
+      "log": "deployment-initial-tests.log"
+    }
+  },
+  "lint": {
+    "errors": 0,
+    "warnings": 3,
+    "description": "Existing next/no-img-element warnings"
+  },
+  "credentialScan": {
+    "candidateFiles": 69,
+    "credentialPaths": [],
+    "highConfidenceSecretFiles": []
+  },
+  "uiFollowups": {
+    "metricScopeNoticeRemovedAcrossAnalytics": true,
+    "customersDetailLinkRemovedForEveryPeriod": true
+  },
+  "rpc": {
+    "status": "NOT_INSTALLED",
+    "reason": "Database connector rejected CREATE FUNCTION in read-only transaction",
+    "dependentViewBehavior": "Unavailable rather than fabricated metrics",
+    "proof": "overview-rpc-installation-result.json"
+  },
+  "configurationChanges": [],
+  "productionSQLApplied": false
+}

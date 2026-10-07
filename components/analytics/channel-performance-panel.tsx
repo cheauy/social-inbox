@@ -1,4 +1,6 @@
 "use client";
+import { useAnalyticsFilters } from "@/lib/analytics/use-analytics-filters";
+import { AnalyticsUnavailable } from "@/components/analytics/analytics-unavailable";
 import { useAnalyticsRequest, useAnalyticsResume } from "@/lib/analytics/use-analytics-request";
 import { useForegroundLoading } from "@/lib/display/foreground-loading";
 
@@ -206,6 +208,7 @@ function ChannelGlyph({ row }: { row: ChannelRow }) {
       </span>
     );
   }
+
 
   return (
     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
@@ -431,8 +434,8 @@ function DetailRow({
 }
 
 export function ChannelPerformancePanel() {
-  const [period, setPeriod] = useState("7d");
-  const [slaMinutes, setSlaMinutes] = useState(10);
+  const {period,setPeriod,slaMinutes,setSlaMinutes,query:filterQuery}=useAnalyticsFilters("7d");
+
   const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY);
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -443,16 +446,15 @@ export function ChannelPerformancePanel() {
   const requests = useAnalyticsRequest();
 
   const load = useCallback(async function load(silent = false): Promise<void> {
-    const request = requests.start(JSON.stringify([period, slaMinutes]), silent, () => { void load(true); });
+    const request = requests.start(filterQuery, silent, () => { void load(true); });
     if (!request) return;
     if (!silent) setLoading(true);
     setError(null);
 
     try {
-      const tzOffsetMinutes = new Date().getTimezoneOffset();
 
       const response = await fetch(
-        `/api/analytics/channels?period=${period}&slaMinutes=${slaMinutes}&tzOffsetMinutes=${tzOffsetMinutes}`,
+        `/api/analytics/channels?${filterQuery}`,
         { cache: "no-store", signal: request.signal },
       );
 
@@ -479,7 +481,7 @@ export function ChannelPerformancePanel() {
       }
       request.finish();
     }
-  }, [period, slaMinutes, requests]);
+  }, [filterQuery, requests]);
 
   useEffect(() => {
     void load();
@@ -544,6 +546,8 @@ export function ChannelPerformancePanel() {
     },
   ];
 
+  if(error)return <AnalyticsUnavailable message={error} onRetry={()=>void load()} period={period} onPeriod={setPeriod}/>;
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
@@ -552,7 +556,7 @@ export function ChannelPerformancePanel() {
             <button
               key={option.id}
               type="button"
-              onClick={() => setPeriod(option.id)}
+              onClick={() => setPeriod(option.id as import("@/lib/analytics/overview-metrics").AnalyticsPeriod)}
               className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
                 period === option.id
                   ? "bg-violet-600 text-white"

@@ -18,7 +18,7 @@ const TABLES = [
   "customer_files", "contact_tags", "contact_notes", "team_notifications",
 ];
 const READ = new RegExp(`\\.from\\(\\s*["'](${TABLES.join("|")})["']\\s*\\)`);
-const GUARDED = /telegram-personal\/visibility|getInbox(Conversation|Contact)Access|getInboxResourceAccess|get-inbox-resource-access/;
+const GUARDED = /telegram-personal\/visibility|analytics\/legacy-visibility|getInbox(Conversation|Contact)Access|getInboxResourceAccess|get-inbox-resource-access/;
 
 const FACEBOOK_ONLY = "Facebook pipeline: rows are selected by a Facebook Page, PSID or Facebook platform filter";
 const TELEGRAM_BOT_ONLY = "Telegram Bot pipeline: rows are selected by Bot chat/message ids";

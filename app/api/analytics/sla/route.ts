@@ -1,3 +1,5 @@
+import { legacyAnalyticsGuard, legacyRpcAvailable } from "@/lib/analytics/legacy-visibility";
+import { effectiveAnalyticsPeriod, explicitAnalyticsRange } from "@/lib/analytics/overview-metrics";
 import {
   NextRequest,
   NextResponse,
@@ -5,14 +7,13 @@ import {
 
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { hiddenConversationIdSet, hiddenPersonalAccountIds } from "@/lib/telegram-personal/visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type PeriodKey = "7d" | "30d" | "90d";
+type PeriodKey = "today" | "yesterday" | "7d" | "30d" | "90d";
 
-const PERIOD_DAYS: Record<PeriodKey, number> = {
+const PERIOD_DAYS: Record<"7d" | "30d" | "90d", number> = {
   "7d": 7,
   "30d": 30,
   "90d": 90,
@@ -22,7 +23,7 @@ function parsePeriod(
   value: string | null,
 ): PeriodKey {
   if (
-    value === "30d" ||
+    value === "today" || value === "yesterday" || value === "30d" ||
     value === "90d"
   ) {
     return value;
@@ -95,14 +96,16 @@ export async function GET(
   );
 
   const now = new Date();
-  const periodDays = PERIOD_DAYS[period];
-  const start = new Date(
-    now.getTime() -
-      periodDays * 24 * 60 * 60 * 1000,
-  );
-
-  const currentMember =
-    authResult.member;
+  const periodDays = period==="today"||period==="yesterday"?1:PERIOD_DAYS[period];
+  const local = new Date(now.getTime()-tzOffsetMinutes*60000);
+  const midnight=new Date(Date.UTC(local.getUTCFullYear(),local.getUTCMonth(),local.getUTCDate())+tzOffsetMinutes*60000);
+  const fallback=period==="today"?{start:midnight,end:now}:period==="yesterday"?{start:new Date(midnight.getTime()-86400000),end:midnight}:{start:new Date(now.getTime()-periodDays*86400000),end:now};
+  const range=explicitAnalyticsRange(request.nextUrl.searchParams,now,fallback);
+  if(!range)return NextResponse.json({success:false,error:"Invalid analytics date bounds."},{status:400});
+  const start=range.start;
+  const currentMember = authResult.member;
+  const scopeDenied = await legacyAnalyticsGuard(currentMember.business_id,authResult.user.id,request.nextUrl.searchParams);
+  if(scopeDenied)return scopeDenied;
 
   const {
     data,
@@ -113,7 +116,7 @@ export async function GET(
       p_business_id:
         currentMember.business_id,
       p_start: start.toISOString(),
-      p_end: now.toISOString(),
+      p_end: range.end.toISOString(),
       p_sla_seconds:
         slaMinutes * 60,
       p_tz_offset_minutes:
@@ -121,7 +124,7 @@ export async function GET(
     },
   );
 
-  if (error) {
+  if (error || !legacyRpcAvailable(data,"sla")) {
     console.error(
       "[Tenh SLA V2.14] Unable to load analytics:",
       error,
@@ -133,7 +136,7 @@ export async function GET(
         error:
           "Unable to load SLA analytics.",
         ...(process.env.NODE_ENV !== "production"
-          ? { details: error.message }
+          ? { details: error?.message }
           : {}),
         ...(process.env.NODE_ENV !== "production"
           ? { hint: "Run supabase/01-v2-14-sla-response-analytics.sql first, then restart npm run dev." }
@@ -145,15 +148,8 @@ export async function GET(
     );
   }
 
-  // Attention rows on Telegram Personal chats this member may not see are not listed.
-  const attention = (data?.attention ?? []) as Array<{ conversationId?: string }>;
-  const hiddenAttention = await hiddenConversationIdSet(
-    attention.map((row) => row.conversationId),
-    await hiddenPersonalAccountIds([currentMember.business_id], authResult.user.id),
-  );
-  const visibleData = data
-    ? { ...data, attention: attention.filter((row) => !row.conversationId || !hiddenAttention.has(row.conversationId)) }
-    : data;
+  if(data.summary.slaMet+data.summary.slaMissed===0)data.summary.slaRate=null;
+  const visibleData=data;
 
   return NextResponse.json({
     success: true,
@@ -163,11 +159,11 @@ export async function GET(
       currentMember.id,
     currentMemberRole:
       currentMember.role,
-    period,
-    periodDays,
+    period: effectiveAnalyticsPeriod(request.nextUrl.searchParams,period),
+    periodDays: Math.ceil((range.end.getTime()-range.start.getTime())/86400000),
     slaMinutes,
     start: start.toISOString(),
-    end: now.toISOString(),
+    end: range.end.toISOString(),
     analytics: visibleData ?? {
       summary: {
         received: 0,

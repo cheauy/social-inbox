@@ -1,4 +1,6 @@
 "use client";
+import { useAnalyticsFilters } from "@/lib/analytics/use-analytics-filters";
+import { AnalyticsUnavailable } from "@/components/analytics/analytics-unavailable";
 import { useAnalyticsRequest, useAnalyticsResume } from "@/lib/analytics/use-analytics-request";
 import { useForegroundLoading } from "@/lib/display/foreground-loading";
 
@@ -14,7 +16,7 @@ import {
 import { TeamPerformanceHelp } from "@/components/analytics/team-performance-help";
 import { createClient } from "@/lib/supabase/client";
 
-type PeriodKey = "7d" | "30d" | "90d";
+type PeriodKey = import("@/lib/analytics/overview-metrics").AnalyticsPeriod;
 
 type Summary = {
   received: number;
@@ -340,10 +342,8 @@ function getInitial(value: string) {
 }
 
 export function SlaAnalyticsPanel() {
-  const [period, setPeriod] =
-    useState<PeriodKey>("7d");
-  const [slaMinutes, setSlaMinutes] =
-    useState(10);
+  const {period,setPeriod,slaMinutes,setSlaMinutes,query:filterQuery}=useAnalyticsFilters("7d");
+
   const [summary, setSummary] =
     useState<Summary>(EMPTY_SUMMARY);
   const [daily, setDaily] =
@@ -369,7 +369,7 @@ export function SlaAnalyticsPanel() {
 
   const loadAnalytics = useCallback(
     async function loadAnalytics(silent = false): Promise<void> {
-      const request = requests.start(JSON.stringify([period, slaMinutes]), silent, () => { void loadAnalytics(true); });
+      const request = requests.start(filterQuery, silent, () => { void loadAnalytics(true); });
       if (!request) return;
       if (silent) {
         setRefreshing(true);
@@ -380,13 +380,7 @@ export function SlaAnalyticsPanel() {
       setError(null);
 
       try {
-        const params = new URLSearchParams({
-          period,
-          slaMinutes: String(slaMinutes),
-          tzOffsetMinutes: String(
-            new Date().getTimezoneOffset(),
-          ),
-        });
+        const params = new URLSearchParams(filterQuery);
 
         const response = await fetch(
           `/api/analytics/sla?${params.toString()}`,
@@ -453,7 +447,7 @@ export function SlaAnalyticsPanel() {
         request.finish();
       }
     },
-    [period, slaMinutes, requests],
+    [filterQuery, requests],
   );
 
   useEffect(() => {
@@ -767,6 +761,8 @@ export function SlaAnalyticsPanel() {
     );
   }
 
+  if(error)return <AnalyticsUnavailable message={error} onRetry={()=>void loadAnalytics()} period={period} onPeriod={setPeriod}/>;
+
   return (
     <section className="space-y-5">
       {/*
@@ -851,7 +847,7 @@ export function SlaAnalyticsPanel() {
           footer={
             hasSlaRate
               ? `${summary.slaRate}% within ${slaMinutes} min target`
-              : "No conversations in this period"
+              : "No eligible SLA outcomes in this period"
           }
           footerTone={slaFooterTone}
           tone="green"

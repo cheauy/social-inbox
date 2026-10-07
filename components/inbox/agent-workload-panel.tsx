@@ -1,5 +1,6 @@
 "use client";
 import { useForegroundLoading } from "@/lib/display/foreground-loading";
+import { useAnalyticsRequest } from "@/lib/analytics/use-analytics-request";
 
 import type { ReactNode } from "react";
 import {
@@ -155,8 +156,11 @@ export function AgentWorkloadPanel() {
       null,
     );
 
+  const requests=useAnalyticsRequest();
   const loadWorkload = useCallback(
     async (silent = false) => {
+      const request=requests.start("current-workload",silent);
+      if(!request)return;
       if (silent) {
         setRefreshing(true);
       } else {
@@ -170,6 +174,7 @@ export function AgentWorkloadPanel() {
           "/api/team/workload",
           {
             cache: "no-store",
+            signal:request.signal,
           },
         );
 
@@ -189,6 +194,7 @@ export function AgentWorkloadPanel() {
           }
         }
 
+        if(!request.current())return;
         if (!response.ok || !result?.success) {
           throw new Error(
             result?.error ??
@@ -205,22 +211,25 @@ export function AgentWorkloadPanel() {
           Math.max(0, result.unassignedCount ?? 0),
         );
       } catch (loadError) {
+        if(!request.current())return;
         setError(
           loadError instanceof Error
             ? loadError.message
             : "Unable to load team workload.",
         );
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if(request.current()){setLoading(false);setRefreshing(false);}
+        request.finish();
       }
     },
-    [],
+    [requests],
   );
 
   useEffect(() => {
-    void loadWorkload(false);
-  }, [loadWorkload]);
+    let active=true;
+    queueMicrotask(()=>{if(active)void loadWorkload(false);});
+    return ()=>{active=false;requests.cancel();};
+  }, [loadWorkload,requests]);
 
   useEffect(() => {
     function scheduleRefresh() {
@@ -393,6 +402,7 @@ export function AgentWorkloadPanel() {
     return members;
   }, [members, statusFilter]);
 
+  if(error)return <section className="rounded-2xl border border-slate-200 bg-white p-5"><p role="alert" className="text-sm text-amber-900">{error}</p><p className="mt-3 text-sm text-slate-500">Current workload is unavailable. Missing metrics are not zero.</p><button type="button" onClick={()=>void loadWorkload()} className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-blue-700">Retry</button></section>;
   return (
     <div className="w-full">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -442,9 +452,9 @@ export function AgentWorkloadPanel() {
           }
         />
         <SummaryCard
-          label="Unread"
+          label="Unread messages"
           value={totals.unread}
-          helper="Conversations"
+          helper="Messages in assigned active conversations"
           tone="violet"
           icon={<Mail className="h-7 w-7" />}
         />

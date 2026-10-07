@@ -1,3 +1,5 @@
+import { legacyAnalyticsGuard, legacyRpcAvailable } from "@/lib/analytics/legacy-visibility";
+import { effectiveAnalyticsPeriod, explicitAnalyticsRange } from "@/lib/analytics/overview-metrics";
 import {
   NextRequest,
   NextResponse,
@@ -9,7 +11,6 @@ import {
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
-import { hiddenPersonalAccountIds, isHiddenContact } from "@/lib/telegram-personal/visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -255,15 +256,16 @@ export async function GET(
   const now =
     new Date();
 
-  const range =
-    getPeriodRange({
+  const range = explicitAnalyticsRange(request.nextUrl.searchParams, now, getPeriodRange({
       period,
       now,
       tzOffsetMinutes,
-    });
+    }));
+  if(!range)return NextResponse.json({success:false,error:"Invalid analytics date bounds."},{status:400});
 
-  const currentMember =
-    authResult.member;
+  const currentMember = authResult.member;
+  const scopeDenied = await legacyAnalyticsGuard(currentMember.business_id,authResult.user.id,request.nextUrl.searchParams);
+  if(scopeDenied)return scopeDenied;
 
   const {
     data,
@@ -282,7 +284,7 @@ export async function GET(
     },
   );
 
-  if (error) {
+  if (error || !legacyRpcAvailable(data,"customers")) {
     console.error(
       "[Tenh Customer Insights V2.15.1] Unable to load analytics:",
       error,
@@ -294,7 +296,7 @@ export async function GET(
         error:
           "Unable to load customer insights.",
         ...(process.env.NODE_ENV !== "production"
-          ? { details: error.message }
+          ? { details: error?.message }
           : {}),
         ...(process.env.NODE_ENV !== "production"
           ? { hint: "Run the V2.15 customer-insights SQL first." }
@@ -306,23 +308,6 @@ export async function GET(
     );
   }
 
-  // Named entries for Telegram Personal customers this member may not see are removed.
-  const hiddenPersonal = await hiddenPersonalAccountIds([currentMember.business_id], authResult.user.id);
-  const insights = data as { topCustomers?: Array<{ contactId?: string }> } | null;
-  if (hiddenPersonal.length && insights?.topCustomers?.length) {
-    const ids = insights.topCustomers.map((row) => row.contactId).filter((id): id is string => typeof id === "string");
-    const { data: contactRows, error: contactError } = await supabaseAdmin
-      .from("contacts")
-      .select("id,platform,platform_user_id")
-      .eq("business_id", currentMember.business_id)
-      .in("id", ids);
-    if (contactError) {
-      return NextResponse.json({ success: false, error: "Unable to load customer insights." }, { status: 500 });
-    }
-    const hiddenIds = new Set((contactRows ?? []).filter((row) => isHiddenContact(row, hiddenPersonal)).map((row) => row.id));
-    insights.topCustomers = insights.topCustomers.filter((row) => !row.contactId || !hiddenIds.has(row.contactId));
-  }
-
   return NextResponse.json({
     success: true,
     businessId:
@@ -331,7 +316,7 @@ export async function GET(
       currentMember.id,
     currentMemberRole:
       currentMember.role,
-    period,
+    period: effectiveAnalyticsPeriod(request.nextUrl.searchParams,period),
     periodLabel:
       range.label,
     periodDays:

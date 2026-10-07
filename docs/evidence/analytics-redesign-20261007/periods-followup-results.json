@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-07",
+  "diagnosis": {
+    "metadataOnly": true,
+    "configuredProjectMatches": true,
+    "overviewFunctionCount": 0,
+    "customerRowsQueried": false,
+    "sqlApplied": false
+  },
+  "controls": [
+    "3 months",
+    "6 months",
+    "1 year"
+  ],
+  "semantics": "local calendar-date midnight 3/6/12 months ago, clamped at month ends; end is current server snapshot",
+  "suite": {
+    "passed": 177,
+    "failed": 0,
+    "skipped": 0,
+    "log": "periods-followup-tests.log"
+  },
+  "browser": {
+    "passed": true,
+    "checks": 31,
+    "results": "browser-results.json"
+  },
+  "lint": {
+    "exit": 0,
+    "warnings": 2,
+    "log": "periods-lint.log"
+  },
+  "build": {
+    "exit": 0,
+    "sourceDrift": [],
+    "source": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-analytics-final-build-20261007-oe7Op0\\source",
+    "log": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-analytics-final-build-20261007-oe7Op0\\production-build.log",
+    "syntheticConfigOnly": true,
+    "advertiserEnabled": false,
+    "accountHolderEnabled": false,
+    "proposalInstalled": false
+  },
+  "diffCheck": {
+    "exit": 0,
+    "log": "periods-diff-check.log"
+  },
+  "pushed": false,
+  "deployed": false,
+  "tiktokEnabled": false
+}

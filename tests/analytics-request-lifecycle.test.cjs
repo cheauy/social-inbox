@@ -11,14 +11,22 @@ function fixture(file, name) {
   const channel = { on() { return this; }, subscribe() { return this; } };
   const load = loader({
     react: h.React, 'react/jsx-runtime': h.jsx, 'next/link': { default: 'a' },
+    '@/lib/analytics/use-analytics-filters':{useAnalyticsFilters(initial='today'){
+      const [period,setPeriod]=h.React.useState(initial),[slaMinutes,setSlaMinutes]=h.React.useState(10);
+      return{period,setPeriod,slaMinutes,setSlaMinutes,timezone:'UTC',businessId:'business-a',query:new URLSearchParams({period,slaMinutes:String(slaMinutes),tzOffsetMinutes:String(new Date().getTimezoneOffset())}).toString()};
+    }},
     '@/lib/display/foreground-loading': { useForegroundLoading() {}, beginForegroundLoading: () => () => {} },
     '@/lib/supabase/client': { createClient: () => ({ channel: () => channel, removeChannel() {}, auth: { getSession: async () => ({ data: { session: null } }) } }) },
-  }, { window: win, document: doc, AbortController, URLSearchParams, setTimeout: schedule, clearTimeout: id => timers.delete(id),
+  }, { window: win, document: doc, AbortController, URLSearchParams, queueMicrotask: schedule, setTimeout: schedule, clearTimeout: id => timers.delete(id),
     fetch: (url, init) => new Promise((resolve, reject) => calls.push({ url, init, resolve, reject })) });
   const Panel = load(file)[name];
   const render = () => h.render(Panel, {});
   const jobs = () => { const work = [...timers.values()]; timers.clear(); for (const fn of work) fn(); };
-  const settle = async (from = 0, summary = {}) => { for (const call of calls.slice(from)) call.resolve(Response.json({ success: true, businessId: 'business-a', summary, channels: [], analytics: { summary } })); await tick(); return render(); };
+  const settle = async (from = 0, summary = {}) => { for (const call of calls.slice(from)) call.resolve(Response.json({ success: true, businessId: 'business-a', start:'2026-10-05T00:00:00Z',end:'2026-10-06T00:00:00Z',snapshotAt:'2026-10-06T12:00:00Z',summary, channels: [], analytics: call.url.startsWith('/api/analytics/overview')?{
+    definitionVersion:'human-overview-v1',scope:['messenger','comment','telegram'],current:{unassigned:0,unread:0,waitingOverSla:0,unknownWaiting:0,overdue:0},
+    period:{conversations:0,commentThreads:0,resolved:0,firstResponses:0,avgFirstResponseSeconds:null,slaMet:0,slaMissed:0,slaDenominator:0,slaRate:null,humanEvaluableConversations:0,unknownHumanConversations:0},
+    messages:{incoming:0,outgoing:0,humanOutgoing:0,botOutgoing:0,unknownOutgoing:0},customers:{active:0,new:0,returning:0},daily:[],channels:[{channel:'messenger',value:0},{channel:'comment',value:0},{channel:'telegram',value:0}],hours:Array.from({length:24},(_,hour)=>({hour,value:0}))
+  }:{ summary } })); await tick(); return render(); };
   return { h, calls, win, doc, intervals, render, jobs, settle, load };
 }
 const periodButton = (tree, label) => nodes(tree, n => n.type === 'button' && n.props.children === label)[0];
@@ -99,10 +107,10 @@ test('Dashboard preserves all period and SLA controls during the first fetch and
   const d = fixture('components/analytics/dashboard-overview-panel.tsx', 'DashboardOverviewPanel');
   try {
     let tree = d.render(); d.jobs();
-    for (const label of ['Today', 'Yesterday', '7d', '30d']) assert.ok(periodButton(tree, label), label);
-    assert.equal(nodes(tree, n => n.type === 'select').length, 1);
+    for (const label of ['Today', 'Yesterday', '7 days', '30 days']) assert.ok(periodButton(tree, label), label);
+    assert.equal(nodes(tree, n => n.type === 'select').length, 2);
     await d.settle(); tree = d.render(); periodButton(tree, 'Yesterday').props.onClick(); tree = d.render(); d.jobs();
-    assert.ok(periodButton(tree, 'Today')); assert.equal(d.calls.length, 6);
+    assert.ok(periodButton(tree, 'Today')); assert.equal(d.calls.length, 2);
   } finally { d.h.cleanup(); }
 });
 
@@ -110,9 +118,10 @@ test('Dashboard hidden poll and focus do no requests; resume and focus coalesce 
   const d = fixture('components/analytics/dashboard-overview-panel.tsx', 'DashboardOverviewPanel');
   try {
     d.render(); d.jobs(); await d.settle(); d.doc.visibilityState = 'hidden';
-    for (const fn of d.intervals.values()) fn(); d.win.dispatchEvent(new Event('focus')); d.jobs(); assert.equal(d.calls.length, 3);
+    assert.equal(d.intervals.size,0,'the redesigned overview adds no polling');
+    for (const fn of d.intervals.values()) fn(); d.win.dispatchEvent(new Event('focus')); d.jobs(); assert.equal(d.calls.length, 1);
     d.doc.visibilityState = 'visible'; d.doc.dispatchEvent(new Event('visibilitychange')); d.win.dispatchEvent(new Event('focus')); d.jobs();
-    assert.equal(d.calls.length, 6); for (const fn of d.intervals.values()) fn(); assert.equal(d.calls.length, 6);
+    assert.equal(d.calls.length, 2); for (const fn of d.intervals.values()) fn(); assert.equal(d.calls.length, 2);
   } finally { d.h.cleanup(); }
 });
 

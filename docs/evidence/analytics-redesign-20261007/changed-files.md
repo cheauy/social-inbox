@@ -1,0 +1,42 @@
+# Changed local files
+
+- `app/api/analytics/overview/route.ts`
+- `components/analytics/analytics-definition-notice.tsx`
+- `components/analytics/analytics-unavailable.tsx`
+- `components/analytics/overview-charts.tsx`
+- `db/proposals/20261007_analytics_overview.sql`
+- `docs/analytics-dashboard-review-20261007.md`
+- `docs/analytics-periods-followup-20261007.md`
+- `lib/analytics/legacy-visibility.ts`
+- `lib/analytics/overview-metrics.ts`
+- `lib/analytics/use-analytics-filters.ts`
+- `tests/analytics-long-periods.test.cjs`
+- `tests/analytics-metric-report.cjs`
+- `tests/analytics-overview-browser-build.cjs`
+- `tests/analytics-overview-browser-check.mjs`
+- `tests/analytics-overview-route.test.cjs`
+- `tests/analytics-production-build.cjs`
+- `tests/analytics-rpc-audit.test.cjs`
+- `tests/analytics-workload-scope.test.cjs`
+- `tests/fixtures/analytics-metrics.cjs`
+- `tests/fixtures/analytics-overview-browser.entry.cjs`
+- `tests/fixtures/analytics-schema.sql`
+- `app/api/analytics/agents/route.ts`
+- `app/api/analytics/channels/route.ts`
+- `app/api/analytics/conversations/route.ts`
+- `app/api/analytics/customers/route.ts`
+- `app/api/analytics/sla/route.ts`
+- `app/api/team/workload/route.ts`
+- `components/analytics/agent-performance-panel.tsx`
+- `components/analytics/analytics-workspace.tsx`
+- `components/analytics/channel-performance-panel.tsx`
+- `components/analytics/conversation-reports-panel.tsx`
+- `components/analytics/customer-insights-panel.tsx`
+- `components/analytics/dashboard-overview-panel.tsx`
+- `components/analytics/sla-analytics-panel.tsx`
+- `components/inbox/agent-workload-panel.tsx`
+- `tests/analytics-request-lifecycle.test.cjs`
+- `tests/channel-analytics-read-safety.test.cjs`
+- `tests/telegram-personal-visibility-guard.test.cjs`
+
+Evidence files are grouped under `docs/evidence/analytics-redesign-20261007/`. No Inbox send/auth/TikTok/native-mobile implementation files were edited.

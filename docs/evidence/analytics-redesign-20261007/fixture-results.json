@@ -1,0 +1,940 @@
+{
+  "fixture": "isolated in-memory PostgreSQL (PGlite); no production data",
+  "expectedOverview": {
+    "current": {
+      "unassigned": 6,
+      "unread": 8,
+      "waitingOverSla": 4,
+      "unknownWaiting": 1,
+      "overdue": 3
+    },
+    "period": {
+      "conversations": 8,
+      "commentThreads": 1,
+      "resolved": 2,
+      "firstResponses": 4,
+      "avgFirstResponseSeconds": 270,
+      "slaMet": 4,
+      "slaMissed": 2,
+      "slaDenominator": 6,
+      "slaRate": 67,
+      "humanEvaluableConversations": 7,
+      "unknownHumanConversations": 1
+    },
+    "messages": {
+      "incoming": 12,
+      "outgoing": 12,
+      "humanOutgoing": 9,
+      "botOutgoing": 2,
+      "unknownOutgoing": 1
+    },
+    "customers": {
+      "active": 10,
+      "new": 4,
+      "returning": 7
+    },
+    "channels": [
+      {
+        "channel": "comment",
+        "value": 1
+      },
+      {
+        "channel": "messenger",
+        "value": 7
+      },
+      {
+        "channel": "telegram",
+        "value": 1
+      }
+    ],
+    "daily": [
+      {
+        "date": "2026-10-05",
+        "received": 8,
+        "resolved": 2
+      }
+    ],
+    "hours": [
+      {
+        "hour": 0,
+        "value": 2
+      },
+      {
+        "hour": 1,
+        "value": 2
+      },
+      {
+        "hour": 2,
+        "value": 1
+      },
+      {
+        "hour": 3,
+        "value": 1
+      },
+      {
+        "hour": 4,
+        "value": 2
+      },
+      {
+        "hour": 5,
+        "value": 2
+      },
+      {
+        "hour": 6,
+        "value": 0
+      },
+      {
+        "hour": 7,
+        "value": 0
+      },
+      {
+        "hour": 8,
+        "value": 0
+      },
+      {
+        "hour": 9,
+        "value": 0
+      },
+      {
+        "hour": 10,
+        "value": 0
+      },
+      {
+        "hour": 11,
+        "value": 0
+      },
+      {
+        "hour": 12,
+        "value": 0
+      },
+      {
+        "hour": 13,
+        "value": 0
+      },
+      {
+        "hour": 14,
+        "value": 0
+      },
+      {
+        "hour": 15,
+        "value": 0
+      },
+      {
+        "hour": 16,
+        "value": 0
+      },
+      {
+        "hour": 17,
+        "value": 0
+      },
+      {
+        "hour": 18,
+        "value": 0
+      },
+      {
+        "hour": 19,
+        "value": 0
+      },
+      {
+        "hour": 20,
+        "value": 1
+      },
+      {
+        "hour": 21,
+        "value": 0
+      },
+      {
+        "hour": 22,
+        "value": 0
+      },
+      {
+        "hour": 23,
+        "value": 1
+      }
+    ]
+  },
+  "overview": {
+    "daily": [
+      {
+        "date": "2026-10-05",
+        "received": 8,
+        "resolved": 2
+      }
+    ],
+    "hours": [
+      {
+        "hour": 0,
+        "value": 2
+      },
+      {
+        "hour": 1,
+        "value": 2
+      },
+      {
+        "hour": 2,
+        "value": 1
+      },
+      {
+        "hour": 3,
+        "value": 1
+      },
+      {
+        "hour": 4,
+        "value": 2
+      },
+      {
+        "hour": 5,
+        "value": 2
+      },
+      {
+        "hour": 6,
+        "value": 0
+      },
+      {
+        "hour": 7,
+        "value": 0
+      },
+      {
+        "hour": 8,
+        "value": 0
+      },
+      {
+        "hour": 9,
+        "value": 0
+      },
+      {
+        "hour": 10,
+        "value": 0
+      },
+      {
+        "hour": 11,
+        "value": 0
+      },
+      {
+        "hour": 12,
+        "value": 0
+      },
+      {
+        "hour": 13,
+        "value": 0
+      },
+      {
+        "hour": 14,
+        "value": 0
+      },
+      {
+        "hour": 15,
+        "value": 0
+      },
+      {
+        "hour": 16,
+        "value": 0
+      },
+      {
+        "hour": 17,
+        "value": 0
+      },
+      {
+        "hour": 18,
+        "value": 0
+      },
+      {
+        "hour": 19,
+        "value": 0
+      },
+      {
+        "hour": 20,
+        "value": 1
+      },
+      {
+        "hour": 21,
+        "value": 0
+      },
+      {
+        "hour": 22,
+        "value": 0
+      },
+      {
+        "hour": 23,
+        "value": 1
+      }
+    ],
+    "scope": [
+      "messenger",
+      "comment",
+      "telegram"
+    ],
+    "period": {
+      "slaMet": 4,
+      "slaRate": 67,
+      "resolved": 2,
+      "slaMissed": 2,
+      "conversations": 8,
+      "commentThreads": 1,
+      "firstResponses": 4,
+      "slaDenominator": 6,
+      "avgFirstResponseSeconds": 270,
+      "unknownHumanConversations": 1,
+      "humanEvaluableConversations": 7
+    },
+    "current": {
+      "unread": 8,
+      "overdue": 3,
+      "unassigned": 6,
+      "unknownWaiting": 1,
+      "waitingOverSla": 4
+    },
+    "channels": [
+      {
+        "value": 1,
+        "channel": "comment"
+      },
+      {
+        "value": 7,
+        "channel": "messenger"
+      },
+      {
+        "value": 1,
+        "channel": "telegram"
+      }
+    ],
+    "messages": {
+      "incoming": 12,
+      "outgoing": 12,
+      "botOutgoing": 2,
+      "humanOutgoing": 9,
+      "unknownOutgoing": 1
+    },
+    "customers": {
+      "new": 4,
+      "active": 10,
+      "returning": 7
+    },
+    "definitionVersion": "human-overview-v1"
+  },
+  "longYearOverview": {
+    "daily": [
+      {
+        "date": "2026-09-30",
+        "received": 1,
+        "resolved": 0
+      },
+      {
+        "date": "2026-10-04",
+        "received": 2,
+        "resolved": 0
+      },
+      {
+        "date": "2026-10-05",
+        "received": 7,
+        "resolved": 2
+      },
+      {
+        "date": "2026-10-06",
+        "received": 2,
+        "resolved": 0
+      }
+    ],
+    "hours": [
+      {
+        "hour": 0,
+        "value": 3
+      },
+      {
+        "hour": 1,
+        "value": 3
+      },
+      {
+        "hour": 2,
+        "value": 1
+      },
+      {
+        "hour": 3,
+        "value": 1
+      },
+      {
+        "hour": 4,
+        "value": 3
+      },
+      {
+        "hour": 5,
+        "value": 2
+      },
+      {
+        "hour": 6,
+        "value": 0
+      },
+      {
+        "hour": 7,
+        "value": 0
+      },
+      {
+        "hour": 8,
+        "value": 0
+      },
+      {
+        "hour": 9,
+        "value": 0
+      },
+      {
+        "hour": 10,
+        "value": 0
+      },
+      {
+        "hour": 11,
+        "value": 1
+      },
+      {
+        "hour": 12,
+        "value": 0
+      },
+      {
+        "hour": 13,
+        "value": 0
+      },
+      {
+        "hour": 14,
+        "value": 0
+      },
+      {
+        "hour": 15,
+        "value": 0
+      },
+      {
+        "hour": 16,
+        "value": 0
+      },
+      {
+        "hour": 17,
+        "value": 0
+      },
+      {
+        "hour": 18,
+        "value": 0
+      },
+      {
+        "hour": 19,
+        "value": 0
+      },
+      {
+        "hour": 20,
+        "value": 1
+      },
+      {
+        "hour": 21,
+        "value": 0
+      },
+      {
+        "hour": 22,
+        "value": 1
+      },
+      {
+        "hour": 23,
+        "value": 1
+      }
+    ],
+    "scope": [
+      "messenger",
+      "comment",
+      "telegram"
+    ],
+    "period": {
+      "slaMet": 6,
+      "slaRate": 67,
+      "resolved": 2,
+      "slaMissed": 3,
+      "conversations": 12,
+      "commentThreads": 1,
+      "firstResponses": 6,
+      "slaDenominator": 9,
+      "avgFirstResponseSeconds": 250,
+      "unknownHumanConversations": 2,
+      "humanEvaluableConversations": 10
+    },
+    "current": {
+      "unread": 8,
+      "overdue": 3,
+      "unassigned": 6,
+      "unknownWaiting": 1,
+      "waitingOverSla": 4
+    },
+    "channels": [
+      {
+        "value": 1,
+        "channel": "comment"
+      },
+      {
+        "value": 11,
+        "channel": "messenger"
+      },
+      {
+        "value": 1,
+        "channel": "telegram"
+      }
+    ],
+    "messages": {
+      "incoming": 17,
+      "outgoing": 16,
+      "botOutgoing": 2,
+      "humanOutgoing": 12,
+      "unknownOutgoing": 2
+    },
+    "customers": {
+      "new": 17,
+      "active": 14,
+      "returning": 0
+    },
+    "definitionVersion": "human-overview-v1"
+  },
+  "expectedLegacy": {
+    "conversations": {
+      "currentOpen": 9,
+      "currentSpam": 1,
+      "currentClosed": 1,
+      "currentUnread": 6,
+      "totalMessages": 28,
+      "currentPending": 0,
+      "resolutionRate": 18,
+      "waitingOverSla": 2,
+      "currentResolved": 0,
+      "incomingMessages": 14,
+      "outgoingMessages": 13,
+      "currentUnassigned": 3,
+      "receivedConversations": 11,
+      "resolvedConversations": 2
+    },
+    "customers": {
+      "newCustomers": 4,
+      "openCustomers": 14,
+      "inactive30Days": 14,
+      "totalCustomers": 18,
+      "activeCustomers": 12,
+      "incomingMessages": 14,
+      "messagesInPeriod": 28,
+      "outgoingMessages": 13,
+      "returningCustomers": 9
+    },
+    "sla": {
+      "slaMet": 7,
+      "slaRate": 78,
+      "waiting": 1,
+      "received": 9,
+      "resolved": 1,
+      "responded": 8,
+      "slaMissed": 2,
+      "slaWaiting": 0,
+      "avgResolutionSeconds": 300,
+      "avgFirstResponseSeconds": 525,
+      "medianFirstResponseSeconds": 120
+    },
+    "agents": {
+      "slaMet": 4,
+      "slaRate": 80,
+      "slaMissed": 1,
+      "totalOutgoing": 13,
+      "attributionRate": 77,
+      "attributedOutgoing": 10,
+      "totalFirstResponses": 8,
+      "unattributedOutgoing": 3,
+      "avgFirstResponseSeconds": 804,
+      "attributedFirstResponses": 5,
+      "unattributedFirstResponses": 3
+    }
+  },
+  "legacy": {
+    "conversations": {
+      "daily": [
+        {
+          "date": "2026-10-05",
+          "received": 9,
+          "resolved": 2
+        },
+        {
+          "date": "2026-10-06",
+          "received": 2,
+          "resolved": 0
+        }
+      ],
+      "summary": {
+        "currentOpen": 9,
+        "currentSpam": 1,
+        "currentClosed": 1,
+        "currentUnread": 6,
+        "totalMessages": 28,
+        "currentPending": 0,
+        "resolutionRate": 18,
+        "waitingOverSla": 2,
+        "currentResolved": 0,
+        "incomingMessages": 14,
+        "outgoingMessages": 13,
+        "currentUnassigned": 3,
+        "receivedConversations": 11,
+        "resolvedConversations": 2
+      },
+      "channels": [
+        {
+          "channel": "messenger",
+          "conversations": 10,
+          "incomingMessages": 12
+        },
+        {
+          "channel": "comment",
+          "conversations": 1,
+          "incomingMessages": 2
+        }
+      ],
+      "statuses": [
+        {
+          "status": "open",
+          "conversations": 9
+        },
+        {
+          "status": "closed",
+          "conversations": 1
+        },
+        {
+          "status": "spam",
+          "conversations": 1
+        }
+      ],
+      "busyHours": [
+        {
+          "hour": 8,
+          "conversations": 3
+        },
+        {
+          "hour": 3,
+          "conversations": 1
+        },
+        {
+          "hour": 6,
+          "conversations": 1
+        },
+        {
+          "hour": 7,
+          "conversations": 1
+        },
+        {
+          "hour": 9,
+          "conversations": 1
+        },
+        {
+          "hour": 10,
+          "conversations": 1
+        }
+      ],
+      "waitingConversations": [
+        {
+          "status": "open",
+          "unreadCount": 5,
+          "customerName": "Synthetic Contact 4",
+          "conversationId": "00000000-0000-4000-8000-000000000204",
+          "waitingSeconds": 75600,
+          "latestIncomingAt": "2026-10-05T10:00:00+07:00",
+          "profilePictureUrl": null,
+          "assignedMemberName": null
+        },
+        {
+          "status": "open",
+          "unreadCount": 3,
+          "customerName": "Synthetic Contact 13",
+          "conversationId": "00000000-0000-4000-8000-000000000213",
+          "waitingSeconds": 67920,
+          "latestIncomingAt": "2026-10-05T12:08:00+07:00",
+          "profilePictureUrl": null,
+          "assignedMemberName": null
+        }
+      ]
+    },
+    "customers": {
+      "tags": [],
+      "summary": {
+        "newCustomers": 4,
+        "openCustomers": 14,
+        "inactive30Days": 14,
+        "totalCustomers": 18,
+        "activeCustomers": 12,
+        "incomingMessages": 14,
+        "messagesInPeriod": 28,
+        "outgoingMessages": 13,
+        "returningCustomers": 9
+      },
+      "channels": [
+        {
+          "channel": "messenger",
+          "messages": 25,
+          "customers": 11,
+          "conversations": 11
+        },
+        {
+          "channel": "comment",
+          "messages": 3,
+          "customers": 1,
+          "conversations": 1
+        }
+      ],
+      "dailyGrowth": [
+        {
+          "date": "2026-10-05",
+          "newCustomers": 4
+        }
+      ],
+      "topCustomers": [
+        {
+          "fullName": "Same display name",
+          "messages": 4,
+          "contactId": "00000000-0000-4000-8000-000000000101",
+          "conversations": 1,
+          "lastActivityAt": "2026-10-05T07:09:00+07:00",
+          "incomingMessages": 2,
+          "outgoingMessages": 2,
+          "profilePictureUrl": null
+        },
+        {
+          "fullName": "Synthetic Contact 16",
+          "messages": 3,
+          "contactId": "00000000-0000-4000-8000-000000000116",
+          "conversations": 1,
+          "lastActivityAt": "2026-10-05T17:03:00+07:00",
+          "incomingMessages": 0,
+          "outgoingMessages": 2,
+          "profilePictureUrl": null
+        },
+        {
+          "fullName": "Synthetic Contact 13",
+          "messages": 3,
+          "contactId": "00000000-0000-4000-8000-000000000113",
+          "conversations": 1,
+          "lastActivityAt": "2026-10-05T12:08:00+07:00",
+          "incomingMessages": 2,
+          "outgoingMessages": 1,
+          "profilePictureUrl": null
+        },
+        {
+          "fullName": "Synthetic Contact 5",
+          "messages": 3,
+          "contactId": "00000000-0000-4000-8000-000000000105",
+          "conversations": 0,
+          "lastActivityAt": "2026-10-05T11:03:00+07:00",
+          "incomingMessages": 2,
+          "outgoingMessages": 1,
+          "profilePictureUrl": null
+        },
+        {
+          "fullName": "Synthetic Contact 3",
+          "messages": 3,
+          "contactId": "00000000-0000-4000-8000-000000000103",
+          "conversations": 1,
+          "lastActivityAt": "2026-10-05T09:08:00+07:00",
+          "incomingMessages": 1,
+          "outgoingMessages": 2,
+          "profilePictureUrl": null
+        },
+        {
+          "fullName": "Synthetic Contact 8",
+          "messages": 3,
+          "contactId": "00000000-0000-4000-8000-000000000108",
+          "conversations": 1,
+          "lastActivityAt": "2026-10-05T08:07:00+07:00",
+          "incomingMessages": 1,
+          "outgoingMessages": 2,
+          "profilePictureUrl": null
+        },
+        {
+          "fullName": "Synthetic Contact 15",
+          "messages": 2,
+          "contactId": "00000000-0000-4000-8000-000000000115",
+          "conversations": 1,
+          "lastActivityAt": "2026-10-06T03:03:00+07:00",
+          "incomingMessages": 1,
+          "outgoingMessages": 1,
+          "profilePictureUrl": null
+        },
+        {
+          "fullName": "Synthetic Contact 9",
+          "messages": 2,
+          "contactId": "00000000-0000-4000-8000-000000000109",
+          "conversations": 1,
+          "lastActivityAt": "2026-10-05T09:00:00+07:00",
+          "incomingMessages": 1,
+          "outgoingMessages": 1,
+          "profilePictureUrl": null
+        },
+        {
+          "fullName": "Same display name",
+          "messages": 2,
+          "contactId": "00000000-0000-4000-8000-000000000102",
+          "conversations": 1,
+          "lastActivityAt": "2026-10-05T08:02:00+07:00",
+          "incomingMessages": 1,
+          "outgoingMessages": 1,
+          "profilePictureUrl": null
+        },
+        {
+          "fullName": "Synthetic Contact 7",
+          "messages": 1,
+          "contactId": "00000000-0000-4000-8000-000000000107",
+          "conversations": 1,
+          "lastActivityAt": "2026-10-06T06:58:00+07:00",
+          "incomingMessages": 1,
+          "outgoingMessages": 0,
+          "profilePictureUrl": null
+        }
+      ]
+    },
+    "sla": {
+      "daily": [
+        {
+          "date": "2026-10-05",
+          "slaMet": 5,
+          "received": 7,
+          "responded": 6,
+          "slaMissed": 2,
+          "avgFirstResponseSeconds": 650
+        },
+        {
+          "date": "2026-10-06",
+          "slaMet": 2,
+          "received": 2,
+          "responded": 2,
+          "slaMissed": 0,
+          "avgFirstResponseSeconds": 150
+        }
+      ],
+      "summary": {
+        "slaMet": 7,
+        "slaRate": 78,
+        "waiting": 1,
+        "received": 9,
+        "resolved": 1,
+        "responded": 8,
+        "slaMissed": 2,
+        "slaWaiting": 0,
+        "avgResolutionSeconds": 300,
+        "avgFirstResponseSeconds": 525,
+        "medianFirstResponseSeconds": 120
+      },
+      "attention": [
+        {
+          "status": "open",
+          "slaState": "missed",
+          "assignedName": null,
+          "customerName": "Synthetic Contact 4",
+          "conversationId": "00000000-0000-4000-8000-000000000204",
+          "elapsedSeconds": 75600,
+          "firstIncomingAt": "2026-10-05T10:00:00+07:00",
+          "firstResponseAt": null,
+          "firstResponseSeconds": null
+        },
+        {
+          "status": "open",
+          "slaState": "missed",
+          "assignedName": "Human One",
+          "customerName": "Synthetic Contact 9",
+          "conversationId": "00000000-0000-4000-8000-000000000209",
+          "elapsedSeconds": 3300,
+          "firstIncomingAt": "2026-10-05T08:05:00+07:00",
+          "firstResponseAt": "2026-10-05T09:00:00+07:00",
+          "firstResponseSeconds": 3300
+        }
+      ]
+    },
+    "agents": {
+      "agents": [
+        {
+          "role": "owner",
+          "email": null,
+          "slaMet": 2,
+          "slaRate": 67,
+          "fullName": "Human One",
+          "memberId": "00000000-0000-4000-8000-000000000011",
+          "slaMissed": 1,
+          "firstResponses": 3,
+          "resolvedActions": 3,
+          "outgoingMessages": 6,
+          "profilePictureUrl": null,
+          "conversationsReplied": 5,
+          "avgFirstResponseSeconds": 1240,
+          "medianFirstResponseSeconds": 300
+        },
+        {
+          "role": "agent",
+          "email": null,
+          "slaMet": 2,
+          "slaRate": 100,
+          "fullName": "Human Two",
+          "memberId": "00000000-0000-4000-8000-000000000012",
+          "slaMissed": 0,
+          "firstResponses": 2,
+          "resolvedActions": 0,
+          "outgoingMessages": 4,
+          "profilePictureUrl": null,
+          "conversationsReplied": 4,
+          "avgFirstResponseSeconds": 150,
+          "medianFirstResponseSeconds": 150
+        }
+      ],
+      "summary": {
+        "slaMet": 4,
+        "slaRate": 80,
+        "slaMissed": 1,
+        "totalOutgoing": 13,
+        "attributionRate": 77,
+        "attributedOutgoing": 10,
+        "totalFirstResponses": 8,
+        "unattributedOutgoing": 3,
+        "avgFirstResponseSeconds": 804,
+        "attributedFirstResponses": 5,
+        "unattributedFirstResponses": 3
+      }
+    }
+  },
+  "agentConversationUnion": 7,
+  "emptyLegacy": {
+    "slaMet": 0,
+    "slaRate": 100,
+    "waiting": 0,
+    "received": 0,
+    "resolved": 0,
+    "responded": 0,
+    "slaMissed": 0,
+    "slaWaiting": 0,
+    "avgResolutionSeconds": 0,
+    "avgFirstResponseSeconds": 0,
+    "medianFirstResponseSeconds": 0
+  },
+  "payloadBytes": {
+    "before": 5236,
+    "after": 1323
+  },
+  "timezoneAudit": {
+    "sessionTimezone": "Etc/GMT-7",
+    "legacySessionDaily": [
+      {
+        "date": "2026-10-05",
+        "received": 9,
+        "resolved": 2
+      },
+      {
+        "date": "2026-10-06",
+        "received": 2,
+        "resolved": 0
+      }
+    ],
+    "expectedUtcDaily": [
+      {
+        "date": "2026-10-05",
+        "received": 11,
+        "resolved": 2
+      }
+    ],
+    "legacyUtcDaily": [
+      {
+        "date": "2026-10-05",
+        "received": 11,
+        "resolved": 2
+      }
+    ],
+    "newOverviewIndependentOfSessionTimezone": true
+  }
+}

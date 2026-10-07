@@ -29,7 +29,7 @@ function setup({business='a',denied=0,previousFailure=false,messageFailure=false
  const get=async({signal,route='app/api/analytics/channels/route.ts',query='period=7d'}={})=>{
   const response=await load(route).GET({nextUrl:new URL('https://fixture.invalid/api/analytics/channels?'+query),signal});return{status:response.status,body:await response.json()};
  };
- return{get,calls,load};
+ return{get,calls,load,tables};
 }
 test('Channel metrics preserve full history, recovered timestamps, comments, unanswered means and SLA',async()=>{
  const f=setup(),result=await f.get();assert.equal(result.status,200);assert.equal(result.body.summary.conversations,4);assert.equal(result.body.summary.incomingMessages,6);assert.equal(result.body.summary.outgoingReplies,5);
@@ -68,4 +68,17 @@ test('streaming message reader folds bounded pages and rejects overflow instead 
   if(overflow)await assert.rejects(pending,/row limit/);else await pending;
   assert.equal(folded,200000);assert.equal(maxFold,1000);assert.equal(calls.length,201);assert.deepEqual(calls.at(-1),[200000,200000]);
  }
+});
+
+test('exact drilldown bounds are honored and invalid bounds stop all reads',async()=>{
+ const f=setup(),start=at(-700),end=NOW,r=await f.get({query:'period=7d&start='+encodeURIComponent(start)+'&end='+encodeURIComponent(end)});
+ assert.equal(r.status,200);assert.equal(r.body.start,start);assert.equal(r.body.end,end);assert.equal(r.body.summary.conversations,0,'legacy creation cohort intentionally differs from activity cohort');
+ const invalid=setup();assert.equal((await invalid.get({query:'start=bad&end=bad'})).status,400);assert.equal(invalid.calls.length,0);
+});
+test('known Channel report history and outgoing-first gaps are reproduced, not mistaken for overview metrics',async()=>{
+ const fs=require('node:fs'),f=setup();f.tables.messages.push({id:'old',business_id:'a',conversation_id:'c0',direction:'incoming',created_at:at(-10*86400),platform_created_at:at(-10*86400)},
+ {id:'legitimate',business_id:'a',conversation_id:'c1',direction:'outgoing',created_at:at(-100),platform_created_at:at(-100)});
+ const r=await f.get();assert.equal(r.status,200);assert.equal(r.body.summary.incomingMessages,7,'strict period-message expectation 6, actual lifetime count 7');
+ assert.equal(r.body.summary.answered,2,'first outgoing after incoming expectation 3, legacy actual 2');
+ fs.writeFileSync('docs/evidence/analytics-redesign-20261007/channel-fixture-results.json',JSON.stringify({strictPeriodIncoming:{expected:6,actual:7,status:'FAIL'},incomingFirstReply:{expected:3,actual:2,status:'FAIL'},actualSummary:r.body.summary,scope:'isolated route fixture; legacy definitions retained and flagged'},null,2));
 });

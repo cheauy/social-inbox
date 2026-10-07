@@ -1,0 +1,1074 @@
+[rtk] /!\ No hook installed — run `rtk init -g` for automatic token savings
+TAP version 13
+# Subtest: calendar ranges clamp month ends, handle leap years and keep the defined timezone
+ok 1 - calendar ranges clamp month ends, handle leap years and keep the defined timezone
+  ---
+  duration_ms: 42.421
+  type: 'test'
+  ...
+# Subtest: overview makes one aggregate call for the full selected 3/6-month or yearly range
+ok 2 - overview makes one aggregate call for the full selected 3/6-month or yearly range
+  ---
+  duration_ms: 109.4567
+  type: 'test'
+  ...
+# Subtest: existing RPC drilldowns keep long-period identity and exact bounds
+ok 3 - existing RPC drilldowns keep long-period identity and exact bounds
+  ---
+  duration_ms: 160.7297
+  type: 'test'
+  ...
+# Subtest: Analytics sidebar uses the installed Next history wrapper without bypassing URL synchronization
+ok 4 - Analytics sidebar uses the installed Next history wrapper without bypassing URL synchronization
+  ---
+  duration_ms: 132.3891
+  type: 'test'
+  ...
+# Subtest: overview binds the server-selected workspace, authenticated member and user, with exact half-open bounds
+ok 5 - overview binds the server-selected workspace, authenticated member and user, with exact half-open bounds
+  ---
+  duration_ms: 149.9264
+  type: 'test'
+  ...
+# Subtest: unauthorized, removed, mismatched workspace and invalid filters never invoke an aggregate
+ok 6 - unauthorized, removed, mismatched workspace and invalid filters never invoke an aggregate
+  ---
+  duration_ms: 159.3914
+  type: 'test'
+  ...
+# Subtest: absent proposal, null/partial aggregates and mismatched chart counts return unavailable rather than fabricated zeros
+ok 7 - absent proposal, null/partial aggregates and mismatched chart counts return unavailable rather than fabricated zeros
+  ---
+  duration_ms: 98.2603
+  type: 'test'
+  ...
+# Subtest: all legacy RPC reports reject hidden-channel totals BEFORE aggregation, and enforce selected workspace
+ok 8 - all legacy RPC reports reject hidden-channel totals BEFORE aggregation, and enforce selected workspace
+  ---
+  duration_ms: 345.8012
+  type: 'test'
+  ...
+# Subtest: legacy missing/partial payloads fail rather than fill missing metrics with zero
+ok 9 - legacy missing/partial payloads fail rather than fill missing metrics with zero
+  ---
+  duration_ms: 313.1355
+  type: 'test'
+  ...
+# Subtest: legacy missing rates and chart arrays cannot produce empty charts or fabricated percentages
+ok 10 - legacy missing rates and chart arrays cannot produce empty charts or fabricated percentages
+  ---
+  duration_ms: 230.8196
+  type: 'test'
+  ...
+# Subtest: zero denominators in legacy Team/Agent API payloads are normalized without changing populated report definitions
+ok 11 - zero denominators in legacy Team/Agent API payloads are normalized without changing populated report definitions
+  ---
+  duration_ms: 99.0222
+  type: 'test'
+  ...
+# Subtest: AgentPerformancePanel ignores late success/error/finally after changing period during a refresh
+ok 12 - AgentPerformancePanel ignores late success/error/finally after changing period during a refresh
+  ---
+  duration_ms: 259.8867
+  type: 'test'
+  ...
+# Subtest: CustomerInsightsPanel ignores late success/error/finally after changing period during a refresh
+ok 13 - CustomerInsightsPanel ignores late success/error/finally after changing period during a refresh
+  ---
+  duration_ms: 108.7824
+  type: 'test'
+  ...
+# Subtest: ConversationReportsPanel ignores late success/error/finally after changing period during a refresh
+ok 14 - ConversationReportsPanel ignores late success/error/finally after changing period during a refresh
+  ---
+  duration_ms: 71.2631
+  type: 'test'
+  ...
+# Subtest: SlaAnalyticsPanel ignores late success/error/finally after changing period during a refresh
+ok 15 - SlaAnalyticsPanel ignores late success/error/finally after changing period during a refresh
+  ---
+  duration_ms: 111.1845
+  type: 'test'
+  ...
+# Subtest: ChannelPerformancePanel ignores late success/error/finally after changing period during a refresh
+ok 16 - ChannelPerformancePanel ignores late success/error/finally after changing period during a refresh
+  ---
+  duration_ms: 173.343
+  type: 'test'
+  ...
+# Subtest: DashboardOverviewPanel ignores late success/error/finally after changing period during a refresh
+ok 17 - DashboardOverviewPanel ignores late success/error/finally after changing period during a refresh
+  ---
+  duration_ms: 587.2777
+  type: 'test'
+  ...
+# Subtest: same-key live invalidations retain one trailing refresh and retire it on navigation
+ok 18 - same-key live invalidations retain one trailing refresh and retire it on navigation
+  ---
+  duration_ms: 137.8782
+  type: 'test'
+  ...
+# Subtest: Agent performance carries the browser timezone like the dashboard and SLA panels
+ok 19 - Agent performance carries the browser timezone like the dashboard and SLA panels
+  ---
+  duration_ms: 159.5613
+  type: 'test'
+  ...
+# Subtest: empty SLA results cannot display a successful 100 percent even if the RPC sends that legacy value
+ok 20 - empty SLA results cannot display a successful 100 percent even if the RPC sends that legacy value
+  ---
+  duration_ms: 167.2846
+  type: 'test'
+  ...
+# Subtest: Channel performance Today -> 90 days -> Today retires the slow response, including finally
+ok 21 - Channel performance Today -> 90 days -> Today retires the slow response, including finally
+  ---
+  duration_ms: 148.5399
+  type: 'test'
+  ...
+# Subtest: Channel focus revalidation preserves the populated panel while its read is pending
+ok 22 - Channel focus revalidation preserves the populated panel while its read is pending
+  ---
+  duration_ms: 209.9733
+  type: 'test'
+  ...
+# Subtest: Dashboard preserves all period and SLA controls during the first fetch and period changes
+ok 23 - Dashboard preserves all period and SLA controls during the first fetch and period changes
+  ---
+  duration_ms: 172.4094
+  type: 'test'
+  ...
+# Subtest: Dashboard hidden poll and focus do no requests; resume and focus coalesce with in-flight deduplication
+ok 24 - Dashboard hidden poll and focus do no requests; resume and focus coalesce with in-flight deduplication
+  ---
+  duration_ms: 302.8156
+  type: 'test'
+  ...
+# Subtest: every dated Analytics panel cancels transport on unmount
+ok 25 - every dated Analytics panel cancels transport on unmount
+  ---
+  duration_ms: 1542.6639
+  type: 'test'
+  ...
+# Subtest: approved human overview and deployed RPCs replay on isolated PostgreSQL with independent expected counts
+ok 26 - approved human overview and deployed RPCs replay on isolated PostgreSQL with independent expected counts
+  ---
+  duration_ms: 19156.813
+  type: 'test'
+  ...
+# Subtest: calendar windows respect exact boundaries, rolling periods, timezone changes and DST
+ok 27 - calendar windows respect exact boundaries, rolling periods, timezone changes and DST
+  ---
+  duration_ms: 228.251
+  type: 'test'
+  ...
+# Subtest: missing fields, incomplete hourly buckets and inconsistent chart totals cannot become zero or 100 percent
+ok 28 - missing fields, incomplete hourly buckets and inconsistent chart totals cannot become zero or 100 percent
+  ---
+  duration_ms: 8.8082
+  type: 'test'
+  ...
+# Subtest: Analytics content follows links, Back/Forward, deep links and missing/invalid query views
+ok 29 - Analytics content follows links, Back/Forward, deep links and missing/invalid query views
+  ---
+  duration_ms: 2593.8713
+  type: 'test'
+  ...
+# Subtest: workload pages past 1000 rows, labels unread unit accurately, filters joined reminders before counting
+ok 30 - workload pages past 1000 rows, labels unread unit accurately, filters joined reminders before counting
+  ---
+  duration_ms: 354.7667
+  type: 'test'
+  ...
+# Subtest: workspace mismatch stops workload reads and failed reminder page never publishes zero
+ok 31 - workspace mismatch stops workload reads and failed reminder page never publishes zero
+  ---
+  duration_ms: 140.2568
+  type: 'test'
+  ...
+# Subtest: existing unrestricted live workload absence is displayed unavailable rather as zero
+ok 32 - existing unrestricted live workload absence is displayed unavailable rather as zero
+  ---
+  duration_ms: 74.0038
+  type: 'test'
+  ...
+# Subtest: Channel metrics preserve full history, recovered timestamps, comments, unanswered means and SLA
+ok 33 - Channel metrics preserve full history, recovered timestamps, comments, unanswered means and SLA
+  ---
+  duration_ms: 1395.0953
+  type: 'test'
+  ...
+# Subtest: unauthorized and removed members perform no analytics reads
+ok 34 - unauthorized and removed members perform no analytics reads
+  ---
+  duration_ms: 675.0324
+  type: 'test'
+  ...
+# Subtest: previous count failure remains unknown while message failure never returns partial statistics
+ok 35 - previous count failure remains unknown while message failure never returns partial statistics
+  ---
+  duration_ms: 764.3824
+  type: 'test'
+  ...
+# Subtest: aborted client results retire queued chunks and do not cancel another user/business request
+ok 36 - aborted client results retire queued chunks and do not cancel another user/business request
+  ---
+  duration_ms: 526.0721
+  type: 'test'
+  ...
+# Subtest: strict row helper distinguishes exact cap from overflow and preserves legacy callers
+ok 37 - strict row helper distinguishes exact cap from overflow and preserves legacy callers
+  ---
+  duration_ms: 15.0973
+  type: 'test'
+  ...
+# Subtest: streaming message reader folds bounded pages and rejects overflow instead of reporting a partial aggregate
+ok 38 - streaming message reader folds bounded pages and rejects overflow instead of reporting a partial aggregate
+  ---
+  duration_ms: 38.9023
+  type: 'test'
+  ...
+# Subtest: exact drilldown bounds are honored and invalid bounds stop all reads
+ok 39 - exact drilldown bounds are honored and invalid bounds stop all reads
+  ---
+  duration_ms: 619.2207
+  type: 'test'
+  ...
+# Subtest: known Channel report history and outgoing-first gaps are reproduced, not mistaken for overview metrics
+ok 40 - known Channel report history and outgoing-first gaps are reproduced, not mistaken for overview metrics
+  ---
+  duration_ms: 287.9005
+  type: 'test'
+  ...
+# {"channelAnalyticsBudget":[{"conversations":30,"messagesPerConversation":10,"chunks":1,"totalReads":4,"messageReads":1,"transferredRows":330,"maxMessageConcurrency":1,"elapsedMs":1040.4032000000002},{"conversations":200,"messagesPerConversation":10,"chunks":1,"totalReads":6,"messageReads":3,"transferredRows":2200,"maxMessageConcurrency":1,"elapsedMs":289.7348000000002},{"conversations":201,"messagesPerConversation":10,"chunks":2,"totalReads":7,"messageReads":4,"transferredRows":2211,"maxMessageConcurrency":2,"elapsedMs":260.9357},{"conversations":1000,"messagesPerConversation":10,"chunks":5,"totalReads":19,"messageReads":15,"transferredRows":11000,"maxMessageConcurrency":2,"elapsedMs":295.8595}]}
+# Subtest: real Channel route bounds raw-history concurrency without adding reads or changing its history window
+ok 41 - real Channel route bounds raw-history concurrency without adding reads or changing its history window
+  ---
+  duration_ms: 1897.6149
+  type: 'test'
+  ...
+# Subtest: bounded controlled-delay Channel comparison records counts and timings without claiming production latency
+ok 42 - bounded controlled-delay Channel comparison records counts and timings without claiming production latency
+  ---
+  duration_ms: 2.6103
+  type: 'test'
+  ...
+# Subtest: fetchAllRows treats reaching its configured cap as success without a completeness marker
+ok 43 - fetchAllRows treats reaching its configured cap as success without a completeness marker
+  ---
+  duration_ms: 14.159
+  type: 'test'
+  ...
+# Subtest: every server read of inbox tables applies Telegram Personal visibility or is allowlisted with a reason
+ok 44 - every server read of inbox tables applies Telegram Personal visibility or is allowlisted with a reason
+  ---
+  duration_ms: 3765.3886
+  type: 'test'
+  ...
+# Subtest: allowlist has no stale entries
+ok 45 - allowlist has no stale entries
+  ---
+  duration_ms: 54.4683
+  type: 'test'
+  ...
+# Subtest: allowlisted Facebook and Bot helpers never mention telegram_personal reads
+ok 46 - allowlisted Facebook and Bot helpers never mention telegram_personal reads
+  ---
+  duration_ms: 34.358
+  type: 'test'
+  ...
+# Subtest: identity keys map back to their Personal account
+ok 47 - identity keys map back to their Personal account
+  ---
+  duration_ms: 946.6463
+  type: 'test'
+  ...
+# Subtest: hidden accounts are those the member may not see; visibility is asked per account
+ok 48 - hidden accounts are those the member may not see; visibility is asked per account
+  ---
+  duration_ms: 326.0309
+  type: 'test'
+  ...
+# Subtest: visibility fails closed when the check errors
+ok 49 - visibility fails closed when the check errors
+  ---
+  duration_ms: 144.6511
+  type: 'test'
+  ...
+# Subtest: with the feature flag off every Personal account is hidden, even for the holder
+ok 50 - with the feature flag off every Personal account is hidden, even for the holder
+  ---
+  duration_ms: 388.2404
+  type: 'test'
+  ...
+# Subtest: a non-Personal conversation is never hidden; a Personal one follows the member check
+ok 51 - a non-Personal conversation is never hidden; a Personal one follows the member check
+  ---
+  duration_ms: 193.1791
+  type: 'test'
+  ...
+# Subtest: a missing user id hides every Personal account (fails closed)
+ok 52 - a missing user id hides every Personal account (fails closed)
+  ---
+  duration_ms: 86.9297
+  type: 'test'
+  ...
+# Subtest: state is signed, time limited, and bound to member and workspace
+ok 53 - state is signed, time limited, and bound to member and workspace
+  ---
+  duration_ms: 560.8943
+  type: 'test'
+  ...
+# Subtest: valid account-holder callback consumes state but stays disabled without network or persistence
+ok 54 - valid account-holder callback consumes state but stays disabled without network or persistence
+  ---
+  duration_ms: 167.1801
+  type: 'test'
+  ...
+# Subtest: callback fails closed for auth, permission, plan, config, state, and malformed input
+ok 55 - callback fails closed for auth, permission, plan, config, state, and malformed input
+  ---
+  duration_ms: 546.0543
+  type: 'test'
+  ...
+# Subtest: provider denial is generic and production redirect cannot follow a hostile host
+ok 56 - provider denial is generic and production redirect cannot follow a hostile host
+  ---
+  duration_ms: 72.3472
+  type: 'test'
+  ...
+# Subtest: disabled team member removal succeeds without advertiser tables or functions
+ok 57 - disabled team member removal succeeds without advertiser tables or functions
+  ---
+  duration_ms: 389.6179
+  type: 'test'
+  ...
+# Subtest: disabled team Owner removal with another Owner succeeds without advertiser tables or functions
+ok 58 - disabled team Owner removal with another Owner succeeds without advertiser tables or functions
+  ---
+  duration_ms: 99.4938
+  type: 'test'
+  ...
+# Subtest: disabled team member reactivation succeeds without advertiser tables or functions
+ok 59 - disabled team member reactivation succeeds without advertiser tables or functions
+  ---
+  duration_ms: 79.7113
+  type: 'test'
+  ...
+# Subtest: disabled team agent promotion succeeds without advertiser tables or functions
+ok 60 - disabled team agent promotion succeeds without advertiser tables or functions
+  ---
+  duration_ms: 54.2338
+  type: 'test'
+  ...
+# Subtest: disabled team admin demotion succeeds without advertiser tables or functions
+ok 61 - disabled team admin demotion succeeds without advertiser tables or functions
+  ---
+  duration_ms: 58.2779
+  type: 'test'
+  ...
+# Subtest: disabled team Owner demotion with another Owner succeeds without advertiser tables or functions
+ok 62 - disabled team Owner demotion with another Owner succeeds without advertiser tables or functions
+  ---
+  duration_ms: 57.9126
+  type: 'test'
+  ...
+# Subtest: disabled team grant Owner access succeeds without advertiser tables or functions
+ok 63 - disabled team grant Owner access succeeds without advertiser tables or functions
+  ---
+  duration_ms: 65.9495
+  type: 'test'
+  ...
+# Subtest: disabled team unchanged role succeeds without advertiser tables or functions
+ok 64 - disabled team unchanged role succeeds without advertiser tables or functions
+  ---
+  duration_ms: 40.2484
+  type: 'test'
+  ...
+# Subtest: ending a last-owner workspace blocks pending advertiser work before staging
+ok 65 - ending a last-owner workspace blocks pending advertiser work before staging
+  ---
+  duration_ms: 218.7804
+  type: 'test'
+  ...
+# Subtest: ending a last-owner workspace blocks exchanging advertiser work before staging
+ok 66 - ending a last-owner workspace blocks exchanging advertiser work before staging
+  ---
+  duration_ms: 164.7808
+  type: 'test'
+  ...
+# Subtest: ending a last-owner workspace blocks connected advertiser work before staging
+ok 67 - ending a last-owner workspace blocks connected advertiser work before staging
+  ---
+  duration_ms: 117.8707
+  type: 'test'
+  ...
+# Subtest: ending a last-owner workspace blocks failed advertiser work before staging
+ok 68 - ending a last-owner workspace blocks failed advertiser work before staging
+  ---
+  duration_ms: 90.2483
+  type: 'test'
+  ...
+# Subtest: ending a last-owner workspace blocks revocation_pending advertiser work before staging
+ok 69 - ending a last-owner workspace blocks revocation_pending advertiser work before staging
+  ---
+  duration_ms: 99.4513
+  type: 'test'
+  ...
+# Subtest: disabled draft adds no advertiser schema dependency (undefined)
+ok 70 - disabled draft adds no advertiser schema dependency (undefined)
+  ---
+  duration_ms: 98.7952
+  type: 'test'
+  ...
+# Subtest: disabled draft adds no advertiser schema dependency (false)
+ok 71 - disabled draft adds no advertiser schema dependency (false)
+  ---
+  duration_ms: 85.6029
+  type: 'test'
+  ...
+# Subtest: disabled draft adds no advertiser schema dependency (TRUE)
+ok 72 - disabled draft adds no advertiser schema dependency (TRUE)
+  ---
+  duration_ms: 100.3818
+  type: 'test'
+  ...
+# Subtest: disabled deletion preserves ordinary member, surviving Owner and valid transfer paths without the proposal
+ok 73 - disabled deletion preserves ordinary member, surviving Owner and valid transfer paths without the proposal
+  ---
+  duration_ms: 324.7266
+  type: 'test'
+  ...
+# Subtest: disabled deletion preserves the Billing hold before any staging without the proposal
+ok 74 - disabled deletion preserves the Billing hold before any staging without the proposal
+  ---
+  duration_ms: 80.5034
+  type: 'test'
+  ...
+# Subtest: retained disconnected fingerprints permit closure and are never released
+ok 75 - retained disconnected fingerprints permit closure and are never released
+  ---
+  duration_ms: 95.2588
+  type: 'test'
+  ...
+# Subtest: workspace with no advertiser records follows existing account deletion
+ok 76 - workspace with no advertiser records follows existing account deletion
+  ---
+  duration_ms: 77.7479
+  type: 'test'
+  ...
+# Subtest: valid Owner transfer preserves grant access even when its creator deletes their account
+ok 77 - valid Owner transfer preserves grant access even when its creator deletes their account
+  ---
+  duration_ms: 96.4558
+  type: 'test'
+  ...
+# Subtest: invalid transfer cannot bypass deletion validation or mutate advertiser ownership
+ok 78 - invalid transfer cannot bypass deletion validation or mutate advertiser ownership
+  ---
+  duration_ms: 74.509
+  type: 'test'
+  ...
+# Subtest: ordinary member deletion is allowed when another Owner remains, regardless of grant creator
+ok 79 - ordinary member deletion is allowed when another Owner remains, regardless of grant creator
+  ---
+  duration_ms: 112.9898
+  type: 'test'
+  ...
+# Subtest: another Owner appearing before preflight keeps the workspace open
+ok 80 - another Owner appearing before preflight keeps the workspace open
+  ---
+  duration_ms: 70.602
+  type: 'test'
+  ...
+# Subtest: last manager deletion blocks unresolved grants without an active subscription (0)
+ok 81 - last manager deletion blocks unresolved grants without an active subscription (0)
+  ---
+  duration_ms: 69.5309
+  type: 'test'
+  ...
+# Subtest: last manager deletion blocks unresolved grants without an active subscription (1)
+ok 82 - last manager deletion blocks unresolved grants without an active subscription (1)
+  ---
+  duration_ms: 73.7822
+  type: 'test'
+  ...
+# Subtest: a non-operational survivor cannot manage the retained grant (other-user:true:agent)
+ok 83 - a non-operational survivor cannot manage the retained grant (other-user:true:agent)
+  ---
+  duration_ms: 48.6543
+  type: 'test'
+  ...
+# Subtest: a non-operational survivor cannot manage the retained grant (other-user:false:agent)
+ok 84 - a non-operational survivor cannot manage the retained grant (other-user:false:agent)
+  ---
+  duration_ms: 57.7712
+  type: 'test'
+  ...
+# Subtest: a non-operational survivor cannot manage the retained grant (null:true:owner)
+ok 85 - a non-operational survivor cannot manage the retained grant (null:true:owner)
+  ---
+  duration_ms: 67.2419
+  type: 'test'
+  ...
+# Subtest: a surviving agent with channels/manage cannot replace the last authorized Owner
+ok 86 - a surviving agent with channels/manage cannot replace the last authorized Owner
+  ---
+  duration_ms: 78.84
+  type: 'test'
+  ...
+# Subtest: records and managers from another workspace do not affect the deletion
+ok 87 - records and managers from another workspace do not affect the deletion
+  ---
+  duration_ms: 159.8164
+  type: 'test'
+  ...
+# Subtest: untrusted body workspace/user/transfer IDs cannot suppress the blocker
+ok 88 - untrusted body workspace/user/transfer IDs cannot suppress the blocker
+  ---
+  duration_ms: 37.4984
+  type: 'test'
+  ...
+# Subtest: Billing hold still takes precedence and prevents advertiser reads
+ok 89 - Billing hold still takes precedence and prevents advertiser reads
+  ---
+  duration_ms: 35.6879
+  type: 'test'
+  ...
+# Subtest: advertiser read failure stops before staging without logging or exposing raw errors (fail)
+ok 90 - advertiser read failure stops before staging without logging or exposing raw errors (fail)
+  ---
+  duration_ms: 31.271
+  type: 'test'
+  ...
+# Subtest: advertiser read failure stops before staging without logging or exposing raw errors (fail)
+ok 91 - advertiser read failure stops before staging without logging or exposing raw errors (fail)
+  ---
+  duration_ms: 39.1591
+  type: 'test'
+  ...
+# Subtest: advertiser read failure stops before staging without logging or exposing raw errors (fail)
+ok 92 - advertiser read failure stops before staging without logging or exposing raw errors (fail)
+  ---
+  duration_ms: 61.2407
+  type: 'test'
+  ...
+# Subtest: advertiser read failure stops before staging without logging or exposing raw errors (throwRead)
+ok 93 - advertiser read failure stops before staging without logging or exposing raw errors (throwRead)
+  ---
+  duration_ms: 47.8566
+  type: 'test'
+  ...
+# Subtest: coordinated blocked result stops before staging
+ok 94 - coordinated blocked result stops before staging
+  ---
+  duration_ms: 36.7286
+  type: 'test'
+  ...
+# Subtest: coordinated busy result stops before staging
+ok 95 - coordinated busy result stops before staging
+  ---
+  duration_ms: 43.601
+  type: 'test'
+  ...
+# Subtest: coordinated invalid_scope result stops before staging
+ok 96 - coordinated invalid_scope result stops before staging
+  ---
+  duration_ms: 37.7998
+  type: 'test'
+  ...
+# Subtest: ambiguous coordination failure is generic and does not start account staging
+ok 97 - ambiguous coordination failure is generic and does not start account staging
+  ---
+  duration_ms: 45.4626
+  type: 'test'
+  ...
+# Subtest: Auth failures retain the fence; known failure restores snapshots and unknown outcome requires review
+ok 98 - Auth failures retain the fence; known failure restores snapshots and unknown outcome requires review
+  ---
+  duration_ms: 123.1563
+  type: 'test'
+  ...
+# Subtest: account-deletion copy describes closure and retention rather than deleting workspace data
+ok 99 - account-deletion copy describes closure and retention rather than deleting workspace data
+  ---
+  duration_ms: 2.7017
+  type: 'test'
+  ...
+# Subtest: team member-role returns the specific non-secret last-Owner blocker
+ok 100 - team member-role returns the specific non-secret last-Owner blocker
+  ---
+  duration_ms: 22.7051
+  type: 'test'
+  ...
+# Subtest: team member returns the specific non-secret last-Owner blocker
+ok 101 - team member returns the specific non-secret last-Owner blocker
+  ---
+  duration_ms: 32.5409
+  type: 'test'
+  ...
+# Subtest: advertiser routes are disabled by default before auth, storage, or provider calls
+ok 102 - advertiser routes are disabled by default before auth, storage, or provider calls
+  ---
+  duration_ms: 250.352
+  type: 'test'
+  ...
+# Subtest: same-origin start stores only a tenant-bound nonce hash and uses a real configured provider link
+ok 103 - same-origin start stores only a tenant-bound nonce hash and uses a real configured provider link
+  ---
+  duration_ms: 49.6663
+  type: 'test'
+  ...
+# Subtest: cross-site start and disconnect fail before writes: {"Origin":"https://evil.example"}
+ok 104 - cross-site start and disconnect fail before writes: {"Origin":"https://evil.example"}
+  ---
+  duration_ms: 63.5788
+  type: 'test'
+  ...
+# Subtest: cross-site start and disconnect fail before writes: {"Origin":""}
+ok 105 - cross-site start and disconnect fail before writes: {"Origin":""}
+  ---
+  duration_ms: 63.649
+  type: 'test'
+  ...
+# Subtest: cross-site start and disconnect fail before writes: {"sec-fetch-site":"cross-site"}
+ok 106 - cross-site start and disconnect fail before writes: {"sec-fetch-site":"cross-site"}
+  ---
+  duration_ms: 87.1444
+  type: 'test'
+  ...
+# Subtest: start/callback fail closed on access: {"unauthorized":true}
+ok 107 - start/callback fail closed on access: {"unauthorized":true}
+  ---
+  duration_ms: 65.1723
+  type: 'test'
+  ...
+# Subtest: start/callback fail closed on access: {"permissionDenied":true}
+ok 108 - start/callback fail closed on access: {"permissionDenied":true}
+  ---
+  duration_ms: 56.2018
+  type: 'test'
+  ...
+# Subtest: start/callback fail closed on access: {"locked":true}
+ok 109 - start/callback fail closed on access: {"locked":true}
+  ---
+  duration_ms: 54.5428
+  type: 'test'
+  ...
+# Subtest: start/callback fail closed on access: {"authThrow":true}
+ok 110 - start/callback fail closed on access: {"authThrow":true}
+  ---
+  duration_ms: 56.9364
+  type: 'test'
+  ...
+# Subtest: start/callback fail closed on access: {"planThrow":true}
+ok 111 - start/callback fail closed on access: {"planThrow":true}
+  ---
+  duration_ms: 69.8937
+  type: 'test'
+  ...
+# Subtest: missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_APP_ID)
+ok 112 - missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_APP_ID)
+  ---
+  duration_ms: 29.2178
+  type: 'test'
+  ...
+# Subtest: missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_APP_SECRET)
+ok 113 - missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_APP_SECRET)
+  ---
+  duration_ms: 25.3675
+  type: 'test'
+  ...
+# Subtest: missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_TOKEN_MODE)
+ok 114 - missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_TOKEN_MODE)
+  ---
+  duration_ms: 37.9368
+  type: 'test'
+  ...
+# Subtest: missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_TOKEN_MODE)
+ok 115 - missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_TOKEN_MODE)
+  ---
+  duration_ms: 27.5816
+  type: 'test'
+  ...
+# Subtest: missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_AUTHORIZATION_URL)
+ok 116 - missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_AUTHORIZATION_URL)
+  ---
+  duration_ms: 26.4722
+  type: 'test'
+  ...
+# Subtest: missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_AUTHORIZATION_URL)
+ok 117 - missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_AUTHORIZATION_URL)
+  ---
+  duration_ms: 25.8596
+  type: 'test'
+  ...
+# Subtest: missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_AUTHORIZATION_URL)
+ok 118 - missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_AUTHORIZATION_URL)
+  ---
+  duration_ms: 23.2829
+  type: 'test'
+  ...
+# Subtest: missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_AUTHORIZATION_URL)
+ok 119 - missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_AUTHORIZATION_URL)
+  ---
+  duration_ms: 23.2924
+  type: 'test'
+  ...
+# Subtest: missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_AUTHORIZATION_URL)
+ok 120 - missing/unapproved or mismatched configuration fails before insert (TIKTOK_ADVERTISER_AUTHORIZATION_URL)
+  ---
+  duration_ms: 21.6745
+  type: 'test'
+  ...
+# Subtest: missing/unapproved or mismatched configuration fails before insert (FACEBOOK_TOKEN_ENCRYPTION_KEY)
+ok 121 - missing/unapproved or mismatched configuration fails before insert (FACEBOOK_TOKEN_ENCRYPTION_KEY)
+  ---
+  duration_ms: 20.2762
+  type: 'test'
+  ...
+# Subtest: older JSON runtimes fail configuration before any grant or storage operation
+ok 122 - older JSON runtimes fail configuration before any grant or storage operation
+  ---
+  duration_ms: 20.2801
+  type: 'test'
+  ...
+# Subtest: valid advertiser callback exchanges auth_code once and stores encrypted provider-verified grants
+ok 123 - valid advertiser callback exchanges auth_code once and stores encrypted provider-verified grants
+  ---
+  duration_ms: 38.3299
+  type: 'test'
+  ...
+# Subtest: concurrent callbacks consume the pending row once before calling TikTok
+ok 124 - concurrent callbacks consume the pending row once before calling TikTok
+  ---
+  duration_ms: 37.3734
+  type: 'test'
+  ...
+# Subtest: state rejects tampering, expiration, different flow and every identity/config binding
+ok 125 - state rejects tampering, expiration, different flow and every identity/config binding
+  ---
+  duration_ms: 39.4348
+  type: 'test'
+  ...
+# Subtest: wrong workspace, duplicated state, missing cookie and expired stored attempt never exchange
+ok 126 - wrong workspace, duplicated state, missing cookie and expired stored attempt never exchange
+  ---
+  duration_ms: 48.5606
+  type: 'test'
+  ...
+# Subtest: denial/malformed advertiser callback is consumed without exchange (error_description)
+ok 127 - denial/malformed advertiser callback is consumed without exchange (error_description)
+  ---
+  duration_ms: 42.8419
+  type: 'test'
+  ...
+# Subtest: denial/malformed advertiser callback is consumed without exchange (code)
+ok 128 - denial/malformed advertiser callback is consumed without exchange (code)
+  ---
+  duration_ms: 46.4415
+  type: 'test'
+  ...
+# Subtest: denial/malformed advertiser callback is consumed without exchange (auth_code)
+ok 129 - denial/malformed advertiser callback is consumed without exchange (auth_code)
+  ---
+  duration_ms: 37.2989
+  type: 'test'
+  ...
+# Subtest: denial/malformed advertiser callback is consumed without exchange (auth_code)
+ok 130 - denial/malformed advertiser callback is consumed without exchange (auth_code)
+  ---
+  duration_ms: 39.6628
+  type: 'test'
+  ...
+# Subtest: denial/malformed advertiser callback is consumed without exchange (auth_code)
+ok 131 - denial/malformed advertiser callback is consumed without exchange (auth_code)
+  ---
+  duration_ms: 65.1213
+  type: 'test'
+  ...
+# Subtest: unavailable pending storage prevents exchange and returns no database details
+ok 132 - unavailable pending storage prevents exchange and returns no database details
+  ---
+  duration_ms: 39.3769
+  type: 'test'
+  ...
+# Subtest: provider failure never connects or leaks raw errors (networkThrow)
+ok 133 - provider failure never connects or leaks raw errors (networkThrow)
+  ---
+  duration_ms: 32.4893
+  type: 'test'
+  ...
+# Subtest: provider failure never connects or leaks raw errors (providerStatus)
+ok 134 - provider failure never connects or leaks raw errors (providerStatus)
+  ---
+  duration_ms: 31.9686
+  type: 'test'
+  ...
+# Subtest: provider failure never connects or leaks raw errors (payload)
+ok 135 - provider failure never connects or leaks raw errors (payload)
+  ---
+  duration_ms: 38.4294
+  type: 'test'
+  ...
+# Subtest: provider failure never connects or leaks raw errors (rawPayload)
+ok 136 - provider failure never connects or leaks raw errors (rawPayload)
+  ---
+  duration_ms: 32.3252
+  type: 'test'
+  ...
+# Subtest: provider failure never connects or leaks raw errors (grant)
+ok 137 - provider failure never connects or leaks raw errors (grant)
+  ---
+  duration_ms: 55.2672
+  type: 'test'
+  ...
+# Subtest: invalid provider metadata defers cleanup without safe ownership (advertiser_ids)
+ok 138 - invalid provider metadata defers cleanup without safe ownership (advertiser_ids)
+  ---
+  duration_ms: 123.0363
+  type: 'test'
+  ...
+# Subtest: invalid provider metadata defers cleanup without safe ownership (advertiser_ids)
+ok 139 - invalid provider metadata defers cleanup without safe ownership (advertiser_ids)
+  ---
+  duration_ms: 53.5768
+  type: 'test'
+  ...
+# Subtest: invalid provider metadata defers cleanup without safe ownership (scope)
+ok 140 - invalid provider metadata defers cleanup without safe ownership (scope)
+  ---
+  duration_ms: 33.7343
+  type: 'test'
+  ...
+# Subtest: invalid provider metadata defers cleanup without safe ownership (scope)
+ok 141 - invalid provider metadata defers cleanup without safe ownership (scope)
+  ---
+  duration_ms: 31.857
+  type: 'test'
+  ...
+# Subtest: invalid provider metadata defers cleanup without safe ownership (refresh_token)
+ok 142 - invalid provider metadata defers cleanup without safe ownership (refresh_token)
+  ---
+  duration_ms: 28.2044
+  type: 'test'
+  ...
+# Subtest: failed persistence defers minted-token cleanup and never revokes an unowned grant
+ok 143 - failed persistence defers minted-token cleanup and never revokes an unowned grant
+  ---
+  duration_ms: 73.132
+  type: 'test'
+  ...
+# Subtest: a provider token already saved by another tenant is neither overwritten nor revoked
+ok 144 - a provider token already saved by another tenant is neither overwritten nor revoked
+  ---
+  duration_ms: 32.7665
+  type: 'test'
+  ...
+# Subtest: simultaneous grants use coordinated ownership without revoking the winning connection
+ok 145 - simultaneous grants use coordinated ownership without revoking the winning connection
+  ---
+  duration_ms: 37.7615
+  type: 'test'
+  ...
+# Subtest: malformed metadata with an existing token does not revoke a different tenant's grant
+ok 146 - malformed metadata with an existing token does not revoke a different tenant's grant
+  ---
+  duration_ms: 39.0848
+  type: 'test'
+  ...
+# Subtest: ambiguous persistence is reconciled from the exact saved attempt without revoking its token
+ok 147 - ambiguous persistence is reconciled from the exact saved attempt without revoking its token
+  ---
+  duration_ms: 36.6889
+  type: 'test'
+  ...
+# Subtest: safe metadata excludes secrets and cross-tenant connection IDs cannot read or revoke
+ok 148 - safe metadata excludes secrets and cross-tenant connection IDs cannot read or revoke
+  ---
+  duration_ms: 64.1824
+  type: 'test'
+  ...
+# Subtest: disconnect confirms provider revocation before clearing credentials, even after subscription expiry
+ok 149 - disconnect confirms provider revocation before clearing credentials, even after subscription expiry
+  ---
+  duration_ms: 52.2537
+  type: 'test'
+  ...
+# Subtest: unconfirmed revocation preserves credentials and fences retries for reconciliation
+ok 150 - unconfirmed revocation preserves credentials and fences retries for reconciliation
+  ---
+  duration_ms: 42.2286
+  type: 'test'
+  ...
+# Subtest: production callback never redirects to a supplied hostile origin
+ok 151 - production callback never redirects to a supplied hostile origin
+  ---
+  duration_ms: 23.39
+  type: 'test'
+  ...
+# Subtest: proposal denies browser credential access and has a provider-token uniqueness constraint
+ok 152 - proposal denies browser credential access and has a provider-token uniqueness constraint
+  ---
+  duration_ms: 3.308
+  type: 'test'
+  ...
+# Subtest: disabled handlers need neither advertiser credentials nor the proposal (undefined)
+ok 153 - disabled handlers need neither advertiser credentials nor the proposal (undefined)
+  ---
+  duration_ms: 38.4473
+  type: 'test'
+  ...
+# Subtest: disabled handlers need neither advertiser credentials nor the proposal (false)
+ok 154 - disabled handlers need neither advertiser credentials nor the proposal (false)
+  ---
+  duration_ms: 38.8977
+  type: 'test'
+  ...
+# Subtest: failed-save cleanup snapshot interleaved with another tenant's save never revokes the winner
+ok 155 - failed-save cleanup snapshot interleaved with another tenant's save never revokes the winner
+  ---
+  duration_ms: 63.2047
+  type: 'test'
+  ...
+# Subtest: competing tenant saves reserve one owner and reject a foreign disconnect
+ok 156 - competing tenant saves reserve one owner and reject a foreign disconnect
+  ---
+  duration_ms: 86.9553
+  type: 'test'
+  ...
+# Subtest: late cross-tenant save cannot take a fingerprint during or after its disconnect
+ok 157 - late cross-tenant save cannot take a fingerprint during or after its disconnect
+  ---
+  duration_ms: 168.0667
+  type: 'test'
+  ...
+# Subtest: duplicate DELETE requests grant exactly one provider-operation owner
+ok 158 - duplicate DELETE requests grant exactly one provider-operation owner
+  ---
+  duration_ms: 42.6495
+  type: 'test'
+  ...
+# Subtest: remote success then local clearing failure retries only the confirmed storage cleanup
+ok 159 - remote success then local clearing failure retries only the confirmed storage cleanup
+  ---
+  duration_ms: 39.9264
+  type: 'test'
+  ...
+# Subtest: a receipt-write failure retries the local receipt once without another provider revoke
+ok 160 - a receipt-write failure retries the local receipt once without another provider revoke
+  ---
+  duration_ms: 93.5631
+  type: 'test'
+  ...
+# Subtest: lost local clearing response reconciles the same completed operation
+ok 161 - lost local clearing response reconciles the same completed operation
+  ---
+  duration_ms: 61.4792
+  type: 'test'
+  ...
+# Subtest: an ambiguous receipt commit can be recovered by a later storage-only retry
+ok 162 - an ambiguous receipt commit can be recovered by a later storage-only retry
+  ---
+  duration_ms: 37.1132
+  type: 'test'
+  ...
+# Subtest: a crashed owner after claim is never replaced automatically, even after ten minutes
+ok 163 - a crashed owner after claim is never replaced automatically, even after ten minutes
+  ---
+  duration_ms: 41.5868
+  type: 'test'
+  ...
+# Subtest: remote success without a durable receipt requires reconciliation and never steals the owner
+ok 164 - remote success without a durable receipt requires reconciliation and never steals the owner
+  ---
+  duration_ms: 45.6169
+  type: 'test'
+  ...
+# Subtest: operation claim failure and an ambiguous committed claim never contact the provider
+ok 165 - operation claim failure and an ambiguous committed claim never contact the provider
+  ---
+  duration_ms: 116.5809
+  type: 'test'
+  ...
+# Subtest: failed operation owner cannot write a receipt or clear credentials under a changed operation ID
+ok 166 - failed operation owner cannot write a receipt or clear credentials under a changed operation ID
+  ---
+  duration_ms: 45.2215
+  type: 'test'
+  ...
+# Subtest: ambiguous/failed provider outcome is never a revocation receipt (revokeTimeout)
+ok 167 - ambiguous/failed provider outcome is never a revocation receipt (revokeTimeout)
+  ---
+  duration_ms: 44.1152
+  type: 'test'
+  ...
+# Subtest: ambiguous/failed provider outcome is never a revocation receipt (revokeThrow)
+ok 168 - ambiguous/failed provider outcome is never a revocation receipt (revokeThrow)
+  ---
+  duration_ms: 47.9849
+  type: 'test'
+  ...
+# Subtest: ambiguous/failed provider outcome is never a revocation receipt (revokeRaw)
+ok 169 - ambiguous/failed provider outcome is never a revocation receipt (revokeRaw)
+  ---
+  duration_ms: 55.9013
+  type: 'test'
+  ...
+# Subtest: ambiguous/failed provider outcome is never a revocation receipt (revokeRaw,revokeStatus)
+ok 170 - ambiguous/failed provider outcome is never a revocation receipt (revokeRaw,revokeStatus)
+  ---
+  duration_ms: 60.3375
+  type: 'test'
+  ...
+# Subtest: ambiguous/failed provider outcome is never a revocation receipt (revokePayload)
+ok 171 - ambiguous/failed provider outcome is never a revocation receipt (revokePayload)
+  ---
+  duration_ms: 38.6889
+  type: 'test'
+  ...
+# Subtest: ambiguous/failed provider outcome is never a revocation receipt (revokePayload)
+ok 172 - ambiguous/failed provider outcome is never a revocation receipt (revokePayload)
+  ---
+  duration_ms: 38.7847
+  type: 'test'
+  ...
+# Subtest: a corrupt credential cannot revoke a different fingerprint
+ok 173 - a corrupt credential cannot revoke a different fingerprint
+  ---
+  duration_ms: 44.797
+  type: 'test'
+  ...
+# Subtest: missing ownership RPCs fail closed and defer cleanup before any revocation
+ok 174 - missing ownership RPCs fail closed and defer cleanup before any revocation
+  ---
+  duration_ms: 29.5737
+  type: 'test'
+  ...
+# Subtest: TikTok review route fails closed outside development
+ok 175 - TikTok review route fails closed outside development
+  ---
+  duration_ms: 5.1903
+  type: 'test'
+  ...
+# Subtest: prototype is explicitly synthetic and contains no provider calls
+ok 176 - prototype is explicitly synthetic and contains no provider calls
+  ---
+  duration_ms: 2.6152
+  type: 'test'
+  ...
+# Subtest: recording flow exposes connect, account, management, close, and reset actions
+ok 177 - recording flow exposes connect, account, management, close, and reset actions
+  ---
+  duration_ms: 2.6936
+  type: 'test'
+  ...
+1..177
+# tests 177
+# suites 0
+# pass 177
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 68240.875

@@ -1,3 +1,5 @@
+import { legacyAnalyticsGuard, legacyRpcAvailable } from "@/lib/analytics/legacy-visibility";
+import { effectiveAnalyticsPeriod, explicitAnalyticsRange } from "@/lib/analytics/overview-metrics";
 import {
   NextRequest,
   NextResponse,
@@ -192,14 +194,16 @@ export async function GET(
 
   const now = new Date();
 
-  const range = getPeriodRange({
+  const range = explicitAnalyticsRange(request.nextUrl.searchParams, now, getPeriodRange({
     period,
     now,
     tzOffsetMinutes,
-  });
+  }));
+  if(!range)return NextResponse.json({success:false,error:"Invalid analytics date bounds."},{status:400});
 
-  const currentMember =
-    authResult.member;
+  const currentMember = authResult.member;
+  const scopeDenied = await legacyAnalyticsGuard(currentMember.business_id,authResult.user.id,request.nextUrl.searchParams);
+  if(scopeDenied)return scopeDenied;
 
   const { data, error } =
     await supabaseAdmin.rpc(
@@ -215,7 +219,7 @@ export async function GET(
       },
     );
 
-  if (error) {
+  if (error || !legacyRpcAvailable(data,"agents")) {
     console.error(
       "[Tenh Agent Analytics V2.14.1] Unable to load analytics:",
       error,
@@ -227,7 +231,7 @@ export async function GET(
         error:
           "Unable to load agent performance analytics.",
         ...(process.env.NODE_ENV !== "production"
-          ? { details: error.message }
+          ? { details: error?.message }
           : {}),
         ...(process.env.NODE_ENV !== "production"
           ? { hint: "Run supabase/01-v2-14-1-agent-response-attribution.sql first, then restart npm run dev." }
@@ -239,6 +243,8 @@ export async function GET(
     );
   }
 
+  if(data.summary.slaMet+data.summary.slaMissed===0)data.summary.slaRate=null;
+  if(data.summary.totalOutgoing===0)data.summary.attributionRate=null;
   return NextResponse.json({
     success: true,
     businessId:
@@ -247,7 +253,7 @@ export async function GET(
       currentMember.id,
     currentMemberRole:
       currentMember.role,
-    period,
+    period: effectiveAnalyticsPeriod(request.nextUrl.searchParams,period),
     slaMinutes,
     tzOffsetMinutes,
     start:

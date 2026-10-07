@@ -1,4 +1,7 @@
 "use client";
+import { useAnalyticsFilters } from "@/lib/analytics/use-analytics-filters";
+import { ANALYTICS_PERIOD_LABELS } from "@/lib/analytics/overview-metrics";
+import { AnalyticsUnavailable } from "@/components/analytics/analytics-unavailable";
 import { useAnalyticsRequest, useAnalyticsResume } from "@/lib/analytics/use-analytics-request";
 import { useForegroundLoading } from "@/lib/display/foreground-loading";
 
@@ -15,12 +18,7 @@ import {
   createClient,
 } from "@/lib/supabase/client";
 
-type PeriodKey =
-  | "today"
-  | "yesterday"
-  | "7d"
-  | "30d"
-  | "90d";
+type PeriodKey = import("@/lib/analytics/overview-metrics").AnalyticsPeriod;
 
 const PERIOD_OPTIONS: Array<{
   value: PeriodKey;
@@ -51,13 +49,14 @@ const PERIOD_OPTIONS: Array<{
 function getPeriodLabel(
   period: PeriodKey,
 ) {
+
   return (
     PERIOD_OPTIONS.find(
       (item) =>
         item.value ===
         period,
     )?.label ??
-    "Today"
+    ANALYTICS_PERIOD_LABELS[period]
   );
 }
 
@@ -241,10 +240,7 @@ function channelLabel(
 }
 
 export function CustomerInsightsPanel() {
-  const [period, setPeriod] =
-    useState<PeriodKey>(
-      "today",
-    );
+  const {period,setPeriod,query:filterQuery}=useAnalyticsFilters("today");
   const [summary, setSummary] =
     useState<CustomerSummary>(
       EMPTY_SUMMARY,
@@ -301,7 +297,7 @@ export function CustomerInsightsPanel() {
   const loadInsights =
     useCallback(
       async function loadInsights(silent = false): Promise<void> {
-        const request = requests.start(period, silent, () => { void loadInsights(true); });
+        const request = requests.start(filterQuery, silent, () => { void loadInsights(true); });
         if (!request) return;
         if (silent) {
           setRefreshing(true);
@@ -312,15 +308,7 @@ export function CustomerInsightsPanel() {
         setError(null);
 
         try {
-          const params =
-            new URLSearchParams({
-              period,
-              tzOffsetMinutes:
-                String(
-                  new Date()
-                    .getTimezoneOffset(),
-                ),
-            });
+          const params = new URLSearchParams(filterQuery);
 
           const response =
             await fetch(
@@ -399,7 +387,7 @@ export function CustomerInsightsPanel() {
           request.finish();
         }
       },
-      [period, requests],
+      [filterQuery, requests],
     );
 
   const scheduleRefresh =
@@ -549,6 +537,8 @@ export function CustomerInsightsPanel() {
       </div>
     );
   }
+
+  if(error)return <AnalyticsUnavailable message={error} onRetry={()=>void loadInsights()} period={period} onPeriod={setPeriod}/>;
 
   return (
     <div className="space-y-5">

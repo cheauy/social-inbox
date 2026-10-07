@@ -1,0 +1,24 @@
+{
+  "strictPeriodIncoming": {
+    "expected": 6,
+    "actual": 7,
+    "status": "FAIL"
+  },
+  "incomingFirstReply": {
+    "expected": 3,
+    "actual": 2,
+    "status": "FAIL"
+  },
+  "actualSummary": {
+    "conversations": 4,
+    "incomingMessages": 7,
+    "outgoingReplies": 6,
+    "avgFirstResponseSeconds": 431825,
+    "answered": 2,
+    "unanswered": 2,
+    "slaRate": 50,
+    "previousConversations": 0,
+    "conversationsChangePercent": null
+  },
+  "scope": "isolated route fixture; legacy definitions retained and flagged"
+}

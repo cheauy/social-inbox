@@ -46,6 +46,8 @@ export async function GET(request: NextRequest) {
 
   const currentMember = authResult.member;
   const businessId = currentMember.business_id;
+  const expected=request.nextUrl.searchParams.get("businessId");
+  if(expected&&expected!==businessId)return NextResponse.json({success:false,error:"Workspace changed. Reload this view."},{status:409});
   const includeLive = request.nextUrl.searchParams.get("includeLive") === "1";
   const slaInput = Number(request.nextUrl.searchParams.get("slaMinutes") ?? 10);
   const slaSeconds = (Number.isFinite(slaInput) ? Math.max(1, Math.min(1440, slaInput)) : 10) * 60;
@@ -91,18 +93,25 @@ export async function GET(request: NextRequest) {
         .in("status", ["open", "pending"]);
       if (hiddenPersonal) query = query.filter("social_account_id", "not.in", hiddenPersonal);
       return query.order("id", { ascending: true });
-    }),
+    },{requireComplete:true,signal:request.signal}),
 
-    supabaseAdmin
+    fetchAllRows<ReminderRow>(()=>{
+      let query=supabaseAdmin
       .from("conversation_reminders")
       .select(`
+        id,
         assigned_to,
         remind_at,
-        status
+        status,
+        conversation:conversations!inner(social_account_id)
       `)
       .eq("business_id", businessId)
-      .eq("status", "open"),
-    includeLive ? supabaseAdmin.rpc("get_tenh_live_workload", { p_business_id: businessId, p_sla_seconds: Math.round(slaSeconds) }) : Promise.resolve({ data: null, error: null }),
+      .eq("conversation.business_id",businessId)
+      .eq("status", "open");
+      if(hiddenPersonal)query=query.filter("conversation.social_account_id","not.in",hiddenPersonal);
+      return query.order("id",{ascending:true});
+    },{requireComplete:true,signal:request.signal}),
+    includeLive&&!hiddenPersonal ? supabaseAdmin.rpc("get_tenh_live_workload", { p_business_id: businessId, p_sla_seconds: Math.round(slaSeconds) }) : Promise.resolve({ data: null, error: null }),
   ]);
 
   if (membersResult.error) {
@@ -239,7 +248,7 @@ export async function GET(request: NextRequest) {
     currentMemberRole: currentMember.role,
     unassignedCount,
     live: liveResult.error ? null : liveResult.data,
-    liveError: liveResult.error ? "Live workload is unavailable. Apply the live dashboard workload migration." : null,
+    liveError: liveResult.error || (includeLive&&hiddenPersonal) ? "A verified permission-scoped live workload aggregate is unavailable." : null,
     members: workload,
   });
 }

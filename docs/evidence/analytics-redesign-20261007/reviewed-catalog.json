@@ -1,0 +1,1172 @@
+[
+  {
+    "kind": "column",
+    "object_name": "contact_tags",
+    "name": "contact_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "contact_tags",
+    "name": "created_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "contact_tags",
+    "name": "tag_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "address",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "business_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "company_name",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "created_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "customer_note",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "email",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "facebook_profile_id",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "facebook_profile_url",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "full_name",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "last_contact_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "notes",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "phone",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "platform",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "platform_user_id",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "profile_picture_url",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "contacts",
+    "name": "updated_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_activity",
+    "name": "activity_type",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_activity",
+    "name": "actor_member_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_activity",
+    "name": "actor_name",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_activity",
+    "name": "actor_profile_picture_url",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_activity",
+    "name": "business_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_activity",
+    "name": "contact_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_activity",
+    "name": "conversation_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_activity",
+    "name": "created_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_activity",
+    "name": "customer_name",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_activity",
+    "name": "description",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_activity",
+    "name": "id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_activity",
+    "name": "metadata",
+    "detail": "jsonb"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_activity",
+    "name": "title",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_reminders",
+    "name": "assigned_to",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_reminders",
+    "name": "business_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_reminders",
+    "name": "completed_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_reminders",
+    "name": "completed_by",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_reminders",
+    "name": "contact_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_reminders",
+    "name": "conversation_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_reminders",
+    "name": "created_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_reminders",
+    "name": "created_by",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_reminders",
+    "name": "id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_reminders",
+    "name": "note",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_reminders",
+    "name": "remind_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_reminders",
+    "name": "status",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversation_reminders",
+    "name": "updated_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "assigned_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "assigned_to",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "business_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "closed_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "contact_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "created_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "facebook_comment_id",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "facebook_messenger_sources",
+    "detail": "jsonb"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "facebook_post_id",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "is_pinned",
+    "detail": "boolean"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "last_message_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "last_message_text",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "parent_comment_id",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "pinned_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "pinned_by",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "platform",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "platform_conversation_id",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "social_account_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "source_type",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "status",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "status_updated_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "unread_count",
+    "detail": "integer"
+  },
+  {
+    "kind": "column",
+    "object_name": "conversations",
+    "name": "updated_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "attachment_url",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "business_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "comment_deleted_by",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "comment_is_deleted",
+    "detail": "boolean"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "comment_is_hidden",
+    "detail": "boolean"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "comment_is_liked",
+    "detail": "boolean"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "conversation_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "created_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "delivered_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "delivery_status",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "direction",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "is_echo",
+    "detail": "boolean"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "message_text",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "message_type",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "platform_created_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "platform_message_id",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "raw_payload",
+    "detail": "jsonb"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "recipient_platform_id",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "seen_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "sender_platform_id",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "messages",
+    "name": "sent_by_member_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "access_token_encrypted",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "account_name",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "business_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "connected_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "created_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "facebook_backfill_requested_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "facebook_connected_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "facebook_page_access_token_encrypted",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "facebook_page_name",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "facebook_token_last_error",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "facebook_token_status",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "facebook_user_access_token_encrypted",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "facebook_user_token_expires_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "is_active",
+    "detail": "boolean"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "platform",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "platform_account_id",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "telegram_bot_can_join_groups",
+    "detail": "boolean"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "telegram_bot_can_read_all_group_messages",
+    "detail": "boolean"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "telegram_bot_name",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "telegram_bot_token_encrypted",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "telegram_bot_username",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "telegram_connected_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "telegram_token_last_error",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "telegram_token_status",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "telegram_webhook_last_error",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "telegram_webhook_registered_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "telegram_webhook_secret_encrypted",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "telegram_webhook_status",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "telegram_webhook_url",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "token_expires_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "social_accounts",
+    "name": "updated_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "tags",
+    "name": "business_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "tags",
+    "name": "color",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "tags",
+    "name": "created_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "tags",
+    "name": "description",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "tags",
+    "name": "id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "tags",
+    "name": "is_active",
+    "detail": "boolean"
+  },
+  {
+    "kind": "column",
+    "object_name": "tags",
+    "name": "name",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "tags",
+    "name": "sort_index",
+    "detail": "integer"
+  },
+  {
+    "kind": "column",
+    "object_name": "tags",
+    "name": "updated_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "team_members",
+    "name": "business_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "team_members",
+    "name": "created_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "team_members",
+    "name": "email",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "team_members",
+    "name": "full_name",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "team_members",
+    "name": "id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "column",
+    "object_name": "team_members",
+    "name": "is_active",
+    "detail": "boolean"
+  },
+  {
+    "kind": "column",
+    "object_name": "team_members",
+    "name": "permissions",
+    "detail": "jsonb"
+  },
+  {
+    "kind": "column",
+    "object_name": "team_members",
+    "name": "profile_picture_url",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "team_members",
+    "name": "role",
+    "detail": "text"
+  },
+  {
+    "kind": "column",
+    "object_name": "team_members",
+    "name": "updated_at",
+    "detail": "timestamp with time zone"
+  },
+  {
+    "kind": "column",
+    "object_name": "team_members",
+    "name": "user_id",
+    "detail": "uuid"
+  },
+  {
+    "kind": "index",
+    "object_name": "contacts",
+    "name": "contacts_business_created_idx",
+    "detail": "CREATE INDEX contacts_business_created_idx ON public.contacts USING btree (business_id, created_at DESC)"
+  },
+  {
+    "kind": "index",
+    "object_name": "contacts",
+    "name": "contacts_business_id_idx",
+    "detail": "CREATE INDEX contacts_business_id_idx ON public.contacts USING btree (business_id)"
+  },
+  {
+    "kind": "index",
+    "object_name": "contacts",
+    "name": "contacts_business_id_platform_platform_user_id_key",
+    "detail": "CREATE UNIQUE INDEX contacts_business_id_platform_platform_user_id_key ON public.contacts USING btree (business_id, platform, platform_user_id)"
+  },
+  {
+    "kind": "index",
+    "object_name": "contacts",
+    "name": "contacts_business_last_contact_idx",
+    "detail": "CREATE INDEX contacts_business_last_contact_idx ON public.contacts USING btree (business_id, last_contact_at DESC)"
+  },
+  {
+    "kind": "index",
+    "object_name": "contacts",
+    "name": "contacts_business_name_idx",
+    "detail": "CREATE INDEX contacts_business_name_idx ON public.contacts USING btree (business_id, full_name)"
+  },
+  {
+    "kind": "index",
+    "object_name": "contacts",
+    "name": "contacts_business_platform_user_idx",
+    "detail": "CREATE INDEX contacts_business_platform_user_idx ON public.contacts USING btree (business_id, platform_user_id)"
+  },
+  {
+    "kind": "index",
+    "object_name": "contacts",
+    "name": "contacts_email_idx",
+    "detail": "CREATE INDEX contacts_email_idx ON public.contacts USING btree (email)"
+  },
+  {
+    "kind": "index",
+    "object_name": "contacts",
+    "name": "contacts_phone_idx",
+    "detail": "CREATE INDEX contacts_phone_idx ON public.contacts USING btree (phone)"
+  },
+  {
+    "kind": "index",
+    "object_name": "contacts",
+    "name": "contacts_pkey",
+    "detail": "CREATE UNIQUE INDEX contacts_pkey ON public.contacts USING btree (id)"
+  },
+  {
+    "kind": "index",
+    "object_name": "contacts",
+    "name": "contacts_platform_user_id_idx",
+    "detail": "CREATE INDEX contacts_platform_user_id_idx ON public.contacts USING btree (platform_user_id)"
+  },
+  {
+    "kind": "index",
+    "object_name": "contacts",
+    "name": "idx_contacts_tenh_customer_insights_created",
+    "detail": "CREATE INDEX idx_contacts_tenh_customer_insights_created ON public.contacts USING btree (business_id, created_at)"
+  },
+  {
+    "kind": "index",
+    "object_name": "contacts",
+    "name": "idx_contacts_tenh_customer_insights_last_contact",
+    "detail": "CREATE INDEX idx_contacts_tenh_customer_insights_last_contact ON public.contacts USING btree (business_id, last_contact_at)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversation_activity",
+    "name": "conversation_activity_business_idx",
+    "detail": "CREATE INDEX conversation_activity_business_idx ON public.conversation_activity USING btree (business_id)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversation_activity",
+    "name": "conversation_activity_contact_idx",
+    "detail": "CREATE INDEX conversation_activity_contact_idx ON public.conversation_activity USING btree (contact_id, created_at DESC)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversation_activity",
+    "name": "conversation_activity_conversation_created_idx",
+    "detail": "CREATE INDEX conversation_activity_conversation_created_idx ON public.conversation_activity USING btree (conversation_id, created_at DESC)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversation_activity",
+    "name": "conversation_activity_pkey",
+    "detail": "CREATE UNIQUE INDEX conversation_activity_pkey ON public.conversation_activity USING btree (id)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversation_activity",
+    "name": "idx_conversation_activity_business_created_at",
+    "detail": "CREATE INDEX idx_conversation_activity_business_created_at ON public.conversation_activity USING btree (business_id, created_at DESC)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversation_activity",
+    "name": "idx_conversation_activity_tenh_agent_resolution",
+    "detail": "CREATE INDEX idx_conversation_activity_tenh_agent_resolution ON public.conversation_activity USING btree (business_id, actor_member_id, activity_type, created_at)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversation_activity",
+    "name": "idx_conversation_activity_tenh_reports",
+    "detail": "CREATE INDEX idx_conversation_activity_tenh_reports ON public.conversation_activity USING btree (business_id, conversation_id, activity_type, created_at)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversation_reminders",
+    "name": "conversation_reminders_pkey",
+    "detail": "CREATE UNIQUE INDEX conversation_reminders_pkey ON public.conversation_reminders USING btree (id)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversation_reminders",
+    "name": "idx_conversation_reminders_assignee_status_time",
+    "detail": "CREATE INDEX idx_conversation_reminders_assignee_status_time ON public.conversation_reminders USING btree (assigned_to, status, remind_at)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversation_reminders",
+    "name": "idx_conversation_reminders_business_status_time",
+    "detail": "CREATE INDEX idx_conversation_reminders_business_status_time ON public.conversation_reminders USING btree (business_id, status, remind_at)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversation_reminders",
+    "name": "idx_conversation_reminders_conversation",
+    "detail": "CREATE INDEX idx_conversation_reminders_conversation ON public.conversation_reminders USING btree (conversation_id, status)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversations",
+    "name": "conversations_assigned_to_idx",
+    "detail": "CREATE INDEX conversations_assigned_to_idx ON public.conversations USING btree (assigned_to)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversations",
+    "name": "conversations_business_id_idx",
+    "detail": "CREATE INDEX conversations_business_id_idx ON public.conversations USING btree (business_id)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversations",
+    "name": "conversations_contact_last_message_idx",
+    "detail": "CREATE INDEX conversations_contact_last_message_idx ON public.conversations USING btree (contact_id, last_message_at DESC)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversations",
+    "name": "conversations_facebook_comment_idx",
+    "detail": "CREATE INDEX conversations_facebook_comment_idx ON public.conversations USING btree (facebook_comment_id)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversations",
+    "name": "conversations_last_message_at_idx",
+    "detail": "CREATE INDEX conversations_last_message_at_idx ON public.conversations USING btree (last_message_at DESC)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversations",
+    "name": "conversations_pinned_sort_idx",
+    "detail": "CREATE INDEX conversations_pinned_sort_idx ON public.conversations USING btree (is_pinned DESC, pinned_at DESC, last_message_at DESC)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversations",
+    "name": "conversations_pkey",
+    "detail": "CREATE UNIQUE INDEX conversations_pkey ON public.conversations USING btree (id)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversations",
+    "name": "conversations_social_account_id_contact_id_key",
+    "detail": "CREATE UNIQUE INDEX conversations_social_account_id_contact_id_key ON public.conversations USING btree (social_account_id, contact_id)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversations",
+    "name": "conversations_source_type_idx",
+    "detail": "CREATE INDEX conversations_source_type_idx ON public.conversations USING btree (source_type)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversations",
+    "name": "conversations_status_last_message_idx",
+    "detail": "CREATE INDEX conversations_status_last_message_idx ON public.conversations USING btree (status, last_message_at DESC)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversations",
+    "name": "idx_conversations_business_status",
+    "detail": "CREATE INDEX idx_conversations_business_status ON public.conversations USING btree (business_id, status)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversations",
+    "name": "idx_conversations_status",
+    "detail": "CREATE INDEX idx_conversations_status ON public.conversations USING btree (status)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversations",
+    "name": "idx_conversations_tenh_conversation_reports",
+    "detail": "CREATE INDEX idx_conversations_tenh_conversation_reports ON public.conversations USING btree (business_id, status, assigned_to, contact_id)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversations",
+    "name": "idx_conversations_tenh_customer_insights_contact",
+    "detail": "CREATE INDEX idx_conversations_tenh_customer_insights_contact ON public.conversations USING btree (business_id, contact_id, status)"
+  },
+  {
+    "kind": "index",
+    "object_name": "conversations",
+    "name": "idx_conversations_tenh_sla_business_status_time",
+    "detail": "CREATE INDEX idx_conversations_tenh_sla_business_status_time ON public.conversations USING btree (business_id, status, status_updated_at)"
+  },
+  {
+    "kind": "index",
+    "object_name": "messages",
+    "name": "idx_messages_conversation_created_id",
+    "detail": "CREATE INDEX idx_messages_conversation_created_id ON public.messages USING btree (conversation_id, created_at DESC, id DESC)"
+  },
+  {
+    "kind": "index",
+    "object_name": "messages",
+    "name": "idx_messages_tenh_agent_performance",
+    "detail": "CREATE INDEX idx_messages_tenh_agent_performance ON public.messages USING btree (business_id, sent_by_member_id, direction, COALESCE(platform_created_at, created_at))"
+  },
+  {
+    "kind": "index",
+    "object_name": "messages",
+    "name": "idx_messages_tenh_conversation_reports_time",
+    "detail": "CREATE INDEX idx_messages_tenh_conversation_reports_time ON public.messages USING btree (business_id, direction, COALESCE(platform_created_at, created_at))"
+  },
+  {
+    "kind": "index",
+    "object_name": "messages",
+    "name": "idx_messages_tenh_customer_insights_period",
+    "detail": "CREATE INDEX idx_messages_tenh_customer_insights_period ON public.messages USING btree (business_id, COALESCE(platform_created_at, created_at))"
+  },
+  {
+    "kind": "index",
+    "object_name": "messages",
+    "name": "idx_messages_tenh_sla_business_conversation_direction_time",
+    "detail": "CREATE INDEX idx_messages_tenh_sla_business_conversation_direction_time ON public.messages USING btree (business_id, conversation_id, direction, COALESCE(platform_created_at, created_at))"
+  },
+  {
+    "kind": "index",
+    "object_name": "messages",
+    "name": "messages_business_id_platform_message_id_key",
+    "detail": "CREATE UNIQUE INDEX messages_business_id_platform_message_id_key ON public.messages USING btree (business_id, platform_message_id)"
+  },
+  {
+    "kind": "index",
+    "object_name": "messages",
+    "name": "messages_conversation_id_idx",
+    "detail": "CREATE INDEX messages_conversation_id_idx ON public.messages USING btree (conversation_id)"
+  },
+  {
+    "kind": "index",
+    "object_name": "messages",
+    "name": "messages_created_at_idx",
+    "detail": "CREATE INDEX messages_created_at_idx ON public.messages USING btree (created_at)"
+  },
+  {
+    "kind": "index",
+    "object_name": "messages",
+    "name": "messages_delivery_status_idx",
+    "detail": "CREATE INDEX messages_delivery_status_idx ON public.messages USING btree (conversation_id, direction, delivery_status, platform_created_at)"
+  },
+  {
+    "kind": "index",
+    "object_name": "messages",
+    "name": "messages_message_text_trgm_idx",
+    "detail": "CREATE INDEX messages_message_text_trgm_idx ON public.messages USING gin (message_text gin_trgm_ops)"
+  },
+  {
+    "kind": "index",
+    "object_name": "messages",
+    "name": "messages_pkey",
+    "detail": "CREATE UNIQUE INDEX messages_pkey ON public.messages USING btree (id)"
+  },
+  {
+    "kind": "index",
+    "object_name": "messages",
+    "name": "messages_sent_by_member_id_idx",
+    "detail": "CREATE INDEX messages_sent_by_member_id_idx ON public.messages USING btree (sent_by_member_id) WHERE (sent_by_member_id IS NOT NULL)"
+  },
+  {
+    "kind": "setting",
+    "object_name": "session",
+    "name": "TimeZone",
+    "detail": "UTC"
+  }
+]

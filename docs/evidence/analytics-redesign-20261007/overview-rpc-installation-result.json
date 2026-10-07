@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-07",
+  "project": "dvieoqprsmzydtepbxwn",
+  "status": "BLOCKED_NOT_INSTALLED",
+  "approvedScope": "Exact reviewed analytics overview function and execute ACLs only",
+  "source": "db/proposals/20261007_analytics_overview.sql",
+  "sha256": "dd1a30d8b57a387d9753fc9096dd633b08de107bb2e9256f31f69bfe0f9d08aa",
+  "bodyMd5": "6910a77e16cd1dc1b50c90274b13ee7a",
+  "dependencyColumnsVerified": 38,
+  "installationAttempt": {
+    "sqlstate": "25006",
+    "sanitizedError": "cannot execute CREATE FUNCTION in a read-only transaction"
+  },
+  "connectionState": [
+    {
+      "transaction_read_only": "on",
+      "default_transaction_read_only": "on",
+      "recovery": false
+    }
+  ],
+  "after": {
+    "overviewFunctionCount": 0,
+    "publicFunctionCount": 176,
+    "delta": {
+      "added": [],
+      "removed": [],
+      "changed": []
+    }
+  },
+  "customerDataWrites": 0,
+  "integrationConfigurationChanges": 0,
+  "postgrestValidation": "NOT_RUN: function installation was rejected",
+  "authenticatedDashboardValidation": "NOT_RUN: missing RPC remains",
+  "remainingGate": "Install exact script through an authorized writable database connection, then verify body hash, ACLs and PostgREST with synthetic IDs",
+  "rollback": "If later installed, DROP FUNCTION public.get_tenh_analytics_overview(uuid,uuid,uuid,timestamptz,timestamptz,timestamptz,integer,text); NOTIFY pgrst, 'reload schema'; No rollback applied."
+}

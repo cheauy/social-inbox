@@ -1,3 +1,5 @@
+import { legacyAnalyticsGuard, legacyRpcAvailable } from "@/lib/analytics/legacy-visibility";
+import { effectiveAnalyticsPeriod, explicitAnalyticsRange } from "@/lib/analytics/overview-metrics";
 import {
   NextRequest,
   NextResponse,
@@ -10,7 +12,6 @@ import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 
-import { hiddenConversationIdSet, hiddenPersonalAccountIds } from "@/lib/telegram-personal/visibility";
 
 export const runtime =
   "nodejs";
@@ -262,15 +263,16 @@ export async function GET(
   const now =
     new Date();
 
-  const range =
-    getPeriodRange({
+  const range = explicitAnalyticsRange(request.nextUrl.searchParams, now, getPeriodRange({
       period,
       now,
       tzOffsetMinutes,
-    });
+    }));
+  if(!range)return NextResponse.json({success:false,error:"Invalid analytics date bounds."},{status:400});
 
-  const currentMember =
-    authResult.member;
+  const currentMember = authResult.member;
+  const scopeDenied = await legacyAnalyticsGuard(currentMember.business_id,authResult.user.id,request.nextUrl.searchParams);
+  if(scopeDenied)return scopeDenied;
 
   const [{ data, error }, overdueResult] = await Promise.all([supabaseAdmin.rpc(
     "get_tenh_conversation_reports",
@@ -294,7 +296,7 @@ export async function GET(
     .lt("remind_at", range.end.toISOString()),
   ]);
 
-  if (error) {
+  if (error || !legacyRpcAvailable(data,"conversations")) {
     console.error(
       "[Tenh Conversation Reports V2.16] Unable to load:",
       error,
@@ -306,7 +308,7 @@ export async function GET(
         error:
           "Unable to load conversation reports.",
         ...(process.env.NODE_ENV !== "production"
-          ? { details: error.message }
+          ? { details: error?.message }
           : {}),
         ...(process.env.NODE_ENV !== "production"
           ? { hint: "Run supabase/01-v2-16-conversation-reports.sql first." }
@@ -318,15 +320,7 @@ export async function GET(
     );
   }
 
-  // Waiting conversations on Telegram Personal chats this member may not see are not listed.
-  const waiting = (data?.waitingConversations ?? []) as Array<{ conversationId?: string }>;
-  const hiddenWaiting = await hiddenConversationIdSet(
-    waiting.map((row) => row.conversationId),
-    await hiddenPersonalAccountIds([currentMember.business_id], authResult.user.id),
-  );
-  const visibleData = data
-    ? { ...data, waitingConversations: waiting.filter((row) => !row.conversationId || !hiddenWaiting.has(row.conversationId)) }
-    : data;
+  const visibleData=data;
 
   return NextResponse.json({
     success: true,
@@ -336,7 +330,7 @@ export async function GET(
       currentMember.id,
     currentMemberRole:
       currentMember.role,
-    period,
+    period: effectiveAnalyticsPeriod(request.nextUrl.searchParams,period),
     periodLabel:
       range.label,
     slaMinutes,

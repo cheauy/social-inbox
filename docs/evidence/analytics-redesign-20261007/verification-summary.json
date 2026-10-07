@@ -1,0 +1,79 @@
+{
+  "date": "2026-10-07",
+  "suite": {
+    "passed": 174,
+    "failed": 0,
+    "skipped": 0,
+    "log": "regression-tests.log"
+  },
+  "browser": {
+    "passed": true,
+    "checks": 26,
+    "results": "browser-results.json"
+  },
+  "typecheck": {
+    "exit": 0,
+    "log": "typecheck.log"
+  },
+  "lint": {
+    "exit": 0,
+    "warnings": 3,
+    "errors": 0,
+    "log": "lint.log"
+  },
+  "build": {
+    "exit": 0,
+    "sourceDrift": [],
+    "source": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-analytics-final-build-20261007-sszzM5\\source",
+    "log": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-analytics-final-build-20261007-sszzM5\\production-build.log",
+    "syntheticConfigOnly": true,
+    "advertiserEnabled": false,
+    "accountHolderEnabled": false,
+    "proposalInstalled": false
+  },
+  "diffCheck": {
+    "exit": 0,
+    "log": "diff-check.log"
+  },
+  "sqlApplied": false,
+  "pushed": false,
+  "deployed": false,
+  "sourceManifest": {
+    "app/api/analytics/overview/route.ts": "a384bcf658a77a496112962bebcb6e731e00cc579c40c05a6c97120aa94d5408",
+    "components/analytics/analytics-definition-notice.tsx": "5b9511f25091846faa20bda1a052e5c37e5b64b52de8db6152843d4834989f90",
+    "components/analytics/analytics-unavailable.tsx": "21f4288f674279bacc5d88d5bacf307f0298a95febf0fbe308757c6f598dc51c",
+    "components/analytics/overview-charts.tsx": "4883e23a5cc7fb1b40fd93d59ce8b8889d1ef88452d783d3a9a162d38e903857",
+    "db/proposals/20261007_analytics_overview.sql": "2b497d43f973b2fd847770140a86b77af4be16a075a4ad12450eb9c8a0a36c62",
+    "docs/analytics-dashboard-review-20261007.md": "702dd9d10850adc2a99649e0a4b5fe2af5a31624c5eea77e3db9de48ffe174aa",
+    "lib/analytics/legacy-visibility.ts": "715b17a76ed559488951b0d885df1d9f42d0e590566d432d480223d7ad15b5ff",
+    "lib/analytics/overview-metrics.ts": "a4eddeeaa854f3de523884e2976b3539266ae697d55316655afe624c0907aada",
+    "lib/analytics/use-analytics-filters.ts": "d06b8644ad57e835bba0d931672b103827e6e396973dd54114751eac53179d25",
+    "tests/analytics-metric-report.cjs": "ac3105b9184e03b61878a3c5a959fe52417ebed417a1b8aeea68ea3c5ded475d",
+    "tests/analytics-overview-browser-build.cjs": "767df7bc6e5d838ab67d68a1b4eeda51e255773e6311d7bef7554a4a098d2c9c",
+    "tests/analytics-overview-browser-check.mjs": "7d7c427673479cb817c7495bbb66af7081501b885d5581715b2eb29bdc9e9f43",
+    "tests/analytics-overview-route.test.cjs": "5d0e3487f66dca282e74d06fc7873a6f80c233db1f30d115fb9a667cf8b912c4",
+    "tests/analytics-production-build.cjs": "0ce6fe7039ce49525385228a4e90e4bb3862c6b3b2e3f4512e736dda7b852e51",
+    "tests/analytics-rpc-audit.test.cjs": "4a7aa7b9e985601976d53ed69c5ca147398cc52fa2f1fc925d0a16ad00db2f26",
+    "tests/analytics-workload-scope.test.cjs": "96dbc01f89cfca8788e44d5136f78132d5f649034d2ce26c7d268d35bdf0a4af",
+    "tests/fixtures/analytics-metrics.cjs": "bc27b575c9f30f3e5834564a28db7fb4975e34534d52da66fc175fe35dfe70e3",
+    "tests/fixtures/analytics-overview-browser.entry.cjs": "e90b141cb267b52c2aa7936b1493b546d91666ece19e2c620a0e75e4af702fc3",
+    "tests/fixtures/analytics-schema.sql": "1f0145ff121ca33c9e47722131926c70daefb53a3ce8004f8a48bc15db9ae3fd",
+    "app/api/analytics/agents/route.ts": "25d87279cb0480b31f40a850a8c1e13e453e68a382145dfe21d623f08787e6cd",
+    "app/api/analytics/channels/route.ts": "e427d259468f9ca62832e16c10b935d389fabbf22f293a6c857ebffe90251c81",
+    "app/api/analytics/conversations/route.ts": "2cd610fe34efd0af2b04392cca7d47de0c96f84fdc1ce93ecd3aa56e5f98ede8",
+    "app/api/analytics/customers/route.ts": "d9b1b258c02bd34d74a8c5b5674bdf38b5e801aabaa25b51129d96c716311aa7",
+    "app/api/analytics/sla/route.ts": "06ac2fc06aa69c48496f12aab2104c263c00d5696a0c0627167b58a90d3b0fb9",
+    "app/api/team/workload/route.ts": "f1f4871ef763b5cc78baeda6a92add8ed0e28a7f00a41b773ecba936d63157ee",
+    "components/analytics/agent-performance-panel.tsx": "4225fedb973ab9c98deb3c76466758e1a17c51e51dd91457853a28d6f4f0e90e",
+    "components/analytics/analytics-workspace.tsx": "0c1e9004a89c6a450df00b7691fa98ab627b55b85a2d2a7fab17d78e503c6fe9",
+    "components/analytics/channel-performance-panel.tsx": "e73cf21139871e2681148e19bd99a02301b162dd85c0766f5fdca250c8baa09d",
+    "components/analytics/conversation-reports-panel.tsx": "9fccb8de4be8fbf84f33d9a4344612b405e6c903a2d54ab31b4ee2f117ae7573",
+    "components/analytics/customer-insights-panel.tsx": "b36e456d82199aa74df10297c28a755e71a4c2ce66a3d9e0c4b9bfa818dee8c4",
+    "components/analytics/dashboard-overview-panel.tsx": "737b6654c222907d0c436ebabf09a5ff2ad40909c6b81b0923d45bf889723818",
+    "components/analytics/sla-analytics-panel.tsx": "469402bc5aee1eb43a41896e4faffbded921494ea3c4eeaf551f424d6cb45652",
+    "components/inbox/agent-workload-panel.tsx": "28dfa04879f144a459925ed4a21bfef2eb7b29f5bf85deabb14ac4bb2c938c5d",
+    "tests/analytics-request-lifecycle.test.cjs": "8960b847dd324703033d4b502dfd31720ba5d266574aa773c24b471de9f473e5",
+    "tests/channel-analytics-read-safety.test.cjs": "65fa50d19602e2eb44eb290b62869cfb160013dcfbefc619abe98a91a8a08001",
+    "tests/telegram-personal-visibility-guard.test.cjs": "5b10a3c6fb4d48400f4d6eec6a972c3dfa4e0ae0f2113212cdf0f4d9d1718709"
+  }
+}

@@ -1,4 +1,6 @@
 "use client";
+import { useAnalyticsFilters } from "@/lib/analytics/use-analytics-filters";
+import { AnalyticsUnavailable } from "@/components/analytics/analytics-unavailable";
 import { useAnalyticsRequest, useAnalyticsResume } from "@/lib/analytics/use-analytics-request";
 import { useForegroundLoading } from "@/lib/display/foreground-loading";
 
@@ -15,12 +17,7 @@ import {
   createClient,
 } from "@/lib/supabase/client";
 
-type PeriodKey =
-  | "today"
-  | "yesterday"
-  | "7d"
-  | "30d"
-  | "90d";
+type PeriodKey = import("@/lib/analytics/overview-metrics").AnalyticsPeriod;
 
 type ConversationSummary = {
   receivedConversations: number;
@@ -156,6 +153,7 @@ function MetricCard({
   value: string;
   helper: string;
 }) {
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
@@ -342,16 +340,9 @@ function statusClasses(
 }
 
 export function ConversationReportsPanel() {
-  const [period, setPeriod] =
-    useState<PeriodKey>(
-      "today",
-    );
+  const {period,setPeriod,slaMinutes,setSlaMinutes,query:filterQuery}=useAnalyticsFilters("today");
 
-  const [
-    slaMinutes,
-    setSlaMinutes,
-  ] =
-    useState(10);
+
 
   const [
     summary,
@@ -436,7 +427,7 @@ export function ConversationReportsPanel() {
   const loadReport =
     useCallback(
       async function loadReport(silent = false): Promise<void> {
-        const request = requests.start(JSON.stringify([period, slaMinutes]), silent, () => { void loadReport(true); });
+        const request = requests.start(filterQuery, silent, () => { void loadReport(true); });
         if (!request) return;
         if (silent) {
           setRefreshing(
@@ -451,19 +442,7 @@ export function ConversationReportsPanel() {
         setError(null);
 
         try {
-          const params =
-            new URLSearchParams({
-              period,
-              slaMinutes:
-                String(
-                  slaMinutes,
-                ),
-              tzOffsetMinutes:
-                String(
-                  new Date()
-                    .getTimezoneOffset(),
-                ),
-            });
+          const params = new URLSearchParams(filterQuery);
 
           const response =
             await fetch(
@@ -547,7 +526,7 @@ export function ConversationReportsPanel() {
           request.finish();
         }
       },
-      [period, slaMinutes, requests],
+      [filterQuery, requests],
     );
 
   const scheduleRefresh =
@@ -716,6 +695,8 @@ export function ConversationReportsPanel() {
       </div>
     );
   }
+
+  if(error)return <AnalyticsUnavailable message={error} onRetry={()=>void loadReport()} period={period} onPeriod={setPeriod}/>;
 
   return (
     <div className="space-y-5">
