@@ -144,7 +144,7 @@ export default async function DashboardLayout({
       <InboxReturnContextProvider key={`${authResult.user.id}:${authResult.member.business_id}:${authResult.member.id}`}
         userId={authResult.user.id} businessId={authResult.member.business_id} memberId={authResult.member.id}>
       <WorkspacePermissionsProvider>
-        <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100">
+        <div data-dashboard-shell className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100">
           <DashboardHeader />
 
           <PendingInvitationsBanner />

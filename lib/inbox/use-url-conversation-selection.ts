@@ -31,15 +31,29 @@ export function useUrlConversationSelection({
   isAvailable,
   select,
   ownPushesRef,
+  clearOnEmptyUrl,
 }: {
   requestedConversationId: string | null;
   selectedConversationId: string | null;
   isAvailable: (conversationId: string) => boolean;
   select: (conversationId: string) => void;
   ownPushesRef: MutableRefObject<string[]>;
+  clearOnEmptyUrl?: () => void;
 }) {
   /* undefined until the first URL value is handled. */
   const lastSeenRef = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!clearOnEmptyUrl) return;
+    const onHistory = () => {
+      if (window.location.pathname !== "/dashboard/inbox") return;
+      ownPushesRef.current.length = 0;
+      lastSeenRef.current = undefined;
+      if (!new URL(window.location.href).searchParams.get("conversation")) clearOnEmptyUrl();
+    };
+    window.addEventListener("popstate", onHistory);
+    return () => window.removeEventListener("popstate", onHistory);
+  }, [clearOnEmptyUrl, ownPushesRef]);
 
   useEffect(() => {
     const requested = requestedConversationId;
@@ -58,9 +72,13 @@ export function useUrlConversationSelection({
     }
 
     if (!requested) {
+      if (lastSeenRef.current && clearOnEmptyUrl && window.location.pathname === "/dashboard/inbox" && !new URL(window.location.href).searchParams.get("conversation")) {
+        ownPushesRef.current.length = 0;
+        clearOnEmptyUrl();
+      }
       /*
        * Bare Inbox, or a filter/channel URL without a conversation. Keep the
-       * client-selected thread; a refresh still starts empty.
+       * desktop client-selected thread; compact Back clears a genuine list URL.
        */
       lastSeenRef.current = requested;
       return;
@@ -72,5 +90,5 @@ export function useUrlConversationSelection({
     lastSeenRef.current = requested;
 
     if (requested !== selectedConversationId) select(requested);
-  }, [requestedConversationId, selectedConversationId, isAvailable, select, ownPushesRef]);
+  }, [requestedConversationId, selectedConversationId, isAvailable, select, ownPushesRef, clearOnEmptyUrl]);
 }

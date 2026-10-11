@@ -1798,7 +1798,7 @@ export function ReplyBox({
 
 
   return (
-    <div className="shrink-0 w-full border border-slate-200 bg-white">
+    <div data-inbox-composer className="shrink-0 w-full border border-slate-200 bg-white">
       {/*
         Say that the media is coming, rather than leaving a disabled Send with
         no explanation. Sending is held until it lands, so the wait needs a
@@ -2305,7 +2305,7 @@ export function ReplyBox({
       >
         <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:flex-nowrap">
           {/* Real TENH quick tag selector */}
-          <div
+          <div data-inbox-quick-control
             onMouseDownCapture={() => {
               if (!isComposerBlocked) {
 
@@ -2351,10 +2351,11 @@ export function ReplyBox({
               initialTags={initialTags}
               onTagsChange={onTagsChange}
             />
+            <span data-inbox-quick-label data-quick-control-label="quick-tag">{isKhmer ? "ស្លាក" : "Tags"}</span>
           </div>
 
           {/* Real TENH saved reply selector */}
-          <div
+          <div data-inbox-quick-control
             onMouseDownCapture={() => {
               if (!isComposerBlocked) {
 
@@ -2419,6 +2420,7 @@ export function ReplyBox({
                 });
               }}
             />
+            <span data-inbox-quick-label data-quick-control-label="quick-reply">{isKhmer ? "ឆ្លើយតបរហ័ស" : "Quick Reply"}</span>
           </div>
 
           <TenhStickerPicker businessId={businessId} conversationId={conversationId} platform={platform} disabled={isComposerDisabled} stickersDisabled={stickerSending || !allowAttachments} onEmojiSelect={insertEmoji}
@@ -2443,7 +2445,7 @@ export function ReplyBox({
             className="hidden"
           />
 
-          <div className="order-first min-w-0 flex-[1_0_100%] pl-1 sm:order-none sm:flex-[1_1_320px]">
+          <div data-inbox-composer-input className="order-first min-w-0 flex-[1_0_100%] pl-1 sm:order-none sm:flex-[1_1_320px]">
             <div className="flex min-h-12 min-w-0 items-center rounded-2xl border border-slate-200 bg-white pl-1.5 pr-1 transition focus-within:border-violet-300 focus-within:ring-2 focus-within:ring-violet-100">
               <button
                 ref={attachmentTriggerRef}
@@ -2555,7 +2557,7 @@ export function ReplyBox({
             </div>
           </div>
 
-          <button
+          <button data-inbox-send aria-label={isKhmer ? "ផ្ញើ" : "Send"}
             type="submit"
             disabled={isSendDisabled || (!reply.trim() && attachments.length === 0 && !nativeSticker)}
             className="ml-auto inline-flex h-12 min-w-[96px] shrink-0 items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 sm:ml-0"

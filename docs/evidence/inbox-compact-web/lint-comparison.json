@@ -1,0 +1,133 @@
+{
+  "baselineErrors": 21,
+  "finalErrors": 21,
+  "introduced": [],
+  "final": [
+    {
+      "file": "components/inbox/conversation-header.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\conversation-header.tsx:246:5\n  244 |\n  245 |   useEffect(() => {\n> 246 |     setPresenceOpen(false);\n      |     ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  247 |   }, [conversation.id]);\n  248 |\n  249 |   const isKhmer = useWorkspaceLanguageId() === \"km\";",
+      "line": 246
+    },
+    {
+      "file": "components/inbox/conversation-list.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\conversation-list.tsx:1753:5\n  1751 |\n  1752 |   useEffect(() => {\n> 1753 |     setHydrated(true);\n       |     ^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  1754 |   }, []);\n  1755 |\n  1756 |   useEffect(() => {",
+      "line": 1753
+    },
+    {
+      "file": "components/inbox/conversation-list.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\conversation-list.tsx:2117:5\n  2115 |\n  2116 |   useEffect(() => {\n> 2117 |     setSelectedViewKey(\n       |     ^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  2118 |       viewKeyFromUrl(\n  2119 |         searchParams.get(\n  2120 |           \"view\",",
+      "line": 2117
+    },
+    {
+      "file": "components/inbox/conversation-list.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\conversation-list.tsx:2301:7\n  2299 |       );\n  2300 |       smartViewOrderRef.current = next;\n> 2301 |       setSmartViewOrder(next);\n       |       ^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  2302 |       return;\n  2303 |     }\n  2304 |",
+      "line": 2301
+    },
+    {
+      "file": "components/inbox/customer-tag-selector.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\customer-tag-selector.tsx:234:5\n  232 |     selectedTagsRef.current =\n  233 |       nextTags;\n> 234 |     setSelectedTags(nextTags);\n      |     ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  235 |   }, [\n  236 |     initialTags,\n  237 |     contactId,",
+      "line": 234
+    },
+    {
+      "file": "components/inbox/customer-tag-selector.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\customer-tag-selector.tsx:379:5\n  377 |\n  378 |   useEffect(() => {\n> 379 |     setVisibleCount(20);\n      |     ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  380 |   }, [search, open]);\n  381 |\n  382 |   function publishTags(",
+      "line": 379
+    },
+    {
+      "file": "components/inbox/inbox-channel-selector.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\inbox-channel-selector.tsx:227:7\n  225 |   useEffect(() => {\n  226 |     if (!isSwitching) {\n> 227 |       setSwitchingChannelId(null);\n      |       ^^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  228 |       setSwitchingLabel(null);\n  229 |     }\n  230 |   }, [isSwitching]);",
+      "line": 227
+    },
+    {
+      "file": "components/inbox/inbox-view.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\inbox-view.tsx:539:5\n  537 |     activeBusinessIdRef.current =\n  538 |       currentBusinessId;\n> 539 |     setActiveBusinessId(\n      |     ^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  540 |       currentBusinessId,\n  541 |     );\n  542 |   }, [currentBusinessId]);",
+      "line": 539
+    },
+    {
+      "file": "components/inbox/inbox-view.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\inbox-view.tsx:1339:3\n  1337 |   const source = latestCustomerChannel(liveMessages, resolvedActiveConversationId);\n  1338 |   if (!source) return;\n> 1339 |   setLiveConversations(current => current.map(row => row.id === resolvedActiveConversationId &&\n       |   ^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  1340 |     row.social_account?.platform !== \"telegram\" && row.source_type !== source\n  1341 |     ? { ...row, source_type: source } : row));\n  1342 | }, [liveMessages, resolvedActiveConversationId]);",
+      "line": 1339
+    },
+    {
+      "file": "components/inbox/inbox-view.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\inbox-view.tsx:4070:3\n  4068 |    * loaded when another action triggers router.refresh().\n  4069 |    */\n> 4070 |   setLiveMessages(\n       |   ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  4071 |     (current) => {\n  4072 |       if (\n  4073 |         !resolvedActiveConversationId",
+      "line": 4070
+    },
+    {
+      "file": "components/inbox/inbox-view.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\inbox-view.tsx:5553:5\n  5551 |     )\n  5552 |   ) {\n> 5553 |     retireComposerSubmissionScope();\n       |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  5554 |     desiredConversationIdRef.current =\n  5555 |       null;\n  5556 |     setClientSelectedConversationId(",
+      "line": 5553
+    },
+    {
+      "file": "components/inbox/message-panel.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\message-panel.tsx:1290:5\n  1288 |\n  1289 |   useEffect(() => {\n> 1290 |     setHydrated(true);\n       |     ^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  1291 |   }, []);\n  1292 |\n  1293 |   if (!value) {",
+      "line": 1290
+    },
+    {
+      "file": "components/inbox/message-panel.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\message-panel.tsx:1454:5\n  1452 |\n  1453 |   useEffect(() => {\n> 1454 |     setHydrated(true);\n       |     ^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  1455 |   }, []);\n  1456 |\n  1457 |   if (!value) {",
+      "line": 1454
+    },
+    {
+      "file": "components/inbox/message-panel.tsx",
+      "rule": "react-hooks/preserve-manual-memoization",
+      "message": "Compilation Skipped: Existing memoization could not be preserved\n\nReact Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. The inferred dependencies did not match the manually specified dependencies, which could cause the value to change more or less frequently than expected. The inferred dependency was `activeConversation`, but the source dependencies were [activeConversation?.social_account?.platform, activeConversation?.facebook_messenger_sources, messages]. Inferred less specific property than source.\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\message-panel.tsx:1577:36\n  1575 |   }, [activeConversation?.id, activeConversation?.contact?.business_id, activeConversation?.social_account?.platform, messages]);\n  1576 |\n> 1577 |   const messengerSources = useMemo(() =>\n       |                                    ^^^^^\n> 1578 |     activeConversation?.social_account?.platform === \"facebook\"\n       | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n> 1579 |       ? messengerSourceTimeline(activeConversation.facebook_messenger_sources, messages)\n       | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n> 1580 |       : messengerSourceTimeline([], []),\n       | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Could not preserve existing manual memoization\n  1581 |     [activeConversation?.social_account?.platform, activeConversation?.facebook_messenger_sources, messages],\n  1582 |   );\n  1583 |",
+      "line": 1577
+    },
+    {
+      "file": "components/inbox/message-panel.tsx",
+      "rule": "react-hooks/refs",
+      "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\message-panel.tsx:1600:3\n  1598 |   const deferredMessageRefs = useRef(new Map<string, HTMLDivElement>());\n  1599 |   const jumpConversationRef = useRef(activeConversation?.id ?? null);\n> 1600 |   jumpConversationRef.current = activeConversation?.id ?? null;\n       |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^ Cannot update ref during render\n  1601 |\n  1602 |   const isKhmer = useWorkspaceLanguageId() === \"km\";\n  1603 |",
+      "line": 1600
+    },
+    {
+      "file": "components/inbox/message-panel.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\message-panel.tsx:1751:5\n  1749 |\n  1750 |   useEffect(() => {\n> 1751 |     setImagePreview(null);\n       |     ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  1752 |   }, [activeConversation?.id]);\n  1753 |\n  1754 |   useEffect(() => {",
+      "line": 1751
+    },
+    {
+      "file": "components/inbox/message-panel.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\message-panel.tsx:1755:5\n  1753 |\n  1754 |   useEffect(() => {\n> 1755 |     setCommentConfirmTarget(null);\n       |     ^^^^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  1756 |     setCommentConfirmLoading(false);\n  1757 |   }, [activeConversation?.id]);\n  1758 |",
+      "line": 1755
+    },
+    {
+      "file": "components/inbox/message-panel.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\message-panel.tsx:2269:5\n  2267 |     previousMessageCountRef.current = 0;\n  2268 |     userNearBottomRef.current = true;\n> 2269 |     setShowScrollToLatest(false);\n       |     ^^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  2270 |     prependScrollSnapshotRef.current = null;\n  2271 |     olderLoadRequestedRef.current = false;\n  2272 |     setNewMessageCount(0);",
+      "line": 2269
+    },
+    {
+      "file": "components/inbox/message-panel.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\message-panel.tsx:2643:5\n  2641 |\n  2642 |   useEffect(() => {\n> 2643 |     setJumpHighlightedMessageId(\n       |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  2644 |       null,\n  2645 |     );\n  2646 |     messageElementRefs.current.clear();",
+      "line": 2643
+    },
+    {
+      "file": "components/inbox/reply-box.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\reply-box.tsx:305:29\n  303 |   const stickerScope = useRef(0);\n  304 |   useEffect(() => {\n> 305 |     stickerScope.current++; setNativeSticker(null); setStickerSending(false); setStickerNotice(null); stickerFlight.current = false;\n      |                             ^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  306 |     return () => { stickerScope.current++; };\n  307 |   }, [conversationId, platform]);\n  308 |",
+      "line": 305
+    },
+    {
+      "file": "components/inbox/reply-box.tsx",
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nC:\\Users\\TUF\\social-inbox\\components\\inbox\\reply-box.tsx:1380:7\n  1378 |     if (!error && onStatusChange) {\n  1379 |       onStatusChange(nextStatus);\n> 1380 |       setSendMode(\"now\");\n       |       ^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  1381 |     }\n  1382 |   }, [error, onStatusChange, sending]);\n  1383 |",
+      "line": 1380
+    }
+  ]
+}

@@ -625,6 +625,8 @@ export function InboxChannelSelector({
             <ChannelIcon platform={selectedPlatform} />
           )}
 
+          <span data-inbox-nav-label>{isKhmer ? "ឆានែល" : "Channels"}</span>
+
           <span className="pointer-events-none absolute left-[52px] top-1/2 z-[100] hidden -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-950 px-3 py-2 text-xs font-medium text-white shadow-xl group-hover:block">
             {isSwitching
               ? isKhmer
@@ -704,7 +706,7 @@ export function InboxChannelSelector({
           <div
             className={
               isRail
-                ? "absolute left-[52px] top-0 z-50 max-h-[440px] w-[320px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+                ? "absolute tenh-inbox-channel-popover left-[52px] top-0 z-50 max-h-[440px] w-[320px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
                 : "absolute left-3 right-3 top-[72px] z-50 max-h-[440px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
             }
           >

@@ -1,0 +1,3 @@
+AssertionError [ERR_ASSERTION]: tablet Back preserves an end-of-list anchor when the global header returns
+    at check (file:///C:/Users/TUF/social-inbox/tests/inbox-compact-browser-check.mjs:29:37)
+    at file:///C:/Users/TUF/social-inbox/tests/inbox-compact-browser-check.mjs:90:7

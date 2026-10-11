@@ -3781,6 +3781,7 @@ function ConversationListView({
                   view.label
                 }
               >
+                <span data-inbox-view-label>{view.value === "all" ? (isKhmer ? "ទាំងអស់" : "All") : view.value === "comment" ? (isKhmer ? "មតិយោបល់" : "Comments") : view.label}</span>
                 <span className="flex h-5 w-5 items-center justify-center">
                   {
                     view.icon
@@ -3866,6 +3867,7 @@ function ConversationListView({
           title={isKhmer ? "តាមដាន / ការរំលឹក" : "Follow-up / Reminders"}
         >
           <ReminderIcon />
+          <span data-inbox-nav-label>{isKhmer ? "រំលឹក" : "Reminders"}</span>
 
           {reminderCount > 0 ? (
             <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-slate-50 bg-amber-500 px-1 text-[10px] font-bold leading-none text-white">
@@ -3913,6 +3915,7 @@ function ConversationListView({
           aria-label={isKhmer ? "Smart Views" : "Smart Views"}
         >
           <ViewsIcon />
+          <span data-inbox-nav-label>Smart View</span>
 
           <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-slate-50 bg-violet-600 px-1 text-[10px] font-bold leading-none text-white">
             {savedViews.length + DEFAULT_SMART_VIEW_ORDER_IDS.length > 9
@@ -3947,7 +3950,7 @@ function ConversationListView({
             aria-label="Close Smart Views"
           />
 
-          <section className="absolute left-16 top-3 z-40 flex max-h-[calc(100%-24px)] w-[360px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <section data-inbox-smart-views className="absolute left-16 top-3 z-40 flex max-h-[calc(100%-24px)] w-[360px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-4">
               <div>
                 <h2 className="text-base font-bold text-slate-950">
@@ -5057,7 +5060,7 @@ function ConversationListView({
         ) : null}
 
 
-        <div ref={listContainerRef} style={{ overflowAnchor: "none" }} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" aria-busy={(pager.enabled ? pager.loading : statusSwitching) || channelSwitching}>
+        <div data-inbox-list-scroll ref={listContainerRef} style={{ overflowAnchor: "none" }} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" aria-busy={(pager.enabled ? pager.loading : statusSwitching) || channelSwitching}>
           {pager.enabled && pager.error ? <p role="alert" className="p-3 text-sm">{pager.error} <button type="button" onClick={pager.retry} className="underline">Retry</button></p> : null}
           {/*
             The skeleton wins over both the rows and the empty state, so a

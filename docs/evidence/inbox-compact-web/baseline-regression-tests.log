@@ -1,0 +1,2020 @@
+Facebook comment reply not confirmed {
+  conversationId: 'conv1',
+  commentId: '123_456',
+  status: 500,
+  code: 1,
+  subcode: undefined,
+  traceId: undefined
+}
+Facebook comment reply not confirmed {
+  conversationId: 'conv1',
+  commentId: '123_456',
+  status: 500,
+  code: 1,
+  subcode: undefined,
+  traceId: undefined
+}
+Facebook comment reply not confirmed {
+  conversationId: 'conv1',
+  commentId: '123_456',
+  status: 500,
+  code: 1,
+  subcode: undefined,
+  traceId: undefined
+}
+Facebook comment reply not confirmed {
+  conversationId: 'conv1',
+  commentId: '123_456',
+  status: 500,
+  code: 1,
+  subcode: undefined,
+  traceId: undefined
+}
+Facebook comment reply not confirmed {
+  conversationId: 'conv1',
+  commentId: '123_456',
+  status: 500,
+  code: 1,
+  subcode: undefined,
+  traceId: undefined
+}
+Facebook comment reply not confirmed {
+  conversationId: 'conv1',
+  commentId: '123_456',
+  status: 500,
+  code: 1,
+  subcode: undefined,
+  traceId: undefined
+}
+Confirmed comment could not be stored { conversationId: 'conv1', commentId: 'reply1', code: 'FAIL' }
+✔ Facebook reduce-data error is identified without automatically posting again (182.1214ms)
+✔ read-back confirms the posted reply after Meta code 1 without resending (64.3353ms)
+✔ read-back does not confirm wrong Page (53.3091ms)
+✔ read-back does not confirm wrong parent (43.1236ms)
+✔ read-back does not confirm old reply (35.9807ms)
+✔ read-back does not confirm different text (36.7937ms)
+✔ read-back does not confirm ambiguous identical replies (31.9695ms)
+✔ confirmed reply keeps its provider ID when local save returns undefined (29.6237ms)
+✔ confirmed reply keeps its provider ID when local save returns 23505 (35.4776ms)
+✔ confirmed reply keeps its provider ID when local save returns FAIL (46.0011ms)
+✔ normal single-photo card keeps caption, image, source permalink and image action (69.9217ms)
+✔ whole-album comments display both verified photos and whole-post context (51.3625ms)
+✔ exact photo association displays the associated photo and only supplied photo/comment permalinks (79.5238ms)
+✔ unknown photo association shows album without claiming a nearby photo (59.4083ms)
+✔ no provider permalink means no manufactured source/comment/photo URL (35.7871ms)
+✔ different source identity cannot inherit stale caption/image/permalink (0.5651ms)
+✔ fixture reproduces customer reply to Page reply with exact immediate author and body (32.2778ms)
+✔ outbound Page reply omits the entire redundant parent quote without an empty card (31.2363ms)
+✔ hiding an outbound parent quote preserves the original album and post link (38.6211ms)
+✔ deeper nesting preserves immediate parent rather than flattening quoted context to root (1.4037ms)
+✔ pagination keeps orphan intermediate parent and all descendants visible exactly once (0.8184ms)
+✔ deleted root and parent cycles cannot swallow remaining replies (0.2678ms)
+✔ same sender on multiple posts stays per message and never borrows nearby parent (0.2588ms)
+✔ same customer on different album photos never shares a source card; unknown associations remain separate (0.3842ms)
+✔ loaded messages in another conversation do not become a local render parent (0.2073ms)
+✔ verified top-level snapshot overrides raw photo parent and successful endpoint clears stale quote (62.0624ms)
+✔ accurate deleted parent fallback never fabricates text (30.4263ms)
+✔ accurate unavailable parent fallback never fabricates text (24.9334ms)
+✔ accurate media parent fallback never fabricates text (22.6753ms)
+✔ synthetic ingest text is not quoted for media-only parent; video is never used as image (0.2857ms)
+✔ failed parent photo preview has an accurate media fallback (22.3886ms)
+✔ authorized exact parent outside loaded page or in another customer thread is recovered read-only (54.2149ms)
+✔ parent recovery cannot cross tenant boundary (44.5719ms)
+✔ parent recovery cannot cross Page boundary (48.3212ms)
+✔ parent recovery cannot cross post boundary (45.4072ms)
+✔ authorization precedes all provider context lookups {"denied":true} (40.8319ms)
+✔ authorization precedes all provider context lookups {"permissionDenied":true} (43.7884ms)
+✔ known local parent deletion overrides a cached provider snapshot (44.3877ms)
+✔ saved exact parent snapshot survives provider unavailability (44.9986ms)
+✔ provider omission of an inaccessible parent cannot erase the stored exact relationship (44.2072ms)
+✔ verified child photo-to-story association selects exact photo without changing original post permalink (54.9783ms)
+✔ verified direct post identity replaces stale stored source; foreign Page object is rejected (74.122ms)
+✔ verified photo story replaces stale stored post and does not retain its caption or permalink (35.6839ms)
+✔ rich provider request keeps all album leaf images even when full_picture exists (34.0785ms)
+✔ pagination on attachments never certifies complete album context or follows unbounded next links (27.4898ms)
+✔ legacy attachment-only fallback preserves normal recoverable media (32.6723ms)
+✔ exact child provider result gives immediate parent and authoritative permalink; coalesces rerenders (30.4172ms)
+✔ parent ID-only response performs one exact read; wrong child identity is never accepted (54.0748ms)
+✔ fallback post ID lookup validates the exact requested child ID (74.125ms)
+✔ missing/media-only provider parents produce factual placeholders and top-level photo has no comment parent (83.9462ms)
+✔ photo context uses provider story/link and largest safe image; caches by authorized Page (30.3594ms)
+✔ ingestion retains verified immediate parent and exact reply permalink for customer reply (45.8027ms)
+✔ ingestion retains verified immediate parent and exact reply permalink for Page reply (35.9393ms)
+✔ ingestion never persists a context snapshot from a mismatched provider child ID (29.9527ms)
+✔ ingestion preserves exact webhook parent when provider omits unavailable parent content (49.1663ms)
+✔ complete ingested album preview without comment association enriches once and selects exact photo (60.5235ms)
+{"unreadServerTiming":"auth;dur=0.1, count;dur=0.0, db;dur=0.0"}
+Facebook comment deleted, but local reconciliation failed: Error: reconcile failed
+    at markFacebookCommentThreadDeleted (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\inbox-action-feedback.test.cjs:250:82)
+    at Object.POST (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\app\api\facebook\comments\delete\route.ts:109:86)
+    at async TestContext.<anonymous> (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\inbox-action-feedback.test.cjs:310:20)
+    at async Test.run (node:internal/test_runner/test:1332:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+{"hideServerTiming":"auth;dur=0.2, meta;dur=0.3, verify;dur=0.2, db;dur=0.0"}
+✔ double click: the second identical action on one conversation is refused synchronously (2.2367ms)
+✔ independent conversations stay usable while one is pending (0.255ms)
+✔ Assign and Assign to me share one per-conversation slot (claim conflict guard) (0.1283ms)
+✔ response first, then our own realtime echo: success stays silent (0.3633ms)
+✔ realtime echo first, then the response: success stays silent (0.2191ms)
+✔ duplicate realtime deliveries of our own activity stay silent (0.2241ms)
+✔ a teammate's activity and my own from another device are always shown (0.1514ms)
+✔ a failed action releases its entry; a later unrelated echo is shown (0.2107ms)
+✔ rapid toggles with out-of-order echoes: every own echo silent, teammate still shown (0.3893ms)
+✔ rollback never overwrites a teammate's newer value (0.3754ms)
+✔ late auto-read: awaiting the exact read keeps Mark Unread the later write (old 5 s poll did not) (4.3637ms)
+✔ unread count: identical to the old full-history walk on varied threads (805.4049ms)
+✔ unread route reports per-phase Server-Timing (11.211ms)
+✔ deleted only on structured, twice-confirmed evidence (85.2394ms)
+✔ provider accepted, local save failed: partial success, not failure (Like and Hide) (42.5187ms)
+✔ Hide keeps its verification: Meta accepted but still visible is reported (25.8101ms)
+✔ Delete: reconciliation runs after Facebook confirms, and succeeds normally (40.0843ms)
+✔ Delete: Facebook deleted it but reconciliation failed is partial, not a 500 (23.4555ms)
+✔ comment routes report per-phase Server-Timing (25.2788ms)
+✔ client outcomes: deleted, partial, failed, uncertain timeout and network loss (1.7877ms)
+✔ listed actions show no success toast; their errors remain (1.2168ms)
+✔ comment success is silent; partial warnings, deleted and uncertain notices remain (0.3598ms)
+✔ incoming and outgoing nearby singles remain independent without an authoritative identity (2.121ms)
+✔ Telegram incoming provider album groups separate rows and preserves caption/reply data (0.5052ms)
+✔ Telegram flat outgoing response media_group_id is recognized (0.3748ms)
+✔ album boundaries include sender, staff, recipient, conversation, channel, business and direction (0.4841ms)
+✔ partial arrival stays single then becomes album; out-of-order item arrival sorts numeric provider IDs (0.809ms)
+✔ explicit client positions keep optimistic and confirmed album order stable (0.7925ms)
+✔ duplicate echoes yield one photo per platform ID and bare projection retains album metadata (1.9563ms)
+✔ deleted photos leave the grid and unrelated photos between album items are never absorbed (0.4784ms)
+✔ one Facebook attachment stays single; authoritative arrays create grid with individual photo selection (0.5847ms)
+✔ outgoing Facebook albums retain saved URLs through a bare echo without becoming blob URLs (0.5972ms)
+✔ local explicit outgoing batches group before delivery; incoming cannot forge local batch grouping (0.3287ms)
+✔ partial stored outgoing batch matches optimistic scope only when the observed staff agrees (0.2839ms)
+✔ all distinct substantive album captions survive partial/out-of-order arrival (0.3232ms)
+✔ selected-photo recovery skips mixed videos and never substitutes the first album photo (93.6065ms)
+✔ authorized media route signs the selected stored album slot, rejects missing/foreign/deleted slots (71.9404ms)
+✔ Facebook multiple upload persists every byte slot even with unavailable Graph attachment detail (139.5828ms)
+✔ one picker accepts one or multiple images, video, audio and supported documents (2.2223ms)
+✔ cancel is a no-op and choosing the same file again remains possible (0.5487ms)
+✔ unsupported, oversized and extra videos are rejected with explicit reasons (3.6931ms)
+✔ Telegram channel limits are applied before staging (2.1022ms)
+✔ composer exposes direct device files and Storage without auto-sending selected files (2.63ms)
+✔ Storage is workspace-shared, uploads multiple files, and offers explicit Draft or Send Now actions (1.6939ms)
+✔ attachment menu fits narrow viewports and remains keyboard accessible (2.0394ms)
+✔ new stored voice uses a fresh private signed URL before contacting Facebook (122.8458ms)
+✔ old voice with no private copy refreshes only its exact Facebook audio attachment (36.5573ms)
+✔ signed out or foreign workspace cannot recover audio (19.9593ms)
+✔ without conversation view permission cannot recover audio (16.9236ms)
+✔ other workspace message cannot recover audio (16.291ms)
+✔ other conversation message cannot recover audio (15.0973ms)
+✔ non-audio message cannot recover audio (14.3052ms)
+✔ deleted voice cannot recover audio (22.0775ms)
+✔ Telegram IDs never fall through to Facebook Graph (15.5658ms)
+✔ a failed refresh or untrusted refreshed URL remains unavailable (44.6543ms)
+✔ invalid references stop before storage or provider access (27.1267ms)
+✔ snapshot covers unread rows beyond the visible window and deduplicates IDs (3.4506ms)
+✔ read snapshots reject invalid IDs, timestamps, counts and injected filters (0.5441ms)
+✔ read receipt applies only to the captured message state, not one arriving 100ms later (0.2376ms)
+✔ successful mark-all-read updates only requested unread rows and returns receipts (118.177ms)
+✔ compare-and-swap preserves message that changes after the click (80.5612ms)
+✔ compare-and-swap preserves count that changes after the click (70.3436ms)
+✔ compare-and-swap preserves version that changes after the click (74.1511ms)
+✔ legacy client without updated_at uses freshly verified database version (56.8053ms)
+✔ null last-message timestamp can be marked read safely (60.7488ms)
+✔ already-read rows are skipped, not counted as a successful new write (64.97ms)
+✔ mixed authorized and unauthorized IDs reject the whole request before writing (64.1964ms)
+✔ bulk read respects access {"signedOut":true} (55.4405ms)
+✔ bulk read respects access {"denied":true} (48.3962ms)
+✔ bulk read respects access {"permissionDenied":true} (61.1997ms)
+✔ bulk read respects access {"businesses":[]} (66.4638ms)
+✔ inactive or disconnected channel is not writable {"is_active":false} (55.4156ms)
+✔ inactive or disconnected channel is not writable {"facebook_token_status":"disconnected"} (46.1846ms)
+✔ inactive or disconnected channel is not writable {"platform":"telegram","telegram_token_status":"invalid"} (54.5384ms)
+✔ bounded batches report partial database failure accurately without clearing unconfirmed rows (47.2682ms)
+✔ invalid bulk request empty performs no writes (64.7843ms)
+✔ invalid bulk request too-many performs no writes (47.9928ms)
+✔ invalid bulk request duplicates performs no writes (47.7026ms)
+✔ invalid bulk request bad performs no writes (53.1503ms)
+✖ Unread action passes every filtered row, not the first visible page (4.0991ms)
+✔ channel, workspace and All Channels have one navigation owner; paging=true (55.9828ms)
+✔ channel, workspace and All Channels have one navigation owner; paging=false (12.7038ms)
+✔ denied channels and workspace groups cannot initiate either navigation path (8.7213ms)
+{"overlappingCatalogueConsumers":2,"fetches":1,"parsedResponses":2}
+✔ real selector and list catalogue callbacks share one overlapping authenticated read and both parse it (179.1818ms)
+✔ catalogue sharing keeps no completed tenant response; failures retry (12.0574ms)
+✔ real React first B commit hides A draft, disables Send, and its retained handler cannot submit after restoration (217.8866ms)
+✔ real React batched A -> B -> A retires old await/callback and still enables the current composer (47.6909ms)
+✔ real React same-ID business transition clears the previous business draft and rejects its old handler (41.3552ms)
+✔ actual ReplyBox text submit is blocked while the owner is not ready (74.1451ms)
+✔ real React keyed composer retirement discards late quick-reply media and revokes its generated URL (208.4551ms)
+✔ late microphone acquisition after keyed A -> B stops every acquired track without creating recorder/interval (170.4481ms)
+✔ repeated starts before acquisition and from an old render while recording use one microphone and timer (40.7947ms)
+An update to Microphone inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Microphone inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Microphone inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+✔ current microphone denial keeps its error and permits a subsequent start (30.4429ms)
+✔ late denied acquisition after unmount does not change the new composer error or create resources (26.0383ms)
+✔ constructor failure releases all acquired tracks and leaves no interval (26.1256ms)
+✔ actual Send blocks new B handler with A state owner, including Telegram Edit and public comment text (450.2974ms)
+✔ restoring destination owner during channel await cannot authorize text captured from a different owner (66.3783ms)
+✔ actual Send rejects late platform result after A -> B -> A, even when ID and owner match again (40.6384ms)
+✔ same conversation ID in another business cannot dispatch the previous business draft (77.5801ms)
+✔ captured attachment follow-up text remains allowed in its owner and is rejected after ABA retirement (102.0748ms)
+✔ revoked business access blocks entry and a pending channel result (75.6747ms)
+✔ actual media handler rejects owner mismatch before platform work and late selection before dispatch (79.9077ms)
+✔ actual quick-reply text callback rejects retired render and preserves current conversation work (79.2142ms)
+✔ current owner retains ordinary text and media sends (76.5927ms)
+✔ current Telegram text/Edit and public comment route bodies are preserved (110.2918ms)
+✔ late rejected platform lookup cannot replace the current owner error state (72.0785ms)
+✔ sticker handlers respect current owner and reject retired callbacks (109.0791ms)
+✖ REPRODUCTION (original code): A -> Menu -> Inbox, click B snaps back to A and aborts B (255.5845ms)
+✔ A -> Menu -> Inbox -> B -> C: URL, row, header and messages follow each click (189.0786ms)
+✔ useSearchParams lagging behind pushState cannot pull a click back (164.088ms)
+✔ rapid clicks with delayed responses and a lagging URL: the newest click wins everywhere (217.4495ms)
+✔ direct link to A, then B: B is selected and the URL follows (109.3324ms)
+✔ bare Inbox: nothing is forced open, and a click selects and sets the URL (111.1393ms)
+✔ browser Back and Forward still move between conversations (293.4822ms)
+✔ Back to a conversation whose own push was skipped by a lagging URL still navigates (218.9178ms)
+✔ a filter/channel URL without ?conversation= keeps the open thread (154.1247ms)
+✔ the real InboxView routes row and search clicks through the URL and uses the fixed hook (4.2291ms)
+✔ image endpoint returns actual PNG bytes, not an image URL or HTML (260.8299ms)
+✔ off-page thumbnails resolve by platform ID and stay small (120.2403ms)
+✔ native album photo index fetches the selected photo, not the first photo (95.2146ms)
+✔ unauthorized cannot fetch photo bytes (94.5652ms)
+✔ without view permission cannot fetch photo bytes (85.3272ms)
+✔ other workspace cannot fetch photo bytes (65.2283ms)
+✔ other conversation cannot fetch photo bytes (76.5271ms)
+✔ deleted photo cannot fetch photo bytes (91.5741ms)
+✔ ordinary text cannot fetch photo bytes (75.9174ms)
+✔ invalid references and photo indexes are rejected without fetching (73.1653ms)
+✔ private stored photos use the authorized row storage path and freshly signed link (86.9362ms)
+✔ client-supplied URL is ignored; untrusted stored URLs are not fetched (157.3366ms)
+✔ redirects to private or untrusted hosts are stopped before another fetch (59.7434ms)
+✔ corrupt bytes and non-image responses fail safely without exposing details (107.1727ms)
+✔ source allowlist blocks deceptive domains, credentials, custom ports and arbitrary Storage (5.6364ms)
+✔ stream limits are enforced even when Content-Length is missing or dishonest (8.8492ms)
+✖ Facebook album renders enabled Reply and Copy for every photo; reactions retain the real row ID (757.2856ms)
+✖ Telegram grouped photos each reply to the correct actual message ID (403.1072ms)
+✖ composer quote uses the exact selected album thumbnail and can cancel that selection (381.5145ms)
+✖ a sent image reply renders a thumbnail and jumps to that exact photo inside the album (323.9311ms)
+✖ single photos have Copy and opening the viewer preserves the message reference (336.3535ms)
+✔ deleted album does not render copy actions or old image thumbnails (295.5481ms)
+✔ real composer paste handler adds one preview, does not duplicate it, and never auto-sends (317.7093ms)
+✔ ordinary text paste stays native and does not add media (151.3204ms)
+✔ paste respects comment attachment restrictions and existing file-size limits (275.9255ms)
+✔ received/sent activity reorders rows by latest timestamp (2.0726ms)
+✔ rows with no valid activity timestamp keep tie positions; removed rows stay removed (0.3439ms)
+✔ explicit pin and unpin remain supported (0.3417ms)
+✔ workspace identities are independent and duplicate refresh entries collapse (0.2178ms)
+✔ all live conversation writes pass through the stable state setter (3.2726ms)
+✔ each native album photo has its own UI selection, but the true provider MID is unchanged (0.882ms)
+✔ a selected photo resolves only under its own conversation (0.6485ms)
+✔ deleted albums expose no photos or reply image data (0.2118ms)
+✔ saved selected-photo replies use a database ID and retain the precise image index (0.4805ms)
+✔ Telegram album photos remain separate real native reply targets (0.4491ms)
+✔ image placeholders become Photo labels but genuine captions are unchanged (0.3501ms)
+✔ sent reply thumbnails use the selected album image before and after history reload (1.0519ms)
+✔ Telegram native photo quotes can fetch thumbnails when the parent is outside the loaded page (0.1917ms)
+✔ captured Facebook photo type allows an off-page thumbnail without trusting a saved URL (0.1807ms)
+✔ quotes do not leak another conversation, show deleted photos, or invent failed Telegram quotes (0.5087ms)
+✔ ordinary text quotes do not trigger image requests (0.5127ms)
+✔ copy/thumbnail URLs carry selected message references, never remote source URLs (0.4784ms)
+✔ image paste uses clipboard items only once and preserves files fallback (24.084ms)
+✔ clipboard write starts synchronously and receives a promise containing PNG bytes (42.7476ms)
+✔ clipboard CORS failure uses the authorized message-image endpoint (40.4124ms)
+✔ unsupported clipboard browsers fail honestly without silently copying a URL (43.3126ms)
+✔ server rejects invented, cross-conversation, cross-workspace and out-of-bounds album selections (46.2723ms)
+✔ photo reference survives bare Messenger echo normalization (61.2848ms)
+✔ incoming and teammate latest activity move first, pins stay above, duplicates and equal times stay stable (2.7164ms)
+✔ legacy new customer remains in All after Unread and older filtered server props (0.553ms)
+✔ retained rows cannot cross revoked workspace or selected Page boundaries (0.4925ms)
+✔ list activity reordering keeps visible anchor and its exact offset without scrolling a message pane (0.6534ms)
+✔ at top no scrolling is forced; missing anchor preserves numeric viewport (0.284ms)
+✔ actual message-pane effects open at latest, preserve history on arrivals, and ignore duplicate delivery updates (120.4512ms)
+✔ sync cursor accepts ISO/UUID and rejects arbitrary PostgREST expressions (3.3144ms)
+✔ rotating known-row sync covers all 0 rows without the old 500-row ceiling (0.848ms)
+✔ rotating known-row sync covers all 1 rows without the old 500-row ceiling (0.2386ms)
+✔ rotating known-row sync covers all 200 rows without the old 500-row ceiling (0.1559ms)
+✔ rotating known-row sync covers all 201 rows without the old 500-row ceiling (0.134ms)
+✔ rotating known-row sync covers all 499 rows without the old 500-row ceiling (0.1951ms)
+✔ rotating known-row sync covers all 500 rows without the old 500-row ceiling (0.1909ms)
+✔ rotating known-row sync covers all 501 rows without the old 500-row ceiling (0.2533ms)
+✔ rotating known-row sync covers all 1055 rows without the old 500-row ceiling (0.8492ms)
+✔ late state cannot regress a newer preview or acknowledged read (0.6127ms)
+✔ empty Inbox recovers a brand-new conversation without knowing its ID (174.1026ms)
+✔ newly discovered teammate outgoing message is returned even though unread count did not increase (95.8051ms)
+✔ discovery paginates equal-timestamp rows by UUID with no loss (101.0964ms)
+✔ known old conversation outside discovery window still reconciles a read or preview (68.2762ms)
+✔ sync is scoped to active accessible workspaces and channels (65.1845ms)
+✔ channel and workspace URL filters constrain discovered rows (82.2515ms)
+✔ lost authorization returns no conversation content {"signedOut":true} (74.8819ms)
+✔ lost authorization returns no conversation content {"businesses":[]} (67.318ms)
+✔ temporary discovery failure returns retryable JSON and later request succeeds (84.1025ms)
+✔ invalid cursor is rejected before data access (53.0167ms)
+✔ background event delivery continues and visibility resume coalesces catch-up without new channels (41.6418ms)
+✔ core channels exclude optional tables and initial subscription requests catch-up (12.1362ms)
+✔ disconnect and reconnect request reconciliation and optional events do not change core health (12.8167ms)
+✔ session not ready at mount starts stream after sign-in (12.2457ms)
+✔ stream uses latest callback without making duplicate channels (12.4037ms)
+✔ sign-out retires channels; stale emissions cannot cross into a new account (10.6219ms)
+✔ teardown prevents pending recovery and removes every subscription (11.0354ms)
+✔ message polling no longer invokes Graph or writes post metadata (1.5144ms)
+✔ inbox repair keeps stable ordering and uses bounded resumable safety nets, not router refresh per message (1.9695ms)
+✔ publication repair only adds core tables, refuses disabled RLS and leaves policies intact (1.8192ms)
+✔ same-second provider timestamp cannot hide a message inserted after read acknowledgement (0.2466ms)
+✔ delayed INITIAL_SESSION also starts the stream without waiting for a focus event (10.6679ms)
+✔ newer server acknowledgement reconciles second-precision time against optimistic milliseconds (0.2798ms)
+✔ identical teammate text/time cannot acknowledge a local pending send (1.9732ms)
+✔ hidden automatic read returns before touching state or issuing a request (124.7554ms)
+✔ selected hidden thread cannot optimistically clear incoming or authoritative unread counts (2.6532ms)
+✔ view switches reevaluate live rows while preserving comment, pin and Smart View rules (62.6773ms)
+✔ duplicates preserve one stored bubble while newer activity moves its conversation first (75.535ms)
+✔ ad image failure performs one authorized recovery and does not loop on a failed replacement (253.9702ms)
+✔ missing ad photo recovers once; unmount cancels the request (42.6398ms)
+✔ ad-only referral cannot guess an image from ad ID or customer identity (42.6115ms)
+✔ source preview uses only the exact incoming referral and remains read-only (188.6331ms)
+✔ sticker normalization skips invalid/empty preferred fields and finds a valid image alias (44.3922ms)
+✔ server preview recovery bypasses stale metadata once and coalesces a refresh burst (30.7357ms)
+✔ repairing recent artwork preserves send timestamps and sticker order (18.4161ms)
+✔ sticker image failures coalesce a pack refresh and recover only matching items (36.041ms)
+✔ Files panel keeps collection and existing entries while removing creation controls (3.2631ms)
+✔ latest message reads deduplicate, bound stalled transport and never cache an ignored aborted response (76.3229ms)
+✔ Inbox navigation hands off link progress to its fallback and releases it on every exit (379.8468ms)
+✔ seven simultaneous workspace consumers use one request and independent readable bodies (92.6387ms)
+✔ failed workspace read retries and mutation never joins a pre-switch read (14.2095ms)
+✔ workspace lifecycle pauses hidden polls and batches visible focus/resume/reconnect (173.2814ms)
+✔ offscreen bubbles defer rendering; measured height and above-viewport expansion preserve scroll (19.7355ms)
+✔ reply jump mounts an offscreen target and short threads render without virtualization (16.2437ms)
+✔ 1000-row comparable fixture mounts 40 rich rows instead of 1000; data remains complete (29.3536ms)
+✔ focused controls and playing media survive leaving the viewport (13.7691ms)
+✔ browsers without IntersectionObserver render all history normally (12.5146ms)
+✔ moving a reply target into view discards stale above-viewport anchoring (15.1214ms)
+✔ one workspace consumer aborts without cancelling another shared read (7.3243ms)
+✔ recovered insertion above a long thread preserves its visible message; append and duplicate do not jump (7.9088ms)
+✔ native list anchoring does not receive a second manual offset (10.7158ms)
+✔ saved URL remains authoritative while local preview survives echoes and reopened cached history (2.125ms)
+✔ partial album indices preserve exact local photo instead of showing photo zero (0.4799ms)
+✔ preview never crosses workspace, conversation, provider identity, incoming messages or deletion (0.3831ms)
+✔ actual optimistic reconciliation keeps canonical URL, local preview and existing sent identity (105.4044ms)
+✔ slow single load has reserved geometry, lazy decoding and accessible status until loaded (125.0038ms)
+✔ local preview stays selected across remote URL changes without remounting image (24.8242ms)
+✔ expired selected album photo gets one exact-index thumbnail recovery then accessible manual retry (28.3478ms)
+✔ optimistic image failures do not request an unresolved temporary server message (14.8726ms)
+✔ lightbox uses intrinsic contained image, eager loading and full-size selected recovery (22.076ms)
+✔ actual lightbox explicitly selects preview layout (3.4684ms)
+✔ return URL has only bounded validated filters and an accessible matching thread (156.0231ms)
+✔ real React dashboard lifetime restores Inbox through installed Next navigation and isolates identity/reset/deep links (283.9202ms)
+✔ restored destination server rejects revoked selection and independently reads fresh accessible messages (52.4071ms)
+✔ historical message takes priority over unrelated latest preview; contact-only phone has no invented target (1.0037ms)
+✔ batched history matches are scoped, newest and not crowded out by prolific threads (29.9881ms)
+✔ avatar remount starts with the candidate that loaded; a different identity tries its own photo (29.7045ms)
+✔ search jump reaches history beyond the old twelve-page limit and highlights the exact message (103.263ms)
+✔ superseded search jump stops without scrolling or highlighting (63.658ms)
+✔ older-page client cursor uses recovered platform time and excludes another conversation (86.2137ms)
+✔ Auto detect number still fills only an empty incoming contact phone and preserves agent edits (162.6664ms)
+✔ same-thread replacement jump joins the pending page and cancelled owner settles before the page (103.1745ms)
+✔ A completion cannot change pending B history, loading or errors (success) (63.8048ms)
+✔ A completion cannot change pending B history, loading or errors (failure) (49.7711ms)
+✔ repeated A -> B -> A joins A flight; B cleanup cannot clear A ownership (49.321ms)
+{"warmUnrelatedChannel":{"renderMs":0.48070000000006985,"rows":1,"initialLoading":false,"pageReads":2,"productionLatency":false}}
+✔ targeted activity in B retains warm A, while B still requalifies once after navigation (115.3128ms)
+✔ targeted activity in a different workspace retains only disjoint cached scope (89.9224ms)
+✔ unknown and permission recovery events still invalidate every inactive snapshot (123.774ms)
+✔ a row moving to B invalidates A even though its latest channel differs (55.6631ms)
+✔ warm snapshots are local to each mounted pager, including a new user mount (127.3121ms)
+✔ an off-page row moving channels invalidates cached counts for its previous channel (67.5447ms)
+✔ a server-qualified scope move invalidates old counts even when its version was already recorded (67.8718ms)
+✔ channel A-B-A keeps scoped warm rows and issues one requalification per switch (72.6183ms)
+✔ request validation rejects arbitrary views, injected scope IDs, overlong search and unbounded known IDs (0.9414ms)
+✔ stable ordering, duplicates and older page responses preserve a newer read/realtime version (13.0308ms)
+✔ initial page does not refetch; bounded next page retains prior rows and deduplicates (65.0284ms)
+✔ server search and view switches replace pages; history-only results are retained (80.8341ms)
+✔ targeted teammate events coalesce, remove no-longer-matching rows and keep visited cursor (69.3223ms)
+✔ hidden events do not fetch or mark read; visible resume checks visited rows and complete bulk snapshot is explicit (55.6156ms)
+✔ catch-up request batches never exceed 200 visited IDs (120.5952ms)
+✔ failed page does not advance cursor or remove loaded history; retry keeps completeness (64.4787ms)
+✔ legacy migration-absent mode performs no page fetches (55.4096ms)
+✔ prepared SQL contract bounds hydration after complete filtering and keeps snapshots read-only (1.6671ms)
+✔ late responses from an earlier search cannot replace a newer view (67.3321ms)
+✔ bounded recovery discoveries are server-qualified even outside the first page (55.3503ms)
+✔ new customer discovered in Unread remains server-qualified when switching to All with an older first page (65.2364ms)
+✔ late page response cannot overwrite newer incoming or teammate activity in global rows (42.5298ms)
+Paging fixture: full 1000-row JSON 828891 bytes; 30-row response 26385 bytes (mocked SQL, not live payload).
+✔ wrong-workspace row cannot replace a same-ID live row (69.5404ms)
+✔ server adapter hydrates at most 30 page rows and scope/member identities are server-owned (64.0595ms)
+✔ server rejects inaccessible workspace before querying RPC and only missing-RPC errors permit legacy fallback (135.9728ms)
+✔ server refuses invalid or unbounded hydration IDs (100.3161ms)
+✔ page API exposes private no-store responses and malformed requests never call server adapter (35.2136ms)
+✔ page metadata preserves manual unread, acknowledged reads and optimistic tags/pin/status/assignment (88.4143ms)
+✔ optimistic reads immediately reconcile complete unread aggregates without changing other counts (85.4918ms)
+✔ authoritative empty page stays empty during quiet refresh while a different view shows initial loading (53.0851ms)
+✔ new view over 1000 loaded conversations requests only one first page, not five qualification batches (112.082ms)
+✔ repeat view renders bounded warm rows and its own total immediately, then revalidates once (51.5031ms)
+✔ cold-view counts do not inherit previous-view totals, and errors permit retry without wrong rows (47.3176ms)
+✔ activity invalidates inactive view cache before pin/read/comment re-entry (46.2764ms)
+✔ workspace context is part of cache key and revoked cached rows cannot be reused (47.4537ms)
+✔ view cache expires after 30 seconds and evicts beyond six keys (58.3931ms)
+✔ authorization denial clears warm cached rows and supplies an error without switching chats (62.7976ms)
+✔ Back then Forward aborts a pending different-view request even when current settled state already matches Forward (50.4498ms)
+✔ late aborted finally cannot schedule or consume recovery owned by the Forward request (56.0662ms)
+✔ matching message metadata belongs to the current query and survives late old responses (52.1791ms)
+✔ a status link destination keeps exactly the scope the URL will have (1.5903ms)
+✔ reproduction: title and rows disagree while navigation is in flight (old derivation) (0.2652ms)
+{"sameDestinationReads":1}
+✔ reproduction: server props for the same destination do not restart its in-flight read (145.8013ms)
+✔ cache miss: loading until the matching rows arrive, never the old filter rows (110.9935ms)
+✔ rapid Open -> Pending -> Resolved with out-of-order responses settles on Resolved (81.7911ms)
+{"cacheHitRenderMs":0.98,"readsOnReturn":1}
+✔ Back to a visited filter shows its cached rows at once, then revalidates once (69.7426ms)
+✔ a valid empty result is loaded, not loading (86.5144ms)
+✔ failure shows an error for that filter, and retry loads it (75.5232ms)
+✔ Clear returns to all, from cache when visited (67.4877ms)
+✔ unsent text survives Telegram -> Messenger -> Telegram, while quotes and workspace drafts stay separate (67.1792ms)
+✔ same-thread metadata refresh preserves new work, and a sent/cleared draft never resurrects (21.8444ms)
+✔ revoked membership removes its draft and a reused identifier in another workspace cannot recover it (12.177ms)
+✔ the text-only cache retains at most 25 inactive conversation drafts (11.0585ms)
+✔ editing a sent Telegram message never becomes a new-message draft after A -> B -> A (9.7233ms)
+✔ the oldest destination restores before eviction and the active draft is outside the inactive cap (8.847ms)
+✔ edit mode metadata updates keep the edit, while canceled edit text can become an ordinary draft (8.01ms)
+✔ reverse Messenger -> Telegram edit -> Messenger restores only the ordinary draft (10.2545ms)
+✔ Cancel Telegram edit restores the pre-edit ordinary text, never the edited sent text (8.1415ms)
+✔ editing another message keeps the original pre-edit draft and stale Cancel cannot clear new work (9.4454ms)
+✔ switching away from an edit caches only its pre-edit ordinary draft under the same conversation owner (6.5802ms)
+✔ revoking the edit owner clears its pre-edit draft without restoring it elsewhere (7.041ms)
+✔ ending edit mode retires the saved pre-edit text so stale Cancel cannot overwrite later work (9.2549ms)
+✔ two edit handlers before a React state commit capture the ordinary draft only once (8.6442ms)
+✔ an Edit handler from a retired conversation cannot replace the current composer (12.2204ms)
+✖ conversation status filter is beside search and no longer in the left rail (8.7127ms)
+✔ Facebook Comment rail shortcut sits directly after Unread and filters the comment built-in view (1.9337ms)
+✔ Unread mark-all action is icon-only beside Clear view (1.9364ms)
+✔ selecting a quick reply restores focus to composer so Enter can send immediately (2.5072ms)
+✖ photo replies render a thumbnail and suppress literal [image] placeholder (4.0216ms)
+✔ stickers are image-proxy eligible and failed artwork retries through authorized message media (158.97ms)
+✔ unified picker uses the existing caret insertion handler (1.1501ms)
+✔ emoji inserts at the caret without losing surrounding composer text (300.1459ms)
+✔ emoji replaces only the selection and preserves later text (7.5023ms)
+✔ missing textarea retains composer text and appends emoji (5.888ms)
+✔ failed read restores only its unread count; current selection and other conversations remain untouched (59.3218ms)
+✔ newer customer message and manual-unread edits survive an older failed read (31.4772ms)
+✔ successful read does not clear a newer incoming unread count (9.6014ms)
+✔ an in-flight read exposes one promise that settles when the read does (Mark Unread awaits it) (39.1908ms)
+✔ paging sidebar navigation changes URL and selected view without duplicate router work (91.2784ms)
+✔ legacy sidebar still uses router-owned loading and qualified scope (6.5574ms)
+✔ personal Smart View scope survives paging URL navigation (4.6958ms)
+✔ photo reaction sends native MID and emoji, preserving pins/read status (245.916ms)
+✔ unreact omits reaction from payload, then another emoji replaces it (87.1021ms)
+✔ membership denied cannot call Meta (66.212ms)
+✔ view-only member cannot call Meta (59.3328ms)
+✔ blocked customer cannot call Meta (58.1293ms)
+✔ foreign message cannot call Meta (40.8892ms)
+✔ foreign tenant cannot call Meta (50.3686ms)
+✔ different customer cannot call Meta (50.5558ms)
+✔ disconnected Page cannot call Meta (45.9714ms)
+✔ comment cannot call Meta (44.3726ms)
+✔ deleted message cannot call Meta (53.0381ms)
+✔ invalid emoji cannot call Meta (60.3524ms)
+✔ two emoji cannot call Meta (38.9305ms)
+✔ missing action cannot call Meta (44.1989ms)
+✔ foreign origin cannot call Meta (55.8834ms)
+✔ Graph rejection and unknown transport outcome never change stored reactions (146.8661ms)
+✔ expired token is refreshed once only after explicit rejection (39.7807ms)
+✔ database failure after Meta confirms returns success with synchronization warning (46.4219ms)
+✔ catalog uses App token and documented root paths; shared cache avoids repeated calls (54.8633ms)
+✔ native sticker webhook type and transitional image order both render as sticker (63.0326ms)
+✔ customer and Page reactions coexist, unreact tombstone rejects delayed webhook (57.0498ms)
+✔ emoji validator supports flags and families while rejecting text (42.7257ms)
+✔ history merge keeps newer reaction removal and a separate customer reaction (76.2189ms)
+✔ catalog failure does not expose app secrets and can be retried (62.7571ms)
+✔ native sticker send uses Page token and receipt prevents duplicate sends (115.2373ms)
+✔ native stickers respect the standard window: human_agent (82.4269ms)
+✔ native stickers respect the standard window: private_reply_available (63.1194ms)
+✔ native stickers respect the standard window: waiting_for_customer_reply (93.7281ms)
+✔ mobile reactions render safely with no Segmenter (169.3218ms)
+✔ mobile reactions render safely with no Intl (55.202ms)
+✔ reaction previews immediately, and rapid choices send only the latest after confirmation (240.0297ms)
+✔ an uncertain result rolls back the preview and does not dispatch queued choices (67.5085ms)
+✔ repeated identical selections do not send a second mutation (82.1942ms)
+✔ opening the picker positions it in the click handler without waiting for an effect or network (69.0618ms)
+Facebook message send failed: { error: { code: 100, message: 'Reply rejected' } }
+✔ text reply uses top-level native MID and preserves a fast read receipt (419.4885ms)
+✔ text: other conversation cannot send or upload (187.7451ms)
+✔ text: other workspace cannot send or upload (123.8978ms)
+✔ text: deleted target cannot send or upload (147.5925ms)
+✔ text: comment target cannot send or upload (126.9889ms)
+✔ text: Telegram target cannot send or upload (121.9074ms)
+✔ text: membership denied cannot send or upload (127.0987ms)
+✔ text: read only cannot send or upload (116.468ms)
+✔ text: blocked customer cannot send or upload (125.6661ms)
+✔ text: native quote respects the permitted human-agent text policy (136.8281ms)
+✔ attachment reply uses top-level native MID and preserves a fast read receipt (76.1654ms)
+✔ attachment: other conversation cannot send or upload (85.3812ms)
+✔ attachment: other workspace cannot send or upload (72.1032ms)
+✔ attachment: deleted target cannot send or upload (67.184ms)
+✔ attachment: comment target cannot send or upload (70.48ms)
+✔ attachment: Telegram target cannot send or upload (76.4841ms)
+✔ attachment: membership denied cannot send or upload (59.3579ms)
+✔ attachment: read only cannot send or upload (55.6807ms)
+✔ attachment: blocked customer cannot send or upload (62.1098ms)
+✔ attachment: native quote respects the permitted human-agent text policy (89.5262ms)
+✔ sticker reply uses top-level native MID and preserves a fast read receipt (51.0279ms)
+✔ sticker: other conversation cannot send or upload (49.8143ms)
+✔ sticker: other workspace cannot send or upload (41.7578ms)
+✔ sticker: deleted target cannot send or upload (45.3006ms)
+✔ sticker: comment target cannot send or upload (46.7624ms)
+✔ sticker: Telegram target cannot send or upload (57.9839ms)
+✔ sticker: membership denied cannot send or upload (51.5012ms)
+✔ sticker: read only cannot send or upload (51.1469ms)
+✔ sticker: blocked customer cannot send or upload (46.4679ms)
+✔ sticker: native quote respects the permitted human-agent text policy (62.9222ms)
+✔ text may reply to an outgoing Page message (99.7554ms)
+✔ native reply survives token refresh and is never silently removed after a provider error (243.5587ms)
+✔ completed sticker receipt cannot be reused with a different reply target (51.6675ms)
+✔ native quote survives a bare history echo and keeps its original snapshot (30.7152ms)
+✔ visible pack previews return one individual sticker and reuse the catalog cache (231.9978ms)
+✔ picker loads only visible single-sticker covers, records an unmounted successful send, and ignores failed/stale results (828.3086ms)
+✔ recent history is ordered, deduplicated and excludes incoming, failed and other-chat stickers (17.3478ms)
+✔ reopening cached pack content makes no request or loading flash; stale refresh keeps it visible (317.1732ms)
+✔ closing and reopening during the initial load shares the pending request (138.5303ms)
+✖ one click opens the API-returned conversation without any installed extension (30.6364ms)
+✖ provider routing parameters are preserved without replacing the inbox ID with a PSID (8.5095ms)
+✖ popup blocking offers a normal browser link without requiring installation (12.3997ms)
+✖ a missing Meta link closes only the blank loading tab and shows the API error (10.629ms)
+✖ HTML from an unavailable route is handled without leaking a JSON parse exception (11.1227ms)
+✖ pending requests suppress repeated clicks and restore the button after failure (11.2572ms)
+✖ switching conversations aborts the old lookup and prevents late navigation (8.2093ms)
+✖ unmounting closes the untouched loading tab and cancels the pending request (12.7754ms)
+✖ a user-navigated loading tab is never overwritten or closed (8.0531ms)
+✖ mismatched or unsafe responses cannot navigate {"businessId":"other"} (7.2329ms)
+✖ mismatched or unsafe responses cannot navigate {"conversationId":"other"} (6.8901ms)
+✖ mismatched or unsafe responses cannot navigate {"recipientId":"other"} (5.7729ms)
+✖ mismatched or unsafe responses cannot navigate {"pageId":"other"} (5.6649ms)
+✖ mismatched or unsafe responses cannot navigate {"linkSource":"browser_cache"} (5.8061ms)
+✖ mismatched or unsafe responses cannot navigate {"conversationLink":"https://evil.test/"} (4.7734ms)
+✖ missing Page/customer context does not open a blank tab or call the API (6.5681ms)
+✔ the real header omits View conversation while keeping its other actions (179.3558ms)
+✖ the real customer panel keeps View conversation inside Other (86.9388ms)
+✖ a stored customer link opens without extension or setup (5.3984ms)
+✖ a legacy link from an older server cannot redirect to the first conversation (5.5191ms)
+✖ the compact shortcut does not offer manual link editing after a failed redirect (6.9307ms)
+✖ a resolved thread is copyable for diagnosis without constructing a destination from it (4.6689ms)
+✖ reopening a resolved thread does not bypass the cache only because its browser link is unavailable (4.5907ms)
+✖ lookup details reset on customer changes and mismatching responses never populate them (5.9844ms)
+✖ the customer menu exposes View this conversation without an editing form (7.229ms)
+✖ navigation-only opens a validated provider link on click with no render fetch (5.1974ms)
+✖ navigation-only fallback is explicit and never automatically opens another conversation (4.8166ms)
+✖ navigation-only rejects arbitrary fallback URLs and saved-link substitution (5.2973ms)
+✖ navigation-only rejects saved links instead of treating them as provider matched (8.4289ms)
+✖ header and Other actions share one pending lookup and reset together on conversation change (37.916ms)
+✔ 40 chat switches keep one status menu and no external shortcut, with no React key warnings (693.5017ms)
+✔ switching chats closes the old status menu and keeps the new menu interactive (202.5735ms)
+✔ incoming Messenger text renders its ad card before the customer message (151.066ms)
+✔ incoming Messenger image renders its ad source card (22.0427ms)
+✔ incoming Messenger video renders its ad source card (13.9979ms)
+✔ incoming Messenger sticker renders its ad source card (14.9324ms)
+✔ incoming Messenger file renders its ad source card (14.0644ms)
+✔ a saved ad open stays hidden, including when followed by a direct message (16.5013ms)
+✔ saved and embedded copies render once, including on reopening the conversation (25.769ms)
+✔ photo grouping keeps one referral card and both album photos (23.7789ms)
+✔ ordinary Messenger messages and Telegram conversations do not gain an ad card (17.7205ms)
+✔ an outgoing Seen message keeps its receipt without a standalone ad source (16.5543ms)
+✔ an ad open followed by an attributed message produces only the message card (12.6425ms)
+✔ a normal post message uses the same card layout with Post ID and photo, without Ad ID (20.3274ms)
+✔ saved message context is reused on reopening and cannot attach to another message (43.4695ms)
+✔ saved and embedded copies with different timestamps still render one card per message (10.6466ms)
+[Tenh Facebook Webhook] Page change received. {
+  pageId: '393342417206745',
+  field: 'messaging_referrals',
+  item: null,
+  verb: null,
+  commentId: null
+}
+[Tenh Facebook Webhook] Page change received. {
+  pageId: '393342417206745',
+  field: 'messaging_postbacks',
+  item: null,
+  verb: null,
+  commentId: null
+}
+[Tenh Facebook Webhook] Page change received. {
+  pageId: '393342417206745',
+  field: 'feed',
+  item: 'comment',
+  verb: 'add',
+  commentId: '123_456'
+}
+[Tenh Facebook Comment] Feed event received. {
+  pageId: '393342417206745',
+  verb: 'add',
+  commentId: '123_456',
+  authorName: undefined
+}
+[Tenh Facebook Webhook] Messaging event failed; continuing with the rest of the batch. {
+  pageId: '393342417206745',
+  mid: null,
+  error: Error: Injected error
+      at processFacebookMessengerReferral (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\lib\facebook\process-messenger-referral.ts:62:19)
+      at async Object.POST (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\app\api\webhooks\facebook\route.ts:184:17)
+      at async TestContext.<anonymous> (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\referrals.test.cjs:162:16)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+}
+✔ message, standalone and postback referrals expose exact IDs and the supplied photo (2.7335ms)
+✔ video_url is a thumbnail and string postback timestamps are supported (0.2688ms)
+✔ ordinary messages, user_ref, arbitrary m.me refs and echoes never become guessed post/ad context (0.3161ms)
+✔ unsafe media/link schemes and imprecise numeric IDs are excluded (0.8284ms)
+✔ missing photo retains the available IDs without substituting the customer photo (0.3204ms)
+✔ normal post metadata is persisted once and reused without calling Graph (56.9019ms)
+✔ a shared Facebook link and a post-looking message never become origin attribution (0.2263ms)
+✔ partial incoming payloads may use their exact row mid, but outgoing rows cannot gain cards (0.2538ms)
+✔ repeat event is idempotent even when PostgreSQL returns JSON object keys in another order (40.1522ms)
+✔ same customer across Pages is scoped to the connected recipient Page and workspace (44.6919ms)
+✔ mismatched entry Page cannot create referral state (37.9302ms)
+✔ missing entry Page cannot create referral state (30.2364ms)
+✔ Page echo cannot create referral state (36.5147ms)
+✔ user_ref without a PSID cannot create referral state (27.4325ms)
+✔ Page as customer cannot create referral state (28.819ms)
+✔ unknown Page cannot create referral state (37.1981ms)
+✔ disconnected Pages and blocked customers do not update conversation sources (29.2828ms)
+✔ a referral can precede the first real message without unread/preview or synthetic messages (35.3174ms)
+✔ a concurrent referral update is merged instead of overwritten (44.8463ms)
+✔ out-of-order events keep the latest 20 contexts; a duplicate cannot erase its photo (1.3206ms)
+✔ timeline deduplicates message context, hides standalone opens and preserves older loaded referrals (0.9463ms)
+✔ signed webhook handles both envelopes and preserves delivery/read/reaction/feed dispatch (154.8256ms)
+✔ database failure retains original webhook payload and does not prevent the next event (110.536ms)
+✔ a bare history response keeps the original message referral and its timestamp (35.0344ms)
+✔ card shows exact full IDs, safely displays title and opens the source image (166.9607ms)
+✔ an expired photo shows a fallback while preserving IDs; a new photo can load (46.8866ms)
+✔ standalone opens render no card even when passed directly to the component (10.7506ms)
+✔ reverse webhook/response arrival confirms each album slot without reorder or time jump (227.1822ms)
+✔ client and route carry one exact request id and position per album file (9.0517ms)
+✔ imported Telegram WAV is optimistic file just like its confirmed document (1.102ms)
+✔ Telegram recorder voice and supported audio remain optimistic audio (0.3025ms)
+✔ non-audio attachment kinds are unchanged (0.1918ms)
+✔ Facebook comment rows render a comment icon, not Messenger artwork (1.153ms)
+✔ a customer DM changes the badge back to Messenger (0.2902ms)
+✔ Telegram keeps its channel icon (0.1279ms)
+✔ mount, bell and resume share overlapping reads but never cache completed responses (177.4652ms)
+✔ correct notifications publish before the announcement completes (49.4742ms)
+✔ slow announcement cannot prevent the next 30-second notification poll (53.4301ms)
+✔ workspace invalidation fences old responses even when transport ignores abort (34.8788ms)
+✔ unmount aborts transports and does not publish a retired response (34.5072ms)
+✔ failure retires the read and an explicit retry is fresh (32.8196ms)
+✔ denial 401 clears protected state and fences pending announcements (33.0059ms)
+✔ denial 403 clears protected state and fences pending announcements (27.3019ms)
+✔ realtime deletion cannot be overwritten by an older read snapshot (33.9248ms)
+✔ optimistic mark-read fences snapshots without another GET (25.4299ms)
+ℹ tests 557
+ℹ suites 0
+ℹ pass 519
+ℹ fail 38
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 34645.9045
+
+✖ failing tests:
+
+test at tests\inbox-bulk-read.test.cjs:60:1
+✖ Unread action passes every filtered row, not the first visible page (4.0991ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /await onMarkAllRead\(filteredConversations\)/. Input:
+  
+  '"use client";\r\n' +
+    'import { readInboxChannels } from "@/lib/inbox/read-channels";\r\n' +
+    '\r\n' +
+    'import { DashboardUtilityNavigation } from "@/components/dashboard/dashboard-utility-navigation";\r\n' +
+    'import { ConversationHeaderSurface, ConversationRail } from "./inbox-layout-surfaces";\r\n' +
+    'import { ConversationListHeader } from "@/components/inbox/conversation-list-header";\r\n' +
+    'import { ActiveFilterBanner, filterBannerIcons, statusBannerIcon } from "@/components/inbox/active-filter-banner";\r\n' +
+    'import { destinationFromHref, destinationFromParams, sameDestination, type StatusDestination } from "@/lib/inbox/status-destination";\r\n' +
+    'import { DeferredInboxItem } from "@/components/inbox/deferred-inbox-item";\r\n' +
+    'import type { BulkReadResult, ReadTarget } from "@/lib/inbox/bulk-read";\r\n' +
+    'import { useConversationPages } from "@/lib/inbox/use-conversation-pages";\r\n' +
+    'import { useConversationListAnchor } from "@/lib/inbox/use-conversation-list-anchor";\r\n' +
+    'import { CONVERSATION_PAGE_SIZE, INBOX_PAGE_CHANGED_EVENT, type ConversationPagingInitial } from "@/lib/inbox/conversation-page-contract";\r\n' +
+    '\r\n' +
+    'import { searchRowSubtitle, type InboxSearchMatch } from "@/lib/inbox/search-match";\r\n' +
+    '\r\n' +
+    'import { CustomerAvatar } from "@/components/customer-avatar";\r\n' +
+    '\r\n' +
+    'import { ConversationBookmark, ConversationTag } from "./conversation-visuals";\r\n' +
+    '\r\n' +
+    'import Link from "next/link";\r\n' +
+    'import {\r\n' +
+    '  useRouter,\r\n' +
+    '  useSearchParams,\r\n' +
+    '} from "next/navigation";\r\n' +
+    'import {\r\n' +
+    '  memo,\r\n' +
+    '  useCallback,\r\n' +
+    '  useDeferredValue,\r\n' +
+    '  useEffect,\r\n' +
+    '  useMemo,\r\n' +
+    '  useRef,\r\n' +
+    '  useState,\r\n' +
+    '} from "react";\r\n' +
+    '\r\n' +
+    'import type {\r\n' +
+    '  InboxConversation,\r\n' +
+    '} from "@/types/inbox";\r\n' +
+    'import type {\r\n' +
+    '  StatusCounts,\r\n' +
+    '  StatusFilter,\r\n' +
+    '} from "@/components/inbox/inbox-view-types";\r\n' +
+    'import {\r\n' +
+    '  formatMessageTime,\r\n' +
+    '  getInitial,\r\n' +
+    '  getStatusLabel,\r\n' +
+    '  statusOptions,\r\n' +
+    '} from "@/components/inbox/inbox-utils";\r\n' +
+    'import {\r\n' +
+    '  InboxChannelSelector,\r\n' +
+    '} from "@/components/inbox/inbox-channel-selector";\r\n' +
+    'import { ReminderListPanel } from "@/components/inbox/reminder-list-panel";\r\n' +
+    'import {\r\n' +
+    '  useWorkspaceLanguageId,\r\n' +
+    '} from "@/components/display/workspace-language-text";\r\n' +
+    'import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog";\r\n' +
+    'import {\r\n' +
+    '  normalizeLegacyConversationPreview,\r\n' +
+    '} from "@/lib/inbox/conversation-preview";\r\n' +
+    'import { CONVERSATION_TEXT_FONT_STACK } from "@/lib/display/workspace-fonts";\r\n' +
+    '\r\n' +
+    'type SearchAwareContact =\r\n' +
+    '  NonNullable<InboxConversation["contact"]> & {\r\n' +
+    '    username?: string | null;\r\n' +
+    '    telegram_username?: string | null;\r\n' +
+    '    platform_username?: string | null;\r\n' +
+    '  };\r\n' +
+    '\r\n' +
+    'function getTelegramSearchIdentity(\r\n' +
+    '  conversation: InboxConversation,\r\n' +
+    '  platform: "messenger" | "telegram" | null,\r\n' +
+    '): string {\r\n' +
+    '  if (platform !== "telegram") {\r\n' +
+    '    return "";\r\n' +
+    '  }\r\n' +
+    '\r\n' +
+    '  const contact =\r\n' +
+    '    conversation.contact as SearchAwareContact | null;\r\n' +
+    '\r\n' +
+    '  return (\r\n' +
+    '    contact?.telegram_username ??\r\n' +
+    '    contact?.platform_username ??\r\n' +
+    '    contact?.username ??\r\n' +
+    '    contact?.platform_user_id ??\r\n' +
+    '    ""\r\n' +
+    '  )\r\n' +
+    '    .trim()\r\n' +
+    '    .toLowerCase()\r\n' +
+    '    .replace(/^@/, "");\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    'type ConversationListProps = {\r\n' +
+    '  onMarkAllRead?: (conversations: InboxConversation[], targets?: ReadTarget[]) => Promise<BulkReadResult>;\r\n' +
+    '  pagination?: ConversationPagingInitial;\r\n' +
+    '  onPageRows?: (rows: InboxConversation[]) => void;\r\n' +
+    '  markingAllRead?: boolean;\r\n' +
+    '  conversations:\r\n' +
+    '    InboxConversation[];\r\n' +
+    '  activeConversationId:\r\n' +
+    '    | string\r\n' +
+    '    | null;\r\n' +
+    '  activeStatus:\r\n' +
+    '    StatusFilter;\r\n' +
+    '  statusCounts:\r\n' +
+    '    StatusCounts;\r\n' +
+    '  onSelectConversation: (\r\n' +
+    '    conversationId: string,\r\n' +
+    '    match?: InboxSearchMatch,\r\n' +
+    '  ) => void;\r\n' +
+    '  onPrefetchConversation?: (\r\n' +
+    '    conversationId: string,\r\n' +
+    '    match?: InboxSearchMatch,\r\n' +
+    '  ) => void;\r\n' +
+    '  onClearConversationSelection?: () => void;\r\n' +
+    '};\r\n' +
+    '\r\n' +
+    'type BuiltInViewKey =\r\n' +
+    '  | "all"\r\n' +
+    '  | "unread"\r\n' +
+    '  | "my"\r\n' +
+    '  | "unassigned"\r\n' +
+    '  | "comment"\r\n' +
+    '  | "open"\r\n' +
+    '  | "pinned";\r\n' +
+    '\r\n' +
+    'type WorkspaceScope =\r\n' +
+    '  | "all"\r\n' +
+    '  | "current"\r\n' +
+    '  | "selected";\r\n' +
+    '\r\n' +
+    'type SavedViewFilters = {\r\n' +
+    '  workspaceScope: WorkspaceScope;\r\n' +
+    '  workspaceIds: string[];\r\n' +
+    '  status:\r\n' +
+    '    | "any"\r\n' +
+    '    | "open"\r\n' +
+    '    | "pending"\r\n' +
+    '    | "resolved"\r\n' +
+    '    | "closed"\r\n' +
+    '    | "spam";\r\n' +
+    '  assignment:\r\n' +
+    '    | "any"\r\n' +
+    '    | "me"\r\n' +
+    '    | "assigned"\r\n' +
+    '    | "unassigned";\r\n' +
+    '  channel:\r\n' +
+    '    | "any"\r\n' +
+    '    | "messenger"\r\n' +
+    '    | "comment"\r\n' +
+    '    | "telegram";\r\n' +
+    '  unreadOnly: boolean;\r\n' +
+    '  pinnedOnly: boolean;\r\n' +
+    '  /*\r\n' +
+    '   * New rows store `${workspaceId}::${tagId}` so the same label can safely\r\n' +
+    '   * exist in more than one workspace. Legacy plain tag IDs remain readable.\r\n' +
+    '   */\r\n' +
+    '  tagIds: string[];\r\n' +
+    '};\r\n' +
+    '\r\n' +
+    'type SavedView = {\r\n' +
+    '  id: string;\r\n' +
+    '  name: string;\r\n' +
+    '  filters:\r\n' +
+    '    SavedViewFilters;\r\n' +
+    '  sort_index: number;\r\n' +
+    '  created_at: string;\r\n' +
+    '  updated_at: string;\r\n' +
+    '};\r\n' +
+    '\r\n' +
+    'type ViewsResponse = {\r\n' +
+    '  success?: boolean;\r\n' +
+    '  error?: string;\r\n' +
+    '  businessId?: string;\r\n' +
+    '  memberId?: string;\r\n' +
+    '  views?: SavedView[];\r\n' +
+    '};\r\n' +
+    '\r\n' +
+    'type SmartViewWorkspaceOption = {\r\n' +
+    '  businessId: string;\r\n' +
+    '  businessName: string;\r\n' +
+    '  memberId: string;\r\n' +
+    '};\r\n' +
+    '\r\n' +
+    'type SmartViewTagOption = {\r\n' +
+    '  id: string;\r\n' +
+    '  businessId: string;\r\n' +
+    '  name: string;\r\n' +
+    '  color: string;\r\n' +
+    '  count: number;\r\n' +
+    '};\r\n' +
+    '\r\n' +
+    'type SmartViewOptionsResponse = {\r\n' +
+    '  success?: boolean;\r\n' +
+    '  error?: string;\r\n' +
+    '  currentBusinessId?: string | null;\r\n' +
+    '  workspaces?: SmartViewWorkspaceOption[];\r\n' +
+    '  tags?: SmartViewTagOption[];\r\n' +
+    '};\r\n' +
+    '\r\n' +
+    'type ViewEditorState = {\r\n' +
+    '  id:\r\n' +
+    '    | string\r\n' +
+    '    | null;\r\n' +
+    '  name: string;\r\n' +
+    '  filters:\r\n' +
+    '    SavedViewFilters;\r\n' +
+    '};\r\n' +
+    '\r\n' +
+    'const EMPTY_FILTERS:\r\n' +
+    '  SavedViewFilters = {\r\n' +
+    '    workspaceScope: "all",\r\n' +
+    '    workspaceIds: [],\r\n' +
+    '    status: "any",\r\n' +
+    '    assignment: "any",\r\n' +
+    '    channel: "any",\r\n' +
+    '    unreadOnly: false,\r\n' +
+    '    pinnedOnly: false,\r\n' +
+    '    tagIds: [],\r\n' +
+    '  };\r\n' +
+    '\r\n' +
+    'const SMART_VIEW_TAG_SEPARATOR = "::";\r\n' +
+    '\r\n' +
+    'function makeSmartViewTagReference(\r\n' +
+    '  workspaceId: string,\r\n' +
+    '  tagId: string,\r\n' +
+    ') {\r\n' +
+    '  return `${workspaceId}${SMART_VIEW_TAG_SEPARATOR}${tagId}`;\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    'function parseSmartViewTagReference(\r\n' +
+    '  value: string,\r\n' +
+    ') {\r\n' +
+    '  const separatorIndex = value.indexOf(\r\n' +
+    '    SMART_VIEW_TAG_SEPARATOR,\r\n' +
+    '  );\r\n' +
+    '\r\n' +
+    '  if (separatorIndex <= 0) {\r\n' +
+    '    return null;\r\n' +
+    '  }\r\n' +
+    '\r\n' +
+    '  const workspaceId = value\r\n' +
+    '    .slice(0, separatorIndex)\r\n' +
+    '    .trim();\r\n' +
+    '  const tagId = value\r\n' +
+    '    .slice(separatorIndex + SMART_VIEW_TAG_SEPARATOR.length)\r\n' +
+    '    .trim();\r\n' +
+    '\r\n' +
+    '  if (!workspaceId || !tagId) {\r\n' +
+    '    return null;\r\n' +
+    '  }\r\n' +
+    '\r\n' +
+    '  return { workspaceId, tagId };\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    'const DEFAULT_SMART_VIEW_ORDER_IDS = [\r\n' +
+    '  "default:my",\r\n' +
+    '  "default:unassigned",\r\n' +
+    '  "default:open",\r\n' +
+    '] as const;\r\n' +
+    '\r\n' +
+    'function normalizeSmartViewOrder(\r\n' +
+    '  stored: unknown,\r\n' +
+    '  availableIds: string[],\r\n' +
+    ') {\r\n' +
+    '  const available = new Set(availableIds);\r\n' +
+    '  const seen = new Set<string>();\r\n' +
+    '  const next: string[] = [];\r\n' +
+    '\r\n' +
+    '  if (Array.isArray(stored)) {\r\n' +
+    '    for (const value of stored) {\r\n' +
+    '      if (\r\n' +
+    '        typeof value === "string" &&\r\n' +
+    '        available.has(value) &&\r\n' +
+    '        !seen.has(value)\r\n' +
+    '      ) {\r\n' +
+    '        seen.add(value);\r\n' +
+    '        next.push(value);\r\n' +
+    '      }\r\n' +
+    '    }\r\n' +
+    '  }\r\n' +
+    '\r\n' +
+    '  for (const value of availableIds) {\r\n' +
+    '    if (!seen.has(value)) {\r\n' +
+    '      seen.add(value);\r\n' +
+    '      next.push(value);\r\n' +
+    '    }\r\n' +
+    '  }\r\n' +
+    '\r\n' +
+    '  return next;\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    '/*\r\n' +
+    ' * Smart Views have existed across several TENH Inbox versions. Keep old saved\r\n' +
+    ' * JSON rows usable instead of silently turning a saved filter into zero\r\n' +
+    ' * matches when one of the historical key names is present. New saves continue\r\n' +
+    ' * to use the current camelCase shape.\r\n' +
+    ' */\r\n' +
+    'function normalizeSavedViewFilters(\r\n' +
+    '  value: unknown,\r\n' +
+    '): SavedViewFilters {\r\n' +
+    '  const record =\r\n' +
+    '    value &&\r\n' +
+    '    typeof value === "object" &&\r\n' +
+    '    !Array.isArray(value)\r\n' +
+    '      ? (value as Record<string, unknown>)\r\n' +
+    '      : {};\r\n' +
+    '\r\n' +
+    '  const workspaceScope =\r\n' +
+    '    typeof record.workspaceScope === "string" &&\r\n' +
+    '    ["all", "current", "selected"].includes(record.workspaceScope)\r\n' +
+    '      ? (record.workspaceScope as WorkspaceScope)\r\n' +
+    '      : typeof record.workspace_scope === "string" &&\r\n' +
+    '          ["all", "current", "selected"].includes(record.workspace_scope)\r\n' +
+    '        ? (record.workspace_scope as WorkspaceScope)\r\n' +
+    '        : "all";\r\n' +
+    '\r\n' +
+    '  const rawWorkspaceIds =\r\n' +
+    '    record.workspaceIds ??\r\n' +
+    '    record.workspace_ids ??\r\n' +
+    '    record.businessIds ??\r\n' +
+    '    record.business_ids;\r\n' +
+    '\r\n' +
+    '  const workspaceIds = Array.isArray(rawWorkspaceIds)\r\n' +
+    '    ? Array.from(\r\n' +
+    '        new Set(\r\n' +
+    '          rawWorkspaceIds\r\n' +
+    '            .filter(\r\n' +
+    '              (workspaceId): workspaceId is string =>\r\n' +
+    '                typeof workspaceId === "string" &&\r\n' +
+    '                workspaceId.trim().length > 0,\r\n' +
+    '            )\r\n' +
+    '            .map((workspaceId) => workspaceId.trim()),\r\n' +
+    '        ),\r\n' +
+    '      ).slice(0, 30)\r\n' +
+    '    : [];\r\n' +
+    '\r\n' +
+    '  const status =\r\n' +
+    '    typeof record.status === "string" &&\r\n' +
+    '    [\r\n' +
+    '      "any",\r\n' +
+    '      "open",\r\n' +
+    '      "pending",\r\n' +
+    '      "resolved",\r\n' +
+    '      "closed",\r\n' +
+    '      "spam",\r\n' +
+    '    ].includes(record.status)\r\n' +
+    '      ? (record.status as SavedViewFilters["status"])\r\n' +
+    '      : "any";\r\n' +
+    '\r\n' +
+    '  const assignment =\r\n' +
+    '    typeof record.assignment === "string" &&\r\n' +
+    '    [\r\n' +
+    '      "any",\r\n' +
+    '      "me",\r\n' +
+    '      "assigned",\r\n' +
+    '      "unassigned",\r\n' +
+    '    ].includes(record.assignment)\r\n' +
+    '      ? (record.assignment as SavedViewFilters["assignment"])\r\n' +
+    '      : "any";\r\n' +
+    '\r\n' +
+    '  const channel =\r\n' +
+    '    typeof record.channel === "string" &&\r\n' +
+    '    ["any", "messenger", "comment", "telegram"].includes(record.channel)\r\n' +
+    '      ? (record.channel as SavedViewFilters["channel"])\r\n' +
+    '      : "any";\r\n' +
+    '\r\n' +
+    '  const rawTagIds =\r\n' +
+    '    record.tagIds ??\r\n' +
+    '    record.tag_ids ??\r\n' +
+    '    record.tags;\r\n' +
+    '\r\n' +
+    '  const tagIds = Array.isArray(rawTagIds)\r\n' +
+    '    ? Array.from(\r\n' +
+    '        new Set(\r\n' +
+    '          rawTagIds\r\n' +
+    '            .filter(\r\n' +
+    '              (tagId): tagId is string =>\r\n' +
+    '                typeof tagId === "string" &&\r\n' +
+    '                tagId.trim().length > 0,\r\n' +
+    '            )\r\n' +
+    '            .map((tagId) => tagId.trim()),\r\n' +
+    '        ),\r\n' +
+    '      ).slice(0, 20)\r\n' +
+    '    : [];\r\n' +
+    '\r\n' +
+    '  return {\r\n' +
+    '    workspaceScope,\r\n' +
+    '    workspaceIds,\r\n' +
+    '    status,\r\n' +
+    '    assignment,\r\n' +
+    '    channel,\r\n' +
+    '    unreadOnly:\r\n' +
+    '      record.unreadOnly === true ||\r\n' +
+    '      record.unread_only === true,\r\n' +
+    '    pinnedOnly:\r\n' +
+    '      record.pinnedOnly === true ||\r\n' +
+    '      record.pinned_only === true,\r\n' +
+    '    tagIds,\r\n' +
+    '  };\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    'function normalizeSavedView(\r\n' +
+    '  view: SavedView,\r\n' +
+    '): SavedView {\r\n' +
+    '  return {\r\n' +
+    '    ...view,\r\n' +
+    '    fil'... 150422 more characters
+  
+      at TestContext.<anonymous> (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\inbox-bulk-read.test.cjs:61:152)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '"use client";\r\nimport { readInboxChannels } from "@/lib/inbox/read-channels";\r\n\r\nimport { DashboardUtilityNavigation } from "@/components/dashboard/dashboard-utility-navigation";\r\nimport { ConversationHeaderSurface, ConversationRail } from "./inbox-layout-surfaces";\r\nimport { ConversationListHeader } from "@/components/inbox/conversation-list-header";\r\nimport { ActiveFilterBanner, filterBannerIcons, statusBannerIcon } from "@/components/inbox/active-filter-banner";\r\nimport { destinationFromHref, destinationFromParams, sameDestination, type StatusDestination } from "@/lib/inbox/status-destination";\r\nimport { DeferredInboxItem } from "@/components/inbox/deferred-inbox-item";\r\nimport type { BulkReadResult, ReadTarget } from "@/lib/inbox/bulk-read";\r\nimport { useConversationPages } from "@/lib/inbox/use-conversation-pages";\r\nimport { useConversationListAnchor } from "@/lib/inbox/use-conversation-list-anchor";\r\nimport { CONVERSATION_PAGE_SIZE, INBOX_PAGE_CHANGED_EVENT, type ConversationPagingInitial } from "@/lib/inbox/conversation-page-contract";\r\n\r\nimport { searchRowSubtitle, type InboxSearchMatch } from "@/lib/inbox/search-match";\r\n\r\nimport { CustomerAvatar } from "@/components/customer-avatar";\r\n\r\nimport { ConversationBookmark, ConversationTag } from "./conversation-visuals";\r\n\r\nimport Link from "next/link";\r\nimport {\r\n  useRouter,\r\n  useSearchParams,\r\n} from "next/navigation";\r\nimport {\r\n  memo,\r\n  useCallback,\r\n  useDeferredValue,\r\n  useEffect,\r\n  useMemo,\r\n  useRef,\r\n  useState,\r\n} from "react";\r\n\r\nimport type {\r\n  InboxConversation,\r\n} from "@/types/inbox";\r\nimport type {\r\n  StatusCounts,\r\n  StatusFilter,\r\n} from "@/components/inbox/inbox-view-types";\r\nimport {\r\n  formatMessageTime,\r\n  getInitial,\r\n  getStatusLabel,\r\n  statusOptions,\r\n} from "@/components/inbox/inbox-utils";\r\nimport {\r\n  InboxChannelSelector,\r\n} from "@/components/inbox/inbox-channel-selector";\r\nimport { ReminderListPanel } from "@/components/inbox/reminder-list-panel";\r\nimport {\r\n  useWorkspaceLanguageId,\r\n} from "@/components/display/workspace-language-text";\r\nimport { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog";\r\nimport {\r\n  normalizeLegacyConversationPreview,\r\n} from "@/lib/inbox/conversation-preview";\r\nimport { CONVERSATION_TEXT_FONT_STACK } from "@/lib/display/workspace-fonts";\r\n\r\ntype SearchAwareContact =\r\n  NonNullable<InboxConversation["contact"]> & {\r\n    username?: string | null;\r\n    telegram_username?: string | null;\r\n    platform_username?: string | null;\r\n  };\r\n\r\nfunction getTelegramSearchIdentity(\r\n  conversation: InboxConversation,\r\n  platform: "messenger" | "telegram" | null,\r\n): string {\r\n  if (platform !== "telegram") {\r\n    return "";\r\n  }\r\n\r\n  const contact =\r\n    conversation.contact as SearchAwareContact | null;\r\n\r\n  return (\r\n    contact?.telegram_username ??\r\n    contact?.platform_username ??\r\n    contact?.username ??\r\n    contact?.platform_user_id ??\r\n    ""\r\n  )\r\n    .trim()\r\n    .toLowerCase()\r\n    .replace(/^@/, "");\r\n}\r\n\r\ntype ConversationListProps = {\r\n  onMarkAllRead?: (conversations: InboxConversation[], targets?: ReadTarget[]) => Promise<BulkReadResult>;\r\n  pagination?: ConversationPagingInitial;\r\n  onPageRows?: (rows: InboxConversation[]) => void;\r\n  markingAllRead?: boolean;\r\n  conversations:\r\n    InboxConversation[];\r\n  activeConversationId:\r\n    | string\r\n    | null;\r\n  activeStatus:\r\n    StatusFilter;\r\n  statusCounts:\r\n    StatusCounts;\r\n  onSelectConversation: (\r\n    conversationId: string,\r\n    match?: InboxSearchMatch,\r\n  ) => void;\r\n  onPrefetchConversation?: (\r\n    conversationId: string,\r\n    match?: InboxSearchMatch,\r\n  ) => void;\r\n  onClearConversationSelection?: () => void;\r\n};\r\n\r\ntype BuiltInViewKey =\r\n  | "all"\r\n  | "unread"\r\n  | "my"\r\n  | "unassigned"\r\n  | "comment"\r\n  | "open"\r\n  | "pinned";\r\n\r\ntype WorkspaceScope =\r\n  | "all"\r\n  | "current"\r\n  | "selected";\r\n\r\ntype SavedViewFilters = {\r\n  workspaceScope: WorkspaceScope;\r\n  workspaceIds: string[];\r\n  status:\r\n    | "any"\r\n    | "open"\r\n    | "pending"\r\n    | "resolved"\r\n    | "closed"\r\n    | "spam";\r\n  assignment:\r\n    | "any"\r\n    | "me"\r\n    | "assigned"\r\n    | "unassigned";\r\n  channel:\r\n    | "any"\r\n    | "messenger"\r\n    | "comment"\r\n    | "telegram";\r\n  unreadOnly: boolean;\r\n  pinnedOnly: boolean;\r\n  /*\r\n   * New rows store `${workspaceId}::${tagId}` so the same label can safely\r\n   * exist in more than one workspace. Legacy plain tag IDs remain readable.\r\n   */\r\n  tagIds: string[];\r\n};\r\n\r\ntype SavedView = {\r\n  id: string;\r\n  name: string;\r\n  filters:\r\n    SavedViewFilters;\r\n  sort_index: number;\r\n  created_at: string;\r\n  updated_at: string;\r\n};\r\n\r\ntype ViewsResponse = {\r\n  success?: boolean;\r\n  error?: string;\r\n  businessId?: string;\r\n  memberId?: string;\r\n  views?: SavedView[];\r\n};\r\n\r\ntype SmartViewWorkspaceOption = {\r\n  businessId: string;\r\n  businessName: string;\r\n  memberId: string;\r\n};\r\n\r\ntype SmartViewTagOption = {\r\n  id: string;\r\n  businessId: string;\r\n  name: string;\r\n  color: string;\r\n  count: number;\r\n};\r\n\r\ntype SmartViewOptionsResponse = {\r\n  success?: boolean;\r\n  error?: string;\r\n  currentBusinessId?: string | null;\r\n  workspaces?: SmartViewWorkspaceOption[];\r\n  tags?: SmartViewTagOption[];\r\n};\r\n\r\ntype ViewEditorState = {\r\n  id:\r\n    | string\r\n    | null;\r\n  name: string;\r\n  filters:\r\n    SavedViewFilters;\r\n};\r\n\r\nconst EMPTY_FILTERS:\r\n  SavedViewFilters = {\r\n    workspaceScope: "all",\r\n    workspaceIds: [],\r\n    status: "any",\r\n    assignment: "any",\r\n    channel: "any",\r\n    unreadOnly: false,\r\n    pinnedOnly: false,\r\n    tagIds: [],\r\n  };\r\n\r\nconst SMART_VIEW_TAG_SEPARATOR = "::";\r\n\r\nfunction makeSmartViewTagReference(\r\n  workspaceId: string,\r\n  tagId: string,\r\n) {\r\n  return `${workspaceId}${SMART_VIEW_TAG_SEPARATOR}${tagId}`;\r\n}\r\n\r\nfunction parseSmartViewTagReference(\r\n  value: string,\r\n) {\r\n  const separatorIndex = value.indexOf(\r\n    SMART_VIEW_TAG_SEPARATOR,\r\n  );\r\n\r\n  if (separatorIndex <= 0) {\r\n    return null;\r\n  }\r\n\r\n  const workspaceId = value\r\n    .slice(0, separatorIndex)\r\n    .trim();\r\n  const tagId = value\r\n    .slice(separatorIndex + SMART_VIEW_TAG_SEPARATOR.length)\r\n    .trim();\r\n\r\n  if (!workspaceId || !tagId) {\r\n    return null;\r\n  }\r\n\r\n  return { workspaceId, tagId };\r\n}\r\n\r\nconst DEFAULT_SMART_VIEW_ORDER_IDS = [\r\n  "default:my",\r\n  "default:unassigned",\r\n  "default:open",\r\n] as const;\r\n\r\nfunction normalizeSmartViewOrder(\r\n  stored: unknown,\r\n  availableIds: string[],\r\n) {\r\n  const available = new Set(availableIds);\r\n  const seen = new Set<string>();\r\n  const next: string[] = [];\r\n\r\n  if (Array.isArray(stored)) {\r\n    for (const value of stored) {\r\n      if (\r\n        typeof value === "string" &&\r\n        available.has(value) &&\r\n        !seen.has(value)\r\n      ) {\r\n        seen.add(value);\r\n        next.push(value);\r\n      }\r\n    }\r\n  }\r\n\r\n  for (const value of availableIds) {\r\n    if (!seen.has(value)) {\r\n      seen.add(value);\r\n      next.push(value);\r\n    }\r\n  }\r\n\r\n  return next;\r\n}\r\n\r\n/*\r\n * Smart Views have existed across several TENH Inbox versions. Keep old saved\r\n * JSON rows usable instead of silently turning a saved filter into zero\r\n * matches when one of the historical key names is present. New saves continue\r\n * to use the current camelCase shape.\r\n */\r\nfunction normalizeSavedViewFilters(\r\n  value: unknown,\r\n): SavedViewFilters {\r\n  const record =\r\n    value &&\r\n    typeof value === "object" &&\r\n    !Array.isArray(value)\r\n      ? (value as Record<string, unknown>)\r\n      : {};\r\n\r\n  const workspaceScope =\r\n    typeof record.workspaceScope === "string" &&\r\n    ["all", "current", "selected"].includes(record.workspaceScope)\r\n      ? (record.workspaceScope as WorkspaceScope)\r\n      : typeof record.workspace_scope === "string" &&\r\n          ["all", "current", "selected"].includes(record.workspace_scope)\r\n        ? (record.workspace_scope as WorkspaceScope)\r\n        : "all";\r\n\r\n  const rawWorkspaceIds =\r\n    record.workspaceIds ??\r\n    record.workspace_ids ??\r\n    record.businessIds ??\r\n    record.business_ids;\r\n\r\n  const workspaceIds = Array.isArray(rawWorkspaceIds)\r\n    ? Array.from(\r\n        new Set(\r\n          rawWorkspaceIds\r\n            .filter(\r\n              (workspaceId): workspaceId is string =>\r\n                typeof workspaceId === "string" &&\r\n                workspaceId.trim().length > 0,\r\n            )\r\n            .map((workspaceId) => workspaceId.trim()),\r\n        ),\r\n      ).slice(0, 30)\r\n    : [];\r\n\r\n  const status =\r\n    typeof record.status === "string" &&\r\n    [\r\n      "any",\r\n      "open",\r\n      "pending",\r\n      "resolved",\r\n      "closed",\r\n      "spam",\r\n    ].includes(record.status)\r\n      ? (record.status as SavedViewFilters["status"])\r\n      : "any";\r\n\r\n  const assignment =\r\n    typeof record.assignment === "string" &&\r\n    [\r\n      "any",\r\n      "me",\r\n      "assigned",\r\n      "unassigned",\r\n    ].includes(record.assignment)\r\n      ? (record.assignment as SavedViewFilters["assignment"])\r\n      : "any";\r\n\r\n  const channel =\r\n    typeof record.channel === "string" &&\r\n    ["any", "messenger", "comment", "telegram"].includes(record.channel)\r\n      ? (record.channel as SavedViewFilters["channel"])\r\n      : "any";\r\n\r\n  const rawTagIds =\r\n    record.tagIds ??\r\n    record.tag_ids ??\r\n    record.tags;\r\n\r\n  const tagIds = Array.isArray(rawTagIds)\r\n    ? Array.from(\r\n        new Set(\r\n          rawTagIds\r\n            .filter(\r\n              (tagId): tagId is string =>\r\n                typeof tagId === "string" &&\r\n                tagId.trim().length > 0,\r\n            )\r\n            .map((tagId) => tagId.trim()),\r\n        ),\r\n      ).slice(0, 20)\r\n    : [];\r\n\r\n  return {\r\n    workspaceScope,\r\n    workspaceIds,\r\n    status,\r\n    assignment,\r\n    channel,\r\n    unreadOnly:\r\n      record.unreadOnly === true ||\r\n      record.unread_only === true,\r\n    pinnedOnly:\r\n      record.pinnedOnly === true ||\r\n      record.pinned_only === true,\r\n    tagIds,\r\n  };\r\n}\r\n\r\nfunction normalizeSavedView(\r\n  view: SavedView,\r\n): SavedView {\r\n  return {\r\n    ...view,\r\n    fil'... 150422 more characters,
+    expected: /await onMarkAllRead\(filteredConversations\)/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests\inbox-conversation-url-selection.test.cjs:161:1
+✖ REPRODUCTION (original code): A -> Menu -> Inbox, click B snaps back to A and aborts B (255.5845ms)
+  AssertionError [ERR_ASSERTION]: original URL selection effect found at HEAD
+      at legacyEffect (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\inbox-conversation-url-selection.test.cjs:46:10)
+      at mount (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\inbox-conversation-url-selection.test.cjs:91:38)
+      at TestContext.<anonymous> (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\inbox-conversation-url-selection.test.cjs:162:17)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.start (node:internal/test_runner/test:1191:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests\inbox-image-ui.test.cjs:45:1
+✖ Facebook album renders enabled Reply and Copy for every photo; reactions retain the real row ID (757.2856ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 2
+  
+      at TestContext.<anonymous> (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\inbox-image-ui.test.cjs:47:86)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.start (node:internal/test_runner/test:1191:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\inbox-image-ui.test.cjs:51:1
+✖ Telegram grouped photos each reply to the correct actual message ID (403.1072ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 2
+  
+      at TestContext.<anonymous> (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\inbox-image-ui.test.cjs:54:86)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\inbox-image-ui.test.cjs:56:1
+✖ composer quote uses the exact selected album thumbnail and can cancel that selection (381.5145ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\inbox-image-ui.test.cjs:59:108)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\inbox-image-ui.test.cjs:61:1
+✖ a sent image reply renders a thumbnail and jumps to that exact photo inside the album (323.9311ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\inbox-image-ui.test.cjs:63:112)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\inbox-image-ui.test.cjs:67:1
+✖ single photos have Copy and opening the viewer preserves the message reference (336.3535ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\inbox-image-ui.test.cjs:68:72)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\inbox-ui-polish-20260929.test.cjs:8:1
+✖ conversation status filter is beside search and no longer in the left rail (8.7127ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(search >= 0 && headerFilter > search)
+  
+      at TestContext.<anonymous> (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\inbox-ui-polish-20260929.test.cjs:12:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.start (node:internal/test_runner/test:1191:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests\inbox-ui-polish-20260929.test.cjs:49:1
+✖ photo replies render a thumbnail and suppress literal [image] placeholder (4.0216ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /`Reply to \$\{replyImageReference \? "Photo" : telegramReplyPreview\.kind\}`/. Input:
+  
+  '"use client";\r\n' +
+    '\r\n' +
+    'import { MessageViewportFrame, MessageScrollSurface } from "./inbox-layout-surfaces";\r\n' +
+    'import { captureScrollAnchor, restoreScrollAnchor, type ScrollAnchor } from "@/lib/inbox/scroll-anchor";\r\n' +
+    'import { messageRenderKey } from "@/lib/inbox/confirm-outgoing-message";\r\n' +
+    'import { buildPhotoGroups, photoGroupCaption } from "@/lib/inbox/photo-groups";\r\n' +
+    'import { getAlbumActionTarget, type AlbumPhotoSelection } from "@/lib/inbox/album-action-target";\r\n' +
+    'import { PhotoAlbumFrame } from "@/components/inbox/photo-album-frame";\r\n' +
+    'import { InboxPhotoImage } from "@/components/inbox/inbox-photo-image";\r\n' +
+    'import { localImagePreview } from "@/lib/inbox/local-image-preview";\r\n' +
+    'import { useForegroundLoading } from "@/lib/display/foreground-loading";\r\n' +
+    'import { InboxEmptyState } from "@/components/inbox/inbox-empty-state";\r\n' +
+    'import { DeferredInboxItem } from "@/components/inbox/deferred-inbox-item";\r\n' +
+    'import { FacebookPostCard } from "@/components/inbox/facebook-post-card";\r\n' +
+    'import { facebookCommentIdentity, facebookCommentParentPreview, facebookCommentRenderRoot } from "@/lib/facebook/comment-context-data";\r\n' +
+    'import { safePostLink } from "@/lib/facebook/post-preview-data";\r\n' +
+    'import { MessengerSourceCard } from "@/components/inbox/messenger-source-card";\r\n' +
+    'import { messengerSourceTimeline } from "@/lib/facebook/messenger-source";\r\n' +
+    'import { rememberMetaStickerMessages } from "@/lib/stickers/meta-sticker-recents";\r\n' +
+    'import type { InboxStickerChoice } from "@/lib/stickers/catalog";\r\n' +
+    'import { facebookNativeReply } from "@/lib/facebook/native-reply";\r\n' +
+    'import { useFacebookBlock } from "@/lib/inbox/use-facebook-block";\r\n' +
+    '\r\n' +
+    'import { MessengerMessageActions } from "@/components/inbox/messenger-message-actions";\r\n' +
+    'import { PinnedMessageHeader } from "@/components/inbox/pinned-message-header";\r\n' +
+    'import { usePinnedMessages } from "@/lib/inbox/use-pinned-messages";\r\n' +
+    'import { getMessageActions, getMessageSummary, getDeletedMessageText, isMessagePinned, isMessageDeleted,\r\n' +
+    '  resolvePhotoReplyTarget,\r\n' +
+    '  getMessageImageUrl, getReplyImageReference, getReplyVideoReference, inboxImageEndpoint, type ReplyImageReference,\r\n' +
+    '} from "@/lib/inbox/message-actions";\r\n' +
+    'import { ImageCopyButton } from "@/components/inbox/image-copy-button";\r\n' +
+    'import { ReplyImageThumbnail, ReplyVideoThumbnail } from "@/components/inbox/reply-image-thumbnail";\r\n' +
+    '\r\n' +
+    'import { isCommentReplyBlocked } from "@/components/inbox/comment-reply-access";\r\n' +
+    '\r\n' +
+    'import { mergeCommentActionState } from "@/components/inbox/comment-action-state";\r\n' +
+    '\r\n' +
+    'import { withoutEchoedAttachmentDrafts } from "@/lib/facebook/attachment-echo";\r\n' +
+    '\r\n' +
+    'import { getFacebookMessengerWindowState, type FacebookMessengerWindowState } from "@/lib/facebook/messenger-window";\r\n' +
+    '\r\n' +
+    'import {\r\n' +
+    '  Fragment,\r\n' +
+    '  useCallback,\r\n' +
+    '  useEffect,\r\n' +
+    '  useLayoutEffect,\r\n' +
+    '  useMemo,\r\n' +
+    '  useRef,\r\n' +
+    '  useState,\r\n' +
+    '  type FormEvent,\r\n' +
+    '} from "react";\r\n' +
+    '\r\n' +
+    'import {\r\n' +
+    '  ConversationHeader,\r\n' +
+    '  type ConversationPendingLabels,\r\n' +
+    '} from "@/components/inbox/conversation-header";\r\n' +
+    '\r\n' +
+    'import {\r\n' +
+    '  ReplyBox,\r\n' +
+    '  type ReplyAttachment,\r\n' +
+    '} from "@/components/inbox/reply-box";\r\n' +
+    'import { usePersonalReplyBlock } from "@/lib/telegram-personal/use-personal-reply-status";\r\n' +
+    'import {\r\n' +
+    '  useWorkspaceLanguageId,\r\n' +
+    '} from "@/components/display/workspace-language-text";\r\n' +
+    '\r\n' +
+    'import type {\r\n' +
+    '  ConversationStatus,\r\n' +
+    '  CustomerTag,\r\n' +
+    '  InboxConversation,\r\n' +
+    '  InboxMessage,\r\n' +
+    '  TeamMember,\r\n' +
+    '} from "@/types/inbox";\r\n' +
+    '\r\n' +
+    'import type {\r\n' +
+    '  AgentPresence,\r\n' +
+    '  AgentPresenceStatus,\r\n' +
+    '  TeamAgentPresence,\r\n' +
+    '} from "@/lib/inbox/use-agent-presence";\r\n' +
+    'import {\r\n' +
+    '  TENH_ACTIVE_WORKSPACE_UI_CHANGE_EVENT,\r\n' +
+    '  readWorkspaceStorage,\r\n' +
+    '} from "@/lib/display/workspace-storage";\r\n' +
+    'import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog";\r\n' +
+    '\r\n' +
+    'const CHAT_BACKGROUND_STORAGE_KEY = "tenh-chat-background-theme";\r\n' +
+    'const CHAT_BACKGROUND_SRC_STORAGE_KEY = `${CHAT_BACKGROUND_STORAGE_KEY}:src`;\r\n' +
+    'const CHAT_BACKGROUND_CHANGE_EVENT = "tenh:chat-background-theme-change";\r\n' +
+    '/*\r\n' +
+    ' * Theme 1 is the product default for every workspace, including brand-new\r\n' +
+    ' * accounts that have never opened Display settings. This used to point at\r\n' +
+    ' * /images/chat-bg.png, so a new user saw one background in the Inbox while\r\n' +
+    ' * Display showed "Theme 1" as the selected option.\r\n' +
+    ' */\r\n' +
+    'const DEFAULT_CHAT_BACKGROUND_SRC = "/images/bg-theme1.png";\r\n' +
+    '\r\n' +
+    'function ResilientStickerImage({\r\n' +
+    '  directSrc,\r\n' +
+    '  conversationId,\r\n' +
+    '  messageId,\r\n' +
+    '  alt,\r\n' +
+    '  emoji,\r\n' +
+    '}: {\r\n' +
+    '  directSrc: string;\r\n' +
+    '  conversationId: string;\r\n' +
+    '  messageId: string;\r\n' +
+    '  alt: string;\r\n' +
+    '  emoji?: string | null;\r\n' +
+    '}) {\r\n' +
+    '  const [useProxy, setUseProxy] = useState(false);\r\n' +
+    '  const [unavailable, setUnavailable] = useState(false);\r\n' +
+    '  const proxySrc = inboxImageEndpoint({ conversationId, messageId });\r\n' +
+    '\r\n' +
+    '  if (unavailable) {\r\n' +
+    '    return (\r\n' +
+    '      <div className="flex min-h-20 w-fit min-w-[104px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white/80 px-3 py-2.5">\r\n' +
+    '        <span className="text-3xl leading-none">{emoji ?? "✨"}</span>\r\n' +
+    '        <span className="mt-1.5 text-[10.5px] font-medium text-slate-500">Sticker</span>\r\n' +
+    '      </div>\r\n' +
+    '    );\r\n' +
+    '  }\r\n' +
+    '\r\n' +
+    '  const src = useProxy ? proxySrc : directSrc;\r\n' +
+    '\r\n' +
+    '  return (\r\n' +
+    '    <img\r\n' +
+    '      decoding="async"\r\n' +
+    '      src={src}\r\n' +
+    '      alt={alt}\r\n' +
+    '      className="max-h-40 max-w-[160px] object-contain"\r\n' +
+    '      loading="lazy"\r\n' +
+    '      onError={() => {\r\n' +
+    '        if (!useProxy) {\r\n' +
+    '          setUseProxy(true);\r\n' +
+    '          return;\r\n' +
+    '        }\r\n' +
+    '        setUnavailable(true);\r\n' +
+    '      }}\r\n' +
+    '    />\r\n' +
+    '  );\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    '\r\n' +
+    'function isMessengerPolicyRecord(\r\n' +
+    '  value: unknown,\r\n' +
+    '): value is Record<string, unknown> {\r\n' +
+    '  return Boolean(\r\n' +
+    '    value &&\r\n' +
+    '      typeof value === "object" &&\r\n' +
+    '      !Array.isArray(value),\r\n' +
+    '  );\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    'function messengerPolicyString(\r\n' +
+    '  value: unknown,\r\n' +
+    ') {\r\n' +
+    '  return typeof value === "string" && value.trim()\r\n' +
+    '    ? value.trim()\r\n' +
+    '    : null;\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    'function isFacebookCommentInboxMessage(\r\n' +
+    '  message: InboxMessage,\r\n' +
+    ') {\r\n' +
+    '  const payload = message.raw_payload;\r\n' +
+    '\r\n' +
+    '  if (!isMessengerPolicyRecord(payload)) {\r\n' +
+    '    return false;\r\n' +
+    '  }\r\n' +
+    '\r\n' +
+    '  const source =\r\n' +
+    '    messengerPolicyString(payload.source)?.toLowerCase() ?? "";\r\n' +
+    '  const tenhSource =\r\n' +
+    '    messengerPolicyString(payload.tenh_source)?.toLowerCase() ?? "";\r\n' +
+    '\r\n' +
+    '  return (\r\n' +
+    '    messengerPolicyString(payload.item)?.toLowerCase() === "comment" ||\r\n' +
+    '    Boolean(messengerPolicyString(payload.comment_id)) ||\r\n' +
+    '    source === "facebook_comment_reply" ||\r\n' +
+    '    tenhSource.includes("comment_reply") ||\r\n' +
+    '    tenhSource === "facebook_page_reply"\r\n' +
+    '  );\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    '\r\n' +
+    'function isDirectFacebookMessengerInboundMessage(\r\n' +
+    '  message: InboxMessage,\r\n' +
+    ') {\r\n' +
+    '  if (message.direction !== "incoming") {\r\n' +
+    '    return false;\r\n' +
+    '  }\r\n' +
+    '\r\n' +
+    '  const payload = message.raw_payload;\r\n' +
+    '\r\n' +
+    '  if (!isMessengerPolicyRecord(payload)) {\r\n' +
+    '    return false;\r\n' +
+    '  }\r\n' +
+    '\r\n' +
+    '  const messengerMessage = payload.message;\r\n' +
+    '\r\n' +
+    '  if (!isMessengerPolicyRecord(messengerMessage)) {\r\n' +
+    '    return false;\r\n' +
+    '  }\r\n' +
+    '\r\n' +
+    '  return (\r\n' +
+    '    Boolean(messengerPolicyString(messengerMessage.mid)) &&\r\n' +
+    '    messengerMessage.is_echo !== true\r\n' +
+    '  );\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    'function isDirectFacebookMessengerOutgoingMessage(\r\n' +
+    '  message: InboxMessage,\r\n' +
+    ') {\r\n' +
+    '  if (message.direction !== "outgoing") {\r\n' +
+    '    return false;\r\n' +
+    '  }\r\n' +
+    '\r\n' +
+    '  const optimisticStatus =\r\n' +
+    '    (message as InboxMessage & {\r\n' +
+    '      __optimistic_status?: string;\r\n' +
+    '    }).__optimistic_status;\r\n' +
+    '\r\n' +
+    '  if (optimisticStatus === "failed") {\r\n' +
+    '    return false;\r\n' +
+    '  }\r\n' +
+    '\r\n' +
+    '  return !isFacebookCommentInboxMessage(message);\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    'function inboxMessageTimestampMs(\r\n' +
+    '  message: InboxMessage,\r\n' +
+    ') {\r\n' +
+    '  const value =\r\n' +
+    '    message.platform_created_at ?? message.created_at;\r\n' +
+    '\r\n' +
+    '  return value ? Date.parse(value) : Number.NaN;\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    'function getFacebookMessengerComposerState(\r\n' +
+    '  messages: InboxMessage[],\r\n' +
+    '): FacebookMessengerWindowState {\r\n' +
+    '  let latestDirectIncomingMs = Number.NaN;\r\n' +
+    '  let latestIncomingCommentMs = Number.NaN;\r\n' +
+    '  let latestDirectOutgoingMs = Number.NaN;\r\n' +
+    '\r\n' +
+    '  for (const message of messages) {\r\n' +
+    '    const timestamp = inboxMessageTimestampMs(message);\r\n' +
+    '\r\n' +
+    '    if (!Number.isFinite(timestamp)) {\r\n' +
+    '      continue;\r\n' +
+    '    }\r\n' +
+    '\r\n' +
+    '    if (\r\n' +
+    '      isDirectFacebookMessengerInboundMessage(message) &&\r\n' +
+    '      (!Number.isFinite(latestDirectIncomingMs) ||\r\n' +
+    '        timestamp > latestDirectIncomingMs)\r\n' +
+    '    ) {\r\n' +
+    '      latestDirectIncomingMs = timestamp;\r\n' +
+    '    }\r\n' +
+    '\r\n' +
+    '    if (\r\n' +
+    '      message.direction === "incoming" &&\r\n' +
+    '      isFacebookCommentInboxMessage(message) &&\r\n' +
+    '      (!Number.isFinite(latestIncomingCommentMs) ||\r\n' +
+    '        timestamp > latestIncomingCommentMs)\r\n' +
+    '    ) {\r\n' +
+    '      latestIncomingCommentMs = timestamp;\r\n' +
+    '    }\r\n' +
+    '\r\n' +
+    '    if (\r\n' +
+    '      isDirectFacebookMessengerOutgoingMessage(message) &&\r\n' +
+    '      (!Number.isFinite(latestDirectOutgoingMs) ||\r\n' +
+    '        timestamp > latestDirectOutgoingMs)\r\n' +
+    '    ) {\r\n' +
+    '      latestDirectOutgoingMs = timestamp;\r\n' +
+    '    }\r\n' +
+    '  }\r\n' +
+    '\r\n' +
+    '  return getFacebookMessengerWindowState(\r\n' +
+    '    latestDirectIncomingMs,\r\n' +
+    '    latestIncomingCommentMs,\r\n' +
+    '    latestDirectOutgoingMs,\r\n' +
+    '  );\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    'const CHAT_BACKGROUND_PRESET_SRC: Record<string, string> = {\r\n' +
+    '  "theme-1": "/images/bg-theme1.png",\r\n' +
+    '  "theme-2": "/images/bg-theme2.png",\r\n' +
+    '  "theme-3": "/images/bg-theme3.png",\r\n' +
+    '  "theme-4": "/images/bg-theme4.png",\r\n' +
+    '  "theme-5": "/images/bg-theme5.png",\r\n' +
+    '};\r\n' +
+    '\r\n' +
+    'function isSafeChatBackgroundSrc(value: unknown): value is string {\r\n' +
+    '  return (\r\n' +
+    '    typeof value === "string" &&\r\n' +
+    '    Object.values(CHAT_BACKGROUND_PRESET_SRC).includes(value)\r\n' +
+    '  );\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    'function readStoredChatBackgroundSrc() {\r\n' +
+    '  if (typeof window === "undefined") {\r\n' +
+    '    return DEFAULT_CHAT_BACKGROUND_SRC;\r\n' +
+    '  }\r\n' +
+    '\r\n' +
+    '  try {\r\n' +
+    '    const storedSrc = readWorkspaceStorage(\r\n' +
+    '      CHAT_BACKGROUND_SRC_STORAGE_KEY,\r\n' +
+    '    );\r\n' +
+    '\r\n' +
+    '    if (isSafeChatBackgroundSrc(storedSrc)) {\r\n' +
+    '      return storedSrc;\r\n' +
+    '    }\r\n' +
+    '\r\n' +
+    '    const storedId = readWorkspaceStorage(\r\n' +
+    '      CHAT_BACKGROUND_STORAGE_KEY,\r\n' +
+    '    );\r\n' +
+    '\r\n' +
+    '    if (storedId && CHAT_BACKGROUND_PRESET_SRC[storedId]) {\r\n' +
+    '      return CHAT_BACKGROUND_PRESET_SRC[storedId];\r\n' +
+    '    }\r\n' +
+    '  } catch {\r\n' +
+    '    // Keep the Inbox usable if browser storage is unavailable.\r\n' +
+    '  }\r\n' +
+    '\r\n' +
+    '  return DEFAULT_CHAT_BACKGROUND_SRC;\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    '/* What a Facebook comment action came back with. */\r\n' +
+    'type '... 232465 more characters
+  
+      at TestContext.<anonymous> (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\inbox-ui-polish-20260929.test.cjs:52:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '"use client";\r\n\r\nimport { MessageViewportFrame, MessageScrollSurface } from "./inbox-layout-surfaces";\r\nimport { captureScrollAnchor, restoreScrollAnchor, type ScrollAnchor } from "@/lib/inbox/scroll-anchor";\r\nimport { messageRenderKey } from "@/lib/inbox/confirm-outgoing-message";\r\nimport { buildPhotoGroups, photoGroupCaption } from "@/lib/inbox/photo-groups";\r\nimport { getAlbumActionTarget, type AlbumPhotoSelection } from "@/lib/inbox/album-action-target";\r\nimport { PhotoAlbumFrame } from "@/components/inbox/photo-album-frame";\r\nimport { InboxPhotoImage } from "@/components/inbox/inbox-photo-image";\r\nimport { localImagePreview } from "@/lib/inbox/local-image-preview";\r\nimport { useForegroundLoading } from "@/lib/display/foreground-loading";\r\nimport { InboxEmptyState } from "@/components/inbox/inbox-empty-state";\r\nimport { DeferredInboxItem } from "@/components/inbox/deferred-inbox-item";\r\nimport { FacebookPostCard } from "@/components/inbox/facebook-post-card";\r\nimport { facebookCommentIdentity, facebookCommentParentPreview, facebookCommentRenderRoot } from "@/lib/facebook/comment-context-data";\r\nimport { safePostLink } from "@/lib/facebook/post-preview-data";\r\nimport { MessengerSourceCard } from "@/components/inbox/messenger-source-card";\r\nimport { messengerSourceTimeline } from "@/lib/facebook/messenger-source";\r\nimport { rememberMetaStickerMessages } from "@/lib/stickers/meta-sticker-recents";\r\nimport type { InboxStickerChoice } from "@/lib/stickers/catalog";\r\nimport { facebookNativeReply } from "@/lib/facebook/native-reply";\r\nimport { useFacebookBlock } from "@/lib/inbox/use-facebook-block";\r\n\r\nimport { MessengerMessageActions } from "@/components/inbox/messenger-message-actions";\r\nimport { PinnedMessageHeader } from "@/components/inbox/pinned-message-header";\r\nimport { usePinnedMessages } from "@/lib/inbox/use-pinned-messages";\r\nimport { getMessageActions, getMessageSummary, getDeletedMessageText, isMessagePinned, isMessageDeleted,\r\n  resolvePhotoReplyTarget,\r\n  getMessageImageUrl, getReplyImageReference, getReplyVideoReference, inboxImageEndpoint, type ReplyImageReference,\r\n} from "@/lib/inbox/message-actions";\r\nimport { ImageCopyButton } from "@/components/inbox/image-copy-button";\r\nimport { ReplyImageThumbnail, ReplyVideoThumbnail } from "@/components/inbox/reply-image-thumbnail";\r\n\r\nimport { isCommentReplyBlocked } from "@/components/inbox/comment-reply-access";\r\n\r\nimport { mergeCommentActionState } from "@/components/inbox/comment-action-state";\r\n\r\nimport { withoutEchoedAttachmentDrafts } from "@/lib/facebook/attachment-echo";\r\n\r\nimport { getFacebookMessengerWindowState, type FacebookMessengerWindowState } from "@/lib/facebook/messenger-window";\r\n\r\nimport {\r\n  Fragment,\r\n  useCallback,\r\n  useEffect,\r\n  useLayoutEffect,\r\n  useMemo,\r\n  useRef,\r\n  useState,\r\n  type FormEvent,\r\n} from "react";\r\n\r\nimport {\r\n  ConversationHeader,\r\n  type ConversationPendingLabels,\r\n} from "@/components/inbox/conversation-header";\r\n\r\nimport {\r\n  ReplyBox,\r\n  type ReplyAttachment,\r\n} from "@/components/inbox/reply-box";\r\nimport { usePersonalReplyBlock } from "@/lib/telegram-personal/use-personal-reply-status";\r\nimport {\r\n  useWorkspaceLanguageId,\r\n} from "@/components/display/workspace-language-text";\r\n\r\nimport type {\r\n  ConversationStatus,\r\n  CustomerTag,\r\n  InboxConversation,\r\n  InboxMessage,\r\n  TeamMember,\r\n} from "@/types/inbox";\r\n\r\nimport type {\r\n  AgentPresence,\r\n  AgentPresenceStatus,\r\n  TeamAgentPresence,\r\n} from "@/lib/inbox/use-agent-presence";\r\nimport {\r\n  TENH_ACTIVE_WORKSPACE_UI_CHANGE_EVENT,\r\n  readWorkspaceStorage,\r\n} from "@/lib/display/workspace-storage";\r\nimport { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog";\r\n\r\nconst CHAT_BACKGROUND_STORAGE_KEY = "tenh-chat-background-theme";\r\nconst CHAT_BACKGROUND_SRC_STORAGE_KEY = `${CHAT_BACKGROUND_STORAGE_KEY}:src`;\r\nconst CHAT_BACKGROUND_CHANGE_EVENT = "tenh:chat-background-theme-change";\r\n/*\r\n * Theme 1 is the product default for every workspace, including brand-new\r\n * accounts that have never opened Display settings. This used to point at\r\n * /images/chat-bg.png, so a new user saw one background in the Inbox while\r\n * Display showed "Theme 1" as the selected option.\r\n */\r\nconst DEFAULT_CHAT_BACKGROUND_SRC = "/images/bg-theme1.png";\r\n\r\nfunction ResilientStickerImage({\r\n  directSrc,\r\n  conversationId,\r\n  messageId,\r\n  alt,\r\n  emoji,\r\n}: {\r\n  directSrc: string;\r\n  conversationId: string;\r\n  messageId: string;\r\n  alt: string;\r\n  emoji?: string | null;\r\n}) {\r\n  const [useProxy, setUseProxy] = useState(false);\r\n  const [unavailable, setUnavailable] = useState(false);\r\n  const proxySrc = inboxImageEndpoint({ conversationId, messageId });\r\n\r\n  if (unavailable) {\r\n    return (\r\n      <div className="flex min-h-20 w-fit min-w-[104px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white/80 px-3 py-2.5">\r\n        <span className="text-3xl leading-none">{emoji ?? "✨"}</span>\r\n        <span className="mt-1.5 text-[10.5px] font-medium text-slate-500">Sticker</span>\r\n      </div>\r\n    );\r\n  }\r\n\r\n  const src = useProxy ? proxySrc : directSrc;\r\n\r\n  return (\r\n    <img\r\n      decoding="async"\r\n      src={src}\r\n      alt={alt}\r\n      className="max-h-40 max-w-[160px] object-contain"\r\n      loading="lazy"\r\n      onError={() => {\r\n        if (!useProxy) {\r\n          setUseProxy(true);\r\n          return;\r\n        }\r\n        setUnavailable(true);\r\n      }}\r\n    />\r\n  );\r\n}\r\n\r\n\r\nfunction isMessengerPolicyRecord(\r\n  value: unknown,\r\n): value is Record<string, unknown> {\r\n  return Boolean(\r\n    value &&\r\n      typeof value === "object" &&\r\n      !Array.isArray(value),\r\n  );\r\n}\r\n\r\nfunction messengerPolicyString(\r\n  value: unknown,\r\n) {\r\n  return typeof value === "string" && value.trim()\r\n    ? value.trim()\r\n    : null;\r\n}\r\n\r\nfunction isFacebookCommentInboxMessage(\r\n  message: InboxMessage,\r\n) {\r\n  const payload = message.raw_payload;\r\n\r\n  if (!isMessengerPolicyRecord(payload)) {\r\n    return false;\r\n  }\r\n\r\n  const source =\r\n    messengerPolicyString(payload.source)?.toLowerCase() ?? "";\r\n  const tenhSource =\r\n    messengerPolicyString(payload.tenh_source)?.toLowerCase() ?? "";\r\n\r\n  return (\r\n    messengerPolicyString(payload.item)?.toLowerCase() === "comment" ||\r\n    Boolean(messengerPolicyString(payload.comment_id)) ||\r\n    source === "facebook_comment_reply" ||\r\n    tenhSource.includes("comment_reply") ||\r\n    tenhSource === "facebook_page_reply"\r\n  );\r\n}\r\n\r\n\r\nfunction isDirectFacebookMessengerInboundMessage(\r\n  message: InboxMessage,\r\n) {\r\n  if (message.direction !== "incoming") {\r\n    return false;\r\n  }\r\n\r\n  const payload = message.raw_payload;\r\n\r\n  if (!isMessengerPolicyRecord(payload)) {\r\n    return false;\r\n  }\r\n\r\n  const messengerMessage = payload.message;\r\n\r\n  if (!isMessengerPolicyRecord(messengerMessage)) {\r\n    return false;\r\n  }\r\n\r\n  return (\r\n    Boolean(messengerPolicyString(messengerMessage.mid)) &&\r\n    messengerMessage.is_echo !== true\r\n  );\r\n}\r\n\r\nfunction isDirectFacebookMessengerOutgoingMessage(\r\n  message: InboxMessage,\r\n) {\r\n  if (message.direction !== "outgoing") {\r\n    return false;\r\n  }\r\n\r\n  const optimisticStatus =\r\n    (message as InboxMessage & {\r\n      __optimistic_status?: string;\r\n    }).__optimistic_status;\r\n\r\n  if (optimisticStatus === "failed") {\r\n    return false;\r\n  }\r\n\r\n  return !isFacebookCommentInboxMessage(message);\r\n}\r\n\r\nfunction inboxMessageTimestampMs(\r\n  message: InboxMessage,\r\n) {\r\n  const value =\r\n    message.platform_created_at ?? message.created_at;\r\n\r\n  return value ? Date.parse(value) : Number.NaN;\r\n}\r\n\r\nfunction getFacebookMessengerComposerState(\r\n  messages: InboxMessage[],\r\n): FacebookMessengerWindowState {\r\n  let latestDirectIncomingMs = Number.NaN;\r\n  let latestIncomingCommentMs = Number.NaN;\r\n  let latestDirectOutgoingMs = Number.NaN;\r\n\r\n  for (const message of messages) {\r\n    const timestamp = inboxMessageTimestampMs(message);\r\n\r\n    if (!Number.isFinite(timestamp)) {\r\n      continue;\r\n    }\r\n\r\n    if (\r\n      isDirectFacebookMessengerInboundMessage(message) &&\r\n      (!Number.isFinite(latestDirectIncomingMs) ||\r\n        timestamp > latestDirectIncomingMs)\r\n    ) {\r\n      latestDirectIncomingMs = timestamp;\r\n    }\r\n\r\n    if (\r\n      message.direction === "incoming" &&\r\n      isFacebookCommentInboxMessage(message) &&\r\n      (!Number.isFinite(latestIncomingCommentMs) ||\r\n        timestamp > latestIncomingCommentMs)\r\n    ) {\r\n      latestIncomingCommentMs = timestamp;\r\n    }\r\n\r\n    if (\r\n      isDirectFacebookMessengerOutgoingMessage(message) &&\r\n      (!Number.isFinite(latestDirectOutgoingMs) ||\r\n        timestamp > latestDirectOutgoingMs)\r\n    ) {\r\n      latestDirectOutgoingMs = timestamp;\r\n    }\r\n  }\r\n\r\n  return getFacebookMessengerWindowState(\r\n    latestDirectIncomingMs,\r\n    latestIncomingCommentMs,\r\n    latestDirectOutgoingMs,\r\n  );\r\n}\r\n\r\nconst CHAT_BACKGROUND_PRESET_SRC: Record<string, string> = {\r\n  "theme-1": "/images/bg-theme1.png",\r\n  "theme-2": "/images/bg-theme2.png",\r\n  "theme-3": "/images/bg-theme3.png",\r\n  "theme-4": "/images/bg-theme4.png",\r\n  "theme-5": "/images/bg-theme5.png",\r\n};\r\n\r\nfunction isSafeChatBackgroundSrc(value: unknown): value is string {\r\n  return (\r\n    typeof value === "string" &&\r\n    Object.values(CHAT_BACKGROUND_PRESET_SRC).includes(value)\r\n  );\r\n}\r\n\r\nfunction readStoredChatBackgroundSrc() {\r\n  if (typeof window === "undefined") {\r\n    return DEFAULT_CHAT_BACKGROUND_SRC;\r\n  }\r\n\r\n  try {\r\n    const storedSrc = readWorkspaceStorage(\r\n      CHAT_BACKGROUND_SRC_STORAGE_KEY,\r\n    );\r\n\r\n    if (isSafeChatBackgroundSrc(storedSrc)) {\r\n      return storedSrc;\r\n    }\r\n\r\n    const storedId = readWorkspaceStorage(\r\n      CHAT_BACKGROUND_STORAGE_KEY,\r\n    );\r\n\r\n    if (storedId && CHAT_BACKGROUND_PRESET_SRC[storedId]) {\r\n      return CHAT_BACKGROUND_PRESET_SRC[storedId];\r\n    }\r\n  } catch {\r\n    // Keep the Inbox usable if browser storage is unavailable.\r\n  }\r\n\r\n  return DEFAULT_CHAT_BACKGROUND_SRC;\r\n}\r\n\r\n/* What a Facebook comment action came back with. */\r\ntype '... 232465 more characters,
+    expected: /`Reply to \$\{replyImageReference \? "Photo" : telegramReplyPreview\.kind\}`/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests\messenger-sources\business-suite-action.test.cjs:45:1
+✖ one click opens the API-returned conversation without any installed extension (30.6364ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:54:1
+✖ provider routing parameters are preserved without replacing the inbox ID with a PSID (8.5095ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:58:1
+✖ popup blocking offers a normal browser link without requiring installation (12.3997ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:62:1
+✖ a missing Meta link closes only the blank loading tab and shows the API error (10.629ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:67:1
+✖ HTML from an unavailable route is handled without leaking a JSON parse exception (11.1227ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:71:1
+✖ pending requests suppress repeated clicks and restore the button after failure (11.2572ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:77:1
+✖ switching conversations aborts the old lookup and prevents late navigation (8.2093ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:82:1
+✖ unmounting closes the untouched loading tab and cancels the pending request (12.7754ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:87:1
+✖ a user-navigated loading tab is never overwritten or closed (8.0531ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:91:176
+✖ mismatched or unsafe responses cannot navigate {"businessId":"other"} (7.2329ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:91:176
+✖ mismatched or unsafe responses cannot navigate {"conversationId":"other"} (6.8901ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:91:176
+✖ mismatched or unsafe responses cannot navigate {"recipientId":"other"} (5.7729ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:91:176
+✖ mismatched or unsafe responses cannot navigate {"pageId":"other"} (5.6649ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:91:176
+✖ mismatched or unsafe responses cannot navigate {"linkSource":"browser_cache"} (5.8061ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:91:176
+✖ mismatched or unsafe responses cannot navigate {"conversationLink":"https://evil.test/"} (4.7734ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:94:1
+✖ missing Page/customer context does not open a blank tab or call the API (6.5681ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:105:1
+✖ the real customer panel keeps View conversation inside Other (86.9388ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9808:18)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5062:19)
+      at renderElement (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5497:23)
+      at retryNode (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:6417:31)
+      at renderNodeDestructive (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:6367:11)
+      at finishFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5106:13)
+      at renderElement (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5552:11)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:120:1
+✖ a stored customer link opens without extension or setup (5.3984ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:123:1
+✖ a legacy link from an older server cannot redirect to the first conversation (5.5191ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:127:1
+✖ the compact shortcut does not offer manual link editing after a failed redirect (6.9307ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:134:1
+✖ a resolved thread is copyable for diagnosis without constructing a destination from it (4.6689ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:140:1
+✖ reopening a resolved thread does not bypass the cache only because its browser link is unavailable (4.5907ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:144:1
+✖ lookup details reset on customer changes and mismatching responses never populate them (5.9844ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:150:1
+✖ the customer menu exposes View this conversation without an editing form (7.229ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:156:1
+✖ navigation-only opens a validated provider link on click with no render fetch (5.1974ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:161:1
+✖ navigation-only fallback is explicit and never automatically opens another conversation (4.8166ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:168:1
+✖ navigation-only rejects arbitrary fallback URLs and saved-link substitution (5.2973ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:172:1
+✖ navigation-only rejects saved links instead of treating them as provider matched (8.4289ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at StandaloneFacebookAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:249:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)
+
+test at tests\messenger-sources\business-suite-action.test.cjs:177:1
+✖ header and Other actions share one pending lookup and reset together on conversation change (37.916ms)
+  Error: This action must not access the extension
+      at useCompanion (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\tests\messenger-sources\business-suite-action.test.cjs:17:59)
+      at useFacebookConversationAction (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:29:56)
+      at FacebookConversationActionProvider (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-baseline-3HDJcT\source\components\inbox\companion-facebook-action.tsx:240:20)
+      at Object.react_stack_bottom_frame (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:25904:20)
+      at renderWithHooks (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:7662:22)
+      at updateFunctionComponent (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:10166:19)
+      at beginWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:11778:18)
+      at runWithFiberInDEV (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:871:30)
+      at performUnitOfWork (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17641:22)
+      at workLoopSync (C:\Users\TUF\social-inbox\node_modules\react-dom\cjs\react-dom-client.development.js:17469:41)

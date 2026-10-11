@@ -338,6 +338,8 @@ type CommentActionOutcome = {
 };
 
 type MessagePanelProps = {
+  compactWeb?: boolean;
+  onBack?: () => void;
   searchJump?: { conversationId: string; messageId: string; nonce: number } | null;
   storageBusinessId: string;
   storageMemberId: string;
@@ -1475,6 +1477,8 @@ function HydrationSafeMessageDay({
 }
 
 export function MessagePanel({
+  compactWeb = false,
+  onBack,
   searchJump,
   storageBusinessId,
   storageMemberId,
@@ -2733,7 +2737,7 @@ export function MessagePanel({
       : null;
 
   return (
-    <section className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+    <section data-inbox-message-panel className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
 
       {telegramActionNotice ||
       actionNotice ? (
@@ -2947,6 +2951,8 @@ export function MessagePanel({
       />
 
       <ConversationHeader
+        compactWeb={compactWeb}
+        onBack={onBack}
         conversation={
           activeConversation
         }
@@ -3951,7 +3957,7 @@ export function MessagePanel({
                         outline holding the same trash icon the other two
                         deleted states use, so all three read as one thing.
                       */}
-                      <div
+                      <div data-message-row tabIndex={compactWeb ? 0 : undefined}
                         ref={(node) => {
                           if (node) {
                             messageElementRefs.current.set(
@@ -4034,7 +4040,7 @@ export function MessagePanel({
                       </div>
                     ) : null}
 
-                    <div
+                    <div data-message-row tabIndex={compactWeb ? 0 : undefined}
                       ref={(node) => {
                         if (node) {
                           messageElementRefs.current.set(
@@ -4228,7 +4234,7 @@ export function MessagePanel({
                           )}
 
                           {showCommentActions ? (
-                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] font-medium">
+                            <div data-comment-actions className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] font-medium">
                               {!isOutgoing ? (
                                 <>
                                   <button
@@ -4441,7 +4447,7 @@ export function MessagePanel({
 
                                 if (replyState.deleted) {
                                   return (
-                                    <div
+                                    <div data-message-row tabIndex={compactWeb ? 0 : undefined}
                                       key={reply.id}
                                       ref={(node) => {
                                         if (node) {
@@ -4511,7 +4517,7 @@ export function MessagePanel({
                                 }
 
                                 return (
-                                  <div
+                                  <div data-message-row tabIndex={compactWeb ? 0 : undefined}
                                     key={reply.id}
                                     ref={(node) => {
                                       if (node) {
@@ -4598,7 +4604,7 @@ export function MessagePanel({
                                       !reply.id.startsWith(
                                         "optimistic:",
                                       ) ? (
-                                        <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[12px] font-medium">
+                                        <div data-comment-actions className="mt-1.5 flex flex-wrap items-center gap-3 text-[12px] font-medium">
                                           {!replyIsOutgoing ? (
                                             <>
                                               <button
@@ -4796,7 +4802,7 @@ export function MessagePanel({
 
                   {sourceCards}
 
-                <div
+                <div data-message-row tabIndex={compactWeb ? 0 : undefined}
                   ref={(node) => {
                     if (node) {
                       messageElementRefs.current.set(
@@ -5687,7 +5693,7 @@ export function MessagePanel({
                     <div>
 
                       {showCommentActions ? (
-                        <div className="flex items-center gap-1 border-t border-slate-100 px-2 py-1.5">
+                        <div data-comment-actions className="flex items-center gap-1 border-t border-slate-100 px-2 py-1.5">
 
                           {!isOutgoing ? (
                             <>
@@ -6162,6 +6168,7 @@ export function MessagePanel({
       {imagePreview ? (
         <div
           className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-[2px] sm:p-8"
+          data-media-viewer
           role="dialog"
           aria-modal="true"
           aria-label="Image preview"

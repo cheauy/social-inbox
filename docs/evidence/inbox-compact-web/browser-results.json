@@ -1,0 +1,122 @@
+{
+  "checks": [
+    "no fixture runtime errors on list",
+    "phone list occupies available width",
+    "phone has no horizontal page overflow",
+    "menu precedes original logo",
+    "global menu opens",
+    "chat hides the global header and list rail",
+    "chat Back and channel context are visible",
+    "message rows and toolbar eligibility are rendered",
+    "presentation toggles add no requests or subscriptions",
+    "context selection reveals message actions",
+    "Quick Tags opens inside viewport",
+    "Quick Reply remains accessible",
+    "ported Quick Reply search uses 16px input text",
+    "image viewer remains available and outside message selection restrictions",
+    "secondary header actions remain reachable",
+    "details sheet is modal and bounded",
+    "closing sheet restores the same chat",
+    "browser Back also closes the customer sheet",
+    "Back restores list scroll",
+    "Back preserves URL filters and clears conversation",
+    "Back and reselect preserve the draft",
+    "native browser Back returns to list",
+    "native browser Forward reopens chat",
+    "reduced viewport reserves composer space",
+    "rapid URL switches retain the final conversation",
+    "failed chat request exposes retry without removing navigation",
+    "retry recovers the isolated failed request",
+    "phone-landscape has no page overflow",
+    "phone-landscape composer stays within viewport",
+    "tablet-portrait has no page overflow",
+    "tablet-portrait composer stays within viewport",
+    "tablet-portrait retains split panes and hides global header",
+    "tablet Back preserves an end-of-list anchor when the global header returns: {\"height\":2835,\"viewport\":900,\"top\":1935}",
+    "tablet-landscape has no page overflow",
+    "tablet-landscape composer stays within viewport",
+    "tablet-landscape retains split panes and hides global header",
+    "desktop has no page overflow",
+    "desktop composer stays within viewport",
+    "desktop header/actions and grid remain visible",
+    "small Khmer phone has no overflow",
+    "emulated iOS standalone signal is detected",
+    "no layout action sent a customer message or refreshed the page",
+    "fixture remains free of runtime errors"
+  ],
+  "screenshots": [
+    "phone-list.png",
+    "phone-chat.png",
+    "phone-actions.png",
+    "phone-details.png",
+    "phone-telegram.png",
+    "reduced-viewport-keyboard-emulation.png",
+    "phone-landscape.png",
+    "tablet-portrait.png",
+    "tablet-landscape.png",
+    "desktop.png",
+    "small-phone-khmer.png",
+    "standalone-signal-emulation.png"
+  ],
+  "errors": [],
+  "stats": {
+    "requests": 18,
+    "subscriptions": 6,
+    "queries": 0
+  },
+  "final": {
+    "requests": [
+      {
+        "url": "/api/workspaces",
+        "method": "GET"
+      },
+      {
+        "url": "/api/team-notifications",
+        "method": "GET"
+      },
+      {
+        "url": "/api/system-announcements/current",
+        "method": "GET"
+      },
+      {
+        "url": "/api/inbox/channels",
+        "method": "GET"
+      },
+      {
+        "url": "/api/reminders?summary=1",
+        "method": "GET"
+      },
+      {
+        "url": "/api/inbox/smart-view-options",
+        "method": "GET"
+      },
+      {
+        "url": "/api/inbox/views",
+        "method": "GET"
+      },
+      {
+        "url": "/api/inbox/live-state",
+        "method": "POST"
+      },
+      {
+        "url": "/api/workspaces",
+        "method": "GET"
+      },
+      {
+        "url": "/api/inbox/live-state",
+        "method": "POST"
+      }
+    ],
+    "subscriptions": [
+      "tenh-header-workspace-sync",
+      "tenh-inbox-v3-00000000-0000-4000-8000-000000000900",
+      "tenh-inbox-context-00000000-0000-4000-8000-000000000900",
+      "tenh-presence:00000000-0000-4000-8000-000000000900",
+      "tenh-header-notifications:00000000-0000-4000-8000-000000000901"
+    ],
+    "queries": [],
+    "refreshes": 0,
+    "errors": []
+  },
+  "physicalDeviceTested": false
+}

@@ -1,0 +1,30 @@
+{
+  "manifest": {
+    "id": "/dashboard/inbox",
+    "start_url": "/dashboard/inbox",
+    "scope": "/",
+    "display": "standalone"
+  },
+  "icons": [
+    {
+      "src": "/icons/tenh-192.png",
+      "width": 192,
+      "height": 192,
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/tenh-512.png",
+      "width": 512,
+      "height": 512,
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/tenh-maskable-512.png",
+      "width": 512,
+      "height": 512,
+      "purpose": "maskable"
+    }
+  ],
+  "nextGeneratedMetadata": true,
+  "physicalLaunchVerified": false
+}

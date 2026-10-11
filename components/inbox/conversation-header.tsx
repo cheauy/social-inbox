@@ -1,9 +1,11 @@
 "use client";
 
 import { ConversationBookmark } from "./conversation-visuals";
+import { CustomerAvatar } from "@/components/customer-avatar";
+import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import { ConversationStatusMenu } from "./conversation-status-menu";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   useWorkspaceLanguageId,
 } from "@/components/display/workspace-language-text";
@@ -40,6 +42,8 @@ export type ConversationPendingLabels = {
 const pendingButtonClass = "cursor-wait animate-pulse opacity-60";
 
 type ConversationHeaderProps = {
+  compactWeb?: boolean;
+  onBack?: () => void;
   conversation: InboxConversation;
   teamMembers: TeamMember[];
   viewingAgents: AgentPresence[];
@@ -176,6 +180,8 @@ const actionButtonBase =
   "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-white shadow-[0_4px_12px_rgba(15,23,42,0.07)] transition disabled:cursor-wait disabled:opacity-50";
 
 export function ConversationHeader({
+  compactWeb = false,
+  onBack,
   conversation,
   teamMembers,
   viewingAgents,
@@ -198,6 +204,14 @@ export function ConversationHeader({
   onTogglePin,
 }: ConversationHeaderProps) {
   const [assignmentOpen, setAssignmentOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!actionsOpen) return;
+    const close = (event: PointerEvent) => { if (!headerRef.current?.contains(event.target as Node)) setActionsOpen(false); };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [actionsOpen]);
   const [presenceOpen, setPresenceOpen] = useState(false);
   const [currentUserEmail, setCurrentUserEmail] = useState("");
 
@@ -310,9 +324,13 @@ export function ConversationHeader({
   };
 
   return (
-    <header className="relative z-30 w-full shrink-0 bg-white">
+    <header ref={headerRef} data-inbox-chat-header data-actions-expanded={actionsOpen} className="relative z-30 w-full shrink-0 bg-white" onKeyDown={event => {
+      if (event.key === "Escape") setActionsOpen(false);
+    }}>
       <div className="flex min-h-[82px] w-full flex-wrap items-center justify-between gap-3 border-b border-slate-200/90 bg-white px-4 py-2.5 shadow-[0_5px_18px_rgba(15,23,42,0.055)]">
-        <div className="min-w-0 basis-48 flex-1">
+        <button data-inbox-chat-back type="button" onClick={onBack} aria-label={isKhmer ? "ត្រឡប់ទៅការសន្ទនា" : "Back to conversations"}><ArrowLeft className="h-5 w-5" /></button>
+        {compactWeb && <div data-inbox-chat-avatar><CustomerAvatar src={conversation.contact?.profile_picture_url} name={customerName} contactId={conversation.contact?.id} platform={channelPlatform} eager className="h-10 w-10" /></div>}
+        <div data-inbox-chat-identity className="min-w-0 basis-48 flex-1">
           <p className="truncate text-[18px] font-bold leading-tight tracking-[-0.02em] text-slate-950">
             {customerName}
           </p>
@@ -334,9 +352,10 @@ export function ConversationHeader({
               <span>{connectionColor}</span>
             </span>
           </div>
+          <span data-inbox-compact-status className="text-xs font-medium text-blue-600">{statusLabel(conversation.status, conversation.status)}</span>
         </div>
-
-        <div className="flex max-w-full flex-wrap items-center gap-2 overflow-visible">
+        <button data-inbox-chat-more type="button" onClick={() => setActionsOpen(value => !value)} aria-expanded={actionsOpen} aria-label={isKhmer ? "សកម្មភាពការសន្ទនា" : "Conversation actions"}><MoreHorizontal className="h-5 w-5" /></button>
+        <div data-inbox-chat-actions className="flex max-w-full flex-wrap items-center gap-2 overflow-visible">
           {presenceAgents.length > 0 ? (
             <div className="relative mr-1">
               <button

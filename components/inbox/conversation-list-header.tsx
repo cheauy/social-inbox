@@ -1,5 +1,6 @@
 "use client";
 
+import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 import { Search, SlidersHorizontal } from "lucide-react";
 
 export function ConversationListHeader({ search, onSearchChange, filterOpen, filterApplied, onToggleFilter,
@@ -14,9 +15,10 @@ export function ConversationListHeader({ search, onSearchChange, filterOpen, fil
   filterLabel?: string;
   filterTitle?: string;
 }) {
+  const isKhmer = useWorkspaceLanguageId() === "km";
   return <>
     <div className="mb-4 min-w-0">
-      <h2 className="text-xl font-semibold tracking-tight text-slate-900">Conversations</h2>
+      <h2 className="text-xl font-semibold tracking-tight text-slate-900"><span data-inbox-desktop-title>Conversations</span><span data-inbox-compact-title>{isKhmer ? "ការសន្ទនា" : "Chats"}</span></h2>
       <p className="mt-1 text-[13px] leading-5 text-slate-500">All customer messages in one place</p>
     </div>
     <div className="flex w-full min-w-0 items-center gap-2">

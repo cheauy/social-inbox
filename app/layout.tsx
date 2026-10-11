@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist_Mono } from "next/font/google";
 import Script from "next/script";
 
@@ -138,9 +138,16 @@ const workspaceFontBootstrap = `
 `;
 
 export const metadata: Metadata = {
+  applicationName: "TENH CHAT",
+  appleWebApp: { capable: true, title: "TENH CHAT", statusBarStyle: "default" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
   title: "Tenh Chat",
   description:
     "Receive and reply to Facebook customer messages.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width", initialScale: 1, viewportFit: "cover", interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({

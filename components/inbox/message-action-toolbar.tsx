@@ -28,7 +28,7 @@ export function MessageActionToolbar({ outgoing, actions, replying, pinned, pinP
     style: { visibility: "hidden" as const, pointerEvents: "none" as const },
   };
   return (
-    <div className={`mt-1 flex min-w-0 px-1 ${keepVisible ? "opacity-100" : "opacity-0"} transition-opacity duration-150 focus-within:opacity-100 ${photoHover ? "group-hover/photo:opacity-100" : "group-hover:opacity-100"} [@media(hover:none)]:opacity-100 ${outgoing ? "justify-end" : "justify-start"}`}>
+    <div data-message-action-toolbar data-message-action-persistent={keepVisible || undefined} className={`mt-1 flex min-w-0 px-1 ${keepVisible ? "opacity-100" : "opacity-0"} transition-opacity duration-150 focus-within:opacity-100 ${photoHover ? "group-hover/photo:opacity-100" : "group-hover:opacity-100"} [@media(hover:none)]:opacity-100 ${outgoing ? "justify-end" : "justify-start"}`}>
       <div role="group" aria-label="Message actions" className="inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-full border border-slate-200 bg-white p-0.5 text-[11px] shadow-[0_1px_4px_rgba(15,23,42,0.10)] [&>*]:shrink-0" onClick={(event) => event.stopPropagation()}>
         {copyControl}
         {reactionControl ?? (reserveReaction ? <span aria-hidden="true" className="h-7 w-8" /> : null)}

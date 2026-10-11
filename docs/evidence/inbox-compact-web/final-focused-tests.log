@@ -1,0 +1,49 @@
+[rtk] /!\ No hook installed — run `rtk init -g` for automatic token savings
+✔ compact browser Back clears the chat; Forward selects it; desktop keeps its existing selection (463.3143ms)
+✔ compact selection reveals only the actual comment/message actions; scrolling cancels long press (665.3349ms)
+✔ desktop shell installs no compact selection or viewport overrides (68.7789ms)
+✔ standalone zoom constraint excludes the media viewer and ordinary browser tabs (124.7193ms)
+✔ long press selects a photo without opening it; a later normal tap still opens it (1055.7942ms)
+✔ existing pending/error keepVisible state remains explicit on the contextual toolbar (55.7767ms)
+✔ manifest keeps login, internal callbacks and Inbox in scope, without a private-response cache (11.5725ms)
+✔ actual Send blocks new B handler with A state owner, including Telegram Edit and public comment text (714.8191ms)
+✔ restoring destination owner during channel await cannot authorize text captured from a different owner (79.679ms)
+✔ actual Send rejects late platform result after A -> B -> A, even when ID and owner match again (127.3393ms)
+✔ same conversation ID in another business cannot dispatch the previous business draft (152.3826ms)
+✔ captured attachment follow-up text remains allowed in its owner and is rejected after ABA retirement (132.5286ms)
+✔ revoked business access blocks entry and a pending channel result (119.2487ms)
+✔ actual media handler rejects owner mismatch before platform work and late selection before dispatch (130.096ms)
+✔ actual quick-reply text callback rejects retired render and preserves current conversation work (130.8923ms)
+✔ current owner retains ordinary text and media sends (104.5291ms)
+✔ current Telegram text/Edit and public comment route bodies are preserved (184.2194ms)
+✔ late rejected platform lookup cannot replace the current owner error state (121.4623ms)
+✔ sticker handlers respect current owner and reject retired callbacks (195.9778ms)
+✔ incoming and teammate latest activity move first, pins stay above, duplicates and equal times stay stable (3.9892ms)
+✔ legacy new customer remains in All after Unread and older filtered server props (1.1563ms)
+✔ retained rows cannot cross revoked workspace or selected Page boundaries (0.8787ms)
+✔ list activity reordering keeps visible anchor and its exact offset without scrolling a message pane (1.714ms)
+✔ at top no scrolling is forced; missing anchor preserves numeric viewport (0.5778ms)
+✔ actual message-pane effects open at latest, preserve history on arrivals, and ignore duplicate delivery updates (268.8224ms)
+✔ unsent text survives Telegram -> Messenger -> Telegram, while quotes and workspace drafts stay separate (160.4356ms)
+✔ same-thread metadata refresh preserves new work, and a sent/cleared draft never resurrects (48.5829ms)
+✔ revoked membership removes its draft and a reused identifier in another workspace cannot recover it (25.2074ms)
+✔ the text-only cache retains at most 25 inactive conversation drafts (18.7954ms)
+✔ editing a sent Telegram message never becomes a new-message draft after A -> B -> A (16.4188ms)
+✔ the oldest destination restores before eviction and the active draft is outside the inactive cap (23.1124ms)
+✔ edit mode metadata updates keep the edit, while canceled edit text can become an ordinary draft (20.2499ms)
+✔ reverse Messenger -> Telegram edit -> Messenger restores only the ordinary draft (24.6605ms)
+✔ Cancel Telegram edit restores the pre-edit ordinary text, never the edited sent text (14.7831ms)
+✔ editing another message keeps the original pre-edit draft and stale Cancel cannot clear new work (26.288ms)
+✔ switching away from an edit caches only its pre-edit ordinary draft under the same conversation owner (16.2692ms)
+✔ revoking the edit owner clears its pre-edit draft without restoring it elsewhere (13.9916ms)
+✔ ending edit mode retires the saved pre-edit text so stale Cancel cannot overwrite later work (14.7253ms)
+✔ two edit handlers before a React state commit capture the ordinary draft only once (12.4351ms)
+✔ an Edit handler from a retired conversation cannot replace the current composer (20.8134ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 40
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4978.5938

@@ -687,7 +687,7 @@ export function CustomerTagSelector({
       </button>
 
       {open ? (
-        <div className="absolute bottom-12 left-0 z-50 w-[430px] max-w-[calc(100vw-28px)] overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.20)]">
+              <div data-inbox-quick-tag-popover className="absolute bottom-12 left-0 z-50 w-[430px] max-w-[calc(100vw-28px)] overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.20)]">
           <div className="border-b border-slate-200 px-5 pb-4 pt-5">
             <p className="text-xl font-bold tracking-tight text-slate-950">
               Quick tags

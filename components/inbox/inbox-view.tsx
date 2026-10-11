@@ -1,4 +1,6 @@
 "use client";
+import { InboxCustomerSheet, InboxWebShell } from "./inbox-web-shell";
+import { useCompactInboxWeb } from "@/lib/inbox/use-compact-web";
 import type { InboxSearchMatch } from "@/lib/inbox/search-match";
 import { FacebookConversationActionProvider } from "./companion-facebook-action";
 import { isMetaSticker, type InboxStickerChoice } from "@/lib/stickers/catalog";
@@ -510,6 +512,7 @@ export function InboxView({
   currentMemberId,
   accessibleBusinessIds,
 }: InboxViewProps) {
+  const compactWeb = useCompactInboxWeb();
 
   const router = useRouter();
   const searchParams =
@@ -4759,6 +4762,7 @@ const clearConversationSelection =
     retireComposerSubmissionScope();
     desiredConversationIdRef.current = null;
     setClientSelectedConversationId(null);
+  if (compactWeb) setCustomerPanelVisible(false);
     setLiveMessages([]);
     setHasMoreOlderMessages(false);
     setLoadingConversationMessages(false);
@@ -4784,6 +4788,7 @@ const clearConversationSelection =
     resolvedActiveConversationId,
     setCachedConversationPage,
     retireComposerSubmissionScope,
+    compactWeb,
   ]);
 
 const selectSearchConversation = useCallback((conversationId: string, match?: InboxSearchMatch) => {
@@ -5331,6 +5336,7 @@ useUrlConversationSelection({
   isAvailable: isConversationAvailable,
   select: selectFromUrl,
   ownPushesRef: ownConversationUrlPushesRef,
+  clearOnEmptyUrl: compactWeb ? clearConversationSelection : undefined,
 });
 
 async function handleLoadOlderMessages(): Promise<boolean> {
@@ -8865,7 +8871,7 @@ async function handleAssignToMe() {
 
 return (
 <FacebookConversationActionProvider navigationOnly businessId={activeConversation?.contact?.business_id ?? activeConversation?.business_id ?? ""} conversationId={activeConversation?.id ?? ""} pageId={activeConversation?.social_account?.platform_account_id ?? null} threadId={activeConversation?.contact?.platform_user_id ?? null}>
-<div data-inbox-shell className="relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+<InboxWebShell active={Boolean(resolvedActiveConversationId)}>
   {multiAgentToast ? (
     <div role="status" aria-live="polite" aria-atomic="true" className="pointer-events-none absolute right-5 top-5 z-[90] w-[min(390px,calc(100%-2.5rem))]">
       <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
@@ -8914,12 +8920,14 @@ return (
   ) : null}
 
     <div
+      data-inbox-grid
       className={`grid h-full min-h-0 overflow-x-auto overflow-y-hidden ${
        customerPanelVisible
   ? "grid-cols-[clamp(320px,30vw,472px)_minmax(400px,1fr)_300px] 2xl:grid-cols-[472px_minmax(400px,1fr)_340px]"
   : "grid-cols-[clamp(320px,30vw,472px)_minmax(400px,1fr)]"
       }`}
     >
+     <div data-inbox-list-pane className="h-full min-h-0 min-w-0" inert={compactWeb && customerPanelVisible}>
      <ConversationList
   pagination={pagination}
   onPageRows={handlePageRows}
@@ -8942,7 +8950,18 @@ return (
         }
       />
 
+     </div>
+   <div data-inbox-chat-pane className="h-full min-h-0 min-w-0" inert={compactWeb && customerPanelVisible}>
    <MessagePanel
+  compactWeb={compactWeb}
+  onBack={() => {
+    const list = document.querySelector<HTMLDivElement>("[data-inbox-list-scroll]");
+    const atEnd = compactWeb && list && list.scrollHeight - list.clientHeight - list.scrollTop < 1;
+    clearConversationSelection();
+    if (atEnd) window.requestAnimationFrame(() => {
+      if (!desiredConversationIdRef.current && list.isConnected) list.scrollTop = list.scrollHeight;
+    });
+  }}
   key={
     resolvedActiveConversationId ??
     "no-conversation"
@@ -9110,7 +9129,9 @@ return (
     handleRetryOptimisticMessage
   }
 />
+   </div>
       {customerPanelVisible ? (
+        <InboxCustomerSheet onClose={() => setCustomerPanelVisible(false)}>
         <CustomerProfile
           onReminderCreated={() => showSuccessToast("Reminder created successfully.")}
           onReportSpam={() => handleStatusChange("spam")}
@@ -9127,6 +9148,7 @@ return (
             handleContactTagsChange
           }
         />
+        </InboxCustomerSheet>
       ) : null}
     </div>
 
@@ -9146,6 +9168,7 @@ return (
    {!customerPanelVisible && (
   <button
     type="button"
+    data-inbox-details-peek
     onClick={() =>
       setCustomerPanelVisible(true)
     }
@@ -9169,7 +9192,7 @@ return (
 )}
 
 
-  </div>
+  </InboxWebShell>
 </FacebookConversationActionProvider>
 );
 }
