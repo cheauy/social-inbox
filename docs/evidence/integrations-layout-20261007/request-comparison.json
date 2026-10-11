@@ -1,0 +1,30 @@
+{
+  "baselineCommit": "8c4870e",
+  "initialRequestsBefore": [
+    {
+      "url": "/api/subscription/usage-management",
+      "method": "GET",
+      "body": null
+    },
+    {
+      "url": "/api/telegram-personal/connections",
+      "method": "GET",
+      "body": null
+    }
+  ],
+  "initialRequestsAfter": [
+    {
+      "url": "/api/subscription/usage-management",
+      "method": "GET",
+      "body": null
+    },
+    {
+      "url": "/api/telegram-personal/connections",
+      "method": "GET",
+      "body": null
+    }
+  ],
+  "serverQueriesIdentical": true,
+  "scenarioTracesIdentical": true,
+  "scenarioCount": 18
+}

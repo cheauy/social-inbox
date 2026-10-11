@@ -67,7 +67,7 @@ export default async function IntegrationsPage({
 
   if (!authResult.success) {
     return (
-      <main className="h-full min-h-0 overflow-y-auto bg-white p-6">
+      <main className="h-full min-h-0 overflow-y-auto bg-white p-4 sm:p-5 lg:p-6">
         <div className="mx-auto max-w-5xl">
           <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
             {authResult.error}
@@ -147,7 +147,7 @@ export default async function IntegrationsPage({
 
 
   return (
-    <main className="h-full min-h-0 overflow-y-auto bg-white p-6">
+    <main className="h-full min-h-0 overflow-y-auto bg-white p-4 sm:p-5 lg:p-6">
       <IntegrationWorkspace canManageChannels={canManageChannels} canAddConnections={canAddConnections}>
         {!canManageChannels ? (
           <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
@@ -236,7 +236,15 @@ export default async function IntegrationsPage({
               ) : null}
             </div>
           ) : (
-            <>
+            <div className="space-y-3 @min-[960px]:space-y-0 @min-[960px]:rounded-xl @min-[960px]:border @min-[960px]:border-slate-200">
+            <div className="hidden items-center gap-x-4 rounded-t-xl border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-600 @min-[960px]:grid @min-[960px]:grid-cols-[minmax(0,1.6fr)_minmax(0,.8fr)_minmax(0,.85fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.2fr)]" aria-hidden="true">
+              <span><WorkspaceLanguageText en="Page / Account" km="Page / គណនី" /></span>
+              <span><WorkspaceLanguageText en="Channel" km="ឆានែល" /></span>
+              <span><WorkspaceLanguageText en="Status" km="ស្ថានភាព" /></span>
+              <span><WorkspaceLanguageText en="Features" km="មុខងារ" /></span>
+              <span><WorkspaceLanguageText en="Page ID" km="លេខសម្គាល់ Page" /></span>
+              <span className="text-right"><WorkspaceLanguageText en="Actions" km="សកម្មភាព" /></span>
+            </div>
               {visiblePages.map((account) => {
                 const pageId = account.platform_account_id;
                 const pageName = account.account_name?.trim() || "Facebook Page";
@@ -248,52 +256,25 @@ export default async function IntegrationsPage({
                 return (
                   <article
                     key={account.id}
-                    className={`rounded-2xl border bg-white p-4 shadow-sm ${
-                      needsAttention
-                        ? "border-amber-400"
-                        : "border-slate-200"
-                    }`}
+                    className={`relative rounded-xl border bg-white p-4 @min-[960px]:rounded-none @min-[960px]:border-x-0 @min-[960px]:border-t-0 @min-[960px]:px-4 @min-[960px]:py-3 @min-[960px]:last:rounded-b-xl @min-[960px]:last:border-b-0 ${needsAttention ? "border-amber-300" : "border-slate-200"}`}
                   >
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="flex min-w-0 items-start gap-3">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 @min-[960px]:grid-cols-[minmax(0,1.6fr)_minmax(0,.8fr)_minmax(0,.85fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.2fr)]">
+                      <div className="order-1 col-span-2 flex min-w-0 items-center gap-3 @min-[960px]:col-span-1">
                         <FacebookPageAvatar
                           pageId={pageId}
                           pageName={pageName}
                         />
 
                         <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="truncate text-base font-bold text-slate-950">
+                          <div className="min-w-0">
+                            <h3 className="break-words text-sm font-semibold text-slate-950">
                               {pageName}
                             </h3>
 
-                            <span
-                              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                                !enabled || tokenAttention
-                                  ? "bg-amber-100 text-amber-800"
-                                  : "bg-emerald-50 text-emerald-700"
-                              }`}
-                            >
-                              {!enabled ? (
-                                <WorkspaceLanguageText
-                                  en="Disabled"
-                                  km="បានបិទ"
-                                />
-                              ) : tokenAttention ? (
-                                <WorkspaceLanguageText
-                                  en="⚠ Needs attention"
-                                  km="⚠ ត្រូវការពិនិត្យ"
-                                />
-                              ) : (
-                                <WorkspaceLanguageText
-                                  en="Connected"
-                                  km="បានភ្ជាប់"
-                                />
-                              )}
-                            </span>
+
                           </div>
 
-                          <p className="mt-0.5 text-sm text-slate-500">
+                          <p className="mt-0.5 text-xs leading-5 text-slate-500">
                             {needsAttention
                               ? !enabled
                                 ? (
@@ -317,26 +298,78 @@ export default async function IntegrationsPage({
                           </p>
                         </div>
                       </div>
-
-                      <div className="flex shrink-0 items-center gap-2">
+                      <div className="order-2 flex items-center gap-2 text-xs text-slate-600">
+                        <span aria-hidden="true" className="h-5 w-5 shrink-0 bg-[url('/images/channels/messenger.png')] bg-contain bg-center bg-no-repeat" />
+                        Messenger
+                      </div>
+                      <div className="order-3 justify-self-end @min-[960px]:justify-self-start">
+                        <span
+                              className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold ${
+                                !enabled || tokenAttention
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-emerald-50 text-emerald-700"
+                              }`}
+                            >
+                              {!enabled ? (
+                                <WorkspaceLanguageText
+                                  en="Disabled"
+                                  km="បានបិទ"
+                                />
+                              ) : tokenAttention ? (
+                                <WorkspaceLanguageText
+                                  en="⚠ Needs attention"
+                                  km="⚠ ត្រូវការពិនិត្យ"
+                                />
+                              ) : (
+                                <WorkspaceLanguageText
+                                  en="Connected"
+                                  km="បានភ្ជាប់"
+                                />
+                              )}
+                            </span>
+                      </div>
+                      <div className="order-4 col-span-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-600 @min-[960px]:col-span-1 @min-[960px]:gap-x-3">
+                      <span className="inline-flex items-center gap-1.5">
+                        <StatusDot tone={enabled ? "green" : "amber"} />
+                        Messenger
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <StatusDot tone={tokenAttention ? "amber" : "green"} />
+                        <WorkspaceLanguageText en="Comments" km="មតិយោបល់" />
+                      </span>
+                      {tokenAttention ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <StatusDot tone="amber" />
+                          <WorkspaceLanguageText en="Token" km="ថូខិន" />{" "}{tokenStatus}
+                        </span>
+                      ) : null}
+                    </div>
+                      <div className="order-5 col-span-2 min-w-0 break-all text-xs leading-5 text-slate-500 @min-[960px]:col-span-1">
+                        {pageId ? (
+                          <span>
+                            <span className="@min-[960px]:hidden"><WorkspaceLanguageText en="Page ID:" km="លេខសម្គាល់ Page:" /></span>{" "}{pageId}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="order-6 col-span-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 @min-[960px]:col-span-1 @min-[960px]:justify-end @min-[960px]:border-0 @min-[960px]:pt-0">
                         {!enabled ? (
                           <Link
                             href="/dashboard/settings/users?tab=channels"
-                            className="inline-flex items-center justify-center rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 transition hover:bg-amber-100"
+                            className="inline-flex items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 transition hover:bg-amber-100"
                           >
                             <WorkspaceLanguageText en="Enable channel" km="បើកឆានែល" />
                           </Link>
                         ) : tokenAttention && canManageChannels ? (
                           <a
                             href="/api/facebook/oauth/connect"
-                            className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50"
+                            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 transition hover:bg-slate-50"
                           >
                             <WorkspaceLanguageText en="Reconnect" km="ភ្ជាប់ឡើងវិញ" />
                           </a>
                         ) : (
                           <Link
                             href={`/dashboard/inbox?page=${encodeURIComponent(account.id)}`}
-                            className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50"
+                            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 transition hover:bg-slate-50"
                           >
                             <WorkspaceLanguageText en="Use in Inbox" km="ប្រើក្នុងប្រអប់សារ" />
                           </Link>
@@ -344,7 +377,7 @@ export default async function IntegrationsPage({
 
                         {canManageChannels ? (
                         <details className="relative">
-                          <summary className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-xl border border-slate-300 bg-white text-lg text-slate-700 transition hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+                          <summary aria-label={`More actions for ${pageName}`} className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-slate-200 bg-white text-lg text-slate-700 transition hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
                             ⋯
                           </summary>
 
@@ -370,9 +403,8 @@ export default async function IntegrationsPage({
                         ) : null}
                       </div>
                     </div>
-
                     {needsAttention ? (
-                      <div className="mt-3 rounded-xl bg-amber-100 px-3 py-3 text-sm text-amber-900">
+                      <div className="mt-3 rounded-lg bg-amber-50 px-3 py-3 text-sm leading-6 text-amber-900">
                         {!enabled
                           ? (
                               <WorkspaceLanguageText
@@ -388,33 +420,10 @@ export default async function IntegrationsPage({
                             )}
                       </div>
                     ) : null}
-
-                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-200 pt-3 text-sm text-slate-700">
-                      <span className="inline-flex items-center gap-1.5">
-                        <StatusDot tone={enabled ? "green" : "amber"} />
-                        Messenger
-                      </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <StatusDot tone={tokenAttention ? "amber" : "green"} />
-                        <WorkspaceLanguageText en="Comments" km="មតិយោបល់" />
-                      </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <StatusDot tone={tokenAttention ? "amber" : "green"} />
-                        <WorkspaceLanguageText en="Token" km="ថូខិន" />{" "}
-                        {tokenAttention ? tokenStatus : (
-                          <WorkspaceLanguageText en="valid" km="មានសុពលភាព" />
-                        )}
-                      </span>
-                      {pageId ? (
-                        <span className="ml-auto hidden text-xs text-slate-400 sm:inline">
-                          <WorkspaceLanguageText en="Page ID:" km="លេខសម្គាល់ Page:" />{" "}{pageId}
-                        </span>
-                      ) : null}
-                    </div>
                   </article>
                 );
               })}
-            </>
+            </div>
           )}
         </div>
       </IntegrationWorkspace>

@@ -127,14 +127,15 @@ function PlannedChannelPanel({
   channel: TenhChannelDefinition;
 }) {
   const isKhmer = useWorkspaceLanguageId() === "km";
+  const isTikTok = channel.platform === "tiktok";
   const isNext =
     channel.availability === "next";
 
   return (
-    <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.05)]">
-      <div className="border-b border-slate-200 bg-slate-50/70 px-6 py-5 sm:px-7">
+    <section className={isTikTok ? "@container overflow-hidden rounded-xl border border-slate-200 bg-white" : "overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.05)]"}>
+      <div className={isTikTok ? "border-b border-slate-200 bg-white px-4 py-3" : "border-b border-slate-200 bg-slate-50/70 px-6 py-5 sm:px-7"}>
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
+          <div className={`flex items-center gap-3 ${isTikTok ? "[&>span]:h-8 [&>span]:w-8" : ""}`}>
             <ChannelMark
               platform={channel.platform}
             />
@@ -143,7 +144,7 @@ function PlannedChannelPanel({
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">
                 {isKhmer ? "ឆានែលអតិថិជន" : "Customer channel"}
               </p>
-              <h2 className="mt-1 text-xl font-bold text-slate-950">
+              <h2 className={`mt-1 font-bold text-slate-950 ${isTikTok ? "text-sm" : "text-xl"}`}>
                 {channel.name}
               </h2>
             </div>
@@ -153,9 +154,20 @@ function PlannedChannelPanel({
         </div>
       </div>
 
-      <div className="p-6 sm:p-7">
+      {isTikTok ? (
+        <div className="hidden items-center gap-x-4 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-600 @min-[960px]:grid @min-[960px]:grid-cols-[minmax(0,1.6fr)_minmax(0,.8fr)_minmax(0,.85fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.2fr)]" aria-hidden="true">
+          <span>{isKhmer ? "Page / គណនី" : "Page / Account"}</span>
+          <span>{isKhmer ? "ឆានែល" : "Channel"}</span>
+          <span>{isKhmer ? "ស្ថានភាព" : "Status"}</span>
+          <span>{isKhmer ? "មុខងារ" : "Features"}</span>
+          <span>{isKhmer ? "លេខសម្គាល់គណនី" : "Account ID"}</span>
+          <span className="text-right">{isKhmer ? "សកម្មភាព" : "Actions"}</span>
+        </div>
+      ) : null}
+
+      <div className={isTikTok ? "p-4" : "p-6 sm:p-7"}>
         <div
-          className={`rounded-2xl border p-5 ${
+          className={`${isTikTok ? "rounded-xl border border-dashed p-4" : "rounded-2xl border p-5"} ${
             isNext
               ? "border-blue-200 bg-blue-50/70"
               : "border-slate-200 bg-slate-50"
@@ -190,8 +202,8 @@ function PlannedChannelPanel({
           </p>
         </div>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className={isTikTok ? "mt-3 grid gap-3 sm:grid-cols-2" : "mt-5 grid gap-4 sm:grid-cols-2"}>
+          <div className={isTikTok ? "rounded-lg border border-slate-200 bg-white p-4" : "rounded-2xl border border-slate-200 bg-white p-5"}>
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
               {isKhmer ? "ស្ថានភាពការតភ្ជាប់" : "Connection status"}
             </p>
@@ -203,7 +215,7 @@ function PlannedChannelPanel({
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className={isTikTok ? "rounded-lg border border-slate-200 bg-white p-4" : "rounded-2xl border border-slate-200 bg-white p-5"}>
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
               {isKhmer ? "ការប្រើប្រាស់គម្រោង" : "Subscription usage"}
             </p>
@@ -808,14 +820,14 @@ export function IntegrationWorkspace({
     ) ?? TENH_CHANNEL_CATALOG[0];
 
   return (
-    <div className="mx-auto w-full max-w-[1344px] space-y-6">
+    <div className="@container mx-auto w-full max-w-[1344px] space-y-3">
       <section className="min-w-0">
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-[27px] font-bold tracking-[-0.025em] text-slate-950">
+            <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950">
               {isKhmer ? "ការតភ្ជាប់" : "Integrations"}
             </h2>
-            <p className="mt-1.5 text-base text-slate-600">
+            <p className="mt-1 text-sm leading-6 text-slate-500">
               {isKhmer ? "ភ្ជាប់ និងគ្រប់គ្រងគណនីបណ្តាញសង្គមដែលអាជីវកម្មរបស់អ្នកប្រើ។" : "Connect and manage the social accounts used by your business."}
             </p>
           </div>
@@ -838,7 +850,7 @@ export function IntegrationWorkspace({
                     ? "អ្នកមានសិទ្ធិមើលតែប៉ុណ្ណោះ។ ត្រូវការសិទ្ធិ Manage ដើម្បីបន្ថែមការតភ្ជាប់។"
                     : "View only. Manage permission is required to add a connection."
               }
-              className="inline-flex shrink-0 items-center justify-center rounded-xl bg-blue-500 px-5 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:hover:bg-slate-300"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:hover:bg-slate-300"
             >
               <span className="mr-1.5 text-lg leading-none">+</span>
               {isKhmer ? "បន្ថែមការតភ្ជាប់" : "Add Connection"}
@@ -847,7 +859,7 @@ export function IntegrationWorkspace({
         </div>
 
         <nav
-          className="mt-5 flex max-w-full items-center gap-2 overflow-x-auto pb-1.5"
+          className="mt-4 flex max-w-full items-center gap-1 overflow-x-auto pb-1.5"
           aria-label={isKhmer ? "ឆានែលការតភ្ជាប់" : "Integration channels"}
         >
           {TENH_CHANNEL_CATALOG.map((channel) => {
@@ -864,9 +876,9 @@ export function IntegrationWorkspace({
                 key={channel.platform}
                 type="button"
                 onClick={() => setActivePlatform(channel.platform)}
-                className={`inline-flex shrink-0 items-center gap-2.5 rounded-full px-4 py-2.5 text-base font-medium transition ${
+                className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
                   isActive
-                    ? "bg-blue-50 text-blue-700"
+                    ? "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-100"
                     : channel.canConnect
                       ? "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
                       : "text-slate-400 hover:bg-slate-50"
@@ -896,7 +908,7 @@ export function IntegrationWorkspace({
 
                 {totalCount > 0 ? (
                   <span
-                    className={`min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-semibold ${
+                    className={`min-w-5 rounded-full px-1.5 py-0.5 text-center text-xs font-semibold ${
                       isActive
                         ? "bg-blue-100 text-blue-700"
                         : "bg-slate-100 text-slate-500"

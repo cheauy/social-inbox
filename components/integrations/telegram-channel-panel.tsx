@@ -338,7 +338,7 @@ export function TelegramChannelPanel({
       .split("")
       .reduce((total, char) => total + char.charCodeAt(0), 0);
     const choices = [
-      "bg-emerald-100 text-emerald-700",
+      "bg-emerald-50 text-emerald-700",
       "bg-amber-100 text-amber-700",
       "bg-sky-100 text-sky-700",
       "bg-rose-100 text-rose-700",
@@ -372,8 +372,8 @@ export function TelegramChannelPanel({
     const borderClass = state.hasError
       ? "border-red-300"
       : state.live
-        ? "border-slate-300"
-        : "border-amber-400";
+        ? "border-slate-200"
+        : "border-amber-300";
 
     const statusClass = state.hasError
       ? "bg-red-100 text-red-700"
@@ -392,45 +392,53 @@ export function TelegramChannelPanel({
     return (
       <article
         key={item.id}
-        className={`overflow-hidden rounded-2xl border bg-white ${borderClass}`}
+        className={`overflow-hidden rounded-xl border bg-white @min-[960px]:rounded-none @min-[960px]:border-x-0 @min-[960px]:border-t-0 @min-[960px]:last:border-b-0 ${borderClass}`}
       >
         <button
           type="button"
           onClick={() => void toggleBot(item.id)}
-          className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition hover:bg-slate-50/70"
+          className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 p-4 text-left transition hover:bg-slate-50/70 @min-[960px]:py-3 @min-[960px]:grid-cols-[minmax(0,1.6fr)_minmax(0,.8fr)_minmax(0,.85fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.2fr)]"
           aria-expanded={expanded}
         >
-          <span className="flex min-w-0 items-center gap-3">
+          <span className="order-1 col-span-2 flex min-w-0 items-center gap-3 @min-[960px]:col-span-1">
             <span
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold ${avatarClasses(item)}`}
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xs font-bold ${avatarClasses(item)}`}
             >
               {botInitials(item)}
             </span>
-
             <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold text-slate-950">
+              <span className="block break-words text-sm font-semibold text-slate-950">
                 {item.botName ?? "Telegram bot"}
               </span>
-              <span className="mt-0.5 block truncate text-xs text-slate-500">
+              <span className="mt-0.5 block break-all text-xs leading-5 text-slate-500">
                 {item.username ? `@${item.username}` : item.botId ?? "No username"}
               </span>
             </span>
           </span>
 
-          <span className="flex shrink-0 items-center gap-3">
-            <span
-              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass}`}
-            >
-              {state.hasError ? "⌁" : state.live ? "" : "⚠"}
-              {statusText}
-            </span>
-            <span
-              className={`text-lg leading-none text-slate-400 transition-transform ${
-                expanded ? "rotate-180" : ""
-              }`}
-              aria-hidden="true"
-            >
-              ⌄
+          <span className="order-2 flex items-center gap-2 text-xs text-slate-600">
+            <span aria-hidden="true" className="h-5 w-5 shrink-0 bg-[url('/images/channels/telegram.png')] bg-contain bg-center bg-no-repeat" />
+            Telegram
+          </span>
+
+          <span className={`order-3 inline-flex items-center gap-1 justify-self-end rounded-md px-2 py-1 text-xs font-semibold @min-[960px]:justify-self-start ${statusClass}`}>
+            {state.hasError ? "⌁" : state.live ? "" : "⚠"}
+            {statusText}
+          </span>
+
+          <span className="order-4 col-span-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-600 @min-[960px]:col-span-1">
+            <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${state.live ? "bg-emerald-600" : state.channelOff ? "bg-slate-400" : "bg-amber-700"}`} />
+            Webhook: {state.webhookStatus ?? "Unknown"}
+          </span>
+
+          <span className="order-5 col-span-2 break-all text-xs leading-5 text-slate-500 @min-[960px]:col-span-1">
+            <span className="@min-[960px]:sr-only">Bot ID: </span>{item.botId ?? "—"}
+          </span>
+
+          <span className="order-6 col-span-2 flex items-center gap-2 border-t border-slate-100 pt-3 text-xs font-medium text-slate-700 @min-[960px]:col-span-1 @min-[960px]:justify-end @min-[960px]:border-0 @min-[960px]:pt-0">
+            <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+              {expanded ? "Hide details" : "Details"}
+              <span className={`text-base leading-none text-slate-400 transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true">⌄</span>
             </span>
           </span>
         </button>
@@ -561,7 +569,7 @@ export function TelegramChannelPanel({
   }
 
   return (
-    <section className="min-w-0 space-y-4">
+    <section className="@container min-w-0 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-slate-950">Telegram bots</h2>
@@ -642,19 +650,26 @@ export function TelegramChannelPanel({
           ) : null}
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3 @min-[960px]:space-y-0 @min-[960px]:overflow-hidden @min-[960px]:rounded-xl @min-[960px]:border @min-[960px]:border-slate-200">
+          <div className="hidden items-center gap-x-4 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-600 @min-[960px]:grid @min-[960px]:grid-cols-[minmax(0,1.6fr)_minmax(0,.8fr)_minmax(0,.85fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.2fr)]" aria-hidden="true">
+            <span>Bot / Account</span>
+            <span>Channel</span>
+            <span>Status</span>
+            <span>Features</span>
+            <span>Bot ID</span>
+            <span className="text-right">Actions</span>
+          </div>
           {attentionConnections.length > 0 ? (
-            <div className="space-y-2">
+            <div className="space-y-3 @min-[960px]:space-y-0">
               {attentionConnections.map((item) => renderBot(item))}
             </div>
           ) : null}
-
           {healthyConnections.length > 0 ? (
             <div>
-              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 @min-[960px]:mb-0 @min-[960px]:border-y @min-[960px]:border-slate-200 @min-[960px]:bg-slate-50 @min-[960px]:px-4 @min-[960px]:py-2">
                 Healthy
               </p>
-              <div className="space-y-1">
+              <div className="space-y-3 @min-[960px]:space-y-0">
                 {healthyConnections.map((item) => renderBot(item))}
               </div>
             </div>

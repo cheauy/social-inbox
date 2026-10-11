@@ -1,0 +1,14 @@
+[
+  {
+    "file": "app/dashboard/integrations/page.tsx",
+    "matchesBuildCopy": true
+  },
+  {
+    "file": "components/integrations/integration-workspace.tsx",
+    "matchesBuildCopy": true
+  },
+  {
+    "file": "components/integrations/telegram-channel-panel.tsx",
+    "matchesBuildCopy": true
+  }
+]

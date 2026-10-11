@@ -1,0 +1,9 @@
+{
+  "baselineChecks": 69,
+  "finalChecks": 73,
+  "passed": true,
+  "initialRequestsEqual": true,
+  "queriesEqual": true,
+  "tracesEqual": true,
+  "scenarioCount": 26
+}

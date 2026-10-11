@@ -1,0 +1,674 @@
+{
+  "passed": true,
+  "checks": [
+    "workspace filter preserved",
+    "three Messenger pages",
+    "desktop has no horizontal overflow",
+    "tablet has no horizontal overflow",
+    "mobile has no horizontal overflow",
+    "Add Connection modal and existing Facebook instructions retained",
+    "Escape closes Add Connection",
+    "account actions menu opens",
+    "Inbox route and account identity retained",
+    "disconnect confirmation keeps history notice",
+    "cancel performs no disconnect request",
+    "failed disconnect keeps clear error in dialog",
+    "successful disconnect retains replace and refresh",
+    "Telegram tab selects existing panel",
+    "Telegram type controls and disabled Personal are retained",
+    "view-only controls remain restricted",
+    "Billing blocks adding connections",
+    "no-access page reads no channel data",
+    "empty-state Facebook connect form retained",
+    "disabled and expired channel actions retained",
+    "attention warnings fit mobile",
+    "callback success and warning notices retained",
+    "load errors remain visible",
+    "small-mobile retains rows without overflow",
+    "small-mobile account menu is focusable",
+    "small-mobile account menu opens",
+    "small-mobile account menu is visible inside viewport",
+    "landscape-tablet retains rows without overflow",
+    "landscape-tablet account menu is focusable",
+    "landscape-tablet account menu opens",
+    "landscape-tablet account menu is visible inside viewport",
+    "small-desktop retains rows without overflow",
+    "small-desktop account menu is focusable",
+    "small-desktop account menu opens",
+    "small-desktop account menu is visible inside viewport",
+    "large-desktop retains rows without overflow",
+    "large-desktop account menu is focusable",
+    "large-desktop account menu opens",
+    "large-desktop account menu is visible inside viewport",
+    "Instagram existing coming-soon controls retained",
+    "WhatsApp existing coming-soon controls retained",
+    "TikTok existing coming-soon controls retained",
+    "return to Messenger preserves all accounts",
+    "desktop pane narrowed by sidebar remains contained",
+    "long labels and IDs remain inside mobile layout",
+    "Khmer labels render with existing language state",
+    "Khmer mobile layout has no horizontal overflow",
+    "no uncaught browser errors"
+  ],
+  "scenarioTraces": [
+    {
+      "mode": "default",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": []
+    },
+    {
+      "mode": "default",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/facebook/connections/page-apex/disconnect",
+          "method": "POST",
+          "body": null
+        },
+        {
+          "url": "/api/facebook/connections/page-apex/disconnect",
+          "method": "POST",
+          "body": null
+        },
+        {
+          "url": "/api/telegram/connection",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram/webhook?connectionId=fixture-bot",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": [
+        {
+          "kind": "link",
+          "url": "/dashboard/inbox?page=page-apex"
+        },
+        {
+          "kind": "replace",
+          "url": "/dashboard/integrations?facebook=disconnected&message=Apex+Clothing+was+disconnected.+Conversation+history+was+preserved."
+        },
+        {
+          "kind": "refresh"
+        }
+      ]
+    },
+    {
+      "mode": "view-only",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": []
+    },
+    {
+      "mode": "locked",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": []
+    },
+    {
+      "mode": "no-access",
+      "requests": [],
+      "queries": [],
+      "navigation": []
+    },
+    {
+      "mode": "empty",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": []
+    },
+    {
+      "mode": "attention",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": []
+    },
+    {
+      "mode": "notice",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": []
+    },
+    {
+      "mode": "error",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": []
+    },
+    {
+      "mode": "default",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": []
+    },
+    {
+      "mode": "default",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": []
+    },
+    {
+      "mode": "default",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": []
+    },
+    {
+      "mode": "default",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": []
+    },
+    {
+      "mode": "default",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": []
+    },
+    {
+      "mode": "default",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": []
+    },
+    {
+      "mode": "long",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": []
+    },
+    {
+      "mode": "default",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": []
+    },
+    {
+      "mode": "attention",
+      "requests": [
+        {
+          "url": "/api/subscription/usage-management",
+          "method": "GET",
+          "body": null
+        },
+        {
+          "url": "/api/telegram-personal/connections",
+          "method": "GET",
+          "body": null
+        }
+      ],
+      "queries": [
+        {
+          "table": "social_accounts",
+          "filters": [
+            [
+              "business_id",
+              "fixture-business"
+            ],
+            [
+              "platform",
+              "facebook"
+            ]
+          ],
+          "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+        }
+      ],
+      "navigation": []
+    }
+  ],
+  "initialRequests": [
+    {
+      "url": "/api/subscription/usage-management",
+      "method": "GET",
+      "body": null
+    },
+    {
+      "url": "/api/telegram-personal/connections",
+      "method": "GET",
+      "body": null
+    }
+  ],
+  "initialQueries": [
+    {
+      "table": "social_accounts",
+      "filters": [
+        [
+          "business_id",
+          "fixture-business"
+        ],
+        [
+          "platform",
+          "facebook"
+        ]
+      ],
+      "select": "\n      id,\n      platform,\n      platform_account_id,\n      account_name,\n      is_active,\n      facebook_token_status\n    "
+    }
+  ],
+  "screenshots": [
+    "before-desktop.png",
+    "before-tablet.png",
+    "before-mobile.png",
+    "before-attention-mobile.png"
+  ],
+  "profile": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-integrations-edge-tyL4wM",
+  "isolated": true,
+  "externalDNSBlocked": true
+}
