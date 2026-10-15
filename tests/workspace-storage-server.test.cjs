@@ -1,15 +1,18 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs');
 const {loader}=require('./tenh-seven/harness.cjs');
 const queryHelpers=loader()('lib/storage/workspace-storage-query.ts');
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const row=(n,extra={})=>({id:id(n),business_id:'shop-a',display_name:`Product ${n}.jpg`,mime_type:'image/jpeg',size_bytes:3,file_kind:'image',storage_bucket:'tenh-workspace-files',storage_path:`shop-a/${n}.jpg`,created_at:'2026-10-03T00:00:00.123456+00:00',deleted_at:null,category_id:null,...extra});
 function fixture(options={}) {
- const tables={workspace_files:options.rows??[],workspace_file_categories:[],workspace_file_favorites:options.favorites??[],business_subscriptions:options.subscriptions??[],...options.tables};
+ const tables={workspace_files:options.rows??[],workspace_storage_uploads:[],workspace_file_categories:[],workspace_file_favorites:options.favorites??[],business_subscriptions:options.subscriptions??[],...options.tables};
  const history=[],signed=[],mutations=[];let strictCalls=0;
  class Query{
   constructor(name){this.name=name;this.filters=[];this.sorts=[];this.count=Infinity;this.selector='';}
   select(value){this.selector=value;return this;}eq(key,value){this.filters.push(r=>key==='workspace_file_favorites.member_id'?tables.workspace_file_favorites?.some(f=>f.member_id===value&&f.file_id===r.id):r[key]===value);return this;}
   is(key,value){this.filters.push(r=>(r[key]??null)===value);return this;}in(key,values){this.filters.push(r=>values.includes(r[key]));return this;}
+  not(key,op,value){assert.equal(op,'is');assert.equal(value,null);this.filters.push(r=>r[key]!=null);return this;}
+  gt(key,value){this.filters.push(r=>r[key]>value);return this;}
   order(key,{ascending}){this.sorts.push([key,ascending]);return this;}limit(count){this.count=count;return this;}
   ilike(key,pattern){const literal=pattern.slice(1,-1).replace(/\\([\\%_])/g,'$1').toLowerCase();this.filters.push(r=>r[key].toLowerCase().includes(literal));return this;}
   or(expr){const m=/^created_at\.lt\.([^,]+),and\(created_at\.eq\.([^,]+),id\.lt\.([^\)]+)\)$/.exec(expr);assert.ok(m,expr);assert.equal(m[1],m[2]);this.filters.push(r=>r.created_at<m[1]||(r.created_at===m[1]&&r.id<m[3]));return this;}

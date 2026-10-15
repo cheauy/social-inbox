@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loader, database } = require('./tenh-seven/harness.cjs');
@@ -21,6 +22,20 @@ function fixture(selected, options = {}) {
   });
   return { db, memo, usage, auth: load('lib/auth/get-current-member.ts'), access: load('lib/storage/workspace-storage-access.ts') };
 }
+
+test('web expected identity rejects changed workspace cookie and member before subscription lookup', async () => {
+  for (const headers of [{ 'x-tenh-business-id': 'other' }, { 'x-tenh-member-id': 'old-member' }]) {
+    const f = fixture('active');
+    const result = await f.access.getWorkspaceStorageAccess(new Request('https://mock.invalid', { headers }));
+    assert.equal(result.success, false); assert.equal(result.status, 403);
+    assert.equal(f.db.history.some(entry => entry.table === 'business_subscriptions'), false);
+    assert.equal(f.db.history.some(entry => entry.op !== 'read'), false);
+  }
+  const f = fixture('active');
+  assert.equal((await f.access.getWorkspaceStorageAccess(new Request('https://mock.invalid', {
+    headers: { 'x-tenh-business-id': 'active', 'x-tenh-member-id': 'member-active' },
+  }))).success, true);
+});
 
 for (const selected of ['stale-nonmember', 'removed']) {
   test(`Storage refuses ${selected} without retargeting another membership or checking its subscription`, async () => {

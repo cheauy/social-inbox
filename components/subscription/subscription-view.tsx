@@ -1410,7 +1410,7 @@ export function SubscriptionView() {
     : "—";
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] px-5 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
       <Script
         id="tenh-payway-classic-bridge"
         strategy="afterInteractive"
@@ -1462,7 +1462,7 @@ export function SubscriptionView() {
           );
         }}
       />
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">
             {t("Billing & workspace", "ការទូទាត់ និងកន្លែងធ្វើការ")}
@@ -1472,13 +1472,13 @@ export function SubscriptionView() {
           </h1>
           <p className="mt-2 text-sm leading-6 text-slate-500">
             {t(
-              "Manage your TENH Chat prepaid plan, workspace capacity, billing period, renewal, and channel access.",
-              "គ្រប់គ្រងគម្រោងបង់ប្រាក់ជាមុនរបស់ TENH Chat សមត្ថភាពកន្លែងធ្វើការ រយៈពេលទូទាត់ ការបន្ត និងការចូលប្រើឆានែល។",
+              "Manage your plans and usage",
+              "គ្រប់គ្រងគម្រោង និងការប្រើប្រាស់របស់អ្នក",
             )}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="grid gap-2 min-[480px]:grid-cols-2 lg:shrink-0">
           <Link
             href="/dashboard/subscription/billing-history"
             className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
@@ -1549,7 +1549,7 @@ export function SubscriptionView() {
       ) : null}
 
       <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_430px] xl:items-start">
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <SubscriptionMembershipList
             onSelectSubscription={(item, isCurrent) => {
               // V3.11.31.27: local information selection only.
@@ -1567,7 +1567,7 @@ export function SubscriptionView() {
           ) : null}
         </div>
 
-        <aside className="space-y-4 xl:sticky xl:top-5">
+        <aside className="min-w-0 space-y-4 xl:sticky xl:top-5">
           {((selectedListItem &&
               selectedListItem.role !== "owner" &&
               selectedListItem.canManageBilling !== true) ||
@@ -1592,8 +1592,8 @@ export function SubscriptionView() {
               </div>
               <p className="mt-4 text-sm leading-6 text-slate-500">
                 {t(
-                  "Select a subscription from the list to view its plan, expiry date, connected channels, team usage, and available actions.",
-                  "ជ្រើសរើសការជាវពីបញ្ជី ដើម្បីមើលគម្រោង កាលបរិច្ឆេទផុតកំណត់ ឆានែលដែលបានភ្ជាប់ ការប្រើប្រាស់ក្រុម និងសកម្មភាពដែលអាចប្រើបាន។",
+                  "Select a subscription view detail",
+                  "ជ្រើសរើសការជាវ ដើម្បីមើលព័ត៌មានលម្អិត",
                 )}
               </p>
             </section>
@@ -1630,7 +1630,7 @@ export function SubscriptionView() {
                 </div>
               </div>
 
-              <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="mt-5 grid grid-cols-1 gap-3 min-[480px]:grid-cols-2">
                 <div className="rounded-xl border border-slate-200 bg-white p-4">
                   <div className="flex items-center gap-3">
                     <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white">

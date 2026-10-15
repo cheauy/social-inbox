@@ -4,84 +4,25 @@ import Link from "next/link";
 import { BadgeCheck, CalendarDays, CheckCircle2, Copy, CreditCard, Download, Eye, Hash, HelpCircle, ReceiptText, ShieldCheck, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
-
-type BillingStatus =
-  | "pending"
-  | "approved"
-  | "declined"
-  | "rejected"
-  | "cancelled"
-  | "failed";
-
-type BillingHistoryItem = {
-  id: string;
-  sourceId: string;
-  source: "payway" | "manual";
-  transactionId: string;
-  paymentMethod: string;
-  planCode: string;
-  billingCycle: string;
-  amount: number;
-  currency: string;
-  status: BillingStatus;
-  providerStatus: string | null;
-  approvalCode: string | null;
-  reviewNote: string | null;
-  createdAt: string;
-  paidAt: string | null;
-  reviewedAt: string | null;
-  periodStart: string | null;
-  periodEnd: string | null;
-  invoiceId: string | null;
-  invoiceNumber: string | null;
-};
+import {
+  type BillingHistoryItem,
+  type BillingHistorySummary,
+  formatBillingDate,
+  formatBillingMoney,
+  paymentEnvironmentLabel,
+  paymentMethodLabel,
+  paymentStatusLabel,
+  paymentVerificationLabel,
+} from "@/lib/billing/payment-display";
 
 type HistoryResponse = {
   success?: boolean;
   error?: string;
   items?: BillingHistoryItem[];
-  summary?: {
-    total: number;
-    approved: number;
-    pending: number;
-    attention: number;
-    approvedUsdTotal: number;
-    receipts: number;
-  };
+  summary?: BillingHistorySummary;
 };
 
 type FilterKey = "all" | "approved" | "pending" | "attention";
-
-function formatMoney(amount: number, currency: string) {
-  if (currency === "USD") {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 2,
-    }).format(amount);
-  }
-
-  return `${new Intl.NumberFormat("en-US").format(amount)} ${currency}`;
-}
-
-function formatDate(value: string | null, withTime = false, isKhmer = false) {
-  if (!value) return "—";
-
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "—";
-
-  return new Intl.DateTimeFormat(isKhmer ? "km-KH" : "en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    ...(withTime
-      ? {
-          hour: "numeric",
-          minute: "2-digit",
-        }
-      : {}),
-  }).format(date);
-}
 
 function titleCase(value: string) {
   return value
@@ -104,38 +45,15 @@ function planLabel(value: string, isKhmer = false) {
   return titleCase(value);
 }
 
-function statusLabel(value: string, isKhmer = false) {
-  if (!isKhmer) return titleCase(value);
-
-  switch (value.toLowerCase()) {
+function statusClasses(item: BillingHistoryItem) {
+  switch (item.status) {
     case "approved":
-      return "បានអនុម័ត";
+      if (item.environment === "sandbox") return "border-violet-200 bg-violet-50 text-violet-700";
+      return item.confirmedPaid
+        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+        : "border-amber-200 bg-amber-50 text-amber-700";
     case "pending":
-      return "កំពុងរង់ចាំ";
-    case "cancelled":
-      return "បានលុបចោល";
-    case "declined":
-      return "ត្រូវបានបដិសេធ";
-    case "rejected":
-      return "ត្រូវបានច្រានចោល";
-    case "failed":
-      return "បានបរាជ័យ";
-    default:
-      return value;
-  }
-}
-
-function paymentMethodLabel(value: string, isKhmer = false) {
-  if (!isKhmer) return value;
-  if (value.toLowerCase().includes("manual")) return "ផ្ទេរប្រាក់តាមធនាគារដោយដៃ";
-  return value;
-}
-
-function statusClasses(status: BillingStatus) {
-  switch (status) {
-    case "approved":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
-    case "pending":
+    case "recovery_required":
       return "border-amber-200 bg-amber-50 text-amber-700";
     case "cancelled":
       return "border-slate-200 bg-slate-100 text-slate-600";
@@ -149,7 +67,7 @@ function statusClasses(status: BillingStatus) {
 }
 
 function isAttention(item: BillingHistoryItem) {
-  return ["declined", "rejected", "failed"].includes(item.status);
+  return ["declined", "rejected", "failed", "recovery_required"].includes(item.status);
 }
 
 export function BillingHistoryView() {
@@ -160,7 +78,8 @@ export function BillingHistoryView() {
   const [items, setItems] = useState<BillingHistoryItem[]>([]);
   const [summary, setSummary] = useState<HistoryResponse["summary"] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<"signin" | "forbidden" | "unavailable" | null>(null);
+  const [retry, setRetry] = useState(0);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [selected, setSelected] = useState<BillingHistoryItem | null>(null);
 
@@ -175,24 +94,25 @@ export function BillingHistoryView() {
         const response = await fetch("/api/subscription/billing-history", {
           cache: "no-store",
         });
+        if (!response.ok) {
+          if (!cancelled) {
+            setError(response.status === 401 ? "signin" : response.status === 403 ? "forbidden" : "unavailable");
+          }
+          return;
+        }
         const result = (await response.json()) as HistoryResponse;
 
-        if (!response.ok || !result.success) {
-          throw new Error(result.error ?? "Unable to load billing history.");
+        if (!result.success) {
+          if (!cancelled) setError("unavailable");
+          return;
         }
 
         if (!cancelled) {
           setItems(result.items ?? []);
           setSummary(result.summary ?? null);
         }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Unable to load billing history.",
-          );
-        }
+      } catch {
+        if (!cancelled) setError("unavailable");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -203,7 +123,7 @@ export function BillingHistoryView() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [retry]);
 
   useEffect(() => {
     if (!selected) return;
@@ -241,6 +161,17 @@ export function BillingHistoryView() {
     },
   ];
 
+  const selectedHasReceipt = selected?.status === "approved" && Boolean(selected.invoiceId);
+  const selectedReceiptStatus = selectedHasReceipt
+    ? t("Receipt ready to view", "បង្កាន់ដៃរួចរាល់សម្រាប់មើល")
+    : selected?.status === "approved"
+      ? t("Receipt unavailable.", "មិនមានបង្កាន់ដៃទេ។")
+      : selected?.status === "pending"
+        ? t("Payment pending.", "ការទូទាត់កំពុងរង់ចាំ។")
+        : selected ? paymentStatusLabel(selected, isKhmer) : "";
+  const SelectedStatusIcon = selected?.confirmedPaid ? CheckCircle2 : HelpCircle;
+  const SelectedVerificationIcon = selected?.provider === "payway" && selected.providerVerified ? ShieldCheck : CreditCard;
+
   return (
     <div className="min-h-full bg-slate-50">
       <div className="mx-auto w-full max-w-7xl px-5 py-7 sm:px-6 lg:px-8">
@@ -267,14 +198,26 @@ export function BillingHistoryView() {
 
         {error ? (
           <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
-            {error === "Unable to load billing history."
-              ? t("Unable to load billing history.", "មិនអាចផ្ទុកប្រវត្តិការទូទាត់បានទេ។")
-              : error}
+            <p>{error === "signin"
+              ? t("Sign in to view billing history.", "ចូលគណនីដើម្បីមើលប្រវត្តិការទូទាត់។")
+              : error === "forbidden"
+                ? t("Only the workspace owner can view billing history.", "មានតែម្ចាស់កន្លែងធ្វើការប៉ុណ្ណោះដែលអាចមើលប្រវត្តិការទូទាត់បាន។")
+                : t("Unable to load billing history.", "មិនអាចផ្ទុកប្រវត្តិការទូទាត់បានទេ។")}</p>
+            {error === "signin" ? (
+              <Link href="/login" className="mt-3 inline-flex font-bold underline">{t("Sign in", "ចូលគណនី")}</Link>
+            ) : error === "unavailable" ? (
+              <button type="button" onClick={() => setRetry((value) => value + 1)} className="mt-3 font-bold underline">{t("Retry", "ព្យាយាមម្តងទៀត")}</button>
+            ) : null}
           </div>
         ) : null}
 
-
-
+        {summary && !error ? (
+          <div className="mt-6 flex flex-wrap gap-x-8 gap-y-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm sm:px-6">
+            <p className="text-slate-500">{t("Real paid total (USD)", "សរុបប្រាក់ដែលបានបង់ពិតប្រាកដ (USD)")} <span className="ml-2 font-bold text-slate-950">{formatBillingMoney(summary.approvedUsdTotal, "USD", isKhmer)}</span></p>
+            <p className="text-slate-500">{t("Test payments (USD)", "ការទូទាត់សាកល្បង (USD)")} <span className="ml-2 font-bold text-slate-700">{formatBillingMoney(summary.testUsdTotal, "USD", isKhmer)}</span></p>
+            <p className="text-slate-500">{t("Unverified approvals (USD)", "ការអនុម័តមិនទាន់ផ្ទៀងផ្ទាត់ (USD)")} <span className="ml-2 font-bold text-slate-700">{formatBillingMoney(summary.unverifiedUsdTotal, "USD", isKhmer)}</span></p>
+          </div>
+        ) : null}
         <section className="mt-6 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-5 py-5 sm:px-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -311,7 +254,7 @@ export function BillingHistoryView() {
 
           {loading ? (
             <div className="p-10 text-center text-sm font-medium text-slate-500">{t("Loading billing history...", "កំពុងផ្ទុកប្រវត្តិការទូទាត់...")}</div>
-          ) : filteredItems.length === 0 ? (
+          ) : error ? null : filteredItems.length === 0 ? (
             <div className="p-12 text-center">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-xl">$</div>
               <p className="mt-4 font-bold text-slate-900">{t("No payments in this view", "មិនមានការទូទាត់ក្នុងទិដ្ឋភាពនេះទេ")}</p>
@@ -335,8 +278,9 @@ export function BillingHistoryView() {
                     className="grid gap-4 px-5 py-5 transition hover:bg-slate-50 sm:px-6 lg:grid-cols-[1.15fr_0.9fr_0.85fr_0.75fr_0.75fr_auto] lg:items-center"
                   >
                     <div className="min-w-0">
-                      <p className="font-bold text-slate-900">{formatDate(item.createdAt, false, isKhmer)}</p>
-                      <p className="mt-1 truncate font-mono text-[11px] text-slate-400">{item.transactionId}</p>
+                      <p className="font-bold text-slate-900">{formatBillingDate(item.createdAt, false, isKhmer)}</p>
+                      <p className="mt-1 truncate text-xs font-medium text-slate-600">{item.workspaceName}</p>
+                      <p className="mt-1 truncate font-mono text-[11px] text-slate-400">{item.transactionId ?? "—"}</p>
                     </div>
 
                     <div>
@@ -345,16 +289,17 @@ export function BillingHistoryView() {
                     </div>
 
                     <div>
-                      <p className="text-sm font-medium text-slate-700">{paymentMethodLabel(item.paymentMethod, isKhmer)}</p>
+                      <p className="text-sm font-medium text-slate-700">{paymentMethodLabel(item.provider, isKhmer)}</p>
+                      <p className="mt-1 text-xs text-slate-500">{paymentEnvironmentLabel(item.environment, isKhmer)}</p>
                     </div>
 
                     <div>
-                      <p className="font-bold text-slate-950">{formatMoney(item.amount, item.currency)}</p>
+                      <p className="font-bold text-slate-950">{formatBillingMoney(item.amount, item.currency, isKhmer)}</p>
                     </div>
 
                     <div>
-                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold capitalize ${statusClasses(item.status)}`}>
-                        {statusLabel(item.status, isKhmer)}
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${statusClasses(item)}`}>
+                        {paymentStatusLabel(item, isKhmer)}
                       </span>
                     </div>
 
@@ -392,13 +337,13 @@ export function BillingHistoryView() {
       if (event.currentTarget === event.target) setSelected(null);
     }}
   >
-    <div className="max-h-[92vh] w-full max-w-[920px] overflow-y-auto rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.26)]">
+    <div role="dialog" aria-modal="true" aria-labelledby="payment-details-title" className="max-h-[92vh] w-full max-w-[920px] overflow-y-auto rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.26)]">
       <div className="flex items-start justify-between gap-5 border-b border-slate-200 px-5 py-5 sm:px-7">
         <div>
           <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-blue-600">
             {t("Payment details", "ព័ត៌មានលម្អិតការទូទាត់")}
           </p>
-          <h2 className="mt-2 text-[30px] font-extrabold tracking-[-0.04em] text-slate-950">
+          <h2 id="payment-details-title" className="mt-2 text-[30px] font-extrabold tracking-[-0.04em] text-slate-950">
             {cycleLabel(selected.billingCycle, isKhmer)} {planLabel(selected.planCode, isKhmer)}
           </h2>
           <p className="mt-2 text-sm text-slate-500">
@@ -423,23 +368,23 @@ export function BillingHistoryView() {
               {(selected.planCode || "P").charAt(0).toUpperCase()}
             </div>
 
-            <div className="pt-1">
+            <div className="min-w-0 pt-1">
               <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-slate-400">
                 {t("Billed to", "វិក្កយបត្រសម្រាប់")}
               </p>
-              <h3 className="mt-2 text-[30px] font-extrabold tracking-[-0.04em] text-slate-950">
-                {cycleLabel(selected.billingCycle, isKhmer)} {t("Subscription", "ការជាវ")}
+              <h3 className="mt-2 break-words text-[30px] font-extrabold tracking-[-0.04em] text-slate-950">
+                {selected.workspaceName}
               </h3>
-              <p className="mt-1 text-[15px] font-semibold text-slate-500">
-                {selected.invoiceNumber ?? selected.transactionId}
+              <p className="mt-1 break-words text-[15px] font-semibold text-slate-500">
+                {selected.invoiceNumber ?? selected.transactionId ?? "—"}
               </p>
             </div>
           </div>
 
           <div className="flex w-full max-w-[210px] flex-col items-start gap-3 lg:items-end">
-            <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-sm font-extrabold uppercase tracking-[0.08em] text-emerald-700 ring-1 ring-inset ring-emerald-200">
-              <CheckCircle2 className="h-4 w-4" strokeWidth={2.2} />
-              {t("Paid", "បានបង់ប្រាក់")}
+            <span className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-extrabold ${statusClasses(selected)}`}>
+              <SelectedStatusIcon className="h-4 w-4" strokeWidth={2.2} />
+              {paymentStatusLabel(selected, isKhmer)}
             </span>
 
             <div className="w-full text-left lg:text-right">
@@ -448,9 +393,9 @@ export function BillingHistoryView() {
               </p>
               <div className="mt-1 flex items-center gap-2 lg:justify-end">
                 <p className="text-[16px] font-extrabold tracking-[-0.03em] text-slate-950">
-                  {selected.invoiceNumber ?? t("TENH receipt", "បង្កាន់ដៃ TENH")}
+                  {selectedHasReceipt ? selected.invoiceNumber ?? "—" : "—"}
                 </p>
-                <button
+                {selectedHasReceipt && selected.invoiceNumber ? <button
                   type="button"
                   onClick={() => {
                     if (selected.invoiceNumber) {
@@ -461,7 +406,7 @@ export function BillingHistoryView() {
                   aria-label={t("Copy receipt number", "ចម្លងលេខបង្កាន់ដៃ")}
                 >
                   <Copy className="h-4 w-4" strokeWidth={2.1} />
-                </button>
+                </button> : null}
               </div>
             </div>
           </div>
@@ -473,34 +418,34 @@ export function BillingHistoryView() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-white/70">
-                    {t("Total paid", "បានបង់សរុប")}
+                    {selected.confirmedPaid ? t("Total paid", "បានបង់សរុប") : t("Amount", "ចំនួនទឹកប្រាក់")}
                   </p>
                   <p className="mt-3 text-[56px] font-extrabold leading-none tracking-[-0.06em]">
-                    {formatMoney(selected.amount, selected.currency)}
+                    {formatBillingMoney(selected.amount, selected.currency, isKhmer)}
                   </p>
                 </div>
 
                 <div className="rounded-2xl bg-white/10 px-4 py-3 text-sm">
-                  <p className="text-white/70">{t("Payment completed", "ការទូទាត់បានបញ្ចប់")}</p>
+                  <p className="text-white/70">{selected.confirmedPaid ? t("Payment completed", "ការទូទាត់បានបញ្ចប់") : selected.status === "pending" ? t("Submitted", "បានដាក់ស្នើ") : t("Reviewed", "បានពិនិត្យ")}</p>
                   <p className="mt-1 font-bold">
-                    {formatDate(selected.paidAt ?? selected.reviewedAt ?? selected.createdAt, true, isKhmer)}
+                    {formatBillingDate(selected.status === "pending" ? selected.createdAt : selected.status === "approved" ? selected.paidAt ?? selected.reviewedAt : selected.reviewedAt, true, isKhmer)}
                   </p>
                 </div>
               </div>
 
               <div className="grid gap-4 border-t border-white/15 pt-5 sm:grid-cols-[1fr_auto] sm:items-end">
-                <div className="inline-flex items-center gap-3 text-emerald-200">
-                  <ShieldCheck className="h-5 w-5" strokeWidth={2.1} />
+                <div className={`inline-flex items-center gap-3 ${selected.confirmedPaid ? "text-emerald-200" : "text-white/80"}`}>
+                  <SelectedVerificationIcon className="h-5 w-5" strokeWidth={2.1} />
                   <span className="text-sm font-semibold">
-                    {t("Payment verified and approved", "ការទូទាត់ត្រូវបានផ្ទៀងផ្ទាត់ និងអនុម័ត")}
+                    {paymentVerificationLabel(selected, isKhmer)}
                   </span>
                 </div>
 
                 <div className="sm:text-right">
                   <p className="text-white/65">{t("Status", "ស្ថានភាព")}</p>
-                  <span className="mt-2 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700">
-                    <BadgeCheck className="h-4 w-4" strokeWidth={2.1} />
-                    {statusLabel(selected.status, isKhmer)}
+                  <span className={`mt-2 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-bold ${statusClasses(selected)}`}>
+                    <SelectedStatusIcon className="h-4 w-4" strokeWidth={2.1} />
+                    {paymentStatusLabel(selected, isKhmer)}
                   </span>
                 </div>
               </div>
@@ -513,38 +458,40 @@ export function BillingHistoryView() {
                 <ReceiptText className="h-14 w-14" strokeWidth={1.8} />
               </div>
               <p className="mt-4 text-sm font-semibold text-slate-500">
-                {selected.invoiceId ? t("Receipt ready to view", "បង្កាន់ដៃរួចរាល់សម្រាប់មើល") : t("Receipt is being prepared", "បង្កាន់ដៃកំពុងត្រូវបានរៀបចំ")}
+                {selectedReceiptStatus}
               </p>
             </div>
           </section>
         </div>
 
         <div className="grid gap-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm md:grid-cols-2">
-          <PaymentMetaCell icon={<CreditCard className="h-5 w-5" strokeWidth={2.1} />} accent="blue" label={t("Payment method", "វិធីបង់ប្រាក់")} value={paymentMethodLabel(selected.paymentMethod, isKhmer)} />
-          <PaymentMetaCell icon={<CalendarDays className="h-5 w-5" strokeWidth={2.1} />} accent="blue" label={t("Submitted", "បានដាក់ស្នើ")} value={formatDate(selected.createdAt, true, isKhmer)} />
-          <PaymentMetaCell icon={<Hash className="h-5 w-5" strokeWidth={2.1} />} accent="blue" label={t("Transaction ID", "លេខសម្គាល់ប្រតិបត្តិការ")} value={selected.transactionId} />
-          <PaymentMetaCell icon={<CheckCircle2 className="h-5 w-5" strokeWidth={2.1} />} accent="emerald" label={t("Approved / Paid", "បានអនុម័ត / បានបង់")} value={formatDate(selected.paidAt ?? selected.reviewedAt ?? selected.createdAt, true, isKhmer)} />
-          <PaymentMetaCell icon={<ShieldCheck className="h-5 w-5" strokeWidth={2.1} />} accent="emerald" label={t("Provider status", "ស្ថានភាពអ្នកផ្តល់សេវា")} value={selected.providerStatus ? statusLabel(selected.providerStatus, isKhmer) : statusLabel(selected.status, isKhmer)} />
+          <PaymentMetaCell icon={<CreditCard className="h-5 w-5" strokeWidth={2.1} />} accent="blue" label={t("Payment method", "វិធីបង់ប្រាក់")} value={paymentMethodLabel(selected.provider, isKhmer)} />
+          <PaymentMetaCell icon={<CalendarDays className="h-5 w-5" strokeWidth={2.1} />} accent="blue" label={t("Submitted", "បានដាក់ស្នើ")} value={formatBillingDate(selected.createdAt, true, isKhmer)} />
+          <PaymentMetaCell icon={<Hash className="h-5 w-5" strokeWidth={2.1} />} accent="blue" label={t("Transaction ID", "លេខសម្គាល់ប្រតិបត្តិការ")} value={selected.transactionId ?? "—"} />
+          <PaymentMetaCell icon={<SelectedStatusIcon className="h-5 w-5" strokeWidth={2.1} />} accent={selected.confirmedPaid ? "emerald" : "blue"} label={selected.confirmedPaid ? t("Paid", "បានបង់ប្រាក់") : selected.status === "approved" ? t("Approved", "បានអនុម័ត") : t("Reviewed", "បានពិនិត្យ")} value={formatBillingDate(selected.status === "approved" ? selected.paidAt ?? selected.reviewedAt : selected.reviewedAt, true, isKhmer)} />
+          <PaymentMetaCell icon={<CreditCard className="h-5 w-5" strokeWidth={2.1} />} accent="blue" label={t("Provider status", "ស្ថានភាពអ្នកផ្តល់សេវា")} value={selected.providerStatus ?? "—"} />
           <PaymentMetaCell icon={<BadgeCheck className="h-5 w-5" strokeWidth={2.1} />} accent="blue" label={t("Approval code", "លេខកូដអនុម័ត")} value={selected.approvalCode ?? "—"} />
+          <PaymentMetaCell icon={<CreditCard className="h-5 w-5" strokeWidth={2.1} />} accent="blue" label={t("Environment", "បរិស្ថាន")} value={paymentEnvironmentLabel(selected.environment, isKhmer)} />
+          <PaymentMetaCell icon={<SelectedVerificationIcon className="h-5 w-5" strokeWidth={2.1} />} accent={selected.confirmedPaid ? "emerald" : "blue"} label={t("Verification", "ការផ្ទៀងផ្ទាត់")} value={paymentVerificationLabel(selected, isKhmer)} />
         </div>
 
-        <div className="rounded-[24px] border border-emerald-200 bg-[linear-gradient(180deg,#F5FCF8_0%,#F8FCFA_100%)] p-5">
+        <div className={`rounded-[24px] border p-5 ${selected.confirmedPaid ? "border-emerald-200 bg-[linear-gradient(180deg,#F5FCF8_0%,#F8FCFA_100%)]" : "border-slate-200 bg-slate-50"}`}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
+              <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${selected.confirmedPaid ? "bg-emerald-100 text-emerald-700" : "bg-blue-50 text-blue-600"}`}>
                 <CalendarDays className="h-5 w-5" strokeWidth={2.1} />
               </div>
               <div>
-                <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-emerald-700">
+                <p className={`text-[11px] font-extrabold uppercase tracking-[0.16em] ${selected.confirmedPaid ? "text-emerald-700" : "text-slate-500"}`}>
                   {t("Billing period", "រយៈពេលការទូទាត់")}
                 </p>
                 <p className="mt-2 text-[18px] font-extrabold tracking-[-0.03em] text-slate-950">
-                  {formatDate(selected.periodStart, false, isKhmer)} → {formatDate(selected.periodEnd, false, isKhmer)}
+                  {formatBillingDate(selected.periodStart, false, isKhmer)} → {formatBillingDate(selected.periodEnd, false, isKhmer)}
                 </p>
-                <div className="mt-2 inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
+                <div className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ${selected.confirmedPaid ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
                   {selected.periodStart && selected.periodEnd
                     ? `${Math.max(1, Math.round((new Date(selected.periodEnd).getTime() - new Date(selected.periodStart).getTime()) / 86400000))} ${t("days", "ថ្ងៃ")}`
-                    : t("Active period", "រយៈពេលសកម្ម")}
+                    : t("Period not recorded", "មិនបានកត់ត្រារយៈពេល")}
                 </div>
 
                 <div className="mt-5 border-t border-dashed border-emerald-200 pt-3">
@@ -552,13 +499,13 @@ export function BillingHistoryView() {
                     {t("Reference", "លេខយោង")}
                   </p>
                   <p className="mt-1 text-[15px] font-bold text-slate-900">
-                    {selected.invoiceNumber ?? selected.transactionId}
+                    {selected.invoiceNumber ?? selected.transactionId ?? "—"}
                   </p>
                 </div>
               </div>
             </div>
 
-            {selected.invoiceId ? (
+            {selectedHasReceipt ? (
               <Link
                 href={`/dashboard/subscription/invoices/${selected.invoiceId}`}
                 className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-white px-5 py-3 text-sm font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-50"
@@ -569,35 +516,29 @@ export function BillingHistoryView() {
             ) : (
               <div className="inline-flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 <ReceiptText className="h-4 w-4" strokeWidth={2.1} />
-                {t("Receipt is being prepared", "បង្កាន់ដៃកំពុងត្រូវបានរៀបចំ")}
+                {selectedReceiptStatus}
               </div>
             )}
           </div>
         </div>
 
-        <div className="grid gap-4 rounded-[24px] border border-slate-200 bg-slate-50/70 p-5 md:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => {
-              if (selected.invoiceId) {
-                window.open(`/dashboard/subscription/invoices/${selected.invoiceId}`, "_blank");
-              }
-            }}
-            disabled={!selected.invoiceId}
-            className="flex items-center gap-4 rounded-[20px] border border-blue-200 bg-white px-5 py-4 text-left transition hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+        <div className={`grid gap-4 rounded-[24px] border border-slate-200 bg-slate-50/70 p-5 ${selectedHasReceipt ? "md:grid-cols-2" : ""}`}>
+          {selectedHasReceipt ? <Link
+            href={`/dashboard/subscription/invoices/${selected.invoiceId}?autoprint=1&return_to=%2Fdashboard%2Fsubscription%2Fbilling-history`}
+            className="flex items-center gap-4 rounded-[20px] border border-blue-200 bg-white px-5 py-4 text-left transition hover:border-blue-300 hover:bg-blue-50"
           >
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-blue-200 bg-white text-blue-600">
               <Download className="h-5 w-5" strokeWidth={2.1} />
             </div>
             <div>
               <p className="text-base font-bold text-slate-900">
-                {t("Download receipt (PDF)", "ទាញយកបង្កាន់ដៃ (PDF)")}
+                {t("Print / Save PDF", "បោះពុម្ព / រក្សាទុក PDF")}
               </p>
               <p className="mt-1 text-sm text-slate-500">
                 {t("Save a copy for your records", "រក្សាទុកច្បាប់ចម្លងសម្រាប់កំណត់ត្រារបស់អ្នក")}
               </p>
             </div>
-          </button>
+          </Link> : null}
 
           <a
             href="https://t.me/tenhchat_support_bot"
@@ -637,7 +578,6 @@ export function BillingHistoryView() {
   );
 }
 
-
 function PaymentMetaCell({
   icon,
   accent,
@@ -669,15 +609,6 @@ function PaymentMetaCell({
           {value}
         </p>
       </div>
-    </div>
-  );
-}
-
-function Detail({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{label}</p>
-      <p className={`mt-2 break-words text-sm font-semibold text-slate-800 ${mono ? "font-mono" : ""}`}>{value}</p>
     </div>
   );
 }

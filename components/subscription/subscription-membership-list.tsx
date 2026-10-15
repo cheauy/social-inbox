@@ -252,9 +252,9 @@ function SubscriptionTable({
 }: SubscriptionTableProps) {
   const t = (en: string, km: string) => (isKhmer ? km : en);
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] border-collapse text-left">
-        <thead>
+    <div className="min-w-0">
+      <table className="block w-full border-collapse text-left @min-[900px]:table">
+        <thead className="sr-only @min-[900px]:not-sr-only @min-[900px]:table-header-group">
           <tr className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
             <th className="w-10 px-4 py-3" aria-label={t("Selected", "បានជ្រើស")} />
             <th className="px-3 py-3">{t("Subscription", "ការជាវ")}</th>
@@ -266,12 +266,12 @@ function SubscriptionTable({
           </tr>
         </thead>
 
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="grid gap-3 p-3 @min-[640px]:grid-cols-2 @min-[900px]:table-row-group @min-[900px]:divide-y @min-[900px]:divide-slate-100 @min-[900px]:p-0">
           {items.length === 0 ? (
-            <tr>
+            <tr className="col-span-full block @min-[900px]:table-row">
               <td
                 colSpan={expired ? 7 : 6}
-                className="px-5 py-8 text-center text-sm text-slate-500"
+                className="block px-5 py-8 text-center text-sm text-slate-500 @min-[900px]:table-cell"
               >
                 {emptyText}
               </td>
@@ -311,7 +311,7 @@ function SubscriptionTable({
                       selectRow();
                     }
                   }}
-                  className={`cursor-pointer transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 ${
+                  className={`relative grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl border border-slate-200 p-4 cursor-pointer transition @min-[900px]:table-row @min-[900px]:rounded-none @min-[900px]:border-0 @min-[900px]:p-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 ${
                     active
                       ? expired
                         ? "bg-amber-50/50 ring-1 ring-inset ring-amber-300"
@@ -319,7 +319,7 @@ function SubscriptionTable({
                       : "bg-white hover:bg-slate-50/80"
                   }`}
                 >
-                  <td className="px-4 py-4 align-middle">
+                  <td className="absolute right-4 top-4 @min-[900px]:static @min-[900px]:px-4 @min-[900px]:py-4 @min-[900px]:align-middle">
                     <span
                       className={`flex h-5 w-5 items-center justify-center rounded-full border-2 ${
                         active
@@ -339,8 +339,8 @@ function SubscriptionTable({
                     </span>
                   </td>
 
-                  <td className="px-3 py-4 align-middle">
-                    <div className="flex min-w-[220px] items-center gap-3">
+                  <td className="col-span-2 min-w-0 pr-8 @min-[900px]:px-3 @min-[900px]:py-4 @min-[900px]:align-middle">
+                    <div className="flex min-w-0 items-center gap-3 @min-[900px]:min-w-[220px]">
                       <span
                         className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-sm font-black text-white shadow-sm ${tileClasses(
                           shortId,
@@ -377,9 +377,9 @@ function SubscriptionTable({
                     </div>
                   </td>
 
-                  <td className="px-3 py-4 align-middle">
+                  <td data-label={t("Connections", "ការតភ្ជាប់")} className="min-w-0 before:mb-1 before:block before:text-xs before:font-medium before:text-slate-500 before:content-[attr(data-label)] @min-[900px]:px-3 @min-[900px]:py-4 @min-[900px]:align-middle @min-[900px]:before:hidden">
                     {subscription ? (
-                      <div className="min-w-[100px]">
+                      <div className="min-w-0 @min-[900px]:min-w-[100px]">
                         <p className="text-xs font-semibold text-slate-800">
                           {item.usage.channels} / {subscription.channel_limit}
                         </p>
@@ -400,9 +400,9 @@ function SubscriptionTable({
                     )}
                   </td>
 
-                  <td className="px-3 py-4 align-middle">
+                  <td data-label={t("Users", "អ្នកប្រើប្រាស់")} className="min-w-0 before:mb-1 before:block before:text-xs before:font-medium before:text-slate-500 before:content-[attr(data-label)] @min-[900px]:px-3 @min-[900px]:py-4 @min-[900px]:align-middle @min-[900px]:before:hidden">
                     {subscription ? (
-                      <div className="min-w-[100px]">
+                      <div className="min-w-0 @min-[900px]:min-w-[100px]">
                         <p className="text-xs font-semibold text-slate-800">
                           {item.usage.members} / {subscription.member_limit}
                         </p>
@@ -423,7 +423,7 @@ function SubscriptionTable({
                     )}
                   </td>
 
-                  <td className="px-3 py-4 align-middle text-sm font-semibold text-slate-800">
+                  <td data-label={t("Subtotal", "សរុបរង")} className="min-w-0 before:mb-1 before:block before:text-xs before:font-medium before:text-slate-500 before:content-[attr(data-label)] @min-[900px]:px-3 @min-[900px]:py-4 @min-[900px]:align-middle @min-[900px]:before:hidden text-sm font-semibold text-slate-800">
                     {subscription
                       ? formatSubtotal(
                           subscription.last_paid_amount,
@@ -432,7 +432,7 @@ function SubscriptionTable({
                       : "—"}
                   </td>
 
-                  <td className="px-3 py-4 align-middle">
+                  <td data-label={t("Status", "ស្ថានភាព")} className="min-w-0 before:mb-1 before:block before:text-xs before:font-medium before:text-slate-500 before:content-[attr(data-label)] @min-[900px]:px-3 @min-[900px]:py-4 @min-[900px]:align-middle @min-[900px]:before:hidden">
                     {subscription ? (
                       <span
                         className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${statusClasses(
@@ -449,7 +449,7 @@ function SubscriptionTable({
                   </td>
 
                   {expired ? (
-                    <td className="px-3 py-4 align-middle">
+                    <td className="col-span-2 min-w-0 @min-[900px]:px-3 @min-[900px]:py-4 @min-[900px]:align-middle">
                       {item.role === "owner" && renewalUrl ? (
                         <button
                           type="button"
@@ -458,7 +458,7 @@ function SubscriptionTable({
                             event.stopPropagation();
                             onReactivate(item, renewalUrl);
                           }}
-                          className="inline-flex items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-[10px] font-bold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 @min-[900px]:w-auto text-[10px] font-bold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {switching === item.businessId
                             ? t("Opening…", "កំពុងបើក…")
@@ -611,10 +611,10 @@ export function SubscriptionMembershipList({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="@container min-w-0 space-y-4">
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 @min-[900px]:flex-row @min-[900px]:items-center @min-[900px]:justify-between">
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-blue-600" aria-hidden="true">◉</span>
@@ -627,7 +627,7 @@ export function SubscriptionMembershipList({
               </p>
             </div>
 
-            <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+            <label className="flex min-h-11 shrink-0 self-start items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
               <span>{t("Sort by:", "តម្រៀបតាម៖")}</span>
               <select
                 value={sort}
@@ -646,7 +646,7 @@ export function SubscriptionMembershipList({
                 key={value}
                 type="button"
                 onClick={() => setFilter(value)}
-                className={`min-w-[72px] rounded-md px-3 py-1.5 text-xs font-semibold capitalize transition ${
+                className={`min-h-11 min-w-[72px] rounded-md px-3 py-1.5 text-xs font-semibold capitalize transition ${
                   filter === value
                     ? "bg-blue-50 text-blue-700 ring-1 ring-blue-400"
                     : "text-slate-500 hover:bg-slate-50"
@@ -691,33 +691,7 @@ export function SubscriptionMembershipList({
                 {t("Expired subscriptions", "ការជាវដែលផុតកំណត់")}
               </h2>
             </div>
-            <p className="mt-1 text-xs text-slate-500">
-              {t("Previous subscriptions are retained for your records.", "ការជាវពីមុនត្រូវបានរក្សាទុកសម្រាប់កំណត់ត្រារបស់អ្នក។")}
-            </p>
 
-            {/*
-              A channel stays claimed by the subscription that connected it --
-              expiring does not release it. Say so here, because this table is
-              where an Owner looks when a Page or Bot will not connect to the
-              subscription they have just bought.
-            */}
-            <p className="mt-2 text-xs leading-5 text-slate-500">
-              {t(
-                "A finished free trial releases its Facebook Page or Telegram Bot automatically, so you can connect it to a new subscription straight away. An expired paid subscription keeps its channels until you disconnect them there.",
-                "ការសាកល្បងឥតគិតថ្លៃដែលបញ្ចប់ នឹងលែងទំព័រ Facebook ឬ Bot Telegram ដោយស្វ័យប្រវត្តិ ដូច្នេះអ្នកអាចភ្ជាប់ទៅការជាវថ្មីភ្លាមៗ។ រីឯការជាវដែលបានបង់ប្រាក់ហើយផុតកំណត់ នៅតែរក្សាឆានែលរបស់វា រហូតទាល់តែអ្នកផ្តាច់វានៅទីនោះ។",
-              )}{" "}
-              <a
-                href="https://t.me/tenhchat_support_bot"
-                target="_blank"
-                rel="noreferrer"
-                className="font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-700"
-              >
-                {t(
-                  "Lost access? Contact TENH support",
-                  "បាត់បង់ការចូលប្រើ? ទាក់ទងផ្នែកជំនួយ TENH",
-                )}
-              </a>
-            </p>
           </div>
 
           <SubscriptionTable

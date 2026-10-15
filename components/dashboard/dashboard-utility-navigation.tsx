@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Settings, ShieldCheck } from "lucide-react";
+import { DashboardNavigationLabel } from "./dashboard-navigation-label";
 
 const AdminNavigationContext = createContext<{ isAdmin: boolean; inboxMounted: boolean; setInboxMounted: (value: boolean) => void }>({
   isAdmin: false, inboxMounted: false, setInboxMounted: () => {},
@@ -15,7 +16,7 @@ export function DashboardUtilityNavigationProvider({ isAdmin, children }: { isAd
 }
 
 /** Navigation visibility only; the existing destination guards still authorize access. */
-export function DashboardUtilityNavigation({ placement }: { placement: "inbox" | "analytics" | "shared" }) {
+export function DashboardUtilityNavigation({ placement }: { placement: "inbox" | "analytics" | "shared" | "settings" }) {
   const { isAdmin, inboxMounted, setInboxMounted } = useContext(AdminNavigationContext);
   const pathname = usePathname();
   const inSettings = pathname === "/dashboard/settings" || pathname?.startsWith("/dashboard/settings/");
@@ -27,6 +28,11 @@ export function DashboardUtilityNavigation({ placement }: { placement: "inbox" |
     setInboxMounted(true);
     return () => setInboxMounted(false);
   }, [placement, inInbox, setInboxMounted]);
+  if (placement === "settings") return isAdmin ? <nav data-compact-settings-admin aria-label="Administration">
+    <Link href="/dashboard/admin" className="flex min-h-14 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900">
+      <ShieldCheck className="h-5 w-5 text-blue-600" aria-hidden="true" /><DashboardNavigationLabel label="Admin" />
+    </Link>
+  </nav> : null;
   if (inSettings || inTenhBot || (placement === "shared" && (inboxMounted || inAnalytics)) || (placement === "inbox" && !inInbox) || (placement === "analytics" && !inAnalytics)) return null;
   const items = [{ label: "Settings", href: "/dashboard/settings", Icon: Settings },
     ...(isAdmin ? [{ label: "Admin", href: "/dashboard/admin", Icon: ShieldCheck }] : [])];

@@ -1,0 +1,13 @@
+[rtk] /!\ No hook installed — run `rtk init -g` for automatic token savings
+{
+  "baseline": true,
+  "passed": 0,
+  "screenshots": [
+    "before-phone.png",
+    "before-tablet.png",
+    "before-ipad-pro.png",
+    "before-desktop.png",
+    "before-desktop-settings.png"
+  ],
+  "physicalDeviceTested": false
+}

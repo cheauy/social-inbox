@@ -9,6 +9,7 @@ import {
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 import { TelegramChannelPanel } from "@/components/integrations/telegram-channel-panel";
 import { PersonalBadge, TelegramPersonalPanel } from "@/components/integrations/telegram-personal-panel";
+import { TENH_ACTIVE_WORKSPACE_UI_CHANGE_EVENT, TENH_ACTIVE_WORKSPACE_UI_STORAGE_KEY } from "@/lib/display/workspace-storage";
 
 import {
   TENH_CHANNEL_CATALOG,
@@ -18,6 +19,7 @@ import {
 
 type IntegrationWorkspaceProps = {
   children: ReactNode;
+  businessId?: string;
   canManageChannels?: boolean;
   canAddConnections?: boolean;
 };
@@ -741,6 +743,7 @@ function AddConnectionModal({
 
 export function IntegrationWorkspace({
   children,
+  businessId = "",
   canManageChannels = true,
   canAddConnections = false,
 }: IntegrationWorkspaceProps) {
@@ -756,6 +759,21 @@ export function IntegrationWorkspace({
   const [personalAvailable, setPersonalAvailable] = useState(false);
   const [telegramVariant, setTelegramVariant] = useState<TelegramVariant>("bot");
   const [personalOpenRequest, setPersonalOpenRequest] = useState(0);
+  const [connectionScopeInvalid, setConnectionScopeInvalid] = useState(false);
+
+  useEffect(() => {
+    const closeConnections = () => { setAddConnectionOpen(false); setTelegramAddRequest(0); };
+    const workspaceChanged = () => { closeConnections(); setConnectionScopeInvalid(true); };
+    const storageChanged = (event: StorageEvent) => { if (event.key === TENH_ACTIVE_WORKSPACE_UI_STORAGE_KEY) workspaceChanged(); };
+    window.addEventListener(TENH_ACTIVE_WORKSPACE_UI_CHANGE_EVENT, workspaceChanged);
+    window.addEventListener("storage", storageChanged);
+    window.addEventListener("popstate", closeConnections);
+    return () => {
+      window.removeEventListener(TENH_ACTIVE_WORKSPACE_UI_CHANGE_EVENT, workspaceChanged);
+      window.removeEventListener("storage", storageChanged);
+      window.removeEventListener("popstate", closeConnections);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -832,7 +850,7 @@ export function IntegrationWorkspace({
             </p>
           </div>
 
-          {canAddConnections ? (
+          {canAddConnections && !connectionScopeInvalid ? (
             <button
               type="button"
               disabled={!canManageChannels}
@@ -875,7 +893,7 @@ export function IntegrationWorkspace({
               <button
                 key={channel.platform}
                 type="button"
-                onClick={() => setActivePlatform(channel.platform)}
+                onClick={() => { setActivePlatform(channel.platform); setTelegramAddRequest(0); }}
                 className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
                   isActive
                     ? "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-100"
@@ -929,6 +947,7 @@ export function IntegrationWorkspace({
         ) : activePlatform === "telegram" ? (
           <>
             <TelegramChannelPanel
+              businessId={businessId}
               canAddConnections={canAddConnections}
               onConnectionChanged={setTelegramSummary}
               openAddBotSignal={telegramAddRequest}
@@ -943,7 +962,7 @@ export function IntegrationWorkspace({
       </div>
 
       <AddConnectionModal
-        open={canAddConnections && addConnectionOpen}
+        open={canAddConnections && !connectionScopeInvalid && addConnectionOpen}
         selectedPlatform={addConnectionPlatform}
         facebookCount={facebookSummary.total}
         telegramCount={telegramSummary.total}

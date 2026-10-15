@@ -1,0 +1,171 @@
+TAP version 13
+# [TENH Invoice] Unable to load receipt: { message: 'SECRET_DATABASE_DETAIL', code: 'FAIL' }
+# [TENH Billing] Unable to load billing history: Error: Unable to load invoice links. Run the V3.10.4 invoice migration first. SECRET_DATABASE_DETAIL
+#     at Object.GET (C:\\Users\\TUF\\social-inbox\\app\\api\\subscription\\billing-history\\route.ts:130:19)
+#     at async TestContext.<anonymous> (C:\\Users\\TUF\\social-inbox\\tests\\billing-receipts-server.test.cjs:107:19)
+#     at async Test.run (node:internal/test_runner/test:1332:7)
+#     at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+# Subtest: owner of A and B opens B invoice independently of A selected workspace
+not ok 1 - owner of A and B opens B invoice independently of A selected workspace
+  ---
+  duration_ms: 117.5867
+  type: 'test'
+  location: 'C:\\Users\\TUF\\social-inbox\\tests\\billing-receipts-server.test.cjs:47:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    404 !== 200
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 200
+  actual: 404
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\TUF\social-inbox\tests\billing-receipts-server.test.cjs:49:10)
+    async Test.run (node:internal/test_runner/test:1332:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+  ...
+# Subtest: owner of B with an agent-only selected A membership can view B
+not ok 2 - owner of B with an agent-only selected A membership can view B
+  ---
+  duration_ms: 23.9836
+  type: 'test'
+  location: 'C:\\Users\\TUF\\social-inbox\\tests\\billing-receipts-server.test.cjs:53:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    403 !== 200
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 200
+  actual: 403
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\TUF\social-inbox\tests\billing-receipts-server.test.cjs:55:10)
+    async Test.run (node:internal/test_runner/test:1332:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+  ...
+# Subtest: agent-only, unrelated owner, removed owner and unauthenticated users cannot disclose invoice existence
+ok 3 - agent-only, unrelated owner, removed owner and unauthenticated users cannot disclose invoice existence
+  ---
+  duration_ms: 85.7172
+  type: 'test'
+  ...
+# Subtest: history totals separate sandbox, confirmed production, manual and unverified approvals
+not ok 4 - history totals separate sandbox, confirmed production, manual and unverified approvals
+  ---
+  duration_ms: 19.8516
+  type: 'test'
+  location: 'C:\\Users\\TUF\\social-inbox\\tests\\billing-receipts-server.test.cjs:70:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    105 !== 55
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 55
+  actual: 105
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\TUF\social-inbox\tests\billing-receipts-server.test.cjs:75:10)
+    async Test.run (node:internal/test_runner/test:1332:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+  ...
+# Subtest: pending and unsuccessful persisted payments have no issued receipt action or paid date
+not ok 5 - pending and unsuccessful persisted payments have no issued receipt action or paid date
+  ---
+  duration_ms: 18.809
+  type: 'test'
+  location: 'C:\\Users\\TUF\\social-inbox\\tests\\billing-receipts-server.test.cjs:82:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    6 !== 7
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 7
+  actual: 6
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\TUF\social-inbox\tests\billing-receipts-server.test.cjs:85:57)
+    async Test.run (node:internal/test_runner/test:1332:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+  ...
+# Subtest: approved missing invoice remains unavailable, without writes or synthesized historical coverage
+not ok 6 - approved missing invoice remains unavailable, without writes or synthesized historical coverage
+  ---
+  duration_ms: 15.2343
+  type: 'test'
+  location: 'C:\\Users\\TUF\\social-inbox\\tests\\billing-receipts-server.test.cjs:89:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '2026-09-03T12:34:56Z'
+    - null
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: ~
+  actual: '2026-09-03T12:34:56Z'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\TUF\social-inbox\tests\billing-receipts-server.test.cjs:91:46)
+    async Test.run (node:internal/test_runner/test:1332:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+  ...
+# Subtest: receipt and history preserve saved invoice amount, currency, reference, date and coverage
+not ok 7 - receipt and history preserve saved invoice amount, currency, reference, date and coverage
+  ---
+  duration_ms: 17.8891
+  type: 'test'
+  location: 'C:\\Users\\TUF\\social-inbox\\tests\\billing-receipts-server.test.cjs:94:1'
+  failureType: 'testCodeFailure'
+  error: "Cannot read properties of undefined (reading 'amount')"
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\TUF\social-inbox\tests\billing-receipts-server.test.cjs:98:22)
+    async Test.run (node:internal/test_runner/test:1332:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+  ...
+# Subtest: temporary lookups fail safely and malformed IDs cannot disclose data
+not ok 8 - temporary lookups fail safely and malformed IDs cannot disclose data
+  ---
+  duration_ms: 23.1252
+  type: 'test'
+  location: 'C:\\Users\\TUF\\social-inbox\\tests\\billing-receipts-server.test.cjs:104:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    true !== false
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: false
+  actual: true
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\TUF\social-inbox\tests\billing-receipts-server.test.cjs:107:80)
+    async Test.run (node:internal/test_runner/test:1332:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 1
+# fail 7
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 584.4198

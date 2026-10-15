@@ -1,368 +1,77 @@
 import { NextResponse } from "next/server";
-
-import { getCurrentMember } from "@/lib/auth/get-current-member";
+import { getBillingOwnerAccess } from "@/lib/billing/owner-access";
+import { billingCurrency, billingDate, billingNumber, paymentMethodLabel, paymentProvenance, type BillingHistoryItem } from "@/lib/billing/payment-display";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-type BillingStatus =
-  | "pending"
-  | "approved"
-  | "declined"
-  | "rejected"
-  | "cancelled"
-  | "failed";
-
-type PaymentSource = "payway" | "manual";
-
-type BillingHistoryItem = {
-  id: string;
-  sourceId: string;
-  source: PaymentSource;
-  transactionId: string;
-  paymentMethod: string;
-  planCode: string;
-  billingCycle: string;
-  amount: number;
-  currency: string;
-  status: BillingStatus;
-  providerStatus: string | null;
-  approvalCode: string | null;
-  reviewNote: string | null;
-  createdAt: string;
-  paidAt: string | null;
-  reviewedAt: string | null;
-  periodStart: string | null;
-  periodEnd: string | null;
-  invoiceId: string | null;
-  invoiceNumber: string | null;
-};
-
-type InvoiceLinkRow = {
-  id: string;
-  invoice_number: string;
-  source_type: PaymentSource;
-  source_payment_id: string;
-};
-
-type PayWayRow = {
-  id: string;
-  provider_transaction_id: string;
-  plan_code: string;
-  billing_cycle: string;
-  amount: string | number;
-  currency: string;
-  status: string;
-  provider_status: string | null;
-  provider_approval_code: string | null;
-  verified_at: string | null;
-  created_at: string;
-};
-
-type ManualPaymentRow = {
-  id: string;
-  plan_code: string;
-  billing_cycle: string;
-  amount: string | number;
-  currency: string;
-  status: string;
-  review_note: string | null;
-  reviewed_at: string | null;
-  approved_at: string | null;
-  created_at: string;
-};
-
-function normalizeNumber(value: unknown) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
-}
-
-function addBillingCycle(
-  startValue: string | null,
-  billingCycle: string,
-) {
-  if (!startValue) return null;
-
-  const start = new Date(startValue);
-  if (!Number.isFinite(start.getTime())) return null;
-
-  const end = new Date(start);
-
-  switch (billingCycle) {
-    case "monthly":
-      end.setUTCMonth(end.getUTCMonth() + 1);
-      break;
-    case "3-months":
-      end.setUTCMonth(end.getUTCMonth() + 3);
-      break;
-    case "6-months":
-      end.setUTCMonth(end.getUTCMonth() + 6);
-      break;
-    case "12-months":
-      end.setUTCMonth(end.getUTCMonth() + 12);
-      break;
-    default:
-      return null;
-  }
-
-  return end.toISOString();
-}
-
-function normalizeManualStatus(status: string): BillingStatus {
-  if (status === "submitted") return "pending";
-  if (status === "approved") return "approved";
-  if (status === "rejected") return "rejected";
-  if (status === "cancelled") return "cancelled";
-  return "failed";
-}
+const headers = { "Cache-Control": "no-store, max-age=0" };
+type Row = Record<string, unknown>;
+const text = (value: unknown) => typeof value === "string" && value.trim() ? value : null;
 
 export async function GET() {
   try {
-    const authResult = await getCurrentMember();
-
-    if (!authResult.success) {
-      return NextResponse.json(
-        { success: false, error: authResult.error },
-        { status: authResult.status },
-      );
-    }
-
-    // V3.11.31.29 — Billing History follows the authenticated OWNER,
-    // not whichever workspace is currently selected. One TENH login can own
-    // multiple subscriptions/businesses, so resolve every owner membership
-    // server-side from the authenticated Supabase user ID. Agent-only
-    // memberships are intentionally excluded from billing access.
-    const { data: ownerMembershipRows, error: ownerMembershipError } =
-      await supabaseAdmin
-        .from("team_members")
-        .select("business_id")
-        .eq("user_id", authResult.user.id)
-        .eq("role", "owner")
-        .eq("is_active", true);
-
-    if (ownerMembershipError) {
-      throw new Error(
-        `Unable to resolve your owned TENH subscriptions. ${ownerMembershipError.message}`,
-      );
-    }
-
-    const ownedBusinessIds = Array.from(
-      new Set(
-        (ownerMembershipRows ?? [])
-          .map((row) => String(row.business_id ?? "").trim())
-          .filter(Boolean),
-      ),
-    );
-
-    if (ownedBusinessIds.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Only a subscription owner can view billing history.",
-        },
-        { status: 403 },
-      );
-    }
-
-    const [payWayResult, manualResult, invoiceResult] = await Promise.all([
-      supabaseAdmin
-        .from("billing_transactions")
-        .select(
-          [
-            "id",
-            "provider_transaction_id",
-            "plan_code",
-            "billing_cycle",
-            "amount",
-            "currency",
-            "status",
-            "provider_status",
-            "provider_approval_code",
-            "verified_at",
-            "created_at",
-          ].join(","),
-        )
-        .in("business_id", ownedBusinessIds)
-        .eq("provider", "payway")
-        .order("created_at", { ascending: false })
-        .limit(300),
-      supabaseAdmin
-        .from("manual_payment_requests")
-        .select(
-          [
-            "id",
-            "plan_code",
-            "billing_cycle",
-            "amount",
-            "currency",
-            "status",
-            "review_note",
-            "reviewed_at",
-            "approved_at",
-            "created_at",
-          ].join(","),
-        )
-        .in("business_id", ownedBusinessIds)
-        .order("created_at", { ascending: false })
-        .limit(300),
-      supabaseAdmin
-        .from("tenh_billing_invoices")
-        .select("id,invoice_number,source_type,source_payment_id")
-        .in("business_id", ownedBusinessIds)
-        .order("issued_at", { ascending: false })
-        .limit(600),
+    const auth = await getBillingOwnerAccess();
+    if (!auth.success) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status, headers });
+    if (!auth.businessIds.length) return NextResponse.json({ success: false, error: "Only an owner can view billing history." }, { status: 403, headers });
+    const [payway, manual, invoices, businesses] = await Promise.all([
+      supabaseAdmin.from("billing_transactions")
+        .select("id,business_id,provider,provider_transaction_id,plan_code,billing_cycle,amount,currency,status,provider_status,provider_status_code,provider_original_amount,provider_payment_amount,provider_payment_currency,provider_approval_code,verified_at,created_at,metadata")
+        .in("business_id", auth.businessIds).eq("provider", "payway").order("created_at", { ascending: false }).limit(300),
+      supabaseAdmin.from("manual_payment_requests")
+        .select("id,business_id,plan_code,billing_cycle,amount,currency,status,review_note,reviewed_at,approved_at,created_at")
+        .in("business_id", auth.businessIds).order("created_at", { ascending: false }).limit(300),
+      supabaseAdmin.from("tenh_billing_invoices")
+        .select("id,business_id,invoice_number,source_type,source_payment_id,source_transaction_id,workspace_name,provider,status,amount,currency,paid_at,period_start,period_end,snapshot")
+        .in("business_id", auth.businessIds).eq("status", "paid").order("issued_at", { ascending: false }).limit(600),
+      supabaseAdmin.from("businesses").select("id,name").in("id", auth.businessIds),
     ]);
-
-    if (payWayResult.error) {
-      throw new Error(payWayResult.error.message);
+    if (payway.error || manual.error || invoices.error || businesses.error) throw new Error("Billing data lookup failed.");
+    const names = new Map((businesses.data ?? []).map(row => [row.id, text(row.name)]));
+    const issued = new Map<string, Row>();
+    for (const invoice of (invoices.data ?? []) as Row[]) {
+      const key = `${invoice.business_id}:${invoice.source_type}:${invoice.source_payment_id}`;
+      if (!issued.has(key)) issued.set(key, invoice);
     }
-
-    if (manualResult.error) {
-      throw new Error(manualResult.error.message);
-    }
-
-    if (invoiceResult.error) {
-      throw new Error(
-        `Unable to load invoice links. Run the V3.10.4 invoice migration first. ${invoiceResult.error.message}`,
-      );
-    }
-
-    const invoicesBySource = new Map<string, InvoiceLinkRow>();
-
-    const invoiceRows =
-      (invoiceResult.data ?? []) as unknown as InvoiceLinkRow[];
-    const payWayRows =
-      (payWayResult.data ?? []) as unknown as PayWayRow[];
-    const manualRows =
-      (manualResult.data ?? []) as unknown as ManualPaymentRow[];
-
-    for (const invoice of invoiceRows) {
-      invoicesBySource.set(
-        `${invoice.source_type}:${invoice.source_payment_id}`,
-        invoice,
-      );
-    }
-
-    // V3.11.31.14
-    // Billing History "Pending" is reserved for manual bank transfers that
-    // are genuinely waiting for TENH review. A PayWay checkout starts with a
-    // temporary database status of "pending" while ABA/KHQR is open, but an
-    // abandoned/closed checkout should not look like an outstanding customer
-    // obligation in Billing History. Unresolved PayWay attempts are therefore
-    // hidden until PayWay resolves them to approved/declined/cancelled/failed.
-    const visiblePayWayRows = payWayRows.filter(
-      (row) => row.status !== "pending",
-    );
-
-    const payWayItems: BillingHistoryItem[] = visiblePayWayRows.map(
-      (row) => {
-        const paidAt =
-          row.status === "approved"
-            ? row.verified_at ?? row.created_at
-            : null;
-        const invoice = invoicesBySource.get(`payway:${row.id}`) ?? null;
-
-        return {
-          id: `payway:${row.id}`,
-          sourceId: row.id,
-          source: "payway",
-          transactionId: row.provider_transaction_id,
-          paymentMethod: "ABA Pay / KHQR",
-          planCode: row.plan_code,
-          billingCycle: row.billing_cycle,
-          amount: normalizeNumber(row.amount),
-          currency: row.currency,
-          status: row.status as BillingStatus,
-          providerStatus: row.provider_status,
-          approvalCode: row.provider_approval_code,
-          reviewNote: null,
-          createdAt: row.created_at,
-          paidAt,
-          reviewedAt: null,
-          periodStart: paidAt,
-          periodEnd: addBillingCycle(paidAt, row.billing_cycle),
-          invoiceId: invoice?.id ?? null,
-          invoiceNumber: invoice?.invoice_number ?? null,
-        };
-      },
-    );
-
-    const manualItems: BillingHistoryItem[] = manualRows.map(
-      (row) => {
-        const paidAt =
-          row.status === "approved"
-            ? row.approved_at ?? row.reviewed_at ?? row.created_at
-            : null;
-        const invoice = invoicesBySource.get(`manual:${row.id}`) ?? null;
-
-        return {
-          id: `manual:${row.id}`,
-          sourceId: row.id,
-          source: "manual",
-          transactionId: `MAN-${String(row.id).slice(0, 8).toUpperCase()}`,
-          paymentMethod: "Manual bank transfer",
-          planCode: row.plan_code,
-          billingCycle: row.billing_cycle,
-          amount: normalizeNumber(row.amount),
-          currency: row.currency,
-          status: normalizeManualStatus(row.status),
-          providerStatus: null,
-          approvalCode: null,
-          reviewNote: row.review_note,
-          createdAt: row.created_at,
-          paidAt,
-          reviewedAt: row.reviewed_at,
-          periodStart: paidAt,
-          periodEnd: addBillingCycle(paidAt, row.billing_cycle),
-          invoiceId: invoice?.id ?? null,
-          invoiceNumber: invoice?.invoice_number ?? null,
-        };
-      },
-    );
-
-    const items = [...payWayItems, ...manualItems]
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() -
-          new Date(a.createdAt).getTime(),
-      )
-      .slice(0, 500);
-
-    const approvedItems = items.filter(
-      (item) => item.status === "approved",
-    );
-
-    const summary = {
-      total: items.length,
-      approved: approvedItems.length,
-      pending: items.filter((item) => item.status === "pending").length,
-      attention: items.filter((item) =>
-        ["declined", "rejected", "failed"].includes(item.status),
-      ).length,
-      approvedUsdTotal: approvedItems
-        .filter((item) => item.currency === "USD")
-        .reduce((sum, item) => sum + item.amount, 0),
-      receipts: approvedItems.filter((item) => Boolean(item.invoiceId)).length,
+    const item = (row: Row, source: "manual" | "payway"): BillingHistoryItem => {
+      const status = row.status === "submitted" ? "pending" : String(row.status ?? "unknown");
+      const invoice = issued.get(`${row.business_id}:${source}:${row.id}`) ?? null;
+      const provenance = paymentProvenance(source, row, invoice);
+      const approved = status === "approved";
+      const safeProviderStatus = ["APPROVED", "PENDING", "DECLINED", "FAILED", "CANCELLED", "CANCELED", "PROCESSING"].includes(String(row.provider_status)) ? String(row.provider_status) : null;
+      return {
+        id: `${source}:${row.id}`, sourceId: String(row.id), source, businessId: String(row.business_id),
+        workspaceName: text(invoice?.workspace_name) ?? names.get(String(row.business_id)) ?? "?",
+        ...provenance,
+        transactionId: text(invoice?.source_transaction_id) ?? (source === "payway" ? text(row.provider_transaction_id) : null),
+        paymentMethod: paymentMethodLabel(provenance.provider), planCode: String(row.plan_code ?? ""), billingCycle: String(row.billing_cycle ?? ""),
+        amount: billingNumber(invoice ? invoice.amount : row.amount), currency: billingCurrency(invoice ? invoice.currency : row.currency), status,
+        providerStatus: source === "payway" ? safeProviderStatus : null,
+        approvalCode: provenance.providerVerified ? text(row.provider_approval_code) : null,
+        reviewNote: source === "manual" ? text(row.review_note) : null, createdAt: String(row.created_at ?? ""),
+        paidAt: approved ? billingDate(invoice ? invoice.paid_at : source === "payway" ? row.verified_at : row.approved_at ?? row.reviewed_at) : null,
+        reviewedAt: source === "manual" ? billingDate(row.reviewed_at) : null,
+        // Coverage belongs to the issued historical snapshot, never the current plan or an estimated cycle.
+        periodStart: approved && invoice ? billingDate(invoice.period_start) : null,
+        periodEnd: approved && invoice ? billingDate(invoice.period_end) : null,
+        invoiceId: approved && invoice ? String(invoice.id) : null,
+        invoiceNumber: approved && invoice ? text(invoice.invoice_number) : null,
+      };
     };
-
-    return NextResponse.json({
-      success: true,
-      items,
-      summary,
-    });
+    const items = [...((payway.data ?? []) as Row[]).map(row => item(row, "payway")), ...((manual.data ?? []) as Row[]).map(row => item(row, "manual"))]
+      .sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0) || b.id.localeCompare(a.id)).slice(0, 500);
+    const approved = items.filter(item => item.status === "approved");
+    const totalUsd = (entries: BillingHistoryItem[]) => entries.filter(item => item.currency === "USD").reduce((sum, item) => sum + (item.amount ?? 0), 0);
+    return NextResponse.json({ success: true, items, summary: {
+      total: items.length, approved: approved.length, pending: items.filter(item => item.status === "pending").length,
+      attention: items.filter(item => ["declined", "failed", "rejected", "recovery_required", "unknown"].includes(item.status)).length,
+      approvedUsdTotal: totalUsd(approved.filter(item => item.confirmedPaid)),
+      testUsdTotal: totalUsd(approved.filter(item => item.environment === "sandbox")),
+      unverifiedUsdTotal: totalUsd(approved.filter(item => !item.confirmedPaid && item.environment !== "sandbox")),
+      receipts: approved.filter(item => item.invoiceId).length,
+    } }, { headers });
   } catch (error) {
     console.error("[TENH Billing] Unable to load billing history:", error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to load billing history.",
-      },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, error: "Billing is temporarily unavailable." }, { status: 500, headers });
   }
 }

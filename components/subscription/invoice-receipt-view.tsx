@@ -2,7 +2,17 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
+import {
+  type InvoiceRecord,
+  formatBillingDate,
+  formatBillingMoney,
+  paymentEnvironmentLabel,
+  paymentMethodLabel,
+  paymentStatusLabel,
+  paymentVerificationLabel,
+} from "@/lib/billing/payment-display";
 import {
   CalendarDays,
   CheckCircle2,
@@ -10,73 +20,29 @@ import {
   CreditCard,
   Download,
   Hash,
+  HelpCircle,
   ReceiptText,
   ShieldCheck,
   Star,
 } from "lucide-react";
 
-type InvoiceRecord = {
-  id: string;
-  invoiceNumber: string;
-  sourceType: "payway" | "manual";
-  sourcePaymentId: string;
-  transactionId: string;
-  workspaceName: string;
-  customerName: string | null;
-  billingEmail: string | null;
-  planCode: string;
-  planName: string;
-  billingCycle: string;
-  billingCycleLabel: string;
-  amount: number;
-  currency: string;
-  paymentMethod: string;
-  provider: string;
-  approvalCode: string | null;
-  status: "paid";
-  paidAt: string;
-  periodStart: string;
-  periodEnd: string;
-  issuedAt: string;
-  createdAt: string;
-};
-
 type InvoiceResponse = {
   success?: boolean;
-  error?: string;
   invoice?: InvoiceRecord;
 };
 
-function formatMoney(amount: number, currency: string) {
-  if (currency === "USD") {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 2,
-    }).format(amount);
-  }
-
-  return `${new Intl.NumberFormat("en-US").format(amount)} ${currency}`;
-}
-
-function formatDate(value: string, withTime = false) {
-  const date = new Date(value);
-
-  if (!Number.isFinite(date.getTime())) {
-    return "—";
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    ...(withTime
-      ? {
-          hour: "numeric",
-          minute: "2-digit",
-        }
-      : {}),
-  }).format(date);
+async function waitForReceiptLayout(receipt: HTMLElement) {
+  await document.fonts?.ready;
+  await Promise.all(
+    Array.from(receipt.querySelectorAll("img")).map((image) => {
+      if (image.complete) return image.decode?.().catch(() => {});
+      return new Promise<void>((resolve) => {
+        image.addEventListener("load", () => resolve(), { once: true });
+        image.addEventListener("error", () => resolve(), { once: true });
+      }).then(() => image.decode?.().catch(() => {}));
+    }),
+  );
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 export function InvoiceReceiptView({
@@ -88,46 +54,62 @@ export function InvoiceReceiptView({
   autoPrint?: boolean;
   returnTo?: string;
 }) {
-  const [invoice, setInvoice] = useState<InvoiceRecord | null>(null);
+  const isKhmer = useWorkspaceLanguageId() === "km";
+  const t = (en: string, km: string) => (isKhmer ? km : en);
+  const [loaded, setLoaded] = useState<{ requestedId: string; invoice: InvoiceRecord } | null>(null);
+  const invoice = loaded?.requestedId === invoiceId ? loaded.invoice : null;
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<"signin" | "forbidden" | "missing" | "temporary" | null>(null);
+  const [retry, setRetry] = useState(0);
+  const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState(false);
+  const receiptRef = useRef<HTMLElement>(null);
+  const printedInvoices = useRef(new Set<string>());
+  const printingRef = useRef(false);
+  const printCleanup = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
 
     async function loadInvoice() {
       setLoading(true);
+      setLoaded(null);
       setError(null);
+      setPrintError(false);
+      printCleanup.current?.();
+      printingRef.current = false;
+      setPrinting(false);
 
       try {
         const response = await fetch(
           `/api/subscription/invoices/${encodeURIComponent(invoiceId)}`,
           {
             cache: "no-store",
+            signal: controller.signal,
           },
         );
 
+        if (!response.ok) {
+          if (!controller.signal.aborted) {
+            setError(response.status === 401 ? "signin" : response.status === 403 ? "forbidden" : response.status === 400 || response.status === 404 ? "missing" : "temporary");
+          }
+          return;
+        }
+
         const result = (await response.json()) as InvoiceResponse;
-
-        if (!response.ok || !result.success || !result.invoice) {
-          throw new Error(
-            result.error ?? "Unable to load this billing receipt.",
-          );
+        if (!result.success || !result.invoice || result.invoice.id.toLowerCase() !== invoiceId.trim().toLowerCase()) {
+          throw new Error("Invalid receipt response");
         }
 
-        if (!cancelled) {
-          setInvoice(result.invoice);
+        if (!controller.signal.aborted) {
+          setLoaded({ requestedId: invoiceId, invoice: result.invoice });
         }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Unable to load this billing receipt.",
-          );
+      } catch {
+        if (!controller.signal.aborted) {
+          setError("temporary");
         }
       } finally {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setLoading(false);
         }
       }
@@ -136,44 +118,101 @@ export function InvoiceReceiptView({
     void loadInvoice();
 
     return () => {
-      cancelled = true;
+      controller.abort();
+      printCleanup.current?.();
     };
-  }, [invoiceId]);
+  }, [invoiceId, retry]);
+
+  const openPrintDialog = useCallback((returnAfterPrint: boolean) => {
+    const finish = () => {
+      printingRef.current = false;
+      setPrinting(false);
+      printCleanup.current?.();
+    };
+    const afterPrint = () => {
+      finish();
+      if (returnAfterPrint && receiptRef.current?.dataset.invoiceId === invoiceId) {
+        const destination = new URL(returnTo.startsWith("/dashboard/") ? returnTo : "/dashboard/subscription", window.location.origin);
+        window.location.replace(destination.origin === window.location.origin && destination.pathname.startsWith("/dashboard/") ? `${destination.pathname}${destination.search}` : "/dashboard/subscription");
+      }
+    };
+    try {
+      if (typeof window.print !== "function") throw new Error("Printing unavailable");
+      window.addEventListener("afterprint", afterPrint, { once: true });
+      printCleanup.current = () => window.removeEventListener("afterprint", afterPrint);
+      window.print();
+    } catch {
+      finish();
+      setPrintError(true);
+    }
+  }, [invoiceId, returnTo]);
 
   useEffect(() => {
-    if (!autoPrint || !invoice) return;
+    if (!autoPrint || !invoice || !receiptRef.current) return;
+    let cancelled = false;
+    const receipt = receiptRef.current;
+    void waitForReceiptLayout(receipt).then(() => {
+      if (cancelled || !receipt.isConnected || receipt.dataset.invoiceId !== invoiceId || printedInvoices.current.has(invoice.id) || printingRef.current) return;
+      printedInvoices.current.add(invoice.id);
+      printingRef.current = true;
+      setPrinting(true);
+      openPrintDialog(true);
+    }).catch(() => {
+      if (!cancelled) setPrintError(true);
+    });
+    return () => { cancelled = true; };
+  }, [autoPrint, invoice, invoiceId, openPrintDialog]);
 
-    const safeReturnTo = returnTo.startsWith("/dashboard/")
-      ? returnTo
-      : "/dashboard/subscription";
-    let redirected = false;
+  async function printReceipt() {
+    if (!invoice || !receiptRef.current || printingRef.current) return;
+    const receipt = receiptRef.current;
+    printedInvoices.current.add(invoice.id);
+    printingRef.current = true;
+    setPrinting(true);
+    setPrintError(false);
+    try {
+      await waitForReceiptLayout(receipt);
+      if (!receipt.isConnected || receipt.dataset.invoiceId !== invoiceId) return;
+      openPrintDialog(false);
+    } catch {
+      printingRef.current = false;
+      setPrinting(false);
+      setPrintError(true);
+    }
+  }
 
-    const returnToSubscription = () => {
-      if (redirected) return;
-      redirected = true;
-      window.location.replace(safeReturnTo);
-    };
+  const printStyles = <style jsx global>{`
+    @media print {
+      body > :not(:has(.tenh-receipt-card)),
+      body *:has(.tenh-receipt-card) > :not(:has(.tenh-receipt-card)):not(.tenh-receipt-card) {
+        display: none !important;
+      }
+      html, body { background: white !important; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body *:has(.tenh-receipt-card) {
+        display: block !important;
+        position: static !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      .tenh-receipt-toolbar, .tenh-receipt-card button { display: none !important; }
+      .tenh-receipt-card { overflow: visible !important; box-shadow: none !important; border: 0 !important; border-radius: 0 !important; }
+      .tenh-receipt-card header, .tenh-receipt-card section, .tenh-receipt-card footer, .tenh-receipt-test { break-inside: avoid; }
+      .tenh-receipt-card h1, .tenh-receipt-card h2 { break-after: avoid; }
+      .tenh-receipt-card p { orphans: 3; widows: 3; }
+    }
+  `}</style>;
 
-    const handleAfterPrint = () => {
-      returnToSubscription();
-    };
-
-    window.addEventListener("afterprint", handleAfterPrint);
-    const timer = window.setTimeout(() => {
-      window.print();
-    }, 350);
-
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("afterprint", handleAfterPrint);
-    };
-  }, [autoPrint, invoice, returnTo]);
-
-  if (loading) {
+  if (loading || (!invoice && !error)) {
     return (
       <div className="flex min-h-full items-center justify-center bg-slate-100 p-6">
+        {printStyles}
         <div className="rounded-2xl border border-slate-200 bg-white px-6 py-5 text-sm font-semibold text-slate-500 shadow-sm">
-          Loading billing receipt...
+          {t("Loading receipt…", "កំពុងផ្ទុកបង្កាន់ដៃ…")}
         </div>
       </div>
     );
@@ -182,74 +221,66 @@ export function InvoiceReceiptView({
   if (error || !invoice) {
     return (
       <div className="min-h-full bg-slate-100 px-5 py-8">
+        {printStyles}
         <div className="mx-auto max-w-2xl rounded-[28px] border border-red-200 bg-white p-6 shadow-sm">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-600">
-            Billing receipt
+            {t("TENH Receipt", "បង្កាន់ដៃ TENH")}
           </p>
           <h1 className="mt-2 text-2xl font-bold text-slate-950">
-            Unable to open receipt
+            {t("Unable to open receipt", "មិនអាចបើកបង្កាន់ដៃបានទេ")}
           </h1>
           <p className="mt-3 text-sm leading-6 text-red-700">
-            {error ?? "Billing receipt was not found."}
+            {error === "signin" ? t("Sign in to view this receipt.", "ចូលគណនីដើម្បីមើលបង្កាន់ដៃនេះ។") : error === "forbidden" ? t("Only the workspace owner can view this receipt.", "មានតែម្ចាស់កន្លែងធ្វើការប៉ុណ្ណោះដែលអាចមើលបង្កាន់ដៃនេះបាន។") : error === "temporary" ? t("Receipts are temporarily unavailable. Please try again.", "បង្កាន់ដៃមិនអាចប្រើបានជាបណ្តោះអាសន្ន។ សូមព្យាយាមម្តងទៀត។") : t("This receipt is unavailable.", "មិនមានបង្កាន់ដៃនេះទេ។")}
           </p>
+          {error === "signin" ? <Link href="/login" className="mt-4 inline-flex text-sm font-bold text-blue-700 underline">{t("Sign in", "ចូលគណនី")}</Link> : error === "temporary" ? <button type="button" onClick={() => setRetry((value) => value + 1)} className="mt-4 text-sm font-bold text-blue-700 underline">{t("Retry", "ព្យាយាមម្តងទៀត")}</button> : null}
           <Link
             href="/dashboard/subscription/billing-history"
             className="mt-6 inline-flex rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800"
           >
-            Back to billing history
+            {t("Back to billing history", "ត្រឡប់ទៅប្រវត្តិការទូទាត់")}
           </Link>
         </div>
       </div>
     );
   }
 
+  const StatusIcon = invoice.confirmedPaid ? CheckCircle2 : HelpCircle;
+  const VerificationIcon = invoice.provider === "payway" && invoice.providerVerified ? ShieldCheck : CreditCard;
+  const formatDate = (value: string | null, withTime = false) => formatBillingDate(value, withTime, isKhmer);
+  const amount = formatBillingMoney(invoice.amount, invoice.currency, isKhmer);
+  const savedPlanName = invoice.planName?.trim() || "—";
+  const planName = savedPlanName.toLowerCase() === "custom" ? t("Custom", "ផ្ទាល់ខ្លួន") : savedPlanName.toLowerCase() === "trial" ? t("Trial", "សាកល្បងឥតគិតថ្លៃ") : savedPlanName;
+  const cycle = invoice.billingCycle === "monthly" ? t("Monthly", "ប្រចាំខែ") : invoice.billingCycle === "3-months" ? t("3 months", "3 ខែ") : invoice.billingCycle === "6-months" ? t("6 months", "6 ខែ") : invoice.billingCycle === "12-months" ? t("12 months", "12 ខែ") : invoice.billingCycleLabel;
+
   return (
     <div className="h-full min-h-0 overflow-y-auto overscroll-y-contain bg-slate-50 px-3 py-4 sm:px-5 lg:px-6 print:h-auto print:overflow-visible print:bg-white print:p-0">
-      <style jsx global>{`
-        @media print {
-          header:first-of-type {
-            display: none !important;
-          }
-
-          html,
-          body {
-            background: #ffffff !important;
-          }
-
-          body {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-
-          main {
-            overflow: visible !important;
-          }
-
-          .tenh-receipt-toolbar {
-            display: none !important;
-          }
-
-          .tenh-receipt-card {
-            box-shadow: none !important;
-            border: 0 !important;
-            border-radius: 0 !important;
-          }
-        }
-      `}</style>
+      {printStyles}
 
       <div className="mx-auto w-full max-w-[1120px]">
-        {/* Keep existing navigation/print functions */}
         <div className="tenh-receipt-toolbar mb-3 flex items-center justify-between gap-3 print:hidden">
           <Link
             href="/dashboard/subscription/billing-history"
             className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 transition hover:text-blue-700"
           >
             <span aria-hidden="true">←</span>
-            Back to billing history
+            {t("Back to billing history", "ត្រឡប់ទៅប្រវត្តិការទូទាត់")}
           </Link>
         </div>
 
-        <article className="tenh-receipt-card overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+        {printError ? <p role="status" className="tenh-receipt-toolbar mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{t("Printing could not open. Use your browser menu: Print → Save as PDF.", "មិនអាចបើកការបោះពុម្ពបានទេ។ ប្រើម៉ឺនុយកម្មវិធីរុករក៖ បោះពុម្ព → រក្សាទុកជា PDF។")}</p> : null}
+
+        <article ref={receiptRef} data-invoice-id={invoiceId} lang={isKhmer ? "km" : "en"} className="tenh-receipt-card overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+          {invoice.environment === "sandbox" ? (
+            <div className="tenh-receipt-test border-b-2 border-amber-400 bg-amber-50 px-6 py-4 text-amber-950 sm:px-8">
+              <p className="text-lg font-extrabold">{t("Test payment", "ការទូទាត់សាកល្បង")}</p>
+              <p className="mt-1 text-sm">{t("Sandbox transaction only. This receipt does not confirm a real-money payment.", "នេះជាប្រតិបត្តិការសាកល្បងប៉ុណ្ណោះ។ បង្កាន់ដៃនេះមិនបញ្ជាក់ការទូទាត់ប្រាក់ពិតប្រាកដទេ។")}</p>
+            </div>
+          ) : invoice.environment === "unknown" ? (
+            <div className="tenh-receipt-test border-b border-amber-200 bg-amber-50 px-6 py-4 text-sm text-amber-950 sm:px-8">
+              <p className="font-bold">{paymentEnvironmentLabel(invoice.environment, isKhmer)}</p>
+              <p className="mt-1">{t("Payment-provider verification and real settlement are not confirmed by this record.", "កំណត់ត្រានេះមិនបញ្ជាក់ការផ្ទៀងផ្ទាត់ពីអ្នកផ្តល់សេវាទូទាត់ ឬការទូទាត់ប្រាក់ពិតប្រាកដទេ។")}</p>
+            </div>
+          ) : null}
           {/* Header */}
           <header className="border-b border-slate-200 px-6 py-6 sm:px-8">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -267,31 +298,31 @@ export function InvoiceReceiptView({
 
                 <div className="pt-1">
                   <h1 className="text-[25px] font-extrabold tracking-[-0.03em] text-slate-950">
-                    TENH Chat
+                    {t("TENH Receipt", "បង្កាន់ដៃ TENH")}
                   </h1>
                   <p className="mt-1 text-[11px] font-extrabold uppercase tracking-[0.16em] text-slate-400">
-                    Official subscription receipt
+                    {t("Subscription receipt", "បង្កាន់ដៃការជាវ")}
                   </p>
 
                   <div className="mt-3 inline-flex items-center gap-2 text-sm text-slate-500">
-                    <CheckCircle2
+                    <StatusIcon
                       className="h-4 w-4 text-blue-600"
                       strokeWidth={2.2}
                     />
-                    <span>Thank you for your payment!</span>
+                    <span>{paymentEnvironmentLabel(invoice.environment, isKhmer)}</span>
                   </div>
                 </div>
               </div>
 
               <div className="flex flex-col items-start gap-3 sm:items-end">
-                <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-[13px] font-extrabold uppercase tracking-[0.08em] text-emerald-700 ring-1 ring-inset ring-emerald-200">
-                  <CheckCircle2 className="h-4 w-4" strokeWidth={2.2} />
-                  Paid
+                <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-extrabold uppercase tracking-[0.08em] ring-1 ring-inset ${invoice.confirmedPaid ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : "bg-amber-50 text-amber-800 ring-amber-200"}`}>
+                  <StatusIcon className="h-4 w-4" strokeWidth={2.2} />
+                  {paymentStatusLabel(invoice, isKhmer)}
                 </span>
 
                 <div className="sm:text-right">
                   <p className="text-xs font-semibold text-slate-500">
-                    Receipt / Invoice
+                    {t("Receipt number", "លេខបង្កាន់ដៃ")}
                   </p>
 
                   <div className="mt-1 inline-flex items-center gap-2">
@@ -304,10 +335,10 @@ export function InvoiceReceiptView({
                       onClick={() => {
                         void navigator.clipboard?.writeText(
                           invoice.invoiceNumber,
-                        );
+                        ).catch(() => {});
                       }}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 print:hidden"
-                      aria-label="Copy receipt number"
+                      aria-label={t("Copy receipt number", "ចម្លងលេខបង្កាន់ដៃ")}
                     >
                       <Copy className="h-4 w-4" strokeWidth={2.1} />
                     </button>
@@ -321,7 +352,7 @@ export function InvoiceReceiptView({
           <div className="grid gap-8 px-6 py-7 sm:px-8 lg:grid-cols-[1fr_0.92fr]">
             <section>
               <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-blue-600">
-                Billed to
+                {t("Billed to", "ចេញវិក្កយបត្រជូន")}
               </p>
 
               <h2 className="mt-3 text-[29px] font-extrabold tracking-[-0.03em] text-slate-950">
@@ -348,7 +379,7 @@ export function InvoiceReceiptView({
                   )}
 
                   <p className="mt-0.5 text-sm text-slate-500">
-                    {invoice.billingEmail ?? "Billing email not recorded"}
+                    {invoice.billingEmail ?? t("Billing email not recorded", "មិនបានកត់ត្រាអ៊ីមែលសម្រាប់ការទូទាត់")}
                   </p>
                 </div>
               </div>
@@ -363,7 +394,7 @@ export function InvoiceReceiptView({
                       strokeWidth={2.1}
                     />
                   }
-                  label="Issued"
+                  label={t("Issued", "កាលបរិច្ឆេទចេញ")}
                   value={formatDate(invoice.issuedAt)}
                 />
 
@@ -374,7 +405,7 @@ export function InvoiceReceiptView({
                       strokeWidth={2.1}
                     />
                   }
-                  label="Paid"
+                  label={invoice.environment === "sandbox" ? t("Test payment date", "កាលបរិច្ឆេទទូទាត់សាកល្បង") : invoice.confirmedPaid ? t("Paid", "បានបង់") : t("Recorded payment date", "កាលបរិច្ឆេទទូទាត់ដែលបានកត់ត្រា")}
                   value={formatDate(invoice.paidAt, true)}
                 />
 
@@ -385,8 +416,8 @@ export function InvoiceReceiptView({
                       strokeWidth={2.1}
                     />
                   }
-                  label="Payment method"
-                  value={invoice.paymentMethod}
+                  label={t("Payment method", "វិធីបង់ប្រាក់")}
+                  value={paymentMethodLabel(invoice.provider, isKhmer)}
                 />
 
                 <InvoiceMetaRow
@@ -396,8 +427,8 @@ export function InvoiceReceiptView({
                       strokeWidth={2.1}
                     />
                   }
-                  label="Transaction ID"
-                  value={invoice.transactionId}
+                  label={t("Transaction ID", "លេខសម្គាល់ប្រតិបត្តិការ")}
+                  value={invoice.transactionId ?? t("Not recorded", "មិនបានកត់ត្រា")}
                   breakValue
                 />
 
@@ -409,7 +440,7 @@ export function InvoiceReceiptView({
                         strokeWidth={2.1}
                       />
                     }
-                    label="Approval code"
+                    label={t("Approval code", "លេខកូដអនុម័ត")}
                     value={invoice.approvalCode}
                   />
                 ) : null}
@@ -419,9 +450,9 @@ export function InvoiceReceiptView({
 
           {/* Table headings */}
           <div className="hidden grid-cols-[1.1fr_0.95fr_0.35fr] border-y border-slate-200 bg-slate-50 px-6 py-3 text-[11px] font-extrabold uppercase tracking-[0.14em] text-slate-400 sm:grid sm:px-8">
-            <div>Description</div>
-            <div>Billing period</div>
-            <div className="text-right">Amount</div>
+            <div>{t("Description", "ការពិពណ៌នា")}</div>
+            <div>{t("Billing period", "រយៈពេលការទូទាត់")}</div>
+            <div className="text-right">{t("Amount", "ចំនួនទឹកប្រាក់")}</div>
           </div>
 
           {/* Plan line */}
@@ -433,17 +464,17 @@ export function InvoiceReceiptView({
 
               <div>
                 <p className="text-[17px] font-extrabold text-slate-950">
-                  TENH Chat {invoice.planName}
+                  TENH Chat {planName}
                 </p>
                 <p className="mt-1 text-sm text-slate-500">
-                  Prepaid subscription · {invoice.billingCycleLabel}
+                  {t("Prepaid subscription", "ការជាវបង់ប្រាក់ជាមុន")} · {cycle}
                 </p>
               </div>
             </div>
 
             <div>
               <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400 sm:hidden">
-                Billing period
+                {t("Billing period", "រយៈពេលការទូទាត់")}
               </p>
               <p className="mt-1 text-[16px] font-bold text-slate-900 sm:mt-0">
                 {formatDate(invoice.periodStart)} →{" "}
@@ -453,10 +484,10 @@ export function InvoiceReceiptView({
 
             <div className="sm:text-right">
               <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400 sm:hidden">
-                Amount
+                {t("Amount", "ចំនួនទឹកប្រាក់")}
               </p>
               <p className="mt-1 text-[27px] font-extrabold tracking-[-0.03em] text-slate-950 sm:mt-0">
-                {formatMoney(invoice.amount, invoice.currency)}
+                {amount}
               </p>
             </div>
           </div>
@@ -471,7 +502,7 @@ export function InvoiceReceiptView({
 
                 <div>
                   <p className="text-[11px] font-extrabold uppercase tracking-[0.15em] text-blue-600">
-                    Subscription coverage
+                    {t("Subscription coverage", "រយៈពេលគ្របដណ្តប់ការជាវ")}
                   </p>
                   <p className="mt-2 text-[18px] font-extrabold text-slate-950">
                     {formatDate(invoice.periodStart)} →{" "}
@@ -482,39 +513,36 @@ export function InvoiceReceiptView({
 
               <div className="mt-5 space-y-2 text-sm leading-6 text-slate-500">
                 <p>
-                  This receipt confirms an approved TENH prepaid subscription
-                  payment.
+                  {paymentVerificationLabel(invoice, isKhmer)}
                 </p>
                 <p>
-                  TENH does not automatically renew or charge the next billing
-                  period unless a future recurring-billing feature is enabled
-                  separately.
+                  {t("This receipt records the saved subscription and billing period shown above.", "បង្កាន់ដៃនេះបង្ហាញការជាវ និងរយៈពេលការទូទាត់ដែលបានរក្សាទុកខាងលើ។")}
                 </p>
               </div>
             </section>
 
             <section className="rounded-[20px] bg-[#031D4C] p-5 text-white shadow-[0_14px_35px_rgba(3,29,76,0.28)]">
               <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-white/80">Subtotal</span>
+                <span className="text-sm text-white/80">{t("Subtotal", "សរុបរង")}</span>
                 <span className="text-base font-bold">
-                  {formatMoney(invoice.amount, invoice.currency)}
+                  {amount}
                 </span>
               </div>
 
               <div className="my-4 border-t border-dashed border-white/20" />
 
               <div className="flex items-end justify-between gap-4">
-                <span className="text-base text-white/85">Total Paid</span>
+                <span className="text-base text-white/85">{invoice.environment === "sandbox" ? t("Test amount", "ចំនួនទឹកប្រាក់សាកល្បង") : invoice.confirmedPaid ? t("Total paid", "សរុបបានបង់") : t("Recorded amount", "ចំនួនទឹកប្រាក់ដែលបានកត់ត្រា")}</span>
                 <span className="text-[30px] font-extrabold tracking-[-0.035em]">
-                  {formatMoney(invoice.amount, invoice.currency)}
+                  {amount}
                 </span>
               </div>
 
               <div className="my-4 border-t border-white/20" />
 
-              <div className="flex items-center gap-3 text-sm text-emerald-200">
-                <ShieldCheck className="h-5 w-5" strokeWidth={2.1} />
-                <span>Payment verified and approved</span>
+              <div className="flex items-center gap-3 text-sm text-white/85">
+                <VerificationIcon className="h-5 w-5 shrink-0" strokeWidth={2.1} />
+                <span>{paymentVerificationLabel(invoice, isKhmer)}</span>
               </div>
             </section>
           </div>
@@ -529,21 +557,22 @@ export function InvoiceReceiptView({
 
                 <div>
                   <p className="text-sm font-semibold text-slate-800">
-                    Keep this receipt for your records.
+                    {t("Keep this receipt for your records.", "រក្សាបង្កាន់ដៃនេះសម្រាប់កំណត់ត្រារបស់អ្នក។")}
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    If you have any questions, please contact TENH Chat support.
+                    {t("For questions, contact TENH Chat support.", "សម្រាប់សំណួរ សូមទាក់ទងក្រុមជំនួយ TENH Chat។")}
                   </p>
                 </div>
               </div>
 
               <button
                 type="button"
-                onClick={() => window.print()}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-600 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 print:hidden"
+                onClick={() => void printReceipt()}
+                disabled={printing}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-600 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60 print:hidden"
               >
                 <Download className="h-4 w-4" strokeWidth={2.1} />
-                Download PDF
+                {t("Print / Save PDF", "បោះពុម្ព / រក្សាទុក PDF")}
               </button>
             </div>
           </div>
@@ -551,11 +580,10 @@ export function InvoiceReceiptView({
           {/* Footer */}
           <footer className="border-t border-slate-200 px-6 py-4 text-center sm:px-8">
             <p className="text-sm font-medium text-slate-500">
-              TENH Chat payment receipt · Reference {invoice.invoiceNumber}
+              {t("TENH Receipt · Reference", "បង្កាន់ដៃ TENH · លេខយោង")} {invoice.invoiceNumber}
             </p>
             <p className="mt-1 text-xs text-slate-400">
-              This V3.10.4 document is a payment receipt/invoice record. Tax/VAT
-              invoice fields are not configured in this version.
+              {t("This is a subscription receipt, not a tax/VAT invoice.", "នេះជាបង្កាន់ដៃការជាវ មិនមែនជាវិក្កយបត្រពន្ធ/អាករលើតម្លៃបន្ថែមទេ។")}
             </p>
           </footer>
         </article>

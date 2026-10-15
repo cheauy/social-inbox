@@ -6,12 +6,12 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 const links = new Map<string, { url: string; until: number }>();
 const pending = new Map<string, Promise<void>>();
 const MAX_LINKS = 2000;
-export async function cachedSignedUrls(bucket: string, paths: string[], seconds: number) {
+export async function cachedSignedUrls(bucket: string, paths: string[], seconds: number, authorizationScope = "") {
   const unique = [...new Set(paths)].sort();
-  const keyFor = (path: string) => JSON.stringify([bucket, path, seconds]);
+  const keyFor = (path: string) => JSON.stringify([bucket, path, seconds, authorizationScope]);
   const missing = unique.filter(path => (links.get(keyFor(path))?.until ?? 0) <= Date.now());
   if (missing.length) {
-    const batch = JSON.stringify([bucket, missing, seconds]);
+    const batch = JSON.stringify([bucket, missing, seconds, authorizationScope]);
     let work = pending.get(batch);
     if (!work) {
       work = (async () => {

@@ -17,6 +17,9 @@ const khmerNavigationLabels: Record<string, string> = {
   Subscription: "ការជាវ",
   Integrations: "ការតភ្ជាប់",
   Settings: "ការកំណត់",
+  Notifications: "ការជូនដំណឹង",
+  More: "បន្ថែម",
+  Admin: "អ្នកគ្រប់គ្រង",
 };
 
 type DashboardNavigationLabelProps = {

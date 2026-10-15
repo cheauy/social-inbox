@@ -1,0 +1,22 @@
+{
+  "names": [
+    "Conversation assigned successfully. only after confirmed success",
+    "Conversation unassigned successfully. only after confirmed success",
+    "Conversation assigned to you successfully. only after confirmed success",
+    "Conversation pinned successfully. only after confirmed success",
+    "Conversation unpinned successfully. only after confirmed success",
+    "Conversation marked as unread successfully. only after confirmed success",
+    "mobile bootstrap, resume and reconnect retain customer updates with no room requests"
+  ],
+  "recordedBaseline": [
+    "Conversation assigned successfully. only after confirmed success",
+    "Conversation unassigned successfully. only after confirmed success",
+    "Conversation assigned to you successfully. only after confirmed success",
+    "Conversation pinned successfully. only after confirmed success",
+    "Conversation unpinned successfully. only after confirmed success",
+    "Conversation marked as unread successfully. only after confirmed success",
+    "mobile bootstrap, resume and reconnect retain customer updates with no room requests"
+  ],
+  "identicalNames": true,
+  "limitation": "Compared with recorded paired baseline; no new fresh baseline run was needed because this review made no source edits."
+}

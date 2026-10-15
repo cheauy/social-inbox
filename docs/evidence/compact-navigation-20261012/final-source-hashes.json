@@ -1,0 +1,15 @@
+{
+  "baseline": "b89c8284e3f98a0b98b8fe11b264f2f87157dfe4",
+  "files": {
+    "app/dashboard/settings/layout.tsx": "21f9beb40e30e8d6c5e9cf243758f9c845182777495222376fd255e6ece4453a",
+    "app/inbox-compact.css": "94acf1dc6df36bf68ade504dfdfb99e3a904e8672baf9d313d99737c5179bc90",
+    "components/dashboard/dashboard-header.tsx": "75cb6e48defd7fa0b4e711de09249a21e910cd6fb8b2d4ef2922e41472707015",
+    "components/dashboard/dashboard-mobile-menu.tsx": "cfb78c5ee71493cc0b9dd66086def985c8a3656ffa7b040459acba254c815bed",
+    "components/dashboard/dashboard-navigation-label.tsx": "1bf81a467b60e8d7b3e03581f0c7a380ad42f2a2c1763196c1b6690f069221d1",
+    "components/dashboard/dashboard-utility-navigation.tsx": "55401876ae0a63abb36ed64c2b3b56e839ec6cfe208446d69bcc1bbb5d6937f3",
+    "components/dashboard/team-notification-center.tsx": "e92f6d75f6e75864dfa85f35c320993e745a1b6fc6dc47c8b971b47381223c2a",
+    "components/dashboard/workspace-switcher.tsx": "42637d7eedd0421896103bb2bb4e30cae30d0a94521b66ec8ae5e1c01df41186",
+    "components/inbox/conversation-list-header.tsx": "87e918ce2d0ed4be176e9f775aac959bdc87736d10735de7f6abc8c3a5e187d9",
+    "components/inbox/conversation-list.tsx": "01363e51d85ad79c25ceba66efe6905aff0a5bc3d75dd63433442529740af8e6"
+  }
+}

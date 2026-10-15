@@ -1,0 +1,3 @@
+AssertionError [ERR_ASSERTION]: active bottom destination reuses workspace theme colors
+    at check (file:///C:/Users/TUF/social-inbox/tests/compact-navigation-browser-check.mjs:29:37)
+    at file:///C:/Users/TUF/social-inbox/tests/compact-navigation-browser-check.mjs:51:5

@@ -1,0 +1,71 @@
+{
+  "at": "2026-10-13T04:23:47.290Z",
+  "setup": "Permitted Codex in-app browser; actual source components with isolated synthetic fixtures and built CSS",
+  "viewports": [
+    "390x844",
+    "834x1112",
+    "1440x900"
+  ],
+  "checks": [
+    {
+      "name": "phone navigation and single notification owner",
+      "passed": true
+    },
+    {
+      "name": "phone More destinations and focus",
+      "passed": true
+    },
+    {
+      "name": "Escape closes More and restores focus",
+      "passed": true
+    },
+    {
+      "name": "phone notifications show correct fixture content and fit",
+      "passed": true
+    },
+    {
+      "name": "phone Filter opens",
+      "passed": true
+    },
+    {
+      "name": "phone composer accepts an unsent draft",
+      "passed": true
+    },
+    {
+      "name": "phone Back restores Inbox navigation",
+      "passed": true
+    },
+    {
+      "name": "phone conversation return preserves the unsent draft",
+      "passed": true
+    },
+    {
+      "name": "tablet has compact bottom navigation",
+      "passed": true
+    },
+    {
+      "name": "tablet More drawer opens",
+      "passed": true
+    },
+    {
+      "name": "tablet Settings navigation closes More",
+      "passed": true
+    },
+    {
+      "name": "regular member has no Settings Admin shortcut",
+      "passed": true
+    },
+    {
+      "name": "desktop retains existing top Inbox navigation and hides More",
+      "passed": true
+    },
+    {
+      "name": "desktop keeps one notification owner",
+      "passed": true
+    }
+  ],
+  "passed": 14,
+  "failed": 0,
+  "limitation": "Smoke checks only. Did not rerun the existing 100-case CDP script because browser automation was performed through permitted CUA controls. No production session or real customer actions.",
+  "setupCorrection": "Exact Settings accessible-name selector did not match its arrow label; used the observed Settings link href. No assertion or product code changed."
+}

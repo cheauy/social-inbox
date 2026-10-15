@@ -23,6 +23,7 @@ type ActionBody = {
     | "prepare-upload"
     | "finalize-upload"
     | "get-file-url"
+    | "refresh-previews"
     | "toggle-favorite"
     | "set-category"
     | "delete-files";
@@ -34,6 +35,7 @@ type ActionBody = {
   mimeType?: string;
   sizeBytes?: number;
   storagePath?: string;
+  uploadId?: string;
 };
 
 const WORKSPACE_FILE_SELECT =
@@ -67,16 +69,16 @@ function storageObjectMissing(error: unknown) {
   return status === 404 || /not found|does not exist/i.test(value.message ?? "");
 }
 
-function fail(error: string, status: number, hint?: string) {
+function fail(error: string, status: number, hint?: string, code?: string) {
   return NextResponse.json(
-    { success: false, error, ...(hint ? { hint } : {}) },
+    { success: false, error, ...(hint ? { hint } : {}), ...(code ? { code } : {}) },
     { status },
   );
 }
 
 function validFile(body: ActionBody) {
-  const fileName = body.fileName?.trim() ?? "";
-  const mimeType = body.mimeType?.trim().toLowerCase() ?? "";
+  const fileName = typeof body.fileName === "string" ? body.fileName.trim().slice(0, 255) : "";
+  const mimeType = typeof body.mimeType === "string" ? body.mimeType.trim().toLowerCase() : "";
   const sizeBytes = Number(body.sizeBytes);
   const kind = workspaceFileKind(fileName, mimeType);
 
@@ -85,7 +87,7 @@ function validFile(body: ActionBody) {
   }
 
   if (
-    !Number.isFinite(sizeBytes) ||
+    !Number.isSafeInteger(sizeBytes) ||
     sizeBytes <= 0 ||
     sizeBytes > WORKSPACE_FILE_MAX_BYTES
   ) {
@@ -96,7 +98,7 @@ function validFile(body: ActionBody) {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await getWorkspaceStorageAccess();
+  const auth = await getWorkspaceStorageAccess(request);
   if (!auth.success) return fail(auth.error, auth.status);
   let options;
   try { options = parseWorkspaceStorageQuery(new URL(request?.url ?? "https://app.tenhchat.com/api/workspace-storage/files").searchParams); }
@@ -170,17 +172,29 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  const previewExpiresAt = Date.now() + 4 * 60 * 1000;
   const signed = rows.length
     ? await cachedSignedUrls(
         WORKSPACE_FILE_BUCKET,
         rows.map((row) => row.storage_path),
         10 * 60,
+      `${auth.member.business_id}:${auth.member.id}`,
       ).catch(() => [])
     : [];
   const urls = new Map(
     signed.map((entry) => [entry.path, entry.signedUrl]),
   );
   const favorites = new Set((favoriteRows ?? []).map((row) => row.file_id));
+  const pending = canManage ? await supabaseAdmin.from("workspace_files")
+    .select("id,display_name").eq("business_id", auth.member.business_id)
+    .eq("storage_bucket", WORKSPACE_FILE_BUCKET).not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: true }).order("id", { ascending: true }).limit(30) : null;
+  if (pending?.error) return fail("Unable to load pending Storage cleanup.", 500);
+  const pendingUploads = canManage ? await supabaseAdmin.from("workspace_storage_uploads")
+    .select("id,display_name,mime_type,size_bytes,category_id,storage_path,expires_at")
+    .eq("business_id", auth.member.business_id).eq("member_id", auth.member.id).eq("state", "prepared")
+    .gt("expires_at", new Date().toISOString()).order("created_at", { ascending: true }).limit(10) : null;
+  if (pendingUploads?.error) return fail("Unable to load pending Storage uploads.", 503);
   return NextResponse.json({
     success: true,
     businessId: auth.member.business_id,
@@ -189,6 +203,10 @@ export async function GET(request: NextRequest) {
     canManage,
     organizationAvailable,
     categories: categoryRows,
+    pendingDeletions: (pending?.data ?? []).map(row => ({ id: row.id, name: row.display_name })),
+    pendingUploads: (pendingUploads?.data ?? []).map(row => ({ uploadId: row.id, fileName: row.display_name,
+      mimeType: row.mime_type, sizeBytes: row.size_bytes, categoryId: row.category_id,
+      storagePath: row.storage_path, expiresAt: row.expires_at })),
     files: rows.map((row) => ({
       id: row.id,
       name: row.display_name,
@@ -200,13 +218,17 @@ export async function GET(request: NextRequest) {
       favorite: favorites.has(row.id),
       deletedAt: row.deleted_at,
       previewUrl: urls.get(row.storage_path) ?? null,
+      // Cached links are at most five minutes old; renew before their ten-minute expiry.
+      previewExpiresAt: urls.has(row.storage_path) ? previewExpiresAt : null,
+      contentVersion: row.storage_path,
     })),
   });
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await getWorkspaceStorageAccess();
+  const auth = await getWorkspaceStorageAccess(request);
   if (!auth.success) return fail(auth.error, auth.status);
+  const identity = { businessId: auth.member.business_id, memberId: auth.member.id };
 
   let body: ActionBody;
   try {
@@ -214,97 +236,134 @@ export async function POST(request: NextRequest) {
   } catch {
     return fail("Invalid JSON request.", 400);
   }
-
-  if (body.action === "prepare-upload") {
-    const file = validFile(body);
-    if ("error" in file) return fail(file.error ?? "Invalid file.", 400);
-
-    const path = workspaceFilePath({
-      businessId: auth.member.business_id,
-      fileId: randomUUID(),
-      fileName: file.fileName,
-    });
-    const { data, error } = await supabaseAdmin.storage
-      .from(WORKSPACE_FILE_BUCKET)
-      .createSignedUploadUrl(path, { upsert: false });
-
-    if (error || !data) {
-      return fail(
-        "Unable to prepare the workspace file upload.",
-        503,
-        "Review and apply db/migrations/20261008_workspace_storage.sql.",
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      upload: { bucket: WORKSPACE_FILE_BUCKET, path, token: data.token },
-    });
+  if (!body || typeof body !== "object" || Array.isArray(body)) return fail("Invalid Storage action.", 400);
+  for (const key of ["action", "fileId", "fileName", "mimeType", "storagePath", "uploadId", "categoryId"] as const) {
+    if (body[key] !== undefined && body[key] !== null && typeof body[key] !== "string") return fail(`Invalid ${key}.`, 400);
   }
+  if (body.categoryId != null && typeof body.categoryId !== "string") return fail("Invalid Storage category.", 400);
 
-  if (body.action === "finalize-upload") {
+  if (body.action === "prepare-upload" || body.action === "finalize-upload") {
+    if (!(await memberHasPermission(auth.member, "tags_quick_replies", "manage"))) {
+      return fail("You do not have permission to upload shared Storage files.", 403);
+    }
     const file = validFile(body);
     if ("error" in file) return fail(file.error ?? "Invalid file.", 400);
-
-    const path = body.storagePath?.trim() ?? "";
-    if (!isWorkspaceFilePathOwned(path, auth.member.business_id)) {
+    const categoryId = typeof body.categoryId === "string" ? body.categoryId.trim() || null : null;
+    const uploadId = typeof body.uploadId === "string" ? body.uploadId.trim() : "";
+    const suppliedPath = typeof body.storagePath === "string" ? body.storagePath.trim() : "";
+    if (suppliedPath && !isWorkspaceFilePathOwned(suppliedPath, auth.member.business_id)) {
       return fail("Invalid workspace file path.", 400);
     }
-
-    const categoryId = body.categoryId?.trim() || null;
-    if (categoryId) {
-      const { data: category, error: categoryError } = await supabaseAdmin
-        .from("workspace_file_categories")
-        .select("id")
-        .eq("id", categoryId)
-        .eq("business_id", auth.member.business_id)
-        .maybeSingle();
-      if (categoryError || !category) {
-        await supabaseAdmin.storage.from(WORKSPACE_FILE_BUCKET).remove([path]);
-        return fail("That Storage category was not found.", 400);
+    type PreparedUpload = {
+      id: string; storage_path: string; display_name: string; mime_type: string;
+      size_bytes: number; file_kind: string; category_id: string | null;
+      state: string; expires_at: string;
+    };
+    let prepared: PreparedUpload;
+    if (uploadId || body.action === "finalize-upload") {
+      if (!uploadId && !suppliedPath) return fail("A prepared upload is required.", 400);
+      const query = supabaseAdmin.from("workspace_storage_uploads")
+        .select("id,storage_path,display_name,mime_type,size_bytes,file_kind,category_id,state,expires_at")
+        .eq("business_id", auth.member.business_id).eq("member_id", auth.member.id);
+      if (uploadId) query.eq("id", uploadId); else query.eq("storage_path", suppliedPath);
+      const result = await query.maybeSingle();
+      if (result.error) return fail("Unable to reconcile this prepared upload. Retry shortly.", 503, undefined, "UPLOAD_UNCERTAIN");
+      if (!result.data) return fail("The prepared upload was not found for this membership.", 404);
+      prepared = result.data;
+      if (!isWorkspaceFilePathOwned(prepared.storage_path, auth.member.business_id) ||
+          (suppliedPath && suppliedPath !== prepared.storage_path) ||
+          prepared.display_name !== file.fileName || prepared.mime_type !== file.mimeType ||
+          Number(prepared.size_bytes) !== file.sizeBytes || prepared.file_kind !== file.kind ||
+          prepared.category_id !== categoryId) return fail("Upload metadata does not match the prepared upload.", 400);
+    } else {
+      if (categoryId) {
+        const category = await supabaseAdmin.from("workspace_file_categories").select("id")
+          .eq("id", categoryId).eq("business_id", auth.member.business_id).maybeSingle();
+        if (category.error || !category.data) return fail("That Storage category was not found.", 400);
       }
+      const id = randomUUID();
+      prepared = {
+        id, storage_path: workspaceFilePath({ businessId: auth.member.business_id, fileId: id, fileName: file.fileName }),
+        display_name: file.fileName, mime_type: file.mimeType, size_bytes: file.sizeBytes,
+        file_kind: file.kind, category_id: categoryId, state: "prepared",
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      };
+      const created = await supabaseAdmin.from("workspace_storage_uploads").insert({
+        ...prepared, business_id: auth.member.business_id, member_id: auth.member.id,
+      });
+      if (created.error) return fail("Unable to record the prepared upload.", 503,
+        "Apply the workspace Storage upload lifecycle migration before this server release.");
     }
-
-    const stored = await supabaseAdmin.storage
-      .from(WORKSPACE_FILE_BUCKET)
-      .info(path);
-    const storedType = stored.data?.contentType
-      ?.split(";")[0]
-      .trim()
-      .toLowerCase();
-
-    if (
-      stored.error ||
-      !stored.data ||
-      stored.data.size !== file.sizeBytes ||
-      storedType !== file.mimeType
-    ) {
-      await supabaseAdmin.storage.from(WORKSPACE_FILE_BUCKET).remove([path]);
+    const uploadResult = async (data: WorkspaceFileRow) => {
+      const favorite = await supabaseAdmin.from("workspace_file_favorites").select("file_id")
+        .eq("member_id", auth.member.id).eq("file_id", data.id).maybeSingle();
+      if (favorite.error) return fail("Unable to reconcile the finalized file favorite. Retry shortly.", 503, undefined, "UPLOAD_UNCERTAIN");
+      return NextResponse.json({
+      success: true, ...identity, file: data,
+      clientFile: { id: data.id, name: data.display_name, mimeType: data.mime_type,
+        sizeBytes: data.size_bytes, kind: data.file_kind, createdAt: data.created_at,
+        categoryId: data.category_id ?? null, favorite: Boolean(favorite.data), deletedAt: null,
+        previewUrl: null, previewExpiresAt: null, contentVersion: data.storage_path },
+    });
+    };
+    if (prepared.state === "finalized") {
+      const existing = await supabaseAdmin.from("workspace_files").select(`${WORKSPACE_FILE_SELECT},category_id`)
+        .eq("id", prepared.id).eq("business_id", auth.member.business_id)
+        .eq("uploaded_by_member_id", auth.member.id).eq("storage_path", prepared.storage_path)
+        .is("deleted_at", null).maybeSingle();
+      if (existing.error) return fail("Unable to reconcile the finalized upload. Retry shortly.", 503, undefined, "UPLOAD_UNCERTAIN");
+      if (!existing.data) return fail("The finalized file is no longer available.", 410);
+      return uploadResult(existing.data);
+    }
+    if (prepared.state !== "prepared" || !(Date.parse(prepared.expires_at) > Date.now())) {
+      return fail("This prepared upload has expired. Select the file again.", 410);
+    }
+    if (body.action === "prepare-upload") {
+      const signed = await supabaseAdmin.storage.from(WORKSPACE_FILE_BUCKET)
+        .createSignedUploadUrl(prepared.storage_path, { upsert: false });
+      if (signed.error || !signed.data) return fail("Unable to prepare the workspace file upload.", 503, undefined, "UPLOAD_UNCERTAIN");
+      return NextResponse.json({ success: true, ...identity,
+        upload: { uploadId: prepared.id, bucket: WORKSPACE_FILE_BUCKET, path: prepared.storage_path, token: signed.data.token } });
+    }
+    const stored = await supabaseAdmin.storage.from(WORKSPACE_FILE_BUCKET).info(prepared.storage_path);
+    if (stored.error || !stored.data) return storageObjectMissing(stored.error)
+      ? fail("The prepared file has not finished uploading.", 409, undefined, "UPLOAD_INCOMPLETE")
+      : fail("Unable to verify this upload. Retry finalization before uploading again.", 503, undefined, "UPLOAD_UNCERTAIN");
+    const storedType = stored.data.contentType?.split(";")[0].trim().toLowerCase();
+    if (Number(stored.data.size) !== file.sizeBytes || storedType !== file.mimeType) {
       return fail("The uploaded file did not match the approved file metadata.", 400);
     }
+    // The database locks this attempt; finalize errors never remove Storage objects.
+    const finalized = await supabaseAdmin.rpc("finalize_workspace_storage_upload", {
+      p_upload_id: prepared.id, p_business_id: auth.member.business_id, p_member_id: auth.member.id,
+    });
+    if (finalized.error?.code === "42501") return fail("Storage upload permission was revoked.", 403);
+    if (finalized.error?.code === "22023") return fail("The prepared upload expired or its category was removed. Select the file again.", 409, undefined, "UPLOAD_REJECTED");
+    if (finalized.error || !finalized.data) return fail("The file is uploaded. Retry finalization to reconcile its Storage record.", 503, undefined, "UPLOAD_UNCERTAIN");
+    return uploadResult(finalized.data as WorkspaceFileRow);
+  }
 
-    const { data, error } = await supabaseAdmin
-      .from("workspace_files")
-      .insert({
-        business_id: auth.member.business_id,
-        display_name: file.fileName.slice(0, 255),
-        mime_type: file.mimeType,
-        size_bytes: file.sizeBytes,
-        file_kind: file.kind,
-        storage_bucket: WORKSPACE_FILE_BUCKET,
-        storage_path: path,
-        uploaded_by_member_id: auth.member.id,
-        ...(categoryId ? { category_id: categoryId } : {}),
-      })
-      .select("id,display_name,mime_type,size_bytes,file_kind,created_at")
-      .single();
-
-    if (error || !data) {
-      await supabaseAdmin.storage.from(WORKSPACE_FILE_BUCKET).remove([path]);
-      return fail("The file uploaded, but TENH could not save its Storage record.", 500);
-    }
-
-    return NextResponse.json({ success: true, file: data });
+  if (body.action === "refresh-previews") {
+    const fileIds = [...new Set((Array.isArray(body.fileIds) ? body.fileIds : [])
+      .filter((id): id is string => typeof id === "string" && Boolean(id.trim())).map(id => id.trim()))];
+    if (!fileIds.length || fileIds.length > 30) return fail("Choose between 1 and 30 Storage previews.", 400);
+    const files = await supabaseAdmin.from("workspace_files")
+      .select("id,storage_path").eq("business_id", auth.member.business_id)
+      .eq("storage_bucket", WORKSPACE_FILE_BUCKET).is("deleted_at", null).in("id", fileIds);
+    if (files.error) return fail("Unable to load Storage previews.", 503);
+    const rows = files.data ?? [];
+    if (rows.some(row => !isWorkspaceFilePathOwned(row.storage_path, auth.member.business_id))) return fail("Invalid workspace file metadata.", 500);
+    const previewExpiresAt = Date.now() + 9 * 60 * 1000;
+    const signed = rows.length ? await supabaseAdmin.storage.from(WORKSPACE_FILE_BUCKET)
+      .createSignedUrls(rows.map(row => row.storage_path), 600) : { data: [], error: null };
+    if (signed.error) return fail("Unable to renew Storage previews.", 503);
+    const urls = new Map((signed.data ?? []).filter(entry => !entry.error && entry.signedUrl)
+      .map(entry => [entry.path, entry.signedUrl]));
+    return NextResponse.json({ success: true, ...identity,
+      previews: rows.map(row => ({ id: row.id, previewUrl: urls.get(row.storage_path) ?? null,
+      previewExpiresAt: urls.has(row.storage_path) ? previewExpiresAt : null, contentVersion: row.storage_path })),
+      unavailableIds: fileIds.filter(id => !rows.some(row => row.id === id)),
+    });
   }
 
   if (body.action === "get-file-url") {
@@ -329,7 +388,7 @@ export async function POST(request: NextRequest) {
       return fail("Unable to create a secure file link.", 500);
     }
 
-    return NextResponse.json({ success: true, signedUrl: signed.data.signedUrl });
+    return NextResponse.json({ success: true, ...identity, signedUrl: signed.data.signedUrl });
   }
 
   if (body.action === "toggle-favorite") {
@@ -357,7 +416,7 @@ export async function POST(request: NextRequest) {
           .eq("member_id", auth.member.id)
           .eq("file_id", fileId);
     if (result.error) return fail("Unable to update that favorite.", 500);
-    return NextResponse.json({ success: true, favorite });
+    return NextResponse.json({ success: true, ...identity, favorite });
   }
 
   if (body.action === "set-category" || body.action === "delete-files") {
@@ -369,7 +428,8 @@ export async function POST(request: NextRequest) {
         .filter((id): id is string => typeof id === "string")
         .map((id) => id.trim())
         .filter(Boolean),
-    )).slice(0, 200);
+    ));
+    if (fileIds.length > 200) return fail("Select up to 200 files per action.", 400);
     if (!fileIds.length) return fail("Choose at least one workspace file.", 400);
 
     if (body.action === "set-category") {
@@ -390,7 +450,7 @@ export async function POST(request: NextRequest) {
         .in("id", fileIds)
         .is("deleted_at", null);
       if (error) return fail("Unable to move the selected files.", 500);
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, ...identity });
     }
 
     const { data: rows, error: loadError } = await supabaseAdmin
@@ -403,6 +463,7 @@ export async function POST(request: NextRequest) {
     const owned = new Map((rows ?? []).map((row) => [row.id, row]));
     const deletedIds = fileIds.filter((id) => !owned.has(id));
     const failedIds: string[] = [];
+    const pendingIds: string[] = [];
 
     for (const row of owned.values()) {
       if (
@@ -413,8 +474,7 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      const wasPending = Boolean(row.deleted_at);
-      if (!wasPending) {
+      if (!row.deleted_at) {
         const staged = await supabaseAdmin
           .from("workspace_files")
           .update({ deleted_at: new Date().toISOString() })
@@ -435,19 +495,8 @@ export async function POST(request: NextRequest) {
         const check = await supabaseAdmin.storage
           .from(WORKSPACE_FILE_BUCKET)
           .info(row.storage_path);
-        if (!check.error && check.data) {
-          if (!wasPending) {
-            await supabaseAdmin
-              .from("workspace_files")
-              .update({ deleted_at: null })
-              .eq("id", row.id)
-              .eq("business_id", auth.member.business_id);
-          }
-          failedIds.push(row.id);
-          continue;
-        }
         if (!storageObjectMissing(check.error)) {
-          failedIds.push(row.id);
+          pendingIds.push(row.id);
           continue;
         }
       }
@@ -459,22 +508,24 @@ export async function POST(request: NextRequest) {
         .eq("business_id", auth.member.business_id)
         .eq("storage_path", row.storage_path);
       if (metadata.error) {
-        failedIds.push(row.id);
+        pendingIds.push(row.id);
         continue;
       }
       deletedIds.push(row.id);
     }
 
-    if (failedIds.length) {
+    if (failedIds.length || pendingIds.length) {
       return NextResponse.json({
         success: false,
-        error: `${deletedIds.length} file${deletedIds.length === 1 ? " was" : "s were"} deleted, but ${failedIds.length} could not be fully deleted. Retry the remaining selection.`,
+        ...identity,
+        error: `${deletedIds.length} deleted, ${pendingIds.length} pending cleanup, ${failedIds.length} failed. Retry remaining files.`,
         deletedIds,
         failedIds,
+        pendingIds,
       }, { status: 207 });
     }
 
-    return NextResponse.json({ success: true, deletedIds, failedIds });
+    return NextResponse.json({ success: true, ...identity, deletedIds, failedIds, pendingIds });
   }
 
   return fail("Unsupported workspace Storage action.", 400);

@@ -1,0 +1,23 @@
+TENH CHAT RELEASE CHECK — October 13, 2026
+
+Deployment: BLOCKED. Vercel project access returned HTTP 403 for chea-uy/social-inbox. No deployment or promotion was created. No installed Vercel CLI was available for the mapped fallback. An authorized connection to this team/project is required.
+
+Revision: b89c8284e3f98a0b98b8fe11b264f2f87157dfe4 (b89c828: feat(inbox): add compact standalone web layout). All existing uncommitted compact-navigation application changes were included in the checked source snapshot. No new commit or push was made.
+
+Results:
+Production build and standalone TypeScript: PASS.
+Focused navigation/Inbox/header tests: 36/36 PASS.
+Mocked Facebook, Analytics and TikTok security tests: 168/168 PASS.
+Broad web/shared suite: 220/227 PASS; seven failures remain. Their names match the earlier paired baseline exactly: six removed-success-alert tests fail finish is not a function; one native bootstrap test fails authSessionGeneration is not a function. This review made no source changes and did not weaken assertions. No fresh baseline tree was rerun in this checkpoint.
+Targeted lint: baseline five errors, final five errors, zero introduced. Raw lint is not green.
+Permitted local browser smoke: 14/14 PASS at phone, tablet and desktop sizes; More/focus/Escape, notifications, Filter, draft preservation, Settings navigation/visibility and single notification ownership checked. All traffic used synthetic fixtures. The prior 100-case script was not rerun; these are 14 independent smoke checks.
+Working diff whitespace check: PASS. Latest commit check reports whitespace in captured evidence logs; inspect commit-whitespace.log for the exact locations.
+
+Review: no blocking application regression found in the reviewed current navigation changes and latest compact-Inbox code. Existing callbacks, permission gates, action handlers and connection activation configuration were not changed. SQL proposals remain proposals. The account-holder callback intentionally performs no token exchange. Local advertiser and public TikTok flags were verified false without printing credential values. Hosted flags cannot be verified while access is denied.
+
+Preservation: 1634 pre-existing tracked/untracked files retain their starting SHA256 values. Source/config/dependency files were not edited; validation ran in the checkout or an isolated copy. Existing evidence was preserved. New report/evidence files are the only additions from this task.
+
+Limits: production target/revision, hosted logs, flags, Supabase/Vercel usage/cost, production RLS/PostgREST, real provider operations and physical-device behavior remain unverified. No production writes, messages, credentials, provider configuration, migration, activation or denied cleanup was performed.
+
+Evidence directory: docs/evidence/release-check-20261013-0c5b9378
+Temporary source snapshot and original logs: C:\Users\TUF\AppData\Local\Temp\tenh-release-20261013-0c5b937806214d03ad40866d11227711

@@ -320,7 +320,7 @@ export function WorkspaceSwitcher() {
     (isKhmer ? "កន្លែងធ្វើការ" : "Workspace");
 
   return (
-    <div ref={rootRef} className="relative block">
+    <div ref={rootRef} data-dashboard-workspace-switcher className="relative block">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -330,6 +330,7 @@ export function WorkspaceSwitcher() {
             : "border-amber-300 bg-amber-50 hover:bg-amber-100/70"
         }`}
         title={isKhmer ? "ប្តូរកន្លែងធ្វើការ" : "Switch workspace"}
+        aria-label={`${isKhmer ? "ប្តូរកន្លែងធ្វើការ" : "Switch workspace"}: ${buttonName}`}
         aria-expanded={open}
         aria-haspopup="listbox"
       >

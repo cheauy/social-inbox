@@ -1,0 +1,97 @@
+{
+  "at": "2026-10-13T04:23:47.294Z",
+  "head": "b89c8284e3f98a0b98b8fe11b264f2f87157dfe4",
+  "includes": "Current complete application working tree, including the uncommitted compact-navigation changes; no new commit or push",
+  "preservedExistingFiles": 1634,
+  "hashMismatches": 0,
+  "deployment": {
+    "status": "BLOCKED",
+    "project": "social-inbox",
+    "projectId": "prj_vYYpzTgJTgQ7BCKTPlfTPwiyJhqn",
+    "team": "chea-uy",
+    "teamId": "team_bAqTMA1nAJy4VrJznd49TF6z",
+    "reason": "Vercel get_project rejected GET /v9/projects with HTTP 403 for the requested team scope",
+    "cliFallback": "No installed Vercel CLI found",
+    "created": false,
+    "promoted": false
+  },
+  "checks": {
+    "productionBuild": {
+      "status": "PASS",
+      "exitCode": 0
+    },
+    "typescript": {
+      "status": "PASS",
+      "exitCode": 0
+    },
+    "focused": {
+      "status": "PASS",
+      "passed": 36,
+      "failed": 0
+    },
+    "mockedApiSecurity": {
+      "status": "PASS",
+      "passed": 168,
+      "failed": 0
+    },
+    "broader": {
+      "status": "FAIL",
+      "passed": 220,
+      "failed": 7,
+      "total": 227,
+      "identicalFailureNamesToRecordedPairedBaseline": true
+    },
+    "lint": {
+      "status": "FAIL raw lint / PASS comparison",
+      "baselineErrors": 5,
+      "finalErrors": 5,
+      "introduced": 0
+    },
+    "browser": {
+      "status": "PASS local smoke",
+      "passed": 14,
+      "failed": 0
+    },
+    "workingDiffWhitespace": {
+      "status": "PASS"
+    },
+    "latestCommitWhitespace": {
+      "status": "FAIL",
+      "reportedPaths": [
+        "docs/evidence/inbox-compact-web/baseline-regression-tests.log",
+        "docs/evidence/inbox-compact-web/final-complete-tests.log",
+        "docs/evidence/inbox-compact-web/final-regression-tests.log",
+        "docs/evidence/inbox-compact-web/production-build-before-final-actions.log",
+        "docs/evidence/inbox-compact-web/production-build-before-navigation-review.log",
+        "docs/evidence/inbox-compact-web/production-build-before-portal-input-review.log",
+        "docs/evidence/inbox-compact-web/production-build-before-tablet-anchor-review.log",
+        "docs/evidence/inbox-compact-web/production-build.log",
+        "docs/evidence/inbox-compact-web/regression-tests.log"
+      ]
+    }
+  },
+  "tikTok": {
+    "localAdvertiserEnabled": false,
+    "localPublicAdvertiserEnabled": false,
+    "localPublicAccountHolderEnabled": false,
+    "accountHolderCode": "Intentionally returns integration_disabled without exchanging the code",
+    "hostedFlags": "UNVERIFIED: project access denied"
+  },
+  "notPerformed": [
+    "Production SQL or schema changes",
+    "Credential or provider configuration",
+    "TikTok activation",
+    "Real token exchange or revocation",
+    "Real customer sends or account deletion",
+    "Hosting protection bypass",
+    "Plan upgrades",
+    "Push",
+    "Deployment"
+  ],
+  "unverified": [
+    "Current production revision/domains and hosted environment",
+    "Production RLS/PostgREST and provider behavior",
+    "Physical phones/tablets and real keyboard",
+    "Actual Supabase/Vercel resource usage or cost"
+  ]
+}

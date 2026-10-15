@@ -9,6 +9,7 @@ const chrome = spawn("C:/Program Files/Google/Chrome/Application/chrome.exe", [
 let socket, id = 0;
 const pending = new Map();
 const browserEvents = [];
+let network = null;
 const guard = setTimeout(() => { console.error("Storage browser fixture timed out"); socket?.close(); chrome.kill(); process.exitCode = 1; }, 60000);
 
 (async () => {
@@ -26,6 +27,18 @@ const guard = setTimeout(() => { console.error("Storage browser fixture timed ou
     await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
     socket.onmessage = event => {
       const result = JSON.parse(event.data);
+      if (network && result.method === "Network.requestWillBeSent") {
+        const { requestId, request, type } = result.params;
+        network.requests.set(requestId, { url: request.url, type });
+      }
+      if (network && result.method === "Network.loadingFinished") {
+        const resource = network.requests.get(result.params.requestId);
+        if (resource && /^https?:/.test(resource.url)) {
+          network.completedHttpResources++;
+          const media = ["Image", "Media"].includes(resource.type);
+          network[media ? "mediaHttpTransferredBytes" : "fixtureHttpTransferredBytes"] += result.params.encodedDataLength;
+        }
+      }
       if (result.method === "Runtime.exceptionThrown") browserEvents.push(result.params?.exceptionDetails?.exception?.description || result.params?.exceptionDetails?.text || "Browser exception");
       if (result.method === "Runtime.consoleAPICalled" && result.params?.type === "error") browserEvents.push((result.params.args || []).map(item => item.value || item.description).join(" "));
       if (!pending.has(result.id)) return;
@@ -42,12 +55,15 @@ const guard = setTimeout(() => { console.error("Storage browser fixture timed ou
       return result.result?.value;
     };
     await send("Runtime.enable");
+    await send("Network.enable");
+    await send("Network.setCacheDisabled", { cacheDisabled: true });
 
-    for (const [name, width] of [["desktop", 1280], ["mobile-390", 390], ["mobile-320", 320]]) {
+    for (const [name, width] of [["desktop", 1280], ["tablet", 768], ["mobile-390", 390], ["mobile-320", 320]]) {
+      network = { requests: new Map(), completedHttpResources: 0, fixtureHttpTransferredBytes: 0, mediaHttpTransferredBytes: 0 };
       await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
       await send("Page.navigate", { url: "http://127.0.0.1:8768/tenh-workspace-storage-browser.html" });
       let raw = "";
-      for (let attempt = 0; attempt < 150; attempt++) {
+      for (let attempt = 0; attempt < 450; attempt++) {
         await wait(40);
         raw = await evaluate("document.getElementById('result')?.textContent || ''");
         if (raw) break;
@@ -57,7 +73,13 @@ const guard = setTimeout(() => { console.error("Storage browser fixture timed ou
       if (!result.passed) throw new Error(`${name}: ${JSON.stringify({ ...result, browserEvents })}`);
       const screenshot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
       fs.writeFileSync(path.join(process.env.TEMP, `tenh-workspace-storage-${name}.png`), Buffer.from(screenshot.data, "base64"));
-      console.log(JSON.stringify({ viewport: name, width, columns: result.columns, checks: result.checks.length, mutations: result.mutations }));
+      const resources = [...network.requests.values()];
+      const dataUrlImages = await evaluate("[...document.querySelectorAll('img')].filter(image => image.currentSrc.startsWith('data:')).length");
+      console.log(JSON.stringify({ viewport: name, width, columns: result.columns, checks: result.checks.length, listRequests: result.listRequests, mediaMeasurements: result.mediaMeasurements, mutations: result.mutations,
+        network: { requests: resources.length, httpRequests: resources.filter(resource => /^https?:/.test(resource.url)).length,
+          httpMediaRequests: resources.filter(resource => /^https?:/.test(resource.url) && ["Image", "Media"].includes(resource.type)).length,
+          completedHttpResources: network.completedHttpResources, fixtureHttpTransferredBytes: network.fixtureHttpTransferredBytes,
+          mediaHttpTransferredBytes: network.mediaHttpTransferredBytes, dataUrlRequests: resources.filter(resource => resource.url.startsWith("data:")).length, dataUrlImages } }));
     }
     await send("Browser.close").catch(() => {});
     socket.close(); clearTimeout(guard);

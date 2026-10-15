@@ -1,0 +1,167 @@
+docs/evidence/inbox-compact-web/baseline-regression-tests.log:702: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/baseline-regression-tests.log:1110: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/baseline-regression-tests.log:1147: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/baseline-regression-tests.log:1149: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/baseline-regression-tests.log:1166: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/baseline-regression-tests.log:1168: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/baseline-regression-tests.log:1187: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/baseline-regression-tests.log:1189: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/baseline-regression-tests.log:1208: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/baseline-regression-tests.log:1210: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/baseline-regression-tests.log:1229: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/baseline-regression-tests.log:1231: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/baseline-regression-tests.log:1250: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/baseline-regression-tests.log:1252: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/baseline-regression-tests.log:1269: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/baseline-regression-tests.log:1600: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-complete-tests.log:710: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-complete-tests.log:1142: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-complete-tests.log:1179: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-complete-tests.log:1181: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-complete-tests.log:1198: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-complete-tests.log:1200: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-complete-tests.log:1219: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-complete-tests.log:1221: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-complete-tests.log:1240: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-complete-tests.log:1242: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-complete-tests.log:1261: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-complete-tests.log:1263: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-complete-tests.log:1282: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-complete-tests.log:1284: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-complete-tests.log:1301: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-complete-tests.log:1643: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-regression-tests.log:709: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-regression-tests.log:1141: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-regression-tests.log:1178: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-regression-tests.log:1180: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-regression-tests.log:1197: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-regression-tests.log:1199: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-regression-tests.log:1218: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-regression-tests.log:1220: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-regression-tests.log:1239: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-regression-tests.log:1241: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-regression-tests.log:1260: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-regression-tests.log:1262: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-regression-tests.log:1281: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-regression-tests.log:1283: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-regression-tests.log:1300: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/final-regression-tests.log:1642: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/production-build-before-final-actions.log:10: trailing whitespace.
++  Generating static pages using 15 workers (10/43) 
+docs/evidence/inbox-compact-web/production-build-before-final-actions.log:11: trailing whitespace.
++  Generating static pages using 15 workers (21/43) 
+docs/evidence/inbox-compact-web/production-build-before-final-actions.log:12: trailing whitespace.
++  Generating static pages using 15 workers (32/43) 
+docs/evidence/inbox-compact-web/production-build-before-final-actions.log:269: new blank line at EOF.
+docs/evidence/inbox-compact-web/production-build-before-navigation-review.log:10: trailing whitespace.
++  Generating static pages using 15 workers (10/43) 
+docs/evidence/inbox-compact-web/production-build-before-navigation-review.log:11: trailing whitespace.
++  Generating static pages using 15 workers (21/43) 
+docs/evidence/inbox-compact-web/production-build-before-navigation-review.log:12: trailing whitespace.
++  Generating static pages using 15 workers (32/43) 
+docs/evidence/inbox-compact-web/production-build-before-navigation-review.log:269: new blank line at EOF.
+docs/evidence/inbox-compact-web/production-build-before-portal-input-review.log:10: trailing whitespace.
++  Generating static pages using 15 workers (10/43) 
+docs/evidence/inbox-compact-web/production-build-before-portal-input-review.log:11: trailing whitespace.
++  Generating static pages using 15 workers (21/43) 
+docs/evidence/inbox-compact-web/production-build-before-portal-input-review.log:12: trailing whitespace.
++  Generating static pages using 15 workers (32/43) 
+docs/evidence/inbox-compact-web/production-build-before-portal-input-review.log:269: new blank line at EOF.
+docs/evidence/inbox-compact-web/production-build-before-tablet-anchor-review.log:10: trailing whitespace.
++  Generating static pages using 15 workers (10/43) 
+docs/evidence/inbox-compact-web/production-build-before-tablet-anchor-review.log:11: trailing whitespace.
++  Generating static pages using 15 workers (21/43) 
+docs/evidence/inbox-compact-web/production-build-before-tablet-anchor-review.log:12: trailing whitespace.
++  Generating static pages using 15 workers (32/43) 
+docs/evidence/inbox-compact-web/production-build-before-tablet-anchor-review.log:269: new blank line at EOF.
+docs/evidence/inbox-compact-web/production-build.log:10: trailing whitespace.
++  Generating static pages using 15 workers (10/43) 
+docs/evidence/inbox-compact-web/production-build.log:11: trailing whitespace.
++  Generating static pages using 15 workers (21/43) 
+docs/evidence/inbox-compact-web/production-build.log:12: trailing whitespace.
++  Generating static pages using 15 workers (32/43) 
+docs/evidence/inbox-compact-web/production-build.log:269: new blank line at EOF.
+docs/evidence/inbox-compact-web/regression-tests.log:715: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:717: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:732: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:1164: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:1201: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:1203: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:1220: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:1222: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:1241: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:1243: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:1262: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:1264: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:1283: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:1285: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:1304: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:1306: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:1323: trailing whitespace.
++  
+docs/evidence/inbox-compact-web/regression-tests.log:1665: trailing whitespace.
++  

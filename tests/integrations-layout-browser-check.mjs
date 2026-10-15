@@ -1,5 +1,5 @@
 import fs from 'node:fs';import path from 'node:path';import http from 'node:http';import cp from 'node:child_process';import assert from 'node:assert/strict';
-const root=process.cwd(),temp=path.join(process.env.TEMP,'tenh-integrations-layout-20261007'),evidence=path.join(root,process.argv.includes('--channels')?'docs/evidence/integrations-channels-20261007':'docs/evidence/integrations-layout-20261007'),baseline=process.argv.includes('--baseline'),prefix=baseline?'before':'after',pause=ms=>new Promise(r=>setTimeout(r,ms));fs.mkdirSync(evidence,{recursive:true});
+const root=process.cwd(),temp=path.join(process.env.TEMP,'tenh-integrations-layout-20261007'),evidence=path.join(root,'docs/evidence/integrations-management-20261015'),baseline=process.argv.includes('--baseline'),pause=ms=>new Promise(r=>setTimeout(r,ms));fs.mkdirSync(evidence,{recursive:true});
 const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://fixture.invalid');let file;if(u.pathname.startsWith('/images/'))file=path.join(root,'public',u.pathname);else if(['/style.css','/baseline.js','/bundle.js'].includes(u.pathname))file=path.join(temp,u.pathname);else if(u.pathname==='/')file=path.join(temp,'index.html');if(!file||!fs.existsSync(file)){res.writeHead(404).end();return;}res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.png')?'image/png':'text/html');let content=fs.readFileSync(file);if(file.endsWith('index.html')&&baseline)content=content.toString().replace('/bundle.js','/baseline.js');res.end(content);});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port,profile=fs.mkdtempSync(path.join(process.env.TEMP,'tenh-integrations-edge-')),edge=cp.spawn('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',['--headless=new','--disable-gpu','--disable-background-networking','--no-first-run','--no-default-browser-check','--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost','--remote-debugging-port=0','--user-data-dir='+profile,'http://127.0.0.1:'+port],{windowsHide:true,stdio:'ignore'});
 let socket,id=0;const checks=[],errors=[],screenshots=[];let result;
@@ -8,83 +8,155 @@ const active=path.join(profile,'DevToolsActivePort');let debugPort;for(let i=0;i
 const command=(method,params={})=>new Promise((r,j)=>{const call=++id;pending.set(call,[r,j]);socket.send(JSON.stringify({id:call,method,params}));}),evaluate=expression=>command('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true}).then(r=>r.result.value),check=(name,value)=>{assert.ok(value,name);checks.push(name);};
 await command('Runtime.enable');await command('Page.enable');
 const wait=async(condition='document.querySelector("[data-integrations-panel]")&&document.querySelector("h2,h1")')=>{for(let i=0;i<70;i++){if(await evaluate('Boolean('+condition+')'))return;await pause(100);}throw Error('Fixture did not settle: '+await evaluate('document.body.innerText'));};
-const scenarioTraces=[];
-const navigate=async(mode='default')=>{if(await evaluate('Boolean(window.fixtureReady)'))scenarioTraces.push(await evaluate('({mode:window.fixtureMode,requests:window.fixtureRequests,queries:window.fixtureQueries,navigation:window.fixtureNavigation})'));await command('Page.navigate',{url:'http://127.0.0.1:'+port+'/?mode='+mode});await pause(100);await wait();await pause(250);};
-const text=()=>evaluate('document.body.innerText'),click=async(label,scope='document')=>{await evaluate('(()=>{const b=[...'+scope+'.querySelectorAll("button")].find(b=>b.textContent.trim().includes('+JSON.stringify(label)+'));if(!b)throw Error("Missing button: "+'+JSON.stringify(label)+');b.click();})()');await pause(80);};
-const dialog='document.querySelector("[role=dialog],[role=alertdialog]")';
-await navigate();const initialRequests=await evaluate('window.fixtureRequests'),initialQueries=await evaluate('window.fixtureQueries');check('workspace filter preserved',initialQueries[0].filters.some(([k,v])=>k==='business_id'&&v==='fixture-business'));check('three Messenger pages',await evaluate('document.querySelectorAll("article").length===3'));
-for(const [name,width,height]of [['desktop',1440,900],['tablet',834,1112],['mobile',390,844]]){await command('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});await pause(120);check(name+' has no horizontal overflow',await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));const shot=await command('Page.captureScreenshot',{format:'png'});const file=prefix+'-'+name+'.png';fs.writeFileSync(path.join(evidence,file),Buffer.from(shot.data,'base64'));screenshots.push(file);}
-await command('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});await click('Add Connection');await wait(dialog);check('Add Connection modal and existing Facebook instructions retained',(await text()).includes('Connect Facebook Pages for Messenger messages and comments.')&&await evaluate('Boolean('+dialog+'.querySelector("button:not([disabled])"))'));await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});await pause(100);check('Escape closes Add Connection',await evaluate('!'+dialog));
-await evaluate('document.querySelector("article details summary").click()');check('account actions menu opens',await evaluate('document.querySelector("article details").open'));await evaluate('document.querySelector("article a[href^=\\"/dashboard/inbox\\"]").click()');check('Inbox route and account identity retained',(await evaluate('window.fixtureNavigation')).some(x=>x.url==='/dashboard/inbox?page=page-apex'));await click('Disconnect');await wait(dialog);check('disconnect confirmation keeps history notice',(await text()).includes('Your existing customers, conversations, and messages stay saved'));await click('Cancel',dialog);check('cancel performs no disconnect request',!(await evaluate('window.fixtureRequests')).some(x=>x.url.includes('/disconnect')));
-await click('Disconnect');await wait(dialog);await evaluate('window.fixtureFail=true');await click('Disconnect',dialog);await pause(150);check('failed disconnect keeps clear error in dialog',(await text()).includes('Isolated disconnect failure'));await evaluate('window.fixtureFail=false');await click('Disconnect',dialog);await pause(150);check('successful disconnect retains replace and refresh',(await evaluate('window.fixtureNavigation')).some(x=>x.kind==='replace'&&x.url.includes('facebook=disconnected'))&&(await evaluate('window.fixtureNavigation')).some(x=>x.kind==='refresh'));
-await evaluate('document.querySelector("nav[aria-label=\\"Integration channels\\"] button:nth-child(2)").click()');await pause(120);check('Telegram tab selects existing panel',(await text()).includes('TENH Shop Assistant'));await click('Add Connection');await wait(dialog);check('Telegram type controls and disabled Personal are retained',(await text()).includes('Telegram Personal')&&await evaluate('Boolean('+dialog+'.querySelector("[role=radio][disabled]"))'));await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});await pause(100);
-await navigate('view-only');check('view-only controls remain restricted',(await text()).includes('View only.')&&await evaluate('!document.querySelector("article details")')&&!((await text()).includes('Add Connection')));
-await navigate('locked');check('Billing blocks adding connections',await evaluate('[...document.querySelectorAll("button")].every(b=>!b.textContent.includes("Add Connection"))'));
-await navigate('no-access');check('no-access page reads no channel data',(await text()).includes('Integrations are not available')&&(await evaluate('window.fixtureQueries')).length===0);
-await navigate('empty');check('empty-state Facebook connect form retained',(await text()).includes('No Facebook Pages connected')&&await evaluate('Boolean(document.querySelector("form[action=\\"/api/facebook/oauth/pages\\"]"))'));
-await navigate('attention');check('disabled and expired channel actions retained',(await text()).includes('Enable channel')&&(await text()).includes('expired')&&(await text()).includes('Reconnect'));await command('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});check('attention warnings fit mobile',await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
-await navigate('notice');check('callback success and warning notices retained',(await text()).includes('Facebook Page connected successfully.')&&(await text()).includes('Isolated permission reminder'));
-await navigate('error');check('load errors remain visible',(await text()).includes('Isolated read failure'));
-for(const [name,width,height] of [['small-mobile',320,740],['landscape-tablet',1024,768],['small-desktop',1280,800],['large-desktop',1920,1080]]) {
-  await navigate();await command('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});await pause(100);
-  check(name+' retains rows without overflow',await evaluate('document.querySelectorAll("article").length===3&&document.documentElement.scrollWidth<=innerWidth+1'));
-  await evaluate('document.querySelector("article details summary").focus()');
-  check(name+' account menu is focusable',await evaluate('document.activeElement===document.querySelector("article details summary")'));
-  await evaluate('document.querySelector("article details summary").click()');await pause(100);
-  check(name+' account menu opens',await evaluate('document.querySelector("article details").open'));
-  check(name+' account menu is visible inside viewport',await evaluate('(()=>{const r=document.querySelector("article details > div").getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.width>0})()'));
-}
-await navigate();
-for(const [index,label] of [[2,'Instagram'],[3,'WhatsApp'],[4,'TikTok']]) {
-  await evaluate('document.querySelectorAll("nav[aria-label=\\\"Integration channels\\\"] button")['+index+'].click()');await pause(100);
-  check(label+' existing coming-soon controls retained',(await text()).includes('Not available yet')&&await evaluate('[...document.querySelectorAll("button")].some(b=>b.disabled&&b.textContent.includes("Coming soon"))'));
-}
-await evaluate('document.querySelector("nav[aria-label=\\\"Integration channels\\\"] button").click()');await pause(100);check('return to Messenger preserves all accounts',await evaluate('document.querySelectorAll("article").length===3'));
-await navigate();await command('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
-await evaluate('document.getElementById("root").style.width="900px"');await pause(100);
-check('desktop pane narrowed by sidebar remains contained',await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
-if(!baseline)check('desktop pane uses stacked layout when six columns do not fit',await evaluate('getComputedStyle(document.querySelector("article > div")).gridTemplateColumns.split(" ").length===2'));
-await navigate('long');await command('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});await pause(100);check('long labels and IDs remain inside mobile layout',await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
-await navigate('default&language=km');check('Khmer labels render with existing language state',(await text()).includes('ការតភ្ជាប់'));check('Khmer mobile layout has no horizontal overflow',await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
-await navigate('attention');const attention=await command('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(evidence,prefix+'-attention-mobile.png'),Buffer.from(attention.data,'base64'));screenshots.push(prefix+'-attention-mobile.png');
-scenarioTraces.push(await evaluate('({mode:window.fixtureMode,requests:window.fixtureRequests,queries:window.fixtureQueries,navigation:window.fixtureNavigation})'));
 
-if(process.argv.includes('--channels')){
-  await navigate();
-  if(!baseline)check('normal Messenger rows omit Token valid',!(await text()).includes('Token valid'));
-  await navigate('attention');check('expired token attention remains visible',(await text()).includes('expired')&&(await text()).includes('Facebook authorization'));
-  for(const [channel,index] of [['telegram',1],['tiktok',4]]){
-    await navigate();await evaluate('document.querySelectorAll("nav[aria-label=\\\"Integration channels\\\"] button")['+index+'].click()');await pause(150);
-    for(const [size,width,height] of [['desktop',1440,900],['tablet',834,1112],['mobile',390,844]]){
-      await command('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});await pause(120);
-      check(channel+' '+size+' fits viewport',await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
-      if(!baseline&&size==='desktop')check(channel+' desktop has matching column labels',(await text()).includes('Features')&&(await text()).includes('Actions'));
-      const shot=await command('Page.captureScreenshot',{format:'png'}),file=prefix+'-'+channel+'-'+size+'.png';fs.writeFileSync(path.join(evidence,file),Buffer.from(shot.data,'base64'));screenshots.push(file);
-    }
-    if(channel==='tiktok')check('TikTok remains unavailable without advertiser/provider requests',(await text()).includes('Not available yet')&&!(await evaluate('window.fixtureRequests')).some(r=>/tiktok/i.test(r.url)));
-  }
-  await navigate('telegram-multiple');await evaluate('document.querySelectorAll("nav[aria-label=\\\"Integration channels\\\"] button")[1].click()');await pause(150);
-  check('Telegram keeps both live and disabled bot rows',(await text()).includes('TENH Shop Assistant')&&(await text()).includes('Second Fixture Bot'));
-  await click('Second Fixture Bot');check('Telegram disabled channel keeps existing enable route',await evaluate('Boolean(document.querySelector("a[href=\\\"/dashboard/settings/users?tab=channels\\\"]"))'));
-  check('Telegram selects the requested bot for webhook details',(await evaluate('window.fixtureRequests')).some(r=>r.url==='/api/telegram/webhook?connectionId=fixture-bot-2'));
-  await click('Disconnect');await wait(dialog);check('Telegram confirmation identifies selected bot',(await text()).includes('@second_fixture_bot'));
-  await click('Cancel',dialog);check('Telegram cancel sends no delete',!(await evaluate('window.fixtureRequests')).some(r=>r.method==='DELETE'));
-  await click('Disconnect');await wait(dialog);await evaluate('window.fixtureFail=true');await click('Disconnect',dialog);await pause(150);
-  check('Telegram mocked failure shows existing error',(await text()).includes('Isolated Telegram disconnect failure'));
-  await evaluate('window.fixtureFail=false');await click('TENH Shop Assistant');await click('Disable Inbox');await wait(dialog);await click('Disable Inbox',dialog);await pause(150);
-  check('Telegram disable targets the selected live bot',(await evaluate('window.fixtureRequests')).some(r=>r.url==='/api/telegram/webhook?connectionId=fixture-bot'&&r.method==='DELETE'));
-  await click('Activate Inbox');await pause(150);check('Telegram activation preserves its existing endpoint',(await evaluate('window.fixtureRequests')).some(r=>r.url==='/api/telegram/webhook?connectionId=fixture-bot'&&r.method==='POST'));
-  await click('Second Fixture Bot');await click('Disconnect');await wait(dialog);await click('Disconnect',dialog);await pause(150);
-  check('Telegram disconnect removes only selected fixture bot',!(await text()).includes('Second Fixture Bot')&&(await text()).includes('TENH Shop Assistant'));
-  check('Telegram disconnect targets selected connection',(await evaluate('window.fixtureRequests')).filter(r=>r.url.startsWith('/api/telegram/connection?')&&r.method==='DELETE').every(r=>r.url==='/api/telegram/connection?connectionId=fixture-bot-2'));
-  await navigate('telegram-empty');await evaluate('document.querySelectorAll("nav[aria-label=\\\"Integration channels\\\"] button")[1].click()');await pause(150);
-  check('Telegram empty state retained',(await text()).includes('No Telegram bot connected'));
-  await click('Add Connection');await wait(dialog);await click('Continue',dialog);await pause(120);
-  check('Telegram add form keeps password field and empty-token guard',await evaluate('Boolean(document.querySelector("input[type=password]"))&&[...document.querySelectorAll("button")].some(b=>b.textContent.includes("Connect bot")&&b.disabled)'));
-  await navigate('view-only');await evaluate('document.querySelectorAll("nav[aria-label=\\\"Integration channels\\\"] button")[1].click()');await pause(150);await click('TENH Shop Assistant');
-  const viewOnlyBody=(await text()).replace(/\s+/g,' ');check('Telegram view-only actions remain restricted'+(viewOnlyBody.includes('Only the Owner can change bot connections')?'':': '+viewOnlyBody),viewOnlyBody.includes('Only the Owner can change bot connections')&&await evaluate('[...document.querySelectorAll("article button")].every(b=>!b.textContent.includes("Disconnect"))'));
-  scenarioTraces.push(await evaluate('({mode:window.fixtureMode,requests:window.fixtureRequests,queries:window.fixtureQueries,navigation:window.fixtureNavigation})'));
-}
+const dialog='document.querySelector("dialog[open]")';
+const navigate=async(mode='default')=>{await command('Page.navigate',{url:'http://127.0.0.1:'+port+'/?mode='+mode});await wait('window.fixtureReady && document.querySelector("[data-integrations-panel]")');await pause(100);};
+const text=()=>evaluate('document.body.innerText');
+const click=async(label,scope='document')=>{await evaluate('(()=>{const b=[...'+scope+'.querySelectorAll("button,[role=menuitem]")].find(b=>b.textContent.replace("+", "").trim()==='+JSON.stringify(label)+');if(!b)throw Error("Missing button: "+'+JSON.stringify(label)+');b.focus();b.click();})()');await pause(70);};
+const telegram=async()=>{await evaluate('document.querySelectorAll("nav[aria-label] button")[1].click()');await wait('document.querySelector("[data-telegram-bots]") && !document.querySelector("[data-telegram-bots] > [role=status]")');};
+const menu=async name=>{await evaluate('document.querySelector('+JSON.stringify('button[aria-label="Actions for '+name+'"]')+').click()');await wait('document.querySelector("[role=menu]")');};
+const choose=async(name,label)=>{await menu(name);await click(label,'document.querySelector("[role=menu]")');};
+const setToken=async value=>{await evaluate('(()=>{const i=document.querySelector("input[type=password]");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(i,'+JSON.stringify(value)+');i.dispatchEvent(new Event("input",{bubbles:true}));})()');await pause(50);};
+const writes=()=>evaluate('window.fixtureRequests.filter(r=>r.method!=="GET")');
+const resize=async(width,height)=>{await command('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});await pause(80);};
+const screenshot=async name=>{const r=await command('Page.captureScreenshot',{format:'png'});const file=name+'.png';fs.writeFileSync(path.join(evidence,file),Buffer.from(r.data,'base64'));screenshots.push(file);};
+const checkLayout=async label=>{
+ check(label+' no horizontal overflow',await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
+ check(label+' menu touch targets',await evaluate('[...document.querySelectorAll("button[aria-haspopup=menu]")].every(b=>b.getBoundingClientRect().height>=44)'));
+ if(await evaluate('Boolean('+dialog+')')){
+  check(label+' centered modal stays inside viewport',await evaluate('(()=>{const r='+dialog+'.getBoundingClientRect();return r.left>=12&&r.right<=innerWidth-12&&r.top>=0&&r.bottom<=innerHeight+1&&Math.abs((r.left+r.right)/2-innerWidth/2)<2;})()'));
+  check(label+' modal internally scrolls when short',await evaluate(dialog+'.scrollHeight<='+dialog+'.clientHeight || getComputedStyle('+dialog+').overflowY==="auto"'));
+  check(label+' submit and cancel stay inside modal',await evaluate('(()=>{const r='+dialog+'.getBoundingClientRect();return [...'+dialog+'.querySelectorAll(":scope > div:last-child button")].every(b=>{const q=b.getBoundingClientRect();return q.top>=r.top&&q.bottom<=r.bottom+1;});})()'));
+ }
+};
+await navigate();
+check('server query stays scoped to workspace',await evaluate('window.fixtureQueries[0].filters.some(([k,v])=>k==="business_id"&&v==="fixture-business")'));
+check('Facebook identity remains visible',await evaluate('document.querySelectorAll("article").length===3')&&(await text()).includes('Apex Clothing'));
+check('technical columns hidden',!/(Page ID|Features|fixture-apex|Token valid)/.test(await text()));
+for(const width of [360,390,768,820,1024,1440]){await resize(width,900);await checkLayout('Facebook '+width);}
+await menu('Apex Clothing');await command('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowDown',code:'ArrowDown'});
+check('menu arrow keys move between actions',await evaluate('document.activeElement.getAttribute("role")==="menuitem"&&document.activeElement.textContent.trim()==="Disconnect"'));
+await screenshot('facebook-menu-desktop');
+await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});
+check('menu Escape returns focus to its trigger',await evaluate('!document.querySelector("[role=menu]")&&document.activeElement.getAttribute("aria-label")==="Actions for Apex Clothing"'));
+await choose('Apex Clothing','Disable inbox');await wait(dialog);
+check('disable confirmation names Page and preserves credentials',(await text()).includes('Apex Clothing')&&(await text()).includes('credentials are kept'));
+await click('Cancel',dialog);check('cancel sends no mutations',(await writes()).length===0);
+await choose('Apex Clothing','Disable inbox');await click('Disable inbox',dialog);await wait('!document.querySelector("dialog[open]")');await wait('document.querySelector("article").innerText.includes("Disabled")');
+check('Facebook disable uses guarded reversible API',(await writes()).some(r=>r.method==='PATCH'&&r.body.id==='page-apex'&&!r.body.active&&r.body.businessId==='fixture-business'&&r.body.subscriptionId==='fixture-subscription'));
+check('disable does not disconnect',(await writes()).every(r=>!r.url.includes('/disconnect')));
+await choose('Apex Clothing','Enable inbox');await wait('document.querySelector("article").innerText.includes("Active")');
+await choose('Apex Clothing','Disable inbox');await click('Disable inbox',dialog);await wait('!document.querySelector("dialog[open]")');
+await evaluate('window.fixtureLimit=true');await choose('Apex Clothing','Enable inbox');await wait('document.querySelector("[role=alert]")');
+check('subscription limit error remains visible',(await text()).includes('Channel limit reached')&&(await text()).includes('Disabled'));
+await evaluate('window.fixtureLimit=false');await choose('Apex Clothing','Enable inbox');await wait('document.querySelector("article").innerText.includes("Active")');
+await choose('Apex Clothing','Disconnect');await wait(dialog);await click('Cancel',dialog);
+check('disconnect cancel sends no request',(await writes()).every(r=>!r.url.includes('/disconnect')));
+await choose('Apex Clothing','Disconnect');await evaluate('window.fixtureFail=true');await click('Disconnect',dialog);await wait(dialog+'.querySelector("[role=alert]")');
+check('failed Page disconnect stays in confirmation',(await text()).includes('Isolated disconnect failure'));
+await evaluate('window.fixtureFail=false');await evaluate('(()=>{const b=[...'+dialog+'.querySelectorAll("button")].find(b=>b.textContent.trim()==="Disconnect");b.click();b.click();})()');await wait('document.querySelectorAll("article").length===2');
+check('one successful disconnect request after repeated click',(await writes()).filter(r=>r.url.includes('/disconnect')).length===2);
+check('disconnect keeps existing navigation without scroll reset',await evaluate('window.fixtureNavigation.some(n=>n.kind==="replace"&&n.url.includes("facebook=disconnected"))&&window.fixtureNavigation.some(n=>n.kind==="refresh")'));
+
+await navigate();await choose('Apex Clothing','Disconnect');await evaluate('window.fixturePendingAction=true');await click('Disconnect',dialog);await wait('window.fixtureReleaseAction');
+await evaluate('dispatchEvent(new PopStateEvent("popstate"))');await wait('!document.querySelector("dialog[open]")');await evaluate('window.fixtureReleaseAction()');await wait('document.querySelectorAll("article").length===2');
+check('history navigation reconciles a pending Page action',await evaluate('[...document.querySelectorAll("button[aria-haspopup=menu]")].every(b=>b.getAttribute("aria-label")!=="Actions for Apex Clothing")&&document.querySelector("button[aria-haspopup=menu]").getAttribute("aria-disabled")==="false"'));
+await navigate('attention');
+check('expired authorization shows reconnect state',(await text()).includes('Reconnect required'));
+await telegram();
+check('Telegram failed credential stays visible and is not Active',await evaluate('[...document.querySelectorAll("article")].find(a=>a.innerText.includes("Reconnect Fixture")).innerText.includes("Reconnect required")'));
+check('Telegram technical details hidden',!/(Bot ID|Webhook:|Pending updates|100000001)/.test(await text()));
+await navigate();await evaluate('window.fixtureRemoteError=true');await telegram();
+check('failed remote check never labels enabled Inbox Active',await evaluate('document.querySelector("[data-telegram-bots] article").innerText.includes("Reconnect required")&&!document.querySelector("[data-telegram-bots] article").innerText.includes("Active")'));
+await menu('@tenh_fixture_bot');check('enabled but unhealthy Inbox retains Disable and Reconnect actions',await evaluate('document.querySelector("[role=menu]").innerText.includes("Disable inbox")&&document.querySelector("[role=menu]").innerText.includes("Reconnect")'));
+await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});
+await navigate();await telegram();
+check('connected and disabled bots retained',(await text()).includes('TENH Shop Assistant')&&(await text()).includes('Second Fixture Bot')&&(await text()).includes('Disabled'));
+await screenshot('telegram-list-desktop');
+await menu('@tenh_fixture_bot');await screenshot('telegram-menu-desktop');await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});
+await choose('@second_fixture_bot','Enable inbox');await wait('[...document.querySelectorAll("article")].find(a=>a.innerText.includes("Second Fixture Bot")).innerText.includes("Active")');
+check('capacity-disabled bot enables through capacity then Inbox',(await writes()).some(r=>r.method==='PATCH'&&r.body.id==='fixture-bot-2'&&r.body.active)&&(await writes()).some(r=>r.method==='POST'&&r.url==='/api/telegram/webhook?connectionId=fixture-bot-2'));
+await choose('@tenh_fixture_bot','Disable inbox');await wait(dialog);
+check('Telegram disable explains pending updates',(await text()).includes('Pending Telegram updates are discarded'));
+await click('Disable inbox',dialog);await wait('!document.querySelector("dialog[open]")');
+check('disable keeps bot connection and uses existing webhook handler',(await text()).includes('TENH Shop Assistant')&&(await writes()).some(r=>r.method==='DELETE'&&r.url==='/api/telegram/webhook?connectionId=fixture-bot')&&(await writes()).every(r=>!r.url.startsWith('/api/telegram/connection?')));
+await choose('@tenh_fixture_bot','Enable inbox');await wait('[...document.querySelectorAll("article")].find(a=>a.innerText.includes("TENH Shop Assistant")).innerText.includes("Active")');
+await choose('@second_fixture_bot','Disconnect');await wait(dialog);
+check('Bot disconnect names selected identity and keeps stored history',(await text()).includes('@second_fixture_bot')&&(await text()).includes('Stored conversations and contacts are kept'));
+await click('Cancel',dialog);check('Bot cancel does not disconnect',(await writes()).every(r=>!r.url.startsWith('/api/telegram/connection?')));
+await choose('@second_fixture_bot','Disconnect');await evaluate('window.fixtureFail=true');await click('Disconnect',dialog);await wait(dialog+'.querySelector("[role=alert]")');
+check('Bot disconnect failure stays inside dialog',(await text()).includes('Isolated disconnect failure'));
+await evaluate('window.fixtureFail=false');await click('Disconnect',dialog);await wait('!document.querySelector("dialog[open]")');
+check('disconnect removes only selected bot',!(await text()).includes('Second Fixture Bot')&&(await text()).includes('TENH Shop Assistant'));
+
+await click('Continue');await wait(dialog);
+check('Continue opens exactly one centered connection modal',await evaluate('document.querySelectorAll("dialog[open]").length===1')&&(await text()).includes('Connect another Telegram bot'));
+check('opening does not connect or reveal inline token',await evaluate('document.querySelectorAll("input[type=password]").length===1 && !!'+dialog+'.querySelector("input[type=password]")')&&(await writes()).every(r=>!(r.method==='POST'&&r.url==='/api/telegram/connection')));
+check('empty token cannot submit',await evaluate('[...'+dialog+'.querySelectorAll("button")].find(b=>b.textContent.trim()==="Connect").disabled'));
+await evaluate('[...document.querySelectorAll("[data-telegram-bots] button")].find(b=>b.textContent.trim()==="Continue").click()');
+check('repeated Continue creates no second modal',await evaluate('document.querySelectorAll("dialog[open]").length===1'));
+await setToken('bad');await click('Connect',dialog);await wait(dialog+'.querySelector("[role=alert]")');
+check('invalid token stays local with visible validation',(await text()).includes('Enter a valid Telegram Bot token')&&(await writes()).every(r=>!(r.method==='POST'&&r.url==='/api/telegram/connection')));
+await setToken(await evaluate('window.fixtureSyntheticToken'));
+await evaluate('[...'+dialog+'.querySelectorAll("button")].find(b=>b.textContent.trim()==="Connect").focus()');
+await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab'});
+check('Tab stays trapped in native dialog',await evaluate(dialog+'.contains(document.activeElement)'));
+await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',modifiers:8});
+check('Shift Tab stays trapped in native dialog',await evaluate(dialog+'.contains(document.activeElement)'));
+await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});await wait('!document.querySelector("dialog[open]")');
+check('Escape returns focus to Continue',await evaluate('document.activeElement.textContent.trim()==="Continue"'));
+await click('Continue');await wait(dialog);check('reopening clears token',await evaluate('document.querySelector("input[type=password]").value===""'));
+await setToken(await evaluate('window.fixtureSyntheticToken'));await evaluate('window.fixtureConnectFailure=true');await click('Connect',dialog);await wait(dialog+'.querySelector("[role=alert]")');
+check('failed connection error remains in modal',(await text()).includes('Isolated connection failure')&&await evaluate('document.querySelector("input[type=password]").value===window.fixtureSyntheticToken'));
+await click('Cancel',dialog);await click('Continue');await wait(dialog);
+check('Cancel clears token',await evaluate('document.querySelector("input[type=password]").value===""'));
+await setToken(await evaluate('window.fixtureSyntheticToken'));await evaluate('window.fixtureConnectFailure=false;window.fixturePendingConnect=true');
+const beforeConnect=(await writes()).filter(r=>r.method==='POST'&&r.url==='/api/telegram/connection').length;
+await evaluate('(()=>{const b=[...'+dialog+'.querySelectorAll("button")].find(b=>b.textContent.trim()==="Connect");b.click();b.click();})()');await wait('window.fixtureReleaseConnect');
+check('pending submission sent once',(await writes()).filter(r=>r.method==='POST'&&r.url==='/api/telegram/connection').length===beforeConnect+1);
+check('pending blocks close and cancel',await evaluate('[...'+dialog+'.querySelectorAll("button")].filter(b=>b.textContent.trim()==="Cancel"||b.getAttribute("aria-label")?.includes("Close")).every(b=>b.disabled)'));
+await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});check('pending Escape does not claim cancellation',await evaluate('Boolean('+dialog+')'));
+for(const [name,width,height]of [['desktop',1440,900],['tablet',820,1000],['mobile',390,844],['mobile-short',360,360]]){await resize(width,height);await checkLayout(name+' connection');await screenshot('connection-'+name);}
+await evaluate('window.fixtureReleaseConnect()');await wait('!document.querySelector("dialog[open]")');await wait('document.body.innerText.includes("New Fixture Bot")');
+check('confirmed connection updates list without page reload',await evaluate('window.fixtureReady&&window.fixtureRequests.length>10'));
+check('successful connection returns focus to Continue',await evaluate('document.activeElement.textContent.trim()==="Continue"'));
+check('token stays out of URL and persistent storage',await evaluate('!location.href.includes(window.fixtureSyntheticToken)&&![...Object.values(localStorage),...Object.values(sessionStorage)].some(v=>v.includes(window.fixtureSyntheticToken))'));
+await click('Continue');await wait(dialog);check('success cleared token',await evaluate('document.querySelector("input[type=password]").value===""'));await click('Cancel',dialog);
+
+await navigate('long');await telegram();await resize(390,640);
+await evaluate('document.querySelector("main").scrollTop=180');const scrollBefore=await evaluate('document.querySelector("main").scrollTop');
+await click('Continue');await wait(dialog);await setToken(await evaluate('window.fixtureSyntheticToken'));await click('Connect',dialog);await wait('!document.querySelector("dialog[open]")');
+check('successful connection preserves list scroll position',Math.abs(await evaluate('document.querySelector("main").scrollTop')-scrollBefore)<2);
+await navigate();await telegram();await click('Continue');await wait(dialog);await setToken(await evaluate('window.fixtureSyntheticToken'));await evaluate('window.fixtureLostResponse=true');await click('Connect',dialog);await wait('!document.querySelector("dialog[open]")');
+check('lost response reconciles confirmed server success before retry',(await text()).includes('Bot connection confirmed'));
+
+await navigate();await telegram();await click('Continue');await wait(dialog);await setToken(await evaluate('window.fixtureSyntheticToken'));
+await evaluate('dispatchEvent(new PopStateEvent("popstate"))');await wait('!document.querySelector("dialog[open]")');await click('Continue');await wait(dialog);check('history navigation clears stale modal token',await evaluate('document.querySelector("input[type=password]").value===""'));await click('Cancel',dialog);
+await click('Add Connection');await wait('document.querySelector("section[role=dialog]")');await click('Continue','document.querySelector("section[role=dialog]")');await wait(dialog);
+check('connection-selector Continue opens only token modal',await evaluate('document.querySelectorAll("dialog[open],section[role=dialog]").length===1'));
+await click('Cancel',dialog);check('selector flow returns focus to stable Continue',await evaluate('document.activeElement.textContent.trim()==="Continue"'));
+await click('Continue');await wait(dialog);await setToken(await evaluate('window.fixtureSyntheticToken'));await evaluate('window.fixturePendingConnect=true');await click('Connect',dialog);await wait('window.fixtureReleaseConnect');
+await evaluate('window.fixtureOtherWorkspace=true;dispatchEvent(new CustomEvent("tenh:active-workspace-ui-change",{detail:{businessId:"other-workspace"}}))');await wait('!document.querySelector("dialog[open]")');
+check('workspace switch clears modal and token',await evaluate('!document.querySelector("input[type=password]")'));
+await evaluate('window.fixtureReleaseConnect()');await pause(200);
+check('late success cannot reopen old workspace modal or bot list',await evaluate('!document.querySelector("dialog[open]")&&!document.body.innerText.includes("New Fixture Bot")'));
+
+await navigate();await telegram();await click('Continue');await wait(dialog);await setToken(await evaluate('window.fixtureSyntheticToken'));
+await evaluate('dispatchEvent(new StorageEvent("storage",{key:"tenh-active-workspace-ui",newValue:"other-workspace"}))');await wait('!document.querySelector("dialog[open]")');
+check('cross-tab workspace switch also clears stale token',await evaluate('!document.querySelector("input[type=password]")'));
+await navigate('view-only');check('Facebook Agents get no management menu',await evaluate('!document.querySelector("button[aria-haspopup=menu]")'));await telegram();check('Telegram Agents get no menu or Continue',await evaluate('!document.querySelector("button[aria-haspopup=menu]")&&![...document.querySelectorAll("button")].some(b=>b.textContent.trim()==="Continue")'));
+await navigate('no-access');check('denied page reads no integration data',(await text()).includes('Integrations are not available')&&await evaluate('window.fixtureQueries.length===0'));
+await navigate('locked');check('locked subscription has no add flow',await evaluate('![...document.querySelectorAll("button")].some(b=>b.textContent.includes("Add Connection"))'));await telegram();check('locked Telegram cannot add bots',await evaluate('![...document.querySelectorAll("button")].some(b=>b.textContent.trim()==="Continue")'));
+await navigate('empty');check('empty Facebook connection entry remains',await evaluate('Boolean(document.querySelector("form[action=\\"/api/facebook/oauth/pages\\"]"))'));
+for(const index of [2,3,4]){await evaluate('document.querySelectorAll("nav[aria-label] button")['+index+'].click()');check('unrelated planned channel '+index+' stays unavailable',(await text()).includes('Not available yet'));}
+await navigate('default&language=km');await telegram();check('Khmer labels render',await evaluate('document.body.innerText.includes("បន្ត")'));await click('បន្ត');await wait(dialog);await checkLayout('Khmer mobile');await screenshot('connection-mobile-khmer');
+await click('បោះបង់',dialog);await navigate();await telegram();await click('Continue');await wait(dialog);
+await evaluate('document.documentElement.dataset.tenhWorkspaceTheme="dark"');await pause(250);await checkLayout('dark mobile');await screenshot('connection-mobile-dark');
+check('dialog follows the existing workspace dark palette',await evaluate('getComputedStyle('+dialog+').backgroundColor==="rgb(21, 27, 38)"'));
+await evaluate('document.documentElement.dataset.tenhWorkspaceTheme="dim"');await pause(250);await checkLayout('dim mobile');await screenshot('connection-mobile-dim');
+await resize(390,360);await evaluate('document.querySelector("input[type=password]").focus()');await pause(100);
+check('focused input stays visible above fixed actions on a short keyboard viewport',await evaluate('(()=>{const i=document.querySelector("input[type=password]").getBoundingClientRect(),b='+dialog+'.children[1].getBoundingClientRect();return i.top>=b.top&&i.bottom<=b.bottom+1;})()'));
+await checkLayout('short keyboard viewport');await screenshot('connection-keyboard-viewport');
 check('no uncaught browser errors',errors.length===0);
-result={passed:true,checks,scenarioTraces,initialRequests,initialQueries,screenshots,profile,isolated:true,externalDNSBlocked:true};fs.writeFileSync(path.join(evidence,prefix+'-results.json'),JSON.stringify(result,null,2));console.log(JSON.stringify({passed:checks.length,screenshots,initialRequests:initialRequests.length}));
-}catch(error){result={passed:false,error:error.message,checks,errors,profile};fs.writeFileSync(path.join(evidence,prefix+'-results.json'),JSON.stringify(result,null,2));console.error(error);process.exitCode=1;}finally{socket?.close();edge.kill();server.close();}
+result={passed:true,checks,screenshots,errors,isolated:true,externalDNSBlocked:true,notes:'Real page, bot panel, menus and dialogs; synthetic account/provider responses only. No production changes.'};fs.writeFileSync(path.join(evidence,'results.json'),JSON.stringify(result,null,2));console.log(JSON.stringify({passed:checks.length,screenshots}));
+}catch(error){result={passed:false,error:error.message,checks,errors};fs.writeFileSync(path.join(evidence,'results.json'),JSON.stringify(result,null,2));console.error(error);process.exitCode=1;}finally{socket?.close();edge.kill();server.close();}

@@ -1,0 +1,30 @@
+[rtk] /!\ No hook installed — run `rtk init -g` for automatic token savings
+{
+  "baseline": false,
+  "passed": 100,
+  "screenshots": [
+    "phone-inbox.png",
+    "phone-more.png",
+    "phone-notifications.png",
+    "phone-smart-view.png",
+    "phone-chat.png",
+    "keyboard-viewport-emulation.png",
+    "small-phone.png",
+    "phone-landscape.png",
+    "phone-landscape-workspace.png",
+    "phone-landscape-filter.png",
+    "phone-landscape-smart-view.png",
+    "tablet-portrait.png",
+    "tablet-landscape.png",
+    "ipad-pro-portrait.png",
+    "ipad-pro-landscape.png",
+    "settings-authorized-admin.png",
+    "settings-regular-member.png",
+    "safe-area-reserve-emulation.png",
+    "workspace-switcher.png",
+    "phone-khmer.png",
+    "desktop.png",
+    "desktop-settings.png"
+  ],
+  "physicalDeviceTested": false
+}

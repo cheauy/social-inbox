@@ -1,0 +1,28 @@
+{
+  "errors": 1158,
+  "warnings": 192,
+  "failingFiles": 296,
+  "storageErrors": 0,
+  "examples": [
+    {
+      "file": "C:\\Users\\TUF\\social-inbox\\app\\api\\customers\\route.ts",
+      "errors": 1
+    },
+    {
+      "file": "C:\\Users\\TUF\\social-inbox\\app\\api\\facebook\\stickers\\send\\route.ts",
+      "errors": 2
+    },
+    {
+      "file": "C:\\Users\\TUF\\social-inbox\\app\\api\\manual-payments\\admin\\route.ts",
+      "errors": 2
+    },
+    {
+      "file": "C:\\Users\\TUF\\social-inbox\\app\\api\\tenh-admin\\billing\\route.ts",
+      "errors": 17
+    },
+    {
+      "file": "C:\\Users\\TUF\\social-inbox\\app\\dashboard\\subscription\\payment\\page.tsx",
+      "errors": 1
+    }
+  ]
+}

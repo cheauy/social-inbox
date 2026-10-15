@@ -1,4 +1,5 @@
 "use client";
+import { useCompactInboxWeb } from "@/lib/inbox/use-compact-web";
 import { readInboxChannels } from "@/lib/inbox/read-channels";
 
 import { DashboardUtilityNavigation } from "@/components/dashboard/dashboard-utility-navigation";
@@ -1639,6 +1640,7 @@ function ConversationListView({
 }: ConversationListProps) {
   const router =
     useRouter();
+  const compact = useCompactInboxWeb();
 
   const searchParams =
     useSearchParams();
@@ -3738,21 +3740,8 @@ function ConversationListView({
       selectedViewKey,
     );
 
-  return (
-    <section data-inbox-surface className="relative flex h-full min-h-0 w-full min-w-0 rounded-r-2xl overflow-hidden border-r border-slate-200/70 dark:border-slate-800/60 bg-white">
-      <ConversationRail>
-        {/*
-         * Channel picker and status filter sit above the Smart Views. The
-         * channel panel floats to the right of the rail the same way Smart
-         * Views do; the filter panel opens beside the list.
-         */}
-        <div className="px-2 pb-1.5">
-          <InboxChannelSelector variant="rail" onSwitchingChange={setChannelSwitching} pagingEnabled={pager.enabled} pageLoading={pager.initialLoading} />
-        </div>
-
-        <div className="mx-3 mb-2 mt-0.5 border-t border-slate-100 dark:border-slate-800/60" />
-
-        {railViews.map(
+  const channelControl = <InboxChannelSelector variant="rail" onSwitchingChange={setChannelSwitching} pagingEnabled={pager.enabled} pageLoading={pager.initialLoading} />;
+  const viewControls = <>{railViews.map(
           (view) => {
             const isActive =
               selectedViewKey ===
@@ -3765,7 +3754,7 @@ function ConversationListView({
                 key={
                   view.value
                 }
-                type="button"
+                data-inbox-view-control type="button"
                 onClick={() =>
                   selectView(
                     view.value,
@@ -3842,11 +3831,10 @@ function ConversationListView({
               </button>
             );
           },
-        )}
-
-        {showReminderRailShortcut ? (
+        )}</>;
+  const reminderControl = <>{showReminderRailShortcut ? (
         <button
-          type="button"
+          data-inbox-reminder-control type="button"
           onClick={() => {
             setFilterOpen(false);
             setViewsOpen(false);
@@ -3886,12 +3874,9 @@ function ConversationListView({
           </span>
         </button>
 
-        ) : null}
-
-        <div className="mx-2 my-2 h-px bg-slate-200" />
-
-        <button
-          type="button"
+        ) : null}</>;
+  const smartViewControl = (<button
+          data-inbox-smart-control type="button" aria-expanded={viewsOpen} aria-pressed={isSmartViewSelected} aria-controls="inbox-smart-views"
           onClick={() => {
             setRemindersOpen(false);
             setFilterOpen(
@@ -3927,9 +3912,18 @@ function ConversationListView({
             {isKhmer ? "Smart Views" : "Smart Views"}
             <span className="absolute right-full top-1/2 -translate-y-1/2 border-y-4 border-r-4 border-y-transparent border-r-slate-950" />
           </span>
-        </button>
+        </button>);
+
+  return (
+    <section data-inbox-surface className="relative flex h-full min-h-0 w-full min-w-0 rounded-r-2xl overflow-hidden border-r border-slate-200/70 dark:border-slate-800/60 bg-white">
+      {!compact ? <ConversationRail>
+        <div className="px-2 pb-1.5">{channelControl}</div>
+        <div className="mx-3 mb-2 mt-0.5 border-t border-slate-100 dark:border-slate-800/60" />
+        {viewControls}{reminderControl}
+        <div className="mx-2 my-2 h-px bg-slate-200" />
+        {smartViewControl}
         <DashboardUtilityNavigation placement="inbox" />
-      </ConversationRail>
+      </ConversationRail> : null}
 
       {viewsOpen ? (
         <>
@@ -3950,7 +3944,7 @@ function ConversationListView({
             aria-label="Close Smart Views"
           />
 
-          <section data-inbox-smart-views className="absolute left-16 top-3 z-40 flex max-h-[calc(100%-24px)] w-[360px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <section id="inbox-smart-views" data-inbox-smart-views className="absolute left-16 top-3 z-40 flex max-h-[calc(100%-24px)] w-[360px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-4">
               <div>
                 <h2 className="text-base font-bold text-slate-950">
@@ -4834,13 +4828,15 @@ function ConversationListView({
         ) : (
           <>
         <ConversationHeaderSurface>
-          <ConversationListHeader search={search} onSearchChange={setSearch} filterOpen={filterOpen}
+          <ConversationListHeader smartViewControl={compact ? smartViewControl : undefined} search={search} onSearchChange={setSearch} filterOpen={filterOpen}
             filterApplied={optimisticStatus !== "all"} searchPlaceholder={isKhmer ? "ស្វែងរកការសន្ទនា ទំនាក់ទំនង ឬសារ..." : "Search conversations, customers..."}
             filterLabel={isKhmer ? "ត្រងតាមស្ថានភាព" : "Filter conversation status"} filterTitle={isKhmer ? "ស្ថានភាពការសន្ទនា" : "Conversation status"}
             onToggleFilter={() => { setViewsOpen(false); setFilterOpen(current => !current); }} />
+          {compact ? <nav data-inbox-view-tabs aria-label={isKhmer ? "ប្រភេទការសន្ទនា" : "Conversation views"}>{viewControls}</nav> : null}
 
-          {filterOpen ? (
+          {filterOpen || compact ? (
             <>
+              {filterOpen ? (
               <button
                 type="button"
                 aria-label="Close filters"
@@ -4851,8 +4847,10 @@ function ConversationListView({
                 }
                 className="fixed inset-0 z-30 cursor-default"
               />
+              ) : null}
 
-              <div id="inbox-status-filters" className="absolute right-3 top-full z-40 mt-2 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+              <div id="inbox-status-filters" hidden={!filterOpen} className="absolute right-3 top-full z-40 mt-2 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                {compact ? <div data-inbox-extra-filters>{channelControl}{reminderControl}</div> : null}
                 <div className="border-b border-slate-100 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                     Filter

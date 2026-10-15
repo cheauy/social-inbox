@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -44,14 +45,15 @@ test('workspace object paths are tenant-prefixed, flat, and sanitize traversal',
 
 test('workspace API enforces membership tenant filters and verifies uploaded bytes before insert', () => {
   const source = fs.readFileSync('app/api/workspace-storage/files/route.ts', 'utf8');
-  assert.match(source, /getWorkspaceStorageAccess\(\)/);
+  assert.match(source, /getWorkspaceStorageAccess\(request\)/);
   assert.match(fs.readFileSync('lib/storage/workspace-storage-access.ts', 'utf8'), /getCurrentMember\(true\)/);
   assert.ok((source.match(/\.eq\("business_id", auth\.member\.business_id\)/g) ?? []).length >= 2);
-  assert.match(source, /isWorkspaceFilePathOwned\(path, auth\.member\.business_id\)/);
-  assert.match(source, /\.info\(path\)/);
-  assert.match(source, /stored\.data\.size !== file\.sizeBytes/);
+  assert.match(source, /isWorkspaceFilePathOwned\(prepared\.storage_path, auth\.member\.business_id\)/);
+  assert.match(source, /\.info\(prepared\.storage_path\)/);
+  assert.match(source, /Number\(stored\.data\.size\) !== file\.sizeBytes/);
   assert.match(source, /storedType !== file\.mimeType/);
-  assert.match(source, /uploaded_by_member_id: auth\.member\.id/);
+  assert.match(source, /p_member_id: auth\.member\.id/);
+  assert.match(source, /finalize_workspace_storage_upload/);
 });
 
 test('migration draft creates a private service-only workspace store without touching customer files', () => {
@@ -89,7 +91,13 @@ test('migration draft creates a private service-only workspace store without tou
 });
 
 function routeSetup({ businessId = 'shop-a', active = true, canManage = true, rows = [], stored = {}, removeFailures = {}, categories = [], favorites = [], organizationInstalled = true } = {}) {
-  const db = database({ business_subscriptions: [], workspace_files: rows.map(row => ({storage_bucket:WORKSPACE_FILE_BUCKET,...row})), ...(organizationInstalled ? { workspace_file_categories: categories, workspace_file_favorites: favorites } : {}) });
+  const db = database({ business_subscriptions: [], workspace_storage_uploads: [], workspace_files: rows.map(row => ({storage_bucket:WORKSPACE_FILE_BUCKET,...row})), ...(organizationInstalled ? { workspace_file_categories: categories, workspace_file_favorites: favorites } : {}) });
+  db.rpc = async (_name, args) => {
+    const upload = db.tables.workspace_storage_uploads.find(row => row.id === args.p_upload_id && row.business_id === args.p_business_id && row.member_id === args.p_member_id);
+    const result = await db.from('workspace_files').insert({ ...upload, uploaded_by_member_id: upload.member_id, storage_bucket: WORKSPACE_FILE_BUCKET, created_at: new Date().toISOString(), deleted_at: null }).select().single();
+    if (!result.error) upload.state = 'finalized';
+    return result;
+  };
   const removed = [];
   db.storage = {
     from(bucket) {
@@ -97,7 +105,7 @@ function routeSetup({ businessId = 'shop-a', active = true, canManage = true, ro
       return {
         async createSignedUploadUrl(path) { return { data: { token: 'upload-token', path }, error: null }; },
         async createSignedUrl(path) { return { data: { signedUrl: `https://signed.invalid/${path}` }, error: null }; },
-        async info(path) { return stored[path] ? { data: stored[path], error: null } : { data: null, error: { message: 'missing' } }; },
+        async info(path) { return stored[path] ? { data: stored[path], error: null } : { data: null, error: { status: 404, message: 'missing' } }; },
         async remove(paths) {
           removed.push(...paths);
           const failure = removeFailures[paths[0]];
@@ -124,7 +132,12 @@ function routeSetup({ businessId = 'shop-a', active = true, canManage = true, ro
   const request = (body) => new Request('https://app.tenhchat.com/api/workspace-storage/files', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
-  return { db, removed, route, request };
+  const prepare = async (fileName = 'a.pdf') => {
+    const response = await route.POST(request({ action: 'prepare-upload', fileName, mimeType: 'application/pdf', sizeBytes: 3 }));
+    assert.equal(response.status, 200);
+    return (await response.json()).upload;
+  };
+  return { db, removed, route, request, prepare, stored };
 }
 
 test('list and download never expose another business file', async () => {
@@ -170,29 +183,28 @@ test('upload preparation creates only a flat current-business path', async () =>
   assert.equal(isWorkspaceFilePathOwned(result.upload.path, 'shop-a'), true);
 });
 
-test('finalize rejects forged paths and removes partial uploads with forged size or MIME', async () => {
-  const wrongSize = 'shop-a/wrong-size.pdf';
-  const wrongMime = 'shop-a/wrong-mime.pdf';
-  const { db, removed, route, request } = routeSetup({ stored: {
-    [wrongSize]: { size: 4, contentType: 'application/pdf' },
-    [wrongMime]: { size: 3, contentType: 'text/plain' },
-  } });
+test('finalize rejects forged paths and preserves mismatched prepared uploads', async () => {
+  const f = routeSetup();
   const base = { action: 'finalize-upload', fileName: 'a.pdf', mimeType: 'application/pdf', sizeBytes: 3 };
-  assert.equal((await route.POST(request({ ...base, storagePath: 'shop-b/foreign.pdf' }))).status, 400);
-  assert.equal((await route.POST(request({ ...base, storagePath: wrongSize }))).status, 400);
-  assert.equal((await route.POST(request({ ...base, storagePath: wrongMime }))).status, 400);
-  assert.deepEqual(removed, [wrongSize, wrongMime]);
-  assert.equal(db.tables.workspace_files.length, 0);
+  assert.equal((await f.route.POST(f.request({ ...base, storagePath: 'shop-b/foreign.pdf' }))).status, 400);
+  assert.equal((await f.route.POST(f.request({ ...base, storagePath: 'shop-a/unprepared.pdf' }))).status, 404);
+  for (const storedMetadata of [{ size: 4, contentType: 'application/pdf' }, { size: 3, contentType: 'text/plain' }]) {
+    const upload = await f.prepare(); f.stored[upload.path] = storedMetadata;
+    assert.equal((await f.route.POST(f.request({ ...base, uploadId: upload.uploadId, storagePath: upload.path }))).status, 400);
+    assert.ok(f.stored[upload.path]);
+  }
+  assert.deepEqual(f.removed, []); assert.equal(f.db.tables.workspace_files.length, 0);
 });
 
 test('verified upload finalizes under the authenticated business', async () => {
-  const path = 'shop-a/verified.pdf';
-  const { db, route, request } = routeSetup({ stored: { [path]: { size: 3, contentType: 'application/pdf; charset=binary' } } });
-  const response = await route.POST(request({ action: 'finalize-upload', fileName: 'verified.pdf', mimeType: 'application/pdf', sizeBytes: 3, storagePath: path }));
+  const f = routeSetup(); const upload = await f.prepare('verified.pdf');
+  f.stored[upload.path] = { size: 3, contentType: 'application/pdf; charset=utf-8' };
+  const response = await f.route.POST(f.request({ action: 'finalize-upload', fileName: 'verified.pdf', mimeType: 'application/pdf', sizeBytes: 3, storagePath: upload.path, uploadId: upload.uploadId }));
   assert.equal(response.status, 200);
-  assert.equal(db.tables.workspace_files.length, 1);
-  assert.equal(db.tables.workspace_files[0].business_id, 'shop-a');
-  assert.equal(db.tables.workspace_files[0].uploaded_by_member_id, 'member-a');
+  assert.equal(f.db.tables.workspace_files.length, 1);
+  assert.equal(f.db.tables.workspace_files[0].business_id, 'shop-a');
+  assert.equal(f.db.tables.workspace_files[0].uploaded_by_member_id, 'member-a');
+  assert.deepEqual(f.removed, []);
 });
 
 test('favorite preference is member scoped and refuses a foreign workspace file', async () => {
@@ -229,16 +241,16 @@ test('shared file organization mutations require the existing content-management
   assert.equal(list.files.some((file) => file.id === 'deleted'), false);
 });
 
-test('permanent delete reports a recoverable partial failure and restores visible metadata when the object remains', async () => {
+test('permanent delete retains durable hidden metadata when object removal fails', async () => {
   const path = 'shop-a/blocked.pdf';
   const own = { id: 'own', business_id: 'shop-a', deleted_at: null, storage_bucket: WORKSPACE_FILE_BUCKET, storage_path: path };
   const { db, route, request } = routeSetup({ rows: [own], stored: { [path]: { size: 3 } }, removeFailures: { [path]: 'storage unavailable' } });
   const response = await route.POST(request({ action: 'delete-files', fileIds: ['own'] }));
   const result = await response.json();
-  assert.equal(response.status, 207);
-  assert.deepEqual(Array.from(result.deletedIds), []);
-  assert.deepEqual(Array.from(result.failedIds), ['own']);
-  assert.equal(db.tables.workspace_files[0].deleted_at, null);
+  assert.equal(response.status, 207); assert.deepEqual(Array.from(result.deletedIds), []);
+  assert.deepEqual(Array.from(result.failedIds), []); assert.deepEqual(Array.from(result.pendingIds), ['own']);
+  assert.ok(db.tables.workspace_files[0].deleted_at);
+  assert.deepEqual((await (await route.GET()).json()).pendingDeletions.map(row => row.id), ['own']);
 });
 
 test('category API scopes edit/delete and migration preserves files on category delete', async () => {
@@ -265,12 +277,13 @@ test('category API scopes edit/delete and migration preserves files on category 
   assert.equal(db.tables.workspace_file_categories.some((row) => row.name === 'Campaigns'), true);
 });
 
-test('database finalize failure removes the uploaded object instead of leaving a partial file', async () => {
-  const path = 'shop-a/insert-fails.pdf';
-  const { db, removed, route, request } = routeSetup({ stored: { [path]: { size: 3, contentType: 'application/pdf' } } });
-  db.failures.push({ table: 'workspace_files', op: 'insert', message: 'insert failed' });
-  const response = await route.POST(request({ action: 'finalize-upload', fileName: 'insert-fails.pdf', mimeType: 'application/pdf', sizeBytes: 3, storagePath: path }));
-  assert.equal(response.status, 500);
-  assert.deepEqual(removed, [path]);
-  assert.equal(db.tables.workspace_files.length, 0);
+test('database finalize failure preserves the prepared upload for reconciliation', async () => {
+  const f = routeSetup(); const upload = await f.prepare('insert-fails.pdf');
+  f.stored[upload.path] = { size: 3, contentType: 'application/pdf' };
+  f.db.failures.push({ table: 'workspace_files', op: 'insert', message: 'insert failed' });
+  const response = await f.route.POST(f.request({ action: 'finalize-upload', fileName: 'insert-fails.pdf', mimeType: 'application/pdf', sizeBytes: 3, storagePath: upload.path, uploadId: upload.uploadId }));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).code, 'UPLOAD_UNCERTAIN');
+  assert.deepEqual(f.removed, []); assert.ok(f.stored[upload.path]); assert.equal(f.db.tables.workspace_files.length, 0);
+  assert.equal(f.db.tables.workspace_storage_uploads[0].state, 'prepared');
 });

@@ -1,0 +1,27 @@
+{
+    "finishedUtc":  "2026-10-15T08:40:13.1478304Z",
+    "passed":  true,
+    "testFiles":  14,
+    "tests":  {
+                  "tests":  127,
+                  "suites":  0,
+                  "pass":  127,
+                  "fail":  0,
+                  "cancelled":  0,
+                  "skipped":  0,
+                  "todo":  0
+              },
+    "pgliteSqlTestExecuted":  true,
+    "changedTestSources":  [
+
+                           ],
+    "compactNavigationLint":  {
+                                  "baselineErrors":  5,
+                                  "finalErrors":  5,
+                                  "introduced":  [
+
+                                                 ]
+                              },
+    "hostedWrites":  false,
+    "limits":  "Mocked API, database and native filesystem fixtures; SQL executes only in in-memory PGlite. This run does not exercise hosted services, an OS print dialog or physical mobile hardware."
+}

@@ -2,6 +2,7 @@ import Image from "next/image";
 import { DashboardNavLink } from "./dashboard-nav-link";
 import { DashboardLoadingProgress } from "./dashboard-loading-progress";
 import { DashboardMobileMenu } from "./dashboard-mobile-menu";
+import { Crown, Plug, Settings } from "lucide-react";
 
 import { CurrentUserProfileMenu } from "@/components/dashboard/current-user-profile-menu";
 import { TeamNotificationCenter } from "@/components/dashboard/team-notification-center";
@@ -39,16 +40,9 @@ export async function DashboardHeader() {
     <header data-dashboard-header className="relative flex h-[72px] shrink-0 items-center border-b border-slate-200 bg-white px-5">
       <DashboardLoadingProgress />
       <div className="flex w-full min-w-0 items-center">
-        <DashboardMobileMenu>
-          {[...navigation, { label: "Settings", href: "/dashboard/settings" }].map(item => {
-            const link = <DashboardNavLink key={item.href} href={item.href}><DashboardNavigationLabel label={item.label} /></DashboardNavLink>;
-            return item.href === "/dashboard/integrations" || item.href === "/dashboard/tenh-bot"
-              ? <NavPermissionGate key={item.href} permission="channels" level="view">{link}</NavPermissionGate>
-              : link;
-          })}
-        </DashboardMobileMenu>
         <a
           href="/dashboard/inbox"
+          data-dashboard-logo
           className="flex shrink-0 items-center gap-3"
           aria-label="Refresh inbox"
         >
@@ -100,7 +94,18 @@ export async function DashboardHeader() {
 
         <div className="ml-auto flex items-center gap-1.5">
           <WorkspaceSwitcher />
-          <TeamNotificationCenter />
+          <DashboardMobileMenu notifications={<TeamNotificationCenter />}>
+            {[
+              { label: "Subscription", href: "/dashboard/subscription", Icon: Crown },
+              { label: "Integrations", href: "/dashboard/integrations", Icon: Plug },
+              { label: "Settings", href: "/dashboard/settings", Icon: Settings },
+            ].map(({ label, href, Icon }) => {
+              const link = <DashboardNavLink key={href} href={href}><Icon aria-hidden="true" /><DashboardNavigationLabel label={label} /></DashboardNavLink>;
+              return href === "/dashboard/integrations"
+                ? <NavPermissionGate key={href} permission="channels" level="view">{link}</NavPermissionGate>
+                : link;
+            })}
+          </DashboardMobileMenu>
           <CurrentUserProfileMenu />
         </div>
       </div>

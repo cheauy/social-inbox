@@ -1,0 +1,48 @@
+[rtk] /!\ No hook installed — run `rtk init -g` for automatic token savings
+✔ More uses existing destinations and restores focus after close and outside tap (456.3388ms)
+✔ route and desktop transitions close More while retaining one notification owner (61.6967ms)
+✔ Admin is offered inside Settings only for the existing authorized identity (42.4458ms)
+✔ navigation /dashboard/inbox selects /dashboard/inbox: true (110.1568ms)
+✔ navigation /dashboard/analytics selects /dashboard/inbox: false (24.3728ms)
+✔ navigation /dashboard/settings/display selects /dashboard/settings: true (21.9356ms)
+✔ navigation /dashboard/inbox selects /dashboard/admin: false (23.4704ms)
+✔ navigation /dashboard/settings-other selects /dashboard/settings: false (19.1881ms)
+✔ return to Inbox uses the installed Next click contract; modified clicks remain native (175.8797ms)
+✔ compact browser Back clears the chat; Forward selects it; desktop keeps its existing selection (286.8126ms)
+✔ compact selection reveals only the actual comment/message actions; scrolling cancels long press (606.6136ms)
+✔ desktop shell installs no compact selection or viewport overrides (48.3605ms)
+✔ standalone zoom constraint excludes the media viewer and ordinary browser tabs (74.2889ms)
+✔ long press selects a photo without opening it; a later normal tap still opens it (1027.9373ms)
+✔ existing pending/error keepVisible state remains explicit on the contextual toolbar (49.8671ms)
+✔ manifest keeps login, internal callbacks and Inbox in scope, without a private-response cache (18.3262ms)
+✔ Inbox navigation hands off link progress to its fallback and releases it on every exit (532.7049ms)
+✔ return URL has only bounded validated filters and an accessible matching thread (378.972ms)
+✔ real React dashboard lifetime restores Inbox through installed Next navigation and isolates identity/reset/deep links (566.8836ms)
+✔ restored destination server rejects revoked selection and independently reads fresh accessible messages (98.4653ms)
+✔ mount, bell and resume share overlapping reads but never cache completed responses (632.2332ms)
+✔ correct notifications publish before the announcement completes (201.6779ms)
+✔ slow announcement cannot prevent the next 30-second notification poll (202.1081ms)
+✔ workspace invalidation fences old responses even when transport ignores abort (157.9235ms)
+✔ unmount aborts transports and does not publish a retired response (155.4957ms)
+✔ failure retires the read and an explicit retry is fresh (158.1152ms)
+✔ denial 401 clears protected state and fences pending announcements (121.3282ms)
+✔ denial 403 clears protected state and fences pending announcements (126.9231ms)
+✔ realtime deletion cannot be overwritten by an older read snapshot (148.4462ms)
+✔ optimistic mark-read fences snapshots without another GET (141.4915ms)
+{"widget":"TeamNotificationCenter","hiddenMinuteReads":4,"coalescedResumeReads":2,"visibleMinuteReads":4}
+✔ TeamNotificationCenter preserves required polls, pauses nonessential hidden reads and coalesces recovery (595.3327ms)
+{"widget":"PendingInvitationsBanner","hiddenMinuteReads":0,"coalescedResumeReads":1,"visibleMinuteReads":1}
+✔ PendingInvitationsBanner preserves required polls, pauses nonessential hidden reads and coalesces recovery (70.5106ms)
+{"widget":"FacebookConnectionAttentionBanner","hiddenMinuteReads":0,"coalescedResumeReads":1,"visibleMinuteReads":1}
+✔ FacebookConnectionAttentionBanner preserves required polls, pauses nonessential hidden reads and coalesces recovery (66.3088ms)
+✔ the foreground recovery timer is discarded when hidden or unmounted (41.5748ms)
+✔ initially hidden notification polling continues every 30 seconds for reminder production (189.3457ms)
+✔ a reminder becoming due while hidden is materialized by the actual notification GET and producer (416.6934ms)
+ℹ tests 36
+ℹ suites 0
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 26857.2298

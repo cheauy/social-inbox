@@ -1,0 +1,773 @@
+TAP version 13
+# Subtest: More uses existing destinations and restores focus after close and outside tap
+ok 1 - More uses existing destinations and restores focus after close and outside tap
+  ---
+  duration_ms: 318.4051
+  type: 'test'
+  ...
+# Subtest: route and desktop transitions close More while retaining one notification owner
+ok 2 - route and desktop transitions close More while retaining one notification owner
+  ---
+  duration_ms: 54.9288
+  type: 'test'
+  ...
+# Subtest: Admin is offered inside Settings only for the existing authorized identity
+ok 3 - Admin is offered inside Settings only for the existing authorized identity
+  ---
+  duration_ms: 41.0335
+  type: 'test'
+  ...
+# Subtest: saved URL remains authoritative while local preview survives echoes and reopened cached history
+ok 4 - saved URL remains authoritative while local preview survives echoes and reopened cached history
+  ---
+  duration_ms: 1.6585
+  type: 'test'
+  ...
+# Subtest: partial album indices preserve exact local photo instead of showing photo zero
+ok 5 - partial album indices preserve exact local photo instead of showing photo zero
+  ---
+  duration_ms: 0.3535
+  type: 'test'
+  ...
+# Subtest: preview never crosses workspace, conversation, provider identity, incoming messages or deletion
+ok 6 - preview never crosses workspace, conversation, provider identity, incoming messages or deletion
+  ---
+  duration_ms: 0.2565
+  type: 'test'
+  ...
+# Subtest: actual optimistic reconciliation keeps canonical URL, local preview and existing sent identity
+ok 7 - actual optimistic reconciliation keeps canonical URL, local preview and existing sent identity
+  ---
+  duration_ms: 84.6607
+  type: 'test'
+  ...
+# Subtest: slow single load has reserved geometry, lazy decoding and accessible status until loaded
+ok 8 - slow single load has reserved geometry, lazy decoding and accessible status until loaded
+  ---
+  duration_ms: 128.2256
+  type: 'test'
+  ...
+# Subtest: local preview stays selected across remote URL changes without remounting image
+ok 9 - local preview stays selected across remote URL changes without remounting image
+  ---
+  duration_ms: 20.6915
+  type: 'test'
+  ...
+# Subtest: expired selected album photo gets one exact-index thumbnail recovery then accessible manual retry
+ok 10 - expired selected album photo gets one exact-index thumbnail recovery then accessible manual retry
+  ---
+  duration_ms: 25.6453
+  type: 'test'
+  ...
+# Subtest: optimistic image failures do not request an unresolved temporary server message
+ok 11 - optimistic image failures do not request an unresolved temporary server message
+  ---
+  duration_ms: 11.3831
+  type: 'test'
+  ...
+# Subtest: lightbox uses intrinsic contained image, eager loading and full-size selected recovery
+ok 12 - lightbox uses intrinsic contained image, eager loading and full-size selected recovery
+  ---
+  duration_ms: 22.9972
+  type: 'test'
+  ...
+# Subtest: actual lightbox explicitly selects preview layout
+ok 13 - actual lightbox explicitly selects preview layout
+  ---
+  duration_ms: 2.6071
+  type: 'test'
+  ...
+# Subtest: capacity toggle reuses the guarded API and sends no credential or history fields
+ok 14 - capacity toggle reuses the guarded API and sends no credential or history fields
+  ---
+  duration_ms: 761.5204
+  type: 'test'
+  ...
+# Subtest: capacity toggle refuses stale workspace/subscription context and surfaces server limits
+ok 15 - capacity toggle refuses stale workspace/subscription context and surfaces server limits
+  ---
+  duration_ms: 203.4587
+  type: 'test'
+  ...
+# Subtest: POST app/api/telegram/connection/route.ts: Agents without Manage permission cannot mutate connections
+ok 16 - POST app/api/telegram/connection/route.ts: Agents without Manage permission cannot mutate connections
+  ---
+  duration_ms: 776.9446
+  type: 'test'
+  ...
+# Subtest: DELETE app/api/telegram/connection/route.ts: Agents without Manage permission cannot mutate connections
+ok 17 - DELETE app/api/telegram/connection/route.ts: Agents without Manage permission cannot mutate connections
+  ---
+  duration_ms: 233.3554
+  type: 'test'
+  ...
+# Subtest: POST app/api/telegram/webhook/route.ts: Agents without Manage permission cannot mutate connections
+ok 18 - POST app/api/telegram/webhook/route.ts: Agents without Manage permission cannot mutate connections
+  ---
+  duration_ms: 160.8683
+  type: 'test'
+  ...
+# Subtest: DELETE app/api/telegram/webhook/route.ts: Agents without Manage permission cannot mutate connections
+ok 19 - DELETE app/api/telegram/webhook/route.ts: Agents without Manage permission cannot mutate connections
+  ---
+  duration_ms: 231.4371
+  type: 'test'
+  ...
+# Subtest: POST app/api/facebook/connections/[socialAccountId]/disconnect/route.ts: Agents without Manage permission cannot mutate connections
+ok 20 - POST app/api/facebook/connections/[socialAccountId]/disconnect/route.ts: Agents without Manage permission cannot mutate connections
+  ---
+  duration_ms: 108.7701
+  type: 'test'
+  ...
+# Subtest: PATCH app/api/subscription/usage-management/route.ts: Agents without Manage permission cannot mutate connections
+ok 21 - PATCH app/api/subscription/usage-management/route.ts: Agents without Manage permission cannot mutate connections
+  ---
+  duration_ms: 389.6204
+  type: 'test'
+  ...
+# Subtest: draft removal deletes only its Storage copy; remaining selected files stay valid
+ok 22 - draft removal deletes only its Storage copy; remaining selected files stay valid
+  ---
+  duration_ms: 361.9505
+  type: 'test'
+  ...
+# Subtest: confirmed send cleans copies; cleared pending during an active send cannot delete transport files
+ok 23 - confirmed send cleans copies; cleared pending during an active send cannot delete transport files
+  ---
+  duration_ms: 101.8512
+  type: 'test'
+  ...
+# Subtest: partial send deletes confirmed copies and retains uncertain/unsent copies until user resolves draft
+ok 24 - partial send deletes confirmed copies and retains uncertain/unsent copies until user resolves draft
+  ---
+  duration_ms: 64.376
+  type: 'test'
+  ...
+# Subtest: unmount during send defers cleanup, then retains only uncertain bytes after transport finishes
+ok 25 - unmount during send defers cleanup, then retains only uncertain bytes after transport finishes
+  ---
+  duration_ms: 45.2312
+  type: 'test'
+  ...
+# Subtest: cancelled/rejected staging and clear-all release complete owned directories idempotently
+ok 26 - cancelled/rejected staging and clear-all release complete owned directories idempotently
+  ---
+  duration_ms: 83.5255
+  type: 'test'
+  ...
+# Subtest: unmount cleans ordinary accepted drafts even without a send
+ok 27 - unmount cleans ordinary accepted drafts even without a send
+  ---
+  duration_ms: 101.1036
+  type: 'test'
+  ...
+# Subtest: logout and account switch clear the fixed Storage namespace, including uncertain copies and interrupted orphan copies
+ok 28 - logout and account switch clear the fixed Storage namespace, including uncertain copies and interrupted orphan copies
+  ---
+  duration_ms: 81.7316
+  type: 'test'
+  ...
+# Subtest: refresh for same account preserves drafts; ownership rejects actual user originals
+ok 29 - refresh for same account preserves drafts; ownership rejects actual user originals
+  ---
+  duration_ms: 48.4649
+  type: 'test'
+  ...
+# Subtest: late staging after logout/account switch cannot register the old account or clear a new account draft
+ok 30 - late staging after logout/account switch cannot register the old account or clear a new account draft
+  ---
+  duration_ms: 31.8889
+  type: 'test'
+  ...
+# Subtest: Storage follows web recent/category/favorite order and searches names before paging
+ok 31 - Storage follows web recent/category/favorite order and searches names before paging
+  ---
+  duration_ms: 18.7149
+  type: 'test'
+  ...
+# Subtest: download names cannot traverse outside the operation cache and get a native extension
+ok 32 - download names cannot traverse outside the operation cache and get a native extension
+  ---
+  duration_ms: 1.5576
+  type: 'test'
+  ...
+# Subtest: existing mixed Storage media is staged in selection order using new links and the existing Pending contract
+ok 33 - existing mixed Storage media is staged in selection order using new links and the existing Pending contract
+  ---
+  duration_ms: 2.9608
+  type: 'test'
+  ...
+# Subtest: full/overfull drafts and invalid metadata fail before any downloads
+ok 34 - full/overfull drafts and invalid metadata fail before any downloads
+  ---
+  duration_ms: 3.0208
+  type: 'test'
+  ...
+# Subtest: deleted file URL failure and truncated download abandon all staged copies
+ok 35 - deleted file URL failure and truncated download abandon all staged copies
+  ---
+  duration_ms: 1.3448
+  type: 'test'
+  ...
+# Subtest: unsafe download URL is rejected before filesystem access
+ok 36 - unsafe download URL is rejected before filesystem access
+  ---
+  duration_ms: 1.6849
+  type: 'test'
+  ...
+# Subtest: late file URL and late native download cannot attach after cancellation or ownership change
+ok 37 - late file URL and late native download cannot attach after cancellation or ownership change
+  ---
+  duration_ms: 19.4592
+  type: 'test'
+  ...
+# Subtest: fresh bootstrap pins every Storage request to thread workspace and membership
+ok 38 - fresh bootstrap pins every Storage request to thread workspace and membership
+  ---
+  duration_ms: 242.9028
+  type: 'test'
+  ...
+# Subtest: signed-out/account switch stops before Storage reads, URL requests or native downloads
+ok 39 - signed-out/account switch stops before Storage reads, URL requests or native downloads
+  ---
+  duration_ms: 145.2583
+  type: 'test'
+  ...
+# Subtest: different membership stops before Storage reads, URL requests or native downloads
+ok 40 - different membership stops before Storage reads, URL requests or native downloads
+  ---
+  duration_ms: 246.4623
+  type: 'test'
+  ...
+# Subtest: wrong thread workspace stops before Storage reads, URL requests or native downloads
+ok 41 - wrong thread workspace stops before Storage reads, URL requests or native downloads
+  ---
+  duration_ms: 122.3473
+  type: 'test'
+  ...
+# Subtest: deleted thread stops before Storage reads, URL requests or native downloads
+ok 42 - deleted thread stops before Storage reads, URL requests or native downloads
+  ---
+  duration_ms: 166.3788
+  type: 'test'
+  ...
+# Subtest: expired workspace stops before Storage reads, URL requests or native downloads
+ok 43 - expired workspace stops before Storage reads, URL requests or native downloads
+  ---
+  duration_ms: 136.9638
+  type: 'test'
+  ...
+# Subtest: browse-only roles can browse/favorite but cannot stage customer media
+ok 44 - browse-only roles can browse/favorite but cannot stage customer media
+  ---
+  duration_ms: 168.3724
+  type: 'test'
+  ...
+# Subtest: owner can stage and native download receives cancellation signal; failed copies are private to operation
+ok 45 - owner can stage and native download receives cancellation signal; failed copies are private to operation
+  ---
+  duration_ms: 265.0266
+  type: 'test'
+  ...
+# Subtest: native abort and ownership loss discard operation directory even if native completion arrives late
+ok 46 - native abort and ownership loss discard operation directory even if native completion arrives late
+  ---
+  duration_ms: 91.31
+  type: 'test'
+  ...
+# Subtest: undeployed pagination fails closed and legacy organization still supports paged Recent files
+ok 47 - undeployed pagination fails closed and legacy organization still supports paged Recent files
+  ---
+  duration_ms: 453.2039
+  type: 'test'
+  ...
+# Subtest: picker uses server cursors and search can find files beyond the old newest-200 limit
+ok 48 - picker uses server cursors and search can find files beyond the old newest-200 limit
+  ---
+  duration_ms: 198.6765
+  type: 'test'
+  ...
+# Subtest: picker suppresses late success and errors from prior membership/scope
+ok 49 - picker suppresses late success and errors from prior membership/scope
+  ---
+  duration_ms: 306.0626
+  type: 'test'
+  ...
+# Subtest: picker cancels staging and refuses double-tap actions and late draft writes
+ok 50 - picker cancels staging and refuses double-tap actions and late draft writes
+  ---
+  duration_ms: 128.5851
+  type: 'test'
+  ...
+# Subtest: draft commit preserves existing queued media and refuses lost thread ownership/capacity
+ok 51 - draft commit preserves existing queued media and refuses lost thread ownership/capacity
+  ---
+  duration_ms: 325.3452
+  type: 'test'
+  ...
+# Subtest: same-frame attachment updates share one queue before render and cannot overwrite earlier picks
+ok 52 - same-frame attachment updates share one queue before render and cannot overwrite earlier picks
+  ---
+  duration_ms: 215.6807
+  type: 'test'
+  ...
+# Subtest: rapid distinct selections before rerender respect remaining draft capacity and repeat taps deselect
+ok 53 - rapid distinct selections before rerender respect remaining draft capacity and repeat taps deselect
+  ---
+  duration_ms: 176.8154
+  type: 'test'
+  ...
+# Subtest: server continuation goes beyond 200 while native retained rows stay bounded and selected old-page files survive
+ok 54 - server continuation goes beyond 200 while native retained rows stay bounded and selected old-page files survive
+  ---
+  duration_ms: 133.4645
+  type: 'test'
+  ...
+# Subtest: active accounts and existing allowed routes still bypass the lock
+ok 55 - active accounts and existing allowed routes still bypass the lock
+  ---
+  duration_ms: 4011.3859
+  type: 'test'
+  ...
+# Subtest: expiry facts and action destinations come from existing state and routes
+ok 56 - expiry facts and action destinations come from existing state and routes
+  ---
+  duration_ms: 312.7524
+  type: 'test'
+  ...
+# Subtest: workspace action opens the existing authorized switcher without toggling it closed
+ok 57 - workspace action opens the existing authorized switcher without toggling it closed
+  ---
+  duration_ms: 109.9984
+  type: 'test'
+  ...
+# Subtest: Khmer and each locked state retain distinct copy
+ok 58 - Khmer and each locked state retain distinct copy
+  ---
+  duration_ms: 380.6342
+  type: 'test'
+  ...
+# Unable to verify selected workspace membership: { message: 'Synthetic lookup failure', code: 'FAIL' }
+# Subtest: web expected identity rejects changed workspace cookie and member before subscription lookup
+ok 59 - web expected identity rejects changed workspace cookie and member before subscription lookup
+  ---
+  duration_ms: 926.783
+  type: 'test'
+  ...
+# Subtest: Storage refuses stale-nonmember without retargeting another membership or checking its subscription
+ok 60 - Storage refuses stale-nonmember without retargeting another membership or checking its subscription
+  ---
+  duration_ms: 100.4923
+  type: 'test'
+  ...
+# Subtest: Storage refuses removed without retargeting another membership or checking its subscription
+ok 61 - Storage refuses removed without retargeting another membership or checking its subscription
+  ---
+  duration_ms: 152.1453
+  type: 'test'
+  ...
+# Subtest: permissive browser recovery cannot satisfy a subsequent strict Storage lookup in the same request
+ok 62 - permissive browser recovery cannot satisfy a subsequent strict Storage lookup in the same request
+  ---
+  duration_ms: 68.7789
+  type: 'test'
+  ...
+# Subtest: a strict refusal does not change existing no-argument browser recovery
+ok 63 - a strict refusal does not change existing no-argument browser recovery
+  ---
+  duration_ms: 79.0057
+  type: 'test'
+  ...
+# Subtest: valid explicit membership and an absent workspace selection preserve existing account resolution
+ok 64 - valid explicit membership and an absent workspace selection preserve existing account resolution
+  ---
+  duration_ms: 212.3135
+  type: 'test'
+  ...
+# Subtest: unauthorized sessions and selected membership lookup errors stop Storage access
+ok 65 - unauthorized sessions and selected membership lookup errors stop Storage access
+  ---
+  duration_ms: 188.835
+  type: 'test'
+  ...
+# Subtest: cold load deduplicates, then warm data is immediately readable until TTL expiry
+ok 66 - cold load deduplicates, then warm data is immediately readable until TTL expiry
+  ---
+  duration_ms: 40.5777
+  type: 'test'
+  ...
+# Subtest: workspace entries are member-scoped, bounded, and cleared on member/logout change
+ok 67 - workspace entries are member-scoped, bounded, and cleared on member/logout change
+  ---
+  duration_ms: 3.7876
+  type: 'test'
+  ...
+# Subtest: mutation generation blocks a late refresh from resurrecting deleted files
+ok 68 - mutation generation blocks a late refresh from resurrecting deleted files
+  ---
+  duration_ms: 25.65
+  type: 'test'
+  ...
+# Subtest: failed refresh preserves warm data and access invalidation drops it
+ok 69 - failed refresh preserves warm data and access invalidation drops it
+  ---
+  duration_ms: 2.9274
+  type: 'test'
+  ...
+# Subtest: independent overlapping mutations both commit in either response order
+ok 70 - independent overlapping mutations both commit in either response order
+  ---
+  duration_ms: 2.8809
+  type: 'test'
+  ...
+# Subtest: a failed independent operation does not roll back a successful cache commit
+ok 71 - a failed independent operation does not roll back a successful cache commit
+  ---
+  duration_ms: 7.7866
+  type: 'test'
+  ...
+# Subtest: drop, logout and member changes reject late reads and mutation commits
+ok 72 - drop, logout and member changes reject late reads and mutation commits
+  ---
+  duration_ms: 22.3873
+  type: 'test'
+  ...
+# Subtest: mutation handles cannot commit into another workspace or survive renewed access
+ok 73 - mutation handles cannot commit into another workspace or survive renewed access
+  ---
+  duration_ms: 13.7199
+  type: 'test'
+  ...
+# Subtest: logout or a member change cannot reset a cold read generation and resurrect private files
+ok 74 - logout or a member change cannot reset a cold read generation and resurrect private files
+  ---
+  duration_ms: 5.1568
+  type: 'test'
+  ...
+# Subtest: file merge preserves unchanged identity and valid signed previews but prunes deleted records
+ok 75 - file merge preserves unchanged identity and valid signed previews but prunes deleted records
+  ---
+  duration_ms: 4.038
+  type: 'test'
+  ...
+# Subtest: file merge replaces changed content and expired URLs without preserving stale identities
+ok 76 - file merge replaces changed content and expired URLs without preserving stale identities
+  ---
+  duration_ms: 5.6832
+  type: 'test'
+  ...
+# Subtest: appended pages deduplicate stable IDs and sort by timestamp with descending ID tie-breaker
+ok 77 - appended pages deduplicate stable IDs and sort by timestamp with descending ID tie-breaker
+  ---
+  duration_ms: 63.946
+  type: 'test'
+  ...
+# Subtest: every Storage read and mutation pins workspace and member using the supported headers
+ok 78 - every Storage read and mutation pins workspace and member using the supported headers
+  ---
+  duration_ms: 362.7219
+  type: 'test'
+  ...
+# Subtest: successful and partial responses reject mismatched workspace/member before exposing private records
+ok 79 - successful and partial responses reject mismatched workspace/member before exposing private records
+  ---
+  duration_ms: 311.589
+  type: 'test'
+  ...
+# Subtest: late workspace A/B responses remain bound to their initiating identity
+ok 80 - late workspace A/B responses remain bound to their initiating identity
+  ---
+  duration_ms: 28.7789
+  type: 'test'
+  ...
+# Subtest: an aborted request cannot accept a late response even when fetch ignores cancellation
+ok 81 - an aborted request cannot accept a late response even when fetch ignores cancellation
+  ---
+  duration_ms: 29.4553
+  type: 'test'
+  ...
+# Subtest: authorized 207 deletion responses preserve durable pending-cleanup state
+ok 82 - authorized 207 deletion responses preserve durable pending-cleanup state
+  ---
+  duration_ms: 46.4071
+  type: 'test'
+  ...
+# Subtest: a lost successful finalization response retries only the same finalization without a second object or transfer
+ok 83 - a lost successful finalization response retries only the same finalization without a second object or transfer
+  ---
+  duration_ms: 26.8643
+  type: 'test'
+  ...
+# Subtest: an incomplete retry reconciles first and reuses its upload identifier and object path
+ok 84 - an incomplete retry reconciles first and reuses its upload identifier and object path
+  ---
+  duration_ms: 35.6213
+  type: 'test'
+  ...
+# Subtest: non-incomplete finalization failures never silently prepare or upload another object
+ok 85 - non-incomplete finalization failures never silently prepare or upload another object
+  ---
+  duration_ms: 20.1665
+  type: 'test'
+  ...
+# Subtest: mixed uploads reconcile and retry only the failed attempt while retaining each result independently
+ok 86 - mixed uploads reconcile and retry only the failed attempt while retaining each result independently
+  ---
+  duration_ms: 21.8811
+  type: 'test'
+  ...
+# Subtest: prepared-upload migration: actual SQL atomicity, replay, grants and deleted-file safety
+ok 87 - prepared-upload migration: actual SQL atomicity, replay, grants and deleted-file safety
+  ---
+  duration_ms: 10722.6736
+  type: 'test'
+  ...
+# Subtest: strict selection and expired subscriptions block every Storage route before bytes or mutations
+ok 88 - strict selection and expired subscriptions block every Storage route before bytes or mutations
+  ---
+  duration_ms: 1125.3667
+  type: 'test'
+  ...
+# Subtest: subscription lookup errors fail closed and latest active/legacy state remains compatible
+ok 89 - subscription lookup errors fail closed and latest active/legacy state remains compatible
+  ---
+  duration_ms: 643.9269
+  type: 'test'
+  ...
+# Subtest: legacy web GET retains 200-file contract; native keyset pages traverse all 245 files without ties/duplicates
+ok 90 - legacy web GET retains 200-file contract; native keyset pages traverse all 245 files without ties/duplicates
+  ---
+  duration_ms: 413.4867
+  type: 'test'
+  ...
+# Subtest: server search, literal wildcard text, types, categories and member favorites apply before pagination
+ok 91 - server search, literal wildcard text, types, categories and member favorites apply before pagination
+  ---
+  duration_ms: 277.0035
+  type: 'test'
+  ...
+# Subtest: cursors are bound to membership, workspace and filters; malformed/injected requests stop before file queries
+ok 92 - cursors are bound to membership, workspace and filters; malformed/injected requests stop before file queries
+  ---
+  duration_ms: 2016.7783
+  type: 'test'
+  ...
+# Subtest: foreign bucket/path and deleted file metadata never produce signed media capabilities
+ok 93 - foreign bucket/path and deleted file metadata never produce signed media capabilities
+  ---
+  duration_ms: 1146.1596
+  type: 'test'
+  ...
+# Subtest: missing organization permits Recent pages but never silently changes a favorite/category request to Recent
+ok 94 - missing organization permits Recent pages but never silently changes a favorite/category request to Recent
+  ---
+  duration_ms: 198.1431
+  type: 'test'
+  ...
+# Subtest: read-only diagnostic examines catalogs and one bucket, with no customer rows, object data or mutations
+ok 95 - read-only diagnostic examines catalogs and one bucket, with no customer rows, object data or mutations
+  ---
+  duration_ms: 13.7636
+  type: 'test'
+  ...
+# Subtest: authorized same-context requests deduplicate sorted paths, concurrent signing and warm reads
+ok 96 - authorized same-context requests deduplicate sorted paths, concurrent signing and warm reads
+  ---
+  duration_ms: 312.9405
+  type: 'test'
+  ...
+# Subtest: another authorized member or workspace never reuses a cached private link
+ok 97 - another authorized member or workspace never reuses a cached private link
+  ---
+  duration_ms: 54.2195
+  type: 'test'
+  ...
+# Subtest: concurrent different-member signing stays isolated when responses arrive out of order
+ok 98 - concurrent different-member signing stays isolated when responses arrive out of order
+  ---
+  duration_ms: 27.1227
+  type: 'test'
+  ...
+# Subtest: mocked time renews links before their final minute and after expiry instead of returning stale URLs
+ok 99 - mocked time renews links before their final minute and after expiry instead of returning stale URLs
+  ---
+  duration_ms: 27.3669
+  type: 'test'
+  ...
+# Subtest: failed renewal never falls back to an expired private link and a later retry can recover
+ok 100 - failed renewal never falls back to an expired private link and a later retry can recover
+  ---
+  duration_ms: 52.5567
+  type: 'test'
+  ...
+# Subtest: existing callers without an authorization scope retain their default cache contract
+ok 101 - existing callers without an authorization scope retain their default cache contract
+  ---
+  duration_ms: 50.0444
+  type: 'test'
+  ...
+# Subtest: Agent, revoked, forged and registered-object finalization never touches Storage
+ok 102 - Agent, revoked, forged and registered-object finalization never touches Storage
+  ---
+  duration_ms: 1116.1119
+  type: 'test'
+  ...
+# Subtest: prepared finalization binds member, path, metadata and category without cleanup
+ok 103 - prepared finalization binds member, path, metadata and category without cleanup
+  ---
+  duration_ms: 149.4897
+  type: 'test'
+  ...
+# Subtest: duplicate, legacy-path and concurrent finalization return one committed file
+ok 104 - duplicate, legacy-path and concurrent finalization return one committed file
+  ---
+  duration_ms: 198.3764
+  type: 'test'
+  ...
+# Subtest: interrupted upload retries the same prepared path and reconciles a lost response
+ok 105 - interrupted upload retries the same prepared path and reconciles a lost response
+  ---
+  duration_ms: 215.1836
+  type: 'test'
+  ...
+# Subtest: malformed metadata and action bodies fail validation before issuing capabilities
+ok 106 - malformed metadata and action bodies fail validation before issuing capabilities
+  ---
+  duration_ms: 132.8222
+  type: 'test'
+  ...
+# Subtest: oversized paged selections are rejected instead of silently truncating successful mutations
+ok 107 - oversized paged selections are rejected instead of silently truncating successful mutations
+  ---
+  duration_ms: 132.1591
+  type: 'test'
+  ...
+# Subtest: metadata mismatch, removed category, insert failure and network ambiguity retain objects
+ok 108 - metadata mismatch, removed category, insert failure and network ambiguity retain objects
+  ---
+  duration_ms: 447.986
+  type: 'test'
+  ...
+# Subtest: object removal followed by metadata failure survives reopening and retries idempotently
+ok 109 - object removal followed by metadata failure survives reopening and retries idempotently
+  ---
+  duration_ms: 191.3554
+  type: 'test'
+  ...
+# Subtest: ambiguous object removal stays hidden and durable; preview signing excludes deleted/foreign files
+ok 110 - ambiguous object removal stays hidden and durable; preview signing excludes deleted/foreign files
+  ---
+  duration_ms: 260.6172
+  type: 'test'
+  ...
+# Subtest: recent, favorites and category views filter then sort newest first
+ok 111 - recent, favorites and category views filter then sort newest first
+  ---
+  duration_ms: 13.1354
+  type: 'test'
+  ...
+# Subtest: workspace Storage classifies only the supported reusable attachment types
+ok 112 - workspace Storage classifies only the supported reusable attachment types
+  ---
+  duration_ms: 1.0939
+  type: 'test'
+  ...
+# Subtest: workspace object paths are tenant-prefixed, flat, and sanitize traversal
+ok 113 - workspace object paths are tenant-prefixed, flat, and sanitize traversal
+  ---
+  duration_ms: 1.3521
+  type: 'test'
+  ...
+# Subtest: workspace API enforces membership tenant filters and verifies uploaded bytes before insert
+ok 114 - workspace API enforces membership tenant filters and verifies uploaded bytes before insert
+  ---
+  duration_ms: 2.5259
+  type: 'test'
+  ...
+# Subtest: migration draft creates a private service-only workspace store without touching customer files
+ok 115 - migration draft creates a private service-only workspace store without touching customer files
+  ---
+  duration_ms: 67.1542
+  type: 'test'
+  ...
+# Subtest: list and download never expose another business file
+ok 116 - list and download never expose another business file
+  ---
+  duration_ms: 981.486
+  type: 'test'
+  ...
+# Subtest: basic Storage remains available before the optional organization migration
+ok 117 - basic Storage remains available before the optional organization migration
+  ---
+  duration_ms: 697.7928
+  type: 'test'
+  ...
+# Subtest: revoked membership blocks list, upload preparation, finalize and download
+ok 118 - revoked membership blocks list, upload preparation, finalize and download
+  ---
+  duration_ms: 402.2983
+  type: 'test'
+  ...
+# Subtest: upload preparation creates only a flat current-business path
+ok 119 - upload preparation creates only a flat current-business path
+  ---
+  duration_ms: 392.6293
+  type: 'test'
+  ...
+# Subtest: finalize rejects forged paths and preserves mismatched prepared uploads
+ok 120 - finalize rejects forged paths and preserves mismatched prepared uploads
+  ---
+  duration_ms: 322.646
+  type: 'test'
+  ...
+# Subtest: verified upload finalizes under the authenticated business
+ok 121 - verified upload finalizes under the authenticated business
+  ---
+  duration_ms: 342.1287
+  type: 'test'
+  ...
+# Subtest: favorite preference is member scoped and refuses a foreign workspace file
+ok 122 - favorite preference is member scoped and refuses a foreign workspace file
+  ---
+  duration_ms: 324.9308
+  type: 'test'
+  ...
+# Subtest: bulk category and permanent-delete mutations stay inside the authenticated workspace
+ok 123 - bulk category and permanent-delete mutations stay inside the authenticated workspace
+  ---
+  duration_ms: 253.0092
+  type: 'test'
+  ...
+# Subtest: shared file organization mutations require the existing content-management role
+ok 124 - shared file organization mutations require the existing content-management role
+  ---
+  duration_ms: 169.4187
+  type: 'test'
+  ...
+# Subtest: permanent delete retains durable hidden metadata when object removal fails
+ok 125 - permanent delete retains durable hidden metadata when object removal fails
+  ---
+  duration_ms: 244.8459
+  type: 'test'
+  ...
+# Subtest: category API scopes edit/delete and migration preserves files on category delete
+ok 126 - category API scopes edit/delete and migration preserves files on category delete
+  ---
+  duration_ms: 121.7347
+  type: 'test'
+  ...
+# Subtest: database finalize failure preserves the prepared upload for reconciliation
+ok 127 - database finalize failure preserves the prepared upload for reconciliation
+  ---
+  duration_ms: 244.4134
+  type: 'test'
+  ...
+1..127
+# tests 127
+# suites 0
+# pass 127
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 18074.342

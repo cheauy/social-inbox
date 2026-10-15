@@ -22,8 +22,9 @@ function categoryName(value: unknown) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await getWorkspaceStorageAccess();
+  const auth = await getWorkspaceStorageAccess(request);
   if (!auth.success) return fail(auth.error, auth.status);
+  const identity = { businessId: auth.member.business_id, memberId: auth.member.id };
   if (!(await memberHasPermission(auth.member, "tags_quick_replies", "manage"))) {
     return fail("You do not have permission to manage Storage categories.", 403);
   }
@@ -34,6 +35,8 @@ export async function POST(request: NextRequest) {
   } catch {
     return fail("Invalid JSON request.", 400);
   }
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+      (body.categoryId !== undefined && typeof body.categoryId !== "string")) return fail("Invalid category request.", 400);
 
   if (body.action === "add") {
     const name = categoryName(body.name);
@@ -45,7 +48,7 @@ export async function POST(request: NextRequest) {
       .single();
     if (error?.code === "23505") return fail(`"${name}" already exists.`, 409);
     if (error || !data) return fail("Unable to add that category.", 500);
-    return NextResponse.json({ success: true, category: data });
+    return NextResponse.json({ success: true, ...identity, category: data });
   }
 
   const categoryId = body.categoryId?.trim() ?? "";
@@ -64,7 +67,7 @@ export async function POST(request: NextRequest) {
     if (error?.code === "23505") return fail(`"${name}" already exists.`, 409);
     if (error) return fail("Unable to rename that category.", 500);
     if (!data) return fail("Storage category was not found.", 404);
-    return NextResponse.json({ success: true, category: data });
+    return NextResponse.json({ success: true, ...identity, category: data });
   }
 
   if (body.action === "delete") {
@@ -77,7 +80,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     if (error) return fail("Unable to delete that category.", 500);
     if (!data) return fail("Storage category was not found.", 404);
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, ...identity });
   }
 
   return fail("Unsupported Storage category action.", 400);

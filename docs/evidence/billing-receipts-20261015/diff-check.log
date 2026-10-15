@@ -1,0 +1,44 @@
+﻿git : warning: in the working copy of 'app/api/workspace-storage/categories/route.ts', LF will be replaced by CRLF the 
+next time Git touches it
+At line:2 char:1
++ git diff --check 2>&1 | Out-File -Encoding utf8 docs/evidence/billing ...
++ ~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: in the... Git touches it:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+warning: in the working copy of 'app/dashboard/settings/layout.tsx', LF will be replaced by CRLF the next time Git 
+touches it
+warning: in the working copy of 'app/inbox-compact.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'components/dashboard/dashboard-header.tsx', LF will be replaced by CRLF the next time 
+Git touches it
+warning: in the working copy of 'components/dashboard/dashboard-mobile-menu.tsx', LF will be replaced by CRLF the next 
+time Git touches it
+warning: in the working copy of 'components/dashboard/dashboard-navigation-label.tsx', LF will be replaced by CRLF the 
+next time Git touches it
+warning: in the working copy of 'components/dashboard/team-notification-center.tsx', LF will be replaced by CRLF the 
+next time Git touches it
+warning: in the working copy of 'components/dashboard/workspace-switcher.tsx', LF will be replaced by CRLF the next 
+time Git touches it
+warning: in the working copy of 'components/inbox/conversation-list-header.tsx', LF will be replaced by CRLF the next 
+time Git touches it
+warning: in the working copy of 'components/inbox/conversation-list.tsx', LF will be replaced by CRLF the next time 
+Git touches it
+warning: in the working copy of 'components/integrations/integration-workspace.tsx', LF will be replaced by CRLF the 
+next time Git touches it
+warning: in the working copy of 'components/subscription/billing-history-view.tsx', LF will be replaced by CRLF the 
+next time Git touches it
+warning: in the working copy of 'components/subscription/invoice-receipt-view.tsx', LF will be replaced by CRLF the 
+next time Git touches it
+warning: in the working copy of 'lib/media/signed-urls.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'lib/storage/workspace-storage-access.ts', LF will be replaced by CRLF the next time 
+Git touches it
+warning: in the working copy of 'lib/storage/workspace-storage-cache.ts', LF will be replaced by CRLF the next time 
+Git touches it
+warning: in the working copy of 'tests/fixtures/workspace-storage-browser.entry.cjs', LF will be replaced by CRLF the 
+next time Git touches it
+warning: in the working copy of 'tests/inbox-compact-browser-build.cjs', LF will be replaced by CRLF the next time Git 
+touches it
+warning: in the working copy of 'tests/workspace-storage-browser-build.cjs', LF will be replaced by CRLF the next time 
+Git touches it
+warning: in the working copy of 'tests/workspace-storage-cache.test.cjs', LF will be replaced by CRLF the next time 
+Git touches it

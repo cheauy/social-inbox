@@ -1,21 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
-
-/** Human-readable Bot name for confirmation dialogs: "@shopbot" or its name. */
-function botLabel(connection: TelegramConnection | null | undefined) {
-  if (!connection) {
-    return "this Telegram Bot";
-  }
-
-  if (connection.username) {
-    return `@${connection.username}`;
-  }
-
-  return connection.botName ?? "this Telegram Bot";
-}
+import { IntegrationActionMenu } from "@/components/integrations/integration-action-menu";
+import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
+import { TENH_ACTIVE_WORKSPACE_UI_CHANGE_EVENT, TENH_ACTIVE_WORKSPACE_UI_STORAGE_KEY } from "@/lib/display/workspace-storage";
+import { setIntegrationEnabled } from "@/lib/channels/set-integration-enabled";
 
 type TelegramConnection = {
   id: string;
@@ -69,6 +59,7 @@ type Props = {
   canAddConnections: boolean;
   onConnectionChanged?: (summary: { active: number; total: number }) => void;
   openAddBotSignal?: number;
+  businessId: string;
 };
 
 type Working = "connect" | "activate" | "disable" | "disconnect" | null;
@@ -80,630 +71,226 @@ async function readJson<T>(response: Response): Promise<T> {
   catch { throw new Error(`Server returned invalid JSON (HTTP ${response.status}).`); }
 }
 
-function formatDate(value: string | null) {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+function botLabel(connection: TelegramConnection) {
+  return connection.username ? `@${connection.username}` : connection.botName ?? "Telegram Bot";
 }
 
-function withConnection(path: string, id: string | null) {
-  if (!id) return path;
-  return `${path}${path.includes("?") ? "&" : "?"}connectionId=${encodeURIComponent(id)}`;
-}
-
-export function TelegramChannelPanel({
-  canAddConnections,
-  onConnectionChanged,
-  openAddBotSignal = 0,
-}: Props) {
+export function TelegramChannelPanel({ canAddConnections, onConnectionChanged, openAddBotSignal = 0, businessId }: Props) {
+  const isKhmer = useWorkspaceLanguageId() === "km";
+  const text = (en: string, km: string) => isKhmer ? km : en;
   const [loading, setLoading] = useState(true);
   const [canManage, setCanManage] = useState(false);
   const [connections, setConnections] = useState<TelegramConnection[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [token, setToken] = useState("");
   const [showAddBot, setShowAddBot] = useState(false);
-  /* Which destructive action is waiting for confirmation, if any. */
-  const [pendingAction, setPendingAction] =
-    useState<"disable" | "disconnect" | null>(null);
+  const [handledSignal, setHandledSignal] = useState(0);
+  const [pendingAction, setPendingAction] = useState<{ kind: "disable" | "disconnect"; bot: TelegramConnection } | null>(null);
   const [working, setWorking] = useState<Working>(null);
-  const [webhook, setWebhook] = useState<TelegramWebhookState | null>(null);
-  const [remote, setRemote] = useState<TelegramRemoteWebhook | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const continueRef = useRef<HTMLButtonElement>(null);
+  const busy = useRef(false);
+  const generation = useRef(0);
+  const mounted = useRef(false);
+  const readSequence = useRef(0);
+  const scopeValid = useRef(true);
 
-  const selected = useMemo(
-    () => connections.find((item) => item.id === selectedId) ?? connections[0] ?? null,
-    [connections, selectedId],
-  );
-  const verified = selected?.status === "verified";
-  const channelEnabled = Boolean(selected?.isActive && verified);
-  const inboxActive = channelEnabled && webhook?.status === "active";
+  if (openAddBotSignal !== handledSignal) {
+    setHandledSignal(openAddBotSignal);
+    if (openAddBotSignal > 0) { setShowAddBot(true); setConnectError(null); setErrorCode(null); }
+  }
 
-  const loadWebhook = useCallback(async (id: string | null) => {
-    if (!id) {
-      setWebhook(null);
-      setRemote(null);
-      return;
-    }
-    try {
-      const response = await fetch(withConnection("/api/telegram/webhook", id), { cache: "no-store" });
-      const data = await readJson<WebhookResponse>(response);
-      if (!response.ok || !data.success) throw new Error(data.error ?? "Unable to load Telegram webhook.");
-      setWebhook(data.webhook ?? null);
-      setRemote(data.remote ?? null);
-    } catch (loadError) {
-      setWebhook(null);
-      setRemote(null);
-      setError(loadError instanceof Error ? loadError.message : "Unable to load Telegram webhook.");
-    }
-  }, []);
-
-  const loadConnections = useCallback(async (preferredId?: string | null) => {
-    setLoading(true);
-    setError(null);
+  const loadConnections = useCallback(async () => {
+    const version = generation.current;
+    const sequence = ++readSequence.current;
     try {
       const response = await fetch("/api/telegram/connection", { cache: "no-store" });
       const data = await readJson<ConnectionResponse>(response);
       if (!response.ok || !data.success) throw new Error(data.error ?? "Unable to load Telegram Bots.");
-
-      const allConnections = data.connections ?? (data.connection ? [data.connection] : []);
-      // Keep connected credentials visible even when subscription capacity is disabled.
-      // Fully disconnected Bots are not shown in the customer-facing panel.
-      const next = allConnections.filter((item) => item.status === "verified");
+      if (!mounted.current || version !== generation.current || sequence !== readSequence.current) return;
+      const rows = (data.connections ?? (data.connection ? [data.connection] : [])).filter(item => item.status !== "disconnected");
+      const next = await Promise.all(rows.map(async item => {
+        if (!item.isActive || item.status !== "verified") return item;
+        try {
+          const check = await fetch(`/api/telegram/webhook?connectionId=${encodeURIComponent(item.id)}`, { cache: "no-store" });
+          const result = await readJson<WebhookResponse>(check);
+          if (!check.ok || !result.success) throw new Error(result.error ?? "Unable to check this bot. Try again.");
+          return { ...item, webhookStatus: result.webhook?.status ?? null, lastError: result.remoteError ?? result.webhook?.lastError ?? result.remote?.lastErrorMessage ?? item.lastError };
+        } catch {
+          return { ...item, webhookStatus: "error", lastError: "Unable to confirm Inbox access. Try enabling Inbox again or reconnect the bot." };
+        }
+      }));
+      if (!mounted.current || version !== generation.current || sequence !== readSequence.current) return;
       setConnections(next);
-      setCanManage(Boolean(data.canManage));
-      const target = next.find((item) => item.id === preferredId) ?? next.find((item) => item.isActive) ?? next[0] ?? null;
-      setSelectedId(target?.id ?? null);
-      onConnectionChanged?.({
-        total: next.length,
-        active: next.filter((item) => item.isActive && item.status === "verified").length,
-      });
-      await loadWebhook(target?.id ?? null);
+      setCanManage(scopeValid.current && Boolean(data.canManage));
+      onConnectionChanged?.({ total: next.length, active: next.filter(item => item.isActive && item.status === "verified" && item.webhookStatus === "active" && !item.lastError).length });
+      return next;
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Unable to load Telegram Bots.");
+      if (mounted.current && version === generation.current && sequence === readSequence.current) setError(loadError instanceof Error ? loadError.message : "Unable to load Telegram Bots.");
     } finally {
-      setLoading(false);
+      if (mounted.current && version === generation.current && sequence === readSequence.current) setLoading(false);
     }
-  }, [loadWebhook, onConnectionChanged]);
-
-  useEffect(() => { void loadConnections(); }, [loadConnections]);
+  }, [onConnectionChanged]);
 
   useEffect(() => {
-    if (openAddBotSignal > 0) {
-      setShowAddBot(true);
-    }
-  }, [openAddBotSignal]);
+    mounted.current = true;
+    queueMicrotask(() => { if (mounted.current) void loadConnections(); });
+    const endScope = () => { mounted.current = false; generation.current++; };
+    const workspaceChanged = () => {
+      generation.current++;
+      scopeValid.current = false;
+      setToken(""); setShowAddBot(false); setPendingAction(null); setConnectError(null); setError(null); setNotice(null);
+      setConnections([]); setCanManage(false); setLoading(true);
+      void loadConnections();
+    };
+    const navigationChanged = () => {
+      setToken(""); setShowAddBot(false);
+      if (!busy.current) setPendingAction(null);
+    };
+    const storageChanged = (event: StorageEvent) => { if (event.key === TENH_ACTIVE_WORKSPACE_UI_STORAGE_KEY) workspaceChanged(); };
+    window.addEventListener(TENH_ACTIVE_WORKSPACE_UI_CHANGE_EVENT, workspaceChanged);
+    window.addEventListener("storage", storageChanged);
+    window.addEventListener("popstate", navigationChanged);
+    window.addEventListener("pagehide", navigationChanged);
+    return () => {
+      endScope();
+      window.removeEventListener(TENH_ACTIVE_WORKSPACE_UI_CHANGE_EVENT, workspaceChanged);
+      window.removeEventListener("storage", storageChanged);
+      window.removeEventListener("popstate", navigationChanged);
+      window.removeEventListener("pagehide", navigationChanged);
+    };
+  }, [loadConnections, businessId]);
 
-  async function selectBot(id: string) {
-    setSelectedId(id);
-    setError(null);
-    setErrorCode(null);
-    setNotice(null);
-    await loadWebhook(id);
-  }
-
-  async function submitTelegramConnection(): Promise<ConnectionResponse> {
-    const response = await fetch("/api/telegram/connection", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        token: token.trim(),
-      }),
-    });
-
-    const data = await readJson<ConnectionResponse>(response);
-
-    if (!response.ok || !data.success) {
-      setErrorCode(data.code ?? null);
-      throw new Error(data.error ?? "Unable to connect Telegram Bot.");
-    }
-
-    return data;
+  function dismiss() {
+    if (busy.current) return;
+    setShowAddBot(false); setToken(""); setConnectError(null); setErrorCode(null);
   }
 
   async function connectTelegram() {
-    if (working || !token.trim()) return;
-
-    setWorking("connect");
-    setError(null);
-    setErrorCode(null);
-    setNotice(null);
-
-    try {
-      const data = await submitTelegramConnection();
-
-
-      if (!data.connection) {
-        throw new Error(
-          "Telegram connection was not returned by the server.",
-        );
-      }
-
-      setToken("");
-      setShowAddBot(false);
-      await loadConnections(data.connection.id);
-
-      setNotice(
-        data.message ??
-          "Telegram Bot connected. One more step: activate Inbox to start receiving customer messages.",
-      );
-    } catch (connectError) {
-      setError(
-        connectError instanceof Error
-          ? connectError.message
-          : "Unable to connect Telegram Bot.",
-      );
-    } finally {
-      setWorking(null);
-    }
-  }
-
-  async function activate() {
-    if (!selected || working) return;
-    setWorking("activate"); setError(null); setErrorCode(null); setNotice(null);
-    try {
-      const response = await fetch(withConnection("/api/telegram/webhook", selected.id), { method: "POST" });
-      const data = await readJson<WebhookResponse>(response);
-      if (!response.ok || !data.success) throw new Error(data.details ? `${data.error ?? "Unable to activate."} ${data.details}` : data.error ?? "Unable to activate Telegram Inbox.");
-      setNotice(data.message ?? "Telegram Inbox activated.");
-      await loadWebhook(selected.id);
-    } catch (activateError) {
-      setError(activateError instanceof Error ? activateError.message : "Unable to activate Telegram Inbox.");
-    } finally { setWorking(null); }
-  }
-
-  async function disable() {
-    if (!selected || working) return;
-    setPendingAction(null);
-    setWorking("disable"); setError(null); setErrorCode(null); setNotice(null);
-    try {
-      const response = await fetch(withConnection("/api/telegram/webhook", selected.id), { method: "DELETE" });
-      const data = await readJson<WebhookResponse>(response);
-      if (!response.ok || !data.success) throw new Error(data.error ?? "Unable to disable Telegram Inbox.");
-      setNotice(data.message ?? "Telegram Inbox disabled.");
-      await loadWebhook(selected.id);
-    } catch (disableError) {
-      setError(disableError instanceof Error ? disableError.message : "Unable to disable Telegram Inbox.");
-    } finally { setWorking(null); }
-  }
-
-  async function disconnect() {
-    if (!selected || working) return;
-    setPendingAction(null);
-    setWorking("disconnect"); setError(null); setErrorCode(null); setNotice(null);
-    try {
-      const response = await fetch(withConnection("/api/telegram/connection", selected.id), { method: "DELETE" });
-      const data = await readJson<ConnectionResponse>(response);
-      if (!response.ok || !data.success) throw new Error(data.error ?? "Unable to disconnect Telegram Bot.");
-      setNotice(data.message ?? "Telegram Bot disconnected.");
-      await loadConnections(null);
-    } catch (disconnectError) {
-      setError(disconnectError instanceof Error ? disconnectError.message : "Unable to disconnect Telegram Bot.");
-    } finally { setWorking(null); }
-  }
-
-
-
-  function connectionState(item: TelegramConnection) {
-    const itemSelected = item.id === selected?.id;
-    const webhookStatus = itemSelected
-      ? webhook?.status ?? item.webhookStatus ?? null
-      : item.webhookStatus ?? null;
-    const webhookError = itemSelected
-      ? webhook?.lastError ?? remote?.lastErrorMessage ?? item.lastError ?? null
-      : item.lastError ?? null;
-
-    const hasError =
-      Boolean(webhookError) ||
-      webhookStatus === "error" ||
-      webhookStatus === "failed";
-    const live =
-      item.status === "verified" &&
-      item.isActive &&
-      webhookStatus === "active" &&
-      !hasError;
-    const inboxOff =
-      item.status === "verified" &&
-      item.isActive &&
-      !live &&
-      !hasError;
-    const channelOff = item.status === "verified" && !item.isActive;
-
-    return {
-      webhookStatus,
-      webhookError,
-      hasError,
-      live,
-      inboxOff,
-      channelOff,
-    };
-  }
-
-  function botInitials(item: TelegramConnection) {
-    return (
-      (item.botName ?? item.username ?? "TB")
-        .replace(/[^a-zA-Z0-9 ]/g, " ")
-        .trim()
-        .split(/\s+/)
-        .slice(0, 2)
-        .map((part) => part.charAt(0).toUpperCase())
-        .join("") || "TB"
-    );
-  }
-
-  function avatarClasses(item: TelegramConnection) {
-    const seed = (item.botName ?? item.username ?? item.id)
-      .split("")
-      .reduce((total, char) => total + char.charCodeAt(0), 0);
-    const choices = [
-      "bg-emerald-50 text-emerald-700",
-      "bg-amber-100 text-amber-700",
-      "bg-sky-100 text-sky-700",
-      "bg-rose-100 text-rose-700",
-      "bg-violet-100 text-violet-700",
-    ];
-    return choices[seed % choices.length];
-  }
-
-  async function toggleBot(id: string) {
-    if (expandedId === id) {
-      setExpandedId(null);
+    if (busy.current || !canManage || !canAddConnections) return;
+    const submittedToken = token.trim();
+    if (submittedToken.length < 20 || submittedToken.length > 512 || /\s/.test(submittedToken)) {
+      setConnectError(text("Enter a valid Telegram Bot token from BotFather.", "បញ្ចូល Bot Token ត្រឹមត្រូវពី BotFather។"));
       return;
     }
-
-    setExpandedId(id);
-    await selectBot(id);
+    busy.current = true;
+    const version = generation.current;
+    const previousIds = new Set(connections.map(bot => bot.id));
+    setWorking("connect"); setConnectError(null); setErrorCode(null); setNotice(null);
+    try {
+      const response = await fetch("/api/telegram/connection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: submittedToken }) });
+      const data = await readJson<ConnectionResponse>(response);
+      if (!mounted.current || version !== generation.current) return;
+      if (!response.ok || !data.success || !data.connection) {
+        setErrorCode(data.code ?? null);
+        throw new Error(data.error ?? "Unable to confirm the Telegram Bot connection. Check the list before trying again.");
+      }
+      setToken("");
+      await loadConnections();
+      if (!mounted.current || version !== generation.current) return;
+      setShowAddBot(false);
+      setNotice(text("Bot connected. Choose Enable inbox from its action menu to receive messages.", "បានភ្ជាប់ Bot។ ជ្រើសរើស បើកប្រអប់សារ ពីម៉ឺនុយ ដើម្បីទទួលសារ។"));
+    } catch (connectFailure) {
+      if (mounted.current && version === generation.current) {
+        setConnectError(connectFailure instanceof Error ? connectFailure.message : "Unable to connect Telegram Bot.");
+        // A lost response may follow a completed server operation. Reconcile before allowing a retry.
+        const reconciled = await loadConnections();
+        if (reconciled?.some(bot => !previousIds.has(bot.id) && bot.botId === submittedToken.split(":")[0])) {
+          setToken(""); setShowAddBot(false); setConnectError(null);
+          setNotice(text("Bot connection confirmed. Enable Inbox from its action menu.", "បានបញ្ជាក់ការភ្ជាប់ Bot។ បើកប្រអប់សារពីម៉ឺនុយសកម្មភាព។"));
+        }
+      }
+    } finally {
+      if (mounted.current) {
+        if (version !== generation.current) await loadConnections();
+        setWorking(null);
+      }
+      busy.current = false;
+    }
   }
 
-  const attentionConnections = connections.filter(
-    (item) => !connectionState(item).live,
-  );
-  const healthyConnections = connections.filter(
-    (item) => connectionState(item).live,
-  );
-
-  function renderBot(item: TelegramConnection) {
-    const state = connectionState(item);
-    const expanded = expandedId === item.id;
-    const isSelected = item.id === selected?.id;
-
-    const borderClass = state.hasError
-      ? "border-red-300"
-      : state.live
-        ? "border-slate-200"
-        : "border-amber-300";
-
-    const statusClass = state.hasError
-      ? "bg-red-100 text-red-700"
-      : state.live
-        ? "bg-emerald-100 text-emerald-700"
-        : "bg-amber-100 text-amber-800";
-
-    const statusText = state.hasError
-      ? "Webhook error"
-      : state.live
-        ? "Live"
-        : state.channelOff
-          ? "Disabled"
-          : "Inbox off";
-
-    return (
-      <article
-        key={item.id}
-        className={`overflow-hidden rounded-xl border bg-white @min-[960px]:rounded-none @min-[960px]:border-x-0 @min-[960px]:border-t-0 @min-[960px]:last:border-b-0 ${borderClass}`}
-      >
-        <button
-          type="button"
-          onClick={() => void toggleBot(item.id)}
-          className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 p-4 text-left transition hover:bg-slate-50/70 @min-[960px]:py-3 @min-[960px]:grid-cols-[minmax(0,1.6fr)_minmax(0,.8fr)_minmax(0,.85fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.2fr)]"
-          aria-expanded={expanded}
-        >
-          <span className="order-1 col-span-2 flex min-w-0 items-center gap-3 @min-[960px]:col-span-1">
-            <span
-              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xs font-bold ${avatarClasses(item)}`}
-            >
-              {botInitials(item)}
-            </span>
-            <span className="min-w-0">
-              <span className="block break-words text-sm font-semibold text-slate-950">
-                {item.botName ?? "Telegram bot"}
-              </span>
-              <span className="mt-0.5 block break-all text-xs leading-5 text-slate-500">
-                {item.username ? `@${item.username}` : item.botId ?? "No username"}
-              </span>
-            </span>
-          </span>
-
-          <span className="order-2 flex items-center gap-2 text-xs text-slate-600">
-            <span aria-hidden="true" className="h-5 w-5 shrink-0 bg-[url('/images/channels/telegram.png')] bg-contain bg-center bg-no-repeat" />
-            Telegram
-          </span>
-
-          <span className={`order-3 inline-flex items-center gap-1 justify-self-end rounded-md px-2 py-1 text-xs font-semibold @min-[960px]:justify-self-start ${statusClass}`}>
-            {state.hasError ? "⌁" : state.live ? "" : "⚠"}
-            {statusText}
-          </span>
-
-          <span className="order-4 col-span-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-600 @min-[960px]:col-span-1">
-            <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${state.live ? "bg-emerald-600" : state.channelOff ? "bg-slate-400" : "bg-amber-700"}`} />
-            Webhook: {state.webhookStatus ?? "Unknown"}
-          </span>
-
-          <span className="order-5 col-span-2 break-all text-xs leading-5 text-slate-500 @min-[960px]:col-span-1">
-            <span className="@min-[960px]:sr-only">Bot ID: </span>{item.botId ?? "—"}
-          </span>
-
-          <span className="order-6 col-span-2 flex items-center gap-2 border-t border-slate-100 pt-3 text-xs font-medium text-slate-700 @min-[960px]:col-span-1 @min-[960px]:justify-end @min-[960px]:border-0 @min-[960px]:pt-0">
-            <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
-              {expanded ? "Hide details" : "Details"}
-              <span className={`text-base leading-none text-slate-400 transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true">⌄</span>
-            </span>
-          </span>
-        </button>
-
-        {expanded ? (
-          <div className="border-t border-slate-200 px-4 pb-4 pt-3">
-            {!isSelected ? (
-              <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">
-                Loading bot details…
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {state.hasError ? (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    <p className="font-semibold">Telegram webhook needs attention</p>
-                    <p className="mt-1 text-xs leading-5">
-                      {state.webhookError ??
-                        "TENH could not confirm that this bot webhook is working."}
-                    </p>
-                  </div>
-                ) : state.channelOff ? (
-                  <div className="flex flex-col gap-3 rounded-xl bg-amber-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-amber-950">
-                        This Telegram channel is disabled
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-amber-900">
-                        The bot stays connected and its history is kept, but it does not use a channel slot while disabled.
-                      </p>
-                    </div>
-                    {canManage ? (
-                      <a
-                        href="/dashboard/settings/users?tab=channels"
-                        className="shrink-0 rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-50"
-                      >
-                        Enable channel
-                      </a>
-                    ) : null}
-                  </div>
-                ) : state.inboxOff ? (
-                  <div className="flex flex-col gap-3 rounded-xl bg-[#f8dca2] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-medium leading-5 text-[#76500f]">
-                        The bot token is verified, but the webhook is off — no messages will reach your inbox until you activate it.
-                      </p>
-                    </div>
-                    {canManage ? (
-                      <button
-                        type="button"
-                        disabled={Boolean(working)}
-                        onClick={() => void activate()}
-                        className="shrink-0 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-400 disabled:opacity-50"
-                      >
-                        {working === "activate" ? "Activating…" : "Activate Inbox"}
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl bg-slate-50 px-4 py-3">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                      Webhook
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-950">
-                      {webhook?.status === "active"
-                        ? "Active"
-                        : webhook?.status === "disabled"
-                          ? "Disabled"
-                          : webhook?.status ?? "Unknown"}
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl bg-slate-50 px-4 py-3">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                      Pending updates
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-950">
-                      {remote?.pendingUpdateCount ?? 0}
-                    </p>
-                  </div>
-                </div>
-
-                {canManage ? (
-                  <div className="flex flex-wrap justify-end gap-2 pt-1">
-                    <button
-                      type="button"
-                      disabled={Boolean(working)}
-                      onClick={() => setPendingAction("disconnect")}
-                      className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
-                    >
-                      {working === "disconnect" ? "Disconnecting…" : "Disconnect"}
-                    </button>
-
-                    {selected?.isActive ? (
-                      inboxActive ? (
-                        <button
-                          type="button"
-                          disabled={Boolean(working)}
-                          onClick={() => setPendingAction("disable")}
-                          className="rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-800 hover:bg-amber-50 disabled:opacity-50"
-                        >
-                          {working === "disable" ? "Disabling…" : "Disable Inbox"}
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={Boolean(working) || !verified}
-                          onClick={() => void activate()}
-                          className="rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-600 disabled:opacity-50"
-                        >
-                          {working === "activate" ? "Activating…" : "Activate Inbox"}
-                        </button>
-                      )
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                    You are an Agent in this workspace. Only the Owner can change bot connections.
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        ) : null}
-      </article>
-    );
+  async function changeInbox(bot: TelegramConnection, kind: "activate" | "disable" | "disconnect") {
+    if (busy.current || !canManage) return;
+    busy.current = true;
+    const version = generation.current;
+    setWorking(kind); setError(null); setNotice(null);
+    try {
+      if (kind === "activate" && !bot.isActive) {
+        await setIntegrationEnabled(bot.id, true, businessId);
+        if (!mounted.current || version !== generation.current) return;
+      }
+      const path = kind === "disconnect" ? "/api/telegram/connection" : "/api/telegram/webhook";
+      const response = await fetch(`${path}?connectionId=${encodeURIComponent(bot.id)}`, { method: kind === "activate" ? "POST" : "DELETE" });
+      const data = await readJson<ConnectionResponse>(response);
+      if (!mounted.current || version !== generation.current) return;
+      if (!response.ok || !data.success) throw new Error(data.error ?? "Unable to update this Telegram Bot.");
+      setPendingAction(null);
+      setNotice(data.message ?? text("Telegram Bot updated.", "បានធ្វើបច្ចុប្បន្នភាព Telegram Bot។"));
+    } catch (actionFailure) {
+      if (mounted.current && version === generation.current) setError(actionFailure instanceof Error ? actionFailure.message : "Unable to update this Telegram Bot.");
+    } finally {
+      if (mounted.current) { await loadConnections(); setWorking(null); }
+      busy.current = false;
+    }
   }
 
-  return (
-    <section className="@container min-w-0 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-slate-950">Telegram bots</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Manage your connected Telegram bots and inbox webhooks.
-          </p>
-        </div>
-      </div>
-
-      {error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <p>{error}</p>
-          {errorCode === "SUBSCRIPTION_LOCKED" ? (
-            <a
-              href="/dashboard/subscription"
-              className="mt-2 inline-flex font-semibold underline underline-offset-2"
-            >
-              Open Subscription
-            </a>
-          ) : null}
-        </div>
-      ) : null}
-
-      {notice ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          {notice}
-        </div>
-      ) : null}
-
-      {showAddBot && canManage && canAddConnections ? (
-        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
-          <p className="font-semibold text-slate-900">Connect another Telegram bot</p>
-          <p className="mt-1 text-xs leading-5 text-slate-600">
-            Create the bot in @BotFather, copy the Bot Token, then paste it here.
-          </p>
-
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-            <input
-              type="password"
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-              placeholder="123456789:AA..."
-              autoComplete="off"
-              spellCheck={false}
-              className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-            />
-            <button
-              type="button"
-              disabled={Boolean(working) || !token.trim()}
-              onClick={() => void connectTelegram()}
-              className="rounded-xl bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
-            >
-              {working === "connect" ? "Verifying..." : "Connect bot"}
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {loading ? (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-sm font-medium text-slate-500">
-          Loading Telegram bots...
-        </div>
-      ) : connections.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-7 text-center">
-          <p className="font-bold text-slate-900">No Telegram bot connected</p>
-          <p className="mt-2 text-sm text-slate-500">
-            Connect the first bot to start using Telegram in this workspace.
-          </p>
-          {!canManage ? (
-            <p className="mt-4 text-sm font-medium text-amber-700">
-              Only the workspace Owner can connect a Telegram bot.
-            </p>
-          ) : null}
-          {canManage && canAddConnections && !showAddBot ? (
-            <p className="mt-4 text-sm text-slate-500">
-              Use <span className="font-semibold text-slate-700">+ Add Connection</span> above to connect a Telegram bot.
-            </p>
-          ) : null}
-        </div>
-      ) : (
-        <div className="space-y-3 @min-[960px]:space-y-0 @min-[960px]:overflow-hidden @min-[960px]:rounded-xl @min-[960px]:border @min-[960px]:border-slate-200">
-          <div className="hidden items-center gap-x-4 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-600 @min-[960px]:grid @min-[960px]:grid-cols-[minmax(0,1.6fr)_minmax(0,.8fr)_minmax(0,.85fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.2fr)]" aria-hidden="true">
-            <span>Bot / Account</span>
-            <span>Channel</span>
-            <span>Status</span>
-            <span>Features</span>
-            <span>Bot ID</span>
-            <span className="text-right">Actions</span>
-          </div>
-          {attentionConnections.length > 0 ? (
-            <div className="space-y-3 @min-[960px]:space-y-0">
-              {attentionConnections.map((item) => renderBot(item))}
+  return <section className="min-w-0 space-y-3" data-telegram-bots>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <h2 className="text-lg font-bold text-slate-950">{text("Telegram bots", "Telegram Bots")}</h2>
+    </div>
+    {canManage && canAddConnections ? <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4">
+      <div className="min-w-0"><h3 className="font-semibold text-slate-950">Telegram Bot</h3><p className="mt-1 text-sm text-slate-500">{text("Connect another bot to this workspace.", "ភ្ជាប់ Bot មួយទៀតទៅកន្លែងធ្វើការនេះ។")}</p></div>
+      <button ref={continueRef} type="button" disabled={Boolean(working)} onClick={() => { if (!busy.current) { setConnectError(null); setErrorCode(null); setShowAddBot(true); } }} className="min-h-11 shrink-0 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">{text("Continue", "បន្ត")}</button>
+    </div> : null}
+    {error && !pendingAction ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p> : null}
+    {notice ? <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</p> : null}
+    {working === "connect" && !showAddBot ? <p role="status" className="p-3 text-sm text-slate-600">{text("The connection request is still processing. Please wait before trying again.", "សំណើភ្ជាប់កំពុងដំណើរការ។ សូមរង់ចាំ មុនសាកល្បងម្តងទៀត។")}</p> : null}
+    {loading ? <p role="status" className="p-4 text-sm text-slate-500">{text("Loading Telegram bots…", "កំពុងផ្ទុក Telegram Bots…")}</p> : connections.length === 0 ? <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">{text("No Telegram bot connected", "មិនទាន់ភ្ជាប់ Telegram Bot")}</p> : <div className="space-y-3">
+      {connections.map(bot => {
+        const needsReconnect = bot.status !== "verified" || Boolean(bot.lastError) || ["error", "failed"].includes(bot.webhookStatus ?? "");
+        const inboxEnabled = bot.isActive && bot.webhookStatus === "active";
+        const active = !needsReconnect && inboxEnabled;
+        const disabled = !needsReconnect && (!bot.isActive || bot.webhookStatus === "disabled");
+        const label = needsReconnect ? text("Reconnect required", "ត្រូវភ្ជាប់ឡើងវិញ") : active ? text("Active", "សកម្ម") : disabled ? text("Disabled", "បានបិទ") : text("Enable inbox to continue", "បើកប្រអប់សារ ដើម្បីបន្ត");
+        return <article key={bot.id} className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center gap-3">
+            <span aria-hidden="true" className="flex size-11 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sm font-bold text-sky-700">{(bot.botName || bot.username || "TB").slice(0, 2).toUpperCase()}</span>
+            <div className="min-w-0 flex-1"><h3 className="break-words text-sm font-semibold text-slate-950">{bot.botName ?? "Telegram Bot"}</h3>{bot.username ? <p className="break-all text-xs leading-6 text-slate-500">@{bot.username}</p> : null}
+              <span className={`mt-1 inline-flex rounded-full px-2 py-1 text-xs font-semibold ${active ? "bg-emerald-50 text-emerald-700" : disabled ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-800"}`}>{label}</span>
             </div>
-          ) : null}
-          {healthyConnections.length > 0 ? (
-            <div>
-              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 @min-[960px]:mb-0 @min-[960px]:border-y @min-[960px]:border-slate-200 @min-[960px]:bg-slate-50 @min-[960px]:px-4 @min-[960px]:py-2">
-                Healthy
-              </p>
-              <div className="space-y-3 @min-[960px]:space-y-0">
-                {healthyConnections.map((item) => renderBot(item))}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      )}
-
-      <ConfirmActionDialog
-        open={pendingAction === "disable"}
-        icon="warning"
-        tone="warning"
-        title="Disable Telegram Inbox?"
-        description={`New Telegram messages sent to ${botLabel(selected)} will stop arriving in your TENH Inbox.`}
-        note="The Bot stays connected and its token is kept, so you can turn the Inbox back on at any time."
-        confirmLabel="Disable Inbox"
-        loadingLabel="Disabling..."
-        loading={working === "disable"}
-        onCancel={() => setPendingAction(null)}
-        onConfirm={() => void disable()}
-      />
-
-      <ConfirmActionDialog
-        open={pendingAction === "disconnect"}
-        icon="unplug"
-        tone="danger"
-        title="Disconnect this Telegram Bot?"
-        description={`TENH will remove the saved token for ${botLabel(selected)} and stop receiving its messages.`}
-        note="Your existing TENH conversation history is kept, and the channel slot is freed. You will need the Bot token from @BotFather to connect it again."
-        confirmLabel="Disconnect"
-        loadingLabel="Disconnecting..."
-        loading={working === "disconnect"}
-        onCancel={() => setPendingAction(null)}
-        onConfirm={() => void disconnect()}
-      />
-    </section>
-  );
+            {canManage ? <IntegrationActionMenu name={botLabel(bot)} disabled={Boolean(working)} actions={[
+              { label: inboxEnabled ? text("Disable inbox", "បិទប្រអប់សារ") : text("Enable inbox", "បើកប្រអប់សារ"), onSelect: () => { setError(null); if (inboxEnabled) setPendingAction({ kind: "disable", bot }); else void changeInbox(bot, "activate"); } },
+              ...(needsReconnect && canAddConnections ? [{ label: text("Reconnect", "ភ្ជាប់ឡើងវិញ"), onSelect: () => { setConnectError(null); setErrorCode(null); setShowAddBot(true); } }] : []),
+              { label: text("Disconnect", "ផ្តាច់ការតភ្ជាប់"), danger: true, onSelect: () => { setError(null); setPendingAction({ kind: "disconnect", bot }); } },
+            ]} /> : null}
+          </div>
+          {needsReconnect ? <p className="mt-3 text-sm leading-6 text-amber-800">{text("Reconnect this bot with its Bot Token to restore Inbox access.", "ភ្ជាប់ Bot នេះឡើងវិញដោយប្រើ Bot Token ដើម្បីស្តារការចូលប្រើប្រអប់សារ។")}</p> : null}
+        </article>;
+      })}
+    </div>}
+    <ConfirmActionDialog open={showAddBot && canManage && canAddConnections} tone="primary" icon="unplug"
+      title={text("Connect another Telegram bot", "ភ្ជាប់ Telegram Bot មួយទៀត")}
+      description={text("Create the bot in @BotFather, copy the Bot Token, then paste it here.", "បង្កើត Bot នៅក្នុង @BotFather ចម្លង Bot Token រួចបិទភ្ជាប់នៅទីនេះ។")}
+      confirmLabel={text("Connect", "ភ្ជាប់")} cancelLabel={text("Cancel", "បោះបង់")} closeLabel={text("Close Telegram bot connection", "បិទការភ្ជាប់ Telegram Bot")}
+      loadingLabel={text("Connecting…", "កំពុងភ្ជាប់…")} loading={working === "connect"} confirmDisabled={!token.trim()}
+      error={connectError} returnFocusRef={continueRef} onCancel={dismiss} onConfirm={() => void connectTelegram()}>
+      <form className="mt-4" onSubmit={event => { event.preventDefault(); void connectTelegram(); }}>
+        <label htmlFor="telegram-bot-token" className="block text-sm font-semibold text-slate-700">Bot Token</label>
+        <input id="telegram-bot-token" type="password" value={token} disabled={working === "connect"} onChange={event => setToken(event.target.value)} autoComplete="off" spellCheck={false} autoCapitalize="none" placeholder="123456789:AA..." aria-invalid={Boolean(connectError)} className="mt-2 min-h-12 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60" />
+        <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
+      </form>
+      {working === "connect" ? <p role="status" className="mt-3 text-sm text-slate-500">{text("Connecting. Please wait before closing this dialog.", "កំពុងភ្ជាប់។ សូមរង់ចាំ មុនពេលបិទផ្ទាំងនេះ។")}</p> : null}
+      {errorCode === "SUBSCRIPTION_LOCKED" ? <a href="/dashboard/subscription" className="mt-3 inline-flex min-h-11 items-center text-sm text-blue-700 underline">{text("Open Subscription", "បើកការជាវ")}</a> : null}
+    </ConfirmActionDialog>
+    <ConfirmActionDialog open={Boolean(pendingAction)} icon={pendingAction?.kind === "disconnect" ? "unplug" : "warning"} tone={pendingAction?.kind === "disconnect" ? "danger" : "warning"}
+      title={pendingAction?.kind === "disconnect" ? text("Disconnect this Telegram Bot?", "ផ្តាច់ Telegram Bot នេះ?") : text("Disable Telegram Inbox?", "បិទប្រអប់សារ Telegram?")}
+      description={pendingAction ? pendingAction.kind === "disconnect" ? text(`TENH will remove the saved token for ${botLabel(pendingAction.bot)} and stop receiving its messages.`, `TENH នឹងលុបថូខិនដែលបានរក្សាទុកសម្រាប់ ${botLabel(pendingAction.bot)} ហើយឈប់ទទួលសារ។`) : text(`New messages sent to ${botLabel(pendingAction.bot)} will stop arriving in your TENH Inbox.`, `សារថ្មីទៅ ${botLabel(pendingAction.bot)} នឹងឈប់ចូលប្រអប់សារ TENH។`) : ""}
+      note={pendingAction?.kind === "disconnect" ? text("Stored conversations and contacts are kept. Pending Telegram updates are discarded and the channel slot is freed. You will need the Bot Token to reconnect.", "សន្ទនា និងទំនាក់ទំនងដែលបានរក្សាទុកនៅតែមាន។ សាររង់ចាំនៅ Telegram ត្រូវបានបោះចោល ហើយកន្លែងឆានែលត្រូវបានដោះលែង។ ត្រូវការ Bot Token ដើម្បីភ្ជាប់ឡើងវិញ។") : text("The bot and its token stay connected, and stored history is kept. Pending Telegram updates are discarded. You can enable Inbox again later.", "Bot និងថូខិននៅតែបានភ្ជាប់ ហើយប្រវត្តិដែលរក្សាទុកនៅតែមាន។ សាររង់ចាំនៅ Telegram ត្រូវបានបោះចោល។ អ្នកអាចបើកប្រអប់សារឡើងវិញពេលក្រោយ។")}
+      confirmLabel={pendingAction?.kind === "disconnect" ? text("Disconnect", "ផ្តាច់ការតភ្ជាប់") : text("Disable inbox", "បិទប្រអប់សារ")}
+      cancelLabel={text("Cancel", "បោះបង់")} closeLabel={text("Close confirmation", "បិទការបញ្ជាក់")} loadingLabel={text("Working…", "កំពុងដំណើរការ…")}
+      loading={Boolean(working)} error={error} onCancel={() => { if (!busy.current) { setPendingAction(null); setError(null); } }}
+      onConfirm={() => { if (pendingAction) void changeInbox(pendingAction.bot, pendingAction.kind); }} />
+  </section>;
 }

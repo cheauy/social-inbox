@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getCurrentMember } from "@/lib/auth/get-current-member";
-import {
-  memberHasPermission,
-  permissionDenied,
-} from "@/lib/auth/require-permission";
+import { getBillingOwnerAccess } from "@/lib/billing/owner-access";
+import { billingCurrency, billingDate, billingNumber, paymentMethodLabel, paymentProvenance } from "@/lib/billing/payment-display";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -19,7 +16,7 @@ type RouteContext = {
   }>;
 };
 
-type InvoiceRow = {
+type InvoiceRow = Record<string, unknown> & {
   id: string;
   invoice_number: string;
   business_id: string;
@@ -30,7 +27,7 @@ type InvoiceRow = {
   customer_name: string | null;
   billing_email: string | null;
   plan_code: string;
-  plan_name: string;
+  plan_name: string | null;
   billing_cycle: string;
   billing_cycle_label: string;
   amount: string | number;
@@ -50,7 +47,7 @@ export async function GET(
   _request: NextRequest,
   context: RouteContext,
 ) {
-  const authResult = await getCurrentMember();
+  const authResult = await getBillingOwnerAccess();
 
   if (!authResult.success) {
     return NextResponse.json(
@@ -67,24 +64,9 @@ export async function GET(
     );
   }
 
-  const currentMember = authResult.member;
-
-  if (
-    !(await memberHasPermission(currentMember, "billing", "manage"))
-  ) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Only the workspace owner can view billing receipts.",
-      },
-      {
-        status: 403,
-        headers: {
-          "Cache-Control": "no-store, max-age=0",
-        },
-      },
-    );
-  }
+  if (!authResult.businessIds.length) return NextResponse.json({ success: false, error: "Receipt unavailable." }, {
+    status: 404, headers: { "Cache-Control": "no-store, max-age=0" },
+  });
 
   const { invoiceId } = await context.params;
   const cleanInvoiceId = invoiceId.trim();
@@ -132,10 +114,11 @@ export async function GET(
         "period_end",
         "issued_at",
         "created_at",
+        "snapshot",
       ].join(","),
     )
     .eq("id", cleanInvoiceId)
-    .eq("business_id", currentMember.business_id)
+    .in("business_id", authResult.businessIds)
     .maybeSingle();
 
   if (error) {
@@ -158,13 +141,13 @@ export async function GET(
   const invoiceData =
     data as unknown as InvoiceRow | null;
 
-  if (!invoiceData) {
+  if (!invoiceData || invoiceData.status !== "paid") {
     // Use 404 for both missing and cross-workspace IDs so the route does not
     // reveal whether another TENH workspace owns a particular invoice UUID.
     return NextResponse.json(
       {
         success: false,
-        error: "Billing receipt was not found.",
+        error: "Receipt unavailable.",
       },
       {
         status: 404,
@@ -175,6 +158,23 @@ export async function GET(
     );
   }
 
+  const source = invoiceData.source_type;
+  let payment: Record<string, unknown> | null = null;
+  if (source === "payway" || source === "manual") {
+    const lookup = await supabaseAdmin.from(source === "payway" ? "billing_transactions" : "manual_payment_requests")
+      .select(source === "payway"
+        ? "id,business_id,provider,provider_transaction_id,status,amount,currency,verified_at,provider_status,provider_status_code,provider_original_amount,provider_payment_amount,provider_payment_currency,metadata"
+        : "id,business_id,status,amount,currency,approved_at,reviewed_at")
+      .eq("id", invoiceData.source_payment_id).eq("business_id", invoiceData.business_id).maybeSingle();
+    if (lookup.error) return NextResponse.json({ success: false, error: "Receipt temporarily unavailable." }, {
+      status: 500, headers: { "Cache-Control": "no-store, max-age=0" },
+    });
+    payment = lookup.data as unknown as Record<string, unknown> | null;
+    if (payment && payment.status !== "approved") return NextResponse.json({ success: false, error: "Receipt unavailable." }, {
+      status: 404, headers: { "Cache-Control": "no-store, max-age=0" },
+    });
+  }
+  const provenance = paymentProvenance(source, payment, invoiceData);
   return NextResponse.json(
     {
       success: true,
@@ -183,7 +183,7 @@ export async function GET(
         invoiceNumber: invoiceData.invoice_number,
         sourceType: invoiceData.source_type,
         sourcePaymentId: invoiceData.source_payment_id,
-        transactionId: invoiceData.source_transaction_id,
+        transactionId: invoiceData.source_transaction_id || null,
         workspaceName: invoiceData.workspace_name,
         customerName: invoiceData.customer_name,
         billingEmail: invoiceData.billing_email,
@@ -191,17 +191,17 @@ export async function GET(
         planName: invoiceData.plan_name,
         billingCycle: invoiceData.billing_cycle,
         billingCycleLabel: invoiceData.billing_cycle_label,
-        amount: Number(invoiceData.amount),
-        currency: invoiceData.currency,
-        paymentMethod: invoiceData.payment_method,
-        provider: invoiceData.provider,
-        approvalCode: invoiceData.provider_approval_code,
-        status: invoiceData.status,
-        paidAt: invoiceData.paid_at,
-        periodStart: invoiceData.period_start,
-        periodEnd: invoiceData.period_end,
-        issuedAt: invoiceData.issued_at,
-        createdAt: invoiceData.created_at,
+        amount: billingNumber(invoiceData.amount),
+        currency: billingCurrency(invoiceData.currency),
+        paymentMethod: paymentMethodLabel(provenance.provider),
+        ...provenance,
+        approvalCode: provenance.providerVerified ? invoiceData.provider_approval_code : null,
+        status: "approved",
+        paidAt: billingDate(invoiceData.paid_at),
+        periodStart: billingDate(invoiceData.period_start),
+        periodEnd: billingDate(invoiceData.period_end),
+        issuedAt: billingDate(invoiceData.issued_at),
+        createdAt: billingDate(invoiceData.created_at),
       },
     },
     {

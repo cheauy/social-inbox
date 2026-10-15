@@ -10,6 +10,8 @@ const alerts = [];
 window.alert = message => alerts.push(String(message));
 let sendCalls = 0;
 let listRequests = 0;
+const identity = { businessId: "fixture-business", memberId: "fixture-member" };
+const nativeFetch = window.fetch.bind(window);
 let categories = [
   { id: "campaigns", name: "Campaigns", created_at: "2026-10-01", updated_at: "2026-10-01" },
   { id: "products", name: "Products", created_at: "2026-10-01", updated_at: "2026-10-01" },
@@ -24,17 +26,30 @@ let files = Array.from({ length: 7 }, (_, index) => ({
   categoryId: index < 2 ? "campaigns" : null,
   favorite: false,
   deletedAt: null,
+  contentVersion: `original-${index + 1}`,
+  previewExpiresAt: Date.now() + 600_000,
   previewUrl: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><rect width="120" height="120" fill="hsl(${index * 45} 70% 70%)"/><text x="16" y="64">${index + 1}</text></svg>`)}`,
 }));
 files.push({ id: "document-1", name: "Price list.pdf", mimeType: "application/pdf", sizeBytes: 2048, kind: "file", createdAt: "2026-10-08T00:00:00Z", categoryId: null, favorite: false, deletedAt: null, previewUrl: null });
 
-const json = (value, status = 200) => Response.json(value, { status });
+const json = (value, status = 200) => Response.json({ ...identity, ...value }, { status });
 window.fetch = async (url, options = {}) => {
   const target = new URL(url, location.href);
+  if (!target.pathname.startsWith("/api/workspace-storage/")) return nativeFetch(url, options);
   if (target.pathname === "/api/workspace-storage/files" && (!options.method || options.method === "GET")) {
     listRequests += 1;
     await new Promise(resolve => setTimeout(resolve, 80));
-    return json({ success: true, canManage: true, organizationAvailable: true, categories, files });
+    const query = target.searchParams;
+    const view = query.get("view") || "recent", kind = query.get("kind") || "media", search = (query.get("q") || "").toLowerCase();
+    const matching = files.filter(file =>
+      (view !== "favorites" || file.favorite) &&
+      (!view.startsWith("category:") || file.categoryId === view.slice(9)) &&
+      ((file.kind === "image" || file.kind === "video") === (kind === "media")) &&
+      file.name.toLowerCase().includes(search),
+    ).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || b.id.localeCompare(a.id));
+    const start = Number(query.get("cursor") || 0), limit = Number(query.get("limit") || 30);
+    const page = matching.slice(start, start + limit), hasMore = start + page.length < matching.length;
+    return json({ success: true, canManage: true, organizationAvailable: true, categories, files: page, hasMore, nextCursor: hasMore ? String(start + page.length) : null, pendingDeletions: [] });
   }
   const body = options.body ? JSON.parse(options.body) : {};
   mutations.push({ path: target.pathname, ...body });
@@ -42,7 +57,7 @@ window.fetch = async (url, options = {}) => {
     if (body.action === "add") categories = [...categories, { id: `category-${categories.length}`, name: body.name, created_at: "2026-10-08", updated_at: "2026-10-08" }];
     if (body.action === "edit") categories = categories.map(item => item.id === body.categoryId ? { ...item, name: body.name } : item);
     if (body.action === "delete") { categories = categories.filter(item => item.id !== body.categoryId); files = files.map(file => file.categoryId === body.categoryId ? { ...file, categoryId: null } : file); }
-    return json({ success: true });
+    return json({ success: true, category: categories.find(category => category.id === body.categoryId || category.name === body.name) });
   }
   if (body.action === "get-file-url") {
     const file = files.find(item => item.id === body.fileId);
@@ -130,11 +145,11 @@ createRoot(document.getElementById("root")).render(h(App));
     }
 
     [...storage.querySelectorAll("button")].find(button => button.textContent.includes("Files")).click();
-    await pause(30);
+    await pause(150);
     check("Files filter exposes documents", Boolean(storage.querySelector('button[aria-pressed="false"], button[aria-pressed="true"]') && storage.textContent.includes("Price list.pdf")));
     const mediaFilter = [...storage.querySelectorAll("button")].find(button => button.textContent.includes("Photos & videos"));
     mediaFilter.click();
-    await pause(30);
+    await pause(150);
 
     storage.querySelector('button[aria-label="Select Photo 1"]').click();
     storage.querySelector('button[aria-label="Select Photo 2"]').click();
@@ -195,7 +210,7 @@ createRoot(document.getElementById("root")).render(h(App));
     check("Draft preserves typed text", document.querySelector("textarea").value === "Keep this typed text");
     check("Draft stages both selected files", document.querySelector('button[aria-label="Attach content"]').textContent.includes("2"));
 
-    check("each open has one background refresh", listRequests === 3, String(listRequests));
+    check("open and filter changes issue one server page each", listRequests === 5, String(listRequests));
     document.getElementById("result").textContent = JSON.stringify({ passed: true, width: innerWidth, columns, checks, alerts, listRequests, sendCalls, mutations: mutations.map(item => item.action) });
   } catch (error) {
     document.getElementById("result").textContent = JSON.stringify({ passed: false, width: innerWidth, error: error.message, checks, alerts, listRequests, mutations, sendCalls, body: document.body.innerText.slice(0, 1200) });

@@ -1,0 +1,14 @@
+{
+  "baseline": "b89c828",
+  "expectedFailure": true,
+  "exitCode": 1,
+  "failures": [
+    "owner of A and B opens B invoice independently of A selected workspace",
+    "owner of B with an agent-only selected A membership can view B",
+    "history totals separate sandbox, confirmed production, manual and unverified approvals",
+    "pending and unsuccessful persisted payments have no issued receipt action or paid date",
+    "approved missing invoice remains unavailable, without writes or synthesized historical coverage",
+    "receipt and history preserve saved invoice amount, currency, reference, date and coverage",
+    "temporary lookups fail safely and malformed IDs cannot disclose data"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "startedUtc": "2026-10-15T08:39:05.079Z",
+  "source": "tests/compact-navigation-lint.cjs",
+  "sourceSha256": "e64475ac3f714d4d07a234b31ede226310db1e4cc7df5699e69d38656db86e1f",
+  "onlyInMemoryChange": "Redirected evidence output to release directory; repository test source unchanged",
+  "baseline": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-navigation-baseline-xwZnuR\\source",
+  "hostedWrites": false
+}

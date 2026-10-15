@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { ArrowRight, Clock3, LockKeyhole, Plug, ShieldCheck } from "lucide-react";
+import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 
 type SubscriptionLockReason =
   | "expired"
@@ -50,7 +52,31 @@ type LockedCopy = {
 function getLockedCopy(
   reason: SubscriptionLockReason,
   planCode: string | null,
+  isKhmer: boolean,
 ): LockedCopy {
+  if (isKhmer) {
+    const trial = planCode === "trial";
+    if (reason === "suspended") return {
+      eyebrow: "ការចូលប្រើត្រូវបានផ្អាក", title: "កន្លែងធ្វើការនេះត្រូវបានផ្អាក",
+      message: "ទាក់ទងផ្នែកជំនួយ TENH មុនពេលចាប់ផ្ដើមការទូទាត់ថ្មី។", statusLabel: "បានផ្អាក",
+      noticeTitle: "ទិន្នន័យរបស់អ្នកនៅតែរក្សាទុក", noticeText: "ការផ្អាកការចូលប្រើមិនលុបទិន្នន័យអតិថិជន ឬការសន្ទនារបស់អ្នកទេ។",
+      steps: ["ទាក់ទងផ្នែកជំនួយ TENH ដើម្បីពិនិត្យកន្លែងធ្វើការនេះ", "ផ្នែកជំនួយនឹងបញ្ជាក់ជំហានដើម្បីបើកការចូលប្រើឡើងវិញ", "កុំចាប់ផ្ដើមការទូទាត់ថ្មី មុនទទួលការឆ្លើយតបពីផ្នែកជំនួយ"],
+    };
+    if (reason === "past_due") return {
+      eyebrow: "ត្រូវពិនិត្យការទូទាត់", title: "ត្រូវទូទាត់ ដើម្បីចូលប្រើឡើងវិញ",
+      message: "ជ្រើសរើសគម្រោង TENH Chat និងរយៈពេលជាវ រួចបំពេញការទូទាត់។", statusLabel: "ហួសកំណត់ទូទាត់",
+      noticeTitle: "កន្លែងធ្វើការរបស់អ្នកត្រូវបានការពារ", noticeText: "ការសន្ទនា ទំនាក់ទំនង កំណត់ចំណាំ ស្លាក និងទិន្នន័យក្រុមនៅតែរក្សាទុក ខណៈអ្នកដោះស្រាយការទូទាត់។",
+      steps: ["បើកការជាវ ហើយជ្រើសរើសគម្រោង និងរយៈពេលជាវ", "បំពេញការទូទាត់", "ការចូលប្រើនឹងត្រឡប់មកវិញ នៅពេលការទូទាត់ត្រូវបានអនុម័ត"],
+    };
+    return {
+      eyebrow: trial ? "ការសាកល្បងបានបញ្ចប់" : "ការជាវបានផុតកំណត់",
+      title: trial ? "ការសាកល្បង ៧ ថ្ងៃរបស់អ្នកបានបញ្ចប់" : "ការជាវនេះបានផុតកំណត់",
+      message: "ជ្រើសរើសគម្រោងដើម្បីបន្ត ឬប្ដូរទៅកន្លែងធ្វើការដែលសកម្ម។", statusLabel: "ផុតកំណត់",
+      noticeTitle: "កន្លែងធ្វើការរបស់អ្នកមានសុវត្ថិភាព",
+      noticeText: trial ? "TENH មិនបានគិតប្រាក់សម្រាប់ការសាកល្បង ហើយក៏មិនគិតប្រាក់ឥឡូវនេះដែរ។ ការសន្ទនា ទំនាក់ទំនង និងការកំណត់នៅតែរក្សាទុកសម្រាប់ពេលអ្នកជាវ។" : "TENH មិនបន្តការជាវ ឬគិតប្រាក់ដោយស្វ័យប្រវត្តិទេ។ ទិន្នន័យរបស់អ្នកនៅតែរក្សាទុក ខណៈអ្នកជ្រើសរើសរយៈពេលជាវបន្ទាប់។",
+      steps: trial ? ["ជ្រើសរើសគម្រោង ហើយបំពេញការទូទាត់ដើម្បីចាប់ផ្ដើមការជាវ", "អ្នកអាចភ្ជាប់ Facebook Page ឬ Telegram Bot ទៅការជាវថ្មីភ្លាមៗ", "ការសន្ទនា ទំនាក់ទំនង និងការកំណត់ពីការសាកល្បងនៅតែមាន"] : ["បន្តការជាវ ដើម្បីរក្សាកន្លែងធ្វើការ ឆានែល និងប្រវត្តិ", "ឬប្ដូរទៅកន្លែងធ្វើការផ្សេងតាមប៊ូតុងនៅផ្នែកខាងលើ", "អ្នកអាចភ្ជាប់ Page ឬ Bot ទៅការជាវថ្មីបានភ្លាមៗ"],
+    };
+  }
   switch (reason) {
     case "past_due":
       return {
@@ -123,64 +149,6 @@ function getLockedCopy(
   }
 }
 
-function LockIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="h-6 w-6"
-      aria-hidden="true"
-    >
-      <rect x="5" y="10" width="14" height="10" rx="3" />
-      <path
-        d="M8 10V7.5a4 4 0 0 1 8 0V10M12 14v2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ArrowIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      className="h-4 w-4"
-      aria-hidden="true"
-    >
-      <path
-        d="M4 10h12m-4-4 4 4-4 4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function PlugIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="h-4 w-4"
-      aria-hidden="true"
-    >
-      <path
-        d="M7 3v4m6-4v4M5 7h10v3a5 5 0 0 1-10 0V7Zm5 8v3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 /*
  * The end date, formatted identically on the server and in the browser.
  *
@@ -237,6 +205,8 @@ export function SubscriptionAccessGate({
   access,
 }: SubscriptionAccessGateProps) {
   const pathname = usePathname();
+  const isKhmer = useWorkspaceLanguageId() === "km";
+  const text = (en: string, km: string) => isKhmer ? km : en;
 
   const subscriptionPage =
     pathname === "/dashboard/subscription" ||
@@ -296,7 +266,7 @@ export function SubscriptionAccessGate({
     return children;
   }
 
-  const copy = getLockedCopy(access.reason, access.planCode);
+  const copy = getLockedCopy(access.reason, access.planCode, isKhmer);
   const planLabel = getPlanLabel(access.planCode);
   const wasTrial = access.planCode === "trial";
   const endedAt = formatEndedAt(
@@ -308,189 +278,74 @@ export function SubscriptionAccessGate({
   );
 
   return (
-    <div className="relative h-full overflow-y-auto bg-[#f5f7fb]">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-36 -top-40 h-[420px] w-[420px] rounded-full bg-blue-100/80 blur-3xl" />
-        <div className="absolute -bottom-48 -right-32 h-[460px] w-[460px] rounded-full bg-indigo-100/70 blur-3xl" />
-      </div>
-
-      <div className="relative mx-auto flex min-h-full w-full max-w-5xl items-center justify-center px-5 py-10 sm:px-8 lg:py-14">
-        <div className="w-full overflow-hidden rounded-[30px] border border-slate-200/80 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.10)]">
-          <div className="grid lg:grid-cols-[1fr_1fr]">
-            <section className="relative flex flex-col overflow-hidden bg-[linear-gradient(135deg,#06143A_0%,#0C2C87_46%,#3D1370_100%)] px-7 py-9 text-white sm:px-10 sm:py-11 lg:px-11 lg:py-12">
-              {/*
-                The logo runs blue into orange into magenta, so the panel picks
-                up all three: the brand gradient carries blue to violet, and
-                these warm the middle. A flat navy matched none of them.
-              */}
-              <div className="pointer-events-none absolute inset-0">
-                <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full border border-[#22C3F3]/25 bg-[#22C3F3]/10" />
-                <div className="absolute -bottom-28 -left-10 h-64 w-64 rounded-full bg-[#FF7A00]/20 blur-3xl" />
-                <div className="absolute bottom-16 right-0 h-48 w-48 rounded-full bg-[#C42BB4]/20 blur-3xl" />
-                <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),transparent_48%)]" />
-              </div>
-
-              <div className="relative flex h-full flex-col">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-[#7FD4FF] shadow-inner shadow-white/5">
-                  <LockIcon />
-                </div>
-
-                <p className="mt-7 text-xs font-bold uppercase tracking-[0.22em] text-[#7FD4FF]">
-                  {copy.eyebrow}
-                </p>
-
-                <h1 className="mt-3 text-3xl font-bold tracking-[-0.03em] text-white sm:text-[34px] sm:leading-[1.12]">
-                  {copy.title}
-                </h1>
-
-                <p className="mt-4 max-w-md text-[15px] leading-7 text-white/75">
-                  {copy.message}
-                </p>
-
-                {/*
-                  Plan, status and end date as one row of facts. This panel used
-                  to hold a headline and a status pill that repeated the badge
-                  opposite it, leaving most of the height empty and none of the
-                  questions answered.
-                */}
-                <dl className="mt-auto grid grid-cols-2 gap-x-6 gap-y-5 border-t border-white/10 pt-7 sm:grid-cols-3">
-                  <div>
-                    <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/50">
-                      Plan
-                    </dt>
-                    <dd className="mt-1.5 text-sm font-semibold text-white">
-                      {planLabel}
-                    </dd>
-                  </div>
-
-                  <div>
-                    <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/50">
-                      Status
-                    </dt>
-                    <dd className="mt-1.5 flex items-center gap-2 text-sm font-semibold text-white">
-                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                      {copy.statusLabel}
-                    </dd>
-                  </div>
-
-                  {endedAt ? (
-                    <div className="col-span-2 sm:col-span-1">
-                      <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/50">
-                        Ended
-                      </dt>
-                      <dd className="mt-1.5 text-sm font-semibold text-white">
-                        {endedAt}
-                      </dd>
-                    </div>
-                  ) : null}
-                </dl>
-              </div>
-            </section>
-
-            <section className="px-7 py-9 sm:px-10 sm:py-11 lg:px-11 lg:py-12">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
-                <p className="font-bold text-slate-950">
-                  {copy.noticeTitle}
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {copy.noticeText}
-                </p>
-              </div>
-
-              <p className="mt-8 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                What happens next
-              </p>
-
-              <ol className="mt-4 space-y-4">
-                {copy.steps.map((item, index) => (
-                  <li
-                    key={item}
-                    className="flex gap-3 text-sm leading-6 text-slate-700"
-                  >
-                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
-                      {index + 1}
-                    </span>
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ol>
-
-              <Link
-                href="/dashboard/subscription"
-                className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0C2C87] px-6 py-4 text-sm font-bold text-white shadow-lg shadow-[#0C2C87]/25 transition hover:bg-[#06143A] focus:outline-none focus:ring-4 focus:ring-blue-100"
-              >
-                {access.reason === "suspended"
-                  ? "View subscription"
-                  : wasTrial
-                    ? "Buy subscription"
-                    : "Renew subscription"}
-                <ArrowIcon />
-              </Link>
-
-              {access.reason === "expired" ? (
-                <div
-                  className={`mt-3 grid gap-3 ${
-                    wasTrial ? "" : "sm:grid-cols-2"
-                  }`}
-                >
-                  {/*
-                    Channels is for the paid customer only. They have to
-                    disconnect a Page or Bot themselves before it can move to
-                    another subscription, and this screen is the only place they
-                    can still reach it from. A finished trial releases its
-                    channel on its own, so sending that customer to Channels
-                    would be a detour to do nothing.
-                  */}
-                  {wasTrial ? null : (
-                    <Link
-                      href="/dashboard/integrations"
-                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3.5 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-4 focus:ring-slate-100"
-                    >
-                      <PlugIcon />
-                      Channels
-                    </Link>
-                  )}
-
-                  <Link
-                    href="/dashboard/settings/security"
-                    className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3.5 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-4 focus:ring-slate-100"
-                  >
-                    Login &amp; security
-                  </Link>
-                </div>
-              ) : null}
-
-              <p className="mt-5 text-center text-xs leading-5 text-slate-400">
-                {access.reason !== "expired"
-                  ? "Your existing workspace data stays preserved while access is paused."
-                  : wasTrial
-                    ? "Nothing is lost while you decide. Your Page or Bot is already free for the new subscription, and Login & security covers your password, signed-in devices and account."
-                    : "Your workspace stays preserved. Channels stays open if you want to review or disconnect one, and Login & security lets you change your password, sign other devices out, or delete your account."}
-              </p>
-
-              {access.reason === "expired" && !wasTrial ? (
-                /*
-                 * The last resort, and only for a paid subscription. Its Owner
-                 * has to free a channel by hand, so when they cannot open the
-                 * workspace at all, support is the only way through -- and this
-                 * screen is all they can see. A finished trial has no such dead
-                 * end, so the line would only add noise there.
-                 */
-                <p className="mt-3 text-center text-xs leading-5 text-slate-400">
-                  Cannot reach the workspace holding your Page or Bot?{" "}
-                  <a
-                    href="https://t.me/tenhchat_support_bot"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-700"
-                  >
-                    Contact TENH support
-                  </a>
-                </p>
-              ) : null}
-            </section>
+    <div data-subscription-lock className="h-full overflow-y-auto bg-slate-50 p-3 text-slate-950 [padding-bottom:max(1rem,env(safe-area-inset-bottom))] [padding-left:max(.75rem,env(safe-area-inset-left))] [padding-right:max(.75rem,env(safe-area-inset-right))] sm:p-6 lg:p-10 dark:bg-slate-950 dark:text-slate-100">
+      <div className="mx-auto w-full max-w-6xl rounded-3xl border border-blue-100 bg-white px-4 py-6 shadow-[0_12px_48px_rgba(30,64,175,0.06)] sm:px-8 sm:py-8 lg:px-12 dark:border-slate-800 dark:bg-slate-900">
+        <section aria-labelledby="subscription-lock-title" className="mx-auto max-w-3xl text-center">
+          <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-blue-50 text-blue-600 sm:size-20 dark:bg-blue-950 dark:text-blue-400">
+            <span className="relative"><ShieldCheck className="size-9" aria-hidden="true" /><Clock3 className="absolute -bottom-1 -right-1 size-4 rounded-full bg-blue-50 dark:bg-blue-950" aria-hidden="true" /></span>
           </div>
+          <p className="mt-4 inline-flex rounded-full bg-amber-100 px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            {access.reason === "expired" && wasTrial ? text("Trial ended", "ការសាកល្បងបានបញ្ចប់") : copy.eyebrow}
+          </p>
+          <h1 id="subscription-lock-title" className="mt-3 break-words text-3xl font-bold leading-tight tracking-tight sm:text-4xl lg:text-5xl">
+            {copy.title}
+          </h1>
+          <p className="mx-auto mt-3 max-w-2xl text-base leading-relaxed text-slate-500 sm:text-lg dark:text-slate-400">
+            {access.reason === "expired" && wasTrial ? text("Choose a plan to continue with TENH CHAT.", "ជ្រើសរើសគម្រោង ដើម្បីបន្តប្រើ TENH CHAT។") : copy.message}
+          </p>
+          <dl className="mx-auto mt-6 flex max-w-3xl flex-wrap justify-center gap-x-8 gap-y-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left sm:mt-8 sm:gap-x-12 dark:border-slate-700 dark:bg-slate-800/50">
+            <div className="min-w-0 flex-1 basis-24">
+              <dt className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{text("Plan", "គម្រោង")}</dt>
+              <dd className="mt-1 break-words font-semibold">{wasTrial ? text(planLabel, "សាកល្បងឥតគិតថ្លៃ") : planLabel}</dd>
+            </div>
+            <div className="min-w-0 flex-1 basis-24">
+              <dt className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{text("Status", "ស្ថានភាព")}</dt>
+              <dd className="mt-1 flex items-center gap-2 font-semibold"><span className="size-2 shrink-0 rounded-full bg-amber-500" />{copy.statusLabel}</dd>
+            </div>
+            {endedAt ? <div className="min-w-0 flex-1 basis-28">
+              <dt className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{text("Ended", "បានបញ្ចប់")}</dt>
+              <dd className="mt-1 font-semibold">{endedAt}</dd>
+            </div> : null}
+          </dl>
+        </section>
+
+        <div className="mt-6 grid gap-5 min-[900px]:grid-cols-2">
+          <section aria-labelledby="subscription-actions-title" className="min-w-0 rounded-2xl border border-blue-100 p-5 sm:p-7 min-[900px]:order-2 dark:border-slate-700">
+            <h2 id="subscription-actions-title" className="text-xl font-bold">{text("Continue where you left off", "បន្តពីកន្លែងដែលអ្នកបានឈប់")}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">{access.reason === "suspended" ? copy.message : text("Choose a subscription to restore access.", "ជ្រើសរើសការជាវ ដើម្បីចូលប្រើឡើងវិញ។")}</p>
+            <Link href="/dashboard/subscription" className="mt-5 flex min-h-12 w-full items-center justify-center gap-3 rounded-xl bg-blue-700 px-4 py-3 text-center font-semibold text-white shadow-sm transition hover:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600">
+              {access.reason === "suspended" ? text("View subscription", "មើលការជាវ") : text("Choose a plan", "ជ្រើសរើសគម្រោង")}<ArrowRight className="size-5 shrink-0" aria-hidden="true" />
+            </Link>
+            <button type="button" onClick={() => {
+              const trigger = document.querySelector<HTMLButtonElement>("[data-dashboard-header] [data-dashboard-workspace-switcher] > button");
+              if (trigger) {
+                trigger.focus();
+                if (trigger.getAttribute("aria-expanded") !== "true") trigger.click();
+              }
+            }} className="mt-3 min-h-12 w-full rounded-xl border border-slate-300 px-4 py-3 text-center font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">
+              {text("Switch workspace", "ប្ដូរកន្លែងធ្វើការ")}
+            </button>
+            {access.reason === "expired" ? <div className="mt-3 flex flex-wrap justify-center gap-x-5">
+              <Link href="/dashboard/settings/security" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-blue-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:text-blue-400"><LockKeyhole className="size-4 shrink-0" aria-hidden="true" />{text("Login & security", "ការចូល និងសុវត្ថិភាព")}</Link>
+              {!wasTrial ? <Link href="/dashboard/integrations" className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-blue-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:text-blue-400"><Plug className="size-4" aria-hidden="true" />{text("Channels", "ឆានែល")}</Link> : null}
+            </div> : null}
+          </section>
+
+          <section aria-labelledby="subscription-data-title" className="min-w-0 rounded-2xl border border-blue-100 p-5 sm:p-7 dark:border-slate-700">
+            <div className="flex items-start gap-3">
+              <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400"><ShieldCheck className="size-6" aria-hidden="true" /></span>
+              <div className="min-w-0"><h2 id="subscription-data-title" className="text-xl font-bold">{copy.noticeTitle}</h2><p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">{copy.noticeText}</p></div>
+            </div>
+            <h3 className="mt-5 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{text("What happens next", "ជំហានបន្ទាប់")}</h3>
+            <ol className="mt-3 space-y-3">
+              {copy.steps.map((item, index) => <li key={item} className="flex gap-3 text-sm leading-6 text-slate-600 dark:text-slate-300"><span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">{index + 1}</span><span className="min-w-0 break-words">{item}</span></li>)}
+            </ol>
+          </section>
         </div>
+        <footer className="mt-6 border-t border-slate-200 pt-4 text-center text-xs leading-6 text-slate-500 dark:border-slate-700 dark:text-slate-400">
+          <p>{access.reason === "expired" ? text(wasTrial ? "No automatic charge after your trial." : "No automatic renewal or charge.", "មិនមានការគិតប្រាក់ដោយស្វ័យប្រវត្តិទេ។") : text("Your existing workspace data stays preserved while access is paused.", "ទិន្នន័យកន្លែងធ្វើការរបស់អ្នកនៅតែរក្សាទុក ខណៈការចូលប្រើត្រូវបានផ្អាក។")}</p>
+          {access.reason === "expired" && !wasTrial ? <p>{text("Cannot reach the workspace holding your Page or Bot?", "មិនអាចចូលកន្លែងធ្វើការដែលភ្ជាប់ Page ឬ Bot របស់អ្នកបាន?")} <a href="https://t.me/tenhchat_support_bot" target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center rounded px-1 font-semibold text-blue-700 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-blue-400">{text("Contact TENH support", "ទាក់ទងផ្នែកជំនួយ TENH")}</a></p> : null}
+        </footer>
       </div>
     </div>
   );

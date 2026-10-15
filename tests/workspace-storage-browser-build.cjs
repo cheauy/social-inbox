@@ -5,10 +5,11 @@ const postcss = require("postcss");
 const tailwindcss = require("@tailwindcss/postcss");
 const loader = path.join(temp, "tenh-workspace-storage-loader.cjs");
 const stub = path.join(root, "tests/fixtures/workspace-storage-browser-stubs.cjs");
+fs.writeFileSync(path.join(temp, "tenh-storage-media.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#dbeafe"/></svg>');
 fs.writeFileSync(loader, `const ts=require(${JSON.stringify(path.join(root, "node_modules/typescript"))});module.exports=function(s){return ts.transpileModule(s,{fileName:this.resourcePath,compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,jsx:ts.JsxEmit.ReactJSX}}).outputText};`);
 webpack({
   mode: "production", optimization: { minimize: false },
-  entry: path.join(root, "tests/fixtures/workspace-storage-browser.entry.cjs"),
+  entry: path.join(root, process.env.TENH_STORAGE_ENTRY || "tests/fixtures/workspace-storage-browser.entry.cjs"),
   output: { path: temp, filename: "tenh-workspace-storage-bundle.js" },
   resolve: { extensions: [".ts", ".tsx", ".js"], alias: {
     "@/lib/supabase/client$": stub,

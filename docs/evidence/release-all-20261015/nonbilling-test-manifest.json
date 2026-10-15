@@ -1,0 +1,64 @@
+{
+    "startedUtc":  "2026-10-15T08:38:28.4641503Z",
+    "kind":  "Focused local-only nonbilling regressions",
+    "pgliteModule":  "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-storage-sql-check\\node_modules\\@electric-sql\\pglite",
+    "hostedWrites":  false,
+    "tests":  [
+                  {
+                      "path":  "tests/workspace-storage-auth-scope.test.cjs",
+                      "sha256":  "74767CD903B5608E6AA18B6E54904AF6B3D5FF5B5F3463F21780E3AD84E1CC9F"
+                  },
+                  {
+                      "path":  "tests/workspace-storage-cache.test.cjs",
+                      "sha256":  "7ADD5B7F54927350799BA99EC604C2C976432C5A3BDB1E7E32C4BFE39614A388"
+                  },
+                  {
+                      "path":  "tests/workspace-storage-client.test.cjs",
+                      "sha256":  "91EE67CD5BF6F497EE185B57C6A0D87F52CD61E32E5C678EB109778B95474C7B"
+                  },
+                  {
+                      "path":  "tests/workspace-storage-lifecycle-sql.test.cjs",
+                      "sha256":  "E3F4ED3DA37BDDC6D2921E5BA83511B9B3905D34860FF913EEF52DF991A9673C"
+                  },
+                  {
+                      "path":  "tests/workspace-storage-server.test.cjs",
+                      "sha256":  "F865458EDCEAE5A5A11A5C2EE0A7448030E6E1593B1D2C9F10B54C697A70BF91"
+                  },
+                  {
+                      "path":  "tests/workspace-storage-signed-urls.test.cjs",
+                      "sha256":  "2DDACED6B52828A37ABA9FAD7FA42D3CD6DF2A3E19310BDFDBA9D59A8E108C89"
+                  },
+                  {
+                      "path":  "tests/workspace-storage-upload-safety.test.cjs",
+                      "sha256":  "49310F159B30AD371A51D3C2253B4B57C7346233BF5352019387793BEA05CB82"
+                  },
+                  {
+                      "path":  "tests/workspace-storage.test.cjs",
+                      "sha256":  "DFBBF7AECA5056E70EC0B19183A556D7CA983911F03D01FEEC4988105730F593"
+                  },
+                  {
+                      "path":  "tests/mobile-storage-drafts.test.cjs",
+                      "sha256":  "0703ED6D8B1D6E1629146D210E0D1B41D02EAE8CA6519CCE40D9633A031053AD"
+                  },
+                  {
+                      "path":  "tests/mobile-storage.test.cjs",
+                      "sha256":  "8D2511C2A806F5161DAA951FD67CAAC4B2E013B9CEBECC720398E1C6E7123E90"
+                  },
+                  {
+                      "path":  "tests/inbox-photo-loading.test.cjs",
+                      "sha256":  "7F97F1B2EF0E616984D8CB468533B1B0D5B2601C416EA3B881917D4ED7B6A155"
+                  },
+                  {
+                      "path":  "tests/compact-navigation.test.cjs",
+                      "sha256":  "D81A126E3BFAF679D921F397AB1846F16CBE1426D91CC66FA8C314C06DBEFEF0"
+                  },
+                  {
+                      "path":  "tests/integrations-management.test.mjs",
+                      "sha256":  "71C49CEB8DEEA66596B9E5AE1916F432A59A58BC28ACE103354B45D306B4FCCD"
+                  },
+                  {
+                      "path":  "tests/subscription-access-gate.test.mjs",
+                      "sha256":  "E3216FCBC306C6D6AAAD3F7A641D90DC9C558657188D74225D05E186E89EE77F"
+                  }
+              ]
+}

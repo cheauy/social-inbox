@@ -1,0 +1,203 @@
+{
+  "checks": [
+    "four and only four bottom destinations",
+    "notification badge remains on bottom Notifications",
+    "no duplicate notification owners",
+    "long workspace name keeps Profile inside header",
+    "search Filter Smart View order",
+    "tabs immediately below search controls",
+    "active bottom destination reuses workspace theme colors",
+    "active bottom destination reuses workspace theme tint",
+    "More is a left drawer",
+    "More has exactly the three permitted destinations",
+    "More contains no Profile workspace or Admin controls",
+    "native drawer traps focus 0",
+    "native drawer traps focus 1",
+    "native drawer traps focus 2",
+    "native drawer traps focus 3",
+    "native drawer traps focus 4",
+    "native drawer traps focus 5",
+    "native drawer traps focus 6",
+    "native drawer traps focus 7",
+    "Escape closes More and restores trigger focus",
+    "outside tap closes More and restores focus",
+    "close button closes More",
+    "drawer toggles add no requests or subscriptions",
+    "notification panel clears bottom bar",
+    "notification panel anchors to reduced visual viewport independently of layout viewport",
+    "More respects reduced visual viewport independently of layout viewport",
+    "existing Profile menu remains available",
+    "Profile destination preserved",
+    "Unread retains its selected state",
+    "Unread rows match independent fixture population",
+    "Facebook Comment retains its selected state",
+    "Facebook Comment rows match independent fixture population",
+    "Pinned retains its selected state",
+    "Pinned rows match independent fixture population",
+    "All conversations retains its selected state",
+    "All conversations rows match independent fixture population",
+    "Channel control survives inside Filter",
+    "previously disabled reminder shortcut stays disabled",
+    "existing channel picker opens",
+    "existing Smart View panel opens",
+    "Smart View selection uses its existing route and selected state",
+    "empty Smart View remains an empty population",
+    "Analytics route and active state",
+    "Inbox return retains filter URL",
+    "cross-page navigation retains notification subscription owner",
+    "rapid menu switches retain the Inbox destination and filter",
+    "already active Inbox adds no reload history or requests",
+    "conversation shows one header and hides global navigation",
+    "reduced viewport leaves composer reachable",
+    "conversation Back preserves list search",
+    "conversation Back preserves scroll anchor",
+    "conversation Back retains draft",
+    "browser Back clears phone conversation",
+    "browser Forward restores phone conversation",
+    "query-only Forward cannot leave a modal stuck over chat",
+    "small-phone no horizontal overflow",
+    "small-phone has four compact destinations",
+    "small-phone content clears bottom bar",
+    "small-phone keeps Profile on screen",
+    "phone-landscape no horizontal overflow",
+    "phone-landscape has four compact destinations",
+    "phone-landscape content clears bottom bar",
+    "phone-landscape keeps Profile on screen",
+    "short landscape workspace picker clears bottom navigation",
+    "short landscape Filter has usable height and clears navigation",
+    "short landscape Smart View clears navigation",
+    "tablet-portrait no horizontal overflow",
+    "tablet-portrait has four compact destinations",
+    "tablet-portrait content clears bottom bar",
+    "tablet-portrait keeps Profile on screen",
+    "tablet-landscape no horizontal overflow",
+    "tablet-landscape has four compact destinations",
+    "tablet-landscape content clears bottom bar",
+    "tablet-landscape keeps Profile on screen",
+    "ipad-pro-portrait no horizontal overflow",
+    "ipad-pro-portrait has four compact destinations",
+    "ipad-pro-portrait content clears bottom bar",
+    "ipad-pro-portrait keeps Profile on screen",
+    "ipad-pro-landscape no horizontal overflow",
+    "ipad-pro-landscape has four compact destinations",
+    "ipad-pro-landscape content clears bottom bar",
+    "ipad-pro-landscape keeps Profile on screen",
+    "authorized Admin appears only inside Settings",
+    "Admin destination route is retained",
+    "unauthorized identity has no Admin link",
+    "Integrations permission gate is retained",
+    "subscription destination and More active state",
+    "integrations destination and More active state",
+    "settings destination and More active state",
+    "simulated safe-area reserve keeps content clear",
+    "workspace popup exposes existing entries",
+    "workspace change uses one existing switch action",
+    "workspace change clears Inbox URL per existing contract",
+    "Khmer compact navigation labels remain translated",
+    "desktop keeps original header navigation",
+    "desktop has no bottom navigation destinations",
+    "desktop retains original rail and has no compact tabs",
+    "desktop Settings keeps its original columns and hides the compact Admin card",
+    "no customer sends or route refresh calls",
+    "no runtime errors throughout navigation"
+  ],
+  "screenshots": [
+    "phone-inbox.png",
+    "phone-more.png",
+    "phone-notifications.png",
+    "phone-smart-view.png",
+    "phone-chat.png",
+    "keyboard-viewport-emulation.png",
+    "small-phone.png",
+    "phone-landscape.png",
+    "phone-landscape-workspace.png",
+    "phone-landscape-filter.png",
+    "phone-landscape-smart-view.png",
+    "tablet-portrait.png",
+    "tablet-landscape.png",
+    "ipad-pro-portrait.png",
+    "ipad-pro-landscape.png",
+    "settings-authorized-admin.png",
+    "settings-regular-member.png",
+    "safe-area-reserve-emulation.png",
+    "workspace-switcher.png",
+    "phone-khmer.png",
+    "desktop.png",
+    "desktop-settings.png"
+  ],
+  "errors": [],
+  "beforeMore": {
+    "requests": 11,
+    "subscriptions": 7
+  },
+  "afterMore": {
+    "requests": 11,
+    "subscriptions": 7
+  },
+  "final": {
+    "requests": [
+      {
+        "url": "/api/workspaces",
+        "method": "GET"
+      },
+      {
+        "url": "/api/team-notifications",
+        "method": "GET"
+      },
+      {
+        "url": "/api/system-announcements/current",
+        "method": "GET"
+      },
+      {
+        "url": "/api/inbox/channels",
+        "method": "GET"
+      },
+      {
+        "url": "/api/reminders?summary=1",
+        "method": "GET"
+      },
+      {
+        "url": "/api/inbox/smart-view-options",
+        "method": "GET"
+      },
+      {
+        "url": "/api/inbox/views",
+        "method": "GET"
+      },
+      {
+        "url": "/api/inbox/live-state",
+        "method": "POST"
+      },
+      {
+        "url": "/api/team/permissions",
+        "method": "POST"
+      },
+      {
+        "url": "/api/workspaces",
+        "method": "GET"
+      },
+      {
+        "url": "/api/inbox/live-state",
+        "method": "POST"
+      },
+      {
+        "url": "/api/workspaces",
+        "method": "GET"
+      }
+    ],
+    "subscriptions": [
+      "tenh-header-workspace-sync",
+      "tenh-inbox-v3-00000000-0000-4000-8000-000000000900",
+      "tenh-inbox-context-00000000-0000-4000-8000-000000000900",
+      "tenh-inbox-v3-00000000-0000-4000-8000-000000000903",
+      "tenh-inbox-context-00000000-0000-4000-8000-000000000903",
+      "tenh-presence:00000000-0000-4000-8000-000000000900",
+      "tenh-header-notifications:00000000-0000-4000-8000-000000000901"
+    ],
+    "refreshes": 0,
+    "errors": []
+  },
+  "physicalDeviceTested": false,
+  "settingsContentIsFixture": true,
+  "reportDestinationsAreFixtures": true
+}

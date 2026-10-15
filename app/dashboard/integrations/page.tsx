@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import { WorkspaceLanguageText } from "@/components/display/workspace-language-text";
 import { IntegrationWorkspace } from "@/components/integrations/integration-workspace";
 import { FacebookDisconnectButton } from "@/components/integrations/facebook-disconnect-button";
@@ -32,21 +30,6 @@ function singleParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function StatusDot({ tone = "green" }: { tone?: "green" | "amber" | "slate" }) {
-  return (
-    <span
-      className={`inline-block h-2 w-2 rounded-full ${
-        tone === "green"
-          ? "bg-emerald-600"
-          : tone === "amber"
-            ? "bg-amber-700"
-            : "bg-slate-400"
-      }`}
-      aria-hidden="true"
-    />
-  );
-}
-
 function tokenNeedsAttention(status: string | null) {
   const normalized = status?.trim().toLowerCase() ?? "";
 
@@ -54,6 +37,7 @@ function tokenNeedsAttention(status: string | null) {
     "expired",
     "invalid",
     "error",
+    "failed",
     "revoked",
     "disconnected",
   ].some((value) => normalized.includes(value));
@@ -148,7 +132,7 @@ export default async function IntegrationsPage({
 
   return (
     <main className="h-full min-h-0 overflow-y-auto bg-white p-4 sm:p-5 lg:p-6">
-      <IntegrationWorkspace canManageChannels={canManageChannels} canAddConnections={canAddConnections}>
+      <IntegrationWorkspace key={currentMember.business_id} businessId={currentMember.business_id} canManageChannels={canManageChannels} canAddConnections={canAddConnections}>
         {!canManageChannels ? (
           <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
             <WorkspaceLanguageText
@@ -237,20 +221,17 @@ export default async function IntegrationsPage({
             </div>
           ) : (
             <div className="space-y-3 @min-[960px]:space-y-0 @min-[960px]:rounded-xl @min-[960px]:border @min-[960px]:border-slate-200">
-            <div className="hidden items-center gap-x-4 rounded-t-xl border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-600 @min-[960px]:grid @min-[960px]:grid-cols-[minmax(0,1.6fr)_minmax(0,.8fr)_minmax(0,.85fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.2fr)]" aria-hidden="true">
+            <div className="hidden items-center gap-x-4 rounded-t-xl border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-600 @min-[960px]:grid @min-[960px]:grid-cols-[minmax(0,1fr)_minmax(0,.5fr)_minmax(0,.6fr)_auto]" aria-hidden="true">
               <span><WorkspaceLanguageText en="Page / Account" km="Page / គណនី" /></span>
               <span><WorkspaceLanguageText en="Channel" km="ឆានែល" /></span>
               <span><WorkspaceLanguageText en="Status" km="ស្ថានភាព" /></span>
-              <span><WorkspaceLanguageText en="Features" km="មុខងារ" /></span>
-              <span><WorkspaceLanguageText en="Page ID" km="លេខសម្គាល់ Page" /></span>
               <span className="text-right"><WorkspaceLanguageText en="Actions" km="សកម្មភាព" /></span>
             </div>
               {visiblePages.map((account) => {
                 const pageId = account.platform_account_id;
                 const pageName = account.account_name?.trim() || "Facebook Page";
-                const tokenStatus = account.facebook_token_status?.trim() || "stored";
                 const enabled = account.is_active === true;
-                const tokenAttention = tokenNeedsAttention(account.facebook_token_status);
+                const tokenAttention = !account.facebook_token_status || tokenNeedsAttention(account.facebook_token_status);
                 const needsAttention = !enabled || tokenAttention;
 
                 return (
@@ -258,8 +239,8 @@ export default async function IntegrationsPage({
                     key={account.id}
                     className={`relative rounded-xl border bg-white p-4 @min-[960px]:rounded-none @min-[960px]:border-x-0 @min-[960px]:border-t-0 @min-[960px]:px-4 @min-[960px]:py-3 @min-[960px]:last:rounded-b-xl @min-[960px]:last:border-b-0 ${needsAttention ? "border-amber-300" : "border-slate-200"}`}
                   >
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 @min-[960px]:grid-cols-[minmax(0,1.6fr)_minmax(0,.8fr)_minmax(0,.85fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.2fr)]">
-                      <div className="order-1 col-span-2 flex min-w-0 items-center gap-3 @min-[960px]:col-span-1">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 @min-[960px]:grid-cols-[minmax(0,1fr)_minmax(0,.5fr)_minmax(0,.6fr)_auto]">
+                      <div className="order-1 flex min-w-0 items-center gap-3">
                         <FacebookPageAvatar
                           pageId={pageId}
                           pageName={pageName}
@@ -298,11 +279,11 @@ export default async function IntegrationsPage({
                           </p>
                         </div>
                       </div>
-                      <div className="order-2 flex items-center gap-2 text-xs text-slate-600">
+                      <div className="order-3 flex items-center gap-2 text-xs text-slate-600 @min-[960px]:order-2">
                         <span aria-hidden="true" className="h-5 w-5 shrink-0 bg-[url('/images/channels/messenger.png')] bg-contain bg-center bg-no-repeat" />
                         Messenger
                       </div>
-                      <div className="order-3 justify-self-end @min-[960px]:justify-self-start">
+                      <div className="order-4 justify-self-end @min-[960px]:order-3 @min-[960px]:justify-self-start">
                         <span
                               className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold ${
                                 !enabled || tokenAttention
@@ -310,97 +291,32 @@ export default async function IntegrationsPage({
                                   : "bg-emerald-50 text-emerald-700"
                               }`}
                             >
-                              {!enabled ? (
+                              {tokenAttention ? (
+                                <WorkspaceLanguageText
+                                  en="Reconnect required"
+                                  km="ត្រូវភ្ជាប់ឡើងវិញ"
+                                />
+                              ) : !enabled ? (
                                 <WorkspaceLanguageText
                                   en="Disabled"
                                   km="បានបិទ"
                                 />
-                              ) : tokenAttention ? (
-                                <WorkspaceLanguageText
-                                  en="⚠ Needs attention"
-                                  km="⚠ ត្រូវការពិនិត្យ"
-                                />
                               ) : (
                                 <WorkspaceLanguageText
-                                  en="Connected"
-                                  km="បានភ្ជាប់"
+                                  en="Active"
+                                  km="សកម្ម"
                                 />
                               )}
                             </span>
                       </div>
-                      <div className="order-4 col-span-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-600 @min-[960px]:col-span-1 @min-[960px]:gap-x-3">
-                      <span className="inline-flex items-center gap-1.5">
-                        <StatusDot tone={enabled ? "green" : "amber"} />
-                        Messenger
-                      </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <StatusDot tone={tokenAttention ? "amber" : "green"} />
-                        <WorkspaceLanguageText en="Comments" km="មតិយោបល់" />
-                      </span>
-                      {tokenAttention ? (
-                        <span className="inline-flex items-center gap-1.5">
-                          <StatusDot tone="amber" />
-                          <WorkspaceLanguageText en="Token" km="ថូខិន" />{" "}{tokenStatus}
-                        </span>
-                      ) : null}
-                    </div>
-                      <div className="order-5 col-span-2 min-w-0 break-all text-xs leading-5 text-slate-500 @min-[960px]:col-span-1">
-                        {pageId ? (
-                          <span>
-                            <span className="@min-[960px]:hidden"><WorkspaceLanguageText en="Page ID:" km="លេខសម្គាល់ Page:" /></span>{" "}{pageId}
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="order-6 col-span-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 @min-[960px]:col-span-1 @min-[960px]:justify-end @min-[960px]:border-0 @min-[960px]:pt-0">
-                        {!enabled ? (
-                          <Link
-                            href="/dashboard/settings/users?tab=channels"
-                            className="inline-flex items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 transition hover:bg-amber-100"
-                          >
-                            <WorkspaceLanguageText en="Enable channel" km="បើកឆានែល" />
-                          </Link>
-                        ) : tokenAttention && canManageChannels ? (
-                          <a
-                            href="/api/facebook/oauth/connect"
-                            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 transition hover:bg-slate-50"
-                          >
-                            <WorkspaceLanguageText en="Reconnect" km="ភ្ជាប់ឡើងវិញ" />
-                          </a>
-                        ) : (
-                          <Link
-                            href={`/dashboard/inbox?page=${encodeURIComponent(account.id)}`}
-                            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 transition hover:bg-slate-50"
-                          >
-                            <WorkspaceLanguageText en="Use in Inbox" km="ប្រើក្នុងប្រអប់សារ" />
-                          </Link>
-                        )}
-
-                        {canManageChannels ? (
-                        <details className="relative">
-                          <summary aria-label={`More actions for ${pageName}`} className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-slate-200 bg-white text-lg text-slate-700 transition hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
-                            ⋯
-                          </summary>
-
-                          <div className="absolute right-0 top-full z-50 mt-1 w-[150px] overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
-
-                            <a
-                              href="/api/facebook/oauth/connect"
-                              className="block rounded-lg px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
-                            >
-                              <WorkspaceLanguageText en="Reconnect" km="ភ្ជាប់ឡើងវិញ" />
-                            </a>
-
-                            <div className="my-1 border-t border-slate-100" />
-
-                            <div className="px-1 py-1">
-                              <FacebookDisconnectButton
-                                socialAccountId={account.id}
-                                pageName={pageName}
-                              />
-                            </div>
-                          </div>
-                        </details>
-                        ) : null}
+                      <div className="order-2 flex justify-end @min-[960px]:order-4">
+                        {canManageChannels ? <FacebookDisconnectButton
+                          socialAccountId={account.id}
+                          pageName={pageName}
+                          enabled={enabled}
+                          reconnectRequired={tokenAttention}
+                          businessId={currentMember.business_id}
+                        /> : null}
                       </div>
                     </div>
                     {needsAttention ? (

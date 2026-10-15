@@ -1,0 +1,8 @@
+rtk.exe : [rtk] /!\ No hook installed — run `rtk init -g` for automatic token savings
+At line:2 char:1
++ & 'C:/Users/TUF/AppData/Local/Headroom/headroom/bin/rtk.exe' npx tsc  ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([rtk] /!\ No ho...c token savings:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+TypeScript: No errors found
