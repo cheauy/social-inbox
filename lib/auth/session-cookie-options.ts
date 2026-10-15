@@ -21,3 +21,11 @@ export function sessionCookiePersistence(hint: SessionCookieHint | null) {
 export function isSupabaseAuthCookie(name: string) {
   return /^sb-.+-(?:auth-token|code-verifier)(?:[.\w-]*)?$/.test(name);
 }
+
+export function isProjectAuthCookie(name: string, supabaseUrl: string | undefined) {
+  try {
+    const base = `sb-${new URL(supabaseUrl ?? "").hostname.split(".")[0]}`;
+    const prefix = `${base}-auth-token`;
+    return name === prefix || name.startsWith(`${prefix}.`) || name === `${prefix}-code-verifier` || name.startsWith(`${prefix}-code-verifier.`) || name === `${base}-code-verifier` || name.startsWith(`${base}-code-verifier.`);
+  } catch { return false; }
+}

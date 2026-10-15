@@ -1,0 +1,258 @@
+[
+  {
+    "file": "app/api/bakong/admin/route.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "app/api/bakong/checkout/route.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "app/api/bakong/payments/[attemptId]/route.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "app/api/manual-payments/route.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "app/api/payway/checkout/route.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "app/api/subscription/billing-history/route.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "app/api/subscription/invoices/[invoiceId]/route.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "app/dashboard/subscription/payment/page.tsx",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "components/billing/bakong-reconciliation-panel.tsx",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "components/billing/manual-payment-admin.tsx",
+    "errors": 0,
+    "warnings": 1,
+    "messages": [
+      {
+        "ruleId": "@next/next/no-img-element",
+        "severity": 1,
+        "message": "Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element",
+        "line": 655,
+        "column": 25,
+        "nodeType": "JSXOpeningElement",
+        "endLine": 659,
+        "endColumn": 27
+      }
+    ]
+  },
+  {
+    "file": "components/subscription/bakong-payment-view.tsx",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "components/subscription/billing-history-view.tsx",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "components/subscription/payment-attempt-view.tsx",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "components/subscription/subscription-payment-view.tsx",
+    "errors": 0,
+    "warnings": 4,
+    "messages": [
+      {
+        "ruleId": "react-hooks/exhaustive-deps",
+        "severity": 1,
+        "message": "React Hook useEffect has a missing dependency: 't'. Either include it or remove the dependency array.",
+        "line": 620,
+        "column": 6,
+        "nodeType": "ArrayExpression",
+        "endLine": 620,
+        "endColumn": 21,
+        "suggestions": [
+          {
+            "desc": "Update the dependencies array to be: [statusAttempt, t]",
+            "fix": {
+              "range": [
+                23722,
+                23737
+              ],
+              "text": "[statusAttempt, t]"
+            }
+          }
+        ]
+      },
+      {
+        "ruleId": "@next/next/no-img-element",
+        "severity": 1,
+        "message": "Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element",
+        "line": 1325,
+        "column": 21,
+        "nodeType": "JSXOpeningElement",
+        "endLine": 1330,
+        "endColumn": 23
+      },
+      {
+        "ruleId": "@next/next/no-img-element",
+        "severity": 1,
+        "message": "Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element",
+        "line": 1865,
+        "column": 33,
+        "nodeType": "JSXOpeningElement",
+        "endLine": 1869,
+        "endColumn": 35
+      },
+      {
+        "ruleId": "@next/next/no-img-element",
+        "severity": 1,
+        "message": "Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element",
+        "line": 2042,
+        "column": 13,
+        "nodeType": "JSXOpeningElement",
+        "endLine": 2046,
+        "endColumn": 15
+      }
+    ]
+  },
+  {
+    "file": "lib/bakong/config.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "lib/bakong/money.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "lib/bakong/payments.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "lib/bakong/provider.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "lib/bakong/types.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "lib/billing/payment-attempt.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "lib/billing/payment-display.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "lib/billing/pending-bakong-payment.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "lib/billing/subscription-purchase.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "tests/bakong-api.test.cjs",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "tests/bakong-browser.cjs",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "tests/bakong-fixture.cjs",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "tests/bakong-provider.test.cjs",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "tests/bakong-sql.test.cjs",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "tests/fixtures/bakong-browser.entry.cjs",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "tests/fixtures/payment-attempt-browser.entry.cjs",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "tests/payment-attempt-browser.cjs",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "types/bakong-khqr.d.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  }
+]

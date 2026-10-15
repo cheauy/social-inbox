@@ -67,9 +67,7 @@ function isRetryableAuthError(error: unknown) {
   return (
     name.includes("authretryablefetcherror") ||
     code.includes("retryable") ||
-    status === 502 ||
-    status === 503 ||
-    status === 504 ||
+    (status !== null && status >= 500) ||
     message.includes("network request failed") ||
     message.includes("fetch failed")
   );
@@ -123,6 +121,8 @@ function publicAuthError(error: unknown) {
   }
 
   if (
+    value.status === 429 ||
+    code === "over_request_rate_limit" ||
     code.includes("email_rate") ||
     code.includes("over_email_send_rate_limit") ||
     message.includes("email rate limit") ||
@@ -147,14 +147,12 @@ function publicAuthError(error: unknown) {
   }
 
   if (
-    code.includes("user_already") ||
-    code.includes("email_exists") ||
-    message.includes("already registered") ||
-    message.includes("already exists")
+    code === "user_already_exists" ||
+    code === "email_exists"
   ) {
     return {
       message:
-        "An account with this email already exists. Please sign in instead.",
+        "This email is already registered. Please sign in.",
       status: 409,
       code: "ACCOUNT_EXISTS",
     };
@@ -380,21 +378,11 @@ export async function POST(request: Request) {
 
     if (error) {
       const safe = publicAuthError(error);
-      if (safe.code === "ACCOUNT_EXISTS") return authJson({ success: true, message: "If registration can be completed, check your email." }, 202);
+      if (safe.code === "ACCOUNT_EXISTS") return authJson({ success: false, code: safe.code, error: safe.message }, safe.status);
 
       console.warn("[TENH] Registration rejected by auth service", {
-        code:
-          typeof (error as { code?: unknown }).code === "string"
-            ? (error as { code: string }).code
-            : undefined,
-        status:
-          typeof (error as { status?: unknown }).status === "number"
-            ? (error as { status: number }).status
-            : undefined,
-        type:
-          typeof (error as { name?: unknown }).name === "string"
-            ? (error as { name: string }).name
-            : undefined,
+        code: safe.code,
+        status: safe.status,
       });
 
       return NextResponse.json(
@@ -433,7 +421,7 @@ export async function POST(request: Request) {
     return authJson({ success: true, message: "If registration can be completed, check your email." }, 202);
   } catch (error) {
     const safe = publicAuthError(error);
-    if (safe.code === "ACCOUNT_EXISTS") return authJson({ success: true, message: "If registration can be completed, check your email." }, 202);
+    if (safe.code === "ACCOUNT_EXISTS") return authJson({ success: false, code: safe.code, error: safe.message }, safe.status);
 
     console.warn("[TENH] Registration request failed safely", {
       status: safe.status,

@@ -2,7 +2,7 @@ import { billingCurrency, billingDate, billingNumber, paymentProvenance, type Pa
 
 type Row = Record<string, unknown>;
 export type PaymentAttempt = {
-  kind: "manual" | "payway"; id: string; businessId: string; businessName: string;
+  kind: "manual" | "payway" | "bakong"; id: string; businessId: string; businessName: string;
   planCode: string; billingCycle: string; amount: number | null; currency: string | null;
   reference: string | null; status: string; environment: PaymentEnvironment; invoiceId: string | null;
   application: "active" | "scheduled" | "pending" | "review" | "historical" | null;
@@ -15,13 +15,13 @@ const sameDate = (left: unknown, right: unknown) => Boolean(billingDate(left) &&
 
 /** Describe one saved attempt; never infer its result from another purchase or mutate billing. */
 export function describePaymentAttempt({ source, payment, invoice, subscription, businessName, recoveryEvents = [], now = Date.now() }: {
-  source: "manual" | "payway"; payment: Row; invoice: Row | null; subscription: Row | null;
+  source: "manual" | "payway" | "bakong"; payment: Row; invoice: Row | null; subscription: Row | null;
   businessName: string | null; recoveryEvents?: Row[]; now?: number;
 }): PaymentAttempt {
   const provenance = paymentProvenance(source, payment, invoice);
   const status = text(payment.status) ?? "unknown";
-  const reference = source === "payway" ? text(payment.provider_transaction_id) : text(invoice?.source_transaction_id);
-  const approvedAt = billingDate(source === "payway" ? payment.verified_at : payment.approved_at);
+  const reference = source !== "manual" ? text(payment.provider_transaction_id) : text(invoice?.source_transaction_id);
+  const approvedAt = billingDate(source !== "manual" ? payment.verified_at : payment.approved_at);
   const recovery = recoveryEvents.some(event => event.kind === "recovery_required" && event.source_type === source &&
     event.source_payment_id === payment.id && event.business_id === payment.business_id &&
     (!approvedAt || !billingDate(event.occurred_at) || Date.parse(String(event.occurred_at)) >= Date.parse(approvedAt)));

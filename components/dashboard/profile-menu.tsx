@@ -96,7 +96,6 @@ export function ProfileMenu({ name, email, avatarUrl }: ProfileMenuProps) {
         <div className="p-2"><Link href="/dashboard/profile" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100"><UserIcon />{t("Profile information", "ព័ត៌មានប្រវត្តិរូប")}</Link></div>
         <div className="border-t border-slate-200 p-2">
           <button type="button" onClick={() => void handleSignOut("local")} disabled={signingOut !== null} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"><LogoutIcon />{signingOut === "local" ? t("Signing out…", "កំពុងចាកចេញ…") : t("Sign out this device", "ចាកចេញលើឧបករណ៍នេះ")}</button>
-          <button type="button" onClick={() => void handleSignOut("global")} disabled={signingOut !== null} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"><LogoutIcon />{signingOut === "global" ? t("Signing out…", "កំពុងចាកចេញ…") : t("Sign out all devices", "ចាកចេញពីគ្រប់ឧបករណ៍")}</button>
         </div>
       </div>
     </> : null}

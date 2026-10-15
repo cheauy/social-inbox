@@ -1,0 +1,2682 @@
+{
+  "passed": true,
+  "complete": true,
+  "reports": [
+    {
+      "language": "en",
+      "width": 390,
+      "methodsScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-390-methods.png",
+      "pendingScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-390-pending.png",
+      "reviewScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-390-review.png",
+      "expiredScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-390-expired.png",
+      "deniedScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-390-denied.png",
+      "checks": [
+        {
+          "name": "three distinct compact methods remain present",
+          "passed": true
+        },
+        {
+          "name": "method selection makes no financial mutation",
+          "passed": true
+        },
+        {
+          "name": "three distinct compact methods remain present",
+          "passed": true
+        },
+        {
+          "name": "method selection makes no financial mutation",
+          "passed": true
+        },
+        {
+          "name": "double click prepares one purchase",
+          "passed": true
+        },
+        {
+          "name": "checkout is left and attempt/workspace are preserved in the URL",
+          "passed": true
+        },
+        {
+          "name": "QR status shows exact amount, reference, workspace, expiry and test warning",
+          "passed": true
+        },
+        {
+          "name": "mobile/tablet/desktop have no horizontal overflow",
+          "passed": true
+        },
+        {
+          "name": "deep link retains the committed attempt after real page reload",
+          "passed": true
+        },
+        {
+          "name": "back to old checkout discovers pending attempt without preparing or showing other pay controls",
+          "passed": true
+        },
+        {
+          "name": "sandbox has no active subscription or another payment form",
+          "passed": true
+        },
+        {
+          "name": "activation retry does not verify or pay again",
+          "passed": true
+        },
+        {
+          "name": "Continue pins the purchased workspace and a navigation failure creates no new payment",
+          "passed": true
+        },
+        {
+          "name": "historical approval cannot label current entitlement active",
+          "passed": true
+        },
+        {
+          "name": "late/conflicting payment has review copy and no retry charge",
+          "passed": true
+        },
+        {
+          "name": "there is no provider poll every few seconds or after one minute",
+          "passed": true
+        },
+        {
+          "name": "automatic checks are five-minute minimum and globally persisted remaining count stops at three",
+          "passed": true
+        },
+        {
+          "name": "expired QR and exhausted automatic checks do not declare unpaid or open replacement checkout",
+          "passed": true
+        },
+        {
+          "name": "delayed A response cannot contaminate B or restore its QR",
+          "passed": true
+        },
+        {
+          "name": "revoked access removes private QR and payment details",
+          "passed": true
+        },
+        {
+          "name": "session change immediately removes private payment state",
+          "passed": true
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000201",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000201",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/checkout",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/manual-payments",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/checkout",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/manual-payments",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000201",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000201",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000201",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000202",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000202",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000202",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000002",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/workspaces/switch",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000002"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000202",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000202",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000201",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000201",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000203",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000203",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000203",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000203",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000203",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000204",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000204",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000205",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000205",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000205",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000205",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000205",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000205",
+          "method": "GET",
+          "body": null,
+          "mocked": true
+        }
+      ],
+      "navigations": [
+        "/dashboard/subscription/payment?bakong_attempt=00000000-0000-4000-8000-000000000201&purchase_business=00000000-0000-4000-8000-000000000001"
+      ],
+      "mockedProviderChecks": 4,
+      "actualProviderRequests": 0,
+      "realPayments": 0,
+      "realCredentialsUsed": false
+    },
+    {
+      "language": "en",
+      "width": 768,
+      "methodsScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-768-methods.png",
+      "pendingScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-768-pending.png",
+      "reviewScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-768-review.png",
+      "expiredScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-768-expired.png",
+      "deniedScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-768-denied.png",
+      "checks": [
+        {
+          "name": "three distinct compact methods remain present",
+          "passed": true
+        },
+        {
+          "name": "method selection makes no financial mutation",
+          "passed": true
+        },
+        {
+          "name": "three distinct compact methods remain present",
+          "passed": true
+        },
+        {
+          "name": "method selection makes no financial mutation",
+          "passed": true
+        },
+        {
+          "name": "double click prepares one purchase",
+          "passed": true
+        },
+        {
+          "name": "checkout is left and attempt/workspace are preserved in the URL",
+          "passed": true
+        },
+        {
+          "name": "QR status shows exact amount, reference, workspace, expiry and test warning",
+          "passed": true
+        },
+        {
+          "name": "mobile/tablet/desktop have no horizontal overflow",
+          "passed": true
+        },
+        {
+          "name": "deep link retains the committed attempt after real page reload",
+          "passed": true
+        },
+        {
+          "name": "back to old checkout discovers pending attempt without preparing or showing other pay controls",
+          "passed": true
+        },
+        {
+          "name": "sandbox has no active subscription or another payment form",
+          "passed": true
+        },
+        {
+          "name": "activation retry does not verify or pay again",
+          "passed": true
+        },
+        {
+          "name": "Continue pins the purchased workspace and a navigation failure creates no new payment",
+          "passed": true
+        },
+        {
+          "name": "historical approval cannot label current entitlement active",
+          "passed": true
+        },
+        {
+          "name": "late/conflicting payment has review copy and no retry charge",
+          "passed": true
+        },
+        {
+          "name": "there is no provider poll every few seconds or after one minute",
+          "passed": true
+        },
+        {
+          "name": "automatic checks are five-minute minimum and globally persisted remaining count stops at three",
+          "passed": true
+        },
+        {
+          "name": "expired QR and exhausted automatic checks do not declare unpaid or open replacement checkout",
+          "passed": true
+        },
+        {
+          "name": "delayed A response cannot contaminate B or restore its QR",
+          "passed": true
+        },
+        {
+          "name": "revoked access removes private QR and payment details",
+          "passed": true
+        },
+        {
+          "name": "session change immediately removes private payment state",
+          "passed": true
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000206",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000206",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/checkout",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/manual-payments",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/checkout",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/manual-payments",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000206",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000206",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000206",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000207",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000207",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000207",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000002",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/workspaces/switch",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000002"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000207",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000207",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000206",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000206",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000208",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000208",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000208",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000208",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000208",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000209",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000209",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000210",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000210",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000210",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000210",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000210",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000210",
+          "method": "GET",
+          "body": null,
+          "mocked": true
+        }
+      ],
+      "navigations": [
+        "/dashboard/subscription/payment?bakong_attempt=00000000-0000-4000-8000-000000000206&purchase_business=00000000-0000-4000-8000-000000000001"
+      ],
+      "mockedProviderChecks": 4,
+      "actualProviderRequests": 0,
+      "realPayments": 0,
+      "realCredentialsUsed": false
+    },
+    {
+      "language": "en",
+      "width": 1024,
+      "methodsScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-1024-methods.png",
+      "pendingScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-1024-pending.png",
+      "reviewScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-1024-review.png",
+      "expiredScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-1024-expired.png",
+      "deniedScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-1024-denied.png",
+      "checks": [
+        {
+          "name": "three distinct compact methods remain present",
+          "passed": true
+        },
+        {
+          "name": "method selection makes no financial mutation",
+          "passed": true
+        },
+        {
+          "name": "three distinct compact methods remain present",
+          "passed": true
+        },
+        {
+          "name": "method selection makes no financial mutation",
+          "passed": true
+        },
+        {
+          "name": "double click prepares one purchase",
+          "passed": true
+        },
+        {
+          "name": "checkout is left and attempt/workspace are preserved in the URL",
+          "passed": true
+        },
+        {
+          "name": "QR status shows exact amount, reference, workspace, expiry and test warning",
+          "passed": true
+        },
+        {
+          "name": "mobile/tablet/desktop have no horizontal overflow",
+          "passed": true
+        },
+        {
+          "name": "deep link retains the committed attempt after real page reload",
+          "passed": true
+        },
+        {
+          "name": "back to old checkout discovers pending attempt without preparing or showing other pay controls",
+          "passed": true
+        },
+        {
+          "name": "sandbox has no active subscription or another payment form",
+          "passed": true
+        },
+        {
+          "name": "activation retry does not verify or pay again",
+          "passed": true
+        },
+        {
+          "name": "Continue pins the purchased workspace and a navigation failure creates no new payment",
+          "passed": true
+        },
+        {
+          "name": "historical approval cannot label current entitlement active",
+          "passed": true
+        },
+        {
+          "name": "late/conflicting payment has review copy and no retry charge",
+          "passed": true
+        },
+        {
+          "name": "there is no provider poll every few seconds or after one minute",
+          "passed": true
+        },
+        {
+          "name": "automatic checks are five-minute minimum and globally persisted remaining count stops at three",
+          "passed": true
+        },
+        {
+          "name": "expired QR and exhausted automatic checks do not declare unpaid or open replacement checkout",
+          "passed": true
+        },
+        {
+          "name": "delayed A response cannot contaminate B or restore its QR",
+          "passed": true
+        },
+        {
+          "name": "revoked access removes private QR and payment details",
+          "passed": true
+        },
+        {
+          "name": "session change immediately removes private payment state",
+          "passed": true
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000211",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000211",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/checkout",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/manual-payments",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/checkout",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/manual-payments",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000211",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000211",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000211",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000212",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000212",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000212",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000002",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/workspaces/switch",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000002"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000212",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000212",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000211",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000211",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000213",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000213",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000213",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000213",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000213",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000214",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000214",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000215",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000215",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000215",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000215",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000215",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000215",
+          "method": "GET",
+          "body": null,
+          "mocked": true
+        }
+      ],
+      "navigations": [
+        "/dashboard/subscription/payment?bakong_attempt=00000000-0000-4000-8000-000000000211&purchase_business=00000000-0000-4000-8000-000000000001"
+      ],
+      "mockedProviderChecks": 4,
+      "actualProviderRequests": 0,
+      "realPayments": 0,
+      "realCredentialsUsed": false
+    },
+    {
+      "language": "en",
+      "width": 1440,
+      "methodsScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-1440-methods.png",
+      "pendingScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-1440-pending.png",
+      "reviewScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-1440-review.png",
+      "expiredScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-1440-expired.png",
+      "deniedScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\en-1440-denied.png",
+      "checks": [
+        {
+          "name": "three distinct compact methods remain present",
+          "passed": true
+        },
+        {
+          "name": "method selection makes no financial mutation",
+          "passed": true
+        },
+        {
+          "name": "three distinct compact methods remain present",
+          "passed": true
+        },
+        {
+          "name": "method selection makes no financial mutation",
+          "passed": true
+        },
+        {
+          "name": "double click prepares one purchase",
+          "passed": true
+        },
+        {
+          "name": "checkout is left and attempt/workspace are preserved in the URL",
+          "passed": true
+        },
+        {
+          "name": "QR status shows exact amount, reference, workspace, expiry and test warning",
+          "passed": true
+        },
+        {
+          "name": "mobile/tablet/desktop have no horizontal overflow",
+          "passed": true
+        },
+        {
+          "name": "deep link retains the committed attempt after real page reload",
+          "passed": true
+        },
+        {
+          "name": "back to old checkout discovers pending attempt without preparing or showing other pay controls",
+          "passed": true
+        },
+        {
+          "name": "sandbox has no active subscription or another payment form",
+          "passed": true
+        },
+        {
+          "name": "activation retry does not verify or pay again",
+          "passed": true
+        },
+        {
+          "name": "Continue pins the purchased workspace and a navigation failure creates no new payment",
+          "passed": true
+        },
+        {
+          "name": "historical approval cannot label current entitlement active",
+          "passed": true
+        },
+        {
+          "name": "late/conflicting payment has review copy and no retry charge",
+          "passed": true
+        },
+        {
+          "name": "there is no provider poll every few seconds or after one minute",
+          "passed": true
+        },
+        {
+          "name": "automatic checks are five-minute minimum and globally persisted remaining count stops at three",
+          "passed": true
+        },
+        {
+          "name": "expired QR and exhausted automatic checks do not declare unpaid or open replacement checkout",
+          "passed": true
+        },
+        {
+          "name": "delayed A response cannot contaminate B or restore its QR",
+          "passed": true
+        },
+        {
+          "name": "revoked access removes private QR and payment details",
+          "passed": true
+        },
+        {
+          "name": "session change immediately removes private payment state",
+          "passed": true
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000216",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000216",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/checkout",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/manual-payments",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/checkout",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/manual-payments",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000216",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000216",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000216",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000217",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000217",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000217",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000002",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/workspaces/switch",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000002"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000217",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000217",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000216",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000216",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000218",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000218",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000218",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000218",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000218",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000219",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000219",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000220",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000220",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000220",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000220",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000220",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000220",
+          "method": "GET",
+          "body": null,
+          "mocked": true
+        }
+      ],
+      "navigations": [
+        "/dashboard/subscription/payment?bakong_attempt=00000000-0000-4000-8000-000000000216&purchase_business=00000000-0000-4000-8000-000000000001"
+      ],
+      "mockedProviderChecks": 4,
+      "actualProviderRequests": 0,
+      "realPayments": 0,
+      "realCredentialsUsed": false
+    },
+    {
+      "language": "km",
+      "width": 390,
+      "methodsScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-390-methods.png",
+      "pendingScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-390-pending.png",
+      "reviewScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-390-review.png",
+      "expiredScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-390-expired.png",
+      "deniedScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-390-denied.png",
+      "checks": [
+        {
+          "name": "three distinct compact methods remain present",
+          "passed": true
+        },
+        {
+          "name": "method selection makes no financial mutation",
+          "passed": true
+        },
+        {
+          "name": "three distinct compact methods remain present",
+          "passed": true
+        },
+        {
+          "name": "method selection makes no financial mutation",
+          "passed": true
+        },
+        {
+          "name": "double click prepares one purchase",
+          "passed": true
+        },
+        {
+          "name": "checkout is left and attempt/workspace are preserved in the URL",
+          "passed": true
+        },
+        {
+          "name": "QR status shows exact amount, reference, workspace, expiry and test warning",
+          "passed": true
+        },
+        {
+          "name": "mobile/tablet/desktop have no horizontal overflow",
+          "passed": true
+        },
+        {
+          "name": "deep link retains the committed attempt after real page reload",
+          "passed": true
+        },
+        {
+          "name": "back to old checkout discovers pending attempt without preparing or showing other pay controls",
+          "passed": true
+        },
+        {
+          "name": "sandbox has no active subscription or another payment form",
+          "passed": true
+        },
+        {
+          "name": "activation retry does not verify or pay again",
+          "passed": true
+        },
+        {
+          "name": "Continue pins the purchased workspace and a navigation failure creates no new payment",
+          "passed": true
+        },
+        {
+          "name": "historical approval cannot label current entitlement active",
+          "passed": true
+        },
+        {
+          "name": "late/conflicting payment has review copy and no retry charge",
+          "passed": true
+        },
+        {
+          "name": "there is no provider poll every few seconds or after one minute",
+          "passed": true
+        },
+        {
+          "name": "automatic checks are five-minute minimum and globally persisted remaining count stops at three",
+          "passed": true
+        },
+        {
+          "name": "expired QR and exhausted automatic checks do not declare unpaid or open replacement checkout",
+          "passed": true
+        },
+        {
+          "name": "delayed A response cannot contaminate B or restore its QR",
+          "passed": true
+        },
+        {
+          "name": "revoked access removes private QR and payment details",
+          "passed": true
+        },
+        {
+          "name": "session change immediately removes private payment state",
+          "passed": true
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000221",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000221",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/checkout",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/manual-payments",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/checkout",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/manual-payments",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000221",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000221",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000221",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000222",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000222",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000222",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000002",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/workspaces/switch",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000002"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000222",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000222",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000221",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000221",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000223",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000223",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000223",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000223",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000223",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000224",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000224",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000225",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000225",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000225",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000225",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000225",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000225",
+          "method": "GET",
+          "body": null,
+          "mocked": true
+        }
+      ],
+      "navigations": [
+        "/dashboard/subscription/payment?bakong_attempt=00000000-0000-4000-8000-000000000221&purchase_business=00000000-0000-4000-8000-000000000001"
+      ],
+      "mockedProviderChecks": 4,
+      "actualProviderRequests": 0,
+      "realPayments": 0,
+      "realCredentialsUsed": false
+    },
+    {
+      "language": "km",
+      "width": 768,
+      "methodsScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-768-methods.png",
+      "pendingScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-768-pending.png",
+      "reviewScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-768-review.png",
+      "expiredScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-768-expired.png",
+      "deniedScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-768-denied.png",
+      "checks": [
+        {
+          "name": "three distinct compact methods remain present",
+          "passed": true
+        },
+        {
+          "name": "method selection makes no financial mutation",
+          "passed": true
+        },
+        {
+          "name": "three distinct compact methods remain present",
+          "passed": true
+        },
+        {
+          "name": "method selection makes no financial mutation",
+          "passed": true
+        },
+        {
+          "name": "double click prepares one purchase",
+          "passed": true
+        },
+        {
+          "name": "checkout is left and attempt/workspace are preserved in the URL",
+          "passed": true
+        },
+        {
+          "name": "QR status shows exact amount, reference, workspace, expiry and test warning",
+          "passed": true
+        },
+        {
+          "name": "mobile/tablet/desktop have no horizontal overflow",
+          "passed": true
+        },
+        {
+          "name": "deep link retains the committed attempt after real page reload",
+          "passed": true
+        },
+        {
+          "name": "back to old checkout discovers pending attempt without preparing or showing other pay controls",
+          "passed": true
+        },
+        {
+          "name": "sandbox has no active subscription or another payment form",
+          "passed": true
+        },
+        {
+          "name": "activation retry does not verify or pay again",
+          "passed": true
+        },
+        {
+          "name": "Continue pins the purchased workspace and a navigation failure creates no new payment",
+          "passed": true
+        },
+        {
+          "name": "historical approval cannot label current entitlement active",
+          "passed": true
+        },
+        {
+          "name": "late/conflicting payment has review copy and no retry charge",
+          "passed": true
+        },
+        {
+          "name": "there is no provider poll every few seconds or after one minute",
+          "passed": true
+        },
+        {
+          "name": "automatic checks are five-minute minimum and globally persisted remaining count stops at three",
+          "passed": true
+        },
+        {
+          "name": "expired QR and exhausted automatic checks do not declare unpaid or open replacement checkout",
+          "passed": true
+        },
+        {
+          "name": "delayed A response cannot contaminate B or restore its QR",
+          "passed": true
+        },
+        {
+          "name": "revoked access removes private QR and payment details",
+          "passed": true
+        },
+        {
+          "name": "session change immediately removes private payment state",
+          "passed": true
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000226",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000226",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/checkout",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/manual-payments",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/checkout",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/manual-payments",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000226",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000226",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000226",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000227",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000227",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000227",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000002",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/workspaces/switch",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000002"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000227",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000227",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000226",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000226",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000228",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000228",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000228",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000228",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000228",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000229",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000229",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000230",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000230",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000230",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000230",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000230",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000230",
+          "method": "GET",
+          "body": null,
+          "mocked": true
+        }
+      ],
+      "navigations": [
+        "/dashboard/subscription/payment?bakong_attempt=00000000-0000-4000-8000-000000000226&purchase_business=00000000-0000-4000-8000-000000000001"
+      ],
+      "mockedProviderChecks": 4,
+      "actualProviderRequests": 0,
+      "realPayments": 0,
+      "realCredentialsUsed": false
+    },
+    {
+      "language": "km",
+      "width": 1024,
+      "methodsScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-1024-methods.png",
+      "pendingScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-1024-pending.png",
+      "reviewScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-1024-review.png",
+      "expiredScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-1024-expired.png",
+      "deniedScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-1024-denied.png",
+      "checks": [
+        {
+          "name": "three distinct compact methods remain present",
+          "passed": true
+        },
+        {
+          "name": "method selection makes no financial mutation",
+          "passed": true
+        },
+        {
+          "name": "three distinct compact methods remain present",
+          "passed": true
+        },
+        {
+          "name": "method selection makes no financial mutation",
+          "passed": true
+        },
+        {
+          "name": "double click prepares one purchase",
+          "passed": true
+        },
+        {
+          "name": "checkout is left and attempt/workspace are preserved in the URL",
+          "passed": true
+        },
+        {
+          "name": "QR status shows exact amount, reference, workspace, expiry and test warning",
+          "passed": true
+        },
+        {
+          "name": "mobile/tablet/desktop have no horizontal overflow",
+          "passed": true
+        },
+        {
+          "name": "deep link retains the committed attempt after real page reload",
+          "passed": true
+        },
+        {
+          "name": "back to old checkout discovers pending attempt without preparing or showing other pay controls",
+          "passed": true
+        },
+        {
+          "name": "sandbox has no active subscription or another payment form",
+          "passed": true
+        },
+        {
+          "name": "activation retry does not verify or pay again",
+          "passed": true
+        },
+        {
+          "name": "Continue pins the purchased workspace and a navigation failure creates no new payment",
+          "passed": true
+        },
+        {
+          "name": "historical approval cannot label current entitlement active",
+          "passed": true
+        },
+        {
+          "name": "late/conflicting payment has review copy and no retry charge",
+          "passed": true
+        },
+        {
+          "name": "there is no provider poll every few seconds or after one minute",
+          "passed": true
+        },
+        {
+          "name": "automatic checks are five-minute minimum and globally persisted remaining count stops at three",
+          "passed": true
+        },
+        {
+          "name": "expired QR and exhausted automatic checks do not declare unpaid or open replacement checkout",
+          "passed": true
+        },
+        {
+          "name": "delayed A response cannot contaminate B or restore its QR",
+          "passed": true
+        },
+        {
+          "name": "revoked access removes private QR and payment details",
+          "passed": true
+        },
+        {
+          "name": "session change immediately removes private payment state",
+          "passed": true
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000231",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000231",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/checkout",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/manual-payments",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/checkout",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/manual-payments",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000231",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000231",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000231",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000232",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000232",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000232",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000002",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/workspaces/switch",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000002"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000232",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000232",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000231",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000231",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000233",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000233",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000233",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000233",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000233",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000234",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000234",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000235",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000235",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000235",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000235",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000235",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000235",
+          "method": "GET",
+          "body": null,
+          "mocked": true
+        }
+      ],
+      "navigations": [
+        "/dashboard/subscription/payment?bakong_attempt=00000000-0000-4000-8000-000000000231&purchase_business=00000000-0000-4000-8000-000000000001"
+      ],
+      "mockedProviderChecks": 4,
+      "actualProviderRequests": 0,
+      "realPayments": 0,
+      "realCredentialsUsed": false
+    },
+    {
+      "language": "km",
+      "width": 1440,
+      "methodsScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-1440-methods.png",
+      "pendingScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-1440-pending.png",
+      "reviewScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-1440-review.png",
+      "expiredScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-1440-expired.png",
+      "deniedScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\bakong-20261015\\browser\\km-1440-denied.png",
+      "checks": [
+        {
+          "name": "three distinct compact methods remain present",
+          "passed": true
+        },
+        {
+          "name": "method selection makes no financial mutation",
+          "passed": true
+        },
+        {
+          "name": "three distinct compact methods remain present",
+          "passed": true
+        },
+        {
+          "name": "method selection makes no financial mutation",
+          "passed": true
+        },
+        {
+          "name": "double click prepares one purchase",
+          "passed": true
+        },
+        {
+          "name": "checkout is left and attempt/workspace are preserved in the URL",
+          "passed": true
+        },
+        {
+          "name": "QR status shows exact amount, reference, workspace, expiry and test warning",
+          "passed": true
+        },
+        {
+          "name": "mobile/tablet/desktop have no horizontal overflow",
+          "passed": true
+        },
+        {
+          "name": "deep link retains the committed attempt after real page reload",
+          "passed": true
+        },
+        {
+          "name": "back to old checkout discovers pending attempt without preparing or showing other pay controls",
+          "passed": true
+        },
+        {
+          "name": "sandbox has no active subscription or another payment form",
+          "passed": true
+        },
+        {
+          "name": "activation retry does not verify or pay again",
+          "passed": true
+        },
+        {
+          "name": "Continue pins the purchased workspace and a navigation failure creates no new payment",
+          "passed": true
+        },
+        {
+          "name": "historical approval cannot label current entitlement active",
+          "passed": true
+        },
+        {
+          "name": "late/conflicting payment has review copy and no retry charge",
+          "passed": true
+        },
+        {
+          "name": "there is no provider poll every few seconds or after one minute",
+          "passed": true
+        },
+        {
+          "name": "automatic checks are five-minute minimum and globally persisted remaining count stops at three",
+          "passed": true
+        },
+        {
+          "name": "expired QR and exhausted automatic checks do not declare unpaid or open replacement checkout",
+          "passed": true
+        },
+        {
+          "name": "delayed A response cannot contaminate B or restore its QR",
+          "passed": true
+        },
+        {
+          "name": "revoked access removes private QR and payment details",
+          "passed": true
+        },
+        {
+          "name": "session change immediately removes private payment state",
+          "passed": true
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000236",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000236",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/checkout",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/manual-payments",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/checkout",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/manual-payments",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000236",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000236",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000236",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000237",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000237",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000237",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000002",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/workspaces/switch",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000002"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000237",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000237",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000236",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000236",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000238",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000238",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000238",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000238",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000238",
+          "method": "POST",
+          "body": {
+            "businessId": "00000000-0000-4000-8000-000000000001",
+            "action": "check"
+          },
+          "mocked": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000239",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000239",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000240",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000240",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000240",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000240",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000240",
+          "method": "GET",
+          "body": null,
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/bakong/payments/00000000-0000-4000-8000-000000000240",
+          "method": "GET",
+          "body": null,
+          "mocked": true
+        }
+      ],
+      "navigations": [
+        "/dashboard/subscription/payment?bakong_attempt=00000000-0000-4000-8000-000000000236&purchase_business=00000000-0000-4000-8000-000000000001"
+      ],
+      "mockedProviderChecks": 4,
+      "actualProviderRequests": 0,
+      "realPayments": 0,
+      "realCredentialsUsed": false
+    }
+  ],
+  "browserErrors": [],
+  "network": [
+    "http://127.0.0.1:49767/fixture.html?lang=en&width=390",
+    "http://127.0.0.1:49767/bundle.js",
+    "http://127.0.0.1:49767/favicon.ico",
+    "http://127.0.0.1:49767/favicon.ico",
+    "http://127.0.0.1:49767/favicon.ico",
+    "data:image/png;base64,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",
+    "http://127.0.0.1:49767/fixture.html?bakong_attempt=00000000-0000-4000-8000-000000000201&purchase_business=00000000-0000-4000-8000-000000000001&lang=en",
+    "http://127.0.0.1:49767/bundle.js",
+    "http://127.0.0.1:49767/favicon.ico",
+    "data:image/png;base64,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",
+    "http://127.0.0.1:49767/fixture.html?lang=en&width=768",
+    "http://127.0.0.1:49767/bundle.js",
+    "http://127.0.0.1:49767/favicon.ico",
+    "http://127.0.0.1:49767/favicon.ico",
+    "data:image/png;base64,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",
+    "http://127.0.0.1:49767/favicon.ico",
+    "http://127.0.0.1:49767/fixture.html?bakong_attempt=00000000-0000-4000-8000-000000000206&purchase_business=00000000-0000-4000-8000-000000000001&lang=en",
+    "http://127.0.0.1:49767/bundle.js",
+    "http://127.0.0.1:49767/favicon.ico",
+    "data:image/png;base64,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",
+    "http://127.0.0.1:49767/fixture.html?lang=en&width=1024",
+    "http://127.0.0.1:49767/bundle.js",
+    "http://127.0.0.1:49767/favicon.ico",
+    "http://127.0.0.1:49767/favicon.ico",
+    "data:image/png;base64,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",
+    "http://127.0.0.1:49767/favicon.ico",
+    "http://127.0.0.1:49767/fixture.html?bakong_attempt=00000000-0000-4000-8000-000000000211&purchase_business=00000000-0000-4000-8000-000000000001&lang=en",
+    "http://127.0.0.1:49767/bundle.js",
+    "http://127.0.0.1:49767/favicon.ico",
+    "data:image/png;base64,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",
+    "http://127.0.0.1:49767/fixture.html?lang=en&width=1440",
+    "http://127.0.0.1:49767/bundle.js",
+    "http://127.0.0.1:49767/favicon.ico",
+    "http://127.0.0.1:49767/favicon.ico",
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARgAAAEYCAYAAACHjumMAAAAAklEQVR4AewaftIAAAzrSURBVO3BUY7rULIkwfAD7X/LPvebSGBIUFlP3R1m+E+qqhacVFUtOamqWnJSVbXkpKpqyUlV1ZKTqqolJ1VVS06qqpacVFUtOamqWnJSVbXkk4eA/DI1vwDIE2reAnKlZgJkomYC5C01bwGZqLkLyFtqngBypWYC5JepueukqmrJSVXVkpOqqiUnVVVLTqqqlnzyJWr+EpAngFyp2aJmC5AtQCZqroBM1EyAXKnZAuQJNW8Bmah5S81fAvLWSVXVkpOqqiUnVVVLTqqqlnyyCMg3qHlLzRWQt9RMgEzUTID8AjV3qZkAmai5AjJR8wSQt4BcqfllQL5BzYaTqqolJ1VVS06qqpacVFUtOamqWvJJ3aZmi5q7gNwFZKLmLSBPALlSMwHylpoJkLuATNQ8AeRKzX+7k6qqJSdVVUtOqqqWnFRVLTmpqlryyf8IIFdqngDyFpCJmrfUXAGZAPlraq6ATNRMgEzUvKXmLiD1/3dSVbXkpKpqyUlV1ZKTqqolJ1VVSz5ZpOZXqLkLyETNFZAn1EyAbFAzATJR8xaQCZC7gDwB5ErNRM1ban6Bml92UlW15KSqaslJVdWSk6qqJZ98CZBfBuRKzRY1EyATNVdAJmomQK7UfAOQKzVPqLkCMlEzATJRcwVkomYC5ErNBMhEzQTIlZongPynOamqWnJSVbXkpKpqyUlV1ZKTqqol+E/qzwCZqLkCMlFzF5An1LwF5C41TwC5S80EyETNFZAtav7bnVRVLTmpqlpyUlW15KSqaslJVdWSTx4CMlFzBWSiZgJkouYKyETNXUAmaiZArtR8A5C3gLwFZIuaLWqugDwB5ErNLwMyUfMEkCs1b51UVS05qapaclJVteSkqmoJ/pMvAHKXmieAXKl5AsiVmreAPKHmLwH5BjVXQN5SMwEyUTMBcpeaCZC71LwFZKLmLSBvqXnrpKpqyUlV1ZKTqqolJ1VVS06qqpZ88hCQLUAmaq6ATNRM1NwF5K8BuUvNXWomQJ4AcpeaCZC71EyATNRcAXlLzQTIE2ruAvKWmgmQiZorIBM1d51UVS05qapaclJVteSkqmrJSVXVkk8eUjMBcqXmCTV3qZkAeUvNFiATNVdAJkAmarao+WVANgCZqJkAmQC5UjMBskXNBMiVmrdOqqqWnFRVLTmpqlpyUlW15JOHgEzUbAGyQc0EyETNFZCJmomaCZArNU8AuVIzUTMBMgFypWYCZKJmi5orIBMgEzV3AZmo2aLmCsgTQCZqroBM1Nx1UlW15KSqaslJVdWSk6qqJSdVVUs++RIgV2omQN5S89eA3AXkCTV3AXkLyBNqroA8AeQuNRM1b6mZAPllQK7UTIBM1EyAXKl566SqaslJVdWSk6qqJSdVVUtOqqqWfPKQmgmQKyBbgEzUTIBcqXlCzV1AJmruAjJRMwFyBeQJNRMgd6m5C8gTQCZq3lJzF5C/puYKyETNBMhdQCZq7jqpqlpyUlW15KSqaslJVdWSk6qqJZ8sUvMNQK7UTIDcBWSiZgLkLjVPALlS85aaCZAJkImaKyBPALlSs0XNE0D+EpAngFypmQCZqJkAuVLz1klV1ZKTqqolJ1VVS06qqpZ88hCQiZq7gLwFZKLmLSATNVdAvkHNFZCJmi1qJkCu1LwFZKLmLSATNb9MzQTIFZCJmgmQiZoNJ1VVS06qqpacVFUtOamqWnJSVbUE/8kDQCZqroA8oWYC5ErNBMhEzV1AJmruAjJRMwFypWYCZKLmLSBvqbkLyBY1bwGZqPlrQK7UTIBM1EyA3KXmrpOqqiUnVVVLTqqqlpxUVS05qapa8sn/ATUTIHcBmaj5bwHkCSB3qZmoeQvIXWq+AcgGNRMgEzUTIFdqJkAmaq6ATNS8peatk6qqJSdVVUtOqqqWnFRVLfnkITUTIFdqJkDeUjMB8gvUvKXmCSBvAZmouUvNBMhdQCZq7gIyUTMBcpeaCZCJmisgEzVvAXlCzRWQiZq7TqqqlpxUVS05qapaclJVteSkqmoJ/pMvAHKXmgmQ/zRqJkAmat4C8p9IzRWQiZoJkImaKyBPqHkLyC9Q8xaQiZq7TqqqlpxUVS05qapaclJVteSkqmoJ/pMHgEzUXAH5BjVvAdmgZgJki5q3gEzUvAXkLjV/DchEzV1AJmomQK7UvAXkCTUTIFdq3jqpqlpyUlW15KSqaslJVdWSk6qqJZ/8H1AzAXIXkImau9RMgEzUXAGZqJkAuUvNBMhEzRWQbwBypeYJNW8BuUvNE0Cu1EzUbAEyUbNFzRWQiZq7TqqqlpxUVS05qapaclJVteSTh9TcpWaLmreATNRMgNwFZKJmAuQtIFvUvAXkSs0EyBY1EyBvAXlLzV8DcqXmrZOqqiUnVVVLTqqqlpxUVS05qapa8slDQN5S8wSQDWreUjMB8tfU3AVkAmSLmrvUTIDcBeSXAdmi5i0gEzV3nVRVLTmpqlpyUlW15KSqaslJVdWSTx5SMwFypWYCZKLmLSC/QM0EyETNFZC3gEzUTIBM1LwF5C+peQLIFZBvUHMFZKLmLiATIG+peeukqmrJSVXVkpOqqiUnVVVLPnkIyETNW0DeUjMBcgVkomai5i4gEzVvqblLzQTIRM1bQO5S8w1AroBM1EzUXAGZqPllat4CMlFz10lV1ZKTqqolJ1VVS06qqpacVFUtwX/yBUDeUjMBcqXmCSBvqXkLyETNFZAn1FwBmaiZAHlLzV1AJmq2AJmo2QLkSs0EyETNFZCJmgmQiZoNJ1VVS06qqpacVFUtOamqWnJSVbUE/8kDQCZqroD8NTV3AZmomQC5UvMNQK7UTIBM1LwFZIuaLUCu1EyAvKVmC5C71EyATNRMgNyl5q6TqqolJ1VVS06qqpacVFUtOamqWvLJlwDZouZXAZmomQCZqLlLzQTIXWqeUHMFZKJmC5C31EyA/CUgW9S8peatk6qqJSdVVUtOqqqWnFRVLfnkITVvAXkLyBNqNqh5Qs0EyAY1T6i5S80TQN5SMwGyQc03ALlLzRYgdwGZqLnrpKpqyUlV1ZKTqqolJ1VVS06qqpZ88iVA3lIzAXKlZgLkLSATNVvUXAF5C8hEzQTIW2omau4C8guATNRMgEzU3AVki5q7gLx1UlW15KSqaslJVdWSk6qqJSdVVUs+eQjILwDylpongNyl5gkgV2omQO5SMwGyBchEzRWQiZoJkImaKyATNRM1b6n5BWomQCZqNpxUVS05qapaclJVteSkqmrJJ4vUPAHkLjVPAHlLzS9Q85aat4BM1EyAbAFyF5C/puYuNRMgW4BsOKmqWnJSVbXkpKpqyUlV1ZKTqqolnzyk5q+puQLylpongFypmQD5BUC+Qc2Vmi1AJmomQK7UPAHkSs0EyETNBMhdat4CMlHzl06qqpacVFUtOamqWnJSVbXkpKpqySdfAuQvqZkAmai5AvKEmisgEzUTIG8BmajZAmSDml8GZKJmAmSi5i4gEzV3AZkAmai5AjJRc9dJVdWSk6qqJSdVVUtOqqqWnFRVLcF/8gCQiZq7gDyh5grIW2omQCZqroBM1GwBMlFzF5BfpuYtIBM1dwH5T6RmAuQtNXedVFUtOamqWnJSVbXkpKpqCf6T/wFA7lIzAXKlZgLkCTVXQCZq7gLyhJq3gEzUXAGZqHkLyBNqroBM1EyA3KXmLSATNU8AuVLz1klV1ZKTqqolJ1VVS06qqpacVFUt+eQhIL9MzUTNFZAJkLfUvKVmAmSi5krNBMgTQK7UPAHkLiBb1EyAXKmZAJmomQC5C8hEzVtAJmqugEzU3HVSVbXkpKpqyUlV1ZKTqqolJ1VVSz75EjV/Cchbat4CskXNRM0EyBY1f0nNBMhdaiZA3lKzRc1bQCZq7lLz1klV1ZKTqqolJ1VVS06qqpZ8sgjIN6h5C8hbaq7UTIBM1LwF5C41EyATIH9JzV9TMwHyFpC7gGxRMwEyUbPhpKpqyUlV1ZKTqqolJ1VVS06qqpZ88j9CzVtA7lLz19S8pWYC5ErNBMhfU7MByDeouQIyUTMB8paaCZArNW+dVFUtOamqWnJSVbXkpKpqyUlV1ZJP/kcA+UtAJmomQK7UTNRMgNyl5i0gW4D8MjV/Tc0WNVdAJmruOqmqWnJSVbXkpKpqyUlV1ZKTqqolnyxS8yvUXAGZqHkLyBNqroBM1EzUXAH5BjV3AZmoeUvNW0DuUjMBMlFzl5ongFyp2aLmrZOqqiUnVVVLTqqqlpxUVS355EuA/DIgdwGZqHkLyETNlZoJkImau4D8AiBPAJmoeUvNFZCJmieA3KXmLSBPqLkCMlFz10lV1ZKTqqolJ1VVS06qqpacVFUtwX9SVbXgpKpqyUlV1ZKTqqolJ1VVS06qqpacVFUtOamqWnJSVbXkpKpqyUlV1ZL/BxDC+2MyGEesAAAAAElFTkSuQmCC",
+    "http://127.0.0.1:49767/favicon.ico",
+    "http://127.0.0.1:49767/fixture.html?bakong_attempt=00000000-0000-4000-8000-000000000216&purchase_business=00000000-0000-4000-8000-000000000001&lang=en",
+    "http://127.0.0.1:49767/bundle.js",
+    "http://127.0.0.1:49767/favicon.ico",
+    "data:image/png;base64,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",
+    "http://127.0.0.1:49767/fixture.html?lang=km&width=390",
+    "http://127.0.0.1:49767/bundle.js",
+    "http://127.0.0.1:49767/favicon.ico",
+    "http://127.0.0.1:49767/favicon.ico",
+    "data:image/png;base64,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",
+    "http://127.0.0.1:49767/favicon.ico",
+    "http://127.0.0.1:49767/fixture.html?bakong_attempt=00000000-0000-4000-8000-000000000221&purchase_business=00000000-0000-4000-8000-000000000001&lang=km",
+    "http://127.0.0.1:49767/bundle.js",
+    "http://127.0.0.1:49767/favicon.ico",
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARgAAAEYCAYAAACHjumMAAAAAklEQVR4AewaftIAAAzrSURBVO3BUY7rULIkwfAD7X/LPvebSGBIUFlP3R1m+E+qqhacVFUtOamqWnJSVbXkpKpqyUlV1ZKTqqolJ1VVS06qqpacVFUtOamqWnJSVbXkk4eA/DI1vwDIE2reAnKlZgJkomYC5C01bwGZqLkLyFtqngBypWYC5JepueukqmrJSVXVkpOqqiUnVVVLTqqqlnzyJWr+EpAngFyp2aJmC5AtQCZqroBM1EyAXKnZAuQJNW8Bmah5S81fAvLWSVXVkpOqqiUnVVVLTqqqlnyyCMg3qHlLzRWQt9RMgEzUTID8AjV3qZkAmai5AjJR8wSQt4BcqfllQL5BzYaTqqolJ1VVS06qqpacVFUtOamqWvJJ3aZmi5q7gNwFZKLmLSBPALlSMwHylpoJkLuATNQ8AeRKzX+7k6qqJSdVVUtOqqqWnFRVLTmpqlryyf8IIFdqngDyFpCJmrfUXAGZAPlraq6ATNRMgEzUvKXmLiD1/3dSVbXkpKpqyUlV1ZKTqqolJ1VVSz5ZpOZXqLkLyETNFZAn1EyAbFAzATJR8xaQCZC7gDwB5ErNRM1ban6Bml92UlW15KSqaslJVdWSk6qqJZ98CZBfBuRKzRY1EyATNVdAJmomQK7UfAOQKzVPqLkCMlEzATJRcwVkomYC5ErNBMhEzQTIlZongPynOamqWnJSVbXkpKpqyUlV1ZKTqqol+E/qzwCZqLkCMlFzF5An1LwF5C41TwC5S80EyETNFZAtav7bnVRVLTmpqlpyUlW15KSqaslJVdWSTx4CMlFzBWSiZgJkouYKyETNXUAmaiZArtR8A5C3gLwFZIuaLWqugDwB5ErNLwMyUfMEkCs1b51UVS05qapaclJVteSkqmoJ/pMvAHKXmieAXKl5AsiVmreAPKHmLwH5BjVXQN5SMwEyUTMBcpeaCZC71LwFZKLmLSBvqXnrpKpqyUlV1ZKTqqolJ1VVS06qqpZ88hCQLUAmaq6ATNRM1NwF5K8BuUvNXWomQJ4AcpeaCZC71EyATNRcAXlLzQTIE2ruAvKWmgmQiZorIBM1d51UVS05qapaclJVteSkqmrJSVXVkk8eUjMBcqXmCTV3qZkAeUvNFiATNVdAJkAmarao+WVANgCZqJkAmQC5UjMBskXNBMiVmrdOqqqWnFRVLTmpqlpyUlW15JOHgEzUbAGyQc0EyETNFZCJmomaCZArNU8AuVIzUTMBMgFypWYCZKJmi5orIBMgEzV3AZmo2aLmCsgTQCZqroBM1Nx1UlW15KSqaslJVdWSk6qqJSdVVUs++RIgV2omQN5S89eA3AXkCTV3AXkLyBNqroA8AeQuNRM1b6mZAPllQK7UTIBM1EyAXKl566SqaslJVdWSk6qqJSdVVUtOqqqWfPKQmgmQKyBbgEzUTIBcqXlCzV1AJmruAjJRMwFyBeQJNRMgd6m5C8gTQCZq3lJzF5C/puYKyETNBMhdQCZq7jqpqlpyUlW15KSqaslJVdWSk6qqJZ8sUvMNQK7UTIDcBWSiZgLkLjVPALlS85aaCZAJkImaKyBPALlSs0XNE0D+EpAngFypmQCZqJkAuVLz1klV1ZKTqqolJ1VVS06qqpZ88hCQiZq7gLwFZKLmLSATNVdAvkHNFZCJmi1qJkCu1LwFZKLmLSATNb9MzQTIFZCJmgmQiZoNJ1VVS06qqpacVFUtOamqWnJSVbUE/8kDQCZqroA8oWYC5ErNBMhEzV1AJmruAjJRMwFypWYCZKLmLSBvqbkLyBY1bwGZqPlrQK7UTIBM1EyA3KXmrpOqqiUnVVVLTqqqlpxUVS05qapa8sn/ATUTIHcBmaj5bwHkCSB3qZmoeQvIXWq+AcgGNRMgEzUTIFdqJkAmaq6ATNS8peatk6qqJSdVVUtOqqqWnFRVLfnkITUTIFdqJkDeUjMB8gvUvKXmCSBvAZmouUvNBMhdQCZq7gIyUTMBcpeaCZCJmisgEzVvAXlCzRWQiZq7TqqqlpxUVS05qapaclJVteSkqmoJ/pMvAHKXmgmQ/zRqJkAmat4C8p9IzRWQiZoJkImaKyBPqHkLyC9Q8xaQiZq7TqqqlpxUVS05qapaclJVteSkqmoJ/pMHgEzUXAH5BjVvAdmgZgJki5q3gEzUvAXkLjV/DchEzV1AJmomQK7UvAXkCTUTIFdq3jqpqlpyUlW15KSqaslJVdWSk6qqJZ/8H1AzAXIXkImau9RMgEzUXAGZqJkAuUvNBMhEzRWQbwBypeYJNW8BuUvNE0Cu1EzUbAEyUbNFzRWQiZq7TqqqlpxUVS05qapaclJVteSTh9TcpWaLmreATNRMgNwFZKJmAuQtIFvUvAXkSs0EyBY1EyBvAXlLzV8DcqXmrZOqqiUnVVVLTqqqlpxUVS05qapa8slDQN5S8wSQDWreUjMB8tfU3AVkAmSLmrvUTIDcBeSXAdmi5i0gEzV3nVRVLTmpqlpyUlW15KSqaslJVdWSTx5SMwFypWYCZKLmLSC/QM0EyETNFZC3gEzUTIBM1LwF5C+peQLIFZBvUHMFZKLmLiATIG+peeukqmrJSVXVkpOqqiUnVVVLPnkIyETNW0DeUjMBcgVkomai5i4gEzVvqblLzQTIRM1bQO5S8w1AroBM1EzUXAGZqPllat4CMlFz10lV1ZKTqqolJ1VVS06qqpacVFUtwX/yBUDeUjMBcqXmCSBvqXkLyETNFZAn1FwBmaiZAHlLzV1AJmq2AJmo2QLkSs0EyETNFZCJmgmQiZoNJ1VVS06qqpacVFUtOamqWnJSVbUE/8kDQCZqroD8NTV3AZmomQC5UvMNQK7UTIBM1LwFZIuaLUCu1EyAvKVmC5C71EyATNRMgNyl5q6TqqolJ1VVS06qqpacVFUtOamqWvLJlwDZouZXAZmomQCZqLlLzQTIXWqeUHMFZKJmC5C31EyA/CUgW9S8peatk6qqJSdVVUtOqqqWnFRVLfnkITVvAXkLyBNqNqh5Qs0EyAY1T6i5S80TQN5SMwGyQc03ALlLzRYgdwGZqLnrpKpqyUlV1ZKTqqolJ1VVS06qqpZ88iVA3lIzAXKlZgLkLSATNVvUXAF5C8hEzQTIW2omau4C8guATNRMgEzU3AVki5q7gLx1UlW15KSqaslJVdWSk6qqJSdVVUs+eQjILwDylpongNyl5gkgV2omQO5SMwGyBchEzRWQiZoJkImaKyATNRM1b6n5BWomQCZqNpxUVS05qapaclJVteSkqmrJJ4vUPAHkLjVPAHlLzS9Q85aat4BM1EyAbAFyF5C/puYuNRMgW4BsOKmqWnJSVbXkpKpqyUlV1ZKTqqolnzyk5q+puQLylpongFypmQD5BUC+Qc2Vmi1AJmomQK7UPAHkSs0EyETNBMhdat4CMlHzl06qqpacVFUtOamqWnJSVbXkpKpqySdfAuQvqZkAmai5AvKEmisgEzUTIG8BmajZAmSDml8GZKJmAmSi5i4gEzV3AZkAmai5AjJRc9dJVdWSk6qqJSdVVUtOqqqWnFRVLcF/8gCQiZq7gDyh5grIW2omQCZqroBM1GwBMlFzF5BfpuYtIBM1dwH5T6RmAuQtNXedVFUtOamqWnJSVbXkpKpqCf6T/wFA7lIzAXKlZgLkCTVXQCZq7gLyhJq3gEzUXAGZqHkLyBNqroBM1EyA3KXmLSATNU8AuVLz1klV1ZKTqqolJ1VVS06qqpacVFUt+eQhIL9MzUTNFZAJkLfUvKVmAmSi5krNBMgTQK7UPAHkLiBb1EyAXKmZAJmomQC5C8hEzVtAJmqugEzU3HVSVbXkpKpqyUlV1ZKTqqolJ1VVSz75EjV/Cchbat4CskXNRM0EyBY1f0nNBMhdaiZA3lKzRc1bQCZq7lLz1klV1ZKTqqolJ1VVS06qqpZ8sgjIN6h5C8hbaq7UTIBM1LwF5C41EyATIH9JzV9TMwHyFpC7gGxRMwEyUbPhpKpqyUlV1ZKTqqolJ1VVS06qqpZ88j9CzVtA7lLz19S8pWYC5ErNBMhfU7MByDeouQIyUTMB8paaCZArNW+dVFUtOamqWnJSVbXkpKpqyUlV1ZJP/kcA+UtAJmomQK7UTNRMgNyl5i0gW4D8MjV/Tc0WNVdAJmruOqmqWnJSVbXkpKpqyUlV1ZKTqqolnyxS8yvUXAGZqHkLyBNqroBM1EzUXAH5BjV3AZmoeUvNW0DuUjMBMlFzl5ongFyp2aLmrZOqqiUnVVVLTqqqlpxUVS355EuA/DIgdwGZqHkLyETNlZoJkImau4D8AiBPAJmoeUvNFZCJmieA3KXmLSBPqLkCMlFz10lV1ZKTqqolJ1VVS06qqpacVFUtwX9SVbXgpKpqyUlV1ZKTqqolJ1VVS06qqpacVFUtOamqWnJSVbXkpKpqyUlV1ZL/BxDC+2MyGEesAAAAAElFTkSuQmCC",
+    "http://127.0.0.1:49767/fixture.html?lang=km&width=768",
+    "http://127.0.0.1:49767/bundle.js",
+    "http://127.0.0.1:49767/favicon.ico",
+    "http://127.0.0.1:49767/favicon.ico",
+    "data:image/png;base64,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",
+    "http://127.0.0.1:49767/favicon.ico",
+    "http://127.0.0.1:49767/fixture.html?bakong_attempt=00000000-0000-4000-8000-000000000226&purchase_business=00000000-0000-4000-8000-000000000001&lang=km",
+    "http://127.0.0.1:49767/bundle.js",
+    "http://127.0.0.1:49767/favicon.ico",
+    "data:image/png;base64,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",
+    "http://127.0.0.1:49767/fixture.html?lang=km&width=1024",
+    "http://127.0.0.1:49767/bundle.js",
+    "http://127.0.0.1:49767/favicon.ico",
+    "http://127.0.0.1:49767/favicon.ico",
+    "data:image/png;base64,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",
+    "http://127.0.0.1:49767/favicon.ico",
+    "http://127.0.0.1:49767/fixture.html?bakong_attempt=00000000-0000-4000-8000-000000000231&purchase_business=00000000-0000-4000-8000-000000000001&lang=km",
+    "http://127.0.0.1:49767/bundle.js",
+    "http://127.0.0.1:49767/favicon.ico",
+    "data:image/png;base64,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",
+    "http://127.0.0.1:49767/fixture.html?lang=km&width=1440",
+    "http://127.0.0.1:49767/bundle.js",
+    "http://127.0.0.1:49767/favicon.ico",
+    "http://127.0.0.1:49767/favicon.ico",
+    "data:image/png;base64,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",
+    "http://127.0.0.1:49767/favicon.ico",
+    "http://127.0.0.1:49767/fixture.html?bakong_attempt=00000000-0000-4000-8000-000000000236&purchase_business=00000000-0000-4000-8000-000000000001&lang=km",
+    "http://127.0.0.1:49767/bundle.js",
+    "http://127.0.0.1:49767/favicon.ico",
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARgAAAEYCAYAAACHjumMAAAAAklEQVR4AewaftIAAAzrSURBVO3BUY7rULIkwfAD7X/LPvebSGBIUFlP3R1m+E+qqhacVFUtOamqWnJSVbXkpKpqyUlV1ZKTqqolJ1VVS06qqpacVFUtOamqWnJSVbXkk4eA/DI1vwDIE2reAnKlZgJkomYC5C01bwGZqLkLyFtqngBypWYC5JepueukqmrJSVXVkpOqqiUnVVVLTqqqlnzyJWr+EpAngFyp2aJmC5AtQCZqroBM1EyAXKnZAuQJNW8Bmah5S81fAvLWSVXVkpOqqiUnVVVLTqqqlnyyCMg3qHlLzRWQt9RMgEzUTID8AjV3qZkAmai5AjJR8wSQt4BcqfllQL5BzYaTqqolJ1VVS06qqpacVFUtOamqWvJJ3aZmi5q7gNwFZKLmLSBPALlSMwHylpoJkLuATNQ8AeRKzX+7k6qqJSdVVUtOqqqWnFRVLTmpqlryyf8IIFdqngDyFpCJmrfUXAGZAPlraq6ATNRMgEzUvKXmLiD1/3dSVbXkpKpqyUlV1ZKTqqolJ1VVSz5ZpOZXqLkLyETNFZAn1EyAbFAzATJR8xaQCZC7gDwB5ErNRM1ban6Bml92UlW15KSqaslJVdWSk6qqJZ98CZBfBuRKzRY1EyATNVdAJmomQK7UfAOQKzVPqLkCMlEzATJRcwVkomYC5ErNBMhEzQTIlZongPynOamqWnJSVbXkpKpqyUlV1ZKTqqol+E/qzwCZqLkCMlFzF5An1LwF5C41TwC5S80EyETNFZAtav7bnVRVLTmpqlpyUlW15KSqaslJVdWSTx4CMlFzBWSiZgJkouYKyETNXUAmaiZArtR8A5C3gLwFZIuaLWqugDwB5ErNLwMyUfMEkCs1b51UVS05qapaclJVteSkqmoJ/pMvAHKXmieAXKl5AsiVmreAPKHmLwH5BjVXQN5SMwEyUTMBcpeaCZC71LwFZKLmLSBvqXnrpKpqyUlV1ZKTqqolJ1VVS06qqpZ88hCQLUAmaq6ATNRM1NwF5K8BuUvNXWomQJ4AcpeaCZC71EyATNRcAXlLzQTIE2ruAvKWmgmQiZorIBM1d51UVS05qapaclJVteSkqmrJSVXVkk8eUjMBcqXmCTV3qZkAeUvNFiATNVdAJkAmarao+WVANgCZqJkAmQC5UjMBskXNBMiVmrdOqqqWnFRVLTmpqlpyUlW15JOHgEzUbAGyQc0EyETNFZCJmomaCZArNU8AuVIzUTMBMgFypWYCZKJmi5orIBMgEzV3AZmo2aLmCsgTQCZqroBM1Nx1UlW15KSqaslJVdWSk6qqJSdVVUs++RIgV2omQN5S89eA3AXkCTV3AXkLyBNqroA8AeQuNRM1b6mZAPllQK7UTIBM1EyAXKl566SqaslJVdWSk6qqJSdVVUtOqqqWfPKQmgmQKyBbgEzUTIBcqXlCzV1AJmruAjJRMwFyBeQJNRMgd6m5C8gTQCZq3lJzF5C/puYKyETNBMhdQCZq7jqpqlpyUlW15KSqaslJVdWSk6qqJZ8sUvMNQK7UTIDcBWSiZgLkLjVPALlS85aaCZAJkImaKyBPALlSs0XNE0D+EpAngFypmQCZqJkAuVLz1klV1ZKTqqolJ1VVS06qqpZ88hCQiZq7gLwFZKLmLSATNVdAvkHNFZCJmi1qJkCu1LwFZKLmLSATNb9MzQTIFZCJmgmQiZoNJ1VVS06qqpacVFUtOamqWnJSVbUE/8kDQCZqroA8oWYC5ErNBMhEzV1AJmruAjJRMwFypWYCZKLmLSBvqbkLyBY1bwGZqPlrQK7UTIBM1EyA3KXmrpOqqiUnVVVLTqqqlpxUVS05qapa8sn/ATUTIHcBmaj5bwHkCSB3qZmoeQvIXWq+AcgGNRMgEzUTIFdqJkAmaq6ATNS8peatk6qqJSdVVUtOqqqWnFRVLfnkITUTIFdqJkDeUjMB8gvUvKXmCSBvAZmouUvNBMhdQCZq7gIyUTMBcpeaCZCJmisgEzVvAXlCzRWQiZq7TqqqlpxUVS05qapaclJVteSkqmoJ/pMvAHKXmgmQ/zRqJkAmat4C8p9IzRWQiZoJkImaKyBPqHkLyC9Q8xaQiZq7TqqqlpxUVS05qapaclJVteSkqmoJ/pMHgEzUXAH5BjVvAdmgZgJki5q3gEzUvAXkLjV/DchEzV1AJmomQK7UvAXkCTUTIFdq3jqpqlpyUlW15KSqaslJVdWSk6qqJZ/8H1AzAXIXkImau9RMgEzUXAGZqJkAuUvNBMhEzRWQbwBypeYJNW8BuUvNE0Cu1EzUbAEyUbNFzRWQiZq7TqqqlpxUVS05qapaclJVteSTh9TcpWaLmreATNRMgNwFZKJmAuQtIFvUvAXkSs0EyBY1EyBvAXlLzV8DcqXmrZOqqiUnVVVLTqqqlpxUVS05qapa8slDQN5S8wSQDWreUjMB8tfU3AVkAmSLmrvUTIDcBeSXAdmi5i0gEzV3nVRVLTmpqlpyUlW15KSqaslJVdWSTx5SMwFypWYCZKLmLSC/QM0EyETNFZC3gEzUTIBM1LwF5C+peQLIFZBvUHMFZKLmLiATIG+peeukqmrJSVXVkpOqqiUnVVVLPnkIyETNW0DeUjMBcgVkomai5i4gEzVvqblLzQTIRM1bQO5S8w1AroBM1EzUXAGZqPllat4CMlFz10lV1ZKTqqolJ1VVS06qqpacVFUtwX/yBUDeUjMBcqXmCSBvqXkLyETNFZAn1FwBmaiZAHlLzV1AJmq2AJmo2QLkSs0EyETNFZCJmgmQiZoNJ1VVS06qqpacVFUtOamqWnJSVbUE/8kDQCZqroD8NTV3AZmomQC5UvMNQK7UTIBM1LwFZIuaLUCu1EyAvKVmC5C71EyATNRMgNyl5q6TqqolJ1VVS06qqpacVFUtOamqWvLJlwDZouZXAZmomQCZqLlLzQTIXWqeUHMFZKJmC5C31EyA/CUgW9S8peatk6qqJSdVVUtOqqqWnFRVLfnkITVvAXkLyBNqNqh5Qs0EyAY1T6i5S80TQN5SMwGyQc03ALlLzRYgdwGZqLnrpKpqyUlV1ZKTqqolJ1VVS06qqpZ88iVA3lIzAXKlZgLkLSATNVvUXAF5C8hEzQTIW2omau4C8guATNRMgEzU3AVki5q7gLx1UlW15KSqaslJVdWSk6qqJSdVVUs+eQjILwDylpongNyl5gkgV2omQO5SMwGyBchEzRWQiZoJkImaKyATNRM1b6n5BWomQCZqNpxUVS05qapaclJVteSkqmrJJ4vUPAHkLjVPAHlLzS9Q85aat4BM1EyAbAFyF5C/puYuNRMgW4BsOKmqWnJSVbXkpKpqyUlV1ZKTqqolnzyk5q+puQLylpongFypmQD5BUC+Qc2Vmi1AJmomQK7UPAHkSs0EyETNBMhdat4CMlHzl06qqpacVFUtOamqWnJSVbXkpKpqySdfAuQvqZkAmai5AvKEmisgEzUTIG8BmajZAmSDml8GZKJmAmSi5i4gEzV3AZkAmai5AjJRc9dJVdWSk6qqJSdVVUtOqqqWnFRVLcF/8gCQiZq7gDyh5grIW2omQCZqroBM1GwBMlFzF5BfpuYtIBM1dwH5T6RmAuQtNXedVFUtOamqWnJSVbXkpKpqCf6T/wFA7lIzAXKlZgLkCTVXQCZq7gLyhJq3gEzUXAGZqHkLyBNqroBM1EyA3KXmLSATNU8AuVLz1klV1ZKTqqolJ1VVS06qqpacVFUt+eQhIL9MzUTNFZAJkLfUvKVmAmSi5krNBMgTQK7UPAHkLiBb1EyAXKmZAJmomQC5C8hEzVtAJmqugEzU3HVSVbXkpKpqyUlV1ZKTqqolJ1VVSz75EjV/Cchbat4CskXNRM0EyBY1f0nNBMhdaiZA3lKzRc1bQCZq7lLz1klV1ZKTqqolJ1VVS06qqpZ8sgjIN6h5C8hbaq7UTIBM1LwF5C41EyATIH9JzV9TMwHyFpC7gGxRMwEyUbPhpKpqyUlV1ZKTqqolJ1VVS06qqpZ88j9CzVtA7lLz19S8pWYC5ErNBMhfU7MByDeouQIyUTMB8paaCZArNW+dVFUtOamqWnJSVbXkpKpqyUlV1ZJP/kcA+UtAJmomQK7UTNRMgNyl5i0gW4D8MjV/Tc0WNVdAJmruOqmqWnJSVbXkpKpqyUlV1ZKTqqolnyxS8yvUXAGZqHkLyBNqroBM1EzUXAH5BjV3AZmoeUvNW0DuUjMBMlFzl5ongFyp2aLmrZOqqiUnVVVLTqqqlpxUVS355EuA/DIgdwGZqHkLyETNlZoJkImau4D8AiBPAJmoeUvNFZCJmieA3KXmLSBPqLkCMlFz10lV1ZKTqqolJ1VVS06qqpacVFUtwX9SVbXgpKpqyUlV1ZKTqqolJ1VVS06qqpacVFUtOamqWnJSVbXkpKpqyUlV1ZL/BxDC+2MyGEesAAAAAElFTkSuQmCC"
+  ],
+  "temp": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-payment-attempt-lkRHKk"
+}

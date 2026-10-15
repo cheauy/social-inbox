@@ -1,0 +1,37 @@
+{
+    "checkedAtUtc":  "2026-10-15T13:45:22.2072659Z",
+    "project":  "social-inbox",
+    "projectId":  "prj_vYYpzTgJTgQ7BCKTPlfTPwiyJhqn",
+    "teamId":  "team_bAqTMA1nAJy4VrJznd49TF6z",
+    "commit":  "64d2edad71ae171bb64b9decfd9e45e1ad4b71b1",
+    "tree":  "27a3d29c7b410b3dcb97084d5ab206ba273ef7e7",
+    "source":  "Clean isolated worktree at committed revision; unrelated working changes excluded.",
+    "target":  "production",
+    "automaticPromotion":  false,
+    "deploymentId":  "dpl_37cd55N6yxXvJjE1r4r1H3p9Tw6j",
+    "url":  "https://social-inbox-lwd7e4jd7-chea-uy.vercel.app",
+    "dashboard":  "https://vercel.com/chea-uy/social-inbox/37cd55N6yxXvJjE1r4r1H3p9Tw6j",
+    "status":  "BLOCKED",
+    "reason":  "Vercel rejected deployment because the commit author lacks permission to create deployments for this project.",
+    "commitAuthor":  "cheauy",
+    "commitAuthorEmail":  "138213185+Krankns@users.noreply.github.com",
+    "cliAuthentication":  "Verified correct project/team successfully with existing Vercel CLI credentials.",
+    "connectorAuthentication":  "Connector still returned 403; authorized CLI fallback worked.",
+    "buildDuration":  null,
+    "buildRan":  false,
+    "applicationSmokeTests":  "Unrun: blocked before build.",
+    "liveDomainPromoted":  false,
+    "hostedMigrationsApplied":  0,
+    "hostedAuthSettingsChanged":  0,
+    "separateDatabaseBlocker":  [
+                                    "public.tenh_inspect_session_policy(uuid,uuid) missing",
+                                    "public.tenh_bind_session_policy(uuid,uuid,boolean,text) missing",
+                                    "public.tenh_ensure_user_workspace_safe(uuid,text,text,text) missing"
+                                ],
+    "migrationInstruction":  "Keep migrations pending, per user instruction.",
+    "notes":  [
+                  "No commit identity rewrite, team permission change or deployment-protection change was attempted.",
+                  "Local monitor stopped after confirmed BLOCKED status; remote blocked deployment retained for owner review.",
+                  "Do not promote before reviewed database and Auth configuration prerequisites are complete."
+              ]
+}

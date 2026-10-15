@@ -1,0 +1,113 @@
+{
+  "baseline": "3fa1f92fcb47dd7d033f1df71fb9400472a83ff6",
+  "scope": "TENH CHAT, local implementation only; no hosted migrations, real bank requests, credentials, payments, commit, push or deployment.",
+  "tests": {
+    "command": "TENH_PGLITE_MODULE=%TEMP%/tenh-storage-sql-check/node_modules/@electric-sql/pglite NODE_PATH=%TEMP%/tenh-bakong-test-deps/node_modules node --test tests/{billing-*,manual-payment*,mobile-billing*,native-payway*,payway-*,subscription-overview*,khqr-*,bakong-*}.test.cjs (expanded by PowerShell)",
+    "passed": 365,
+    "failed": 0,
+    "skipped": 0,
+    "log": "regression-tests.log",
+    "isolation": "Local PGlite, fake time, mocked identities and provider transport. Not true separate PostgreSQL connections."
+  },
+  "browser": {
+    "bakong": {
+      "command": "node tests/bakong-browser.cjs",
+      "cases": 8,
+      "assertions": 168,
+      "passed": true,
+      "results": "browser/browser-results.json"
+    },
+    "abaManual": {
+      "command": "TENH_PAYMENT_ATTEMPT_EVIDENCE=docs/evidence/bakong-20261015/existing-payment-browser node tests/payment-attempt-browser.cjs",
+      "cases": 8,
+      "assertions": 536,
+      "passed": true,
+      "results": "existing-payment-browser/browser-results.json"
+    },
+    "widths": [
+      390,
+      768,
+      1024,
+      1440
+    ],
+    "languages": [
+      "en",
+      "km"
+    ],
+    "externalProviderRequests": 0,
+    "transferredBytes": "Not measured; no bandwidth/egress savings claimed. Requests asserted loopback/data only.",
+    "visualReview": [
+      "browser/en-390-methods.png",
+      "browser/en-390-pending.png",
+      "browser/km-768-pending.png",
+      "browser/en-1440-methods.png"
+    ]
+  },
+  "typescript": {
+    "command": "npx tsc --noEmit",
+    "passed": true,
+    "log": "typescript.log"
+  },
+  "build": {
+    "command": "npm run build (next build --webpack)",
+    "passed": true,
+    "log": "build.log"
+  },
+  "lint": {
+    "command": "npx eslint <task TS/TSX/CJS paths> --format json",
+    "passed": true,
+    "errors": 0,
+    "warnings": 5,
+    "results": "lint-results.json"
+  },
+  "whitespace": {
+    "command": "git diff --check",
+    "passed": true,
+    "note": "Only Git LF/CRLF conversion notices; no whitespace defects."
+  },
+  "intermediateFailures": [
+    "Local timestamp adapter lost PostgreSQL microseconds; fixture now preserves PostgREST JSON timestamps.",
+    "Existing active same-plan SQL rejection retained; ordinary renewal fixture corrected to expired period.",
+    "Compatibility fixture required original baseline and decimal scale; corrected.",
+    "Existing overview test lacked jsdom; supplied pinned jsdom 26.1.0 in a temporary directory, without changing project dependencies."
+  ],
+  "quota": {
+    "officialPublicDailyLimit": 100,
+    "defaultAllocation": 90,
+    "perAttemptMinimumSeconds": 300,
+    "globalMinimumSeconds": 60,
+    "automaticProviderChecksMaximum": 3,
+    "actualCredentialQuota": "unverified",
+    "productionEligibility": "unverified",
+    "customerVolumeCapacity": "unverified",
+    "productionEnabled": false
+  },
+  "unrun": [
+    "Real NBC/SIT/production settlement and account-specific quota/merchant eligibility",
+    "Real Auth/provider/Next deployment E2E",
+    "True multi-connection PostgreSQL contention",
+    "Hosted migration/advisor execution and hosted function ownership/schema verification",
+    "Merchant statements and exhaustive multi-transfer reconciliation",
+    "Admin reconciliation panel browser interaction and physical-device banking-app scans"
+  ],
+  "releaseRisks": [
+    "Reviewed migration, configuration and private capacity approval are required before enabling production.",
+    "MD5 endpoint alone does not prove exhaustive enumeration of duplicate transfers.",
+    "Pre-existing dependency audit includes a critical Next.js finding; review before release.",
+    "No supported paid scheduling contract was found; existing financial rules were preserved."
+  ],
+  "postMatrixSql": {
+    "command": "node --test tests/bakong-sql.test.cjs",
+    "passed": 11,
+    "failed": 0,
+    "skipped": 0,
+    "log": "sql-concurrency.log",
+    "note": "After strengthening the application test to submit concurrent calls. PGlite serializes one connection; separate-connection contention remains unverified."
+  },
+  "postMatrixLint": {
+    "command": "npx eslint tests/bakong-sql.test.cjs",
+    "passed": true,
+    "errors": 0,
+    "warnings": 0
+  }
+}

@@ -160,9 +160,9 @@ export async function GET(
 
   const source = invoiceData.source_type;
   let payment: Record<string, unknown> | null = null;
-  if (source === "payway" || source === "manual") {
-    const lookup = await supabaseAdmin.from(source === "payway" ? "billing_transactions" : "manual_payment_requests")
-      .select(source === "payway"
+  if (source === "payway" || source === "bakong" || source === "manual") {
+    const lookup = await supabaseAdmin.from(source !== "manual" ? "billing_transactions" : "manual_payment_requests")
+      .select(source !== "manual"
         ? "id,business_id,provider,provider_transaction_id,status,amount,currency,verified_at,provider_status,provider_status_code,provider_original_amount,provider_payment_amount,provider_payment_currency,metadata"
         : "id,business_id,status,amount,currency,approved_at,reviewed_at")
       .eq("id", invoiceData.source_payment_id).eq("business_id", invoiceData.business_id).maybeSingle();

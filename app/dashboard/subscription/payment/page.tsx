@@ -33,6 +33,7 @@ type PaymentPageProps = {
     payway?: string | string[];
     tran_id?: string | string[];
     manual_request?: string | string[];
+    bakong_attempt?: string | string[];
     purchase_business?: string | string[];
   }>;
 };
@@ -53,13 +54,14 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
 
   const manualRequestId = single(params.manual_request).trim();
   const returnTransactionId = single(params.tran_id).trim();
-  if (manualRequestId || returnTransactionId) {
+  const bakongAttemptId = single(params.bakong_attempt).trim();
+  if (manualRequestId || returnTransactionId || bakongAttemptId) {
     // The status endpoint authorizes the saved attempt independently of the selected workspace.
     return (
       <div className="h-full overflow-y-auto">
         <PaymentAttemptView
-          kind={manualRequestId ? "manual" : "payway"}
-          attemptId={manualRequestId || returnTransactionId}
+          kind={bakongAttemptId ? "bakong" : manualRequestId ? "manual" : "payway"}
+          attemptId={bakongAttemptId || manualRequestId || returnTransactionId}
         />
       </div>
     );
@@ -248,7 +250,7 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
             customUpgradeNewPeriodEnd={quote.newPeriodEnd}
             initialPayWayReturn={single(params.payway).trim() || null}
             initialTransactionId={single(params.tran_id).trim() || null}
-            purchaseBusinessId={purchaseBusinessId || null}
+            purchaseBusinessId={targetBusinessId}
           />
         </div>
       );
@@ -279,7 +281,7 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
           renewalTotalCents={renewalSnapshot?.totalCents ?? null}
           initialPayWayReturn={single(params.payway).trim() || null}
           initialTransactionId={single(params.tran_id).trim() || null}
-          purchaseBusinessId={purchaseBusinessId || null}
+          purchaseBusinessId={targetBusinessId}
         />
       </div>
     );
@@ -299,7 +301,7 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
           renewalTotalCents={renewalSnapshot.totalCents}
           initialPayWayReturn={single(params.payway).trim() || null}
           initialTransactionId={single(params.tran_id).trim() || null}
-          purchaseBusinessId={purchaseBusinessId || null}
+          purchaseBusinessId={targetBusinessId}
         />
       </div>
     );
@@ -341,7 +343,7 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
         upgradeTotalCents={upgradeTotalCents}
         initialPayWayReturn={single(params.payway).trim() || null}
         initialTransactionId={single(params.tran_id).trim() || null}
-          purchaseBusinessId={purchaseBusinessId || null}
+          purchaseBusinessId={targetBusinessId}
       />
     </div>
   );

@@ -60,6 +60,9 @@ window.fetch = async (url, options = {}) => {
   const request = { path: target.pathname, query: target.search, method, cache: options.cache, ...(body ? { body } : {}), mocked: true, aborted: false };
   requests.push(request); options.signal?.addEventListener('abort', () => { request.aborted = true; persist(); }); persist();
   if (target.origin !== location.origin) throw new Error('No external payment request allowed');
+  if (target.pathname === '/api/bakong/checkout' && method === 'GET') return Response.json({ success: true, enabled: false,
+    environment: null, pendingAttemptId: null, businessId: target.searchParams.get('purchase_business') || businessA,
+    userId: 'fixture-user', memberId: 'fixture-member' });
   if (target.pathname === '/api/subscription/payment-status') {
     if (signedOut) return Response.json({ success: false }, { status: 401 });
     const kind = target.searchParams.has('manual_request') ? 'manual' : 'payway';

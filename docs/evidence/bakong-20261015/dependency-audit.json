@@ -1,0 +1,45 @@
+{
+  "command": "npm audit --omit=dev --json",
+  "newSdkChainFindings": [],
+  "repositoryFindings": [
+    {
+      "name": "nanoid",
+      "severity": "high",
+      "fixAvailable": true
+    },
+    {
+      "name": "next",
+      "severity": "critical",
+      "fixAvailable": {
+        "name": "next",
+        "version": "16.4.1",
+        "isSemVerMajor": false
+      }
+    },
+    {
+      "name": "postcss",
+      "severity": "high",
+      "fixAvailable": {
+        "name": "next",
+        "version": "16.4.1",
+        "isSemVerMajor": false
+      }
+    },
+    {
+      "name": "sharp",
+      "severity": "high",
+      "fixAvailable": {
+        "name": "sharp",
+        "version": "0.35.5",
+        "isSemVerMajor": true
+      }
+    },
+    {
+      "name": "source-map-js",
+      "severity": "high",
+      "fixAvailable": true
+    }
+  ],
+  "existingLockedVersionChanges": [],
+  "note": "No unrelated dependency upgrades were made."
+}

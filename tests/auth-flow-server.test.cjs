@@ -217,10 +217,54 @@ test("login validates remember selection, throttles before provider calls and ke
   }
   assert.deepEqual(results[0], results[1]);
   assert.deepEqual(results[1], results[2]);
+  assert.deepEqual(results[0], [400, { success: false, code: "AUTH_INVALID_CREDENTIALS", error: "Incorrect email or password. Please try again." }]);
   assert.ok(!JSON.stringify(results).includes(accessToken));
   assert.equal((await f.get("policy")).status, 200);
   assert.equal((await f.get("session")).status, 401);
   assert.equal((await f.get("not-a-route")).status, 404);
+});
+
+test("password login separates provider throttling, outages and ambiguous errors without disclosing provider details", async () => {
+  const body = { email: user.email, password: "Password123", rememberMe: false };
+  for (const [providerError, status, code] of [
+    [{ status: 429 }, 429, "AUTH_RATE_LIMITED"],
+    [{ status: 400, code: "over_request_rate_limit" }, 429, "AUTH_RATE_LIMITED"],
+    [{ status: 503 }, 503, "AUTH_UNAVAILABLE"],
+    [{ status: 0, name: "AuthRetryableFetchError" }, 503, "AUTH_UNAVAILABLE"],
+    [{ name: "AuthUnknownError" }, 503, "AUTH_UNAVAILABLE"],
+    [{ status: 422, code: "request_timeout" }, 503, "AUTH_UNAVAILABLE"],
+    [{ status: 400, code: "unexpected_failure" }, 503, "AUTH_UNAVAILABLE"],
+    [{ status: 400, code: "unrecognized-provider-code" }, 400, "AUTH_LOGIN_FAILED"],
+  ]) {
+    const f = fixture(); f.state.loginError = { ...providerError, message: `${accessToken} ${refreshToken} ${user.email} Password123` };
+    const response = await f.post("login", body), result = await response.json();
+    assert.equal(response.status, status, JSON.stringify(providerError));
+    assert.equal(result.code, code);
+    assert.equal(result.success, false);
+    assert.equal(f.calls.some(call => call[0] === "bind" || call[0] === "provision"), false);
+    for (const secret of [accessToken, refreshToken, user.email, "Password123", "unrecognized-provider-code"]) {
+      assert.equal(JSON.stringify([result, f.logs]).includes(secret), false);
+    }
+  }
+  const network = fixture(); network.auth.signInWithPassword = async () => { throw new TypeError(`${accessToken} network unavailable`); };
+  const response = await network.post("login", body);
+  assert.equal(response.status, 503);
+  assert.equal(JSON.stringify([await response.json(), network.logs]).includes(accessToken), false);
+});
+
+test("incomplete provider success fails closed and unconfirmed accounts use the same credential response", async () => {
+  const body = { email: user.email, password: "Password123", rememberMe: false };
+  for (const data of [{ user: null, session: null }, { user, session: null }]) {
+    const f = fixture(); f.auth.signInWithPassword = async () => ({ data, error: null });
+    const response = await f.post("login", body);
+    assert.equal(response.status, 503); assert.equal((await response.json()).code, "AUTH_UNAVAILABLE");
+    assert.equal(f.calls.some(call => call[0] === "bind"), false);
+  }
+  const f = fixture(); f.auth.signInWithPassword = async () => ({ data: { user: { ...user, email_confirmed_at: null }, session: {} }, error: null });
+  const response = await f.post("login", body);
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { success: false, code: "AUTH_INVALID_CREDENTIALS", error: "Incorrect email or password. Please try again." });
+  assert.equal(f.calls.some(call => call[0] === "bind"), false);
 });
 
 test("OAuth provider and policy failures stay generic and policy failures clear auth cookies", async () => {
@@ -313,7 +357,7 @@ test("session and recovery status preserve cookies during temporary Auth and pol
   await recovery.load("app/auth/confirm/route.ts").GET(new Request("https://app.test/auth/recovery?token_hash=recovery-valid&type=recovery"));
   const authCookie = normal.jar.get("sb-fixture-auth-token.0").value;
   const grant = recovery.jar.get("tenh_recovery_grant").value;
-  for (const error of [{ status: 503 }, { status: 429 }, { name: "AuthRetryableFetchError" }, { name: "AuthUnknownError" }]) {
+  for (const error of [{ status: 503 }, { status: 429 }, { name: "AuthRetryableFetchError" }, { name: "AuthUnknownError" }, { status: 400, code: "request_timeout" }, { status: 400, code: "unrecognized" }]) {
     normal.state.userError = error; recovery.state.userError = error;
     assert.equal((await normal.get("session")).status, 503);
     assert.equal((await recovery.get("recovery-status")).status, 503);
@@ -426,7 +470,7 @@ test("returned transient password errors revoke all sessions while known weak-pa
   assert.equal((await weak.post("reset-password", body)).status, 410);
 });
 
-test("signup returns the same accepted response for new, existing and hidden existing identities", async () => {
+test("signup accepts new or obscured identities and reports only provider-confirmed duplicate email", async () => {
   const f = fixture(), register = f.load("app/api/auth/register/route.ts");
   const payload = { fullName: "Fixture Person", workspaceName: "Fixture workspace", email: user.email, password: "Password123", confirmPassword: "Password123" };
   const invoke = body => register.POST(new Request("https://app.test/api/auth/register", { method: "POST", headers: { Origin: "https://app.test", "Content-Type": "application/json" }, body: JSON.stringify(body) }));
@@ -434,7 +478,6 @@ test("signup returns the same accepted response for new, existing and hidden exi
   for (const signupResult of [
     { data: { user: { ...user, identities: [{}] }, session: null }, error: null },
     { data: { user: { ...user, identities: [] }, session: null }, error: null },
-    { data: {}, error: { code: "email_exists", status: 422, message: "User already registered" } },
   ]) {
     f.state.signupResult = signupResult;
     const response = await invoke(payload);
@@ -442,7 +485,12 @@ test("signup returns the same accepted response for new, existing and hidden exi
   }
   assert.equal(outcomes[0][0], 202);
   assert.deepEqual(outcomes[1], outcomes[0]);
-  assert.deepEqual(outcomes[2], outcomes[0]);
+  for (const code of ["email_exists", "user_already_exists"]) {
+    f.state.signupResult = { data: {}, error: { code, status: 422, message: `${accessToken} ${refreshToken} ${user.email}` } };
+    const response = await invoke(payload);
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), { success: false, code: "ACCOUNT_EXISTS", error: "This email is already registered. Please sign in." });
+  }
   assert.equal((await invoke({ ...payload, confirmPassword: "wrong" })).status, 400);
   f.state.signupResult = { data: { user, session: {} }, error: null };
   f.jar.set("sb-fixture-auth-token.0", accessToken);
@@ -450,10 +498,34 @@ test("signup returns the same accepted response for new, existing and hidden exi
   assert.equal(f.jar.get("sb-fixture-auth-token.0"), undefined);
   assert.equal(f.calls.filter(call => call[0] === "bind").length, 0);
   f.state.signupResult = { data: {}, error: { code: "unexpected_failure", name: "AuthApiError", status: 500, message: `${accessToken} ${refreshToken} ${user.email}` } };
-  await invoke(payload);
+  const failed = await invoke(payload);
+  assert.equal(failed.status, 503);
+  assert.equal((await failed.json()).code, "AUTH_TEMPORARILY_UNAVAILABLE");
   assert.ok(!JSON.stringify(f.logs).includes(accessToken));
   assert.ok(!JSON.stringify(f.logs).includes(refreshToken));
   assert.ok(!JSON.stringify(f.logs).includes(user.email));
+});
+
+test("signup keeps operational failures separate from duplicates and preserves CSRF and rate limits", async () => {
+  const payload = { fullName: "Fixture Person", workspaceName: "Fixture workspace", email: user.email, password: "Password123", confirmPassword: "Password123" };
+  for (const [error, status, code] of [
+    [{ code: "over_request_rate_limit", status: 429 }, 429, "RATE_LIMITED"],
+    [{ name: "AuthRetryableFetchError", status: 0 }, 503, "AUTH_TEMPORARILY_UNAVAILABLE"],
+    [{ code: "email_exists", status: 503 }, 503, "AUTH_TEMPORARILY_UNAVAILABLE"],
+    [{ code: "unrecognized", status: 400, message: "User already registered" }, 400, "REGISTER_FAILED"],
+  ]) {
+    const f = fixture(), register = f.load("app/api/auth/register/route.ts");
+    const invoke = (origin = "https://app.test") => register.POST(new Request("https://app.test/api/auth/register", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify(payload) }));
+    f.state.signupResult = { data: {}, error: { message: `${accessToken} ${refreshToken} ${user.email}`, ...error } };
+    const response = await invoke(), result = await response.json();
+    assert.equal(response.status, status); assert.equal(result.code, code); assert.equal(result.success, false);
+    for (const secret of [accessToken, refreshToken, user.email]) assert.equal(JSON.stringify([result, f.logs]).includes(secret), false);
+    assert.equal((await invoke("https://attacker.example")).status, 403);
+    const before = f.calls.filter(call => call[0] === "signup").length;
+    f.state.limit = { allowed: false, retryAfterSeconds: 30 };
+    const limited = await invoke(); assert.equal(limited.status, 429); assert.equal(limited.headers.get("Retry-After"), "30");
+    assert.equal(f.calls.filter(call => call[0] === "signup").length, before);
+  }
 });
 
 test("server cookie refresh preserves hard expiry, rejects forged hints and guards server getUser", async () => {

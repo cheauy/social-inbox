@@ -1,10 +1,10 @@
 export type PaymentEnvironment = "sandbox" | "production" | "manual" | "unknown";
-export type PaymentProvider = "payway" | "manual" | "unknown";
+export type PaymentProvider = "payway" | "bakong" | "manual" | "unknown";
 export type PaymentProvenance = {
   provider: PaymentProvider; environment: PaymentEnvironment; providerVerified: boolean; confirmedPaid: boolean;
 };
 export type BillingHistoryItem = PaymentProvenance & {
-  id: string; sourceId: string; source: "payway" | "manual"; businessId: string; workspaceName: string;
+  id: string; sourceId: string; source: "payway" | "bakong" | "manual"; businessId: string; workspaceName: string;
   transactionId: string | null; paymentMethod: string; planCode: string; billingCycle: string;
   amount: number | null; currency: string | null; status: string; providerStatus: string | null;
   approvalCode: string | null; reviewNote: string | null; createdAt: string;
@@ -55,8 +55,8 @@ function nonempty(value: unknown): value is string {
 // Read saved evidence only. Never return the provider payload to a browser.
 export function paymentProvenance(source: string, payment: Record<string, unknown> | null, invoice?: Record<string, unknown> | null): PaymentProvenance {
   const unknown: PaymentProvenance = { provider: "unknown", environment: "unknown", providerVerified: false, confirmedPaid: false };
-  if (!payment || (source !== "manual" && source !== "payway")) return unknown;
-  if ((source === "payway" && payment.provider !== "payway") ||
+  if (!payment || (source !== "manual" && source !== "payway" && source !== "bakong")) return unknown;
+  if ((source !== "manual" && payment.provider !== source) ||
     (source === "manual" && has(payment, "provider") && payment.provider !== "manual")) return unknown;
   const approved = payment.status === "approved";
   const amount = billingNumber(payment.amount), currency = billingCurrency(payment.currency);
@@ -84,6 +84,19 @@ export function paymentProvenance(source: string, payment: Record<string, unknow
     provider: "manual", environment: "manual", providerVerified: false,
     confirmedPaid: approved && cents !== null && currency !== null,
   };
+  if (source === "bakong") {
+    const evidence = record(metadata.bakong_verification);
+    const environment: PaymentEnvironment = metadata.environment === "production" || metadata.environment === "sandbox" ? metadata.environment : "unknown";
+    const valid = environment !== "unknown" && evidence.environment === environment &&
+      metadata.live_enabled === (environment === "production") && evidence.currency === currency && currency === "USD" &&
+      positiveCents(evidence.amount) === cents && cents !== null && typeof evidence.recipient === "string" && evidence.recipient.length > 0 &&
+      typeof evidence.hash === "string" && /^[a-f0-9]{64}$/.test(evidence.hash) &&
+      typeof evidence.md5 === "string" && /^[a-f0-9]{32}$/.test(evidence.md5) &&
+      [snapshot, snapshotMetadata].every(saved => (!has(saved, "environment") || saved.environment === environment) &&
+        (!has(saved, "live_enabled") || saved.live_enabled === (environment === "production")));
+    return { provider: "bakong", environment: valid ? environment : "unknown", providerVerified: valid,
+      confirmedPaid: approved && valid && environment === "production" };
+  }
   let environment: PaymentEnvironment = metadata.environment === "sandbox" || metadata.environment === "production" ? metadata.environment : "unknown";
   const environmentConflict = (has(metadata, "live_enabled") && (
     typeof metadata.live_enabled !== "boolean" || metadata.live_enabled !== (environment === "production")
@@ -126,7 +139,7 @@ export function paymentProvenance(source: string, payment: Record<string, unknow
     confirmedPaid: approved && providerVerified && environment === "production" };
 }
 
-export function paymentStatusLabel(payment: Pick<PaymentProvenance, "environment" | "confirmedPaid"> & { status: string }, khmer = false) {
+export function paymentStatusLabel(payment: Pick<PaymentProvenance, "environment" | "confirmedPaid"> & { status: string; providerVerified?: boolean }, khmer = false) {
   const t = (en: string, km: string) => khmer ? km : en;
   switch (payment.status) {
     case "approved": return payment.environment === "sandbox" ? t("Test payment", "ការទូទាត់សាកល្បង") : payment.confirmedPaid ? t("Paid", "បានបង់ប្រាក់") : t("Approved · unverified", "បានអនុម័ត · មិនទាន់ផ្ទៀងផ្ទាត់");
@@ -136,6 +149,8 @@ export function paymentStatusLabel(payment: Pick<PaymentProvenance, "environment
     case "rejected": return t("Rejected", "ត្រូវបានច្រានចោល");
     case "failed": return t("Failed", "បានបរាជ័យ");
     case "canceled": case "cancelled": return t("Cancelled", "បានលុបចោល");
+    case "test_paid": return t("Test payment confirmed", "បានបញ្ជាក់ការទូទាត់សាកល្បង");
+    case "verified": return payment.providerVerified && payment.environment === "production" ? t("Payment received", "បានទទួលការទូទាត់") : t("Needs review", "ត្រូវការពិនិត្យ");
     case "recovery_required": return t("Needs review", "ត្រូវការពិនិត្យ");
     default: return t("Unknown status", "មិនស្គាល់ស្ថានភាព");
   }
@@ -145,12 +160,13 @@ export function paymentEnvironmentLabel(environment: PaymentEnvironment, khmer =
   return (labels[environment] ?? labels.unknown)[khmer ? 1 : 0];
 }
 export function paymentMethodLabel(provider: PaymentProvider, khmer = false) {
-  return provider === "payway" ? "ABA PayWay" : provider === "manual" ? (khmer ? "ផ្ទេរប្រាក់ដោយដៃ" : "Manual transfer") : (khmer ? "មិនស្គាល់វិធីទូទាត់" : "Unknown method");
+  return provider === "bakong" ? "Bakong KHQR" : provider === "payway" ? "ABA PayWay" : provider === "manual" ? (khmer ? "ផ្ទេរប្រាក់ដោយដៃ" : "Manual transfer") : (khmer ? "មិនស្គាល់វិធីទូទាត់" : "Unknown method");
 }
 export function paymentVerificationLabel(payment: PaymentProvenance & { status: string }, khmer = false) {
   if (payment.status !== "approved") return paymentStatusLabel(payment, khmer);
   if (payment.environment === "sandbox") return khmer ? "ការសាកល្បងប៉ុណ្ណោះ · មិនមែនការទូទាត់ប្រាក់ពិត" : "Test only · no real-money settlement";
   if (payment.provider === "payway" && payment.providerVerified && payment.environment === "production") return khmer ? "បានផ្ទៀងផ្ទាត់ដោយ PayWay" : "Verified by PayWay";
+  if (payment.provider === "bakong" && payment.providerVerified && payment.environment === "production") return khmer ? "បានផ្ទៀងផ្ទាត់ការទូទាត់ Bakong" : "Bakong payment verified";
   if (payment.provider === "manual" && payment.confirmedPaid) return khmer ? "បានអនុម័តដោយ TENH" : "Approved by TENH";
   return khmer ? "មិនទាន់ផ្ទៀងផ្ទាត់ការទូទាត់" : "Payment unverified";
 }

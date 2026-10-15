@@ -17,7 +17,7 @@ export async function GET() {
     const [payway, manual, invoices, businesses] = await Promise.all([
       supabaseAdmin.from("billing_transactions")
         .select("id,business_id,provider,provider_transaction_id,plan_code,billing_cycle,amount,currency,status,provider_status,provider_status_code,provider_original_amount,provider_payment_amount,provider_payment_currency,provider_approval_code,verified_at,created_at,metadata")
-        .in("business_id", auth.businessIds).eq("provider", "payway").order("created_at", { ascending: false }).limit(300),
+        .in("business_id", auth.businessIds).in("provider", ["payway", "bakong"]).order("created_at", { ascending: false }).limit(300),
       supabaseAdmin.from("manual_payment_requests")
         .select("id,business_id,plan_code,billing_cycle,amount,currency,status,review_note,reviewed_at,approved_at,created_at")
         .in("business_id", auth.businessIds).order("created_at", { ascending: false }).limit(300),
@@ -33,8 +33,10 @@ export async function GET() {
       const key = `${invoice.business_id}:${invoice.source_type}:${invoice.source_payment_id}`;
       if (!issued.has(key)) issued.set(key, invoice);
     }
-    const item = (row: Row, source: "manual" | "payway"): BillingHistoryItem => {
-      const status = row.status === "submitted" ? "pending" : String(row.status ?? "unknown");
+    const item = (row: Row, source: "manual" | "payway" | "bakong"): BillingHistoryItem => {
+      const bakongState = source === "bakong" ? (row.metadata as Row | null)?.bakong_state : null;
+      const status = bakongState === "test_paid" ? "test_paid" : row.status === "approved" ? "approved" :
+        bakongState === "verified" ? "verified" : bakongState === "review" ? "recovery_required" : row.status === "submitted" ? "pending" : String(row.status ?? "unknown");
       const invoice = issued.get(`${row.business_id}:${source}:${row.id}`) ?? null;
       const provenance = paymentProvenance(source, row, invoice);
       const approved = status === "approved";
@@ -43,13 +45,13 @@ export async function GET() {
         id: `${source}:${row.id}`, sourceId: String(row.id), source, businessId: String(row.business_id),
         workspaceName: text(invoice?.workspace_name) ?? names.get(String(row.business_id)) ?? "?",
         ...provenance,
-        transactionId: text(invoice?.source_transaction_id) ?? (source === "payway" ? text(row.provider_transaction_id) : null),
+        transactionId: text(invoice?.source_transaction_id) ?? (source !== "manual" ? text(row.provider_transaction_id) : null),
         paymentMethod: paymentMethodLabel(provenance.provider), planCode: String(row.plan_code ?? ""), billingCycle: String(row.billing_cycle ?? ""),
         amount: billingNumber(invoice ? invoice.amount : row.amount), currency: billingCurrency(invoice ? invoice.currency : row.currency), status,
-        providerStatus: source === "payway" ? safeProviderStatus : null,
+        providerStatus: source !== "manual" ? safeProviderStatus : null,
         approvalCode: provenance.providerVerified ? text(row.provider_approval_code) : null,
         reviewNote: source === "manual" ? text(row.review_note) : null, createdAt: String(row.created_at ?? ""),
-        paidAt: approved ? billingDate(invoice ? invoice.paid_at : source === "payway" ? row.verified_at : row.approved_at ?? row.reviewed_at) : null,
+        paidAt: approved ? billingDate(invoice ? invoice.paid_at : source !== "manual" ? row.verified_at : row.approved_at ?? row.reviewed_at) : null,
         reviewedAt: source === "manual" ? billingDate(row.reviewed_at) : null,
         // Coverage belongs to the issued historical snapshot, never the current plan or an estimated cycle.
         periodStart: approved && invoice ? billingDate(invoice.period_start) : null,
@@ -58,7 +60,7 @@ export async function GET() {
         invoiceNumber: approved && invoice ? text(invoice.invoice_number) : null,
       };
     };
-    const items = [...((payway.data ?? []) as Row[]).map(row => item(row, "payway")), ...((manual.data ?? []) as Row[]).map(row => item(row, "manual"))]
+    const items = [...((payway.data ?? []) as Row[]).map(row => item(row, row.provider === "bakong" ? "bakong" : "payway")), ...((manual.data ?? []) as Row[]).map(row => item(row, "manual"))]
       .sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0) || b.id.localeCompare(a.id)).slice(0, 500);
     const approved = items.filter(item => item.status === "approved");
     const totalUsd = (entries: BillingHistoryItem[]) => entries.filter(item => item.currency === "USD").reduce((sum, item) => sum + (item.amount ?? 0), 0);
@@ -66,7 +68,7 @@ export async function GET() {
       total: items.length, approved: approved.length, pending: items.filter(item => item.status === "pending").length,
       attention: items.filter(item => ["declined", "failed", "rejected", "recovery_required", "unknown"].includes(item.status)).length,
       approvedUsdTotal: totalUsd(approved.filter(item => item.confirmedPaid)),
-      testUsdTotal: totalUsd(approved.filter(item => item.environment === "sandbox")),
+      testUsdTotal: totalUsd(items.filter(item => (item.status === "approved" || item.status === "test_paid") && item.environment === "sandbox")),
       unverifiedUsdTotal: totalUsd(approved.filter(item => !item.confirmedPaid && item.environment !== "sandbox")),
       receipts: approved.filter(item => item.invoiceId).length,
     } }, { headers });

@@ -1,4 +1,5 @@
 "use client";
+import { BakongReconciliationPanel } from "./bakong-reconciliation-panel";
 
 import {
   useCallback,
@@ -240,7 +241,11 @@ function PaymentSafetyBanner({ row }: { row: ManualPaymentRow }) {
   );
 }
 
-export function ManualPaymentAdmin({
+export function ManualPaymentAdmin(props: ManualPaymentAdminProps) {
+  return <><BakongReconciliationPanel /><ManualTransfersAdmin {...props} /></>;
+}
+
+function ManualTransfersAdmin({
   onQueueChanged,
 }: ManualPaymentAdminProps) {
   const [rows, setRows] = useState<ManualPaymentRow[]>([]);
@@ -285,7 +290,8 @@ export function ManualPaymentAdmin({
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
 
   useEffect(() => {

@@ -32,6 +32,7 @@ import {
 } from "@/lib/supabase/admin";
 import { buildCustomUpgradeQuote, type CustomUpgradeQuote } from "@/lib/subscription/custom-upgrade";
 import { syncBusinessSubscriptionLifecycle } from "@/lib/subscription/sync-subscription-lifecycle";
+import { getPendingBakongPayment } from "@/lib/billing/pending-bakong-payment";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -251,6 +252,10 @@ export async function POST(
       );
     }
 
+    const pendingBakongId = await getPendingBakongPayment(billingMember.business_id);
+    if (pendingBakongId) return NextResponse.json({ success: false, code: "TENH_BILLING_PURCHASE_PENDING",
+      bakongAttemptId: pendingBakongId, businessId: billingMember.business_id,
+      error: "An existing payment needs to be reconciled first." }, { status: 409, headers: { "Cache-Control": "private, no-store" } });
     const { data: unresolvedManual, error: unresolvedManualError } = await supabaseAdmin
       .from("manual_payment_requests")
       .select("id")
@@ -907,6 +912,12 @@ export async function POST(
       });
 
     if (transactionError) {
+      if (transactionError.code === "23505") {
+        const pendingId = await getPendingBakongPayment(billingMember.business_id);
+        if (pendingId) return NextResponse.json({ success: false, code: "TENH_BILLING_PURCHASE_PENDING",
+          bakongAttemptId: pendingId, businessId: billingMember.business_id,
+          error: "An existing payment needs to be reconciled first." }, { status: 409, headers: { "Cache-Control": "private, no-store" } });
+      }
       console.error(
         "[TENH PayWay] Unable to create billing transaction:",
         transactionError,

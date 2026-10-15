@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 import { createClient } from "@/lib/supabase/client";
-import { broadcastSessionEnd, clearBrowserSession, currentBrowserSessionId, reloadForSessionChange, resumeBrowserSession, SESSION_BROADCAST_CHANNEL, SESSION_END_EVENT, suspendPrivateSession } from "@/lib/auth/browser-session";
+import { broadcastSessionEnd, clearBrowserSession, currentBrowserAuthState, currentBrowserSessionId, reloadForSessionChange, resumeBrowserSession, SESSION_BROADCAST_CHANNEL, SESSION_END_EVENT, suspendPrivateSession } from "@/lib/auth/browser-session";
 
 type State = "checking" | "valid" | "unavailable" | "expired" | "signing-out";
 
@@ -21,18 +21,20 @@ export function DashboardSessionBoundary({ children, initialSessionId, initialUs
       const current = currentBrowserSessionId() ?? verifiedSessionId;
       return typeof sessionId === "string" && current === sessionId;
     }
-    function finish(sessionId: string | null, notify: boolean) {
+    function finish(sessionId: string | null, notify: boolean, expectedAuthState?: string) {
       if (disposed || ended) return;
       const current = currentBrowserSessionId();
       if (sessionId && current && current !== sessionId) { void validate(); return; }
+      if (!clearBrowserSession(sessionId, expectedAuthState)) { void validate(); return; }
       ended = true; epoch++; controller?.abort(); clearTimeout(timer);
-      clearBrowserSession(sessionId); visible = false; setState("expired");
+      visible = false; setState("expired");
       if (notify) broadcastSessionEnd("expired", sessionId);
     }
     async function validate() {
       if (disposed || ended || checking) return;
       checking = true; clearTimeout(timer);
       const requestEpoch = ++epoch, requestSessionId = currentBrowserSessionId() ?? verifiedSessionId;
+      const requestAuthState = currentBrowserAuthState();
       const requestController = new AbortController(); controller = requestController;
       let timedOut = false;
       const timeout = setTimeout(() => { timedOut = true; requestController.abort(); }, 10_000);
@@ -42,7 +44,8 @@ export function DashboardSessionBoundary({ children, initialSessionId, initialUs
         if (disposed || ended || (requestController.signal.aborted && !timedOut) || requestEpoch !== epoch) return;
         const current = currentBrowserSessionId();
         if (current && current !== requestSessionId) { hide(); setState("checking"); delay = 0; return; }
-        if (response.status === 401 || response.status === 403) { finish(requestSessionId, true); return; }
+        if ((response.status === 401 || response.status === 403) && currentBrowserAuthState() !== requestAuthState) { hide(); setState("checking"); delay = 0; return; }
+        if (response.status === 401 || response.status === 403) { finish(requestSessionId, true, requestAuthState); return; }
         const result = await response.json();
         if (disposed || ended || requestController.signal.aborted || requestEpoch !== epoch) return;
         if (currentBrowserSessionId() && currentBrowserSessionId() !== requestSessionId) { hide(); setState("checking"); delay = 0; return; }
@@ -97,8 +100,9 @@ export function DashboardSessionBoundary({ children, initialSessionId, initialUs
   }, [initialSessionId, initialUserId]);
 
   if (state === "valid") return <>{children}</>;
+  if (state === "checking") return <main aria-busy="true" className="flex min-h-dvh items-center justify-center bg-slate-100 p-6"><div role="status" aria-live="polite"><span className="sr-only">{t("Loading", "កំពុងផ្ទុក")}</span><div aria-hidden="true" className="tenh-session-loader"><div className="circle" /><div className="circle" /><div className="circle" /><div className="circle" /></div></div></main>;
   return <main className="flex min-h-dvh items-center justify-center bg-slate-100 p-6"><section className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
-    <h1 className="text-xl font-bold text-slate-950">{state === "expired" ? t("Your session expired. Please sign in again.", "វគ្គចូលគណនីរបស់អ្នកបានផុតកំណត់។ សូមចូលម្ដងទៀត។") : state === "unavailable" ? t("Unable to validate your session.", "មិនអាចផ្ទៀងផ្ទាត់វគ្គចូលគណនីរបស់អ្នកបានទេ។") : state === "signing-out" ? t("Signing out…", "កំពុងចាកចេញ…") : t("Checking your session…", "កំពុងពិនិត្យវគ្គចូលគណនីរបស់អ្នក…")}</h1>
+    <h1 className="text-xl font-bold text-slate-950">{state === "expired" ? t("Your session expired. Please sign in again.", "វគ្គចូលគណនីរបស់អ្នកបានផុតកំណត់។ សូមចូលម្ដងទៀត។") : state === "unavailable" ? t("Unable to validate your session.", "មិនអាចផ្ទៀងផ្ទាត់វគ្គចូលគណនីរបស់អ្នកបានទេ។") : t("Signing out…", "កំពុងចាកចេញ…")}</h1>
     {state === "unavailable" ? <><p role="alert" className="mt-3 text-sm leading-6 text-slate-600">{t("Private content is hidden while your sign-in cannot be checked. Try again.", "ខ្លឹមសារឯកជនត្រូវបានលាក់ពេលមិនអាចពិនិត្យការចូលបាន។ សូមព្យាយាមម្ដងទៀត។")}</p><button type="button" onClick={() => retry.current()} className="mt-5 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white">{t("Try again", "ព្យាយាមម្ដងទៀត")}</button></> : state === "expired" ? <a href="/login?expired=1" className="mt-5 inline-block rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white">{t("Sign in", "ចូលគណនី")}</a> : <p role="status" className="mt-3 text-sm text-slate-600">{t("Please wait…", "សូមរង់ចាំ…")}</p>}
   </section></main>;
 }

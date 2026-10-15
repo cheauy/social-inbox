@@ -7,6 +7,7 @@ import { consumeAuthRateLimit, type AuthRateLimitAction } from "@/lib/auth/rate-
 import { bindSessionPolicy, checkSessionPolicy, revokeSessionPolicies } from "@/lib/auth/session-policy";
 import { signAuthTicket, verifyAuthTicket } from "@/lib/auth/auth-ticket";
 import { safeAuthReturnPath } from "@/lib/auth/return-path";
+import { isTerminalAuthSessionError } from "@/lib/auth/session-errors";
 import { AUTH_INTENT_COOKIE, AUTH_RECOVERY_COOKIE, authJson, clearAuthSessionCookies, completeAuthenticatedLogin, passwordInputError, setAuthSessionCookies } from "@/lib/auth/auth-flow";
 
 export const runtime = "nodejs";
@@ -22,7 +23,7 @@ function authServiceUnavailable(error: { status?: number; name?: string } | null
 async function recoveryAuthorization() {
   const client = await createClient({ allowRecovery: true });
   const { data: { user }, error } = await client.auth.getUser();
-  if (authServiceUnavailable(error)) throw new Error("Recovery validation unavailable");
+  if (error && !isTerminalAuthSessionError(error)) throw new Error("Recovery validation unavailable");
   if (error || !user) return null;
   const policy = await checkSessionPolicy(client, user, { allowRecovery: true });
   if (!policy.allowed && policy.status === 503) throw new Error("Recovery validation unavailable");
@@ -45,7 +46,7 @@ export async function GET(_request: Request, { params }: Context) {
     if (action === "session") {
       const client = await createClient({ authFlow: true });
       const { data: { user }, error } = await client.auth.getUser();
-      if (authServiceUnavailable(error)) return authJson({ success: false, error: "Unable to validate your session. Try again." }, 503);
+      if (error && !isTerminalAuthSessionError(error)) return authJson({ success: false, error: "Unable to validate your session. Try again." }, 503);
       if (error || !user) return authJson({ success: false, error: "Your session expired. Please sign in again." }, 401);
       const policy = await checkSessionPolicy(client, user);
       if (!policy.allowed) return authJson({ success: false, code: policy.reason, error: policy.status === 503 ? "Unable to validate your session. Try again." : "Your session expired. Please sign in again." }, policy.status);
@@ -74,7 +75,15 @@ export async function POST(request: Request, { params }: Context) {
       if (!emailValid(email) || typeof body.password !== "string" || !body.password || body.password.length > 128 || typeof body.rememberMe !== "boolean") return authJson({ success: false, error: "Check your email and password." }, 400);
       const client = await createClient({ authFlow: true });
       const { data, error } = await client.auth.signInWithPassword({ email, password: body.password });
-      if (error || !data.user || !data.session || !data.user.email_confirmed_at) return authJson({ success: false, error: "Unable to sign in. Check your details or verify your email." }, 400);
+      if (error?.status === 429 || error?.code === "over_request_rate_limit") return authJson({ success: false, code: "AUTH_RATE_LIMITED", error: "Too many sign-in attempts. Wait and try again." }, 429);
+      if (error && (authServiceUnavailable(error) || ["request_timeout", "unexpected_failure", "hook_timeout", "hook_timeout_after_retry"].includes(error.code ?? ""))) return authJson({ success: false, code: "AUTH_UNAVAILABLE", error: "Sign-in is temporarily unavailable. Please try again." }, 503);
+      if (error) {
+        // Keep unknown-email and account-confirmation states indistinguishable from invalid credentials.
+        const credentials = ["invalid_credentials", "user_not_found", "email_not_confirmed", "user_banned"].includes(error.code ?? "");
+        return authJson({ success: false, code: credentials ? "AUTH_INVALID_CREDENTIALS" : "AUTH_LOGIN_FAILED", error: credentials ? "Incorrect email or password. Please try again." : "Unable to sign in. Please try again or use another sign-in method." }, 400);
+      }
+      if (!data.user || !data.session) return authJson({ success: false, code: "AUTH_UNAVAILABLE", error: "Sign-in is temporarily unavailable. Please try again." }, 503);
+      if (!data.user.email_confirmed_at) return authJson({ success: false, code: "AUTH_INVALID_CREDENTIALS", error: "Incorrect email or password. Please try again." }, 400);
       const policy = await bindSessionPolicy(client, data.user, body.rememberMe);
       if (!policy.allowed) { await clearAuthSessionCookies(); return authJson({ success: false, error: "Unable to start a secure session. Try again." }, 503); }
       await setAuthSessionCookies(policy);

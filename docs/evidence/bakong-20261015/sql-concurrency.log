@@ -1,0 +1,20 @@
+✔ Bakong migration, claims, capacity isolation and shared rolling budget use real local PostgreSQL (2213.893ms)
+✔ verified production applies once through existing subscription/invoice math; test payments never activate (1673.6376ms)
+▶ late settlement, changed subscription, consumed hashes, removed membership and activation failures remain recoverable
+  ✔ failed invoice rolls back application but preserves verified evidence for a safe retry (57.5383ms)
+  ✔ a verified payment never overwrites a newer entitlement or restores removed membership (35.7694ms)
+  ✔ full transaction identity is single-use across workspaces and evidence cannot change (26.6308ms)
+  ✔ expired QR remains pending until a real check; late paid evidence is retained for review (266.3119ms)
+✔ late settlement, changed subscription, consumed hashes, removed membership and activation failures remain recoverable (1946.7121ms)
+✔ all providers share workspace claims and every provider call consumes the 24-hour budget, including errors (1660.513ms)
+✔ quota admission reserves three checks per obligation before showing another QR (1556.3933ms)
+✔ unknown installed activation contracts roll the whole migration back without changing old data (3064.1227ms)
+✔ installed Bakong migration preserves original ABA and manual activation/invoice paths (3972.6661ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16745.3308

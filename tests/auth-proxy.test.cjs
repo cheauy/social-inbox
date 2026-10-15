@@ -125,6 +125,18 @@ test('provider outage preserves cookies while invalid provider credentials clear
     assert.equal(h.counts().policyCalls,0);
   }
 });
+
+test('terminal refresh errors redirect safely and retain unrelated project cookies; unknown400 errors preserve sessions',async()=>{
+  for(const code of ['refresh_token_not_found','refresh_token_already_used','request_timeout','unrecognized']){
+    const terminal=code.startsWith('refresh_token_');
+    const h=fixture({authError:{status:400,code},batches:[{cookies:[{name:'sb-project-auth-token.0',value:'',options:{maxAge:0}}]}]});
+    const {response}=await h.run('/dashboard/contacts',[{name:'sb-project-auth-token.0',value:'old'},{name:'sb-other-auth-token',value:'keep'},{name:'tenh_session_hint',value:'old-hint'}]);
+    assert.equal(response.status,terminal?307:503);
+    assert.equal(response.cookies.get('sb-other-auth-token'),undefined);
+    if(terminal){assert.equal(response.cookies.get('tenh_session_hint').maxAge,0);assert.equal(new URL(response.headers.get('location')).searchParams.get('expired'),'1');}
+    else assert.equal(response.cookies.get('sb-project-auth-token.0'),undefined);
+  }
+});
 test('marketing host redirects retain path/query and never inspect Auth; matcher covers all new Auth surfaces',async()=>{
   const h=fixture({host:'https://www.tenhchat.com'}),{response}=await h.run('/login?next=%2Fdashboard%2Fcontacts');
   assert.equal(response.status,307);assert.equal(response.headers.get('location'),'https://app.tenhchat.com/login?next=%2Fdashboard%2Fcontacts');assert.equal(h.counts().sdkCalls,0);

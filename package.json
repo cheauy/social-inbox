@@ -11,6 +11,7 @@
     "extension:zip": "node scripts/build-extension-zip.mjs"
   },
   "dependencies": {
+    "bakong-khqr": "1.0.20",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.4",
     "emoji-picker-react": "^4.19.1",
@@ -21,6 +22,9 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "sharp": "0.34.5"
+  },
+  "overrides": {
+    "bakong-khqr": { "axios": "1.20.0" }
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

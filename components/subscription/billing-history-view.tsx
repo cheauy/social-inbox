@@ -47,12 +47,15 @@ function planLabel(value: string, isKhmer = false) {
 
 function statusClasses(item: BillingHistoryItem) {
   switch (item.status) {
+    case "test_paid":
+      return "border-violet-200 bg-violet-50 text-violet-700";
     case "approved":
       if (item.environment === "sandbox") return "border-violet-200 bg-violet-50 text-violet-700";
       return item.confirmedPaid
         ? "border-emerald-200 bg-emerald-50 text-emerald-700"
         : "border-amber-200 bg-amber-50 text-amber-700";
     case "pending":
+    case "verified":
     case "recovery_required":
       return "border-amber-200 bg-amber-50 text-amber-700";
     case "cancelled":

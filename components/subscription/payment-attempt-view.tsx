@@ -6,18 +6,20 @@ import type { PaymentAttempt } from "@/lib/billing/payment-attempt";
 import { paymentEnvironmentLabel } from "@/lib/billing/payment-display";
 import { createClient } from "@/lib/supabase/client";
 import { getBillingCycleDefinition } from "@/lib/subscription/plan-catalog";
+import { BakongPaymentView } from "./bakong-payment-view";
 
-type Props = { kind: "manual" | "payway"; attemptId: string; businessId?: string | null };
+type Props = { kind: "manual" | "payway" | "bakong"; attemptId: string; businessId?: string | null };
 const buttonClass = "inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50";
 
 export function paymentAttemptUrl(kind: Props["kind"], id: string, businessId?: string | null) {
-  const params = new URLSearchParams({ [kind === "manual" ? "manual_request" : "tran_id"]: id });
+  const params = new URLSearchParams({ [kind === "bakong" ? "bakong_attempt" : kind === "manual" ? "manual_request" : "tran_id"]: id });
   if (businessId) params.set("purchase_business", businessId);
   return `/dashboard/subscription/payment?${params}`;
 }
 
 // A keyed boundary clears both data and in-flight work before another identity can render.
 export function PaymentAttemptView(props: Props) {
+  if (props.kind === "bakong") return <BakongPaymentView key={`${props.attemptId}:${props.businessId ?? ""}`} attemptId={props.attemptId} businessId={props.businessId} />;
   return <AttemptStatus key={`${props.kind}:${props.attemptId}:${props.businessId ?? ""}`} {...props} />;
 }
 

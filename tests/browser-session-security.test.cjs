@@ -45,6 +45,13 @@ test('a delayed cleanup for session A cannot erase a new session B', () => {
   assert.equal(f.jar.has('sb-fixture-auth-token'), true); assert.equal(f.calls.cache, 0); assert.equal(f.storage.has('tenh_verification_email'), true);
 });
 
+test('legacy cleanup and stale validation cannot erase a newer login or a rotated credential', () => {
+  const f = fixture(); assert.equal(f.api.clearBrowserSession(null), false);
+  const before = f.api.currentBrowserAuthState(); f.jar.set('sb-fixture-auth-token', 'synthetic-rotation');
+  assert.equal(f.api.clearBrowserSession('session-A', before), false); assert.equal(f.calls.cache, 0);
+  assert.equal(f.api.clearBrowserSession('session-A', f.api.currentBrowserAuthState()), true);
+});
+
 function profileFixture(confirm) {
   const scopes = [], confirmations = []; let stateCall = 0;
   const React = require('react');
@@ -52,10 +59,19 @@ function profileFixture(confirm) {
   const tree = ProfileMenu({ name: 'Synthetic agent', email: 'synthetic@example.invalid' });
   const nodes = item => !item || typeof item !== 'object' ? [] : [item, ...[item.props?.children].flat(Infinity).flatMap(nodes)];
   const find = label => nodes(tree).find(node => node.type === 'button' && [node.props.children].flat(Infinity).includes(label));
-  return { scopes, confirmations, find };
+  return { scopes, confirmations, find, tree, nodes };
 }
-test('profile menu has separate local/global actions and requires confirmation only for global', async () => {
-  const local = profileFixture(true); await local.find('Sign out this device').props.onClick(); assert.deepEqual(local.scopes, ['local']); assert.equal(local.confirmations.length, 0);
-  const cancelled = profileFixture(false); await cancelled.find('Sign out all devices').props.onClick(); assert.equal(cancelled.scopes.length, 0); assert.equal(cancelled.confirmations.length, 1);
-  const global = profileFixture(true); const action = global.find('Sign out all devices').props.onClick; await action(); await action(); assert.deepEqual(global.scopes, ['global']); assert.equal(global.confirmations.length, 1);
+test('header profile menu preserves identity and profile link and offers only current-device sign out', async () => {
+  const local = profileFixture(true);
+  assert.equal(local.find('Sign out all devices'), undefined);
+  const profileLink = local.nodes(local.tree).find(node => node.type === 'a' && node.props.href === '/dashboard/profile');
+  assert.ok(profileLink);
+  assert.ok([profileLink.props.children].flat(Infinity).includes('Profile information'));
+  const text = JSON.stringify(local.tree);
+  assert.ok(text.includes('Synthetic agent'));
+  assert.ok(text.includes('synthetic@example.invalid'));
+  const action = local.find('Sign out this device').props.onClick;
+  await action(); await action();
+  assert.deepEqual(local.scopes, ['local']);
+  assert.equal(local.confirmations.length, 0);
 });

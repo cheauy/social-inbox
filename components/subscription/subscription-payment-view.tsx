@@ -1,6 +1,7 @@
 "use client";
 
 import Script from "next/script";
+import { QrCode } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { PaymentAttemptView, paymentAttemptUrl } from "./payment-attempt-view";
 import {
@@ -114,7 +115,7 @@ function PaymentUploadIcon({ className = "h-7 w-7" }: { className?: string }) {
   );
 }
 
-type CheckoutMethod = "payway" | "manual";
+type CheckoutMethod = "payway" | "bakong" | "manual";
 
 type PayWayPaymentState =
   | "idle"
@@ -450,7 +451,7 @@ function PaymentCheckout({
   const manualPaymentEndpoint = purchaseBusinessId
     ? `/api/manual-payments?mode=checkout&purchase_business=${encodeURIComponent(purchaseBusinessId)}`
     : "/api/manual-payments?mode=checkout";
-  const [statusAttempt, setStatusAttempt] = useState<{ kind: "manual" | "payway"; id: string } | null>(
+  const [statusAttempt, setStatusAttempt] = useState<{ kind: "manual" | "payway" | "bakong"; id: string } | null>(
     initialTransactionId ? { kind: "payway", id: initialTransactionId } : null,
   );
   const submitting = useRef(false);
@@ -458,7 +459,7 @@ function PaymentCheckout({
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
-  function enterAttempt(kind: "manual" | "payway", id: string) {
+  function enterAttempt(kind: "manual" | "payway" | "bakong", id: string) {
     if (!alive.current) return;
     setStatusAttempt({ kind, id });
     // Navigation failure cannot undo a saved payment or expose payment controls again.
@@ -471,6 +472,76 @@ function PaymentCheckout({
     useState(false);
   const [checkoutError, setCheckoutError] =
     useState<string | null>(null);
+  const [bakongAvailability, setBakongAvailability] = useState<{ enabled: boolean; environment: string | null } | null>(null);
+  const [bakongSafety, setBakongSafety] = useState(!purchaseBusinessId);
+  const [bakongLoadError, setBakongLoadError] = useState(false);
+  const [bakongUncertain, setBakongUncertain] = useState(false);
+  const bakongAction = useRef<AbortController | null>(null);
+  useEffect(() => () => bakongAction.current?.abort(), []);
+  useEffect(() => {
+    if (statusAttempt || !purchaseBusinessId) return;
+    const controller = new AbortController();
+    async function load() {
+      setBakongSafety(false); setBakongLoadError(false);
+      try {
+        const params = new URLSearchParams({ purchase_business: purchaseBusinessId! });
+        const intent = new URL(window.location.href).searchParams.get("purchase_intent");
+        if (intent) params.set("purchase_intent", intent);
+        const response = await fetch(`/api/bakong/checkout?${params}`, { cache: "no-store", signal: controller.signal });
+        const result = await response.json();
+        if (!response.ok || !result.success || result.businessId !== purchaseBusinessId || !result.userId || !result.memberId) throw new Error();
+        if (controller.signal.aborted) return;
+        setBakongAvailability({ enabled: result.enabled === true, environment: result.environment });
+        if (result.resumeAttemptId || result.pendingAttemptId) enterAttempt("bakong", result.resumeAttemptId || result.pendingAttemptId);
+        else if (intent) setBakongUncertain(true);
+        setBakongSafety(true);
+      } catch { if (!controller.signal.aborted) setBakongLoadError(true); }
+    }
+    void load();
+    return () => controller.abort();
+  // PaymentCheckout is keyed by workspace, purchase props and authenticated session.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [purchaseBusinessId, statusAttempt]);
+
+  async function startBakong(resumeOnly = false) {
+    if (!purchaseBusinessId || ((!bakongSafety || !bakongAvailability?.enabled) && !resumeOnly) || submitting.current || statusAttempt) return;
+    submitting.current = true; setCheckoutLoading(true); setCheckoutError(null);
+    const controller = new AbortController(); bakongAction.current = controller;
+    const url = new URL(window.location.href);
+    let intent = url.searchParams.get("purchase_intent");
+    if (!intent || !/^[0-9a-f-]{36}$/i.test(intent)) {
+      intent = crypto.randomUUID(); url.searchParams.set("purchase_intent", intent);
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+    try {
+      const response = await fetch("/api/bakong/checkout", { method: "POST", cache: "no-store", signal: controller.signal,
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ businessId: purchaseBusinessId,
+          purchaseIntent: intent, planCode, billingCycle, connections: customConnections, users: customUsers,
+          renewSame, customUpgrade, extensionBillingCycle: customUpgradeExtensionBillingCycle ?? "none" }) });
+      const result = await response.json();
+      if (!response.ok || !result.success || result.businessId !== purchaseBusinessId || !result.attemptId) throw new Error();
+      if (alive.current && !controller.signal.aborted) enterAttempt("bakong", result.attemptId);
+    } catch {
+      if (alive.current && !controller.signal.aborted) {
+        try {
+          const params = new URLSearchParams({ purchase_business: purchaseBusinessId, purchase_intent: intent });
+          const response = await fetch(`/api/bakong/checkout?${params}`, { cache: "no-store", signal: controller.signal });
+          const saved = await response.json();
+          if (response.ok && saved.success && saved.businessId === purchaseBusinessId && (saved.resumeAttemptId || saved.pendingAttemptId)) {
+            if (alive.current && !controller.signal.aborted) enterAttempt("bakong", saved.resumeAttemptId || saved.pendingAttemptId);
+            return;
+          }
+        } catch { /* Keep the original intent and hide all replacement payment controls. */ }
+        if (alive.current && !controller.signal.aborted) {
+          setBakongUncertain(true);
+          setCheckoutError(t("Payment status unavailable. Retry this attempt.", "មិនអាចផ្ទុកស្ថានភាពទូទាត់។ ព្យាយាមប្រតិបត្តិការនេះម្ដងទៀត។"));
+        }
+      }
+    } finally {
+      if (alive.current) { setCheckoutLoading(false); submitting.current = false; }
+      if (bakongAction.current === controller) bakongAction.current = null;
+    }
+  }
   const [payWayPluginReady, setPayWayPluginReady] =
     useState(false);
   const [payWayTransactionId, setPayWayTransactionId] =
@@ -618,7 +689,7 @@ function PaymentCheckout({
   }, [manualPaymentEndpoint, statusAttempt]);
 
   async function startPayWayCheckout() {
-    if (transactionReturnOnly || submitting.current || statusAttempt || manualPaymentLoading || manualLoadError) return;
+    if (transactionReturnOnly || submitting.current || statusAttempt || manualPaymentLoading || manualLoadError || !bakongSafety) return;
     const payWayBridge = window.TenhAbaPaywayBridge;
 
     if (
@@ -678,6 +749,8 @@ function PaymentCheckout({
         checkoutUrl?: string;
         transactionId?: string;
         manualRequestId?: string;
+        bakongAttemptId?: string;
+        businessId?: string;
         fields?: Record<string, string>;
       } = {};
 
@@ -698,6 +771,10 @@ function PaymentCheckout({
         !result.transactionId ||
         !result.fields
       ) {
+        if (result.bakongAttemptId && result.businessId === purchaseBusinessId) {
+          enterAttempt("bakong", result.bakongAttemptId);
+          return;
+        }
         if (result.transactionId) {
           enterAttempt("payway", result.transactionId);
           return;
@@ -758,7 +835,7 @@ function PaymentCheckout({
   }
 
   async function submitManualPayment() {
-    if (transactionReturnOnly || submitting.current || statusAttempt || manualPaymentLoading) return;
+    if (transactionReturnOnly || submitting.current || statusAttempt || manualPaymentLoading || !bakongSafety) return;
     if (!manualPaymentConfig?.enabled) {
       setManualPaymentError(
         t("Manual payment is not available right now.", "ការទូទាត់តាមធនាគារដោយដៃមិនអាចប្រើបាននៅពេលនេះទេ។"),
@@ -831,6 +908,8 @@ function PaymentCheckout({
         code?: string;
         requestId?: string;
         proofUploaded?: boolean;
+        bakongAttemptId?: string;
+        businessId?: string;
         upload?: {
           bucket: string;
           path: string;
@@ -844,6 +923,11 @@ function PaymentCheckout({
         !prepareResult.requestId ||
         !prepareResult.upload
       ) {
+        if (prepareResult.bakongAttemptId && prepareResult.businessId === purchaseBusinessId) {
+          mayHavePrepared = false;
+          enterAttempt("bakong", prepareResult.bakongAttemptId);
+          return;
+        }
         // A definite validation rejection did not commit an upload reservation.
         mayHavePrepared = ![400, 401, 403, 409].includes(prepareResponse.status) && !["TENH_MANUAL_UPLOAD_MIGRATION_REQUIRED", "TENH_BILLING_APPLICATION_MIGRATION_REQUIRED"].includes(prepareResult.code ?? "");
         if ([401, 403, 409].includes(prepareResponse.status)) setManualLoadError(prepareResult.error ?? t("Check the existing payment before trying again.", "ពិនិត្យការទូទាត់ដែលមាន មុនព្យាយាមម្ដងទៀត។"));
@@ -1107,11 +1191,17 @@ function PaymentCheckout({
   if (statusAttempt) {
     return <PaymentAttemptView kind={statusAttempt.kind} attemptId={statusAttempt.id} businessId={purchaseBusinessId} />;
   }
-  if (manualPaymentLoading || manualLoadError) {
+  if (bakongUncertain) return <section className="mx-auto mt-6 max-w-xl rounded-2xl border bg-white p-5">
+    <h1 className="text-xl font-bold">{t("Payment status", "ស្ថានភាពទូទាត់")}</h1>
+    <p role="status" className="mt-3 text-sm">{checkoutError ?? t("Checking the original payment attempt.", "កំពុងពិនិត្យប្រតិបត្តិការទូទាត់ដើម។")}</p>
+    <button type="button" className="mt-4 min-h-11 rounded-xl border px-4 text-sm font-semibold disabled:opacity-50" disabled={checkoutLoading} onClick={() => void startBakong(true)}>{t("Retry this attempt", "ព្យាយាមប្រតិបត្តិការនេះម្ដងទៀត")}</button>
+    <a className="mt-4 block text-sm text-blue-700" href="/dashboard/subscription">{t("Back to subscription", "ត្រឡប់ទៅការជាវ")}</a>
+  </section>;
+  if (manualPaymentLoading || manualLoadError || !bakongSafety) {
     return <section className="mx-auto max-w-xl p-6" aria-live="polite">
       <h1 className="text-xl font-bold">{t("Payment status", "ស្ថានភាពការទូទាត់")}</h1>
-      <p className="mt-3 text-sm" role={manualLoadError ? "alert" : "status"}>{manualLoadError ?? t("Checking existing payment…", "កំពុងពិនិត្យការទូទាត់ដែលមាន…")}</p>
-      {manualLoadError ? <button type="button" className="mt-4 min-h-11 rounded-xl border px-4" onClick={() => window.location.reload()}>{t("Try again", "ព្យាយាមម្ដងទៀត")}</button> : null}
+      <p className="mt-3 text-sm" role={manualLoadError || bakongLoadError ? "alert" : "status"}>{(bakongLoadError ? t("Unable to check existing payment.", "មិនអាចពិនិត្យការទូទាត់ដែលមានបានទេ។") : manualLoadError) ?? t("Checking existing payment…", "កំពុងពិនិត្យការទូទាត់ដែលមាន…")}</p>
+      {manualLoadError || bakongLoadError ? <button type="button" className="mt-4 min-h-11 rounded-xl border px-4" onClick={() => window.location.reload()}>{t("Try again", "ព្យាយាមម្ដងទៀត")}</button> : null}
       <a className="mt-4 block text-sm text-blue-700" href="/dashboard/subscription">{t("Back to subscription", "ត្រឡប់ទៅការជាវ")}</a>
     </section>;
   }
@@ -1517,6 +1607,19 @@ function PaymentCheckout({
                   </div>
                 </button>
 
+                <button type="button" disabled={!bakongAvailability?.enabled || !bakongSafety || transactionReturnOnly}
+                  onClick={() => { setCheckoutMethod("bakong"); setCheckoutError(null); }}
+                  className={`rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${checkoutMethod === "bakong" ? "border-blue-500 bg-blue-50/45 ring-1 ring-blue-100" : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"}`}>
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-red-700"><QrCode size={26} aria-hidden="true" /></div>
+                    <div className="min-w-0 flex-1"><p className="text-base font-extrabold text-slate-950">Bakong KHQR</p>
+                      <p className="mt-1 text-sm leading-5 text-slate-500">{t("Scan to pay with your banking app.", "ស្កេនដើម្បីទូទាត់ជាមួយកម្មវិធីធនាគាររបស់អ្នក។")}</p>
+                      {bakongAvailability?.environment === "sandbox" && bakongAvailability.enabled ? <span className="text-xs font-bold text-amber-700">{t("Test payment", "ការទូទាត់សាកល្បង")}</span> : null}
+                    </div>
+                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${checkoutMethod === "bakong" ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white text-transparent"}`}><PaymentCheckIcon /></span>
+                  </div>
+                </button>
+
                 <button
                   type="button"
                   disabled={
@@ -1576,6 +1679,13 @@ function PaymentCheckout({
                   </p>
                 </div>
               </div>
+
+              {checkoutMethod === "bakong" ? <div className="mt-5 rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-red-700">Bakong KHQR</p>
+                <p className="mt-2 text-2xl font-black">{formatUsdFromCents(totalCents)}</p>
+                <button type="button" className="mt-4 min-h-11 w-full rounded-xl bg-blue-600 px-5 py-3 font-bold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:bg-slate-300 sm:w-auto" disabled={checkoutLoading || !bakongAvailability?.enabled} onClick={() => void startBakong()}>{checkoutLoading ? t("Preparing…", "កំពុងរៀបចំ…") : t("Show QR", "បង្ហាញ QR")}</button>
+                {checkoutError ? <p role="alert" className="mt-3 text-sm text-red-700">{checkoutError}</p> : null}
+              </div> : null}
 
               {checkoutMethod === "payway" ? (
                 <div className="mt-5 rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">

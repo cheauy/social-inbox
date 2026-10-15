@@ -7,6 +7,7 @@ import {
   type FormEvent,
 } from "react";
 import { useSearchParams } from "next/navigation";
+import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 
 function EyeIcon() {
   return (
@@ -64,11 +65,14 @@ function EyeOffIcon() {
 }
 
 
-function getRegisterApiErrorMessage(payload: unknown) {
+function getRegisterApiErrorMessage(payload: unknown, language: string) {
   if (!payload || typeof payload !== "object") {
     return "Unable to create your account right now. Please try again.";
   }
 
+  if ((payload as { code?: unknown }).code === "ACCOUNT_EXISTS") return language === "km"
+    ? "អ៊ីមែលនេះបានចុះឈ្មោះរួចហើយ។ សូមចូលគណនី។"
+    : "This email is already registered. Please sign in.";
   const error = (payload as { error?: unknown }).error;
 
   return typeof error === "string" && error.trim()
@@ -77,6 +81,7 @@ function getRegisterApiErrorMessage(payload: unknown) {
 }
 
 export function RegisterForm() {
+  const language = useWorkspaceLanguageId();
   const searchParams = useSearchParams();
   const inviteToken =
     searchParams.get("invite")?.trim() ?? "";
@@ -272,6 +277,7 @@ export function RegisterForm() {
         setError(
           getRegisterApiErrorMessage(
             payload,
+            language,
           ),
         );
         setLoading(false);
@@ -535,7 +541,7 @@ export function RegisterForm() {
       </div>
 
       {error ? (
-        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </p>
       ) : null}

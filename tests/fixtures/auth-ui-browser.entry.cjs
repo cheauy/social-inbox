@@ -80,7 +80,7 @@ window.fetch = async (url, options = {}) => {
 async function loginChecks() {
   render('login', { days: 45 }); await until(() => document.getElementById('remember-me'), 'login mounted');
   check('Remember me starts unchecked', document.getElementById('remember-me').checked === false);
-  check('unchecked session-cookie copy states24hour maximum and browser restoration', /24|២៤/.test(document.body.textContent) && /restoration|ស្ដារ/.test(document.body.textContent));
+  check('unchecked Remember me helper is hidden', !document.getElementById('remember-me').closest('div').querySelector('p'));
   check('Forgot password opens real request page', document.querySelector('a[href="/forgot-password"]')?.textContent === t('Forgot password?', 'ភ្លេចពាក្យសម្ងាត់?'));
   await until(() => requests.some(request => request.path === '/api/auth/policy'), 'server policy loaded'); await pause(30);
   document.getElementById('remember-me').click(); await until(() => document.body.textContent.includes('45'), 'checked copy uses server duration');
@@ -194,9 +194,8 @@ async function sessionChecks() {
     scenario.status = 200; button('Try again', 'ព្យាយាមម្ដងទៀត').click(); await until(() => document.querySelector('[data-private-workspace]'), 'manual validation retry recovers');
     check('successful retry resumes current workspace without a refresh loop', sdk.start > 0 && window.fixtureSessionReloads === 0);
     document.querySelector('button[aria-label="' + t('Open profile menu', 'បើកម៉ឺនុយប្រវត្តិរូប') + '"]').click(); await pause(10);
-    const previousConfirm = window.confirm; let confirmations = 0; window.confirm = () => { confirmations++; return false; }; const logoutStart = requests.length;
-    button('Sign out all devices', 'ចាកចេញពីគ្រប់ឧបករណ៍').click(); window.confirm = previousConfirm;
-    check('global logout requires confirmation before any request or local cleanup', confirmations === 1 && !requests.slice(logoutStart).some(request => request.path === '/api/auth/sign-out') && Boolean(document.querySelector('[data-private-workspace]')));
+    check('header profile menu keeps current-device sign out', Boolean(button('Sign out this device', "ចាកចេញលើឧបករណ៍នេះ")));
+    check('header profile menu hides all-device sign out', ![...document.querySelectorAll('button')].some(element => element.textContent.trim() === t('Sign out all devices', 'ចាកចេញពីគ្រប់ឧបករណ៍')));
     sessionCookie('session-B'); render('session', { sessionId: 'session-B' }); await until(() => document.querySelector('[data-private-workspace]'), 'new B session');
     const channel = new BroadcastChannel('tenh:session-state'); channel.postMessage({ type: 'session-ended', reason: 'logout', sessionId: 'session-A' }); await pause(30);
     check('delayed cross-tab logout for A cannot end fresh B session', document.cookie.includes('synthetic-session-B') && Boolean(document.querySelector('[data-private-workspace]')));
@@ -221,6 +220,11 @@ async function sessionChecks() {
     check('BFCache pageshow immediately hides stale private content until server revalidation', !document.querySelector('[data-private-workspace]'));
     releaseRestore(); scenario.holdSession = null; await until(() => document.querySelector('[data-private-workspace]'), 'validated BFCache restore');
     check('valid BFCache restore resumes same private workspace without reload', window.fixtureSessionReloads === 2);
+    const rotationStart = requests.length;
+    let releaseRotation; scenario.holdSession = new Promise(resolve => { releaseRotation = resolve; }); scenario.status = 401; window.dispatchEvent(new Event('focus')); await pause(20);
+    document.cookie = 'sb-fixture-auth-token=synthetic-new-rotation; Path=/'; scenario.holdSession = null; scenario.status = 200; releaseRotation();
+    await until(() => requests.slice(rotationStart).filter(request => request.path === '/api/auth/session').length >= 2 && document.querySelector('[data-private-workspace]') && document.cookie.includes('synthetic-new-rotation'), 'stale401 validates newer rotation');
+    check('stale401 cannot erase a newer credential in the same session', document.cookie.includes('synthetic-new-rotation') && Boolean(document.querySelector('[data-private-workspace]')));
     let releaseVisibility; scenario.holdSession = new Promise(resolve => { releaseVisibility = resolve; }); scenario.status = 401; const visibilityStart = requests.length; document.dispatchEvent(new Event('visibilitychange')); await pause(20);
     check('visibility return rechecks without discarding a valid workspace before the server response', Boolean(document.querySelector('[data-private-workspace]')) && requests.slice(visibilityStart).some(request => request.path === '/api/auth/session'));
     releaseVisibility(); scenario.holdSession = null;
