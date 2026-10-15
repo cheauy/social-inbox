@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { validateAuthMutationRequest } from "@/lib/auth/mutation-request";
+import { consumeAuthRateLimit } from "@/lib/auth/rate-limit";
+import { authJson, clearAuthSessionCookies } from "@/lib/auth/auth-flow";
 
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -200,8 +203,9 @@ async function signUpOnce(
   password: string,
   fullName: string,
   workspaceName: string | null,
+  redirectTo: string,
 ) {
-  const supabase = await createClient();
+  const supabase = await createClient({ authFlow: true });
 
   // Signup is a write operation. Do not automatically retry it: the first
   // request may have reached Supabase even if the response was interrupted.
@@ -211,6 +215,7 @@ async function signUpOnce(
     email,
     password,
     options: {
+      emailRedirectTo: redirectTo,
       data: {
         full_name: fullName,
         ...(workspaceName
@@ -223,42 +228,8 @@ async function signUpOnce(
 
 export async function POST(request: Request) {
   const requestUrl = new URL(request.url);
-  const origin = request.headers.get("origin");
-
-  if (origin) {
-    try {
-      if (new URL(origin).host !== requestUrl.host) {
-        return NextResponse.json(
-          {
-            success: false,
-            code: "INVALID_ORIGIN",
-            error: "Invalid registration request.",
-          },
-          {
-            status: 403,
-            headers: {
-              "Cache-Control": "no-store",
-            },
-          },
-        );
-      }
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          code: "INVALID_ORIGIN",
-          error: "Invalid registration request.",
-        },
-        {
-          status: 403,
-          headers: {
-            "Cache-Control": "no-store",
-          },
-        },
-      );
-    }
-  }
-
+  const validation = validateAuthMutationRequest(request);
+  if (!validation.success) return authJson({ success: false, code: validation.code, error: validation.error }, validation.status);
   let body: unknown;
 
   try {
@@ -288,6 +259,8 @@ export async function POST(request: Request) {
   const workspaceName = normalizeText(payload.workspaceName);
   const inviteToken = normalizeText(payload.inviteToken);
   const email = normalizeEmail(payload.email);
+  const rate = await consumeAuthRateLimit(request, "signup", email);
+  if (!rate.allowed) return authJson({ success: false, error: rate.unavailable ? "Registration is temporarily unavailable." : "Too many attempts. Try again later." }, rate.unavailable ? 503 : 429, { "Retry-After": String(rate.retryAfterSeconds) });
   const password =
     typeof payload.password === "string"
       ? payload.password
@@ -371,6 +344,7 @@ export async function POST(request: Request) {
     workspaceName.length > MAX_NAME_LENGTH ||
     !looksLikeEmail(email) ||
     !password ||
+    payload.confirmPassword !== password ||
     password.length < 8 ||
     password.length > MAX_PASSWORD_LENGTH ||
     !/[A-Za-z]/.test(password) ||
@@ -401,10 +375,12 @@ export async function POST(request: Request) {
         password,
         fullName,
         invitation ? null : workspaceName,
+        `${requestUrl.origin}/auth/confirm?next=${encodeURIComponent(inviteToken ? `/invite/accept?token=${encodeURIComponent(inviteToken)}` : "/dashboard/inbox")}`,
       );
 
     if (error) {
       const safe = publicAuthError(error);
+      if (safe.code === "ACCOUNT_EXISTS") return authJson({ success: true, message: "If registration can be completed, check your email." }, 202);
 
       console.warn("[TENH] Registration rejected by auth service", {
         code:
@@ -453,40 +429,11 @@ export async function POST(request: Request) {
       );
     }
 
-    if (
-      Array.isArray(data.user.identities) &&
-      data.user.identities.length === 0
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: "ACCOUNT_EXISTS",
-          error:
-            "An account with this email already exists. Please sign in instead.",
-        },
-        {
-          status: 409,
-          headers: {
-            "Cache-Control": "no-store",
-          },
-        },
-      );
-    }
-
-    return NextResponse.json(
-      {
-        success: true,
-        email,
-      },
-      {
-        status: 201,
-        headers: {
-          "Cache-Control": "no-store",
-        },
-      },
-    );
+    if (data.session) await clearAuthSessionCookies();
+    return authJson({ success: true, message: "If registration can be completed, check your email." }, 202);
   } catch (error) {
     const safe = publicAuthError(error);
+    if (safe.code === "ACCOUNT_EXISTS") return authJson({ success: true, message: "If registration can be completed, check your email." }, 202);
 
     console.warn("[TENH] Registration request failed safely", {
       status: safe.status,

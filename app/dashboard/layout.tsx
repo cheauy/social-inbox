@@ -1,11 +1,15 @@
 import type { ReactNode } from "react";
 
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { verifyAuthTicket } from "@/lib/auth/auth-ticket";
+import { SESSION_HINT_COOKIE } from "@/lib/auth/session-cookie-options";
 
 import { DashboardUtilityNavigation, DashboardUtilityNavigationProvider } from "@/components/dashboard/dashboard-utility-navigation";
 import { isCurrentUserTenhAdminIdentity } from "@/lib/admin/tenh-admin-auth";
 
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { DashboardSessionBoundary } from "@/components/dashboard/dashboard-session-boundary";
 import { InboxReturnContextProvider } from "@/components/dashboard/inbox-return-context";
 import { PendingInvitationsBanner } from "@/components/dashboard/pending-invitations-banner";
 import { FacebookConnectionAttentionBanner } from "@/components/dashboard/facebook-connection-attention-banner";
@@ -48,7 +52,7 @@ export default async function DashboardLayout({
         "WORKSPACE_ACCESS_REMOVED"
     ) {
       return (
-        <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100">
+        <DashboardSessionBoundary><div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100">
           <DashboardHeader />
 
           <RemovedWorkspaceAccessBoundary
@@ -56,7 +60,7 @@ export default async function DashboardLayout({
           >
             {children}
           </RemovedWorkspaceAccessBoundary>
-        </div>
+        </div></DashboardSessionBoundary>
       );
     }
 
@@ -65,10 +69,10 @@ export default async function DashboardLayout({
       authResult.code === "WORKSPACE_SETUP_REQUIRED"
     ) {
       return (
-        <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100">
+        <DashboardSessionBoundary><div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100">
           <DashboardHeader />
           <WorkspaceSetupRecovery />
-        </div>
+        </div></DashboardSessionBoundary>
       );
     }
 
@@ -91,6 +95,11 @@ export default async function DashboardLayout({
     );
   }
 
+  let initialSessionId: string | null = null;
+  try {
+    const hint = verifyAuthTicket((await cookies()).get(SESSION_HINT_COOKIE)?.value, "persistence");
+    if (typeof hint?.sessionId === "string") initialSessionId = hint.sessionId;
+  } catch { /* The verified server user still binds the rendered workspace identity. */ }
   const isAdmin = await isCurrentUserTenhAdminIdentity();
 
   let subscriptionAccess: BusinessSubscriptionAccess;
@@ -113,6 +122,7 @@ export default async function DashboardLayout({
 
     return (
       <DashboardUtilityNavigationProvider isAdmin={isAdmin}>
+      <DashboardSessionBoundary initialUserId={authResult.user.id} initialSessionId={initialSessionId}>
       <div className="flex min-h-dvh flex-col overflow-hidden bg-slate-100">
         <DashboardHeader />
 
@@ -135,12 +145,14 @@ export default async function DashboardLayout({
         </main>
         </div>
       </div>
+      </DashboardSessionBoundary>
       </DashboardUtilityNavigationProvider>
     );
   }
 
   return (
     <DashboardUtilityNavigationProvider isAdmin={isAdmin}>
+      <DashboardSessionBoundary initialUserId={authResult.user.id} initialSessionId={initialSessionId}>
       <InboxReturnContextProvider key={`${authResult.user.id}:${authResult.member.business_id}:${authResult.member.id}`}
         userId={authResult.user.id} businessId={authResult.member.business_id} memberId={authResult.member.id}>
       <WorkspacePermissionsProvider>
@@ -164,6 +176,7 @@ export default async function DashboardLayout({
         </div>
       </WorkspacePermissionsProvider>
       </InboxReturnContextProvider>
+      </DashboardSessionBoundary>
     </DashboardUtilityNavigationProvider>
   );
 }

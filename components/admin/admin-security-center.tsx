@@ -8,6 +8,8 @@ import {
 } from "react";
 
 import { AdminSecurityPanel } from "@/components/admin/admin-security-panel";
+import { AdminLoginSessionsPanel } from "@/components/admin/admin-login-sessions-panel";
+import { WorkspaceLanguageText } from "@/components/display/workspace-language-text";
 import { createClient } from "@/lib/supabase/client";
 
 type SecurityStatus = "healthy" | "warning" | "critical" | "info";
@@ -21,6 +23,7 @@ type SecurityCheck = {
 
 type SecuritySectionKey =
   | "overview"
+  | "login-sessions"
   | "authentication"
   | "credentials"
   | "webhooks"
@@ -107,6 +110,7 @@ const sectionTabs: Array<{
 }> = [
   { id: "overview", label: "Overview" },
   { id: "authentication", label: "Authentication" },
+  { id: "login-sessions", label: "Login sessions" },
   { id: "credentials", label: "Tokens & secrets" },
   { id: "webhooks", label: "Webhooks" },
   { id: "database", label: "Database / RLS" },
@@ -272,7 +276,8 @@ export function AdminSecurityCenter({
   }, []);
 
   useEffect(() => {
-    void loadSecurity();
+    const timer = window.setTimeout(() => void loadSecurity(), 0);
+    return () => window.clearTimeout(timer);
   }, [loadSecurity]);
 
   const allChecks = useMemo(() => {
@@ -417,11 +422,13 @@ export function AdminSecurityCenter({
                   : "text-slate-600 hover:bg-slate-100"
               }`}
             >
-              {tab.label}
+              {tab.id === "login-sessions" ? <WorkspaceLanguageText en="Login sessions" km="វគ្គចូលគណនី" /> : tab.label}
             </button>
           ))}
         </div>
       </div>
+
+      {activeSection === "login-sessions" ? <AdminLoginSessionsPanel /> : null}
 
       {loading && !data ? (
         <div className="rounded-[24px] border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">

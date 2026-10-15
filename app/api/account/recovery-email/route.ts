@@ -4,6 +4,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { validateAuthMutationRequest } from "@/lib/auth/mutation-request";
+import { checkSessionPolicy } from "@/lib/auth/session-policy";
+import { consumeAuthRateLimit } from "@/lib/auth/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,6 +43,8 @@ export async function GET() {
   }
 
   const stored = user.user_metadata?.recovery_email;
+  const policy = await checkSessionPolicy(supabase, user);
+  if (!policy.allowed) return NextResponse.json({ success: false, error: "Please sign in again." }, { status: policy.status });
 
   return NextResponse.json({
     success: true,
@@ -48,6 +53,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const validation = validateAuthMutationRequest(request);
+  if (!validation.success) return NextResponse.json(validation, { status: validation.status });
   const supabase = await createClient();
 
   const {
@@ -65,6 +72,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const policy = await checkSessionPolicy(supabase, user);
+  if (!policy.allowed) return NextResponse.json({ success: false, error: "Please sign in again." }, { status: policy.status });
+  const limit = await consumeAuthRateLimit(request, "recovery-email", user.id);
+  if (!limit.allowed) return NextResponse.json({ success: false, error: "Recovery contact updates are temporarily unavailable. Try again shortly." },
+    { status: limit.unavailable ? 503 : 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } });
+
   let body: RecoveryBody;
 
   try {
@@ -75,6 +88,7 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ success: false, error: "Invalid request body." }, { status: 400 });
 
   const raw =
     typeof body.recoveryEmail === "string"

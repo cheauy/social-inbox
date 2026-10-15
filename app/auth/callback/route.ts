@@ -1,127 +1,31 @@
-import {
-  NextRequest,
-  NextResponse,
-} from "next/server";
-
-import { TENH_ACTIVE_BUSINESS_COOKIE } from "@/lib/auth/get-current-member";
-
-import { provisionUserWorkspace } from "@/lib/onboarding/ensure-user-workspace";
+import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { verifyAuthTicket } from "@/lib/auth/auth-ticket";
+import { bindSessionPolicy } from "@/lib/auth/session-policy";
+import { consumeAuthRateLimit } from "@/lib/auth/rate-limit";
+import { AUTH_INTENT_COOKIE, AUTH_NO_STORE, clearAuthSessionCookies, completeAuthenticatedLogin, setAuthSessionCookies } from "@/lib/auth/auth-flow";
 
-export async function GET(
-  request: NextRequest,
-) {
-  const requestUrl =
-    new URL(request.url);
-
-  const code =
-    requestUrl.searchParams.get("code");
-
-  const requestedNext =
-    requestUrl.searchParams.get("next") ??
-    "/dashboard/inbox";
-
-  const next =
-    requestedNext.startsWith("/") &&
-    !requestedNext.startsWith("//") &&
-    !requestedNext.includes("\\")
-      ? requestedNext
-      : "/dashboard/inbox";
-
-  if (!code) {
-    return NextResponse.redirect(
-      new URL(
-        "/login?error=missing_oauth_code",
-        requestUrl.origin,
-      ),
-    );
-  }
-
-  const supabase =
-    await createClient();
-
-  const { error } =
-    await supabase.auth
-      .exchangeCodeForSession(code);
-
-  if (error) {
-    console.error(
-      "OAuth callback failed:",
-      error,
-    );
-
-    return NextResponse.redirect(
-      new URL(
-        "/login?error=oauth_callback_failed",
-        requestUrl.origin,
-      ),
-    );
-  }
-
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return NextResponse.redirect(
-      new URL(
-        "/login?error=oauth_user_missing",
-        requestUrl.origin,
-      ),
-    );
-  }
-
-  /*
-   * An invitation login must return to the invitation before provisioning.
-   * Otherwise a brand-new invited user would accidentally receive/create a
-   * separate trial workspace before joining the existing subscription.
-   */
-  if (next.startsWith("/invite/accept")) {
-    return NextResponse.redirect(
-      new URL(next, requestUrl.origin),
-    );
-  }
-
-  const provision = await provisionUserWorkspace(
-    user,
-    request,
-  );
-
-  if (!provision.success) {
-    console.error("OAuth workspace provisioning failed:", {
-      code: provision.code,
-      message: provision.error,
-    });
-
-    return NextResponse.redirect(
-      new URL(
-        "/login?error=workspace_provision_failed",
-        requestUrl.origin,
-      ),
-    );
-  }
-
-  const destination =
-    provision.trialGranted === false
-      ? "/dashboard/subscription/buy?trial=not-eligible"
-      : next;
-
-  const response = NextResponse.redirect(
-    new URL(destination, requestUrl.origin),
-  );
-
-  response.cookies.set(
-    TENH_ACTIVE_BUSINESS_COOKIE,
-    provision.member.business_id,
-    {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 365,
-    },
-  );
-
-  return response;
+export const dynamic = "force-dynamic";
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const redirect = (path: string) => NextResponse.redirect(new URL(path, url.origin), { headers: AUTH_NO_STORE });
+  const store = await cookies();
+  const intent = verifyAuthTicket(store.get(AUTH_INTENT_COOKIE)?.value, "oauth");
+  store.set(AUTH_INTENT_COOKIE, "", { path: "/", maxAge: 0 });
+  const code = url.searchParams.get("code");
+  if (!code || code.length > 2048 || !intent || intent.nonce !== url.searchParams.get("intent") ||
+      typeof intent.rememberMe !== "boolean" || typeof intent.issuedAt !== "number" ||
+      intent.issuedAt > Date.now() || intent.issuedAt < Date.now() - 600_000) return redirect("/login?error=oauth_callback_failed");
+  try {
+    const limit = await consumeAuthRateLimit(request, "oauth");
+    if (!limit.allowed) return redirect("/login?error=oauth_callback_failed");
+    const client = await createClient({ authFlow: true });
+    const { data, error } = await client.auth.exchangeCodeForSession(code);
+    if (error || !data.session || !data.user) return redirect("/login?error=oauth_callback_failed");
+    const policy = await bindSessionPolicy(client, data.user, intent.rememberMe);
+    if (!policy.allowed) { await clearAuthSessionCookies(); return redirect("/login?error=session_unavailable"); }
+    await setAuthSessionCookies(policy);
+    return redirect(await completeAuthenticatedLogin(data.user, request, intent.next));
+  } catch { return redirect("/login?error=oauth_callback_failed"); }
 }

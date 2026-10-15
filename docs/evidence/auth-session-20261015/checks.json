@@ -1,0 +1,139 @@
+{
+    "task":  "TENH CHAT authentication and immutable application session policy",
+    "date":  "2026-10-15",
+    "baselineHead":  "140151e36724ae454e7dbe726890a85ec787943a",
+    "localOnly":  true,
+    "dependencyChanges":  false,
+    "hostedWrites":  0,
+    "realEmails":  0,
+    "realPasswordsChanged":  0,
+    "realSessionsRevoked":  0,
+    "commits":  0,
+    "deployments":  0,
+    "routineCommandPrefix":  "C:/Users/TUF/AppData/Local/Headroom/headroom/bin/rtk.exe",
+    "checks":  {
+                   "relevantTests":  {
+                                         "command":  "node --test tests/auth-account-security.test.cjs tests/auth-flow-server.test.cjs tests/auth-proxy.test.cjs tests/auth-session-policy-sql.test.cjs tests/auth-session-policy.test.cjs tests/auth-user-sessions.test.cjs tests/browser-session-security.test.cjs tests/dashboard-entry-lifecycle.test.cjs tests/dashboard-header.test.mjs tests/admin-navigation.test.cjs tests/mobile-workspace-flow-safety.test.cjs tests/payway-strict-workspace.test.cjs tests/workspace-storage-auth-scope.test.cjs tests/billing-payment-display.test.cjs tests/billing-receipts-server.test.cjs",
+                                         "environment":  {
+                                                             "TENH_AUTH_PGLITE_MODULE":  "%TEMP%/tenh-storage-sql-check/node_modules/@electric-sql/pglite",
+                                                             "TENH_PGLITE_MODULE":  "%TEMP%/tenh-storage-sql-check/node_modules/@electric-sql/pglite"
+                                                         },
+                                         "exitCode":  0,
+                                         "tests":  140,
+                                         "passed":  139,
+                                         "failed":  0,
+                                         "skipped":  1,
+                                         "skip":  "dashboard-entry-lifecycle: controlled before/after shell comparison; TENH_ENTRY_BASELINE_DIR and external inbox-entry-baseline-layout.tsx were unavailable. Current lifecycle tests ran.",
+                                         "fixtures":  "Mocked provider APIs, fake time, synthetic Auth schema and actual draft migration SQL in isolated local PGlite.",
+                                         "log":  "logs/auth-tests-final.txt"
+                                     },
+                   "build":  {
+                                 "command":  "npm run build",
+                                 "exitCode":  0,
+                                 "nextVersion":  "16.2.12",
+                                 "log":  "logs/auth-build.txt"
+                             },
+                   "typescript":  {
+                                      "command":  "npx tsc --noEmit --incremental false",
+                                      "exitCode":  0,
+                                      "runAfterBuild":  true,
+                                      "log":  "logs/auth-types-final.txt"
+                                  },
+                   "lint":  {
+                                "command":  "npx eslint --format json app/api/account/password/route.ts app/api/account/recovery-email/route.ts app/api/auth/[action]/route.ts app/api/auth/register/route.ts app/api/auth/sign-out/route.ts app/api/settings/sessions/revoke/route.ts app/api/tenh-admin/login-sessions/route.ts app/auth/callback/route.ts app/auth/confirm/route.ts app/auth/recovery/route.ts app/dashboard/layout.tsx app/forgot-password/page.tsx app/login/page.tsx app/reset-password/page.tsx app/verify-email/page.tsx components/admin/admin-login-sessions-panel.tsx components/admin/admin-security-center.tsx components/admin/tenh-admin-workspace.tsx components/auth/auth-page-shell.tsx components/auth/forgot-password-form.tsx components/auth/invite-accept-view.tsx components/auth/login-form.tsx components/auth/register-form.tsx components/auth/reset-password-form.tsx components/auth/verify-email-form.tsx components/dashboard/dashboard-session-boundary.tsx components/dashboard/profile-menu.tsx lib/auth/auth-flow.ts lib/auth/auth-ticket.ts lib/auth/browser-session.ts lib/auth/get-current-member.ts lib/auth/mutation-request.ts lib/auth/rate-limit.ts lib/auth/return-path.ts lib/auth/session-cookie-options.ts lib/auth/session-policy.ts lib/auth/user-sessions.ts lib/onboarding/ensure-user-workspace.ts lib/supabase/client.ts lib/supabase/server.ts proxy.ts tests/admin-navigation.test.cjs tests/auth-account-security.test.cjs tests/auth-flow-server.test.cjs tests/auth-proxy.test.cjs tests/auth-session-policy-sql.test.cjs tests/auth-session-policy.test.cjs tests/auth-ui-browser.cjs tests/auth-user-sessions.test.cjs tests/browser-session-security.test.cjs tests/facebook-auto-reply-browser.test.cjs tests/fixtures/auth-ui-browser.entry.cjs",
+                                "exitCode":  0,
+                                "files":  52,
+                                "errors":  0,
+                                "warnings":  2,
+                                "warningDetails":  "Existing @next/next/no-img-element avatar warnings in components/dashboard/profile-menu.tsx at lines 90 and 95.",
+                                "log":  "logs/auth-eslint-final.json"
+                            },
+                   "whitespace":  {
+                                      "command":  "git diff --check",
+                                      "exitCode":  0,
+                                      "notes":  "Git printed LF/CRLF conversion notices; no whitespace errors.",
+                                      "log":  "logs/auth-diff-check.txt"
+                                  },
+                   "authBrowser":  {
+                                       "command":  "node tests/auth-ui-browser.cjs",
+                                       "passed":  true,
+                                       "complete":  true,
+                                       "cases":  8,
+                                       "assertions":  544,
+                                       "failed":  0,
+                                       "languages":  [
+                                                         "en",
+                                                         "km"
+                                                     ],
+                                       "widths":  [
+                                                      390,
+                                                      768,
+                                                      1024,
+                                                      1440
+                                                  ],
+                                       "browserErrors":  0,
+                                       "providerActions":  0,
+                                       "emailsSent":  0,
+                                       "network":  "Loopback fixture assets only; auth API responses mocked. No real Auth or email calls.",
+                                       "scope":  "Actual React UI and session-boundary lifecycle in browser fixtures; BFCache restore uses synthetic pageshow/visibility events, not real history traversal.",
+                                       "evidence":  "browser/browser-results.json"
+                                   },
+                   "adminBrowser":  {
+                                        "command":  "node tests/admin-navigation-browser.cjs",
+                                        "passed":  true,
+                                        "assertions":  852,
+                                        "cases":  8,
+                                        "languages":  [
+                                                          "en",
+                                                          "km"
+                                                      ],
+                                        "widths":  [
+                                                       390,
+                                                       768,
+                                                       1024,
+                                                       1440
+                                                   ],
+                                        "browserErrors":  0,
+                                        "evidence":  "../admin-navigation-20261015/verification-summary.json",
+                                        "scope":  "Existing isolated navigation/browser fixture, including auth-session panel compatibility."
+                                    }
+               },
+    "otherObservedChecks":  [
+                                {
+                                    "command":  "node --test tests/facebook-auto-reply.test.cjs",
+                                    "passed":  9,
+                                    "failed":  11,
+                                    "status":  "Existing unrelated failures, not included in the final relevant matrix.",
+                                    "cause":  "Committed TENH_BOT_AVAILABLE=false conflicts with pre-gate fixture assumptions. Bot/webhook/native production logic and this test were not changed."
+                                },
+                                {
+                                    "command":  "node --test tests/facebook-auto-reply-browser.test.cjs",
+                                    "status":  "Earlier optional browser fixture skipped without TENH_PGLITE_ROOT and TENH_TEST_BROWSER. Only its DashboardSessionBoundary layout passthrough fixture was updated."
+                                }
+                            ],
+    "unrun":  [
+                  "Hosted database advisors/preflight and real Auth project configuration inspection.",
+                  "Real password/OAuth/signup/recovery email and callback round trips, actual provider link reuse/expiry and remote revocation.",
+                  "Direct hosted REST/RPC/Storage/Realtime denial with real JWTs; production PostgREST hook inventory/chaining.",
+                  "Multi-connection Postgres contention/deadlock testing; embedded PGlite does not prove contention behavior.",
+                  "Physical-device/native login, browser restart restoration and actual BFCache history traversal."
+              ],
+    "deploymentPrerequisites":  [
+                                    "Review and apply the three unapplied auth migrations in documented order; inspect/fence legacy provisioning writers and Auth triggers.",
+                                    "Configure canonical origin, stable server-only HMAC secrets and only a trusted overwritten ingress IP header.",
+                                    "Review Auth password/session/confirmation/SMTP/OTP settings, allowed redirects, typed token_hash email templates and MFA enrollment/recovery using isolated accounts.",
+                                    "Inspect and chain the PostgREST pre-request hook; verify RLS, Storage, views, privileged RPCs and Realtime boundaries.",
+                                    "Approve native session binding/reauthentication and fixed legacy cutoff/grace before enforcement activation."
+                                ],
+    "remainingBoundaries":  [
+                                "Direct GoTrue Auth /user mutations are outside application RLS/pre-request; provider secure-password-change/recent-auth controls require review.",
+                                "Issued signed read/download and upload capabilities plus cached bytes remain valid for their own lifetimes; no retrospective revocation claimed.",
+                                "Active private Realtime Presence/Broadcast authorization is cached at join/new JWT, so malicious existing connections are not instantly revoked.",
+                                "Provider refresh-token revocation does not make every issued access JWT instantly invalid."
+                            ],
+    "notes":  [
+                  "RTK startup emits a no-hook-installed notice that PowerShell logs as NativeCommandError; final command exit codes and compiler/test results above are authoritative.",
+                  "Existing dirty billing/Storage/admin/integration/settings work preserved. No POS/LIVE/native source changes were made.",
+                  "Not production verified; all migrations remain review-only and unapplied."
+              ]
+}

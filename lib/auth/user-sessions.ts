@@ -1,6 +1,8 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { checkSessionPolicy, revokeSessionPolicies } from "@/lib/auth/session-policy";
 import {
   parseUserAgent,
   type DeviceType,
@@ -23,10 +25,7 @@ export type UserSession = {
 export type UserSessionsResult =
   | {
       success: true;
-      /**
-       * False when the SQL helper has not been installed yet.
-       * The UI degrades to "current device only" instead of erroring.
-       */
+      /** Compatibility flag; an unavailable policy-aware helper now fails closed. */
       supported: boolean;
       currentSessionId: string | null;
       sessions: UserSession[];
@@ -48,43 +47,7 @@ type SessionRow = {
   aal: string | null;
 };
 
-/**
- * Supabase puts the session id in the `session_id` claim of the access
- * token. The token was already verified by getUser() before we get
- * here, so we only need to read the payload, not re-check the
- * signature.
- */
-function readSessionIdFromAccessToken(
-  accessToken: string | null | undefined,
-) {
-  if (!accessToken) {
-    return null;
-  }
-
-  const parts = accessToken.split(".");
-
-  if (parts.length < 2) {
-    return null;
-  }
-
-  try {
-    const payload = JSON.parse(
-      Buffer.from(parts[1], "base64url").toString("utf8"),
-    ) as { session_id?: unknown };
-
-    return typeof payload.session_id === "string"
-      ? payload.session_id
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function isMissingFunctionError(code: string | null | undefined) {
-  // PGRST202 = function not found in schema cache.
-  // 42883 = undefined_function.
-  return code === "PGRST202" || code === "42883";
-}
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function normalizeIp(value: string | null) {
   const ip = value?.trim();
@@ -112,31 +75,17 @@ export async function listUserSessions(): Promise<UserSessionsResult> {
     };
   }
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const policy = await checkSessionPolicy(supabase, user);
+  if (!policy.allowed) return { success: false, status: policy.status, error: "Please sign in again before viewing active sessions." };
+  const currentSessionId = policy.sessionId;
+  const { data, error } = await supabaseAdmin.rpc("tenh_list_effective_user_sessions", {
+    p_user_id: user.id, p_current_session_id: currentSessionId,
+  });
 
-  const currentSessionId = readSessionIdFromAccessToken(
-    session?.access_token,
-  );
-
-  const { data, error } = await supabase.rpc(
-    "tenh_list_user_sessions",
-  );
-
-  if (error) {
-    if (isMissingFunctionError(error.code)) {
-      return {
-        success: true,
-        supported: false,
-        currentSessionId,
-        sessions: [],
-      };
-    }
-
+  if (error || !Array.isArray(data)) {
     return {
       success: false,
-      status: 500,
+      status: 503,
       error: "Unable to load your active sessions.",
     };
   }
@@ -209,17 +158,21 @@ export async function revokeOtherSessions(): Promise<RevokeResult> {
     };
   }
 
+  const policy = await checkSessionPolicy(supabase, user);
+  if (!policy.allowed) return { success: false, status: policy.status, error: "Please sign in again before revoking sessions." };
+  const ledgerRevoked = await revokeSessionPolicies(user, null, { exceptSessionId: policy.sessionId });
+
   // scope: "others" revokes every session except the one making the
   // request, so the current browser stays signed in.
-  const { error } = await supabase.auth.signOut({
-    scope: "others",
-  });
+  let providerRevoked = false;
+  try { providerRevoked = !(await supabase.auth.signOut({ scope: "others" })).error; } catch { /* Report uncertainty below. */ }
 
-  if (error) {
+  if (!ledgerRevoked || !providerRevoked) {
     return {
       success: false,
-      status: 500,
-      error: "Unable to sign out your other sessions.",
+      status: 502,
+      error: ledgerRevoked ? "Other sessions are blocked in TENH, but provider sign-out could not be confirmed. Retry sign-out."
+        : "Provider and TENH session revocation could not both be confirmed. Retry sign-out.",
     };
   }
 
@@ -229,6 +182,7 @@ export async function revokeOtherSessions(): Promise<RevokeResult> {
 export async function revokeSession(
   sessionId: string,
 ): Promise<RevokeResult> {
+  if (!SESSION_ID.test(sessionId)) return { success: false, status: 400, error: "A valid session identifier is required." };
   const supabase = await createClient();
 
   const {
@@ -244,13 +198,9 @@ export async function revokeSession(
     };
   }
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  const currentSessionId = readSessionIdFromAccessToken(
-    session?.access_token,
-  );
+  const policy = await checkSessionPolicy(supabase, user);
+  if (!policy.allowed) return { success: false, status: policy.status, error: "Please sign in again before revoking sessions." };
+  const currentSessionId = policy.sessionId;
 
   if (currentSessionId && sessionId === currentSessionId) {
     return {
@@ -261,25 +211,21 @@ export async function revokeSession(
     };
   }
 
-  const { data, error } = await supabase.rpc(
-    "tenh_revoke_user_session",
-    { target_session_id: sessionId },
-  );
+  const ledgerRevoked = await revokeSessionPolicies(user, sessionId);
+  let data: unknown;
+  let providerError = false;
+  try {
+    const result = await supabase.rpc("tenh_revoke_user_session", { target_session_id: sessionId });
+    data = result.data;
+    providerError = Boolean(result.error);
+  } catch { providerError = true; }
 
-  if (error) {
-    if (isMissingFunctionError(error.code)) {
-      return {
-        success: false,
-        status: 501,
-        error:
-          "Per-device sign out is not installed yet. Run supabase/sql/active-sessions.sql.",
-      };
-    }
-
+  if (providerError || !ledgerRevoked) {
     return {
       success: false,
-      status: 500,
-      error: "Unable to sign out that device.",
+      status: 502,
+      error: ledgerRevoked ? "That session is blocked in TENH, but provider sign-out could not be confirmed. Retry sign-out."
+        : "Provider and TENH session revocation could not both be confirmed. Retry sign-out.",
     };
   }
 

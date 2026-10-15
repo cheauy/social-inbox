@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { validateAuthMutationRequest } from "@/lib/auth/mutation-request";
 
 import {
   revokeOtherSessions,
@@ -17,6 +18,8 @@ type RevokeBody = {
 };
 
 export async function POST(request: NextRequest) {
+  const validation = validateAuthMutationRequest(request);
+  if (!validation.success) return NextResponse.json(validation, { status: validation.status });
   let body: RevokeBody;
 
   try {
@@ -29,6 +32,10 @@ export async function POST(request: NextRequest) {
       },
       { status: 400 },
     );
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+    (body.scope !== undefined && body.scope !== "session" && body.scope !== "others")) {
+    return NextResponse.json({ success: false, error: "Choose a valid session revocation scope." }, { status: 400 });
   }
 
   const scope =

@@ -5,6 +5,9 @@ import { createClient as createStandaloneClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { validateAuthMutationRequest } from "@/lib/auth/mutation-request";
+import { checkSessionPolicy, revokeSessionPolicies } from "@/lib/auth/session-policy";
+import { consumeAuthRateLimit } from "@/lib/auth/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,22 +62,18 @@ function recordFailure(userId: string) {
  * current-password check — a session-hijack hole. The SQL function reads
  * auth.users.encrypted_password, which is authoritative.
  *
- * If the helper is not installed we fall back to the identity check and
- * report it, so the UI can warn instead of silently running unprotected.
+ * Failure is closed: provider identities and user metadata cannot prove absence.
  */
 async function resolveHasPassword(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  identityFallback: boolean,
+  userId: string,
 ) {
-  const { data, error } = await supabase.rpc(
-    "tenh_account_has_password",
-  );
-
-  if (error) {
-    return { hasPassword: identityFallback, authoritative: false };
-  }
-
-  return { hasPassword: data === true, authoritative: true };
+  try {
+    const { data, error } = await supabaseAdmin.rpc(
+      "tenh_account_has_password_for_user", { p_user_id: userId },
+    );
+    if (error || typeof data !== "boolean") return null;
+    return data;
+  } catch { return null; }
 }
 
 export async function GET() {
@@ -95,19 +94,16 @@ export async function GET() {
     );
   }
 
-  const identityFallback = (user.identities ?? []).some(
-    (identity) => identity.provider === "email",
-  );
+  const policy = await checkSessionPolicy(supabase, user);
+  if (!policy.allowed) return NextResponse.json({ success: false, error: "Your session cannot access account security. Please sign in again." }, { status: policy.status });
 
-  const { hasPassword, authoritative } = await resolveHasPassword(
-    supabase,
-    identityFallback,
-  );
+  const hasPassword = await resolveHasPassword(user.id);
+  if (hasPassword === null) return NextResponse.json({ success: false, error: "Password security status is temporarily unavailable." }, { status: 503 });
 
   return NextResponse.json({
     success: true,
     hasPassword,
-    passwordCheckAuthoritative: authoritative,
+    passwordCheckAuthoritative: true,
   });
 }
 
@@ -118,6 +114,8 @@ type PasswordBody = {
 };
 
 export async function POST(request: NextRequest) {
+  const validation = validateAuthMutationRequest(request);
+  if (!validation.success) return NextResponse.json(validation, { status: validation.status });
   const supabase = await createClient();
 
   const {
@@ -135,6 +133,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const policy = await checkSessionPolicy(supabase, user);
+  if (!policy.allowed) return NextResponse.json({ success: false, error: "Your session cannot change account security. Please sign in again." }, { status: policy.status });
+  const limit = await consumeAuthRateLimit(request, "password-update", user.id);
+  if (!limit.allowed) return NextResponse.json({ success: false, error: "Password changes are temporarily unavailable. Try again shortly." },
+    { status: limit.unavailable ? 503 : 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } });
+
   let body: PasswordBody;
 
   try {
@@ -145,6 +149,7 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ success: false, error: "Invalid request body." }, { status: 400 });
 
   const currentPassword =
     typeof body.currentPassword === "string" ? body.currentPassword : "";
@@ -177,12 +182,10 @@ export async function POST(request: NextRequest) {
   // An account with no password yet (OAuth-only) is allowed to set one
   // for the first time. Any account that already has a password must
   // prove it knows the current one.
-  const identityFallback = (user.identities ?? []).some(
-    (identity) => identity.provider === "email",
-  );
-
-  const { hasPassword: hasPasswordIdentity } =
-    await resolveHasPassword(supabase, identityFallback);
+  const hasPasswordIdentity = await resolveHasPassword(user.id);
+  if (hasPasswordIdentity === null) return NextResponse.json({ success: false, error: "Password security status is temporarily unavailable." }, { status: 503 });
+  if (!hasPasswordIdentity && !policy.recentAuthentication) return NextResponse.json({ success: false, requiresRecentAuthentication: true,
+    error: "Sign in again before adding your first password." }, { status: 403 });
 
   if (hasPasswordIdentity) {
     if (tooManyAttempts(user.id)) {
@@ -288,11 +291,12 @@ export async function POST(request: NextRequest) {
   let othersSignedOut = false;
 
   if (signOutOtherSessions) {
+    const policyRevoked = await revokeSessionPolicies(user, null, { exceptSessionId: policy.sessionId });
     const { error: signOutError } = await supabase.auth.signOut({
       scope: "others",
     });
 
-    othersSignedOut = !signOutError;
+    othersSignedOut = policyRevoked && !signOutError;
   }
 
   return NextResponse.json({

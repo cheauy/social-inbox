@@ -246,6 +246,7 @@ export function RegisterForm() {
           },
           cache: "no-store",
           body: JSON.stringify({
+            confirmPassword,
             fullName: fullName.trim(),
             workspaceName:
               workspaceName.trim(),

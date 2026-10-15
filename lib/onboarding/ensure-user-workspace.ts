@@ -102,7 +102,7 @@ async function hasExistingMembership(userId: string, email: string) {
 
 async function callWorkspaceRpc(user: User, email: string) {
   const { data, error } = await supabaseAdmin.rpc(
-    "tenh_ensure_user_workspace",
+    "tenh_ensure_user_workspace_safe",
     {
       p_user_id: user.id,
       p_full_name: getFullName(user),
@@ -119,9 +119,9 @@ async function callWorkspaceRpc(user: User, email: string) {
     ? data[0]
     : data;
 
-  return member
-    ? (member as AuthenticatedMember)
-    : null;
+  if (!member || member.user_id !== user.id || member.is_active !== true ||
+    typeof member.id !== "string" || typeof member.business_id !== "string") return null;
+  return member as AuthenticatedMember;
 }
 
 async function applySevenDayTrial(businessId: string) {

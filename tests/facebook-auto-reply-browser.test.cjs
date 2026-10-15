@@ -160,6 +160,7 @@ test("isolated browser exercises real Tenh Bot page, CRUD and permission guards"
       }, inspectAutoReply: () => { throw new Error("Meta eligibility inspection not exercised by this fixture."); } },
       "@/components/settings/auto-reply-settings": { AutoReplySettings: () => React.createElement("div", { id: "auto-reply-root" }) },
       "@/components/dashboard/dashboard-header": { DashboardHeader: () => requestContext.getStore().header },
+    "@/components/dashboard/dashboard-session-boundary": { DashboardSessionBoundary: ({children}) => children },
       "@/lib/admin/tenh-admin-auth": { isCurrentUserTenhAdminIdentity: async () => false },
       "next/image": { __esModule: true, default: () => null },
       "@/components/dashboard/dashboard-nav-link": { DashboardNavLink: ({ href, children }) => React.createElement("a", { href }, children) },

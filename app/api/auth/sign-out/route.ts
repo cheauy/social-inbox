@@ -2,6 +2,9 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { TENH_ACTIVE_BUSINESS_COOKIE } from "@/lib/auth/get-current-member";
+import { createClient } from "@/lib/supabase/server";
+import { validateAuthMutationRequest } from "@/lib/auth/mutation-request";
+import { checkSessionPolicy, revokeSessionPolicies } from "@/lib/auth/session-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,16 +24,38 @@ export const dynamic = "force-dynamic";
  * it. Nothing is lost by dropping it, since the workspace is re-resolved on the
  * next request.
  */
-export async function POST() {
+export async function POST(request: Request) {
+  const validation = validateAuthMutationRequest(request);
+  if (!validation.success) return NextResponse.json(validation, { status: validation.status });
+  const body = await request.json().catch(() => null) as { scope?: unknown } | null;
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+    (body.scope !== undefined && body.scope !== "local" && body.scope !== "global")) {
+    return NextResponse.json({ success: false, error: "Choose a valid sign-out scope." }, { status: 400 });
+  }
+  const scope = body.scope === "global" ? "global" : "local";
+  const supabase = await createClient({ authFlow: true, allowRecovery: true });
+  let remoteRevocationConfirmed = false;
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    let ledgerRevoked = !user && !error;
+    if (user && !error) {
+      const policy = await checkSessionPolicy(supabase, user, { allowRecovery: true });
+      ledgerRevoked = scope === "global" ? await revokeSessionPolicies(user, null)
+        : policy.allowed ? await revokeSessionPolicies(user, policy.sessionId) : false;
+    }
+    const { error: providerError } = await supabase.auth.signOut({ scope });
+    remoteRevocationConfirmed = ledgerRevoked && !providerError;
+  } catch {
+    remoteRevocationConfirmed = false;
+  }
   const cookieStore = await cookies();
-
-  cookieStore.set(TENH_ACTIVE_BUSINESS_COOKIE, "", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 0,
+  const names = new Set([TENH_ACTIVE_BUSINESS_COOKIE, "tenh_session_hint", "tenh_auth_intent", "tenh_recovery_grant", ...cookieStore.getAll()
+    .filter(cookie => /^sb-[\w-]+-auth-token(?:-code-verifier)?(?:\.\d+)?$/.test(cookie.name))
+    .map(cookie => cookie.name)]);
+  for (const name of names) cookieStore.set(name, "", {
+    httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 0,
   });
-
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: remoteRevocationConfirmed, signedOutLocally: true, remoteRevocationConfirmed,
+    ...(remoteRevocationConfirmed ? {} : { error: "This browser was signed out, but remote session revocation could not be confirmed." }) },
+    { status: remoteRevocationConfirmed ? 200 : 502 });
 }

@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
-import { createClient } from "@/lib/supabase/client";
+import { signOutBrowser } from "@/lib/auth/browser-session";
+import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 
 type ProfileMenuProps = {
   name?: string | null;
@@ -71,156 +72,33 @@ function LogoutIcon() {
   );
 }
 
-export function ProfileMenu({
-  name,
-  email,
-  avatarUrl,
-}: ProfileMenuProps) {
-  const [open, setOpen] =
-    useState(false);
-
-  const [signingOut, setSigningOut] =
-    useState(false);
-
-  const displayName =
-    name?.trim() || "Tenh Chat User";
-
-  async function handleSignOut() {
-    setSigningOut(true);
-
-    try {
-      const supabase =
-        createClient();
-
-      /*
-       * Drop the active-workspace cookie first. It is httpOnly, so only the
-       * server can clear it, and signOut() below leaves it behind -- which is
-       * how a stale pointer at an expired workspace used to survive into the
-       * next sign-in. Best effort: a failure here must not trap someone in a
-       * session they are trying to leave.
-       */
-      await fetch("/api/auth/sign-out", {
-        method: "POST",
-        cache: "no-store",
-      }).catch(() => null);
-
-      const { error } =
-        await supabase.auth.signOut();
-
-      if (error) {
-        throw error;
-      }
-
-      window.location.replace("/login");
-    } catch (signOutError) {
-      console.error(
-        "Unable to sign out:",
-        signOutError,
-      );
-
-      setSigningOut(false);
-    }
+export function ProfileMenu({ name, email, avatarUrl }: ProfileMenuProps) {
+  const [open, setOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState<"local" | "global" | null>(null);
+  const ending = useRef(false);
+  const language = useWorkspaceLanguageId();
+  const t = (en: string, km: string) => language === "km" ? km : en;
+  const displayName = name?.trim() || t("TENH Chat user", "អ្នកប្រើ TENH Chat");
+  async function handleSignOut(scope: "local" | "global") {
+    if (ending.current) return;
+    if (scope === "global" && !window.confirm(t("Sign out all devices? You will need to sign in again on each device.", "ចាកចេញពីគ្រប់ឧបករណ៍? អ្នកនឹងត្រូវចូលគណនីម្ដងទៀតលើឧបករណ៍នីមួយៗ។"))) return;
+    ending.current = true; setSigningOut(scope);
+    await signOutBrowser(scope);
   }
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() =>
-          setOpen((current) => !current)
-        }
-        className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-slate-950 font-semibold text-white transition hover:ring-4 hover:ring-blue-100"
-        aria-label="Open profile menu"
-        aria-expanded={open}
-      >
-        {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt=""
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          getInitial(displayName)
-        )}
-      </button>
-
-      {open ? (
-        <>
-          <button
-            type="button"
-            className="fixed inset-0 z-40 cursor-default"
-            onClick={() =>
-              setOpen(false)
-            }
-            aria-label="Close profile menu"
-          />
-
-          <div className="absolute right-0 top-14 z-50 w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            <div className="border-b border-slate-200 p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-100 font-semibold text-blue-700">
-                  {avatarUrl ? (
-                    <img
-                      src={avatarUrl}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    getInitial(
-                      displayName,
-                    )
-                  )}
-                </div>
-
-                <div className="min-w-0">
-                  <p className="truncate font-semibold text-slate-900">
-                    {displayName}
-                  </p>
-
-                  <p className="truncate text-sm text-slate-500">
-                    {email ?? "No email"}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-2">
-              <Link
-                href="/dashboard/profile"
-                onClick={() =>
-                  setOpen(false)
-                }
-                className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-              >
-                <UserIcon />
-
-                Profile information
-              </Link>
-            </div>
-
-            <div className="border-t border-slate-200 p-2">
-              <button
-                type="button"
-                onClick={() =>
-                  void handleSignOut()
-                }
-                disabled={signingOut}
-                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
-              >
-                {signingOut ? (
-                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-red-200 border-t-red-600" />
-                ) : (
-                  <LogoutIcon />
-                )}
-
-                {signingOut
-                  ? "Signing out..."
-                  : "Sign out"}
-              </button>
-            </div>
-          </div>
-        </>
-      ) : null}
-    </div>
-  );
+  return <div className="relative">
+    <button type="button" onClick={() => setOpen(value => !value)} className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-slate-950 font-semibold text-white transition hover:ring-4 hover:ring-blue-100" aria-label={t("Open profile menu", "បើកម៉ឺនុយប្រវត្តិរូប")} aria-expanded={open}>
+      {avatarUrl ? <img src={avatarUrl} alt="" className="h-full w-full object-cover" /> : getInitial(displayName)}
+    </button>
+    {open ? <>
+      <button type="button" onClick={() => setOpen(false)} className="fixed inset-0 z-40 cursor-default" aria-label={t("Close profile menu", "បិទម៉ឺនុយប្រវត្តិរូប")} />
+      <div className="absolute right-0 top-14 z-50 w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+        <div className="border-b border-slate-200 p-4"><div className="flex items-center gap-3"><div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-100 font-semibold text-blue-700">{avatarUrl ? <img src={avatarUrl} alt="" className="h-full w-full object-cover" /> : getInitial(displayName)}</div><div className="min-w-0"><p className="truncate font-semibold text-slate-900">{displayName}</p><p className="truncate text-sm text-slate-500">{email ?? t("No email", "គ្មានអ៊ីមែល")}</p></div></div></div>
+        <div className="p-2"><Link href="/dashboard/profile" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100"><UserIcon />{t("Profile information", "ព័ត៌មានប្រវត្តិរូប")}</Link></div>
+        <div className="border-t border-slate-200 p-2">
+          <button type="button" onClick={() => void handleSignOut("local")} disabled={signingOut !== null} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"><LogoutIcon />{signingOut === "local" ? t("Signing out…", "កំពុងចាកចេញ…") : t("Sign out this device", "ចាកចេញលើឧបករណ៍នេះ")}</button>
+          <button type="button" onClick={() => void handleSignOut("global")} disabled={signingOut !== null} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"><LogoutIcon />{signingOut === "global" ? t("Signing out…", "កំពុងចាកចេញ…") : t("Sign out all devices", "ចាកចេញពីគ្រប់ឧបករណ៍")}</button>
+        </div>
+      </div>
+    </> : null}
+  </div>;
 }

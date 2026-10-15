@@ -1,0 +1,6706 @@
+{
+  "passed": true,
+  "complete": true,
+  "reports": [
+    {
+      "language": "en",
+      "width": 390,
+      "screenshots": {
+        "login": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-390-login.png",
+        "loginUnchecked": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-390-login-unchecked.png",
+        "forgot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-390-forgot.png",
+        "reset": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-390-reset.png",
+        "verification": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-390-verification.png",
+        "admin": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-390-admin.png",
+        "session": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-390-session.png"
+      },
+      "checks": [
+        {
+          "name": "Remember me starts unchecked",
+          "passed": true
+        },
+        {
+          "name": "unchecked session-cookie copy states24hour maximum and browser restoration",
+          "passed": true
+        },
+        {
+          "name": "Forgot password opens real request page",
+          "passed": true
+        },
+        {
+          "name": "checked Remember me copy uses server-provided days",
+          "passed": true
+        },
+        {
+          "name": "password visibility button is accessible and works",
+          "passed": true
+        },
+        {
+          "name": "in-flight login blocks duplicate submissions",
+          "passed": true
+        },
+        {
+          "name": "password login sends checked preference and return path to server",
+          "passed": true
+        },
+        {
+          "name": "failed login retains editable fields with generic error",
+          "passed": true
+        },
+        {
+          "name": "unchecked password preference stays false and success follows server destination",
+          "passed": true
+        },
+        {
+          "name": "google preference is sent through trusted server handshake",
+          "passed": true
+        },
+        {
+          "name": "facebook preference is sent through trusted server handshake",
+          "passed": true
+        },
+        {
+          "name": "policy outage never invents duration or changes preference",
+          "passed": true
+        },
+        {
+          "name": "public auth language switch updates visible content",
+          "passed": true
+        },
+        {
+          "name": "login: no horizontal overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "recovery response does not disclose account existence",
+          "passed": true
+        },
+        {
+          "name": "recovery request is sent once with account email only",
+          "passed": true
+        },
+        {
+          "name": "recovery response does not disclose account existence",
+          "passed": true
+        },
+        {
+          "name": "recovery request is sent once with account email only",
+          "passed": true
+        },
+        {
+          "name": "rate-limited recovery stays editable and gives wait guidance",
+          "passed": true
+        },
+        {
+          "name": "forgot password: no horizontal overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "password fields stay hidden until server authorizes recovery",
+          "passed": true
+        },
+        {
+          "name": "mismatched reset passwords never reach server",
+          "passed": true
+        },
+        {
+          "name": "authorized reset sends confirmation once then removes password fields",
+          "passed": true
+        },
+        {
+          "name": "expired or used reset cannot render password form and offers new request",
+          "passed": true
+        },
+        {
+          "name": "reset password: no horizontal overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "verification code has no fixed length or local expiry promise",
+          "passed": true
+        },
+        {
+          "name": "verification sends full code and invitation return path to server",
+          "passed": true
+        },
+        {
+          "name": "longer valid code is not truncated by client",
+          "passed": true
+        },
+        {
+          "name": "resend uses server endpoint and generic confirmation",
+          "passed": true
+        },
+        {
+          "name": "email verification: no horizontal overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "global policy loads default30 with unchanged save disabled",
+          "passed": true
+        },
+        {
+          "name": "admin policy copy distinguishes unchecked24hour cookies and browser restoration",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 0 cannot save",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 91 cannot save",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 1.5 cannot save",
+          "passed": true
+        },
+        {
+          "name": "global duration 1 saves through protected PATCH once",
+          "passed": true
+        },
+        {
+          "name": "global duration 90 saves through protected PATCH once",
+          "passed": true
+        },
+        {
+          "name": "MFA-gated policy links verification and blocks edit",
+          "passed": true
+        },
+        {
+          "name": "fresh verification failure never claims policy saved",
+          "passed": true
+        },
+        {
+          "name": "non-TENH administrator denial has no editable policy",
+          "passed": true
+        },
+        {
+          "name": "policy outage can recover without inventing a saved value",
+          "passed": true
+        },
+        {
+          "name": "admin login sessions: no horizontal overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "browser performs no direct Supabase auth calls or provider/email actions",
+          "passed": true
+        },
+        {
+          "name": "private dashboard remains unmounted before initial server validation",
+          "passed": true
+        },
+        {
+          "name": "focus, online and auth events never overlap an in-flight validation",
+          "passed": true
+        },
+        {
+          "name": "browser clock skew cannot expire a server-valid session",
+          "passed": true
+        },
+        {
+          "name": "validation outage unmounts private content, stops channels and preserves credentials",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 5000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 10000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 20000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 40000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 60000ms",
+          "passed": true
+        },
+        {
+          "name": "six validation failures stop automatic retries until an explicit action",
+          "passed": true
+        },
+        {
+          "name": "successful retry resumes current workspace without a refresh loop",
+          "passed": true
+        },
+        {
+          "name": "global logout requires confirmation before any request or local cleanup",
+          "passed": true
+        },
+        {
+          "name": "delayed cross-tab logout for A cannot end fresh B session",
+          "passed": true
+        },
+        {
+          "name": "matching cross-tab session end clears private UI and own auth cookie without SDK signOut RPC",
+          "passed": true
+        },
+        {
+          "name": "cleanup preserves unrelated storage and removes only private TENH session keys",
+          "passed": true
+        },
+        {
+          "name": "late A response cannot mount A server children into B session",
+          "passed": true
+        },
+        {
+          "name": "unhinted legacy session still binds the original server user identity",
+          "passed": true
+        },
+        {
+          "name": "server-attested unhinted legacy session accepts nullable policy with30second poll",
+          "passed": true
+        },
+        {
+          "name": "server-attested unhinted legacy session accepts provider grace expiry with server TTL",
+          "passed": true
+        },
+        {
+          "name": "nullable normal policy cannot masquerade as server-attested legacy",
+          "passed": true
+        },
+        {
+          "name": "BFCache pageshow immediately hides stale private content until server revalidation",
+          "passed": true
+        },
+        {
+          "name": "valid BFCache restore resumes same private workspace without reload",
+          "passed": true
+        },
+        {
+          "name": "visibility return rechecks without discarding a valid workspace before the server response",
+          "passed": true
+        },
+        {
+          "name": "server401 expiry displays exact localized sign-in guidance with no private UI",
+          "passed": true
+        },
+        {
+          "name": "expired dashboard session: no horizontal overflow",
+          "passed": true,
+          "detail": "390/390"
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/login",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "password": "Synthetic-only-password1!",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/login",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "password": "Synthetic-only-password1!",
+            "rememberMe": false,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/oauth",
+          "method": "POST",
+          "body": {
+            "provider": "google",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/oauth",
+          "method": "POST",
+          "body": {
+            "provider": "facebook",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic-known@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic-unknown@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/reset-password",
+          "method": "POST",
+          "body": {
+            "password": "Synthetic-only-password1!",
+            "confirmPassword": "Synthetic-only-password1!"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/confirm",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite",
+            "token": "123456"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/confirm",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite",
+            "token": "1234567890"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/resend",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 1
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 90
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 40
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        }
+      ],
+      "mockedOnly": true,
+      "providerActions": 0,
+      "emailsSent": 0,
+      "browserAuthCalls": 0,
+      "sessionSdk": {
+        "channels": 7,
+        "stop": 7,
+        "start": 7
+      },
+      "privateMounts": 14,
+      "privateUnmounts": 14,
+      "identityReloads": 2
+    },
+    {
+      "language": "en",
+      "width": 768,
+      "screenshots": {
+        "login": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-768-login.png",
+        "loginUnchecked": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-768-login-unchecked.png",
+        "forgot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-768-forgot.png",
+        "reset": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-768-reset.png",
+        "verification": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-768-verification.png",
+        "admin": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-768-admin.png",
+        "session": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-768-session.png"
+      },
+      "checks": [
+        {
+          "name": "Remember me starts unchecked",
+          "passed": true
+        },
+        {
+          "name": "unchecked session-cookie copy states24hour maximum and browser restoration",
+          "passed": true
+        },
+        {
+          "name": "Forgot password opens real request page",
+          "passed": true
+        },
+        {
+          "name": "checked Remember me copy uses server-provided days",
+          "passed": true
+        },
+        {
+          "name": "password visibility button is accessible and works",
+          "passed": true
+        },
+        {
+          "name": "in-flight login blocks duplicate submissions",
+          "passed": true
+        },
+        {
+          "name": "password login sends checked preference and return path to server",
+          "passed": true
+        },
+        {
+          "name": "failed login retains editable fields with generic error",
+          "passed": true
+        },
+        {
+          "name": "unchecked password preference stays false and success follows server destination",
+          "passed": true
+        },
+        {
+          "name": "google preference is sent through trusted server handshake",
+          "passed": true
+        },
+        {
+          "name": "facebook preference is sent through trusted server handshake",
+          "passed": true
+        },
+        {
+          "name": "policy outage never invents duration or changes preference",
+          "passed": true
+        },
+        {
+          "name": "public auth language switch updates visible content",
+          "passed": true
+        },
+        {
+          "name": "login: no horizontal overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "recovery response does not disclose account existence",
+          "passed": true
+        },
+        {
+          "name": "recovery request is sent once with account email only",
+          "passed": true
+        },
+        {
+          "name": "recovery response does not disclose account existence",
+          "passed": true
+        },
+        {
+          "name": "recovery request is sent once with account email only",
+          "passed": true
+        },
+        {
+          "name": "rate-limited recovery stays editable and gives wait guidance",
+          "passed": true
+        },
+        {
+          "name": "forgot password: no horizontal overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "password fields stay hidden until server authorizes recovery",
+          "passed": true
+        },
+        {
+          "name": "mismatched reset passwords never reach server",
+          "passed": true
+        },
+        {
+          "name": "authorized reset sends confirmation once then removes password fields",
+          "passed": true
+        },
+        {
+          "name": "expired or used reset cannot render password form and offers new request",
+          "passed": true
+        },
+        {
+          "name": "reset password: no horizontal overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "verification code has no fixed length or local expiry promise",
+          "passed": true
+        },
+        {
+          "name": "verification sends full code and invitation return path to server",
+          "passed": true
+        },
+        {
+          "name": "longer valid code is not truncated by client",
+          "passed": true
+        },
+        {
+          "name": "resend uses server endpoint and generic confirmation",
+          "passed": true
+        },
+        {
+          "name": "email verification: no horizontal overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "global policy loads default30 with unchanged save disabled",
+          "passed": true
+        },
+        {
+          "name": "admin policy copy distinguishes unchecked24hour cookies and browser restoration",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 0 cannot save",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 91 cannot save",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 1.5 cannot save",
+          "passed": true
+        },
+        {
+          "name": "global duration 1 saves through protected PATCH once",
+          "passed": true
+        },
+        {
+          "name": "global duration 90 saves through protected PATCH once",
+          "passed": true
+        },
+        {
+          "name": "MFA-gated policy links verification and blocks edit",
+          "passed": true
+        },
+        {
+          "name": "fresh verification failure never claims policy saved",
+          "passed": true
+        },
+        {
+          "name": "non-TENH administrator denial has no editable policy",
+          "passed": true
+        },
+        {
+          "name": "policy outage can recover without inventing a saved value",
+          "passed": true
+        },
+        {
+          "name": "admin login sessions: no horizontal overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "browser performs no direct Supabase auth calls or provider/email actions",
+          "passed": true
+        },
+        {
+          "name": "private dashboard remains unmounted before initial server validation",
+          "passed": true
+        },
+        {
+          "name": "focus, online and auth events never overlap an in-flight validation",
+          "passed": true
+        },
+        {
+          "name": "browser clock skew cannot expire a server-valid session",
+          "passed": true
+        },
+        {
+          "name": "validation outage unmounts private content, stops channels and preserves credentials",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 5000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 10000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 20000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 40000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 60000ms",
+          "passed": true
+        },
+        {
+          "name": "six validation failures stop automatic retries until an explicit action",
+          "passed": true
+        },
+        {
+          "name": "successful retry resumes current workspace without a refresh loop",
+          "passed": true
+        },
+        {
+          "name": "global logout requires confirmation before any request or local cleanup",
+          "passed": true
+        },
+        {
+          "name": "delayed cross-tab logout for A cannot end fresh B session",
+          "passed": true
+        },
+        {
+          "name": "matching cross-tab session end clears private UI and own auth cookie without SDK signOut RPC",
+          "passed": true
+        },
+        {
+          "name": "cleanup preserves unrelated storage and removes only private TENH session keys",
+          "passed": true
+        },
+        {
+          "name": "late A response cannot mount A server children into B session",
+          "passed": true
+        },
+        {
+          "name": "unhinted legacy session still binds the original server user identity",
+          "passed": true
+        },
+        {
+          "name": "server-attested unhinted legacy session accepts nullable policy with30second poll",
+          "passed": true
+        },
+        {
+          "name": "server-attested unhinted legacy session accepts provider grace expiry with server TTL",
+          "passed": true
+        },
+        {
+          "name": "nullable normal policy cannot masquerade as server-attested legacy",
+          "passed": true
+        },
+        {
+          "name": "BFCache pageshow immediately hides stale private content until server revalidation",
+          "passed": true
+        },
+        {
+          "name": "valid BFCache restore resumes same private workspace without reload",
+          "passed": true
+        },
+        {
+          "name": "visibility return rechecks without discarding a valid workspace before the server response",
+          "passed": true
+        },
+        {
+          "name": "server401 expiry displays exact localized sign-in guidance with no private UI",
+          "passed": true
+        },
+        {
+          "name": "expired dashboard session: no horizontal overflow",
+          "passed": true,
+          "detail": "768/768"
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/login",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "password": "Synthetic-only-password1!",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/login",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "password": "Synthetic-only-password1!",
+            "rememberMe": false,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/oauth",
+          "method": "POST",
+          "body": {
+            "provider": "google",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/oauth",
+          "method": "POST",
+          "body": {
+            "provider": "facebook",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic-known@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic-unknown@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/reset-password",
+          "method": "POST",
+          "body": {
+            "password": "Synthetic-only-password1!",
+            "confirmPassword": "Synthetic-only-password1!"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/confirm",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite",
+            "token": "123456"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/confirm",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite",
+            "token": "1234567890"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/resend",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 1
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 90
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 40
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        }
+      ],
+      "mockedOnly": true,
+      "providerActions": 0,
+      "emailsSent": 0,
+      "browserAuthCalls": 0,
+      "sessionSdk": {
+        "channels": 7,
+        "stop": 7,
+        "start": 7
+      },
+      "privateMounts": 14,
+      "privateUnmounts": 14,
+      "identityReloads": 2
+    },
+    {
+      "language": "en",
+      "width": 1024,
+      "screenshots": {
+        "login": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-1024-login.png",
+        "loginUnchecked": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-1024-login-unchecked.png",
+        "forgot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-1024-forgot.png",
+        "reset": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-1024-reset.png",
+        "verification": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-1024-verification.png",
+        "admin": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-1024-admin.png",
+        "session": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-1024-session.png"
+      },
+      "checks": [
+        {
+          "name": "Remember me starts unchecked",
+          "passed": true
+        },
+        {
+          "name": "unchecked session-cookie copy states24hour maximum and browser restoration",
+          "passed": true
+        },
+        {
+          "name": "Forgot password opens real request page",
+          "passed": true
+        },
+        {
+          "name": "checked Remember me copy uses server-provided days",
+          "passed": true
+        },
+        {
+          "name": "password visibility button is accessible and works",
+          "passed": true
+        },
+        {
+          "name": "in-flight login blocks duplicate submissions",
+          "passed": true
+        },
+        {
+          "name": "password login sends checked preference and return path to server",
+          "passed": true
+        },
+        {
+          "name": "failed login retains editable fields with generic error",
+          "passed": true
+        },
+        {
+          "name": "unchecked password preference stays false and success follows server destination",
+          "passed": true
+        },
+        {
+          "name": "google preference is sent through trusted server handshake",
+          "passed": true
+        },
+        {
+          "name": "facebook preference is sent through trusted server handshake",
+          "passed": true
+        },
+        {
+          "name": "policy outage never invents duration or changes preference",
+          "passed": true
+        },
+        {
+          "name": "public auth language switch updates visible content",
+          "passed": true
+        },
+        {
+          "name": "login: no horizontal overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        },
+        {
+          "name": "recovery response does not disclose account existence",
+          "passed": true
+        },
+        {
+          "name": "recovery request is sent once with account email only",
+          "passed": true
+        },
+        {
+          "name": "recovery response does not disclose account existence",
+          "passed": true
+        },
+        {
+          "name": "recovery request is sent once with account email only",
+          "passed": true
+        },
+        {
+          "name": "rate-limited recovery stays editable and gives wait guidance",
+          "passed": true
+        },
+        {
+          "name": "forgot password: no horizontal overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        },
+        {
+          "name": "password fields stay hidden until server authorizes recovery",
+          "passed": true
+        },
+        {
+          "name": "mismatched reset passwords never reach server",
+          "passed": true
+        },
+        {
+          "name": "authorized reset sends confirmation once then removes password fields",
+          "passed": true
+        },
+        {
+          "name": "expired or used reset cannot render password form and offers new request",
+          "passed": true
+        },
+        {
+          "name": "reset password: no horizontal overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        },
+        {
+          "name": "verification code has no fixed length or local expiry promise",
+          "passed": true
+        },
+        {
+          "name": "verification sends full code and invitation return path to server",
+          "passed": true
+        },
+        {
+          "name": "longer valid code is not truncated by client",
+          "passed": true
+        },
+        {
+          "name": "resend uses server endpoint and generic confirmation",
+          "passed": true
+        },
+        {
+          "name": "email verification: no horizontal overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        },
+        {
+          "name": "global policy loads default30 with unchanged save disabled",
+          "passed": true
+        },
+        {
+          "name": "admin policy copy distinguishes unchecked24hour cookies and browser restoration",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 0 cannot save",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 91 cannot save",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 1.5 cannot save",
+          "passed": true
+        },
+        {
+          "name": "global duration 1 saves through protected PATCH once",
+          "passed": true
+        },
+        {
+          "name": "global duration 90 saves through protected PATCH once",
+          "passed": true
+        },
+        {
+          "name": "MFA-gated policy links verification and blocks edit",
+          "passed": true
+        },
+        {
+          "name": "fresh verification failure never claims policy saved",
+          "passed": true
+        },
+        {
+          "name": "non-TENH administrator denial has no editable policy",
+          "passed": true
+        },
+        {
+          "name": "policy outage can recover without inventing a saved value",
+          "passed": true
+        },
+        {
+          "name": "admin login sessions: no horizontal overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        },
+        {
+          "name": "browser performs no direct Supabase auth calls or provider/email actions",
+          "passed": true
+        },
+        {
+          "name": "private dashboard remains unmounted before initial server validation",
+          "passed": true
+        },
+        {
+          "name": "focus, online and auth events never overlap an in-flight validation",
+          "passed": true
+        },
+        {
+          "name": "browser clock skew cannot expire a server-valid session",
+          "passed": true
+        },
+        {
+          "name": "validation outage unmounts private content, stops channels and preserves credentials",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 5000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 10000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 20000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 40000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 60000ms",
+          "passed": true
+        },
+        {
+          "name": "six validation failures stop automatic retries until an explicit action",
+          "passed": true
+        },
+        {
+          "name": "successful retry resumes current workspace without a refresh loop",
+          "passed": true
+        },
+        {
+          "name": "global logout requires confirmation before any request or local cleanup",
+          "passed": true
+        },
+        {
+          "name": "delayed cross-tab logout for A cannot end fresh B session",
+          "passed": true
+        },
+        {
+          "name": "matching cross-tab session end clears private UI and own auth cookie without SDK signOut RPC",
+          "passed": true
+        },
+        {
+          "name": "cleanup preserves unrelated storage and removes only private TENH session keys",
+          "passed": true
+        },
+        {
+          "name": "late A response cannot mount A server children into B session",
+          "passed": true
+        },
+        {
+          "name": "unhinted legacy session still binds the original server user identity",
+          "passed": true
+        },
+        {
+          "name": "server-attested unhinted legacy session accepts nullable policy with30second poll",
+          "passed": true
+        },
+        {
+          "name": "server-attested unhinted legacy session accepts provider grace expiry with server TTL",
+          "passed": true
+        },
+        {
+          "name": "nullable normal policy cannot masquerade as server-attested legacy",
+          "passed": true
+        },
+        {
+          "name": "BFCache pageshow immediately hides stale private content until server revalidation",
+          "passed": true
+        },
+        {
+          "name": "valid BFCache restore resumes same private workspace without reload",
+          "passed": true
+        },
+        {
+          "name": "visibility return rechecks without discarding a valid workspace before the server response",
+          "passed": true
+        },
+        {
+          "name": "server401 expiry displays exact localized sign-in guidance with no private UI",
+          "passed": true
+        },
+        {
+          "name": "expired dashboard session: no horizontal overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/login",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "password": "Synthetic-only-password1!",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/login",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "password": "Synthetic-only-password1!",
+            "rememberMe": false,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/oauth",
+          "method": "POST",
+          "body": {
+            "provider": "google",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/oauth",
+          "method": "POST",
+          "body": {
+            "provider": "facebook",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic-known@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic-unknown@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/reset-password",
+          "method": "POST",
+          "body": {
+            "password": "Synthetic-only-password1!",
+            "confirmPassword": "Synthetic-only-password1!"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/confirm",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite",
+            "token": "123456"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/confirm",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite",
+            "token": "1234567890"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/resend",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 1
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 90
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 40
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        }
+      ],
+      "mockedOnly": true,
+      "providerActions": 0,
+      "emailsSent": 0,
+      "browserAuthCalls": 0,
+      "sessionSdk": {
+        "channels": 7,
+        "stop": 7,
+        "start": 7
+      },
+      "privateMounts": 14,
+      "privateUnmounts": 14,
+      "identityReloads": 2
+    },
+    {
+      "language": "en",
+      "width": 1440,
+      "screenshots": {
+        "login": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-1440-login.png",
+        "loginUnchecked": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-1440-login-unchecked.png",
+        "forgot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-1440-forgot.png",
+        "reset": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-1440-reset.png",
+        "verification": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-1440-verification.png",
+        "admin": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-1440-admin.png",
+        "session": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\en-1440-session.png"
+      },
+      "checks": [
+        {
+          "name": "Remember me starts unchecked",
+          "passed": true
+        },
+        {
+          "name": "unchecked session-cookie copy states24hour maximum and browser restoration",
+          "passed": true
+        },
+        {
+          "name": "Forgot password opens real request page",
+          "passed": true
+        },
+        {
+          "name": "checked Remember me copy uses server-provided days",
+          "passed": true
+        },
+        {
+          "name": "password visibility button is accessible and works",
+          "passed": true
+        },
+        {
+          "name": "in-flight login blocks duplicate submissions",
+          "passed": true
+        },
+        {
+          "name": "password login sends checked preference and return path to server",
+          "passed": true
+        },
+        {
+          "name": "failed login retains editable fields with generic error",
+          "passed": true
+        },
+        {
+          "name": "unchecked password preference stays false and success follows server destination",
+          "passed": true
+        },
+        {
+          "name": "google preference is sent through trusted server handshake",
+          "passed": true
+        },
+        {
+          "name": "facebook preference is sent through trusted server handshake",
+          "passed": true
+        },
+        {
+          "name": "policy outage never invents duration or changes preference",
+          "passed": true
+        },
+        {
+          "name": "public auth language switch updates visible content",
+          "passed": true
+        },
+        {
+          "name": "login: no horizontal overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        },
+        {
+          "name": "recovery response does not disclose account existence",
+          "passed": true
+        },
+        {
+          "name": "recovery request is sent once with account email only",
+          "passed": true
+        },
+        {
+          "name": "recovery response does not disclose account existence",
+          "passed": true
+        },
+        {
+          "name": "recovery request is sent once with account email only",
+          "passed": true
+        },
+        {
+          "name": "rate-limited recovery stays editable and gives wait guidance",
+          "passed": true
+        },
+        {
+          "name": "forgot password: no horizontal overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        },
+        {
+          "name": "password fields stay hidden until server authorizes recovery",
+          "passed": true
+        },
+        {
+          "name": "mismatched reset passwords never reach server",
+          "passed": true
+        },
+        {
+          "name": "authorized reset sends confirmation once then removes password fields",
+          "passed": true
+        },
+        {
+          "name": "expired or used reset cannot render password form and offers new request",
+          "passed": true
+        },
+        {
+          "name": "reset password: no horizontal overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        },
+        {
+          "name": "verification code has no fixed length or local expiry promise",
+          "passed": true
+        },
+        {
+          "name": "verification sends full code and invitation return path to server",
+          "passed": true
+        },
+        {
+          "name": "longer valid code is not truncated by client",
+          "passed": true
+        },
+        {
+          "name": "resend uses server endpoint and generic confirmation",
+          "passed": true
+        },
+        {
+          "name": "email verification: no horizontal overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        },
+        {
+          "name": "global policy loads default30 with unchanged save disabled",
+          "passed": true
+        },
+        {
+          "name": "admin policy copy distinguishes unchecked24hour cookies and browser restoration",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 0 cannot save",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 91 cannot save",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 1.5 cannot save",
+          "passed": true
+        },
+        {
+          "name": "global duration 1 saves through protected PATCH once",
+          "passed": true
+        },
+        {
+          "name": "global duration 90 saves through protected PATCH once",
+          "passed": true
+        },
+        {
+          "name": "MFA-gated policy links verification and blocks edit",
+          "passed": true
+        },
+        {
+          "name": "fresh verification failure never claims policy saved",
+          "passed": true
+        },
+        {
+          "name": "non-TENH administrator denial has no editable policy",
+          "passed": true
+        },
+        {
+          "name": "policy outage can recover without inventing a saved value",
+          "passed": true
+        },
+        {
+          "name": "admin login sessions: no horizontal overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        },
+        {
+          "name": "browser performs no direct Supabase auth calls or provider/email actions",
+          "passed": true
+        },
+        {
+          "name": "private dashboard remains unmounted before initial server validation",
+          "passed": true
+        },
+        {
+          "name": "focus, online and auth events never overlap an in-flight validation",
+          "passed": true
+        },
+        {
+          "name": "browser clock skew cannot expire a server-valid session",
+          "passed": true
+        },
+        {
+          "name": "validation outage unmounts private content, stops channels and preserves credentials",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 5000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 10000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 20000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 40000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 60000ms",
+          "passed": true
+        },
+        {
+          "name": "six validation failures stop automatic retries until an explicit action",
+          "passed": true
+        },
+        {
+          "name": "successful retry resumes current workspace without a refresh loop",
+          "passed": true
+        },
+        {
+          "name": "global logout requires confirmation before any request or local cleanup",
+          "passed": true
+        },
+        {
+          "name": "delayed cross-tab logout for A cannot end fresh B session",
+          "passed": true
+        },
+        {
+          "name": "matching cross-tab session end clears private UI and own auth cookie without SDK signOut RPC",
+          "passed": true
+        },
+        {
+          "name": "cleanup preserves unrelated storage and removes only private TENH session keys",
+          "passed": true
+        },
+        {
+          "name": "late A response cannot mount A server children into B session",
+          "passed": true
+        },
+        {
+          "name": "unhinted legacy session still binds the original server user identity",
+          "passed": true
+        },
+        {
+          "name": "server-attested unhinted legacy session accepts nullable policy with30second poll",
+          "passed": true
+        },
+        {
+          "name": "server-attested unhinted legacy session accepts provider grace expiry with server TTL",
+          "passed": true
+        },
+        {
+          "name": "nullable normal policy cannot masquerade as server-attested legacy",
+          "passed": true
+        },
+        {
+          "name": "BFCache pageshow immediately hides stale private content until server revalidation",
+          "passed": true
+        },
+        {
+          "name": "valid BFCache restore resumes same private workspace without reload",
+          "passed": true
+        },
+        {
+          "name": "visibility return rechecks without discarding a valid workspace before the server response",
+          "passed": true
+        },
+        {
+          "name": "server401 expiry displays exact localized sign-in guidance with no private UI",
+          "passed": true
+        },
+        {
+          "name": "expired dashboard session: no horizontal overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/login",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "password": "Synthetic-only-password1!",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/login",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "password": "Synthetic-only-password1!",
+            "rememberMe": false,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/oauth",
+          "method": "POST",
+          "body": {
+            "provider": "google",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/oauth",
+          "method": "POST",
+          "body": {
+            "provider": "facebook",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic-known@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic-unknown@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/reset-password",
+          "method": "POST",
+          "body": {
+            "password": "Synthetic-only-password1!",
+            "confirmPassword": "Synthetic-only-password1!"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/confirm",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite",
+            "token": "123456"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/confirm",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite",
+            "token": "1234567890"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/resend",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 1
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 90
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 40
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        }
+      ],
+      "mockedOnly": true,
+      "providerActions": 0,
+      "emailsSent": 0,
+      "browserAuthCalls": 0,
+      "sessionSdk": {
+        "channels": 7,
+        "stop": 7,
+        "start": 7
+      },
+      "privateMounts": 14,
+      "privateUnmounts": 14,
+      "identityReloads": 2
+    },
+    {
+      "language": "km",
+      "width": 390,
+      "screenshots": {
+        "login": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-390-login.png",
+        "loginUnchecked": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-390-login-unchecked.png",
+        "forgot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-390-forgot.png",
+        "reset": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-390-reset.png",
+        "verification": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-390-verification.png",
+        "admin": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-390-admin.png",
+        "session": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-390-session.png"
+      },
+      "checks": [
+        {
+          "name": "Remember me starts unchecked",
+          "passed": true
+        },
+        {
+          "name": "unchecked session-cookie copy states24hour maximum and browser restoration",
+          "passed": true
+        },
+        {
+          "name": "Forgot password opens real request page",
+          "passed": true
+        },
+        {
+          "name": "checked Remember me copy uses server-provided days",
+          "passed": true
+        },
+        {
+          "name": "password visibility button is accessible and works",
+          "passed": true
+        },
+        {
+          "name": "in-flight login blocks duplicate submissions",
+          "passed": true
+        },
+        {
+          "name": "password login sends checked preference and return path to server",
+          "passed": true
+        },
+        {
+          "name": "failed login retains editable fields with generic error",
+          "passed": true
+        },
+        {
+          "name": "unchecked password preference stays false and success follows server destination",
+          "passed": true
+        },
+        {
+          "name": "google preference is sent through trusted server handshake",
+          "passed": true
+        },
+        {
+          "name": "facebook preference is sent through trusted server handshake",
+          "passed": true
+        },
+        {
+          "name": "policy outage never invents duration or changes preference",
+          "passed": true
+        },
+        {
+          "name": "public auth language switch updates visible content",
+          "passed": true
+        },
+        {
+          "name": "login: no horizontal overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "recovery response does not disclose account existence",
+          "passed": true
+        },
+        {
+          "name": "recovery request is sent once with account email only",
+          "passed": true
+        },
+        {
+          "name": "recovery response does not disclose account existence",
+          "passed": true
+        },
+        {
+          "name": "recovery request is sent once with account email only",
+          "passed": true
+        },
+        {
+          "name": "rate-limited recovery stays editable and gives wait guidance",
+          "passed": true
+        },
+        {
+          "name": "forgot password: no horizontal overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "password fields stay hidden until server authorizes recovery",
+          "passed": true
+        },
+        {
+          "name": "mismatched reset passwords never reach server",
+          "passed": true
+        },
+        {
+          "name": "authorized reset sends confirmation once then removes password fields",
+          "passed": true
+        },
+        {
+          "name": "expired or used reset cannot render password form and offers new request",
+          "passed": true
+        },
+        {
+          "name": "reset password: no horizontal overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "verification code has no fixed length or local expiry promise",
+          "passed": true
+        },
+        {
+          "name": "verification sends full code and invitation return path to server",
+          "passed": true
+        },
+        {
+          "name": "longer valid code is not truncated by client",
+          "passed": true
+        },
+        {
+          "name": "resend uses server endpoint and generic confirmation",
+          "passed": true
+        },
+        {
+          "name": "email verification: no horizontal overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "global policy loads default30 with unchanged save disabled",
+          "passed": true
+        },
+        {
+          "name": "admin policy copy distinguishes unchecked24hour cookies and browser restoration",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 0 cannot save",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 91 cannot save",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 1.5 cannot save",
+          "passed": true
+        },
+        {
+          "name": "global duration 1 saves through protected PATCH once",
+          "passed": true
+        },
+        {
+          "name": "global duration 90 saves through protected PATCH once",
+          "passed": true
+        },
+        {
+          "name": "MFA-gated policy links verification and blocks edit",
+          "passed": true
+        },
+        {
+          "name": "fresh verification failure never claims policy saved",
+          "passed": true
+        },
+        {
+          "name": "non-TENH administrator denial has no editable policy",
+          "passed": true
+        },
+        {
+          "name": "policy outage can recover without inventing a saved value",
+          "passed": true
+        },
+        {
+          "name": "admin login sessions: no horizontal overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "browser performs no direct Supabase auth calls or provider/email actions",
+          "passed": true
+        },
+        {
+          "name": "private dashboard remains unmounted before initial server validation",
+          "passed": true
+        },
+        {
+          "name": "focus, online and auth events never overlap an in-flight validation",
+          "passed": true
+        },
+        {
+          "name": "browser clock skew cannot expire a server-valid session",
+          "passed": true
+        },
+        {
+          "name": "validation outage unmounts private content, stops channels and preserves credentials",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 5000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 10000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 20000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 40000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 60000ms",
+          "passed": true
+        },
+        {
+          "name": "six validation failures stop automatic retries until an explicit action",
+          "passed": true
+        },
+        {
+          "name": "successful retry resumes current workspace without a refresh loop",
+          "passed": true
+        },
+        {
+          "name": "global logout requires confirmation before any request or local cleanup",
+          "passed": true
+        },
+        {
+          "name": "delayed cross-tab logout for A cannot end fresh B session",
+          "passed": true
+        },
+        {
+          "name": "matching cross-tab session end clears private UI and own auth cookie without SDK signOut RPC",
+          "passed": true
+        },
+        {
+          "name": "cleanup preserves unrelated storage and removes only private TENH session keys",
+          "passed": true
+        },
+        {
+          "name": "late A response cannot mount A server children into B session",
+          "passed": true
+        },
+        {
+          "name": "unhinted legacy session still binds the original server user identity",
+          "passed": true
+        },
+        {
+          "name": "server-attested unhinted legacy session accepts nullable policy with30second poll",
+          "passed": true
+        },
+        {
+          "name": "server-attested unhinted legacy session accepts provider grace expiry with server TTL",
+          "passed": true
+        },
+        {
+          "name": "nullable normal policy cannot masquerade as server-attested legacy",
+          "passed": true
+        },
+        {
+          "name": "BFCache pageshow immediately hides stale private content until server revalidation",
+          "passed": true
+        },
+        {
+          "name": "valid BFCache restore resumes same private workspace without reload",
+          "passed": true
+        },
+        {
+          "name": "visibility return rechecks without discarding a valid workspace before the server response",
+          "passed": true
+        },
+        {
+          "name": "server401 expiry displays exact localized sign-in guidance with no private UI",
+          "passed": true
+        },
+        {
+          "name": "expired dashboard session: no horizontal overflow",
+          "passed": true,
+          "detail": "390/390"
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/login",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "password": "Synthetic-only-password1!",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/login",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "password": "Synthetic-only-password1!",
+            "rememberMe": false,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/oauth",
+          "method": "POST",
+          "body": {
+            "provider": "google",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/oauth",
+          "method": "POST",
+          "body": {
+            "provider": "facebook",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic-known@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic-unknown@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/reset-password",
+          "method": "POST",
+          "body": {
+            "password": "Synthetic-only-password1!",
+            "confirmPassword": "Synthetic-only-password1!"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/confirm",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite",
+            "token": "123456"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/confirm",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite",
+            "token": "1234567890"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/resend",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 1
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 90
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 40
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        }
+      ],
+      "mockedOnly": true,
+      "providerActions": 0,
+      "emailsSent": 0,
+      "browserAuthCalls": 0,
+      "sessionSdk": {
+        "channels": 7,
+        "stop": 7,
+        "start": 7
+      },
+      "privateMounts": 14,
+      "privateUnmounts": 14,
+      "identityReloads": 2
+    },
+    {
+      "language": "km",
+      "width": 768,
+      "screenshots": {
+        "login": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-768-login.png",
+        "loginUnchecked": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-768-login-unchecked.png",
+        "forgot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-768-forgot.png",
+        "reset": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-768-reset.png",
+        "verification": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-768-verification.png",
+        "admin": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-768-admin.png",
+        "session": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-768-session.png"
+      },
+      "checks": [
+        {
+          "name": "Remember me starts unchecked",
+          "passed": true
+        },
+        {
+          "name": "unchecked session-cookie copy states24hour maximum and browser restoration",
+          "passed": true
+        },
+        {
+          "name": "Forgot password opens real request page",
+          "passed": true
+        },
+        {
+          "name": "checked Remember me copy uses server-provided days",
+          "passed": true
+        },
+        {
+          "name": "password visibility button is accessible and works",
+          "passed": true
+        },
+        {
+          "name": "in-flight login blocks duplicate submissions",
+          "passed": true
+        },
+        {
+          "name": "password login sends checked preference and return path to server",
+          "passed": true
+        },
+        {
+          "name": "failed login retains editable fields with generic error",
+          "passed": true
+        },
+        {
+          "name": "unchecked password preference stays false and success follows server destination",
+          "passed": true
+        },
+        {
+          "name": "google preference is sent through trusted server handshake",
+          "passed": true
+        },
+        {
+          "name": "facebook preference is sent through trusted server handshake",
+          "passed": true
+        },
+        {
+          "name": "policy outage never invents duration or changes preference",
+          "passed": true
+        },
+        {
+          "name": "public auth language switch updates visible content",
+          "passed": true
+        },
+        {
+          "name": "login: no horizontal overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "recovery response does not disclose account existence",
+          "passed": true
+        },
+        {
+          "name": "recovery request is sent once with account email only",
+          "passed": true
+        },
+        {
+          "name": "recovery response does not disclose account existence",
+          "passed": true
+        },
+        {
+          "name": "recovery request is sent once with account email only",
+          "passed": true
+        },
+        {
+          "name": "rate-limited recovery stays editable and gives wait guidance",
+          "passed": true
+        },
+        {
+          "name": "forgot password: no horizontal overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "password fields stay hidden until server authorizes recovery",
+          "passed": true
+        },
+        {
+          "name": "mismatched reset passwords never reach server",
+          "passed": true
+        },
+        {
+          "name": "authorized reset sends confirmation once then removes password fields",
+          "passed": true
+        },
+        {
+          "name": "expired or used reset cannot render password form and offers new request",
+          "passed": true
+        },
+        {
+          "name": "reset password: no horizontal overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "verification code has no fixed length or local expiry promise",
+          "passed": true
+        },
+        {
+          "name": "verification sends full code and invitation return path to server",
+          "passed": true
+        },
+        {
+          "name": "longer valid code is not truncated by client",
+          "passed": true
+        },
+        {
+          "name": "resend uses server endpoint and generic confirmation",
+          "passed": true
+        },
+        {
+          "name": "email verification: no horizontal overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "global policy loads default30 with unchanged save disabled",
+          "passed": true
+        },
+        {
+          "name": "admin policy copy distinguishes unchecked24hour cookies and browser restoration",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 0 cannot save",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 91 cannot save",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 1.5 cannot save",
+          "passed": true
+        },
+        {
+          "name": "global duration 1 saves through protected PATCH once",
+          "passed": true
+        },
+        {
+          "name": "global duration 90 saves through protected PATCH once",
+          "passed": true
+        },
+        {
+          "name": "MFA-gated policy links verification and blocks edit",
+          "passed": true
+        },
+        {
+          "name": "fresh verification failure never claims policy saved",
+          "passed": true
+        },
+        {
+          "name": "non-TENH administrator denial has no editable policy",
+          "passed": true
+        },
+        {
+          "name": "policy outage can recover without inventing a saved value",
+          "passed": true
+        },
+        {
+          "name": "admin login sessions: no horizontal overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "browser performs no direct Supabase auth calls or provider/email actions",
+          "passed": true
+        },
+        {
+          "name": "private dashboard remains unmounted before initial server validation",
+          "passed": true
+        },
+        {
+          "name": "focus, online and auth events never overlap an in-flight validation",
+          "passed": true
+        },
+        {
+          "name": "browser clock skew cannot expire a server-valid session",
+          "passed": true
+        },
+        {
+          "name": "validation outage unmounts private content, stops channels and preserves credentials",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 5000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 10000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 20000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 40000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 60000ms",
+          "passed": true
+        },
+        {
+          "name": "six validation failures stop automatic retries until an explicit action",
+          "passed": true
+        },
+        {
+          "name": "successful retry resumes current workspace without a refresh loop",
+          "passed": true
+        },
+        {
+          "name": "global logout requires confirmation before any request or local cleanup",
+          "passed": true
+        },
+        {
+          "name": "delayed cross-tab logout for A cannot end fresh B session",
+          "passed": true
+        },
+        {
+          "name": "matching cross-tab session end clears private UI and own auth cookie without SDK signOut RPC",
+          "passed": true
+        },
+        {
+          "name": "cleanup preserves unrelated storage and removes only private TENH session keys",
+          "passed": true
+        },
+        {
+          "name": "late A response cannot mount A server children into B session",
+          "passed": true
+        },
+        {
+          "name": "unhinted legacy session still binds the original server user identity",
+          "passed": true
+        },
+        {
+          "name": "server-attested unhinted legacy session accepts nullable policy with30second poll",
+          "passed": true
+        },
+        {
+          "name": "server-attested unhinted legacy session accepts provider grace expiry with server TTL",
+          "passed": true
+        },
+        {
+          "name": "nullable normal policy cannot masquerade as server-attested legacy",
+          "passed": true
+        },
+        {
+          "name": "BFCache pageshow immediately hides stale private content until server revalidation",
+          "passed": true
+        },
+        {
+          "name": "valid BFCache restore resumes same private workspace without reload",
+          "passed": true
+        },
+        {
+          "name": "visibility return rechecks without discarding a valid workspace before the server response",
+          "passed": true
+        },
+        {
+          "name": "server401 expiry displays exact localized sign-in guidance with no private UI",
+          "passed": true
+        },
+        {
+          "name": "expired dashboard session: no horizontal overflow",
+          "passed": true,
+          "detail": "768/768"
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/login",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "password": "Synthetic-only-password1!",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/login",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "password": "Synthetic-only-password1!",
+            "rememberMe": false,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/oauth",
+          "method": "POST",
+          "body": {
+            "provider": "google",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/oauth",
+          "method": "POST",
+          "body": {
+            "provider": "facebook",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic-known@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic-unknown@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/reset-password",
+          "method": "POST",
+          "body": {
+            "password": "Synthetic-only-password1!",
+            "confirmPassword": "Synthetic-only-password1!"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/confirm",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite",
+            "token": "123456"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/confirm",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite",
+            "token": "1234567890"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/resend",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 1
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 90
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 40
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        }
+      ],
+      "mockedOnly": true,
+      "providerActions": 0,
+      "emailsSent": 0,
+      "browserAuthCalls": 0,
+      "sessionSdk": {
+        "channels": 7,
+        "stop": 7,
+        "start": 7
+      },
+      "privateMounts": 14,
+      "privateUnmounts": 14,
+      "identityReloads": 2
+    },
+    {
+      "language": "km",
+      "width": 1024,
+      "screenshots": {
+        "login": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-1024-login.png",
+        "loginUnchecked": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-1024-login-unchecked.png",
+        "forgot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-1024-forgot.png",
+        "reset": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-1024-reset.png",
+        "verification": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-1024-verification.png",
+        "admin": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-1024-admin.png",
+        "session": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-1024-session.png"
+      },
+      "checks": [
+        {
+          "name": "Remember me starts unchecked",
+          "passed": true
+        },
+        {
+          "name": "unchecked session-cookie copy states24hour maximum and browser restoration",
+          "passed": true
+        },
+        {
+          "name": "Forgot password opens real request page",
+          "passed": true
+        },
+        {
+          "name": "checked Remember me copy uses server-provided days",
+          "passed": true
+        },
+        {
+          "name": "password visibility button is accessible and works",
+          "passed": true
+        },
+        {
+          "name": "in-flight login blocks duplicate submissions",
+          "passed": true
+        },
+        {
+          "name": "password login sends checked preference and return path to server",
+          "passed": true
+        },
+        {
+          "name": "failed login retains editable fields with generic error",
+          "passed": true
+        },
+        {
+          "name": "unchecked password preference stays false and success follows server destination",
+          "passed": true
+        },
+        {
+          "name": "google preference is sent through trusted server handshake",
+          "passed": true
+        },
+        {
+          "name": "facebook preference is sent through trusted server handshake",
+          "passed": true
+        },
+        {
+          "name": "policy outage never invents duration or changes preference",
+          "passed": true
+        },
+        {
+          "name": "public auth language switch updates visible content",
+          "passed": true
+        },
+        {
+          "name": "login: no horizontal overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        },
+        {
+          "name": "recovery response does not disclose account existence",
+          "passed": true
+        },
+        {
+          "name": "recovery request is sent once with account email only",
+          "passed": true
+        },
+        {
+          "name": "recovery response does not disclose account existence",
+          "passed": true
+        },
+        {
+          "name": "recovery request is sent once with account email only",
+          "passed": true
+        },
+        {
+          "name": "rate-limited recovery stays editable and gives wait guidance",
+          "passed": true
+        },
+        {
+          "name": "forgot password: no horizontal overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        },
+        {
+          "name": "password fields stay hidden until server authorizes recovery",
+          "passed": true
+        },
+        {
+          "name": "mismatched reset passwords never reach server",
+          "passed": true
+        },
+        {
+          "name": "authorized reset sends confirmation once then removes password fields",
+          "passed": true
+        },
+        {
+          "name": "expired or used reset cannot render password form and offers new request",
+          "passed": true
+        },
+        {
+          "name": "reset password: no horizontal overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        },
+        {
+          "name": "verification code has no fixed length or local expiry promise",
+          "passed": true
+        },
+        {
+          "name": "verification sends full code and invitation return path to server",
+          "passed": true
+        },
+        {
+          "name": "longer valid code is not truncated by client",
+          "passed": true
+        },
+        {
+          "name": "resend uses server endpoint and generic confirmation",
+          "passed": true
+        },
+        {
+          "name": "email verification: no horizontal overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        },
+        {
+          "name": "global policy loads default30 with unchanged save disabled",
+          "passed": true
+        },
+        {
+          "name": "admin policy copy distinguishes unchecked24hour cookies and browser restoration",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 0 cannot save",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 91 cannot save",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 1.5 cannot save",
+          "passed": true
+        },
+        {
+          "name": "global duration 1 saves through protected PATCH once",
+          "passed": true
+        },
+        {
+          "name": "global duration 90 saves through protected PATCH once",
+          "passed": true
+        },
+        {
+          "name": "MFA-gated policy links verification and blocks edit",
+          "passed": true
+        },
+        {
+          "name": "fresh verification failure never claims policy saved",
+          "passed": true
+        },
+        {
+          "name": "non-TENH administrator denial has no editable policy",
+          "passed": true
+        },
+        {
+          "name": "policy outage can recover without inventing a saved value",
+          "passed": true
+        },
+        {
+          "name": "admin login sessions: no horizontal overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        },
+        {
+          "name": "browser performs no direct Supabase auth calls or provider/email actions",
+          "passed": true
+        },
+        {
+          "name": "private dashboard remains unmounted before initial server validation",
+          "passed": true
+        },
+        {
+          "name": "focus, online and auth events never overlap an in-flight validation",
+          "passed": true
+        },
+        {
+          "name": "browser clock skew cannot expire a server-valid session",
+          "passed": true
+        },
+        {
+          "name": "validation outage unmounts private content, stops channels and preserves credentials",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 5000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 10000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 20000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 40000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 60000ms",
+          "passed": true
+        },
+        {
+          "name": "six validation failures stop automatic retries until an explicit action",
+          "passed": true
+        },
+        {
+          "name": "successful retry resumes current workspace without a refresh loop",
+          "passed": true
+        },
+        {
+          "name": "global logout requires confirmation before any request or local cleanup",
+          "passed": true
+        },
+        {
+          "name": "delayed cross-tab logout for A cannot end fresh B session",
+          "passed": true
+        },
+        {
+          "name": "matching cross-tab session end clears private UI and own auth cookie without SDK signOut RPC",
+          "passed": true
+        },
+        {
+          "name": "cleanup preserves unrelated storage and removes only private TENH session keys",
+          "passed": true
+        },
+        {
+          "name": "late A response cannot mount A server children into B session",
+          "passed": true
+        },
+        {
+          "name": "unhinted legacy session still binds the original server user identity",
+          "passed": true
+        },
+        {
+          "name": "server-attested unhinted legacy session accepts nullable policy with30second poll",
+          "passed": true
+        },
+        {
+          "name": "server-attested unhinted legacy session accepts provider grace expiry with server TTL",
+          "passed": true
+        },
+        {
+          "name": "nullable normal policy cannot masquerade as server-attested legacy",
+          "passed": true
+        },
+        {
+          "name": "BFCache pageshow immediately hides stale private content until server revalidation",
+          "passed": true
+        },
+        {
+          "name": "valid BFCache restore resumes same private workspace without reload",
+          "passed": true
+        },
+        {
+          "name": "visibility return rechecks without discarding a valid workspace before the server response",
+          "passed": true
+        },
+        {
+          "name": "server401 expiry displays exact localized sign-in guidance with no private UI",
+          "passed": true
+        },
+        {
+          "name": "expired dashboard session: no horizontal overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/login",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "password": "Synthetic-only-password1!",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/login",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "password": "Synthetic-only-password1!",
+            "rememberMe": false,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/oauth",
+          "method": "POST",
+          "body": {
+            "provider": "google",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/oauth",
+          "method": "POST",
+          "body": {
+            "provider": "facebook",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic-known@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic-unknown@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/reset-password",
+          "method": "POST",
+          "body": {
+            "password": "Synthetic-only-password1!",
+            "confirmPassword": "Synthetic-only-password1!"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/confirm",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite",
+            "token": "123456"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/confirm",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite",
+            "token": "1234567890"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/resend",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 1
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 90
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 40
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        }
+      ],
+      "mockedOnly": true,
+      "providerActions": 0,
+      "emailsSent": 0,
+      "browserAuthCalls": 0,
+      "sessionSdk": {
+        "channels": 7,
+        "stop": 7,
+        "start": 7
+      },
+      "privateMounts": 14,
+      "privateUnmounts": 14,
+      "identityReloads": 2
+    },
+    {
+      "language": "km",
+      "width": 1440,
+      "screenshots": {
+        "login": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-1440-login.png",
+        "loginUnchecked": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-1440-login-unchecked.png",
+        "forgot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-1440-forgot.png",
+        "reset": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-1440-reset.png",
+        "verification": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-1440-verification.png",
+        "admin": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-1440-admin.png",
+        "session": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\auth-session-20261015\\browser\\km-1440-session.png"
+      },
+      "checks": [
+        {
+          "name": "Remember me starts unchecked",
+          "passed": true
+        },
+        {
+          "name": "unchecked session-cookie copy states24hour maximum and browser restoration",
+          "passed": true
+        },
+        {
+          "name": "Forgot password opens real request page",
+          "passed": true
+        },
+        {
+          "name": "checked Remember me copy uses server-provided days",
+          "passed": true
+        },
+        {
+          "name": "password visibility button is accessible and works",
+          "passed": true
+        },
+        {
+          "name": "in-flight login blocks duplicate submissions",
+          "passed": true
+        },
+        {
+          "name": "password login sends checked preference and return path to server",
+          "passed": true
+        },
+        {
+          "name": "failed login retains editable fields with generic error",
+          "passed": true
+        },
+        {
+          "name": "unchecked password preference stays false and success follows server destination",
+          "passed": true
+        },
+        {
+          "name": "google preference is sent through trusted server handshake",
+          "passed": true
+        },
+        {
+          "name": "facebook preference is sent through trusted server handshake",
+          "passed": true
+        },
+        {
+          "name": "policy outage never invents duration or changes preference",
+          "passed": true
+        },
+        {
+          "name": "public auth language switch updates visible content",
+          "passed": true
+        },
+        {
+          "name": "login: no horizontal overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        },
+        {
+          "name": "recovery response does not disclose account existence",
+          "passed": true
+        },
+        {
+          "name": "recovery request is sent once with account email only",
+          "passed": true
+        },
+        {
+          "name": "recovery response does not disclose account existence",
+          "passed": true
+        },
+        {
+          "name": "recovery request is sent once with account email only",
+          "passed": true
+        },
+        {
+          "name": "rate-limited recovery stays editable and gives wait guidance",
+          "passed": true
+        },
+        {
+          "name": "forgot password: no horizontal overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        },
+        {
+          "name": "password fields stay hidden until server authorizes recovery",
+          "passed": true
+        },
+        {
+          "name": "mismatched reset passwords never reach server",
+          "passed": true
+        },
+        {
+          "name": "authorized reset sends confirmation once then removes password fields",
+          "passed": true
+        },
+        {
+          "name": "expired or used reset cannot render password form and offers new request",
+          "passed": true
+        },
+        {
+          "name": "reset password: no horizontal overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        },
+        {
+          "name": "verification code has no fixed length or local expiry promise",
+          "passed": true
+        },
+        {
+          "name": "verification sends full code and invitation return path to server",
+          "passed": true
+        },
+        {
+          "name": "longer valid code is not truncated by client",
+          "passed": true
+        },
+        {
+          "name": "resend uses server endpoint and generic confirmation",
+          "passed": true
+        },
+        {
+          "name": "email verification: no horizontal overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        },
+        {
+          "name": "global policy loads default30 with unchanged save disabled",
+          "passed": true
+        },
+        {
+          "name": "admin policy copy distinguishes unchecked24hour cookies and browser restoration",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 0 cannot save",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 91 cannot save",
+          "passed": true
+        },
+        {
+          "name": "invalid global duration 1.5 cannot save",
+          "passed": true
+        },
+        {
+          "name": "global duration 1 saves through protected PATCH once",
+          "passed": true
+        },
+        {
+          "name": "global duration 90 saves through protected PATCH once",
+          "passed": true
+        },
+        {
+          "name": "MFA-gated policy links verification and blocks edit",
+          "passed": true
+        },
+        {
+          "name": "fresh verification failure never claims policy saved",
+          "passed": true
+        },
+        {
+          "name": "non-TENH administrator denial has no editable policy",
+          "passed": true
+        },
+        {
+          "name": "policy outage can recover without inventing a saved value",
+          "passed": true
+        },
+        {
+          "name": "admin login sessions: no horizontal overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        },
+        {
+          "name": "browser performs no direct Supabase auth calls or provider/email actions",
+          "passed": true
+        },
+        {
+          "name": "private dashboard remains unmounted before initial server validation",
+          "passed": true
+        },
+        {
+          "name": "focus, online and auth events never overlap an in-flight validation",
+          "passed": true
+        },
+        {
+          "name": "browser clock skew cannot expire a server-valid session",
+          "passed": true
+        },
+        {
+          "name": "validation outage unmounts private content, stops channels and preserves credentials",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 5000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 10000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 20000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 40000ms",
+          "passed": true
+        },
+        {
+          "name": "validation retry delay is bounded at 60000ms",
+          "passed": true
+        },
+        {
+          "name": "six validation failures stop automatic retries until an explicit action",
+          "passed": true
+        },
+        {
+          "name": "successful retry resumes current workspace without a refresh loop",
+          "passed": true
+        },
+        {
+          "name": "global logout requires confirmation before any request or local cleanup",
+          "passed": true
+        },
+        {
+          "name": "delayed cross-tab logout for A cannot end fresh B session",
+          "passed": true
+        },
+        {
+          "name": "matching cross-tab session end clears private UI and own auth cookie without SDK signOut RPC",
+          "passed": true
+        },
+        {
+          "name": "cleanup preserves unrelated storage and removes only private TENH session keys",
+          "passed": true
+        },
+        {
+          "name": "late A response cannot mount A server children into B session",
+          "passed": true
+        },
+        {
+          "name": "unhinted legacy session still binds the original server user identity",
+          "passed": true
+        },
+        {
+          "name": "server-attested unhinted legacy session accepts nullable policy with30second poll",
+          "passed": true
+        },
+        {
+          "name": "server-attested unhinted legacy session accepts provider grace expiry with server TTL",
+          "passed": true
+        },
+        {
+          "name": "nullable normal policy cannot masquerade as server-attested legacy",
+          "passed": true
+        },
+        {
+          "name": "BFCache pageshow immediately hides stale private content until server revalidation",
+          "passed": true
+        },
+        {
+          "name": "valid BFCache restore resumes same private workspace without reload",
+          "passed": true
+        },
+        {
+          "name": "visibility return rechecks without discarding a valid workspace before the server response",
+          "passed": true
+        },
+        {
+          "name": "server401 expiry displays exact localized sign-in guidance with no private UI",
+          "passed": true
+        },
+        {
+          "name": "expired dashboard session: no horizontal overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/login",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "password": "Synthetic-only-password1!",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/login",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "password": "Synthetic-only-password1!",
+            "rememberMe": false,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/oauth",
+          "method": "POST",
+          "body": {
+            "provider": "google",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/oauth",
+          "method": "POST",
+          "body": {
+            "provider": "facebook",
+            "rememberMe": true,
+            "next": "/dashboard/settings/security"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/policy",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic-known@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic-unknown@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recover",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/reset-password",
+          "method": "POST",
+          "body": {
+            "password": "Synthetic-only-password1!",
+            "confirmPassword": "Synthetic-only-password1!"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/recovery-status",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/confirm",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite",
+            "token": "123456"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/confirm",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite",
+            "token": "1234567890"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/resend",
+          "method": "POST",
+          "body": {
+            "email": "synthetic@example.invalid",
+            "next": "/invite/accept?token=synthetic-invite"
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 1
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 90
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "PATCH",
+          "body": {
+            "rememberDays": 40
+          },
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/login-sessions",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true
+        },
+        {
+          "path": "/api/auth/session",
+          "method": "GET",
+          "cache": "no-store",
+          "mocked": true,
+          "aborted": true
+        }
+      ],
+      "mockedOnly": true,
+      "providerActions": 0,
+      "emailsSent": 0,
+      "browserAuthCalls": 0,
+      "sessionSdk": {
+        "channels": 7,
+        "stop": 7,
+        "start": 7
+      },
+      "privateMounts": 14,
+      "privateUnmounts": 14,
+      "identityReloads": 2
+    }
+  ],
+  "browserErrors": [],
+  "network": [
+    "http://127.0.0.1:63086/fixture.html?lang=en&width=390&next=%2Fdashboard%2Fsettings%2Fsecurity",
+    "http://127.0.0.1:63086/bundle.js",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/images/tenh_logo.png",
+    "http://127.0.0.1:63086/images/background-login.webp",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/fixture.html?lang=en&width=768&next=%2Fdashboard%2Fsettings%2Fsecurity",
+    "http://127.0.0.1:63086/bundle.js",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/images/tenh_logo.png",
+    "http://127.0.0.1:63086/images/background-login.webp",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/fixture.html?lang=en&width=1024&next=%2Fdashboard%2Fsettings%2Fsecurity",
+    "http://127.0.0.1:63086/bundle.js",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/images/tenh_logo.png",
+    "http://127.0.0.1:63086/images/background-login.webp",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/fixture.html?lang=en&width=1440&next=%2Fdashboard%2Fsettings%2Fsecurity",
+    "http://127.0.0.1:63086/bundle.js",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/images/tenh_logo.png",
+    "http://127.0.0.1:63086/images/background-login.webp",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/fixture.html?lang=km&width=390&next=%2Fdashboard%2Fsettings%2Fsecurity",
+    "http://127.0.0.1:63086/bundle.js",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/images/tenh_logo.png",
+    "http://127.0.0.1:63086/images/background-login.webp",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/fixture.html?lang=km&width=768&next=%2Fdashboard%2Fsettings%2Fsecurity",
+    "http://127.0.0.1:63086/bundle.js",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/images/tenh_logo.png",
+    "http://127.0.0.1:63086/images/background-login.webp",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/fixture.html?lang=km&width=1024&next=%2Fdashboard%2Fsettings%2Fsecurity",
+    "http://127.0.0.1:63086/bundle.js",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/images/tenh_logo.png",
+    "http://127.0.0.1:63086/images/background-login.webp",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/fixture.html?lang=km&width=1440&next=%2Fdashboard%2Fsettings%2Fsecurity",
+    "http://127.0.0.1:63086/bundle.js",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/images/tenh_logo.png",
+    "http://127.0.0.1:63086/images/background-login.webp",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico",
+    "http://127.0.0.1:63086/favicon.ico"
+  ],
+  "temp": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-auth-ui-ez2kTv"
+}

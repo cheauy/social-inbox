@@ -93,35 +93,6 @@ async function loadActiveMembers(userId: string) {
     .order("created_at", { ascending: true });
 }
 
-async function hasRemovedWorkspaceAccess(
-  userId: string,
-  businessId: string,
-) {
-  if (!businessId) {
-    return false;
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from("team_members")
-    .select("id,is_active")
-    .eq("user_id", userId)
-    .eq("business_id", businessId)
-    .order("is_active", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    console.error(
-      "Unable to verify removed workspace access:",
-      error,
-    );
-    return false;
-  }
-
-  return Boolean(data && data.is_active === false);
-}
-
 /*
  * Subscription states that make a workspace unusable. Opening one shows the
  * locked screen and nothing else, so it is the last thing to land on by
@@ -329,20 +300,7 @@ async function provisionMetaReviewer(user: User): Promise<AuthenticatedMember | 
 
   if (exactMember) {
     if (exactMember.is_active) return exactMember as AuthenticatedMember;
-
-    const { data: reactivated, error: reactivateError } = await supabaseAdmin
-      .from("team_members")
-      .update({ email: userEmail, role: "admin", is_active: true })
-      .eq("id", exactMember.id)
-      .select(MEMBER_SELECT)
-      .single();
-
-    if (reactivateError || !reactivated) {
-      console.error("Unable to reactivate Meta reviewer membership:", reactivateError);
-      return null;
-    }
-
-    return reactivated as AuthenticatedMember;
+    return null;
   }
 
   const { data: createdMember, error: createMemberError } = await supabaseAdmin
@@ -380,13 +338,12 @@ async function readCurrentMember(strictWorkspace = false): Promise<GetCurrentMem
     cookieStore
       .get(TENH_ACTIVE_BUSINESS_COOKIE)
       ?.value?.trim() ?? "";
+  let removedSelection = false;
 
   /*
-   * Never silently move a user to another subscription.
-   *
-   * If a saved workspace exists, TENH must honor that selection. When the
-   * membership was removed or deactivated, return an explicit 403 instead
-   * of choosing another active membership behind the user's back.
+   * Mutations honor the selected workspace and fail closed on removed access.
+   * Browser reads can recover to another active membership without restoring
+   * the removed one; the next mutation still requires an explicit selection.
    */
   if (requestedBusinessId) {
     const {
@@ -426,7 +383,7 @@ async function readCurrentMember(strictWorkspace = false): Promise<GetCurrentMem
         };
       }
 
-      return {
+      if (strictWorkspace) return {
         success: false,
         status: 403,
         code: "WORKSPACE_ACCESS_REMOVED",
@@ -434,6 +391,7 @@ async function readCurrentMember(strictWorkspace = false): Promise<GetCurrentMem
         error:
           "You no longer have access to this subscription. An Owner may have removed your access. Your TENH account and any other subscriptions are unchanged.",
       };
+      removedSelection = true;
     }
 
     // A mutation must never retarget an explicitly selected workspace.
@@ -479,6 +437,8 @@ async function readCurrentMember(strictWorkspace = false): Promise<GetCurrentMem
     }
   }
 
+  if (removedSelection) return { success: false, status: 403, code: "WORKSPACE_ACCESS_REMOVED",
+    businessId: requestedBusinessId, error: "You no longer have access to this subscription. An Owner must restore access explicitly." };
   const reviewerMember = await provisionMetaReviewer(user);
   if (reviewerMember) {
     return { success: true, user, member: reviewerMember };
